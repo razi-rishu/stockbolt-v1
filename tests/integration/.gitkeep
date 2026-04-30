@@ -1,0 +1,2 @@
+# Integration tests matching the verification scenarios in Doc 5 per phase.
+# Phase 0's RLS verification test lives in tests/integration/phase0-rls.test.ts (created in Stage 6).
