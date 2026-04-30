@@ -39,6 +39,10 @@ export default [
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'error',
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+      // TypeScript handles undefined references via the type checker; ESLint's
+      // no-undef can't see ambient declarations in .d.ts files. Disable here
+      // and rely on `npm run typecheck` for that class of error.
+      'no-undef': 'off',
     },
     settings: {
       react: { version: 'detect' },
