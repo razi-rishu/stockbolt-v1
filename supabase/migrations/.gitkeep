@@ -1,0 +1,3 @@
+# Numbered SQL migration files. Append-only — never edit a previous migration.
+# Stage 4 of Phase 0 will populate the 48-table schema across multiple files
+# (one file per Doc 2 section).
