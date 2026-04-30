@@ -1,0 +1,2 @@
+# Data adapter layer (Supabase / self-hosted abstraction).
+# Stage 5 of Phase 0 populates: adapter.ts, supabaseAdapter.ts, selfHostedAdapter.ts.

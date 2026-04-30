@@ -1,0 +1,2 @@
+# Auto-generated DB types live here as `database.ts` (created by `supabase gen types`).
+# UI-specific types may also live here. Single source of truth — never hand-edit `database.ts`.
