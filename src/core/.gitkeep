@@ -1,0 +1,5 @@
+# Business logic, framework-agnostic.
+# Phase 3 will populate: accountingEngine.ts, accountingMapping.ts,
+# accountingConstants.ts, costingStrategy.ts, stockLedger.ts,
+# periodLock.ts, auditLog.ts, numberSequence.ts, invariants.ts.
+# Phase 0 leaves this empty per Doc 5: "No business logic written yet — only foundation."

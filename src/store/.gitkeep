@@ -1,0 +1,2 @@
+# Zustand stores. UI STATE ONLY (modal open, current tab, filter selections).
+# Per AGENTS.md Section 7.4: NEVER put server data in Zustand. Use TanStack Query for that.

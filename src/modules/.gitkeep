@@ -1,0 +1,12 @@
+# UI modules, one folder per Doc 1 module.
+# Subfolders to be created per phase:
+#   auth/        — Phase 1
+#   onboarding/  — Phase 1
+#   dashboard/   — Phase 10
+#   sales/       — Phase 4
+#   purchases/   — Phase 5
+#   inventory/   — Phase 6
+#   accounts/    — Phase 3 + 8
+#   pos/         — Phase 7
+#   reports/     — Phases 3, 4, 5, 6, 8, 10
+#   settings/    — Phase 1

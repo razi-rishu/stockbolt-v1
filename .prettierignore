@@ -1,0 +1,7 @@
+node_modules
+dist
+build
+coverage
+*.md
+supabase/migrations
+src/types/database.ts

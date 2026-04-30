@@ -1,0 +1,2 @@
+# Design system primitives: Button, Card, Input, etc.
+# Built against the Tailwind tokens in tailwind.config.js (brand-*, surface-*, ink-*).
