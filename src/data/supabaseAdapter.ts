@@ -149,14 +149,10 @@ export function createSupabaseAdapter(
     // ── Onboarding ─────────────────────────────────────────────────────────
     onboarding: {
       async createCompanyAndProfile(input: OnboardingRpcInput) {
-        // complete_onboarding is a SECURITY DEFINER function added in Phase 1.
-        // Types were generated after Phase 0 migrations — re-run supabase gen types
-        // after db push to make this call fully typed.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (client as any).rpc('complete_onboarding', {
+        const { data, error } = await client.rpc('complete_onboarding', {
           p_data: input,
         });
-        if (error) throw new SupabaseDataError(`complete_onboarding: ${(error as { message: string }).message}`);
+        if (error) throw new SupabaseDataError(`complete_onboarding: ${error.message}`);
         const result = (data as unknown) as { company_id: string };
         return { company_id: result.company_id };
       },
