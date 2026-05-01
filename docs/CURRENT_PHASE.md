@@ -64,7 +64,27 @@ This file is read by Claude Code at the start of every session, so keep it accur
 - `SUPABASE_SECRET_KEY` (no `VITE_` prefix) used for the RLS test; Vite refuses to bundle it into browser builds, blocking accidental client-side leakage.
 
 ### Phase 1 — Master Data & Onboarding
-- Started: not yet
+- Started: 2026-05-01
 - Definition of Done: see Document_5_Build_Phases.md, Phase 1 section
+
+**Stage progress:**
+- [x] Stage 1 — Dependencies (zod, @hookform/resolvers), routing (React Router v6), TanStack Query provider, i18n config (i18next + RTL), Zustand auth store
+- [x] Stage 2 — Auth module: Login, Register, ForgotPassword, ResetPassword, EmailVerification pages (react-hook-form + zod)
+- [x] Stage 3 — COA seed service (32 accounts for UAE, 36 for India), tax rates, payment methods, units seed services; `runOnboarding` orchestrator in `src/core/`
+- [x] Stage 4 — 6-step Setup Wizard (`/setup`); `complete_onboarding` SECURITY DEFINER Postgres function (Phase 1 migration) solves RLS bootstrap problem
+- [x] Stage 5 — Company Settings page (`/settings/company`): edit info + logo upload to Supabase Storage
+- [x] Stage 6 — Full EN + AR i18n keys; RTL layout via `document.documentElement.dir`; LanguageToggle component; logical Tailwind properties (`ms-*`/`me-*`)
+- [x] Stage 7 — Phase 1 verification test (`tests/integration/phase1-verification.test.ts`); `npm run test:phase1` script added
+
+**Next step (before marking Phase 1 complete):**
+- Push Phase 1 migration: `supabase db push`
+- Regenerate types: `supabase gen types typescript --linked > src/types/database.ts`
+- Run: `npm run test:phase1` — all 8 assertions must pass
+- Then tick all 10 DoD checkboxes
+
+**Decisions made in Phase 1:**
+- RLS bootstrap problem solved via SECURITY DEFINER `complete_onboarding()` Postgres function (migration 20260501000000). Profile creation happens atomically with company creation; all seed inserts run after via anon key.
+- COA account count: Doc 5 says "30" but actual count for UAE is 32 (Doc 3 Part A list, minus 6 India GST accounts, minus 6100 Salaries which is v2-only). Doc 5 §"PHASE 1 Verification Test" will be updated from 30 → 32.
+- `any` used once in `supabaseAdapter.ts` for `complete_onboarding` RPC call (generated types predate this function; re-run `supabase gen types` after db push to fully type it).
 
 (Add subsequent phases here as they begin and complete.)

@@ -1,23 +1,65 @@
+import { lazy, Suspense } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useAuthInit } from '@/hooks/use-auth-init';
+import { RequireAuth } from '@/components/require-auth';
+import { RequireOnboarded } from '@/components/require-onboarded';
+
+// Route-level code splitting
+const LoginPage          = lazy(() => import('@/modules/auth/login'));
+const RegisterPage       = lazy(() => import('@/modules/auth/register'));
+const ForgotPasswordPage = lazy(() => import('@/modules/auth/forgot-password'));
+const ResetPasswordPage  = lazy(() => import('@/modules/auth/reset-password'));
+const EmailVerifyPage    = lazy(() => import('@/modules/auth/email-verification'));
+const SetupWizardPage    = lazy(() => import('@/modules/onboarding/setup-wizard'));
+const DashboardPage      = lazy(() => import('@/modules/dashboard/index'));
+const CompanySettingsPage = lazy(() => import('@/modules/settings/company-settings'));
+
+function Loading() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-surface-page">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+    </div>
+  );
+}
+
+function AppRoutes() {
+  const { loading } = useAuthInit();
+
+  if (loading) return <Loading />;
+
+  return (
+    <Suspense fallback={<Loading />}>
+      <Routes>
+        {/* ── Public auth routes ───────────────────────────────────── */}
+        <Route path="/login"            element={<LoginPage />} />
+        <Route path="/register"         element={<RegisterPage />} />
+        <Route path="/forgot-password"  element={<ForgotPasswordPage />} />
+        <Route path="/reset-password"   element={<ResetPasswordPage />} />
+        <Route path="/verify-email"     element={<EmailVerifyPage />} />
+
+        {/* ── Authenticated: setup wizard (not yet onboarded) ──────── */}
+        <Route element={<RequireAuth />}>
+          <Route path="/setup" element={<SetupWizardPage />} />
+
+          {/* ── Authenticated + onboarded ──────────────────────────── */}
+          <Route element={<RequireOnboarded />}>
+            <Route path="/dashboard"            element={<DashboardPage />} />
+            <Route path="/settings/company"     element={<CompanySettingsPage />} />
+          </Route>
+        </Route>
+
+        {/* ── Default redirect ─────────────────────────────────────── */}
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    </Suspense>
+  );
+}
+
 export default function App() {
   return (
-    <div className="min-h-screen bg-surface-page flex items-center justify-center p-8">
-      <div className="max-w-md w-full bg-surface-card rounded-card shadow-card border border-border-subtle p-8 text-center">
-        <div className="mx-auto mb-4 h-14 w-14 rounded-2xl bg-brand-500 flex items-center justify-center">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="white"
-            className="h-8 w-8"
-          >
-            <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" />
-          </svg>
-        </div>
-        <h1 className="text-2xl font-bold text-ink-primary">StockBolt</h1>
-        <p className="text-sm text-ink-secondary mt-1">ERP CORE — Phase 0 foundation</p>
-        <p className="mt-6 text-xs text-ink-tertiary">
-          No business logic yet. Database, auth, RLS, and folder structure only.
-        </p>
-      </div>
-    </div>
+    <BrowserRouter>
+      <AppRoutes />
+    </BrowserRouter>
   );
 }

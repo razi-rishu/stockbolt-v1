@@ -1,6 +1,128 @@
 {
   "app": {
     "name": "StockBolt",
-    "tagline": "ERP CORE"
+    "tagline": "Auto Parts ERP"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "back": "Back",
+    "next": "Next",
+    "close": "Close",
+    "delete": "Delete",
+    "edit": "Edit",
+    "view": "View",
+    "search": "Search",
+    "loading": "Loading…",
+    "saved": "Changes saved successfully.",
+    "error": "Something went wrong. Please try again.",
+    "back_to_login": "Back to login",
+    "sign_out": "Sign out",
+    "required": "This field is required."
+  },
+  "auth": {
+    "email": "Email address",
+    "password": "Password",
+    "error": {
+      "generic": "Authentication failed. Please try again."
+    },
+    "login": {
+      "title": "Sign in to StockBolt",
+      "submit": "Sign in",
+      "forgot_password": "Forgot password?",
+      "no_account": "Create account"
+    },
+    "register": {
+      "title": "Create your account",
+      "submit": "Create account",
+      "confirm_password": "Confirm password",
+      "have_account": "Already have an account?",
+      "check_email": "Check your email",
+      "verify_prompt": "We sent a verification link to your email. Click it to activate your account.",
+      "go_to_login": "Go to sign in"
+    },
+    "forgot": {
+      "title": "Reset your password",
+      "description": "Enter your email and we'll send you a reset link.",
+      "submit": "Send reset link",
+      "sent": "If that email exists, you'll receive a reset link shortly."
+    },
+    "reset": {
+      "title": "Choose a new password",
+      "new_password": "New password",
+      "submit": "Set new password"
+    },
+    "verification": {
+      "title": "Email verified",
+      "description": "Your email has been confirmed. You can now sign in."
+    }
+  },
+  "wizard": {
+    "setup_prompt": "Let's set up your company",
+    "finish": "Finish setup",
+    "step_of": "Step {{current}} of {{total}}",
+    "error": {
+      "generic": "Setup failed. Please try again."
+    },
+    "step1": {
+      "title": "Company basics",
+      "full_name": "Your full name",
+      "company_name": "Company name (English)",
+      "company_name_ar": "Company name (Arabic)",
+      "address": "Address"
+    },
+    "step2": {
+      "title": "Country & tax",
+      "country": "Country",
+      "tax_registered": "Registered for VAT / GST",
+      "tax_id": "Tax registration number"
+    },
+    "step3": {
+      "title": "Currency & fiscal year",
+      "currency": "Base currency",
+      "currency_hint": "Set automatically based on your country.",
+      "fiscal_year_start": "Fiscal year starts in"
+    },
+    "step4": {
+      "title": "First warehouse",
+      "warehouse_name": "Warehouse name (English)",
+      "warehouse_name_ar": "Warehouse name (Arabic)",
+      "warehouse_code": "Warehouse code"
+    },
+    "step5": {
+      "title": "Bank / cash account",
+      "account_type": "Account type",
+      "type_bank": "Bank account",
+      "type_cash": "Cash / petty cash",
+      "account_name": "Account name (English)",
+      "account_name_ar": "Account name (Arabic)",
+      "bank_name": "Bank name",
+      "account_number": "Account number"
+    },
+    "step6": {
+      "title": "Sample data",
+      "description": "Would you like to load sample auto parts data to explore the system?",
+      "start_blank": "Start with a clean slate",
+      "start_blank_hint": "Begin with no products, contacts, or transactions.",
+      "load_sample": "Load sample data",
+      "load_sample_hint": "Adds demo brands (Bosch, Mahle, Mann), categories, and sample products."
+    }
+  },
+  "dashboard": {
+    "title": "Welcome to StockBolt",
+    "phase_note": "Phase 1 complete — master data & onboarding ready."
+  },
+  "settings": {
+    "company": {
+      "title": "Company settings",
+      "logo": "Company logo",
+      "upload_logo": "Upload logo",
+      "logo_hint": "JPEG, PNG, or SVG. Max 5 MB.",
+      "logo_type_error": "Please upload a JPEG, PNG, or SVG file.",
+      "logo_size_error": "File is too large. Maximum size is 5 MB.",
+      "details": "Company details",
+      "name": "Company name (English)",
+      "name_ar": "Company name (Arabic)"
+    }
   }
 }
