@@ -1,12 +1,12 @@
 # Current Phase
 
-**Active Phase:** Phase 1 — Master Data & Onboarding (NOT YET STARTED)
+**Active Phase:** Phase 2 — Items, Customers & Vendors (NOT YET STARTED)
 
-**Status:** Phase 0 closed 2026-05-01. All 7 DoD checkboxes passed. Verification gate (RLS multi-tenant isolation) passed 6/6.
+**Status:** Phase 1 closed 2026-05-01. All 8 verification assertions passed (8/8). Verification gate: `npm run test:phase1`.
 
-**Last completed:** Phase 0 in full. Repo live at https://github.com/razi-rishu/stockbolt-v1 with 5 conventional commits + Phase 0 close commit.
+**Last completed:** Phase 1 in full. Auth flow, 6-step setup wizard, COA seed (32 UAE / 36 India), tax rates, payment methods, units, warehouse, bank account, company settings page, EN+AR i18n.
 
-**Next milestone:** Phase 1 kickoff — auth signup, multi-step setup wizard (Doc 1), seed COA + tax rates + payment methods + units, first warehouse, first bank/cash account. See Doc 5 §"PHASE 1" for the full task list and DoD.
+**Next milestone:** Phase 2 kickoff — item master, customer/vendor master, price lists. See Doc 5 §"PHASE 2" for task list and DoD.
 
 **Notes:**
 - Building from clean slate after rebuild decision
@@ -76,15 +76,24 @@ This file is read by Claude Code at the start of every session, so keep it accur
 - [x] Stage 6 — Full EN + AR i18n keys; RTL layout via `document.documentElement.dir`; LanguageToggle component; logical Tailwind properties (`ms-*`/`me-*`)
 - [x] Stage 7 — Phase 1 verification test (`tests/integration/phase1-verification.test.ts`); `npm run test:phase1` script added
 
-**Next step (before marking Phase 1 complete):**
-- Push Phase 1 migration: `supabase db push`
-- Regenerate types: `supabase gen types typescript --linked > src/types/database.ts`
-- Run: `npm run test:phase1` — all 8 assertions must pass
-- Then tick all 10 DoD checkboxes
+**Phase 1 DoD — final state (all passed 2026-05-01):**
+- [x] Auth flow: Login, Register, ForgotPassword, ResetPassword, EmailVerification
+- [x] 6-step Setup Wizard at `/setup` (react-hook-form + zod, per-step validation)
+- [x] COA seed: 32 system accounts for UAE/GCC, 36 for India (IS_SYSTEM=true)
+- [x] Tax rates seed: 1 row "UAE VAT 5%" for AE, 4 GST rows for IN
+- [x] Payment methods seed: Cash, Bank Transfer, Cheque, Card (4 rows)
+- [x] Units of measure seed: PCS, SET, KG, LITRE, BOX (5 rows)
+- [x] First warehouse with is_default=true
+- [x] First bank/cash account linked to COA 1110/1100
+- [x] Company Settings page (`/settings/company`): edit info + logo upload
+- [x] EN + AR i18n (i18next, RTL, LanguageToggle)
+- [x] Verification test: 8/8 assertions passed (`npm run test:phase1`)
 
 **Decisions made in Phase 1:**
-- RLS bootstrap problem solved via SECURITY DEFINER `complete_onboarding()` Postgres function (migration 20260501000000). Profile creation happens atomically with company creation; all seed inserts run after via anon key.
-- COA account count: Doc 5 says "30" but actual count for UAE is 32 (Doc 3 Part A list, minus 6 India GST accounts, minus 6100 Salaries which is v2-only). Doc 5 §"PHASE 1 Verification Test" will be updated from 30 → 32.
-- `any` used once in `supabaseAdapter.ts` for `complete_onboarding` RPC call (generated types predate this function; re-run `supabase gen types` after db push to fully type it).
+- RLS bootstrap solved via SECURITY DEFINER `complete_onboarding()` Postgres function (migrations 20260501000000 + 20260501000001 fix). Profile creation happens atomically with company creation.
+- COA account count: Doc 5 says "30" but actual count for UAE is 32 (Doc 3 Part A list, minus 6 India GST accounts, minus 6100 Salaries which is v2-only).
+- `bank_accounts.account_type` uses `'bank'/'cash'` (not `'current'/'petty_cash'`) — schema CHECK constraint is the source of truth.
+- `payment_methods.type` uses `'bank'` (not `'bank_transfer'`) — schema CHECK constraint is the source of truth.
+- `complete_onboarding` RPC now fully typed after `supabase gen types` re-run; `any` cast removed.
 
 (Add subsequent phases here as they begin and complete.)

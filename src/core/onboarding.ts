@@ -87,7 +87,7 @@ export async function runOnboarding(
     company_id,
     name: wizard.bank_account_name,
     name_ar: wizard.bank_account_name_ar,
-    account_type: wizard.bank_account_type === 'cash' ? 'petty_cash' : 'current',
+    account_type: wizard.bank_account_type === 'cash' ? 'cash' : 'bank',
     bank_name: wizard.bank_name || null,
     account_number: wizard.account_number || null,
     currency: wizard.currency,

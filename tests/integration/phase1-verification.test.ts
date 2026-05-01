@@ -216,6 +216,6 @@ describe('Phase 1 — Onboarding Verification', () => {
     const coa = data![0].chart_of_accounts as { code: string } | null;
     expect(coa?.code).toBe('1110');
     expect(data![0].is_default).toBe(true);
-    expect(data![0].account_type).toBe('current');
+    expect(data![0].account_type).toBe('bank');
   });
 });

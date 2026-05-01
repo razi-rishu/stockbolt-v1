@@ -2,7 +2,7 @@ import type { DataAdapter } from '@/data/adapter';
 
 const PAYMENT_METHODS = [
   { name: 'Cash',           name_ar: 'نقدي',                type: 'cash' },
-  { name: 'Bank Transfer',  name_ar: 'تحويل بنكي',          type: 'bank_transfer' },
+  { name: 'Bank Transfer',  name_ar: 'تحويل بنكي',          type: 'bank' },
   { name: 'Cheque',         name_ar: 'شيك',                 type: 'cheque' },
   { name: 'Card',           name_ar: 'بطاقة ائتمانية',       type: 'card' },
 ] as const;
