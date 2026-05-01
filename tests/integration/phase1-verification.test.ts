@@ -23,10 +23,15 @@
 
 import { describe, it, expect, afterAll } from 'vitest';
 import { createClient } from '@supabase/supabase-js';
+import * as dotenv from 'dotenv';
+import { resolve } from 'node:path';
 import type { Database } from '../../src/types/database';
 import { createSupabaseAdapter } from '../../src/data/supabaseAdapter';
 import { runOnboarding, type WizardData } from '../../src/core/onboarding';
-import 'dotenv/config';
+
+// Load .env.local explicitly (Vitest runs in Node, no Vite env loading).
+// Per Phase 0 test pattern.
+dotenv.config({ path: resolve(process.cwd(), '.env.local') });
 
 // ── Test env -------------------------------------------------------------------
 const SUPABASE_URL        = process.env.VITE_SUPABASE_URL!;
