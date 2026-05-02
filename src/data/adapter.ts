@@ -469,6 +469,161 @@ export interface ReportsAPI {
   getARAgingReport(company_id: string, as_of_date: string): Promise<ARAgingReport>;
   getCustomerStatement(company_id: string, contact_id: string, from: string, to: string): Promise<CustomerStatement>;
   getStockValuation(company_id: string, as_of_date: string): Promise<StockValuationReport>;
+  getAPAgingReport(company_id: string, as_of_date: string): Promise<APAgingReport>;
+  getSupplierStatement(company_id: string, contact_id: string, from: string, to: string): Promise<SupplierStatement>;
+  getGRNReconciliation(company_id: string, as_of_date: string): Promise<GRNReconciliationReport>;
+}
+
+// ── Phase 5 row types ─────────────────────────────────────────────────────────
+export type PurchaseOrderRow = Tables['purchase_orders']['Row'];
+export type PurchaseOrderItemRow = Tables['purchase_order_items']['Row'];
+export type GoodsReceiptRow = Tables['goods_receipts']['Row'];
+export type GoodsReceiptItemRow = Tables['goods_receipt_items']['Row'];
+export type VendorBillRow = Tables['vendor_bills']['Row'];
+export type VendorBillItemRow = Tables['vendor_bill_items']['Row'] & { coa_account_id?: string | null };
+export type DebitNoteRow = Tables['debit_notes']['Row'];
+
+// Phase 5 insert / update types
+export type PurchaseOrderInsert = Omit<Tables['purchase_orders']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type PurchaseOrderUpdate = Tables['purchase_orders']['Update'];
+export type PurchaseOrderItemInsert = Omit<Tables['purchase_order_items']['Insert'], 'id' | 'created_at'>;
+export type GoodsReceiptInsert = Omit<Tables['goods_receipts']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type GoodsReceiptUpdate = Tables['goods_receipts']['Update'];
+export type GoodsReceiptItemInsert = Omit<Tables['goods_receipt_items']['Insert'], 'id' | 'created_at'>;
+export type VendorBillInsert = Omit<Tables['vendor_bills']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type VendorBillUpdate = Tables['vendor_bills']['Update'];
+export type VendorBillItemInsert = Omit<Tables['vendor_bill_items']['Insert'], 'id' | 'created_at'> & { coa_account_id?: string | null };
+
+// Phase 5 RPC result types
+export interface GRNConfirmResult {
+  grn_id: string;
+  grn_number: string;
+  je_id: string;
+  entry_number: string;
+}
+
+export interface BillConfirmResult {
+  bill_id: string;
+  bill_number: string;
+  je_id: string;
+  entry_number: string;
+}
+
+export interface VendorPaymentConfirmResult {
+  payment_id: string;
+  payment_number: string;
+  je_id: string;
+  entry_number: string;
+}
+
+export interface ApplyVendorAdvanceResult {
+  je_id: string;
+  entry_number: string;
+  payment_id: string;
+  bill_id: string;
+  amount: number;
+}
+
+// Phase 5 report types
+export interface APAgingBucket {
+  contact_id: string;
+  contact_name: string;
+  current: number;
+  days_31_60: number;
+  days_61_90: number;
+  over_90: number;
+  total: number;
+}
+
+export interface APAgingReport {
+  as_of_date: string;
+  buckets: APAgingBucket[];
+  total_current: number;
+  total_31_60: number;
+  total_61_90: number;
+  total_over_90: number;
+  grand_total: number;
+}
+
+export interface SupplierStatementLine {
+  date: string;
+  doc_type: string;
+  doc_number: string;
+  debit: number;
+  credit: number;
+  balance: number;
+}
+
+export interface SupplierStatement {
+  contact_id: string;
+  contact_name: string;
+  from_date: string;
+  to_date: string;
+  opening_balance: number;
+  lines: SupplierStatementLine[];
+  closing_balance: number;
+}
+
+export interface GRNReconciliationLine {
+  grn_id: string;
+  grn_number: string;
+  supplier_id: string;
+  supplier_name: string;
+  date: string;
+  total_cost: number;
+  billed_amount: number;
+  unbilled_amount: number;
+}
+
+export interface GRNReconciliationReport {
+  as_of_date: string;
+  lines: GRNReconciliationLine[];
+  total_accrual: number;
+  total_billed: number;
+  total_unbilled: number;
+}
+
+// ── Phase 5 APIs ──────────────────────────────────────────────────────────────
+
+export interface PurchaseOrdersAPI {
+  list(company_id: string, status?: string): Promise<PurchaseOrderRow[]>;
+  getById(id: string): Promise<PurchaseOrderRow | null>;
+  getItems(po_id: string): Promise<PurchaseOrderItemRow[]>;
+  create(row: PurchaseOrderInsert, items: PurchaseOrderItemInsert[]): Promise<PurchaseOrderRow>;
+  update(id: string, row: PurchaseOrderUpdate, items: PurchaseOrderItemInsert[]): Promise<void>;
+  send(id: string): Promise<void>;
+  close(id: string): Promise<void>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface GoodsReceiptsAPI {
+  list(company_id: string, status?: string): Promise<GoodsReceiptRow[]>;
+  getById(id: string): Promise<GoodsReceiptRow | null>;
+  getItems(grn_id: string): Promise<GoodsReceiptItemRow[]>;
+  create(row: GoodsReceiptInsert, items: GoodsReceiptItemInsert[]): Promise<GoodsReceiptRow>;
+  update(id: string, row: GoodsReceiptUpdate, items: GoodsReceiptItemInsert[]): Promise<void>;
+  confirm(grn_id: string): Promise<GRNConfirmResult>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface VendorBillsAPI {
+  list(company_id: string, status?: string): Promise<VendorBillRow[]>;
+  getById(id: string): Promise<VendorBillRow | null>;
+  getItems(bill_id: string): Promise<VendorBillItemRow[]>;
+  create(row: VendorBillInsert, items: VendorBillItemInsert[]): Promise<VendorBillRow>;
+  update(id: string, row: VendorBillUpdate, items: VendorBillItemInsert[]): Promise<void>;
+  confirm(bill_id: string): Promise<BillConfirmResult>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface VendorPaymentsAPI {
+  list(company_id: string): Promise<PaymentRow[]>;
+  getById(id: string): Promise<PaymentRow | null>;
+  getAllocations(payment_id: string): Promise<PaymentAllocationRow[]>;
+  create(row: PaymentInsert, allocations?: PaymentAllocationInsert[]): Promise<PaymentRow>;
+  confirm(payment_id: string): Promise<VendorPaymentConfirmResult>;
+  applyAdvance(payment_id: string, bill_id: string, amount: number): Promise<ApplyVendorAdvanceResult>;
+  getNextNumber(company_id: string): Promise<string>;
 }
 
 // ── Root adapter ──────────────────────────────────────────────────────────────
@@ -497,4 +652,9 @@ export interface DataAdapter {
   bankAccounts: BankAccountsAPI;
   taxRates: TaxRatesAPI;
   reports: ReportsAPI;
+  // Phase 5
+  purchaseOrders: PurchaseOrdersAPI;
+  goodsReceipts: GoodsReceiptsAPI;
+  vendorBills: VendorBillsAPI;
+  vendorPayments: VendorPaymentsAPI;
 }

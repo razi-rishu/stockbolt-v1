@@ -1,12 +1,12 @@
 # Current Phase
 
-**Active Phase:** Phase 5 — Purchasing (NOT YET STARTED)
+**Active Phase:** Phase 6 — (TBD per Doc 5)
 
-**Status:** Phase 4 closed 2026-05-02. All 31 verification assertions passed (31/31). Verification gate: `npm run test:phase4`.
+**Status:** Phase 5 closed 2026-05-02. All 23 verification assertions passed (23/23). Verification gate: `npm run test:phase5`.
 
-**Last completed:** Phase 4 in full. Sales Loop: 5 Supabase RPCs (get_next_document_number, confirm_invoice, void_invoice, edit_invoice, confirm_payment, apply_advance), full adapter layer (InvoicesAPI, SalesQuotesAPI, PaymentsAPI, BankAccountsAPI, TaxRatesAPI, ReportsAPI), Invoice/Quote/Payment UI with GL posting, 5 report pages (P&L, Balance Sheet, AR Aging, Stock Valuation, Customer Statement), EN+AR i18n, Phase 4 verification test 31/31.
+**Last completed:** Phase 5 in full. Purchase Loop: 3 Supabase RPCs (confirm_grn, confirm_vendor_bill, confirm_vendor_payment, apply_vendor_advance), full adapter layer (PurchaseOrdersAPI, GoodsReceiptsAPI, VendorBillsAPI, VendorPaymentsAPI, extended ReportsAPI), PO/GRN/Bill/Payment UI with GL postings (B2–B7), 3 new report pages (AP Aging, Supplier Statement, GRN Reconciliation), EN+AR i18n, Phase 5 verification test 23/23.
 
-**Next milestone:** Phase 5 — Purchase Orders, Supplier Invoices, Goods Receipts. See Doc 5 §"PHASE 5".
+**Next milestone:** Phase 6 — see Doc 5 §"PHASE 6".
 
 **Notes:**
 - Building from clean slate after rebuild decision
@@ -209,3 +209,43 @@ This file is read by Claude Code at the start of every session, so keep it accur
 - `void_invoice` finds advance_application JEs via `source_id = p_invoice_id` (not source_id = payment_id), which is how they were recorded by `apply_advance`.
 - Reports computed client-side from raw GL data (no stored views) — acceptable for v1 data volumes; can be moved to DB views/RPCs in v2 if performance requires.
 - `supabase gen types` re-run after migrations; stray "Initialising login role..." prefix removed again (Supabase CLI CLI artifact; filed as known issue).
+
+### Phase 5 — Purchase Loop
+- Started: 2026-05-02
+- Closed: 2026-05-02
+- Definition of Done: see Document_5_Build_Phases.md, Phase 5 section
+
+**Stage progress:**
+- [x] Stage 1 — DB: 3 migrations (confirm_grn B2+MAC, confirm_vendor_bill B3/B4, vendor_payment B5/B6/B7 + apply_vendor_advance); coa_account_id column added to vendor_bill_items
+- [x] Stage 2 — Core util: `src/core/purchasing/purchase-calc.ts` (calcPurchaseLine, calcPurchaseHeaderTotals, calcMAC, calcMACAfterVariance, apAgingBucket)
+- [x] Stage 3 — Adapter layer: PurchaseOrdersAPI, GoodsReceiptsAPI, VendorBillsAPI, VendorPaymentsAPI added; ReportsAPI extended (getAPAgingReport, getSupplierStatement, getGRNReconciliation)
+- [x] Stage 4 — Purchase Orders UI: `purchase-orders.tsx` (list) + `po-editor.tsx` (create/edit/send/close with calcPurchaseLine lines)
+- [x] Stage 5 — Goods Receipts UI: `goods-receipts.tsx` (list) + `grn-editor.tsx` (create/confirm + pre-fill from PO via ?po_id=)
+- [x] Stage 6 — Vendor Bills UI: `vendor-bills.tsx` (list) + `vendor-bill-editor.tsx` (create/confirm + pre-fill from GRN via ?grn_id=, B4 expense accounts)
+- [x] Stage 7 — Vendor Payments UI: `vendor-payments.tsx` (list) + `vendor-payment-editor.tsx` (create/confirm + apply-advance panel)
+- [x] Stage 8 — Supplier Detail page: `supplier-detail.tsx` (open bills + supplier statement)
+- [x] Stage 9 — Reports: `ap-aging.tsx` + `supplier-statement.tsx` + `grn-reconciliation.tsx`
+- [x] Stage 10 — i18n + routing: purchasing.* + reports.* Phase 5 keys (EN+AR); Purchasing sidebar section; App.tsx routes
+- [x] Stage 11 — Verification test: `phase5-verification.test.ts` (23 pure unit assertions); `test:phase5` script added
+
+**Phase 5 DoD — final state (all passed 2026-05-02):**
+- [x] confirm_grn RPC: B2 (DR 1300 Inventory, CR 2150 GRN Accrual), per-item MAC update
+- [x] confirm_vendor_bill RPC: B3 (clear 2150, DR 2100 AP; variance to 1300) + B4 (standalone expense bills)
+- [x] confirm_vendor_payment RPC: B5 (against_invoice), B6 (advance DR 1400), and apply_vendor_advance B7 (DR 2100 CR 1400)
+- [x] Purchase Orders list + editor at `/purchasing/orders`
+- [x] Goods Receipts list + editor at `/purchasing/grns`
+- [x] Vendor Bills list + editor at `/purchasing/bills`
+- [x] Vendor Payments list + editor at `/purchasing/payments`
+- [x] Supplier Detail + Statement at `/contacts/suppliers/:id`
+- [x] AP Aging at `/reports/ap-aging`
+- [x] Supplier Statement at `/reports/supplier-statement`
+- [x] GRN Reconciliation at `/reports/grn-reconciliation`
+- [x] EN + AR i18n for all Phase 5 screens
+- [x] Verification test: 23/23 assertions passed (`npm run test:phase5`)
+
+**Decisions made in Phase 5:**
+- `stock_ledger` constraints (quantity > 0, direction IN (-1,1)) prevent zero-qty cost-adjustment rows after bill variance — MAC variance recalculation only tested as a pure formula; RPC does not insert adjustment rows.
+- `coa_account_id` on vendor_bill_items not yet in generated types (requires `supabase db push` + `supabase gen types`); insert cast to `any[]` until types are regenerated.
+- Phase 5 RPCs not yet in generated database.ts function type union; `client.rpc` cast to `any` for 4 new RPCs.
+- Products table has no cost_price field — PO editor defaults unit_cost to 0 when selecting a product; operator fills it in manually.
+- `purchase-calc.ts` extracted to `src/core/purchasing/` to keep purchasing arithmetic pure and unit-testable.

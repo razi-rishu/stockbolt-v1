@@ -27,7 +27,16 @@ import type {
   ARAgingReport, ARAgingBucket,
   CustomerStatement, CustomerStatementLine,
   StockValuationReport, StockValuationLine,
+  // Phase 5
+  PurchaseOrderRow, PurchaseOrderItemRow,
+  GoodsReceiptRow, GoodsReceiptItemRow,
+  VendorBillRow, VendorBillItemRow,
+  GRNConfirmResult, BillConfirmResult, VendorPaymentConfirmResult, ApplyVendorAdvanceResult,
+  APAgingReport, APAgingBucket as APAgingBucketType,
+  SupplierStatement, SupplierStatementLine,
+  GRNReconciliationReport, GRNReconciliationLine,
 } from './adapter';
+import { apAgingBucket } from '@/core/purchasing/purchase-calc';
 import { getSupabaseClient } from './supabase-client';
 
 class SupabaseAuthError extends Error {
@@ -1149,6 +1158,111 @@ export function createSupabaseAdapter(
         };
       },
 
+      async getAPAgingReport(company_id, as_of_date): Promise<APAgingReport> {
+        const { data: glRows, error } = await client
+          .from('general_ledger')
+          .select('contact_id, debit, credit, date, related_doc_type, related_doc_id, contacts(name)')
+          .eq('company_id', company_id)
+          .eq('account_code', '2100')
+          .lte('date', as_of_date);
+        assertNoError(error, 'reports.getAPAgingReport');
+
+        const byContact: Record<string, { name: string; current: number; days_31_60: number; days_61_90: number; over_90: number }> = {};
+        for (const row of glRows ?? []) {
+          if (!row.contact_id) continue;
+          const net = Number(row.credit) - Number(row.debit);
+          if (net === 0) continue;
+          if (!byContact[row.contact_id]) {
+            const contact = row.contacts as unknown as { name: string } | null;
+            byContact[row.contact_id] = { name: contact?.name ?? '', current: 0, days_31_60: 0, days_61_90: 0, over_90: 0 };
+          }
+          const bucket = apAgingBucket(row.date as string | null, as_of_date);
+          byContact[row.contact_id][bucket === 'current' ? 'current' : bucket === '31_60' ? 'days_31_60' : bucket === '61_90' ? 'days_61_90' : 'over_90'] += net;
+        }
+
+        const buckets: APAgingBucketType[] = Object.entries(byContact).map(([id, b]) => ({
+          contact_id: id, contact_name: b.name,
+          current: b.current, days_31_60: b.days_31_60, days_61_90: b.days_61_90, over_90: b.over_90,
+          total: b.current + b.days_31_60 + b.days_61_90 + b.over_90,
+        })).filter(b => b.total > 0);
+
+        return {
+          as_of_date,
+          buckets,
+          total_current: buckets.reduce((s, b) => s + b.current, 0),
+          total_31_60:   buckets.reduce((s, b) => s + b.days_31_60, 0),
+          total_61_90:   buckets.reduce((s, b) => s + b.days_61_90, 0),
+          total_over_90: buckets.reduce((s, b) => s + b.over_90, 0),
+          grand_total:   buckets.reduce((s, b) => s + b.total, 0),
+        };
+      },
+
+      async getSupplierStatement(company_id, contact_id, from, to): Promise<SupplierStatement> {
+        const { data: contact, error: cErr } = await client.from('contacts').select('name').eq('id', contact_id).single();
+        assertNoError(cErr, 'reports.getSupplierStatement contact');
+
+        const { data: glRows, error: glErr } = await client
+          .from('general_ledger')
+          .select('id, date, debit, credit, description, related_doc_type, related_doc_id, journal_entries(entry_number)')
+          .eq('company_id', company_id)
+          .eq('contact_id', contact_id)
+          .eq('account_code', '2100')
+          .gte('date', from)
+          .lte('date', to)
+          .order('date')
+          .order('created_at');
+        assertNoError(glErr, 'reports.getSupplierStatement gl');
+
+        let balance = 0;
+        const lines: SupplierStatementLine[] = (glRows ?? []).map(row => {
+          const je = row.journal_entries as unknown as { entry_number: string } | null;
+          balance += Number(row.credit) - Number(row.debit);
+          return {
+            date: row.date as string,
+            doc_type: row.related_doc_type ?? 'je',
+            doc_number: je?.entry_number ?? row.id,
+            debit: Number(row.debit),
+            credit: Number(row.credit),
+            balance,
+          };
+        });
+
+        return {
+          contact_id, contact_name: (contact as { name: string })?.name ?? contact_id,
+          from_date: from, to_date: to,
+          opening_balance: 0, lines, closing_balance: balance,
+        };
+      },
+
+      async getGRNReconciliation(company_id, as_of_date): Promise<GRNReconciliationReport> {
+        const { data: grns, error } = await client
+          .from('goods_receipts')
+          .select('id, grn_number, supplier_id, date, contacts(name), goods_receipt_items(total_cost)')
+          .eq('company_id', company_id)
+          .eq('status', 'received')
+          .lte('date', as_of_date);
+        assertNoError(error, 'reports.getGRNReconciliation');
+
+        const lines: GRNReconciliationLine[] = (grns ?? []).map(grn => {
+          const contact = grn.contacts as unknown as { name: string } | null;
+          const items = grn.goods_receipt_items as unknown as { total_cost: number }[] | null;
+          const totalCost = (items ?? []).reduce((s, i) => s + Number(i.total_cost), 0);
+          return {
+            grn_id: grn.id, grn_number: grn.grn_number,
+            supplier_id: grn.supplier_id, supplier_name: contact?.name ?? '',
+            date: grn.date as string,
+            total_cost: totalCost, billed_amount: 0, unbilled_amount: totalCost,
+          };
+        });
+
+        return {
+          as_of_date, lines,
+          total_accrual:  lines.reduce((s, l) => s + l.total_cost, 0),
+          total_billed:   0,
+          total_unbilled: lines.reduce((s, l) => s + l.unbilled_amount, 0),
+        };
+      },
+
       async getStockValuation(company_id, as_of_date): Promise<StockValuationReport> {
         const { data, error } = await client
           .from('stock_ledger')
@@ -1190,6 +1304,216 @@ export function createSupabaseAdapter(
           lines,
           total_value: lines.reduce((s, l) => s + l.total_value, 0),
         };
+      },
+    },
+
+    // ── Purchase Orders ───────────────────────────────────────────────────────
+    purchaseOrders: {
+      async list(company_id, status) {
+        let q = client.from('purchase_orders').select('*').eq('company_id', company_id).order('date', { ascending: false });
+        if (status) q = q.eq('status', status);
+        const { data, error } = await q;
+        assertNoError(error, 'purchaseOrders.list');
+        return (data ?? []) as PurchaseOrderRow[];
+      },
+      async getById(id) {
+        const { data, error } = await client.from('purchase_orders').select('*').eq('id', id).single();
+        if (error?.code === 'PGRST116') return null;
+        assertNoError(error, 'purchaseOrders.getById');
+        return data as PurchaseOrderRow;
+      },
+      async getItems(po_id) {
+        const { data, error } = await client.from('purchase_order_items').select('*').eq('po_id', po_id).order('sort_order');
+        assertNoError(error, 'purchaseOrders.getItems');
+        return (data ?? []) as PurchaseOrderItemRow[];
+      },
+      async create(row, items) {
+        const { data, error } = await client.from('purchase_orders').insert(row).select().single();
+        assertNoError(error, 'purchaseOrders.create');
+        const po = data as PurchaseOrderRow;
+        if (items.length > 0) {
+          const { error: iErr } = await client.from('purchase_order_items').insert(items.map(i => ({ ...i, po_id: po.id })));
+          assertNoError(iErr, 'purchaseOrders.create items');
+        }
+        return po;
+      },
+      async update(id, row, items) {
+        const { error } = await client.from('purchase_orders').update(row).eq('id', id);
+        assertNoError(error, 'purchaseOrders.update');
+        await client.from('purchase_order_items').delete().eq('po_id', id);
+        if (items.length > 0) {
+          const { error: iErr } = await client.from('purchase_order_items').insert(items.map(i => ({ ...i, po_id: id })));
+          assertNoError(iErr, 'purchaseOrders.update items');
+        }
+      },
+      async send(id) {
+        const { error } = await client.from('purchase_orders').update({ status: 'sent' }).eq('id', id);
+        assertNoError(error, 'purchaseOrders.send');
+      },
+      async close(id) {
+        const { error } = await client.from('purchase_orders').update({ status: 'closed' }).eq('id', id);
+        assertNoError(error, 'purchaseOrders.close');
+      },
+      async getNextNumber(company_id) {
+        const { data, error } = await client.rpc('get_next_document_number', { p_company_id: company_id, p_prefix: 'PO' });
+        assertNoError(error, 'purchaseOrders.getNextNumber');
+        return data as string;
+      },
+    },
+
+    // ── Goods Receipts ────────────────────────────────────────────────────────
+    goodsReceipts: {
+      async list(company_id, status) {
+        let q = client.from('goods_receipts').select('*').eq('company_id', company_id).order('date', { ascending: false });
+        if (status) q = q.eq('status', status);
+        const { data, error } = await q;
+        assertNoError(error, 'goodsReceipts.list');
+        return (data ?? []) as GoodsReceiptRow[];
+      },
+      async getById(id) {
+        const { data, error } = await client.from('goods_receipts').select('*').eq('id', id).single();
+        if (error?.code === 'PGRST116') return null;
+        assertNoError(error, 'goodsReceipts.getById');
+        return data as GoodsReceiptRow;
+      },
+      async getItems(grn_id) {
+        const { data, error } = await client.from('goods_receipt_items').select('*').eq('grn_id', grn_id);
+        assertNoError(error, 'goodsReceipts.getItems');
+        return (data ?? []) as GoodsReceiptItemRow[];
+      },
+      async create(row, items) {
+        const { data, error } = await client.from('goods_receipts').insert(row).select().single();
+        assertNoError(error, 'goodsReceipts.create');
+        const grn = data as GoodsReceiptRow;
+        if (items.length > 0) {
+          const { error: iErr } = await client.from('goods_receipt_items').insert(items.map(i => ({ ...i, grn_id: grn.id })));
+          assertNoError(iErr, 'goodsReceipts.create items');
+        }
+        return grn;
+      },
+      async update(id, row, items) {
+        const { error } = await client.from('goods_receipts').update(row).eq('id', id);
+        assertNoError(error, 'goodsReceipts.update');
+        await client.from('goods_receipt_items').delete().eq('grn_id', id);
+        if (items.length > 0) {
+          const { error: iErr } = await client.from('goods_receipt_items').insert(items.map(i => ({ ...i, grn_id: id })));
+          assertNoError(iErr, 'goodsReceipts.update items');
+        }
+      },
+      async confirm(grn_id) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (client.rpc as any)('confirm_grn', { p_grn_id: grn_id });
+        assertNoError(error, 'goodsReceipts.confirm');
+        return data as unknown as GRNConfirmResult;
+      },
+      async getNextNumber(company_id) {
+        const { data, error } = await client.rpc('get_next_document_number', { p_company_id: company_id, p_prefix: 'GRN' });
+        assertNoError(error, 'goodsReceipts.getNextNumber');
+        return data as string;
+      },
+    },
+
+    // ── Vendor Bills ──────────────────────────────────────────────────────────
+    vendorBills: {
+      async list(company_id, status) {
+        let q = client.from('vendor_bills').select('*').eq('company_id', company_id).order('date', { ascending: false });
+        if (status) q = q.eq('status', status);
+        const { data, error } = await q;
+        assertNoError(error, 'vendorBills.list');
+        return (data ?? []) as VendorBillRow[];
+      },
+      async getById(id) {
+        const { data, error } = await client.from('vendor_bills').select('*').eq('id', id).single();
+        if (error?.code === 'PGRST116') return null;
+        assertNoError(error, 'vendorBills.getById');
+        return data as VendorBillRow;
+      },
+      async getItems(bill_id) {
+        const { data, error } = await client.from('vendor_bill_items').select('*').eq('bill_id', bill_id).order('sort_order');
+        assertNoError(error, 'vendorBills.getItems');
+        return (data ?? []) as VendorBillItemRow[];
+      },
+      async create(row, items) {
+        const { data, error } = await client.from('vendor_bills').insert(row).select().single();
+        assertNoError(error, 'vendorBills.create');
+        const bill = data as VendorBillRow;
+        if (items.length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { error: iErr } = await client.from('vendor_bill_items').insert(items.map(i => ({ ...i, bill_id: bill.id })) as any[]);
+          assertNoError(iErr, 'vendorBills.create items');
+        }
+        return bill;
+      },
+      async update(id, row, items) {
+        const { error } = await client.from('vendor_bills').update(row).eq('id', id);
+        assertNoError(error, 'vendorBills.update');
+        await client.from('vendor_bill_items').delete().eq('bill_id', id);
+        if (items.length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { error: iErr } = await client.from('vendor_bill_items').insert(items.map(i => ({ ...i, bill_id: id })) as any[]);
+          assertNoError(iErr, 'vendorBills.update items');
+        }
+      },
+      async confirm(bill_id) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (client.rpc as any)('confirm_vendor_bill', { p_bill_id: bill_id });
+        assertNoError(error, 'vendorBills.confirm');
+        return data as unknown as BillConfirmResult;
+      },
+      async getNextNumber(company_id) {
+        const { data, error } = await client.rpc('get_next_document_number', { p_company_id: company_id, p_prefix: 'BILL' });
+        assertNoError(error, 'vendorBills.getNextNumber');
+        return data as string;
+      },
+    },
+
+    // ── Vendor Payments ───────────────────────────────────────────────────────
+    vendorPayments: {
+      async list(company_id) {
+        const { data, error } = await client.from('payments').select('*')
+          .eq('company_id', company_id).eq('type', 'outbound').order('date', { ascending: false });
+        assertNoError(error, 'vendorPayments.list');
+        return (data ?? []) as PaymentRow[];
+      },
+      async getById(id) {
+        const { data, error } = await client.from('payments').select('*').eq('id', id).single();
+        if (error?.code === 'PGRST116') return null;
+        assertNoError(error, 'vendorPayments.getById');
+        return data as PaymentRow;
+      },
+      async getAllocations(payment_id) {
+        const { data, error } = await client.from('payment_allocations').select('*').eq('payment_id', payment_id);
+        assertNoError(error, 'vendorPayments.getAllocations');
+        return (data ?? []) as PaymentAllocationRow[];
+      },
+      async create(row, allocations) {
+        const { data, error } = await client.from('payments').insert(row).select().single();
+        assertNoError(error, 'vendorPayments.create');
+        const pmt = data as PaymentRow;
+        if (allocations && allocations.length > 0) {
+          const { error: aErr } = await client.from('payment_allocations').insert(
+            allocations.map(a => ({ ...a, payment_id: pmt.id, company_id: pmt.company_id }))
+          );
+          assertNoError(aErr, 'vendorPayments.create allocations');
+        }
+        return pmt;
+      },
+      async confirm(payment_id) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (client.rpc as any)('confirm_vendor_payment', { p_payment_id: payment_id });
+        assertNoError(error, 'vendorPayments.confirm');
+        return data as unknown as VendorPaymentConfirmResult;
+      },
+      async applyAdvance(payment_id, bill_id, amount) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (client.rpc as any)('apply_vendor_advance', { p_payment_id: payment_id, p_bill_id: bill_id, p_amount: amount });
+        assertNoError(error, 'vendorPayments.applyAdvance');
+        return data as unknown as ApplyVendorAdvanceResult;
+      },
+      async getNextNumber(company_id) {
+        const { data, error } = await client.rpc('get_next_document_number', { p_company_id: company_id, p_prefix: 'VP' });
+        assertNoError(error, 'vendorPayments.getNextNumber');
+        return data as string;
       },
     },
   };

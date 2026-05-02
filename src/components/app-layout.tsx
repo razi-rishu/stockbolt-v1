@@ -95,6 +95,35 @@ function TruckIcon() {
   );
 }
 
+function ClipboardIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <rect x="4" y="3" width="12" height="14" rx="1.5" />
+      <path strokeLinecap="round" d="M7 3v2h6V3" />
+      <path strokeLinecap="round" d="M7 9h6M7 12h4" />
+    </svg>
+  );
+}
+
+function ReceiptIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path strokeLinecap="round" d="M3 2h14v16l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5V2z" />
+      <path strokeLinecap="round" d="M7 7h6M7 10h6M7 13h3" />
+    </svg>
+  );
+}
+
+function CreditCardIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <rect x="1" y="4" width="18" height="12" rx="1.5" />
+      <path strokeLinecap="round" d="M1 8h18" />
+      <path strokeLinecap="round" d="M4 13h3" />
+    </svg>
+  );
+}
+
 function CogIcon() {
   return (
     <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -235,6 +264,15 @@ export function AppLayout({ children }: AppLayoutProps) {
       ],
     },
     {
+      title: t('purchasing.nav_title'),
+      items: [
+        { to: '/purchasing/orders',   label: t('purchasing.po_title'),    icon: <ClipboardIcon /> },
+        { to: '/purchasing/grns',     label: t('purchasing.grn_title'),   icon: <TruckIcon /> },
+        { to: '/purchasing/bills',    label: t('purchasing.bills_title'), icon: <ReceiptIcon /> },
+        { to: '/purchasing/payments', label: t('purchasing.vp_title'),    icon: <CreditCardIcon /> },
+      ],
+    },
+    {
       title: t('nav.accounting'),
       items: [
         { to: '/accounting/chart-of-accounts', label: t('nav.coa'), icon: <LedgerIcon /> },
@@ -246,11 +284,14 @@ export function AppLayout({ children }: AppLayoutProps) {
     {
       title: t('nav.reports'),
       items: [
-        { to: '/reports/trial-balance',     label: t('nav.trial_balance'),   icon: <ChartIcon /> },
-        { to: '/reports/profit-loss',        label: t('nav.profit_loss'),     icon: <ChartIcon /> },
-        { to: '/reports/balance-sheet',      label: t('nav.balance_sheet'),   icon: <LedgerIcon /> },
-        { to: '/reports/ar-aging',           label: t('nav.ar_aging'),        icon: <UsersIcon /> },
-        { to: '/reports/stock-valuation',    label: t('nav.stock_valuation'), icon: <BoxIcon /> },
+        { to: '/reports/trial-balance',        label: t('nav.trial_balance'),          icon: <ChartIcon /> },
+        { to: '/reports/profit-loss',          label: t('nav.profit_loss'),            icon: <ChartIcon /> },
+        { to: '/reports/balance-sheet',        label: t('nav.balance_sheet'),          icon: <LedgerIcon /> },
+        { to: '/reports/ar-aging',             label: t('nav.ar_aging'),               icon: <UsersIcon /> },
+        { to: '/reports/ap-aging',             label: t('reports.ap_aging'),           icon: <TruckIcon /> },
+        { to: '/reports/stock-valuation',      label: t('nav.stock_valuation'),        icon: <BoxIcon /> },
+        { to: '/reports/supplier-statement',   label: t('reports.supplier_statement'), icon: <ReceiptIcon /> },
+        { to: '/reports/grn-reconciliation',   label: t('reports.grn_reconciliation'), icon: <ClipboardIcon /> },
       ],
     },
     {

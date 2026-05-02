@@ -52,8 +52,24 @@ const QuoteEditorPage    = lazy(() => import('@/modules/sales/quote-editor'));
 const PaymentsPage       = lazy(() => import('@/modules/sales/payments'));
 const PaymentEditorPage  = lazy(() => import('@/modules/sales/payment-editor'));
 
-// Customer detail
-const CustomerDetailPage = lazy(() => import('@/modules/contacts/customer-detail'));
+// Customer / Supplier detail
+const CustomerDetailPage  = lazy(() => import('@/modules/contacts/customer-detail'));
+const SupplierDetailPage  = lazy(() => import('@/modules/contacts/supplier-detail'));
+
+// Purchasing
+const PurchaseOrdersPage     = lazy(() => import('@/modules/purchasing/purchase-orders'));
+const POEditorPage           = lazy(() => import('@/modules/purchasing/po-editor'));
+const GoodsReceiptsPage      = lazy(() => import('@/modules/purchasing/goods-receipts'));
+const GRNEditorPage          = lazy(() => import('@/modules/purchasing/grn-editor'));
+const VendorBillsPage        = lazy(() => import('@/modules/purchasing/vendor-bills'));
+const VendorBillEditorPage   = lazy(() => import('@/modules/purchasing/vendor-bill-editor'));
+const VendorPaymentsPage     = lazy(() => import('@/modules/purchasing/vendor-payments'));
+const VendorPaymentEditorPage = lazy(() => import('@/modules/purchasing/vendor-payment-editor'));
+
+// Phase 5 reports
+const APAgingPage            = lazy(() => import('@/modules/reports/ap-aging'));
+const SupplierStatementPage  = lazy(() => import('@/modules/reports/supplier-statement'));
+const GRNReconciliationPage  = lazy(() => import('@/modules/reports/grn-reconciliation'));
 
 function Loading() {
   return (
@@ -136,8 +152,28 @@ function AppRoutes() {
               <Route path="/sales/payments/:id"                 element={<PaymentEditorPage />} />
               <Route path="/sales/payments"                     element={<PaymentsPage />} />
 
-              {/* Customer detail */}
+              {/* Customer / Supplier detail */}
               <Route path="/contacts/customers/:id"             element={<CustomerDetailPage />} />
+              <Route path="/contacts/suppliers/:id"             element={<SupplierDetailPage />} />
+
+              {/* Purchasing */}
+              <Route path="/purchasing/orders/new"              element={<POEditorPage />} />
+              <Route path="/purchasing/orders/:id"              element={<POEditorPage />} />
+              <Route path="/purchasing/orders"                  element={<PurchaseOrdersPage />} />
+              <Route path="/purchasing/grns/new"                element={<GRNEditorPage />} />
+              <Route path="/purchasing/grns/:id"                element={<GRNEditorPage />} />
+              <Route path="/purchasing/grns"                    element={<GoodsReceiptsPage />} />
+              <Route path="/purchasing/bills/new"               element={<VendorBillEditorPage />} />
+              <Route path="/purchasing/bills/:id"               element={<VendorBillEditorPage />} />
+              <Route path="/purchasing/bills"                   element={<VendorBillsPage />} />
+              <Route path="/purchasing/payments/new"            element={<VendorPaymentEditorPage />} />
+              <Route path="/purchasing/payments/:id"            element={<VendorPaymentEditorPage />} />
+              <Route path="/purchasing/payments"                element={<VendorPaymentsPage />} />
+
+              {/* Phase 5 reports */}
+              <Route path="/reports/ap-aging"                   element={<APAgingPage />} />
+              <Route path="/reports/supplier-statement"         element={<SupplierStatementPage />} />
+              <Route path="/reports/grn-reconciliation"         element={<GRNReconciliationPage />} />
             </Route>
           </Route>
         </Route>
