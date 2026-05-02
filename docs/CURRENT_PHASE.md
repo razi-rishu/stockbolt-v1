@@ -1,21 +1,12 @@
 # Current Phase
 
-**Active Phase:** Phase 2 — Items, Customers & Vendors (IN PROGRESS — all stages done, running test)
+**Active Phase:** Phase 3 — Purchasing (NOT YET STARTED)
 
-**Status:** Phase 1 closed 2026-05-01. All 8 verification assertions passed (8/8). Verification gate: `npm run test:phase1`.
+**Status:** Phase 2 closed 2026-05-01. All 10 verification assertions passed (10/10). Verification gate: `npm run test:phase2`.
 
-**Last completed:** Phase 2 implementation complete. All 9 stages done:
-- App shell (sidebar + topbar via `AppLayout`)
-- Adapter layer extended with all Phase 2 APIs + `listByModel`
-- UI primitives: Table, Modal, Badge, Textarea
-- Reference data CRUD: Categories, Brands, Warehouses, Units of Measure, Vehicle Makes/Models
-- Contacts: Customers, Suppliers (shared `ContactListPage` component)
-- Product master: list+search, detail with 4 tabs (details/compat/suppliers/images), image upload
-- Parts Catalog browse view (Make → Model → Year → results)
-- Price Levels settings page
-- EN + AR i18n keys for all Phase 2 screens
+**Last completed:** Phase 2 in full. App shell (sidebar + topbar), 13 new pages (products, contacts, catalog, settings), adapter layer with 8 new APIs, Table/Modal/Badge/Textarea primitives, EN+AR i18n, parts catalog browse, Phase 2 verification test 10/10.
 
-**Next milestone:** Run `npm run test:phase2` — 9 assertions (W213 brake pad lifecycle). Then commit and close Phase 2.
+**Next milestone:** Phase 3 kickoff — Purchase Orders, Supplier Invoices, Goods Receipts. See Doc 5 §"PHASE 3".
 
 **Notes:**
 - Building from clean slate after rebuild decision
@@ -119,3 +110,27 @@ This file is read by Claude Code at the start of every session, so keep it accur
 - [x] Stage 7 — Parts Catalog browse (`/catalog`): Make → Model → Year filter → product cards grid
 - [x] Stage 8 — Price Levels settings page (`/settings/price-levels`)
 - [x] Stage 9 — EN + AR i18n for all Phase 2 screens (nav, products, contacts, catalog, settings.warehouses/units/price_levels, parts_catalog)
+
+**Phase 2 DoD — final state (all passed 2026-05-01):**
+- [x] AppLayout sidebar + topbar; all onboarded routes wrapped; mobile hamburger overlay
+- [x] Categories CRUD at `/products/categories`
+- [x] Brands CRUD with logo upload at `/products/brands`
+- [x] Vehicle Makes + Models (two-panel drill-down) at `/products/vehicles`
+- [x] Warehouses CRUD (with default-delete guard) at `/settings/warehouses`
+- [x] Units of Measure CRUD at `/settings/units`
+- [x] Price Levels CRUD at `/settings/price-levels`
+- [x] Customers list + add/edit at `/contacts/customers`
+- [x] Suppliers list + add/edit at `/contacts/suppliers`
+- [x] Products list with dual-mode search (OE + supplier SKU) at `/products`
+- [x] Product detail with 4 tabs (Details/Compat/Supplier Codes/Images) at `/products/:id`
+- [x] Parts Catalog browse (Make → Model → Year → product cards) at `/catalog`
+- [x] EN + AR i18n for all Phase 2 screens
+- [x] Verification test: 10/10 assertions passed (`npm run test:phase2`)
+
+**Decisions made in Phase 2:**
+- `vehicle_models` has no `company_id`; scoped to company via `vehicle_makes.company_id` FK — RLS handles this through a join.
+- `product_compatibility.make_id` is required (not nullable) — both make and model must be provided even when model is nullable.
+- zod v4 `coerce` types are incompatible with `@hookform/resolvers` `Resolver<T>` constraint — fixed with `zodResolver(schema) as any` + `v as FormValues` cast in handleSubmit.
+- `products.listByModel` uses two-step query: compat rows → product_id set → IN query on products. Year filter uses chained `.or()` for (year_from IS NULL OR year_from ≤ year) AND (year_to IS NULL OR year_to ≥ year).
+
+(Add Phase 3 here when it begins.)
