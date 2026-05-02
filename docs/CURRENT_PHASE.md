@@ -1,12 +1,12 @@
 # Current Phase
 
-**Active Phase:** Phase 3 — Purchasing (NOT YET STARTED)
+**Active Phase:** Phase 4 — Purchasing (NOT YET STARTED)
 
-**Status:** Phase 2 closed 2026-05-01. All 10 verification assertions passed (10/10). Verification gate: `npm run test:phase2`.
+**Status:** Phase 3 closed 2026-05-02. All 11 verification assertions passed (11/11). Verification gate: `npm run test:phase3`.
 
-**Last completed:** Phase 2 in full. App shell (sidebar + topbar), 13 new pages (products, contacts, catalog, settings), adapter layer with 8 new APIs, Table/Modal/Badge/Textarea primitives, EN+AR i18n, parts catalog browse, Phase 2 verification test 10/10.
+**Last completed:** Phase 3 in full. GL engine (journal validator + posting engine), MAC costing engine, 2 Supabase RPCs (post_journal_entry + reverse_journal_entry), CoA/JE/GL/Trial Balance/Period Lock UI, Accounting + Reports sidebar sections, EN+AR i18n, Phase 3 verification test 11/11.
 
-**Next milestone:** Phase 3 kickoff — Purchase Orders, Supplier Invoices, Goods Receipts. See Doc 5 §"PHASE 3".
+**Next milestone:** Phase 4 kickoff — Purchase Orders, Supplier Invoices, Goods Receipts. See Doc 5 §"PHASE 4".
 
 **Notes:**
 - Building from clean slate after rebuild decision
@@ -133,4 +133,37 @@ This file is read by Claude Code at the start of every session, so keep it accur
 - zod v4 `coerce` types are incompatible with `@hookform/resolvers` `Resolver<T>` constraint — fixed with `zodResolver(schema) as any` + `v as FormValues` cast in handleSubmit.
 - `products.listByModel` uses two-step query: compat rows → product_id set → IN query on products. Year filter uses chained `.or()` for (year_from IS NULL OR year_from ≤ year) AND (year_to IS NULL OR year_to ≥ year).
 
-(Add Phase 3 here when it begins.)
+### Phase 3 — Accounting Engine & GL UI
+- Started: 2026-05-02
+- Closed: 2026-05-02
+- Definition of Done: see Document_5_Build_Phases.md, Phase 3 section
+
+**Stage progress:**
+- [x] Stage 1 — DB: 2 migrations (`post_journal_entry` RPC + `reverse_journal_entry` RPC); Supabase types regenerated
+- [x] Stage 2 — Adapter layer: `CoaAPI`, `AccountingAPI`, `StockLedgerAPI` added to adapter.ts + supabaseAdapter.ts + selfHostedAdapter.ts
+- [x] Stage 3 — GL engine: `journal-validator.ts` (10 universal rules + source_type mapping assertion), `posting-engine.ts` (postJournalEntry + reverseJournalEntry)
+- [x] Stage 4 — MAC engine: `mac-engine.ts` (MovingAverageCostingStrategy + postStockMovement)
+- [x] Stage 5 — CoA UI: `chart-of-accounts.tsx` (grouped by type, Add Custom Account modal); sidebar Accounting + Reports sections; App.tsx routes updated
+- [x] Stage 6 — JE editor: `journal-entries.tsx` (list) + `journal-entry-editor.tsx` (create + view + reverse; dynamic lines; live balance indicator)
+- [x] Stage 7 — GL viewer + Trial Balance: `general-ledger.tsx` (account + date filter, running balance) + `trial-balance.tsx` (type-grouped, totals row)
+- [x] Stage 8 — Period lock UI: `period-lock.tsx`; accounting.* + reports.* i18n keys (EN + AR)
+- [x] Stage 9 — Verification test: `phase3-verification.test.ts` (11 pure unit assertions); `test:phase3` script added
+
+**Phase 3 DoD — final state (all passed 2026-05-02):**
+- [x] post_journal_entry Postgres RPC: period lock guard, lazy sequence init, audit log
+- [x] reverse_journal_entry Postgres RPC: checks not-already-reversed, Dr↔Cr mirror, period lock on today
+- [x] Journal validator: balanced within 0.01, ≥2 lines, no negatives, no Dr+Cr same line, source_type mapping rules
+- [x] MAC engine: new_MAC = (old_MAC × old_qty + in_cost × in_qty) / (old_qty + in_qty)
+- [x] Chart of Accounts at `/accounting/chart-of-accounts`
+- [x] Journal Entries list + editor at `/accounting/journal-entries`
+- [x] General Ledger viewer at `/accounting/general-ledger`
+- [x] Trial Balance at `/reports/trial-balance`
+- [x] Period Lock settings at `/accounting/period-lock`
+- [x] EN + AR i18n for all Phase 3 screens
+- [x] Verification test: 11/11 assertions passed (`npm run test:phase3`)
+
+**Decisions made in Phase 3:**
+- GL atomicity achieved via SECURITY INVOKER Postgres RPCs (not client-side multi-table inserts) — period lock check, sequence management, JE header + GL lines + audit_log all in one transaction.
+- document_sequences lazy init: RPC uses `INSERT ... ON CONFLICT DO UPDATE` to auto-create sequence row on first JE — no onboarding step needed.
+- CoA API added as `coa.list/create` (separate from onboarding.insertCoaBatch) to support the CoA UI in read+add mode.
+- database.ts had a stray "Initialising login role..." line prepended (artifact from Supabase CLI output redirect) — removed in this phase.
