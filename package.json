@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:phase0": "vitest run tests/integration/phase0-rls.test.ts",
+    "test:phase4": "vitest run tests/integration/phase4-verification.test.ts",
     "test:phase1": "vitest run tests/integration/phase1-verification.test.ts",
     "test:phase2": "vitest run tests/integration/phase2-verification.test.ts",
     "test:phase3": "vitest run tests/integration/phase3-verification.test.ts"

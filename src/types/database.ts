@@ -4313,11 +4313,26 @@ export type Database = {
       }
     }
     Functions: {
+      apply_advance: {
+        Args: { p_amount: number; p_invoice_id: string; p_payment_id: string }
+        Returns: Json
+      }
       complete_onboarding: { Args: { p_data: Json }; Returns: Json }
+      confirm_invoice: { Args: { p_invoice_id: string }; Returns: Json }
+      confirm_payment: { Args: { p_payment_id: string }; Returns: Json }
       current_user_company_id: { Args: never; Returns: string }
+      edit_invoice: { Args: { p_invoice_id: string }; Returns: Json }
+      get_next_document_number: {
+        Args: { p_company_id: string; p_prefix: string }
+        Returns: string
+      }
       post_journal_entry: { Args: { p_data: Json }; Returns: Json }
       reverse_journal_entry: {
         Args: { p_description?: string; p_je_id: string }
+        Returns: Json
+      }
+      void_invoice: {
+        Args: { p_invoice_id: string; p_reason?: string }
         Returns: Json
       }
     }

@@ -284,6 +284,193 @@ export interface StockLedgerAPI {
   getLedger(company_id: string, product_id: string, warehouse_id?: string): Promise<StockLedgerRow[]>;
 }
 
+// ── Phase 4 row types ─────────────────────────────────────────────────────────
+export type InvoiceRow = Tables['invoices']['Row'];
+export type InvoiceItemRow = Tables['invoice_items']['Row'];
+export type SalesQuoteRow = Tables['sales_quotes']['Row'];
+export type SalesQuoteItemRow = Tables['sales_quote_items']['Row'];
+export type PaymentRow = Tables['payments']['Row'];
+export type PaymentAllocationRow = Tables['payment_allocations']['Row'];
+
+// Phase 4 insert / update types
+export type InvoiceInsert = Omit<Tables['invoices']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type InvoiceUpdate = Tables['invoices']['Update'];
+export type InvoiceItemInsert = Omit<Tables['invoice_items']['Insert'], 'id' | 'created_at'>;
+export type SalesQuoteInsert = Omit<Tables['sales_quotes']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type SalesQuoteUpdate = Tables['sales_quotes']['Update'];
+export type SalesQuoteItemInsert = Omit<Tables['sales_quote_items']['Insert'], 'id' | 'created_at'>;
+export type PaymentInsert = Omit<Tables['payments']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type PaymentUpdate = Tables['payments']['Update'];
+export type PaymentAllocationInsert = Omit<Tables['payment_allocations']['Insert'], 'id' | 'created_at'>;
+
+// Phase 4 RPC result types
+export interface InvoiceConfirmResult {
+  invoice_id: string;
+  invoice_number: string;
+  je_id: string;
+  entry_number: string;
+}
+
+export interface PaymentConfirmResult {
+  payment_id: string;
+  payment_number: string;
+  je_id: string;
+  entry_number: string;
+}
+
+export interface ApplyAdvanceResult {
+  je_id: string;
+  entry_number: string;
+  payment_id: string;
+  invoice_id: string;
+  amount: number;
+}
+
+// Phase 4 report types
+export interface ProfitAndLossLine {
+  account_code: string;
+  account_name: string;
+  account_type: string;
+  amount: number;
+}
+
+export interface ProfitAndLoss {
+  period_start: string;
+  period_end: string;
+  revenue: number;
+  cogs: number;
+  gross_profit: number;
+  operating_expenses: number;
+  net_profit: number;
+  lines: ProfitAndLossLine[];
+}
+
+export interface BalanceSheetLine {
+  account_code: string;
+  account_name: string;
+  account_type: string;
+  balance: number;
+}
+
+export interface BalanceSheet {
+  as_of_date: string;
+  total_assets: number;
+  total_liabilities: number;
+  total_equity: number;
+  lines: BalanceSheetLine[];
+}
+
+export interface ARAgingBucket {
+  contact_id: string;
+  contact_name: string;
+  current: number;
+  days_31_60: number;
+  days_61_90: number;
+  over_90: number;
+  total: number;
+}
+
+export interface ARAgingReport {
+  as_of_date: string;
+  buckets: ARAgingBucket[];
+  total_current: number;
+  total_31_60: number;
+  total_61_90: number;
+  total_over_90: number;
+  grand_total: number;
+}
+
+export interface CustomerStatementLine {
+  date: string;
+  doc_type: string;
+  doc_number: string;
+  debit: number;
+  credit: number;
+  balance: number;
+}
+
+export interface CustomerStatement {
+  contact_id: string;
+  contact_name: string;
+  from_date: string;
+  to_date: string;
+  opening_balance: number;
+  lines: CustomerStatementLine[];
+  closing_balance: number;
+}
+
+export interface StockValuationLine {
+  product_id: string;
+  product_code: string;
+  product_name: string;
+  warehouse_id: string;
+  warehouse_name: string;
+  quantity: number;
+  unit_cost: number;
+  total_value: number;
+}
+
+export interface StockValuationReport {
+  as_of_date: string;
+  lines: StockValuationLine[];
+  total_value: number;
+}
+
+// ── Phase 4 APIs ──────────────────────────────────────────────────────────────
+
+export interface InvoicesAPI {
+  list(company_id: string, status?: string): Promise<InvoiceRow[]>;
+  getById(id: string): Promise<InvoiceRow | null>;
+  getItems(invoice_id: string): Promise<InvoiceItemRow[]>;
+  create(row: InvoiceInsert, items: InvoiceItemInsert[]): Promise<InvoiceRow>;
+  update(id: string, row: InvoiceUpdate, items: InvoiceItemInsert[]): Promise<void>;
+  confirm(invoice_id: string): Promise<InvoiceConfirmResult>;
+  void(invoice_id: string, reason?: string): Promise<void>;
+  edit(invoice_id: string): Promise<void>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface SalesQuotesAPI {
+  list(company_id: string): Promise<SalesQuoteRow[]>;
+  getById(id: string): Promise<SalesQuoteRow | null>;
+  getItems(quote_id: string): Promise<SalesQuoteItemRow[]>;
+  create(row: SalesQuoteInsert, items: SalesQuoteItemInsert[]): Promise<SalesQuoteRow>;
+  update(id: string, row: SalesQuoteUpdate, items: SalesQuoteItemInsert[]): Promise<void>;
+  convertToInvoice(quote_id: string): Promise<InvoiceRow>;
+  remove(id: string): Promise<void>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface PaymentsAPI {
+  list(company_id: string, type?: 'inbound' | 'outbound'): Promise<PaymentRow[]>;
+  getById(id: string): Promise<PaymentRow | null>;
+  getAllocations(payment_id: string): Promise<PaymentAllocationRow[]>;
+  create(row: PaymentInsert, allocations?: PaymentAllocationInsert[]): Promise<PaymentRow>;
+  confirm(payment_id: string): Promise<PaymentConfirmResult>;
+  applyAdvance(payment_id: string, invoice_id: string, amount: number): Promise<ApplyAdvanceResult>;
+  void(payment_id: string, reason?: string): Promise<void>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface BankAccountsAPI {
+  list(company_id: string): Promise<BankAccountRow[]>;
+  getById(id: string): Promise<BankAccountRow | null>;
+  create(row: BankAccountInsert): Promise<BankAccountRow>;
+  update(id: string, row: Partial<BankAccountInsert>): Promise<void>;
+}
+
+export interface TaxRatesAPI {
+  list(company_id: string): Promise<TaxRateRow[]>;
+}
+
+export interface ReportsAPI {
+  getProfitAndLoss(company_id: string, from: string, to: string): Promise<ProfitAndLoss>;
+  getBalanceSheet(company_id: string, as_of_date: string): Promise<BalanceSheet>;
+  getARAgingReport(company_id: string, as_of_date: string): Promise<ARAgingReport>;
+  getCustomerStatement(company_id: string, contact_id: string, from: string, to: string): Promise<CustomerStatement>;
+  getStockValuation(company_id: string, as_of_date: string): Promise<StockValuationReport>;
+}
+
 // ── Root adapter ──────────────────────────────────────────────────────────────
 export interface DataAdapter {
   auth: AuthAPI;
@@ -303,4 +490,11 @@ export interface DataAdapter {
   coa: CoaAPI;
   accounting: AccountingAPI;
   stockLedger: StockLedgerAPI;
+  // Phase 4
+  invoices: InvoicesAPI;
+  salesQuotes: SalesQuotesAPI;
+  payments: PaymentsAPI;
+  bankAccounts: BankAccountsAPI;
+  taxRates: TaxRatesAPI;
+  reports: ReportsAPI;
 }

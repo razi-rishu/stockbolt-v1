@@ -16,6 +16,17 @@ import type {
   ProductPriceLevelRow, ProductPriceLevelInsert,
   JEPayload, JEPostResult, JournalEntryRow, GeneralLedgerRow,
   TrialBalance, LedgerEntry, StockLedgerRow, StockMovementPayload, StockBalance,
+  // Phase 4
+  InvoiceRow, InvoiceInsert, InvoiceUpdate, InvoiceItemRow, InvoiceItemInsert,
+  SalesQuoteRow, SalesQuoteInsert, SalesQuoteUpdate, SalesQuoteItemRow, SalesQuoteItemInsert,
+  PaymentRow, PaymentInsert, PaymentAllocationRow, PaymentAllocationInsert,
+  BankAccountRow, TaxRateRow,
+  InvoiceConfirmResult, PaymentConfirmResult, ApplyAdvanceResult,
+  ProfitAndLoss, ProfitAndLossLine,
+  BalanceSheet, BalanceSheetLine,
+  ARAgingReport, ARAgingBucket,
+  CustomerStatement, CustomerStatementLine,
+  StockValuationReport, StockValuationLine,
 } from './adapter';
 import { getSupabaseClient } from './supabase-client';
 
@@ -674,6 +685,511 @@ export function createSupabaseAdapter(
       async remove(id) {
         const { error } = await client.from('price_levels').delete().eq('id', id);
         assertNoError(error, 'priceLevels.remove');
+      },
+    },
+
+    // ── Phase 4: Tax Rates (read-only lookup) ─────────────────────────────
+    taxRates: {
+      async list(company_id): Promise<TaxRateRow[]> {
+        const { data, error } = await client.from('tax_rates').select('*')
+          .eq('company_id', company_id).eq('is_active', true).order('name');
+        assertNoError(error, 'taxRates.list');
+        return data ?? [];
+      },
+    },
+
+    // ── Phase 4: Bank Accounts ────────────────────────────────────────────
+    bankAccounts: {
+      async list(company_id): Promise<BankAccountRow[]> {
+        const { data, error } = await client.from('bank_accounts').select('*')
+          .eq('company_id', company_id).eq('is_active', true).order('name');
+        assertNoError(error, 'bankAccounts.list');
+        return data ?? [];
+      },
+      async getById(id): Promise<BankAccountRow | null> {
+        const { data, error } = await client.from('bank_accounts').select('*').eq('id', id).single();
+        if (error?.code === 'PGRST116') return null;
+        assertNoError(error, 'bankAccounts.getById');
+        return data;
+      },
+      async create(row: BankAccountInsert): Promise<BankAccountRow> {
+        const { data, error } = await client.from('bank_accounts').insert(row).select().single();
+        assertNoError(error, 'bankAccounts.create');
+        return data!;
+      },
+      async update(id, row) {
+        const { error } = await client.from('bank_accounts').update(row).eq('id', id);
+        assertNoError(error, 'bankAccounts.update');
+      },
+    },
+
+    // ── Phase 4: Invoices ─────────────────────────────────────────────────
+    invoices: {
+      async list(company_id, status?): Promise<InvoiceRow[]> {
+        let q = client.from('invoices').select('*').eq('company_id', company_id);
+        if (status) q = q.eq('status', status);
+        const { data, error } = await q.order('date', { ascending: false }).order('invoice_number', { ascending: false });
+        assertNoError(error, 'invoices.list');
+        return data ?? [];
+      },
+      async getById(id): Promise<InvoiceRow | null> {
+        const { data, error } = await client.from('invoices').select('*').eq('id', id).single();
+        if (error?.code === 'PGRST116') return null;
+        assertNoError(error, 'invoices.getById');
+        return data;
+      },
+      async getItems(invoice_id): Promise<InvoiceItemRow[]> {
+        const { data, error } = await client.from('invoice_items').select('*')
+          .eq('invoice_id', invoice_id).order('sort_order');
+        assertNoError(error, 'invoices.getItems');
+        return data ?? [];
+      },
+      async create(row: InvoiceInsert, items: InvoiceItemInsert[]): Promise<InvoiceRow> {
+        const { data: inv, error: invErr } = await client.from('invoices').insert(row).select().single();
+        assertNoError(invErr, 'invoices.create header');
+        const itemsWithId = items.map((it, i) => ({ ...it, invoice_id: inv!.id, sort_order: i }));
+        const { error: itemsErr } = await client.from('invoice_items').insert(itemsWithId);
+        assertNoError(itemsErr, 'invoices.create items');
+        return inv!;
+      },
+      async update(id, row: InvoiceUpdate, items: InvoiceItemInsert[]): Promise<void> {
+        const { error: hErr } = await client.from('invoices').update(row).eq('id', id);
+        assertNoError(hErr, 'invoices.update header');
+        const { error: dErr } = await client.from('invoice_items').delete().eq('invoice_id', id);
+        assertNoError(dErr, 'invoices.update delete items');
+        const itemsWithId = items.map((it, i) => ({ ...it, invoice_id: id, sort_order: i }));
+        const { error: iErr } = await client.from('invoice_items').insert(itemsWithId);
+        assertNoError(iErr, 'invoices.update insert items');
+      },
+      async confirm(invoice_id): Promise<InvoiceConfirmResult> {
+        const { data, error } = await client.rpc('confirm_invoice', { p_invoice_id: invoice_id });
+        assertNoError(error, 'invoices.confirm');
+        return data as unknown as InvoiceConfirmResult;
+      },
+      async void(invoice_id, reason?): Promise<void> {
+        const { error } = await client.rpc('void_invoice', {
+          p_invoice_id: invoice_id,
+          p_reason: reason ?? undefined,
+        });
+        assertNoError(error, 'invoices.void');
+      },
+      async edit(invoice_id): Promise<void> {
+        const { error } = await client.rpc('edit_invoice', { p_invoice_id: invoice_id });
+        assertNoError(error, 'invoices.edit');
+      },
+      async getNextNumber(company_id): Promise<string> {
+        const { data, error } = await client.rpc('get_next_document_number', {
+          p_company_id: company_id,
+          p_prefix: 'INV',
+        });
+        assertNoError(error, 'invoices.getNextNumber');
+        return data as string;
+      },
+    },
+
+    // ── Phase 4: Sales Quotes ─────────────────────────────────────────────
+    salesQuotes: {
+      async list(company_id): Promise<SalesQuoteRow[]> {
+        const { data, error } = await client.from('sales_quotes').select('*')
+          .eq('company_id', company_id)
+          .order('date', { ascending: false });
+        assertNoError(error, 'salesQuotes.list');
+        return data ?? [];
+      },
+      async getById(id): Promise<SalesQuoteRow | null> {
+        const { data, error } = await client.from('sales_quotes').select('*').eq('id', id).single();
+        if (error?.code === 'PGRST116') return null;
+        assertNoError(error, 'salesQuotes.getById');
+        return data;
+      },
+      async getItems(quote_id): Promise<SalesQuoteItemRow[]> {
+        const { data, error } = await client.from('sales_quote_items').select('*')
+          .eq('quote_id', quote_id).order('sort_order');
+        assertNoError(error, 'salesQuotes.getItems');
+        return data ?? [];
+      },
+      async create(row: SalesQuoteInsert, items: SalesQuoteItemInsert[]): Promise<SalesQuoteRow> {
+        const { data: q, error: qErr } = await client.from('sales_quotes').insert(row).select().single();
+        assertNoError(qErr, 'salesQuotes.create header');
+        const itemsWithId = items.map((it, i) => ({ ...it, quote_id: q!.id, sort_order: i }));
+        const { error: iErr } = await client.from('sales_quote_items').insert(itemsWithId);
+        assertNoError(iErr, 'salesQuotes.create items');
+        return q!;
+      },
+      async update(id, row: SalesQuoteUpdate, items: SalesQuoteItemInsert[]): Promise<void> {
+        const { error: hErr } = await client.from('sales_quotes').update(row).eq('id', id);
+        assertNoError(hErr, 'salesQuotes.update header');
+        const { error: dErr } = await client.from('sales_quote_items').delete().eq('quote_id', id);
+        assertNoError(dErr, 'salesQuotes.update delete items');
+        const itemsWithId = items.map((it, i) => ({ ...it, quote_id: id, sort_order: i }));
+        const { error: iErr } = await client.from('sales_quote_items').insert(itemsWithId);
+        assertNoError(iErr, 'salesQuotes.update insert items');
+      },
+      async convertToInvoice(quote_id): Promise<InvoiceRow> {
+        const { data: q, error: qErr } = await client.from('sales_quotes').select('*').eq('id', quote_id).single();
+        assertNoError(qErr, 'salesQuotes.convertToInvoice fetch quote');
+        const { data: qItems, error: qiErr } = await client.from('sales_quote_items').select('*')
+          .eq('quote_id', quote_id).order('sort_order');
+        assertNoError(qiErr, 'salesQuotes.convertToInvoice fetch items');
+
+        const { data: numData, error: numErr } = await client.rpc('get_next_document_number', {
+          p_company_id: q!.company_id, p_prefix: 'INV',
+        });
+        assertNoError(numErr, 'salesQuotes.convertToInvoice number');
+
+        const invRow: InvoiceInsert = {
+          company_id: q!.company_id,
+          invoice_number: numData as string,
+          contact_id: q!.contact_id,
+          salesperson_id: q!.salesperson_id ?? null,
+          warehouse_id: null,
+          date: new Date().toISOString().slice(0, 10),
+          due_date: null,
+          reference: q!.reference ?? null,
+          price_level_id: q!.price_level_id ?? null,
+          currency: q!.currency,
+          exchange_rate: q!.exchange_rate,
+          prices_inclusive: q!.prices_inclusive,
+          subtotal: q!.subtotal,
+          discount_amount: q!.discount_amount,
+          tax_amount: q!.tax_amount,
+          total_amount: q!.total_amount,
+          status: 'draft',
+          source_quote_id: quote_id,
+          source_order_id: null,
+          sale_channel: 'standard',
+          terms: q!.terms ?? null,
+          terms_ar: q!.terms_ar ?? null,
+          notes: q!.notes ?? null,
+          void_reason: null,
+          voided_at: null,
+          voided_by: null,
+        };
+        const { data: inv, error: invErr } = await client.from('invoices').insert(invRow).select().single();
+        assertNoError(invErr, 'salesQuotes.convertToInvoice insert invoice');
+
+        const invItems = (qItems ?? []).map((qi, i) => ({
+          invoice_id: inv!.id,
+          product_id: qi.product_id,
+          description: qi.description,
+          description_ar: qi.description_ar,
+          quantity: qi.quantity,
+          unit_id: qi.unit_id,
+          unit_price: qi.unit_price,
+          discount_percent: qi.discount_percent,
+          discount_amount: qi.discount_amount,
+          tax_category: qi.tax_category,
+          tax_rate: qi.tax_rate,
+          tax_amount: qi.tax_amount,
+          line_subtotal: qi.line_subtotal,
+          line_total: qi.line_total,
+          sort_order: i,
+          cost_at_sale: null,
+          serial_id: null,
+        }));
+        const { error: iiErr } = await client.from('invoice_items').insert(invItems);
+        assertNoError(iiErr, 'salesQuotes.convertToInvoice insert invoice items');
+
+        const { error: updErr } = await client.from('sales_quotes')
+          .update({ status: 'fully_invoiced', invoiced_amount: q!.total_amount })
+          .eq('id', quote_id);
+        assertNoError(updErr, 'salesQuotes.convertToInvoice update quote status');
+
+        return inv!;
+      },
+      async remove(id): Promise<void> {
+        const { error } = await client.from('sales_quotes').delete().eq('id', id);
+        assertNoError(error, 'salesQuotes.remove');
+      },
+      async getNextNumber(company_id): Promise<string> {
+        const { data, error } = await client.rpc('get_next_document_number', {
+          p_company_id: company_id,
+          p_prefix: 'QT',
+        });
+        assertNoError(error, 'salesQuotes.getNextNumber');
+        return data as string;
+      },
+    },
+
+    // ── Phase 4: Payments ─────────────────────────────────────────────────
+    payments: {
+      async list(company_id, type?): Promise<PaymentRow[]> {
+        let q = client.from('payments').select('*').eq('company_id', company_id);
+        if (type) q = q.eq('type', type);
+        const { data, error } = await q.order('date', { ascending: false });
+        assertNoError(error, 'payments.list');
+        return data ?? [];
+      },
+      async getById(id): Promise<PaymentRow | null> {
+        const { data, error } = await client.from('payments').select('*').eq('id', id).single();
+        if (error?.code === 'PGRST116') return null;
+        assertNoError(error, 'payments.getById');
+        return data;
+      },
+      async getAllocations(payment_id): Promise<PaymentAllocationRow[]> {
+        const { data, error } = await client.from('payment_allocations').select('*')
+          .eq('payment_id', payment_id).order('created_at');
+        assertNoError(error, 'payments.getAllocations');
+        return data ?? [];
+      },
+      async create(row: PaymentInsert, allocations?: PaymentAllocationInsert[]): Promise<PaymentRow> {
+        const { data: pmt, error: pmtErr } = await client.from('payments').insert(row).select().single();
+        assertNoError(pmtErr, 'payments.create');
+        if (allocations && allocations.length > 0) {
+          const allocsWithId = allocations.map(a => ({ ...a, payment_id: pmt!.id, company_id: row.company_id }));
+          const { error: aErr } = await client.from('payment_allocations').insert(allocsWithId);
+          assertNoError(aErr, 'payments.create allocations');
+        }
+        return pmt!;
+      },
+      async confirm(payment_id): Promise<PaymentConfirmResult> {
+        const { data, error } = await client.rpc('confirm_payment', { p_payment_id: payment_id });
+        assertNoError(error, 'payments.confirm');
+        return data as unknown as PaymentConfirmResult;
+      },
+      async applyAdvance(payment_id, invoice_id, amount): Promise<ApplyAdvanceResult> {
+        const { data, error } = await client.rpc('apply_advance', {
+          p_payment_id: payment_id,
+          p_invoice_id: invoice_id,
+          p_amount: amount,
+        });
+        assertNoError(error, 'payments.applyAdvance');
+        return data as unknown as ApplyAdvanceResult;
+      },
+      async void(payment_id, reason?): Promise<void> {
+        const { error } = await client.from('payments').update({
+          status: 'void',
+          void_reason: reason ?? null,
+          voided_at: new Date().toISOString(),
+        }).eq('id', payment_id);
+        assertNoError(error, 'payments.void');
+      },
+      async getNextNumber(company_id): Promise<string> {
+        const { data, error } = await client.rpc('get_next_document_number', {
+          p_company_id: company_id,
+          p_prefix: 'REC',
+        });
+        assertNoError(error, 'payments.getNextNumber');
+        return data as string;
+      },
+    },
+
+    // ── Phase 4: Reports ──────────────────────────────────────────────────
+    reports: {
+      async getProfitAndLoss(company_id, from, to): Promise<ProfitAndLoss> {
+        const { data, error } = await client
+          .from('general_ledger')
+          .select('account_code, debit, credit, chart_of_accounts!inner(name, account_type)')
+          .eq('company_id', company_id)
+          .gte('date', from)
+          .lte('date', to);
+        assertNoError(error, 'reports.getProfitAndLoss');
+
+        const byCode: Record<string, { name: string; type: string; debit: number; credit: number }> = {};
+        for (const row of data ?? []) {
+          const coa = row.chart_of_accounts as unknown as { name: string; account_type: string };
+          if (!['revenue', 'expense'].includes(coa.account_type)) continue;
+          if (!byCode[row.account_code]) byCode[row.account_code] = { name: coa.name, type: coa.account_type, debit: 0, credit: 0 };
+          byCode[row.account_code].debit += Number(row.debit);
+          byCode[row.account_code].credit += Number(row.credit);
+        }
+
+        const lines: ProfitAndLossLine[] = Object.entries(byCode).map(([code, v]) => ({
+          account_code: code,
+          account_name: v.name,
+          account_type: v.type,
+          amount: v.type === 'revenue' ? v.credit - v.debit : v.debit - v.credit,
+        }));
+
+        const revenue = lines.filter(l => l.account_type === 'revenue').reduce((s, l) => s + l.amount, 0);
+        const cogs = lines.find(l => l.account_code === '5100')?.amount ?? 0;
+        const opex = lines.filter(l => l.account_type === 'expense' && l.account_code !== '5100').reduce((s, l) => s + l.amount, 0);
+
+        return {
+          period_start: from,
+          period_end: to,
+          revenue,
+          cogs,
+          gross_profit: revenue - cogs,
+          operating_expenses: opex,
+          net_profit: revenue - cogs - opex,
+          lines,
+        };
+      },
+
+      async getBalanceSheet(company_id, as_of_date): Promise<BalanceSheet> {
+        const { data, error } = await client
+          .from('general_ledger')
+          .select('account_code, debit, credit, chart_of_accounts!inner(name, account_type)')
+          .eq('company_id', company_id)
+          .lte('date', as_of_date);
+        assertNoError(error, 'reports.getBalanceSheet');
+
+        const byCode: Record<string, { name: string; type: string; debit: number; credit: number }> = {};
+        for (const row of data ?? []) {
+          const coa = row.chart_of_accounts as unknown as { name: string; account_type: string };
+          if (!['asset', 'liability', 'equity'].includes(coa.account_type)) continue;
+          if (!byCode[row.account_code]) byCode[row.account_code] = { name: coa.name, type: coa.account_type, debit: 0, credit: 0 };
+          byCode[row.account_code].debit += Number(row.debit);
+          byCode[row.account_code].credit += Number(row.credit);
+        }
+
+        const lines: BalanceSheetLine[] = Object.entries(byCode).map(([code, v]) => ({
+          account_code: code,
+          account_name: v.name,
+          account_type: v.type,
+          balance: v.type === 'asset' ? v.debit - v.credit : v.credit - v.debit,
+        }));
+
+        const totalAssets = lines.filter(l => l.account_type === 'asset').reduce((s, l) => s + l.balance, 0);
+        const totalLiabilities = lines.filter(l => l.account_type === 'liability').reduce((s, l) => s + l.balance, 0);
+        const totalEquity = lines.filter(l => l.account_type === 'equity').reduce((s, l) => s + l.balance, 0);
+
+        return { as_of_date, total_assets: totalAssets, total_liabilities: totalLiabilities, total_equity: totalEquity, lines };
+      },
+
+      async getARAgingReport(company_id, as_of_date): Promise<ARAgingReport> {
+        const { data: invs, error: invErr } = await client
+          .from('invoices')
+          .select('id, invoice_number, contact_id, due_date, total_amount, contacts(name)')
+          .eq('company_id', company_id)
+          .eq('status', 'confirmed')
+          .lte('date', as_of_date);
+        assertNoError(invErr, 'reports.getARAgingReport invoices');
+
+        const { data: allocs, error: allocErr } = await client
+          .from('payment_allocations')
+          .select('doc_id, amount_applied')
+          .eq('company_id', company_id)
+          .eq('doc_type', 'invoice');
+        assertNoError(allocErr, 'reports.getARAgingReport allocs');
+
+        const allocByInv: Record<string, number> = {};
+        for (const a of allocs ?? []) {
+          allocByInv[a.doc_id] = (allocByInv[a.doc_id] ?? 0) + Number(a.amount_applied);
+        }
+
+        const asOf = new Date(as_of_date);
+        const bucketMap: Record<string, ARAgingBucket> = {};
+
+        for (const inv of invs ?? []) {
+          const contact = inv.contacts as unknown as { name: string };
+          const outstanding = Number(inv.total_amount) - (allocByInv[inv.id] ?? 0);
+          if (outstanding <= 0) continue;
+
+          const dueDate = inv.due_date ? new Date(inv.due_date) : asOf;
+          const daysPast = Math.max(0, Math.floor((asOf.getTime() - dueDate.getTime()) / 86400000));
+
+          if (!bucketMap[inv.contact_id]) {
+            bucketMap[inv.contact_id] = {
+              contact_id: inv.contact_id,
+              contact_name: contact?.name ?? inv.contact_id,
+              current: 0, days_31_60: 0, days_61_90: 0, over_90: 0, total: 0,
+            };
+          }
+          const b = bucketMap[inv.contact_id];
+          if (daysPast <= 30) b.current += outstanding;
+          else if (daysPast <= 60) b.days_31_60 += outstanding;
+          else if (daysPast <= 90) b.days_61_90 += outstanding;
+          else b.over_90 += outstanding;
+          b.total += outstanding;
+        }
+
+        const buckets = Object.values(bucketMap);
+        return {
+          as_of_date,
+          buckets,
+          total_current:  buckets.reduce((s, b) => s + b.current, 0),
+          total_31_60:    buckets.reduce((s, b) => s + b.days_31_60, 0),
+          total_61_90:    buckets.reduce((s, b) => s + b.days_61_90, 0),
+          total_over_90:  buckets.reduce((s, b) => s + b.over_90, 0),
+          grand_total:    buckets.reduce((s, b) => s + b.total, 0),
+        };
+      },
+
+      async getCustomerStatement(company_id, contact_id, from, to): Promise<CustomerStatement> {
+        const { data: contact, error: cErr } = await client.from('contacts').select('name')
+          .eq('id', contact_id).single();
+        assertNoError(cErr, 'reports.getCustomerStatement contact');
+
+        const { data: glRows, error: glErr } = await client
+          .from('general_ledger')
+          .select('id, date, debit, credit, description, related_doc_type, related_doc_id, journal_entries(entry_number)')
+          .eq('company_id', company_id)
+          .eq('contact_id', contact_id)
+          .eq('account_code', '1200')
+          .gte('date', from)
+          .lte('date', to)
+          .order('date')
+          .order('created_at');
+        assertNoError(glErr, 'reports.getCustomerStatement gl');
+
+        let balance = 0;
+        const lines: CustomerStatementLine[] = (glRows ?? []).map(row => {
+          const je = row.journal_entries as unknown as { entry_number: string } | null;
+          balance += Number(row.debit) - Number(row.credit);
+          return {
+            date: row.date as string,
+            doc_type: row.related_doc_type ?? 'je',
+            doc_number: je?.entry_number ?? row.id,
+            debit: Number(row.debit),
+            credit: Number(row.credit),
+            balance,
+          };
+        });
+
+        return {
+          contact_id,
+          contact_name: (contact as { name: string })?.name ?? contact_id,
+          from_date: from,
+          to_date: to,
+          opening_balance: 0,
+          lines,
+          closing_balance: balance,
+        };
+      },
+
+      async getStockValuation(company_id, as_of_date): Promise<StockValuationReport> {
+        const { data, error } = await client
+          .from('stock_ledger')
+          .select('product_id, warehouse_id, running_qty, running_avg_cost, created_at, products(code, name), warehouses(name)')
+          .eq('company_id', company_id)
+          .lte('date', as_of_date)
+          .order('created_at', { ascending: false });
+        assertNoError(error, 'reports.getStockValuation');
+
+        const seen = new Set<string>();
+        const lines: StockValuationLine[] = [];
+
+        for (const row of data ?? []) {
+          const key = `${row.product_id}::${row.warehouse_id}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+
+          const qty = Number(row.running_qty);
+          if (qty <= 0) continue;
+
+          const product = row.products as unknown as { code: string; name: string } | null;
+          const warehouse = row.warehouses as unknown as { name: string } | null;
+          const unitCost = Number(row.running_avg_cost);
+
+          lines.push({
+            product_id: row.product_id,
+            product_code: product?.code ?? '',
+            product_name: product?.name ?? '',
+            warehouse_id: row.warehouse_id,
+            warehouse_name: warehouse?.name ?? '',
+            quantity: qty,
+            unit_cost: unitCost,
+            total_value: qty * unitCost,
+          });
+        }
+
+        return {
+          as_of_date,
+          lines,
+          total_value: lines.reduce((s, l) => s + l.total_value, 0),
+        };
       },
     },
   };

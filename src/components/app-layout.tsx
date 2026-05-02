@@ -227,6 +227,14 @@ export function AppLayout({ children }: AppLayoutProps) {
       ],
     },
     {
+      title: t('nav.sales'),
+      items: [
+        { to: '/sales/invoices', label: t('nav.invoices'), icon: <JournalIcon /> },
+        { to: '/sales/quotes', label: t('nav.quotes'), icon: <LedgerIcon /> },
+        { to: '/sales/payments', label: t('nav.payments'), icon: <ChartIcon /> },
+      ],
+    },
+    {
       title: t('nav.accounting'),
       items: [
         { to: '/accounting/chart-of-accounts', label: t('nav.coa'), icon: <LedgerIcon /> },
@@ -238,7 +246,11 @@ export function AppLayout({ children }: AppLayoutProps) {
     {
       title: t('nav.reports'),
       items: [
-        { to: '/reports/trial-balance', label: t('nav.trial_balance'), icon: <ChartIcon /> },
+        { to: '/reports/trial-balance',     label: t('nav.trial_balance'),   icon: <ChartIcon /> },
+        { to: '/reports/profit-loss',        label: t('nav.profit_loss'),     icon: <ChartIcon /> },
+        { to: '/reports/balance-sheet',      label: t('nav.balance_sheet'),   icon: <LedgerIcon /> },
+        { to: '/reports/ar-aging',           label: t('nav.ar_aging'),        icon: <UsersIcon /> },
+        { to: '/reports/stock-valuation',    label: t('nav.stock_valuation'), icon: <BoxIcon /> },
       ],
     },
     {

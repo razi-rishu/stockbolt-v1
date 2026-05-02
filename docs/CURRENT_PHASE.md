@@ -1,12 +1,12 @@
 # Current Phase
 
-**Active Phase:** Phase 4 — Purchasing (NOT YET STARTED)
+**Active Phase:** Phase 5 — Purchasing (NOT YET STARTED)
 
-**Status:** Phase 3 closed 2026-05-02. All 11 verification assertions passed (11/11). Verification gate: `npm run test:phase3`.
+**Status:** Phase 4 closed 2026-05-02. All 31 verification assertions passed (31/31). Verification gate: `npm run test:phase4`.
 
-**Last completed:** Phase 3 in full. GL engine (journal validator + posting engine), MAC costing engine, 2 Supabase RPCs (post_journal_entry + reverse_journal_entry), CoA/JE/GL/Trial Balance/Period Lock UI, Accounting + Reports sidebar sections, EN+AR i18n, Phase 3 verification test 11/11.
+**Last completed:** Phase 4 in full. Sales Loop: 5 Supabase RPCs (get_next_document_number, confirm_invoice, void_invoice, edit_invoice, confirm_payment, apply_advance), full adapter layer (InvoicesAPI, SalesQuotesAPI, PaymentsAPI, BankAccountsAPI, TaxRatesAPI, ReportsAPI), Invoice/Quote/Payment UI with GL posting, 5 report pages (P&L, Balance Sheet, AR Aging, Stock Valuation, Customer Statement), EN+AR i18n, Phase 4 verification test 31/31.
 
-**Next milestone:** Phase 4 kickoff — Purchase Orders, Supplier Invoices, Goods Receipts. See Doc 5 §"PHASE 4".
+**Next milestone:** Phase 5 — Purchase Orders, Supplier Invoices, Goods Receipts. See Doc 5 §"PHASE 5".
 
 **Notes:**
 - Building from clean slate after rebuild decision
@@ -167,3 +167,45 @@ This file is read by Claude Code at the start of every session, so keep it accur
 - document_sequences lazy init: RPC uses `INSERT ... ON CONFLICT DO UPDATE` to auto-create sequence row on first JE — no onboarding step needed.
 - CoA API added as `coa.list/create` (separate from onboarding.insertCoaBatch) to support the CoA UI in read+add mode.
 - database.ts had a stray "Initialising login role..." line prepended (artifact from Supabase CLI output redirect) — removed in this phase.
+
+### Phase 4 — Sales Loop
+- Started: 2026-05-02
+- Closed: 2026-05-02
+- Definition of Done: see Document_5_Build_Phases.md, Phase 4 section
+
+**Stage progress:**
+- [x] Stage 1 — DB: 5 migrations (get_next_document_number, confirm_invoice, void_invoice+edit_invoice, confirm_payment, apply_advance); `supabase gen types` re-run
+- [x] Stage 2 — Adapter layer: InvoicesAPI, SalesQuotesAPI, PaymentsAPI, BankAccountsAPI, TaxRatesAPI, ReportsAPI added to adapter.ts + supabaseAdapter.ts + selfHostedAdapter.ts
+- [x] Stage 3 — Invoice UI: `invoices.tsx` (list) + `invoice-editor.tsx` (create/edit/confirm/void/repost with dynamic line items)
+- [x] Stage 4 — Payments UI: `payments.tsx` (list) + `payment-editor.tsx` (create/confirm + apply-advance panel)
+- [x] Stage 5 — Quotes UI: `quotes.tsx` (list + convert-to-invoice) + `quote-editor.tsx` (create/edit)
+- [x] Stage 6 — Customer Detail page: `customer-detail.tsx` (open invoices + AR statement)
+- [x] Stage 7 — Reports: `profit-loss.tsx` + `balance-sheet.tsx`
+- [x] Stage 8 — Reports: `ar-aging.tsx` + `stock-valuation.tsx`
+- [x] Stage 9 — i18n + routing: sales.*, payments.*, reports.* keys (EN+AR); Sales + expanded Reports sidebar sections; App.tsx routes
+- [x] Stage 10 — Verification test: `phase4-verification.test.ts` (31 pure unit assertions); `test:phase4` script added
+
+**Phase 4 DoD — final state (all passed 2026-05-02):**
+- [x] confirm_invoice RPC: A1 (sales_invoice JE) + A1.b (inventory_cogs JE) + stock_ledger outbound rows, deferred COGS when MAC=0
+- [x] void_invoice RPC: reverses all JEs (sales_invoice + inventory_cogs + advance_application), reverses stock, cancels deferred COGS
+- [x] edit_invoice RPC (F1): TypeScript updates items first, RPC reverses+reposts atomically
+- [x] confirm_payment RPC: A5 (against_invoice: DR bank, CR 1200+2400) or A7 (advance: DR bank, CR 2400)
+- [x] apply_advance RPC (A6): DR 2400, CR 1200, inserts payment_allocation row
+- [x] get_next_document_number RPC: lazy sequence init for INV/QT/REC/JE prefixes
+- [x] Invoice list + editor at `/sales/invoices`
+- [x] Sales Quotes list + editor at `/sales/quotes`
+- [x] Payments list + editor at `/sales/payments`
+- [x] Customer Detail + Statement at `/contacts/customers/:id`
+- [x] Profit & Loss at `/reports/profit-loss`
+- [x] Balance Sheet at `/reports/balance-sheet`
+- [x] AR Aging at `/reports/ar-aging`
+- [x] Stock Valuation at `/reports/stock-valuation`
+- [x] EN + AR i18n for all Phase 4 screens
+- [x] Verification test: 31/31 assertions passed (`npm run test:phase4`)
+
+**Decisions made in Phase 4:**
+- `invoice-calc.ts` extracted to `src/core/sales/` to make line-item arithmetic unit-testable independently of UI state.
+- `edit_invoice` is a 2-step operation: TypeScript writes updated items to DB, then calls RPC which reads them and does atomic reversal+repost.
+- `void_invoice` finds advance_application JEs via `source_id = p_invoice_id` (not source_id = payment_id), which is how they were recorded by `apply_advance`.
+- Reports computed client-side from raw GL data (no stored views) — acceptable for v1 data volumes; can be moved to DB views/RPCs in v2 if performance requires.
+- `supabase gen types` re-run after migrations; stray "Initialising login role..." prefix removed again (Supabase CLI CLI artifact; filed as known issue).

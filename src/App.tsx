@@ -38,7 +38,22 @@ const GeneralLedgerPage  = lazy(() => import('@/modules/accounting/general-ledge
 const PeriodLockPage     = lazy(() => import('@/modules/accounting/period-lock'));
 
 // Reports
-const TrialBalancePage   = lazy(() => import('@/modules/reports/trial-balance'));
+const TrialBalancePage       = lazy(() => import('@/modules/reports/trial-balance'));
+const ProfitLossPage         = lazy(() => import('@/modules/reports/profit-loss'));
+const BalanceSheetPage       = lazy(() => import('@/modules/reports/balance-sheet'));
+const ARAgingPage            = lazy(() => import('@/modules/reports/ar-aging'));
+const StockValuationPage     = lazy(() => import('@/modules/reports/stock-valuation'));
+
+// Sales
+const InvoicesPage       = lazy(() => import('@/modules/sales/invoices'));
+const InvoiceEditorPage  = lazy(() => import('@/modules/sales/invoice-editor'));
+const QuotesPage         = lazy(() => import('@/modules/sales/quotes'));
+const QuoteEditorPage    = lazy(() => import('@/modules/sales/quote-editor'));
+const PaymentsPage       = lazy(() => import('@/modules/sales/payments'));
+const PaymentEditorPage  = lazy(() => import('@/modules/sales/payment-editor'));
+
+// Customer detail
+const CustomerDetailPage = lazy(() => import('@/modules/contacts/customer-detail'));
 
 function Loading() {
   return (
@@ -105,6 +120,24 @@ function AppRoutes() {
 
               {/* Reports */}
               <Route path="/reports/trial-balance"               element={<TrialBalancePage />} />
+              <Route path="/reports/profit-loss"                element={<ProfitLossPage />} />
+              <Route path="/reports/balance-sheet"              element={<BalanceSheetPage />} />
+              <Route path="/reports/ar-aging"                   element={<ARAgingPage />} />
+              <Route path="/reports/stock-valuation"            element={<StockValuationPage />} />
+
+              {/* Sales */}
+              <Route path="/sales/invoices/new"                 element={<InvoiceEditorPage />} />
+              <Route path="/sales/invoices/:id"                 element={<InvoiceEditorPage />} />
+              <Route path="/sales/invoices"                     element={<InvoicesPage />} />
+              <Route path="/sales/quotes/new"                   element={<QuoteEditorPage />} />
+              <Route path="/sales/quotes/:id"                   element={<QuoteEditorPage />} />
+              <Route path="/sales/quotes"                       element={<QuotesPage />} />
+              <Route path="/sales/payments/new"                 element={<PaymentEditorPage />} />
+              <Route path="/sales/payments/:id"                 element={<PaymentEditorPage />} />
+              <Route path="/sales/payments"                     element={<PaymentsPage />} />
+
+              {/* Customer detail */}
+              <Route path="/contacts/customers/:id"             element={<CustomerDetailPage />} />
             </Route>
           </Route>
         </Route>
