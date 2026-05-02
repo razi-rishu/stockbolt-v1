@@ -14,6 +14,8 @@ import type {
   ContactRow, ContactInsert, ContactUpdate,
   PriceLevelRow, PriceLevelInsert, PriceLevelUpdate,
   ProductPriceLevelRow, ProductPriceLevelInsert,
+  JEPayload, JEPostResult, JournalEntryRow, GeneralLedgerRow,
+  TrialBalance, LedgerEntry, StockLedgerRow, StockMovementPayload, StockBalance,
 } from './adapter';
 import { getSupabaseClient } from './supabase-client';
 
@@ -450,6 +452,206 @@ export function createSupabaseAdapter(
       async remove(id) {
         const { error } = await client.from('contacts').delete().eq('id', id);
         assertNoError(error, 'contacts.remove');
+      },
+    },
+
+    // ── Phase 3: Accounting ────────────────────────────────────────────────
+    accounting: {
+      async postJE(payload: JEPayload): Promise<JEPostResult> {
+        const { data, error } = await client.rpc('post_journal_entry', { p_data: payload as any });
+        if (error) throw new SupabaseDataError(`accounting.postJE: ${error.message}`);
+        const result = data as unknown as JEPostResult;
+        return result;
+      },
+      async reverseJE(je_id, description?): Promise<JEPostResult> {
+        const { data, error } = await client.rpc('reverse_journal_entry', {
+          p_je_id: je_id, p_description: description ?? null,
+        } as any);
+        if (error) throw new SupabaseDataError(`accounting.reverseJE: ${error.message}`);
+        return data as unknown as JEPostResult;
+      },
+      async listJEs(company_id, limit = 200): Promise<JournalEntryRow[]> {
+        const { data, error } = await client.from('journal_entries').select('*')
+          .eq('company_id', company_id).order('date', { ascending: false }).order('created_at', { ascending: false }).limit(limit);
+        assertNoError(error, 'accounting.listJEs');
+        return data ?? [];
+      },
+      async getJEById(id): Promise<JournalEntryRow | null> {
+        const { data, error } = await client.from('journal_entries').select('*').eq('id', id).maybeSingle();
+        assertNoError(error, 'accounting.getJEById');
+        return data;
+      },
+      async getGLLines(je_id): Promise<GeneralLedgerRow[]> {
+        const { data, error } = await client.from('general_ledger').select('*').eq('journal_entry_id', je_id).order('debit', { ascending: false });
+        assertNoError(error, 'accounting.getGLLines');
+        return data ?? [];
+      },
+      async getTrialBalance(company_id, as_of_date): Promise<TrialBalance> {
+        // Fetch all GL rows up to as_of_date
+        const { data: rows, error } = await client
+          .from('general_ledger')
+          .select('account_code, debit, credit')
+          .eq('company_id', company_id)
+          .lte('date', as_of_date);
+        assertNoError(error, 'accounting.getTrialBalance');
+
+        // Fetch CoA for names and types
+        const { data: coa } = await client.from('chart_of_accounts').select('code, name, name_ar, type').eq('company_id', company_id);
+        const coaMap = Object.fromEntries((coa ?? []).map((a) => [a.code, a]));
+
+        // Aggregate by account_code
+        const map: Record<string, { debit: number; credit: number }> = {};
+        for (const row of rows ?? []) {
+          if (!map[row.account_code]) map[row.account_code] = { debit: 0, credit: 0 };
+          map[row.account_code].debit  += row.debit;
+          map[row.account_code].credit += row.credit;
+        }
+
+        const lines: import('./adapter').TrialBalanceLine[] = Object.entries(map)
+          .filter(([, v]) => v.debit !== 0 || v.credit !== 0)
+          .map(([code, v]) => ({
+            account_code: code,
+            account_name: coaMap[code]?.name ?? code,
+            account_type: coaMap[code]?.type ?? '',
+            debit:  v.debit,
+            credit: v.credit,
+          }))
+          .sort((a, b) => a.account_code.localeCompare(b.account_code));
+
+        const total_debit  = lines.reduce((s, l) => s + l.debit,  0);
+        const total_credit = lines.reduce((s, l) => s + l.credit, 0);
+        return { lines, total_debit, total_credit, as_of_date };
+      },
+      async getLedgerEntries(company_id, account_code, from, to): Promise<LedgerEntry[]> {
+        const { data: glRows, error: e1 } = await client
+          .from('general_ledger')
+          .select('id, date, debit, credit, description, journal_entry_id, related_doc_type')
+          .eq('company_id', company_id)
+          .eq('account_code', account_code)
+          .gte('date', from)
+          .lte('date', to)
+          .order('date')
+          .order('created_at');
+        assertNoError(e1, 'accounting.getLedgerEntries.gl');
+
+        // Fetch entry numbers for JE ids
+        const jeIds = [...new Set((glRows ?? []).map((r) => r.journal_entry_id))];
+        const jeMap: Record<string, string> = {};
+        if (jeIds.length > 0) {
+          const { data: jes } = await client.from('journal_entries').select('id, entry_number').in('id', jeIds);
+          for (const je of jes ?? []) jeMap[je.id] = je.entry_number;
+        }
+
+        let running = 0;
+        return (glRows ?? []).map((r) => {
+          running += r.debit - r.credit;
+          return {
+            id: r.id,
+            date: r.date,
+            entry_number: jeMap[r.journal_entry_id] ?? '',
+            description: r.description ?? '',
+            debit: r.debit,
+            credit: r.credit,
+            running_balance: running,
+            source_type: r.related_doc_type ?? '',
+          };
+        });
+      },
+      async setPeriodLock(company_id, lock_date): Promise<void> {
+        const { error } = await client.from('companies').update({ period_lock_date: lock_date } as any).eq('id', company_id);
+        assertNoError(error, 'accounting.setPeriodLock');
+      },
+    },
+
+    // ── Phase 3: Stock Ledger ──────────────────────────────────────────────
+    stockLedger: {
+      async postMovement(payload: StockMovementPayload): Promise<StockLedgerRow> {
+        // Compute running_qty and running_avg_cost
+        const balance = await (this as any).getBalance(payload.company_id, payload.product_id, payload.warehouse_id);
+        const old_qty  = balance.quantity;
+        const old_mac  = balance.unit_cost;
+        const new_qty  = old_qty + payload.direction * payload.quantity;
+
+        let new_mac = old_mac;
+        if (payload.direction === 1) {
+          new_mac = old_qty + payload.quantity > 0
+            ? (old_mac * old_qty + payload.unit_cost * payload.quantity) / (old_qty + payload.quantity)
+            : payload.unit_cost;
+        }
+
+        const row = {
+          company_id:       payload.company_id,
+          product_id:       payload.product_id,
+          warehouse_id:     payload.warehouse_id,
+          date:             payload.date,
+          type:             payload.type,
+          direction:        payload.direction,
+          quantity:         payload.quantity,
+          unit_cost:        payload.unit_cost,
+          total_cost:       payload.quantity * payload.unit_cost,
+          running_qty:      new_qty,
+          running_avg_cost: new_mac,
+          related_doc_type: payload.related_doc_type ?? null,
+          related_doc_id:   payload.related_doc_id ?? null,
+          notes:            payload.notes ?? null,
+        };
+        const { data, error } = await client.from('stock_ledger').insert(row).select().single();
+        assertNoError(error, 'stockLedger.postMovement');
+        return data!;
+      },
+      async getBalance(company_id, product_id, warehouse_id): Promise<StockBalance> {
+        const { data, error } = await client
+          .from('stock_ledger')
+          .select('quantity, direction, unit_cost, running_qty, running_avg_cost')
+          .eq('company_id', company_id)
+          .eq('product_id', product_id)
+          .eq('warehouse_id', warehouse_id)
+          .is('reversal_of_id', null)
+          .order('created_at', { ascending: false })
+          .limit(1);
+        assertNoError(error, 'stockLedger.getBalance');
+        if (data && data.length > 0) {
+          const last = data[0];
+          const qty  = last.running_qty as unknown as number ?? 0;
+          const mac  = last.running_avg_cost as unknown as number ?? 0;
+          return { product_id, warehouse_id, quantity: qty, unit_cost: mac, total_value: qty * mac };
+        }
+        return { product_id, warehouse_id, quantity: 0, unit_cost: 0, total_value: 0 };
+      },
+      async getMAC(company_id, product_id): Promise<number> {
+        // MAC is company-wide: take the most recent running_avg_cost across all warehouses
+        const { data, error } = await client
+          .from('stock_ledger')
+          .select('running_avg_cost')
+          .eq('company_id', company_id)
+          .eq('product_id', product_id)
+          .is('reversal_of_id', null)
+          .order('created_at', { ascending: false })
+          .limit(1);
+        assertNoError(error, 'stockLedger.getMAC');
+        return (data?.[0]?.running_avg_cost as unknown as number) ?? 0;
+      },
+      async getLedger(company_id, product_id, warehouse_id?): Promise<StockLedgerRow[]> {
+        let q = client.from('stock_ledger').select('*')
+          .eq('company_id', company_id).eq('product_id', product_id);
+        if (warehouse_id) q = q.eq('warehouse_id', warehouse_id);
+        const { data, error } = await q.order('date').order('created_at');
+        assertNoError(error, 'stockLedger.getLedger');
+        return data ?? [];
+      },
+    },
+
+    // ── Phase 3: Chart of Accounts ────────────────────────────────────────
+    coa: {
+      async list(company_id): Promise<CoaRow[]> {
+        const { data, error } = await client.from('chart_of_accounts').select('*').eq('company_id', company_id).order('code');
+        assertNoError(error, 'coa.list');
+        return data ?? [];
+      },
+      async create(row: CoaInsert): Promise<CoaRow> {
+        const { data, error } = await client.from('chart_of_accounts').insert(row).select().single();
+        assertNoError(error, 'coa.create');
+        return data!;
       },
     },
 

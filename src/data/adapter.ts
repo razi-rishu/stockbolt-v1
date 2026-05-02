@@ -181,6 +181,109 @@ export interface PriceLevelsAPI {
   remove(id: string): Promise<void>;
 }
 
+// ── Phase 3 types ─────────────────────────────────────────────────────────────
+export type JournalEntryRow = Tables['journal_entries']['Row'];
+export type GeneralLedgerRow = Tables['general_ledger']['Row'];
+export type StockLedgerRow = Tables['stock_ledger']['Row'];
+export type AuditLogRow = Tables['audit_logs']['Row'];
+export type StockLedgerInsert = Omit<Tables['stock_ledger']['Insert'], 'id' | 'created_at'>;
+
+export interface JELine {
+  account_code: string;
+  debit: number;
+  credit: number;
+  description?: string;
+  contact_id?: string;
+}
+
+export interface JEPayload {
+  source_type: string;
+  description?: string;
+  date?: string;       // ISO date, defaults to today
+  source_id?: string;
+  currency?: string;
+  exchange_rate?: number;
+  lines: JELine[];
+}
+
+export interface JEPostResult {
+  journal_entry_id: string;
+  entry_number: string;
+}
+
+export interface TrialBalanceLine {
+  account_code: string;
+  account_name: string;
+  account_type: string;
+  debit: number;
+  credit: number;
+}
+
+export interface TrialBalance {
+  lines: TrialBalanceLine[];
+  total_debit: number;
+  total_credit: number;
+  as_of_date: string;
+}
+
+export interface LedgerEntry {
+  id: string;
+  date: string;
+  entry_number: string;
+  description: string;
+  debit: number;
+  credit: number;
+  running_balance: number;
+  source_type: string;
+}
+
+export interface StockBalance {
+  product_id: string;
+  warehouse_id: string;
+  quantity: number;
+  unit_cost: number;       // current MAC
+  total_value: number;
+}
+
+export interface StockMovementPayload {
+  product_id: string;
+  warehouse_id: string;
+  company_id: string;
+  date: string;
+  type: string;
+  direction: 1 | -1;
+  quantity: number;
+  unit_cost: number;
+  related_doc_type?: string;
+  related_doc_id?: string;
+  notes?: string;
+}
+
+// ── Phase 3 APIs ──────────────────────────────────────────────────────────────
+
+export interface CoaAPI {
+  list(company_id: string): Promise<CoaRow[]>;
+  create(row: CoaInsert): Promise<CoaRow>;
+}
+
+export interface AccountingAPI {
+  postJE(payload: JEPayload): Promise<JEPostResult>;
+  reverseJE(je_id: string, description?: string): Promise<JEPostResult>;
+  listJEs(company_id: string, limit?: number): Promise<JournalEntryRow[]>;
+  getJEById(id: string): Promise<JournalEntryRow | null>;
+  getGLLines(je_id: string): Promise<GeneralLedgerRow[]>;
+  getTrialBalance(company_id: string, as_of_date: string): Promise<TrialBalance>;
+  getLedgerEntries(company_id: string, account_code: string, from: string, to: string): Promise<LedgerEntry[]>;
+  setPeriodLock(company_id: string, lock_date: string | null): Promise<void>;
+}
+
+export interface StockLedgerAPI {
+  postMovement(payload: StockMovementPayload): Promise<StockLedgerRow>;
+  getBalance(company_id: string, product_id: string, warehouse_id: string): Promise<StockBalance>;
+  getMAC(company_id: string, product_id: string): Promise<number>;
+  getLedger(company_id: string, product_id: string, warehouse_id?: string): Promise<StockLedgerRow[]>;
+}
+
 // ── Root adapter ──────────────────────────────────────────────────────────────
 export interface DataAdapter {
   auth: AuthAPI;
@@ -196,4 +299,8 @@ export interface DataAdapter {
   products: ProductsAPI;
   contacts: ContactsAPI;
   priceLevels: PriceLevelsAPI;
+  // Phase 3
+  coa: CoaAPI;
+  accounting: AccountingAPI;
+  stockLedger: StockLedgerAPI;
 }

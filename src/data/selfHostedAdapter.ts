@@ -105,5 +105,25 @@ export function createSelfHostedAdapter(): DataAdapter {
       update: () => notImplemented('priceLevels.update'),
       remove: () => notImplemented('priceLevels.remove'),
     },
+    coa: {
+      list: () => notImplemented('coa.list'),
+      create: () => notImplemented('coa.create'),
+    },
+    accounting: {
+      postJE:            () => notImplemented('accounting.postJE'),
+      reverseJE:         () => notImplemented('accounting.reverseJE'),
+      listJEs:           () => notImplemented('accounting.listJEs'),
+      getJEById:         () => notImplemented('accounting.getJEById'),
+      getGLLines:        () => notImplemented('accounting.getGLLines'),
+      getTrialBalance:   () => notImplemented('accounting.getTrialBalance'),
+      getLedgerEntries:  () => notImplemented('accounting.getLedgerEntries'),
+      setPeriodLock:     () => notImplemented('accounting.setPeriodLock'),
+    },
+    stockLedger: {
+      postMovement: () => notImplemented('stockLedger.postMovement'),
+      getBalance:   () => notImplemented('stockLedger.getBalance'),
+      getMAC:       () => notImplemented('stockLedger.getMAC'),
+      getLedger:    () => notImplemented('stockLedger.getLedger'),
+    },
   };
 }

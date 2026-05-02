@@ -131,6 +131,43 @@ function PriceTagIcon() {
   );
 }
 
+function LedgerIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <rect x="3" y="2" width="14" height="16" rx="1.5" />
+      <path strokeLinecap="round" d="M7 6h6M7 10h6M7 14h4" />
+    </svg>
+  );
+}
+
+function JournalIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <rect x="4" y="2" width="12" height="16" rx="1" />
+      <path strokeLinecap="round" d="M7 7h6M7 10h6M7 13h3" />
+      <path strokeLinecap="round" d="M2 5h2M2 10h2M2 15h2" />
+    </svg>
+  );
+}
+
+function ChartIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path strokeLinecap="round" d="M2 14l4-4 4 2 4-6 4 2" />
+      <path strokeLinecap="round" d="M2 17h16" />
+    </svg>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <rect x="4" y="9" width="12" height="9" rx="1.5" />
+      <path strokeLinecap="round" d="M7 9V6a3 3 0 016 0v3" />
+    </svg>
+  );
+}
+
 function SidebarNavLink({ to, icon, label }: { to: string; icon: ReactNode; label: string }) {
   return (
     <NavLink
@@ -187,6 +224,21 @@ export function AppLayout({ children }: AppLayoutProps) {
       items: [
         { to: '/contacts/customers', label: t('nav.customers'), icon: <UsersIcon /> },
         { to: '/contacts/suppliers', label: t('nav.suppliers'), icon: <TruckIcon /> },
+      ],
+    },
+    {
+      title: t('nav.accounting'),
+      items: [
+        { to: '/accounting/chart-of-accounts', label: t('nav.coa'), icon: <LedgerIcon /> },
+        { to: '/accounting/journal-entries', label: t('nav.journal_entries'), icon: <JournalIcon /> },
+        { to: '/accounting/general-ledger', label: t('nav.general_ledger'), icon: <BookOpenIcon /> },
+        { to: '/accounting/period-lock', label: t('nav.period_lock'), icon: <LockIcon /> },
+      ],
+    },
+    {
+      title: t('nav.reports'),
+      items: [
+        { to: '/reports/trial-balance', label: t('nav.trial_balance'), icon: <ChartIcon /> },
       ],
     },
     {

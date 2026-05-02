@@ -4315,6 +4315,11 @@ export type Database = {
     Functions: {
       complete_onboarding: { Args: { p_data: Json }; Returns: Json }
       current_user_company_id: { Args: never; Returns: string }
+      post_journal_entry: { Args: { p_data: Json }; Returns: Json }
+      reverse_journal_entry: {
+        Args: { p_description?: string; p_je_id: string }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never

@@ -30,6 +30,16 @@ const ProductDetailPage  = lazy(() => import('@/modules/catalog/products/detail'
 const CustomersPage      = lazy(() => import('@/modules/contacts/customers'));
 const SuppliersPage      = lazy(() => import('@/modules/contacts/suppliers'));
 
+// Accounting
+const CoAPage            = lazy(() => import('@/modules/accounting/chart-of-accounts'));
+const JournalEntriesPage = lazy(() => import('@/modules/accounting/journal-entries'));
+const JEEditorPage       = lazy(() => import('@/modules/accounting/journal-entry-editor'));
+const GeneralLedgerPage  = lazy(() => import('@/modules/accounting/general-ledger'));
+const PeriodLockPage     = lazy(() => import('@/modules/accounting/period-lock'));
+
+// Reports
+const TrialBalancePage   = lazy(() => import('@/modules/reports/trial-balance'));
+
 function Loading() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-surface-page">
@@ -84,6 +94,17 @@ function AppRoutes() {
               {/* Contacts */}
               <Route path="/contacts/customers"       element={<CustomersPage />} />
               <Route path="/contacts/suppliers"       element={<SuppliersPage />} />
+
+              {/* Accounting */}
+              <Route path="/accounting/chart-of-accounts"        element={<CoAPage />} />
+              <Route path="/accounting/journal-entries/new"      element={<JEEditorPage />} />
+              <Route path="/accounting/journal-entries/:id"      element={<JEEditorPage />} />
+              <Route path="/accounting/journal-entries"          element={<JournalEntriesPage />} />
+              <Route path="/accounting/general-ledger"           element={<GeneralLedgerPage />} />
+              <Route path="/accounting/period-lock"              element={<PeriodLockPage />} />
+
+              {/* Reports */}
+              <Route path="/reports/trial-balance"               element={<TrialBalancePage />} />
             </Route>
           </Route>
         </Route>
