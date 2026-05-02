@@ -3905,6 +3905,7 @@ export type Database = {
       vendor_bill_items: {
         Row: {
           bill_id: string
+          coa_account_id: string | null
           created_at: string
           description: string | null
           description_ar: string | null
@@ -3925,6 +3926,7 @@ export type Database = {
         }
         Insert: {
           bill_id: string
+          coa_account_id?: string | null
           created_at?: string
           description?: string | null
           description_ar?: string | null
@@ -3945,6 +3947,7 @@ export type Database = {
         }
         Update: {
           bill_id?: string
+          coa_account_id?: string | null
           created_at?: string
           description?: string | null
           description_ar?: string | null
@@ -3969,6 +3972,13 @@ export type Database = {
             columns: ["bill_id"]
             isOneToOne: false
             referencedRelation: "vendor_bills"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_bill_items_coa_account_id_fkey"
+            columns: ["coa_account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
@@ -4317,9 +4327,16 @@ export type Database = {
         Args: { p_amount: number; p_invoice_id: string; p_payment_id: string }
         Returns: Json
       }
+      apply_vendor_advance: {
+        Args: { p_amount: number; p_bill_id: string; p_payment_id: string }
+        Returns: Json
+      }
       complete_onboarding: { Args: { p_data: Json }; Returns: Json }
+      confirm_grn: { Args: { p_grn_id: string }; Returns: Json }
       confirm_invoice: { Args: { p_invoice_id: string }; Returns: Json }
       confirm_payment: { Args: { p_payment_id: string }; Returns: Json }
+      confirm_vendor_bill: { Args: { p_bill_id: string }; Returns: Json }
+      confirm_vendor_payment: { Args: { p_payment_id: string }; Returns: Json }
       current_user_company_id: { Args: never; Returns: string }
       edit_invoice: { Args: { p_invoice_id: string }; Returns: Json }
       get_next_document_number: {

@@ -1401,8 +1401,7 @@ export function createSupabaseAdapter(
         }
       },
       async confirm(grn_id) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (client.rpc as any)('confirm_grn', { p_grn_id: grn_id });
+        const { data, error } = await client.rpc('confirm_grn', { p_grn_id: grn_id });
         assertNoError(error, 'goodsReceipts.confirm');
         return data as unknown as GRNConfirmResult;
       },
@@ -1438,8 +1437,7 @@ export function createSupabaseAdapter(
         assertNoError(error, 'vendorBills.create');
         const bill = data as VendorBillRow;
         if (items.length > 0) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { error: iErr } = await client.from('vendor_bill_items').insert(items.map(i => ({ ...i, bill_id: bill.id })) as any[]);
+          const { error: iErr } = await client.from('vendor_bill_items').insert(items.map(i => ({ ...i, bill_id: bill.id })));
           assertNoError(iErr, 'vendorBills.create items');
         }
         return bill;
@@ -1449,14 +1447,12 @@ export function createSupabaseAdapter(
         assertNoError(error, 'vendorBills.update');
         await client.from('vendor_bill_items').delete().eq('bill_id', id);
         if (items.length > 0) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { error: iErr } = await client.from('vendor_bill_items').insert(items.map(i => ({ ...i, bill_id: id })) as any[]);
+          const { error: iErr } = await client.from('vendor_bill_items').insert(items.map(i => ({ ...i, bill_id: id })));
           assertNoError(iErr, 'vendorBills.update items');
         }
       },
       async confirm(bill_id) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (client.rpc as any)('confirm_vendor_bill', { p_bill_id: bill_id });
+        const { data, error } = await client.rpc('confirm_vendor_bill', { p_bill_id: bill_id });
         assertNoError(error, 'vendorBills.confirm');
         return data as unknown as BillConfirmResult;
       },
@@ -1499,14 +1495,12 @@ export function createSupabaseAdapter(
         return pmt;
       },
       async confirm(payment_id) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (client.rpc as any)('confirm_vendor_payment', { p_payment_id: payment_id });
+        const { data, error } = await client.rpc('confirm_vendor_payment', { p_payment_id: payment_id });
         assertNoError(error, 'vendorPayments.confirm');
         return data as unknown as VendorPaymentConfirmResult;
       },
       async applyAdvance(payment_id, bill_id, amount) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (client.rpc as any)('apply_vendor_advance', { p_payment_id: payment_id, p_bill_id: bill_id, p_amount: amount });
+        const { data, error } = await client.rpc('apply_vendor_advance', { p_payment_id: payment_id, p_bill_id: bill_id, p_amount: amount });
         assertNoError(error, 'vendorPayments.applyAdvance');
         return data as unknown as ApplyVendorAdvanceResult;
       },
