@@ -63,7 +63,7 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
   const defaultCurrency = company?.currency ?? 'AED';
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as any,
     defaultValues: { name: '', name_ar: '', type: defaultType, email: '', phone: '', mobile: '', currency: defaultCurrency, tax_id: '', address_street: '', address_city: '', address_country: '', contact_person_name: '', contact_person_phone: '', credit_limit: 0, payment_terms_days: 0, notes: '' },
   });
 
@@ -163,7 +163,7 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
       }
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? t('contacts.edit') : `${t('common.add')} ${t(singularKey)}`} width="xl">
-        <form onSubmit={handleSubmit((v) => saveMutation.mutateAsync(v))} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit((v) => saveMutation.mutateAsync(v as FormValues))} className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-4">
             <Input label={t('contacts.name')} required error={errors.name?.message} {...register('name')} />
             <Input label={t('contacts.name_ar')} dir="rtl" {...register('name_ar')} />

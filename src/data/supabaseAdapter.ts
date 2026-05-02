@@ -124,7 +124,7 @@ export function createSupabaseAdapter(
     // ── Onboarding ─────────────────────────────────────────────────────────
     onboarding: {
       async createCompanyAndProfile(input: OnboardingRpcInput) {
-        const { data, error } = await client.rpc('complete_onboarding', { p_data: input });
+        const { data, error } = await client.rpc('complete_onboarding', { p_data: input as any });
         if (error) throw new SupabaseDataError(`complete_onboarding: ${error.message}`);
         const result = (data as unknown) as { company_id: string };
         return { company_id: result.company_id };

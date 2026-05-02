@@ -80,7 +80,7 @@ export default function ProductDetailPage() {
   const { data: images } = useQuery({ queryKey: ['product', id], queryFn: () => getAdapter().products.getById(id!), enabled: !isNew && !!id, select: (p) => p?.image_urls ?? [] });
 
   const { register, handleSubmit, formState: { errors, isSubmitting, isDirty } } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as any,
     values: product ? {
       sku: product.sku, name: product.name, name_ar: product.name_ar ?? '',
       description: product.description ?? '', description_ar: product.description_ar ?? '',
@@ -182,7 +182,7 @@ export default function ProductDetailPage() {
       </div>
 
       {activeTab === 'details' && (
-        <form onSubmit={handleSubmit((v) => saveMutation.mutateAsync(v))} className="flex flex-col gap-5">
+        <form onSubmit={handleSubmit((v) => saveMutation.mutateAsync(v as FormValues))} className="flex flex-col gap-5">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Input label={t('products.sku')} required error={errors.sku?.message} {...register('sku')} />
             <Input label={t('products.barcode')} {...register('barcode')} />

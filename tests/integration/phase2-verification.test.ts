@@ -97,7 +97,7 @@ beforeAll(async () => {
   // 4. Create vehicle make + model (Mercedes-Benz W213)
   const make = await adapter.vehicleMakes.create({ company_id, name: 'Mercedes-Benz' });
   makeId = make.id;
-  const model = await adapter.vehicleMakes.createModel({ make_id: makeId, company_id, name: 'E-Class W213' });
+  const model = await adapter.vehicleMakes.createModel({ make_id: makeId, name: 'E-Class W213' });
   modelId = model.id;
 
   // 5. Create brand (Bosch)
@@ -137,10 +137,9 @@ beforeAll(async () => {
     unit_id:        null,
     quality_tier:   'genuine',
     selling_price:  285.00,
-    cost_price:     null,
     tax_category:   'standard',
-    min_stock_qty:  2,
-    requires_serial_number: false,
+    min_stock_level: 2,
+    requires_serial: false,
     is_active:      true,
     image_urls:     null,
   });
@@ -148,13 +147,13 @@ beforeAll(async () => {
 
   // 8. Link product → W213 model (compat row)
   await adapter.products.addCompatibility({
-    product_id:  productId,
-    company_id,
-    model_id:    modelId,
-    year_from:   2016,
-    year_to:     null,
-    engine_code: null,
-    notes:       null,
+    product_id: productId,
+    make_id:    makeId,
+    model_id:   modelId,
+    year_from:  2016,
+    year_to:    null,
+    engine:     null,
+    notes:      null,
   });
 
   // 9. Add supplier cross-reference SKU
@@ -163,7 +162,6 @@ beforeAll(async () => {
     company_id,
     supplier_id:  supplierId,
     supplier_sku: 'BOSCH-BP456',
-    notes:        null,
   });
 }, 45_000);
 

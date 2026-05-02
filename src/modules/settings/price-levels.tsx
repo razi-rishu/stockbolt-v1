@@ -36,7 +36,7 @@ export default function PriceLevelsPage() {
   });
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as any,
     defaultValues: { name: '', name_ar: '', markup_percent: '', is_default: false, sort_order: 0 },
   });
 
@@ -92,7 +92,7 @@ export default function PriceLevelsPage() {
       }
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? t('settings.price_levels.edit') : t('settings.price_levels.add')}>
-        <form onSubmit={handleSubmit((v) => saveMutation.mutateAsync(v))} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit((v) => saveMutation.mutateAsync(v as FormValues))} className="flex flex-col gap-4">
           <Input label={t('settings.price_levels.name')} required error={errors.name?.message} {...register('name')} />
           <Input label={t('settings.price_levels.name_ar')} dir="rtl" {...register('name_ar')} />
           <Input label={t('settings.price_levels.markup')} type="number" step="0.01" hint={t('settings.price_levels.markup_hint')} {...register('markup_percent')} />
