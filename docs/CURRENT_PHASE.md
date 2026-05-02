@@ -1,12 +1,21 @@
 # Current Phase
 
-**Active Phase:** Phase 2 — Items, Customers & Vendors (NOT YET STARTED)
+**Active Phase:** Phase 2 — Items, Customers & Vendors (IN PROGRESS — all stages done, running test)
 
 **Status:** Phase 1 closed 2026-05-01. All 8 verification assertions passed (8/8). Verification gate: `npm run test:phase1`.
 
-**Last completed:** Phase 1 in full. Auth flow, 6-step setup wizard, COA seed (32 UAE / 36 India), tax rates, payment methods, units, warehouse, bank account, company settings page, EN+AR i18n.
+**Last completed:** Phase 2 implementation complete. All 9 stages done:
+- App shell (sidebar + topbar via `AppLayout`)
+- Adapter layer extended with all Phase 2 APIs + `listByModel`
+- UI primitives: Table, Modal, Badge, Textarea
+- Reference data CRUD: Categories, Brands, Warehouses, Units of Measure, Vehicle Makes/Models
+- Contacts: Customers, Suppliers (shared `ContactListPage` component)
+- Product master: list+search, detail with 4 tabs (details/compat/suppliers/images), image upload
+- Parts Catalog browse view (Make → Model → Year → results)
+- Price Levels settings page
+- EN + AR i18n keys for all Phase 2 screens
 
-**Next milestone:** Phase 2 kickoff — item master, customer/vendor master, price lists. See Doc 5 §"PHASE 2" for task list and DoD.
+**Next milestone:** Run `npm run test:phase2` — 9 assertions (W213 brake pad lifecycle). Then commit and close Phase 2.
 
 **Notes:**
 - Building from clean slate after rebuild decision
@@ -96,4 +105,17 @@ This file is read by Claude Code at the start of every session, so keep it accur
 - `payment_methods.type` uses `'bank'` (not `'bank_transfer'`) — schema CHECK constraint is the source of truth.
 - `complete_onboarding` RPC now fully typed after `supabase gen types` re-run; `any` cast removed.
 
-(Add subsequent phases here as they begin and complete.)
+### Phase 2 — Items, Customers & Vendors
+- Started: 2026-05-01
+- Definition of Done: see Document_5_Build_Phases.md, Phase 2 section
+
+**Stage progress:**
+- [x] Stage 1 — App shell: `AppLayout` sidebar + topbar; `App.tsx` wrapped all onboarded routes; `dashboard/index.tsx` simplified (no own header)
+- [x] Stage 2 — Adapter layer extended: `CategoriesAPI`, `BrandsAPI`, `WarehousesManagementAPI`, `UnitsManagementAPI`, `VehicleMakesAPI`, `ProductsAPI` (incl. `listByModel`), `ContactsAPI`, `PriceLevelsAPI`; supabaseAdapter + selfHostedAdapter updated
+- [x] Stage 3 — New UI primitives: `Table<T>`, `Modal`, `Badge`, `Textarea`
+- [x] Stage 4 — Reference data CRUD: Categories (`/products/categories`), Brands (`/products/brands`), Warehouses (`/settings/warehouses`), Units (`/settings/units`), Vehicle Makes/Models (`/products/vehicles`)
+- [x] Stage 5 — Contacts: Customers + Suppliers via shared `ContactListPage` parameterised by type
+- [x] Stage 6 — Product master: list with dual-mode search, detail page with 4 tabs (Details, Compatibility, Supplier Codes, Images)
+- [x] Stage 7 — Parts Catalog browse (`/catalog`): Make → Model → Year filter → product cards grid
+- [x] Stage 8 — Price Levels settings page (`/settings/price-levels`)
+- [x] Stage 9 — EN + AR i18n for all Phase 2 screens (nav, products, contacts, catalog, settings.warehouses/units/price_levels, parts_catalog)
