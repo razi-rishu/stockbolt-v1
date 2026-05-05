@@ -240,5 +240,15 @@ export function createSelfHostedAdapter(): DataAdapter {
       create:          () => notImplemented('productSerials.create'),
       updateStatus:    () => notImplemented('productSerials.updateStatus'),
     },
+    pos: {
+      openSession:          () => notImplemented('pos.openSession'),
+      getOpenSession:       () => notImplemented('pos.getOpenSession'),
+      closeSession:         () => notImplemented('pos.closeSession'),
+      confirmSale:          () => notImplemented('pos.confirmSale'),
+      getSessionSales:      () => notImplemented('pos.getSessionSales'),
+      listSessions:         () => notImplemented('pos.listSessions'),
+      getPOSSessionReport:  () => notImplemented('pos.getPOSSessionReport'),
+      getDailySalesSummary: () => notImplemented('pos.getDailySalesSummary'),
+    },
   };
 }

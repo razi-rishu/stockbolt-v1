@@ -1,12 +1,12 @@
 # Current Phase
 
-**Active Phase:** Phase 7 — (Serial Numbers & remaining per Doc 5)
+**Active Phase:** Phase 8 — (Serial Numbers & remaining per Doc 5)
 
-**Status:** Phase 6 closed 2026-05-05. All 30 verification assertions passed (30/30). Verification gate: `npm run test:phase6`.
+**Status:** Phase 7 closed 2026-05-05. All 18 verification assertions passed (18/18). Verification gate: `npm run test:phase7`.
 
-**Last completed:** Phase 6 in full. Inventory Operations: 2 Supabase RPCs (confirm_stock_transfer C1, confirm_inventory_adjustment C2/C3), full adapter layer (StockTransfersAPI, InventoryAdjustmentsAPI, ProductSerialsAPI, 5 inventory report methods), Stock Transfers + Inventory Adjustments editors with live calcAdjustmentLine, Stock Ledger viewer, 5 inventory report pages (stock-movement, slow-moving, reorder, stock-aging, inventory-adjustment-report), EN+AR i18n, Phase 6 verification test 30/30. Awaiting `supabase db push` + `supabase gen types` to remove `(client.rpc as any)` casts.
+**Last completed:** Phase 7 in full. POS Counter Sales: 2 Supabase RPCs (open_pos_session, close_pos_session, confirm_pos_sale A2/A3/A4 + COGS A1.b), PosAPI with 8 methods, pos-screen.tsx (full-viewport two-panel UI with F2/F4/Esc shortcuts, session lifecycle, product grid, cart, payment modal), POS Session Report, Daily Sales Summary report, nav wiring, EN+AR i18n (pos.* section + reports.* POS keys), Phase 7 verification test 18/18. Awaiting `supabase db push` + `supabase gen types` to remove `(client.rpc as any)` casts for POS RPCs.
 
-**Next milestone:** Phase 7 — see Doc 5 §"PHASE 7". Run `supabase db push` then `supabase gen types` first to finalise Phase 6 DB types.
+**Next milestone:** Phase 8 — Run `supabase db push` in main project to apply Phase 7 migrations, then `supabase gen types` to regenerate types and remove `(client.rpc as any)` casts.
 
 **Notes:**
 - Building from clean slate after rebuild decision
@@ -291,3 +291,40 @@ This file is read by Claude Code at the start of every session, so keep it accur
 - Inventory adjustment can post two JEs in one call (gain JE to 4300 + loss JE to 6700) — design allows mixed-sign adjustments in a single document.
 - Phase 6 RPCs (confirm_stock_transfer, confirm_inventory_adjustment) still use `(client.rpc as any)` casts pending `supabase db push` + `supabase gen types`.
 - stockAgingDays(null) → 0 treats never-moved items as "just received" for safety (conservative — avoids false over_90 buckets on items with no ledger yet).
+
+### Phase 7 — POS Counter Sales
+- Started: 2026-05-05
+- Closed: 2026-05-05
+- Definition of Done: see Document_5_Build_Phases.md, Phase 7 section
+
+**Stage progress:**
+- [x] Stage 1 — DB: 2 migrations (open_pos_session + close_pos_session RPCs; confirm_pos_sale RPC: A2 cash DR 1100, A3 card DR 1110, A4 credit DR 1200, all CR 4100+2200 VAT, plus A1.b COGS DR 5100 CR 1300); copied to main project
+- [x] Stage 2 — Core util: `src/core/pos/pos-calc.ts` (calcPOSLine, calcPOSTotals, calcPOSSessionSummary — exclusive tax, same formula as invoice-calc.ts)
+- [x] Stage 3 — Adapter layer: PosAPI (8 methods: openSession, getOpenSession, closeSession, confirmSale, getSessionSales, listSessions, getPOSSessionReport, getDailySalesSummary); PosSessionRow re-export; selfHostedAdapter stubs
+- [x] Stage 4 — supabaseAdapter.ts: full pos: implementation (openSession via RPC, getOpenSession via direct query, closeSession via RPC, confirmSale via RPC, getSessionSales, listSessions, getPOSSessionReport, getDailySalesSummary)
+- [x] Stage 5 — POS screen: `pos-screen.tsx` (full-viewport two-panel layout; OpenSessionDialog; CloseSessionDialog; session bar; F2/F4/Esc shortcuts; product search grid; cart with +/- qty; totals; customer select; Cash/Card/Credit payment buttons; payment confirm modal; last-sale banner)
+- [x] Stage 6 — POS reports: `pos-session.tsx` (session list with cash variance) + `daily-sales.tsx` (day-by-day cash/card/credit breakdown with tfoot totals)
+- [x] Stage 7 — App layout: POS sidebar section (Counter Sales) + 2 new report links + RegisterIcon; Reports section extended with pos-session + daily-sales
+- [x] Stage 8 — Routing: `/pos` + `/reports/pos-session` + `/reports/daily-sales` added to App.tsx
+- [x] Stage 9 — i18n: `pos.*` section (43 keys) + `reports.*` POS additions (9 keys) + `common.*` additions (status, all, date, date_from, date_to, total) + `nav.pos` in EN + AR
+- [x] Stage 10 — Verification test: `phase7-verification.test.ts` (18 pure unit assertions); `test:phase7` script added
+
+**Phase 7 DoD — final state (all passed 2026-05-05):**
+- [x] open_pos_session RPC: validates warehouse, rejects if session already open, creates pos_sessions row with status='open'
+- [x] close_pos_session RPC: expected_cash = opening_cash + SUM(pos_cash invoices), records variance, status='closed'
+- [x] confirm_pos_sale RPC: A2/A3/A4 debit account resolved by payment_method, creates invoice + items + stock_ledger + GL JEs atomically, updates session totals
+- [x] calcPOSLine: exclusive-tax, discount-first formula; 6 tests pass
+- [x] calcPOSTotals: aggregates across lines; 4 tests pass
+- [x] calcPOSSessionSummary: channels cash/card/credit, grand_total; 5 tests pass
+- [x] POS Screen at `/pos` (full-viewport, session lifecycle, product search, cart, payment)
+- [x] POS Session Report at `/reports/pos-session`
+- [x] Daily Sales Summary at `/reports/daily-sales`
+- [x] EN + AR i18n for all Phase 7 screens
+- [x] Verification test: 18/18 assertions passed (`npm run test:phase7`)
+
+**Decisions made in Phase 7:**
+- Walk-in customers (cash/card) → `contact_id = NULL`; credit sales enforce `customer_id` required in both RPC and UI.
+- confirm_pos_sale uses a single RPC with CASE on payment_method for debit account ('1100'/'1110'/'1200') — consistent with confirm_invoice pattern.
+- `expected_cash` for session close only counts `pos_cash` invoices; card/credit do not affect the physical cash drawer.
+- getDailySalesSummary groups invoices by date in TypeScript (not DB) — consistent with other client-side report aggregations; acceptable for v1 volumes.
+- Phase 7 POS RPCs use `(client.rpc as any)` casts until `supabase db push` + `supabase gen types` is run from the main project.

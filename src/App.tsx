@@ -85,6 +85,13 @@ const ReorderReportPage               = lazy(() => import('@/modules/reports/reo
 const StockAgingReportPage            = lazy(() => import('@/modules/reports/stock-aging'));
 const InventoryAdjustmentReportPage   = lazy(() => import('@/modules/reports/inventory-adjustment-report'));
 
+// Phase 7 — POS Counter Sales
+const POSScreenPage                   = lazy(() => import('@/modules/pos/pos-screen'));
+
+// Phase 7 — POS reports
+const POSSessionReportPage            = lazy(() => import('@/modules/reports/pos-session'));
+const DailySalesReportPage            = lazy(() => import('@/modules/reports/daily-sales'));
+
 function Loading() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-surface-page">
@@ -204,6 +211,13 @@ function AppRoutes() {
               <Route path="/reports/reorder"                    element={<ReorderReportPage />} />
               <Route path="/reports/stock-aging"                element={<StockAgingReportPage />} />
               <Route path="/reports/inventory-adjustment-report" element={<InventoryAdjustmentReportPage />} />
+
+              {/* Phase 7 — POS Counter Sales */}
+              <Route path="/pos"                                element={<POSScreenPage />} />
+
+              {/* Phase 7 — POS reports */}
+              <Route path="/reports/pos-session"                element={<POSSessionReportPage />} />
+              <Route path="/reports/daily-sales"                element={<DailySalesReportPage />} />
             </Route>
           </Route>
         </Route>

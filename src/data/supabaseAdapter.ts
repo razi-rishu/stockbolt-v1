@@ -41,6 +41,10 @@ import type {
   ProductSerialRow,
   TransferConfirmResult, AdjustmentConfirmResult,
   StockMovementLine, SlowMovingLine, ReorderLine, StockAgingLine, InventoryAdjustmentReportLine,
+  // Phase 7
+  PosSessionRow,
+  OpenSessionResult, CloseSessionResult, PosSaleResult,
+  POSSaleItem, POSSessionReportLine, DailySalesSummaryLine,
 } from './adapter';
 import { apAgingBucket } from '@/core/purchasing/purchase-calc';
 import { stockAgingDays, stockAgingBucket } from '@/core/inventory/inventory-calc';
@@ -1787,6 +1791,118 @@ export function createSupabaseAdapter(
       async updateStatus(id, status) {
         const { error } = await client.from('product_serials').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
         assertNoError(error, 'productSerials.updateStatus');
+      },
+    },
+
+    // ── POS ───────────────────────────────────────────────────────────────────
+    pos: {
+      async openSession(warehouse_id, opening_cash) {
+        const { data, error } = await client.rpc('open_pos_session', {
+          p_warehouse_id: warehouse_id,
+          p_opening_cash: opening_cash,
+        });
+        assertNoError(error, 'pos.openSession');
+        return data as unknown as OpenSessionResult;
+      },
+      async getOpenSession(_company_id) {
+        // RLS ensures company scoping; filter by current user's open session
+        const { data } = await client
+          .from('pos_sessions')
+          .select('*')
+          .eq('status', 'open')
+          .order('opened_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        return (data ?? null) as PosSessionRow | null;
+      },
+      async closeSession(session_id, counted_cash, variance_reason) {
+        const { data, error } = await client.rpc('close_pos_session', {
+          p_session_id:       session_id,
+          p_counted_cash:     counted_cash,
+          p_variance_reason:  variance_reason ?? null,
+        });
+        assertNoError(error, 'pos.closeSession');
+        return data as unknown as CloseSessionResult;
+      },
+      async confirmSale(session_id, items, payment_method, customer_id, notes) {
+        const { data, error } = await client.rpc('confirm_pos_sale', {
+          p_session_id:     session_id,
+          p_items:          items as unknown as Parameters<typeof client.rpc>[1],
+          p_payment_method: payment_method,
+          p_customer_id:    customer_id ?? null,
+          p_notes:          notes ?? null,
+        });
+        assertNoError(error, 'pos.confirmSale');
+        return data as unknown as PosSaleResult;
+      },
+      async getSessionSales(session_id) {
+        const { data, error } = await client
+          .from('invoices')
+          .select('*')
+          .eq('pos_session_id', session_id)
+          .order('created_at', { ascending: true });
+        assertNoError(error, 'pos.getSessionSales');
+        return (data ?? []) as InvoiceRow[];
+      },
+      async listSessions(company_id, params) {
+        let q = client.from('pos_sessions').select('*').eq('company_id', company_id);
+        if (params?.status) q = q.eq('status', params.status);
+        if (params?.date_from) q = q.gte('opened_at', params.date_from);
+        if (params?.date_to)   q = q.lte('opened_at', params.date_to + 'T23:59:59');
+        const { data, error } = await q.order('opened_at', { ascending: false });
+        assertNoError(error, 'pos.listSessions');
+        return (data ?? []) as PosSessionRow[];
+      },
+      async getPOSSessionReport(company_id, params) {
+        let q = client
+          .from('pos_sessions')
+          .select('*, warehouses(name)')
+          .eq('company_id', company_id);
+        if (params?.date_from) q = q.gte('opened_at', params.date_from);
+        if (params?.date_to)   q = q.lte('opened_at', params.date_to + 'T23:59:59');
+        const { data, error } = await q.order('opened_at', { ascending: false });
+        assertNoError(error, 'pos.getPOSSessionReport');
+        return ((data ?? []) as Record<string, unknown>[]).map(s => ({
+          session_id:           s.id as string,
+          session_number:       s.session_number as string,
+          opened_at:            s.opened_at as string,
+          closed_at:            s.closed_at as string | null,
+          warehouse_id:         s.warehouse_id as string,
+          warehouse_name:       ((s.warehouses as Record<string, unknown>)?.name as string) ?? '',
+          opening_cash:         (s.opening_cash as number) ?? 0,
+          total_sales_amount:   (s.total_sales_amount as number) ?? 0,
+          total_sales_count:    (s.total_sales_count as number) ?? 0,
+          closing_cash_counted: s.closing_cash_counted as number | null,
+          cash_variance:        s.cash_variance as number | null,
+          status:               s.status as string,
+        })) as POSSessionReportLine[];
+      },
+      async getDailySalesSummary(company_id, params) {
+        const { data, error } = await client
+          .from('invoices')
+          .select('date, sale_channel, total_amount')
+          .eq('company_id', company_id)
+          .in('sale_channel', ['pos_cash', 'pos_card', 'pos_credit'])
+          .eq('status', 'confirmed')
+          .gte('date', params.date_from)
+          .lte('date', params.date_to)
+          .order('date');
+        assertNoError(error, 'pos.getDailySalesSummary');
+        // Group by date
+        const byDate = new Map<string, DailySalesSummaryLine>();
+        for (const row of (data ?? []) as { date: string; sale_channel: string; total_amount: number }[]) {
+          const d = row.date as string;
+          if (!byDate.has(d)) {
+            byDate.set(d, { date: d, cash_total: 0, card_total: 0, credit_total: 0, grand_total: 0, invoice_count: 0 });
+          }
+          const entry = byDate.get(d)!;
+          if (row.sale_channel === 'pos_cash')   entry.cash_total   += row.total_amount;
+          if (row.sale_channel === 'pos_card')   entry.card_total   += row.total_amount;
+          if (row.sale_channel === 'pos_credit') entry.credit_total += row.total_amount;
+          entry.grand_total += row.total_amount;
+          entry.invoice_count++;
+        }
+        return Array.from(byDate.values());
       },
     },
   };

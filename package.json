@@ -18,7 +18,8 @@
     "test:phase2": "vitest run tests/integration/phase2-verification.test.ts",
     "test:phase3": "vitest run tests/integration/phase3-verification.test.ts",
     "test:phase5": "vitest run tests/integration/phase5-verification.test.ts",
-    "test:phase6": "vitest run tests/integration/phase6-verification.test.ts"
+    "test:phase6": "vitest run tests/integration/phase6-verification.test.ts",
+    "test:phase7": "vitest run tests/integration/phase7-verification.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

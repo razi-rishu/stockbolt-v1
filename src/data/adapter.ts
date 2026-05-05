@@ -757,6 +757,90 @@ export interface ProductSerialsAPI {
   updateStatus(id: string, status: string): Promise<void>;
 }
 
+// ── Phase 7 row types ─────────────────────────────────────────────────────────
+
+export type PosSessionRow = Tables['pos_sessions']['Row'];
+
+// Phase 7 RPC result types
+export interface OpenSessionResult {
+  session_id:     string;
+  session_number: string;
+  warehouse_id:   string;
+  opening_cash:   number;
+  opened_at:      string;
+}
+
+export interface CloseSessionResult {
+  session_id:          string;
+  session_number:      string;
+  opening_cash:        number;
+  cash_sales:          number;
+  expected_cash:       number;
+  counted_cash:        number;
+  variance:            number;
+  total_sales_amount:  number;
+  total_sales_count:   number;
+}
+
+export interface PosSaleResult {
+  invoice_id:     string;
+  invoice_number: string;
+  total_amount:   number;
+}
+
+// Phase 7 report types
+export interface POSSessionReportLine {
+  session_id:          string;
+  session_number:      string;
+  opened_at:           string;
+  closed_at:           string | null;
+  warehouse_id:        string;
+  warehouse_name:      string;
+  opening_cash:        number;
+  total_sales_amount:  number;
+  total_sales_count:   number;
+  closing_cash_counted: number | null;
+  cash_variance:        number | null;
+  status:              string;
+}
+
+export interface DailySalesSummaryLine {
+  date:         string;
+  cash_total:   number;
+  card_total:   number;
+  credit_total: number;
+  grand_total:  number;
+  invoice_count: number;
+}
+
+// Phase 7 POS cart item (sent to confirm_pos_sale RPC)
+export interface POSSaleItem {
+  product_id:       string;
+  description:      string;
+  quantity:         number;
+  unit_price:       number;
+  discount_percent: number;
+  tax_rate:         number;
+}
+
+// Phase 7 API
+export interface PosAPI {
+  openSession(warehouse_id: string, opening_cash: number): Promise<OpenSessionResult>;
+  getOpenSession(company_id: string): Promise<PosSessionRow | null>;
+  closeSession(session_id: string, counted_cash: number, variance_reason?: string): Promise<CloseSessionResult>;
+  confirmSale(
+    session_id: string,
+    items: POSSaleItem[],
+    payment_method: 'cash' | 'card' | 'credit',
+    customer_id?: string | null,
+    notes?: string
+  ): Promise<PosSaleResult>;
+  getSessionSales(session_id: string): Promise<InvoiceRow[]>;
+  listSessions(company_id: string, params?: { status?: string; date_from?: string; date_to?: string }): Promise<PosSessionRow[]>;
+  getPOSSessionReport(company_id: string, params?: { date_from?: string; date_to?: string }): Promise<POSSessionReportLine[]>;
+  getDailySalesSummary(company_id: string, params: { date_from: string; date_to: string }): Promise<DailySalesSummaryLine[]>;
+}
+
 // ── Root adapter ──────────────────────────────────────────────────────────────
 export interface DataAdapter {
   auth: AuthAPI;
@@ -792,4 +876,6 @@ export interface DataAdapter {
   stockTransfers: StockTransfersAPI;
   inventoryAdjustments: InventoryAdjustmentsAPI;
   productSerials: ProductSerialsAPI;
+  // Phase 7
+  pos: PosAPI;
 }

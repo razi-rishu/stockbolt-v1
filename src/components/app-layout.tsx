@@ -143,6 +143,16 @@ function SliderIcon() {
   );
 }
 
+function RegisterIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <rect x="2" y="7" width="16" height="10" rx="1.5" />
+      <path strokeLinecap="round" d="M6 7V5a4 4 0 018 0v2" />
+      <path strokeLinecap="round" d="M7 12h2m2 0h2M10 10v4" />
+    </svg>
+  );
+}
+
 function CogIcon() {
   return (
     <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -300,6 +310,12 @@ export function AppLayout({ children }: AppLayoutProps) {
       ],
     },
     {
+      title: t('nav.pos'),
+      items: [
+        { to: '/pos', label: t('pos.counter_sales'), icon: <RegisterIcon /> },
+      ],
+    },
+    {
       title: t('nav.accounting'),
       items: [
         { to: '/accounting/chart-of-accounts', label: t('nav.coa'), icon: <LedgerIcon /> },
@@ -324,6 +340,8 @@ export function AppLayout({ children }: AppLayoutProps) {
         { to: '/reports/reorder',                    label: t('reports.reorder'),                     icon: <TruckIcon /> },
         { to: '/reports/stock-aging',                label: t('reports.stock_aging'),                 icon: <ChartIcon /> },
         { to: '/reports/inventory-adjustment-report',label: t('reports.inventory_adjustment_report'), icon: <SliderIcon /> },
+        { to: '/reports/pos-session',                label: t('reports.pos_session_report'),          icon: <RegisterIcon /> },
+        { to: '/reports/daily-sales',                label: t('reports.daily_sales_summary'),         icon: <ChartIcon /> },
       ],
     },
     {
