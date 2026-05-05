@@ -1710,8 +1710,7 @@ export function createSupabaseAdapter(
         }
       },
       async confirm(transfer_id) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (client.rpc as any)('confirm_stock_transfer', { p_transfer_id: transfer_id });
+        const { data, error } = await client.rpc('confirm_stock_transfer', { p_transfer_id: transfer_id });
         assertNoError(error, 'stockTransfers.confirm');
         return data as unknown as TransferConfirmResult;
       },
@@ -1753,8 +1752,7 @@ export function createSupabaseAdapter(
         return adj;
       },
       async confirm(adjustment_id) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (client.rpc as any)('confirm_inventory_adjustment', { p_adjustment_id: adjustment_id });
+        const { data, error } = await client.rpc('confirm_inventory_adjustment', { p_adjustment_id: adjustment_id });
         assertNoError(error, 'inventoryAdjustments.confirm');
         return data as unknown as AdjustmentConfirmResult;
       },

@@ -4333,8 +4333,13 @@ export type Database = {
       }
       complete_onboarding: { Args: { p_data: Json }; Returns: Json }
       confirm_grn: { Args: { p_grn_id: string }; Returns: Json }
+      confirm_inventory_adjustment: {
+        Args: { p_adjustment_id: string }
+        Returns: Json
+      }
       confirm_invoice: { Args: { p_invoice_id: string }; Returns: Json }
       confirm_payment: { Args: { p_payment_id: string }; Returns: Json }
+      confirm_stock_transfer: { Args: { p_transfer_id: string }; Returns: Json }
       confirm_vendor_bill: { Args: { p_bill_id: string }; Returns: Json }
       confirm_vendor_payment: { Args: { p_payment_id: string }; Returns: Json }
       current_user_company_id: { Args: never; Returns: string }
@@ -4487,3 +4492,5 @@ export const Constants = {
     Enums: {},
   },
 } as const
+A new version of Supabase CLI is available: v2.98.1 (currently installed v2.95.4)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
