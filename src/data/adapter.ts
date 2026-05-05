@@ -472,6 +472,12 @@ export interface ReportsAPI {
   getAPAgingReport(company_id: string, as_of_date: string): Promise<APAgingReport>;
   getSupplierStatement(company_id: string, contact_id: string, from: string, to: string): Promise<SupplierStatement>;
   getGRNReconciliation(company_id: string, as_of_date: string): Promise<GRNReconciliationReport>;
+  // Phase 6 reports
+  getStockMovement(company_id: string, product_id: string, from: string, to: string): Promise<StockMovementLine[]>;
+  getSlowMoving(company_id: string, threshold_days: number, as_of: string): Promise<SlowMovingLine[]>;
+  getReorderReport(company_id: string): Promise<ReorderLine[]>;
+  getStockAging(company_id: string, as_of: string): Promise<StockAgingLine[]>;
+  getInventoryAdjustmentReport(company_id: string, from: string, to: string): Promise<InventoryAdjustmentReportLine[]>;
 }
 
 // ── Phase 5 row types ─────────────────────────────────────────────────────────
@@ -626,6 +632,131 @@ export interface VendorPaymentsAPI {
   getNextNumber(company_id: string): Promise<string>;
 }
 
+// ── Phase 6 row types ─────────────────────────────────────────────────────────
+
+export type StockTransferRow     = Tables['stock_transfers']['Row'];
+export type StockTransferInsert  = Tables['stock_transfers']['Insert'];
+export type StockTransferUpdate  = Tables['stock_transfers']['Update'];
+export type StockTransferItemRow    = Tables['stock_transfer_items']['Row'];
+export type StockTransferItemInsert = Tables['stock_transfer_items']['Insert'];
+
+export type InventoryAdjustmentRow    = Tables['inventory_adjustments']['Row'];
+export type InventoryAdjustmentInsert = Tables['inventory_adjustments']['Insert'];
+export type InventoryAdjustmentUpdate = Tables['inventory_adjustments']['Update'];
+export type AdjustmentItemRow    = Tables['inventory_adjustment_items']['Row'];
+export type AdjustmentItemInsert = Tables['inventory_adjustment_items']['Insert'];
+
+export type ProductSerialRow    = Tables['product_serials']['Row'];
+export type ProductSerialInsert = Tables['product_serials']['Insert'];
+export type ProductSerialUpdate = Tables['product_serials']['Update'];
+
+// Phase 6 RPC result types
+export interface TransferConfirmResult {
+  transfer_id: string;
+  transfer_number: string;
+}
+
+export interface AdjustmentConfirmResult {
+  adjustment_id: string;
+  adjustment_number: string;
+  gain_je_id: string | null;
+  loss_je_id: string | null;
+  total_gain: number;
+  total_loss: number;
+}
+
+// Phase 6 report types
+export interface StockMovementLine {
+  product_id: string;
+  product_name: string;
+  sku: string;
+  warehouse_id: string;
+  warehouse_name: string;
+  date: string;
+  type: string;
+  direction: number;
+  quantity: number;
+  unit_cost: number;
+  running_qty: number;
+}
+
+export interface SlowMovingLine {
+  product_id: string;
+  product_name: string;
+  sku: string;
+  warehouse_id: string;
+  warehouse_name: string;
+  current_qty: number;
+  last_movement_date: string | null;
+  days_since_movement: number;
+  stock_value: number;
+}
+
+export interface ReorderLine {
+  product_id: string;
+  product_name: string;
+  sku: string;
+  warehouse_id: string;
+  warehouse_name: string;
+  current_qty: number;
+  min_stock_level: number;
+  shortage: number;
+}
+
+export interface StockAgingLine {
+  product_id: string;
+  product_name: string;
+  sku: string;
+  warehouse_id: string;
+  warehouse_name: string;
+  current_qty: number;
+  unit_cost: number;
+  bucket_0_30: number;
+  bucket_31_60: number;
+  bucket_61_90: number;
+  bucket_over_90: number;
+  total_value: number;
+}
+
+export interface InventoryAdjustmentReportLine {
+  adjustment_id: string;
+  adjustment_number: string;
+  date: string;
+  warehouse_name: string;
+  reason: string;
+  total_gain: number;
+  total_loss: number;
+  net: number;
+}
+
+// ── Phase 6 APIs ──────────────────────────────────────────────────────────────
+
+export interface StockTransfersAPI {
+  list(company_id: string, status?: string): Promise<StockTransferRow[]>;
+  getById(id: string): Promise<StockTransferRow | null>;
+  getItems(transfer_id: string): Promise<StockTransferItemRow[]>;
+  create(row: StockTransferInsert, items: StockTransferItemInsert[]): Promise<StockTransferRow>;
+  update(id: string, row: StockTransferUpdate, items: StockTransferItemInsert[]): Promise<void>;
+  confirm(transfer_id: string): Promise<TransferConfirmResult>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface InventoryAdjustmentsAPI {
+  list(company_id: string, status?: string): Promise<InventoryAdjustmentRow[]>;
+  getById(id: string): Promise<InventoryAdjustmentRow | null>;
+  getItems(adjustment_id: string): Promise<AdjustmentItemRow[]>;
+  create(row: InventoryAdjustmentInsert, items: AdjustmentItemInsert[]): Promise<InventoryAdjustmentRow>;
+  confirm(adjustment_id: string): Promise<AdjustmentConfirmResult>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface ProductSerialsAPI {
+  listByProduct(company_id: string, product_id: string): Promise<ProductSerialRow[]>;
+  listByWarehouse(company_id: string, warehouse_id: string, status?: string): Promise<ProductSerialRow[]>;
+  create(row: ProductSerialInsert): Promise<ProductSerialRow>;
+  updateStatus(id: string, status: string): Promise<void>;
+}
+
 // ── Root adapter ──────────────────────────────────────────────────────────────
 export interface DataAdapter {
   auth: AuthAPI;
@@ -657,4 +788,8 @@ export interface DataAdapter {
   goodsReceipts: GoodsReceiptsAPI;
   vendorBills: VendorBillsAPI;
   vendorPayments: VendorPaymentsAPI;
+  // Phase 6
+  stockTransfers: StockTransfersAPI;
+  inventoryAdjustments: InventoryAdjustmentsAPI;
+  productSerials: ProductSerialsAPI;
 }

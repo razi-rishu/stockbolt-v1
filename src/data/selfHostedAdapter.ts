@@ -173,7 +173,12 @@ export function createSelfHostedAdapter(): DataAdapter {
       getStockValuation:     () => notImplemented('reports.getStockValuation'),
       getAPAgingReport:      () => notImplemented('reports.getAPAgingReport'),
       getSupplierStatement:  () => notImplemented('reports.getSupplierStatement'),
-      getGRNReconciliation:  () => notImplemented('reports.getGRNReconciliation'),
+      getGRNReconciliation:       () => notImplemented('reports.getGRNReconciliation'),
+      getStockMovement:           () => notImplemented('reports.getStockMovement'),
+      getSlowMoving:              () => notImplemented('reports.getSlowMoving'),
+      getReorderReport:           () => notImplemented('reports.getReorderReport'),
+      getStockAging:              () => notImplemented('reports.getStockAging'),
+      getInventoryAdjustmentReport: () => notImplemented('reports.getInventoryAdjustmentReport'),
     },
     purchaseOrders: {
       list:          () => notImplemented('purchaseOrders.list'),
@@ -211,6 +216,29 @@ export function createSelfHostedAdapter(): DataAdapter {
       confirm:       () => notImplemented('vendorPayments.confirm'),
       applyAdvance:  () => notImplemented('vendorPayments.applyAdvance'),
       getNextNumber: () => notImplemented('vendorPayments.getNextNumber'),
+    },
+    stockTransfers: {
+      list:          () => notImplemented('stockTransfers.list'),
+      getById:       () => notImplemented('stockTransfers.getById'),
+      getItems:      () => notImplemented('stockTransfers.getItems'),
+      create:        () => notImplemented('stockTransfers.create'),
+      update:        () => notImplemented('stockTransfers.update'),
+      confirm:       () => notImplemented('stockTransfers.confirm'),
+      getNextNumber: () => notImplemented('stockTransfers.getNextNumber'),
+    },
+    inventoryAdjustments: {
+      list:          () => notImplemented('inventoryAdjustments.list'),
+      getById:       () => notImplemented('inventoryAdjustments.getById'),
+      getItems:      () => notImplemented('inventoryAdjustments.getItems'),
+      create:        () => notImplemented('inventoryAdjustments.create'),
+      confirm:       () => notImplemented('inventoryAdjustments.confirm'),
+      getNextNumber: () => notImplemented('inventoryAdjustments.getNextNumber'),
+    },
+    productSerials: {
+      listByProduct:   () => notImplemented('productSerials.listByProduct'),
+      listByWarehouse: () => notImplemented('productSerials.listByWarehouse'),
+      create:          () => notImplemented('productSerials.create'),
+      updateStatus:    () => notImplemented('productSerials.updateStatus'),
     },
   };
 }

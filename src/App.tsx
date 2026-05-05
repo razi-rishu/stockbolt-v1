@@ -71,6 +71,20 @@ const APAgingPage            = lazy(() => import('@/modules/reports/ap-aging'));
 const SupplierStatementPage  = lazy(() => import('@/modules/reports/supplier-statement'));
 const GRNReconciliationPage  = lazy(() => import('@/modules/reports/grn-reconciliation'));
 
+// Phase 6 — Inventory Operations
+const StockTransfersPage       = lazy(() => import('@/modules/inventory/stock-transfers'));
+const TransferEditorPage       = lazy(() => import('@/modules/inventory/transfer-editor'));
+const InventoryAdjustmentsPage = lazy(() => import('@/modules/inventory/inventory-adjustments'));
+const AdjustmentEditorPage     = lazy(() => import('@/modules/inventory/adjustment-editor'));
+const StockLedgerPage          = lazy(() => import('@/modules/inventory/stock-ledger'));
+
+// Phase 6 — Inventory reports
+const StockMovementReportPage         = lazy(() => import('@/modules/reports/stock-movement'));
+const SlowMovingReportPage            = lazy(() => import('@/modules/reports/slow-moving'));
+const ReorderReportPage               = lazy(() => import('@/modules/reports/reorder'));
+const StockAgingReportPage            = lazy(() => import('@/modules/reports/stock-aging'));
+const InventoryAdjustmentReportPage   = lazy(() => import('@/modules/reports/inventory-adjustment-report'));
+
 function Loading() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-surface-page">
@@ -174,6 +188,22 @@ function AppRoutes() {
               <Route path="/reports/ap-aging"                   element={<APAgingPage />} />
               <Route path="/reports/supplier-statement"         element={<SupplierStatementPage />} />
               <Route path="/reports/grn-reconciliation"         element={<GRNReconciliationPage />} />
+
+              {/* Phase 6 — Inventory Operations */}
+              <Route path="/inventory/transfers/new"            element={<TransferEditorPage />} />
+              <Route path="/inventory/transfers/:id"            element={<TransferEditorPage />} />
+              <Route path="/inventory/transfers"                element={<StockTransfersPage />} />
+              <Route path="/inventory/adjustments/new"          element={<AdjustmentEditorPage />} />
+              <Route path="/inventory/adjustments/:id"          element={<AdjustmentEditorPage />} />
+              <Route path="/inventory/adjustments"              element={<InventoryAdjustmentsPage />} />
+              <Route path="/inventory/stock-ledger"             element={<StockLedgerPage />} />
+
+              {/* Phase 6 — Inventory reports */}
+              <Route path="/reports/stock-movement"             element={<StockMovementReportPage />} />
+              <Route path="/reports/slow-moving"                element={<SlowMovingReportPage />} />
+              <Route path="/reports/reorder"                    element={<ReorderReportPage />} />
+              <Route path="/reports/stock-aging"                element={<StockAgingReportPage />} />
+              <Route path="/reports/inventory-adjustment-report" element={<InventoryAdjustmentReportPage />} />
             </Route>
           </Route>
         </Route>

@@ -35,8 +35,15 @@ import type {
   APAgingReport, APAgingBucket as APAgingBucketType,
   SupplierStatement, SupplierStatementLine,
   GRNReconciliationReport, GRNReconciliationLine,
+  // Phase 6
+  StockTransferRow, StockTransferItemRow,
+  InventoryAdjustmentRow, AdjustmentItemRow,
+  ProductSerialRow,
+  TransferConfirmResult, AdjustmentConfirmResult,
+  StockMovementLine, SlowMovingLine, ReorderLine, StockAgingLine, InventoryAdjustmentReportLine,
 } from './adapter';
 import { apAgingBucket } from '@/core/purchasing/purchase-calc';
+import { stockAgingDays, stockAgingBucket } from '@/core/inventory/inventory-calc';
 import { getSupabaseClient } from './supabase-client';
 
 class SupabaseAuthError extends Error {
@@ -1305,6 +1312,158 @@ export function createSupabaseAdapter(
           total_value: lines.reduce((s, l) => s + l.total_value, 0),
         };
       },
+
+      // Phase 6 reports ──────────────────────────────────────────────────────
+      async getStockMovement(company_id, product_id, from, to): Promise<StockMovementLine[]> {
+        const { data, error } = await client
+          .from('stock_ledger')
+          .select('product_id, warehouse_id, date, type, direction, quantity, unit_cost, running_qty, products(name, sku), warehouses(name)')
+          .eq('company_id', company_id)
+          .eq('product_id', product_id)
+          .gte('date', from)
+          .lte('date', to)
+          .order('created_at');
+        assertNoError(error, 'reports.getStockMovement');
+        return (data ?? []).map(r => {
+          const p = r.products as unknown as { name: string; sku: string } | null;
+          const w = r.warehouses as unknown as { name: string } | null;
+          return {
+            product_id: r.product_id, product_name: p?.name ?? '', sku: p?.sku ?? '',
+            warehouse_id: r.warehouse_id, warehouse_name: w?.name ?? '',
+            date: r.date as string, type: r.type, direction: Number(r.direction),
+            quantity: Number(r.quantity), unit_cost: Number(r.unit_cost),
+            running_qty: Number(r.running_qty),
+          };
+        });
+      },
+
+      async getSlowMoving(company_id, threshold_days, as_of): Promise<SlowMovingLine[]> {
+        // Get latest stock_ledger row per product+warehouse
+        const { data, error } = await client
+          .from('stock_ledger')
+          .select('product_id, warehouse_id, running_qty, running_avg_cost, date, products(name, sku), warehouses(name)')
+          .eq('company_id', company_id)
+          .order('created_at', { ascending: false });
+        assertNoError(error, 'reports.getSlowMoving');
+
+        const seen = new Set<string>();
+        const lines: SlowMovingLine[] = [];
+        for (const row of data ?? []) {
+          const key = `${row.product_id}::${row.warehouse_id}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const qty = Number(row.running_qty);
+          if (qty <= 0) continue;
+          const days = stockAgingDays(row.date as string, as_of);
+          if (days < threshold_days) continue;
+          const p = row.products as unknown as { name: string; sku: string } | null;
+          const w = row.warehouses as unknown as { name: string } | null;
+          lines.push({
+            product_id: row.product_id, product_name: p?.name ?? '', sku: p?.sku ?? '',
+            warehouse_id: row.warehouse_id, warehouse_name: w?.name ?? '',
+            current_qty: qty, last_movement_date: row.date as string,
+            days_since_movement: days,
+            stock_value: qty * Number(row.running_avg_cost),
+          });
+        }
+        return lines.sort((a, b) => b.days_since_movement - a.days_since_movement);
+      },
+
+      async getReorderReport(company_id): Promise<ReorderLine[]> {
+        // Get current qty per product+warehouse; join products for min_stock_level
+        const { data, error } = await client
+          .from('stock_ledger')
+          .select('product_id, warehouse_id, running_qty, products(name, sku, min_stock_level), warehouses(name)')
+          .eq('company_id', company_id)
+          .order('created_at', { ascending: false });
+        assertNoError(error, 'reports.getReorderReport');
+
+        const seen = new Set<string>();
+        const lines: ReorderLine[] = [];
+        for (const row of data ?? []) {
+          const key = `${row.product_id}::${row.warehouse_id}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const p = row.products as unknown as { name: string; sku: string; min_stock_level: number } | null;
+          const w = row.warehouses as unknown as { name: string } | null;
+          const qty = Number(row.running_qty);
+          const min = Number(p?.min_stock_level ?? 0);
+          if (qty > min) continue;
+          lines.push({
+            product_id: row.product_id, product_name: p?.name ?? '', sku: p?.sku ?? '',
+            warehouse_id: row.warehouse_id, warehouse_name: w?.name ?? '',
+            current_qty: qty, min_stock_level: min, shortage: min - qty,
+          });
+        }
+        return lines.sort((a, b) => b.shortage - a.shortage);
+      },
+
+      async getStockAging(company_id, as_of): Promise<StockAgingLine[]> {
+        const { data, error } = await client
+          .from('stock_ledger')
+          .select('product_id, warehouse_id, running_qty, running_avg_cost, date, products(name, sku), warehouses(name)')
+          .eq('company_id', company_id)
+          .lte('date', as_of)
+          .order('created_at', { ascending: false });
+        assertNoError(error, 'reports.getStockAging');
+
+        const seen = new Set<string>();
+        const lines: StockAgingLine[] = [];
+        for (const row of data ?? []) {
+          const key = `${row.product_id}::${row.warehouse_id}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const qty = Number(row.running_qty);
+          if (qty <= 0) continue;
+          const cost = Number(row.running_avg_cost);
+          const days = stockAgingDays(row.date as string, as_of);
+          const bucket = stockAgingBucket(days);
+          const value = qty * cost;
+          const p = row.products as unknown as { name: string; sku: string } | null;
+          const w = row.warehouses as unknown as { name: string } | null;
+          lines.push({
+            product_id: row.product_id, product_name: p?.name ?? '', sku: p?.sku ?? '',
+            warehouse_id: row.warehouse_id, warehouse_name: w?.name ?? '',
+            current_qty: qty, unit_cost: cost,
+            bucket_0_30:    bucket === '0_30'    ? value : 0,
+            bucket_31_60:   bucket === '31_60'   ? value : 0,
+            bucket_61_90:   bucket === '61_90'   ? value : 0,
+            bucket_over_90: bucket === 'over_90' ? value : 0,
+            total_value: value,
+          });
+        }
+        return lines;
+      },
+
+      async getInventoryAdjustmentReport(company_id, from, to): Promise<InventoryAdjustmentReportLine[]> {
+        const { data, error } = await client
+          .from('inventory_adjustments')
+          .select('id, adjustment_number, date, reason, warehouses(name), inventory_adjustment_items(difference, unit_cost)')
+          .eq('company_id', company_id)
+          .eq('status', 'confirmed')
+          .gte('date', from)
+          .lte('date', to)
+          .order('date');
+        assertNoError(error, 'reports.getInventoryAdjustmentReport');
+        return (data ?? []).map(adj => {
+          const w = adj.warehouses as unknown as { name: string } | null;
+          const items = adj.inventory_adjustment_items as unknown as { difference: number; unit_cost: number | null }[] | null ?? [];
+          const totalGain = items.filter(i => Number(i.difference) > 0)
+            .reduce((s, i) => s + Number(i.difference) * Number(i.unit_cost ?? 0), 0);
+          const totalLoss = items.filter(i => Number(i.difference) < 0)
+            .reduce((s, i) => s + Math.abs(Number(i.difference)) * Number(i.unit_cost ?? 0), 0);
+          return {
+            adjustment_id: adj.id,
+            adjustment_number: adj.adjustment_number,
+            date: adj.date as string,
+            warehouse_name: w?.name ?? '',
+            reason: adj.reason,
+            total_gain: totalGain,
+            total_loss: totalLoss,
+            net: totalGain - totalLoss,
+          };
+        });
+      },
     },
 
     // ── Purchase Orders ───────────────────────────────────────────────────────
@@ -1508,6 +1667,128 @@ export function createSupabaseAdapter(
         const { data, error } = await client.rpc('get_next_document_number', { p_company_id: company_id, p_prefix: 'VP' });
         assertNoError(error, 'vendorPayments.getNextNumber');
         return data as string;
+      },
+    },
+
+    // ── Stock Transfers ───────────────────────────────────────────────────────
+    stockTransfers: {
+      async list(company_id, status) {
+        let q = client.from('stock_transfers').select('*').eq('company_id', company_id).order('date', { ascending: false });
+        if (status) q = q.eq('status', status);
+        const { data, error } = await q;
+        assertNoError(error, 'stockTransfers.list');
+        return (data ?? []) as StockTransferRow[];
+      },
+      async getById(id) {
+        const { data, error } = await client.from('stock_transfers').select('*').eq('id', id).single();
+        if (error?.code === 'PGRST116') return null;
+        assertNoError(error, 'stockTransfers.getById');
+        return data as StockTransferRow;
+      },
+      async getItems(transfer_id) {
+        const { data, error } = await client.from('stock_transfer_items').select('*').eq('transfer_id', transfer_id);
+        assertNoError(error, 'stockTransfers.getItems');
+        return (data ?? []) as StockTransferItemRow[];
+      },
+      async create(row, items) {
+        const { data, error } = await client.from('stock_transfers').insert(row).select().single();
+        assertNoError(error, 'stockTransfers.create');
+        const transfer = data as StockTransferRow;
+        if (items.length > 0) {
+          const { error: iErr } = await client.from('stock_transfer_items').insert(items.map(i => ({ ...i, transfer_id: transfer.id })));
+          assertNoError(iErr, 'stockTransfers.create items');
+        }
+        return transfer;
+      },
+      async update(id, row, items) {
+        const { error } = await client.from('stock_transfers').update(row).eq('id', id);
+        assertNoError(error, 'stockTransfers.update');
+        await client.from('stock_transfer_items').delete().eq('transfer_id', id);
+        if (items.length > 0) {
+          const { error: iErr } = await client.from('stock_transfer_items').insert(items.map(i => ({ ...i, transfer_id: id })));
+          assertNoError(iErr, 'stockTransfers.update items');
+        }
+      },
+      async confirm(transfer_id) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (client.rpc as any)('confirm_stock_transfer', { p_transfer_id: transfer_id });
+        assertNoError(error, 'stockTransfers.confirm');
+        return data as unknown as TransferConfirmResult;
+      },
+      async getNextNumber(company_id) {
+        const { data, error } = await client.rpc('get_next_document_number', { p_company_id: company_id, p_prefix: 'TRF' });
+        assertNoError(error, 'stockTransfers.getNextNumber');
+        return data as string;
+      },
+    },
+
+    // ── Inventory Adjustments ─────────────────────────────────────────────────
+    inventoryAdjustments: {
+      async list(company_id, status) {
+        let q = client.from('inventory_adjustments').select('*').eq('company_id', company_id).order('date', { ascending: false });
+        if (status) q = q.eq('status', status);
+        const { data, error } = await q;
+        assertNoError(error, 'inventoryAdjustments.list');
+        return (data ?? []) as InventoryAdjustmentRow[];
+      },
+      async getById(id) {
+        const { data, error } = await client.from('inventory_adjustments').select('*').eq('id', id).single();
+        if (error?.code === 'PGRST116') return null;
+        assertNoError(error, 'inventoryAdjustments.getById');
+        return data as InventoryAdjustmentRow;
+      },
+      async getItems(adjustment_id) {
+        const { data, error } = await client.from('inventory_adjustment_items').select('*').eq('adjustment_id', adjustment_id);
+        assertNoError(error, 'inventoryAdjustments.getItems');
+        return (data ?? []) as AdjustmentItemRow[];
+      },
+      async create(row, items) {
+        const { data, error } = await client.from('inventory_adjustments').insert(row).select().single();
+        assertNoError(error, 'inventoryAdjustments.create');
+        const adj = data as InventoryAdjustmentRow;
+        if (items.length > 0) {
+          const { error: iErr } = await client.from('inventory_adjustment_items').insert(items.map(i => ({ ...i, adjustment_id: adj.id })));
+          assertNoError(iErr, 'inventoryAdjustments.create items');
+        }
+        return adj;
+      },
+      async confirm(adjustment_id) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (client.rpc as any)('confirm_inventory_adjustment', { p_adjustment_id: adjustment_id });
+        assertNoError(error, 'inventoryAdjustments.confirm');
+        return data as unknown as AdjustmentConfirmResult;
+      },
+      async getNextNumber(company_id) {
+        const { data, error } = await client.rpc('get_next_document_number', { p_company_id: company_id, p_prefix: 'ADJ' });
+        assertNoError(error, 'inventoryAdjustments.getNextNumber');
+        return data as string;
+      },
+    },
+
+    // ── Product Serials ───────────────────────────────────────────────────────
+    productSerials: {
+      async listByProduct(company_id, product_id) {
+        const { data, error } = await client.from('product_serials').select('*')
+          .eq('company_id', company_id).eq('product_id', product_id).order('created_at', { ascending: false });
+        assertNoError(error, 'productSerials.listByProduct');
+        return (data ?? []) as ProductSerialRow[];
+      },
+      async listByWarehouse(company_id, warehouse_id, status) {
+        let q = client.from('product_serials').select('*')
+          .eq('company_id', company_id).eq('warehouse_id', warehouse_id);
+        if (status) q = q.eq('status', status);
+        const { data, error } = await q.order('created_at', { ascending: false });
+        assertNoError(error, 'productSerials.listByWarehouse');
+        return (data ?? []) as ProductSerialRow[];
+      },
+      async create(row) {
+        const { data, error } = await client.from('product_serials').insert(row).select().single();
+        assertNoError(error, 'productSerials.create');
+        return data as ProductSerialRow;
+      },
+      async updateStatus(id, status) {
+        const { error } = await client.from('product_serials').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
+        assertNoError(error, 'productSerials.updateStatus');
       },
     },
   };

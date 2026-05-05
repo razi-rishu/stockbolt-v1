@@ -124,6 +124,25 @@ function CreditCardIcon() {
   );
 }
 
+function ArrowsIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h12M4 7l3-3M4 7l3 3M16 13H4M16 13l-3-3M16 13l-3 3" />
+    </svg>
+  );
+}
+
+function SliderIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path strokeLinecap="round" d="M3 5h14M3 10h14M3 15h14" />
+      <circle cx="7" cy="5" r="2" fill="white" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="13" cy="10" r="2" fill="white" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="8" cy="15" r="2" fill="white" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+
 function CogIcon() {
   return (
     <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -273,6 +292,14 @@ export function AppLayout({ children }: AppLayoutProps) {
       ],
     },
     {
+      title: t('nav.inventory'),
+      items: [
+        { to: '/inventory/transfers',   label: t('inventory.transfers_title'),   icon: <ArrowsIcon /> },
+        { to: '/inventory/adjustments', label: t('inventory.adjustments_title'), icon: <SliderIcon /> },
+        { to: '/inventory/stock-ledger',label: t('inventory.stock_ledger_title'),icon: <LedgerIcon /> },
+      ],
+    },
+    {
       title: t('nav.accounting'),
       items: [
         { to: '/accounting/chart-of-accounts', label: t('nav.coa'), icon: <LedgerIcon /> },
@@ -291,7 +318,12 @@ export function AppLayout({ children }: AppLayoutProps) {
         { to: '/reports/ap-aging',             label: t('reports.ap_aging'),           icon: <TruckIcon /> },
         { to: '/reports/stock-valuation',      label: t('nav.stock_valuation'),        icon: <BoxIcon /> },
         { to: '/reports/supplier-statement',   label: t('reports.supplier_statement'), icon: <ReceiptIcon /> },
-        { to: '/reports/grn-reconciliation',   label: t('reports.grn_reconciliation'), icon: <ClipboardIcon /> },
+        { to: '/reports/grn-reconciliation',         label: t('reports.grn_reconciliation'),          icon: <ClipboardIcon /> },
+        { to: '/reports/stock-movement',             label: t('reports.stock_movement'),              icon: <ArrowsIcon /> },
+        { to: '/reports/slow-moving',                label: t('reports.slow_moving'),                 icon: <BoxIcon /> },
+        { to: '/reports/reorder',                    label: t('reports.reorder'),                     icon: <TruckIcon /> },
+        { to: '/reports/stock-aging',                label: t('reports.stock_aging'),                 icon: <ChartIcon /> },
+        { to: '/reports/inventory-adjustment-report',label: t('reports.inventory_adjustment_report'), icon: <SliderIcon /> },
       ],
     },
     {

@@ -1,12 +1,12 @@
 # Current Phase
 
-**Active Phase:** Phase 6 — (TBD per Doc 5)
+**Active Phase:** Phase 7 — (Serial Numbers & remaining per Doc 5)
 
-**Status:** Phase 5 closed 2026-05-02. All 23 verification assertions passed (23/23). Verification gate: `npm run test:phase5`.
+**Status:** Phase 6 closed 2026-05-05. All 30 verification assertions passed (30/30). Verification gate: `npm run test:phase6`.
 
-**Last completed:** Phase 5 in full. Purchase Loop: 3 Supabase RPCs (confirm_grn, confirm_vendor_bill, confirm_vendor_payment, apply_vendor_advance), full adapter layer (PurchaseOrdersAPI, GoodsReceiptsAPI, VendorBillsAPI, VendorPaymentsAPI, extended ReportsAPI), PO/GRN/Bill/Payment UI with GL postings (B2–B7), 3 new report pages (AP Aging, Supplier Statement, GRN Reconciliation), EN+AR i18n, Phase 5 verification test 23/23.
+**Last completed:** Phase 6 in full. Inventory Operations: 2 Supabase RPCs (confirm_stock_transfer C1, confirm_inventory_adjustment C2/C3), full adapter layer (StockTransfersAPI, InventoryAdjustmentsAPI, ProductSerialsAPI, 5 inventory report methods), Stock Transfers + Inventory Adjustments editors with live calcAdjustmentLine, Stock Ledger viewer, 5 inventory report pages (stock-movement, slow-moving, reorder, stock-aging, inventory-adjustment-report), EN+AR i18n, Phase 6 verification test 30/30. Awaiting `supabase db push` + `supabase gen types` to remove `(client.rpc as any)` casts.
 
-**Next milestone:** Phase 6 — see Doc 5 §"PHASE 6".
+**Next milestone:** Phase 7 — see Doc 5 §"PHASE 7". Run `supabase db push` then `supabase gen types` first to finalise Phase 6 DB types.
 
 **Notes:**
 - Building from clean slate after rebuild decision
@@ -249,3 +249,45 @@ This file is read by Claude Code at the start of every session, so keep it accur
 - Phase 5 RPCs not yet in generated database.ts function type union; `client.rpc` cast to `any` for 4 new RPCs.
 - Products table has no cost_price field — PO editor defaults unit_cost to 0 when selecting a product; operator fills it in manually.
 - `purchase-calc.ts` extracted to `src/core/purchasing/` to keep purchasing arithmetic pure and unit-testable.
+
+### Phase 6 — Inventory Operations
+- Started: 2026-05-05
+- Closed: 2026-05-05
+- Definition of Done: see Document_5_Build_Phases.md, Phase 6 section
+
+**Stage progress:**
+- [x] Stage 1 — DB: 2 migrations (confirm_stock_transfer C1 GL-neutral, confirm_inventory_adjustment C2/C3 gain→4300/loss→6700); copied to main project for `supabase db push`
+- [x] Stage 2 — Core util: `src/core/inventory/inventory-calc.ts` (calcAdjustmentLine, stockAgingDays, stockAgingBucket, isReorderNeeded)
+- [x] Stage 3 — Adapter layer: StockTransfersAPI, InventoryAdjustmentsAPI, ProductSerialsAPI; ReportsAPI extended (getStockMovement, getSlowMoving, getReorderReport, getStockAging, getInventoryAdjustmentReport); selfHostedAdapter stubs
+- [x] Stage 4 — Stock Transfers UI: `stock-transfers.tsx` (list) + `transfer-editor.tsx` (create/confirm with from/to warehouse, line items)
+- [x] Stage 5 — Inventory Adjustments UI: `inventory-adjustments.tsx` (list) + `adjustment-editor.tsx` (create/confirm with live calcAdjustmentLine, summary gain/loss cards)
+- [x] Stage 6 — Stock Ledger viewer: `stock-ledger.tsx` (product+warehouse+date range filter, qty_in/qty_out columns, running_qty+value)
+- [x] Stage 7 — 5 Inventory report pages: stock-movement, slow-moving, reorder, stock-aging, inventory-adjustment-report
+- [x] Stage 8 — App layout: Inventory sidebar section (Transfers, Adjustments, Stock Ledger) + 5 new report links + ArrowsIcon + SliderIcon
+- [x] Stage 9 — Routing: 7 inventory routes + 5 report routes added to App.tsx
+- [x] Stage 10 — i18n: `inventory.*` (53 keys) + `reports.*` Phase 6 additions (14 keys) + `common.run` + `nav.inventory` in EN + AR
+- [x] Stage 11 — Verification test: `phase6-verification.test.ts` (30 pure unit assertions); `test:phase6` script added
+
+**Phase 6 DoD — final state (all passed 2026-05-05):**
+- [x] confirm_stock_transfer RPC: C1 — GL-neutral; transfer_out (direction=-1) + transfer_in (direction=+1) per item, running_qty updated
+- [x] confirm_inventory_adjustment RPC: C2/C3 — adjustment_in/out stock_ledger rows; JE DR 1300 CR 4300 for gain, JE DR 6700 CR 1300 for loss
+- [x] calcAdjustmentLine: difference = actual-system, total_value = ABS(diff)×cost, direction in/out/none
+- [x] stockAgingDays: floor diff in ms / 86_400_000, null → 0
+- [x] stockAgingBucket: 0_30 / 31_60 / 61_90 / over_90
+- [x] isReorderNeeded: qty <= minStockLevel
+- [x] Stock Transfers list + editor at `/inventory/transfers`
+- [x] Inventory Adjustments list + editor at `/inventory/adjustments`
+- [x] Stock Ledger viewer at `/inventory/stock-ledger`
+- [x] Stock Movement report at `/reports/stock-movement`
+- [x] Slow-Moving Stock report at `/reports/slow-moving`
+- [x] Reorder report at `/reports/reorder`
+- [x] Stock Aging report at `/reports/stock-aging`
+- [x] Inventory Adjustment report at `/reports/inventory-adjustment-report`
+- [x] EN + AR i18n for all Phase 6 screens
+- [x] Verification test: 30/30 assertions passed (`npm run test:phase6`)
+
+**Decisions made in Phase 6:**
+- Stock transfers are GL-neutral (C1) — company-wide MAC means no P&L impact when stock moves between own warehouses; only two stock_ledger rows per item (transfer_out dir=-1, transfer_in dir=+1).
+- Inventory adjustment can post two JEs in one call (gain JE to 4300 + loss JE to 6700) — design allows mixed-sign adjustments in a single document.
+- Phase 6 RPCs (confirm_stock_transfer, confirm_inventory_adjustment) still use `(client.rpc as any)` casts pending `supabase db push` + `supabase gen types`.
+- stockAgingDays(null) → 0 treats never-moved items as "just received" for safety (conservative — avoids false over_90 buckets on items with no ledger yet).
