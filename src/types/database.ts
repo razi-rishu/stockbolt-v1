@@ -4331,6 +4331,14 @@ export type Database = {
         Args: { p_amount: number; p_bill_id: string; p_payment_id: string }
         Returns: Json
       }
+      close_pos_session: {
+        Args: {
+          p_counted_cash: number
+          p_session_id: string
+          p_variance_reason?: string
+        }
+        Returns: Json
+      }
       complete_onboarding: { Args: { p_data: Json }; Returns: Json }
       confirm_grn: { Args: { p_grn_id: string }; Returns: Json }
       confirm_inventory_adjustment: {
@@ -4339,6 +4347,16 @@ export type Database = {
       }
       confirm_invoice: { Args: { p_invoice_id: string }; Returns: Json }
       confirm_payment: { Args: { p_payment_id: string }; Returns: Json }
+      confirm_pos_sale: {
+        Args: {
+          p_customer_id?: string
+          p_items: Json
+          p_notes?: string
+          p_payment_method: string
+          p_session_id: string
+        }
+        Returns: Json
+      }
       confirm_stock_transfer: { Args: { p_transfer_id: string }; Returns: Json }
       confirm_vendor_bill: { Args: { p_bill_id: string }; Returns: Json }
       confirm_vendor_payment: { Args: { p_payment_id: string }; Returns: Json }
@@ -4347,6 +4365,14 @@ export type Database = {
       get_next_document_number: {
         Args: { p_company_id: string; p_prefix: string }
         Returns: string
+      }
+      open_pos_session: {
+        Args: {
+          p_notes?: string
+          p_opening_cash?: number
+          p_warehouse_id: string
+        }
+        Returns: Json
       }
       post_journal_entry: { Args: { p_data: Json }; Returns: Json }
       reverse_journal_entry: {

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '@/types/database';
+import type { Database, Json } from '@/types/database';
 import type {
   DataAdapter, Company, Profile,
   CoaRow, CoaInsert, TaxRateInsert, PaymentMethodInsert, UnitInsert,
@@ -1827,7 +1827,7 @@ export function createSupabaseAdapter(
       async confirmSale(session_id, items, payment_method, customer_id, notes) {
         const { data, error } = await client.rpc('confirm_pos_sale', {
           p_session_id:     session_id,
-          p_items:          items as unknown as Parameters<typeof client.rpc>[1],
+          p_items:          items as unknown as Json,
           p_payment_method: payment_method,
           p_customer_id:    customer_id ?? null,
           p_notes:          notes ?? null,
