@@ -45,6 +45,13 @@ import type {
   PosSessionRow,
   OpenSessionResult, CloseSessionResult, PosSaleResult,
   POSSaleItem, POSSessionReportLine, DailySalesSummaryLine,
+  // Phase 8
+  BankTransferRow, BankTransferInsert, BankTransferUpdate,
+  ExpenseRow, ExpenseInsert, ExpenseUpdate,
+  PDCChequeRow,
+  BankTransferConfirmResult, ExpenseConfirmResult,
+  CreatePDCResult, PDCActionResult, PDCCreateParams,
+  DailyCashLine, BankReconLine,
 } from './adapter';
 import { apAgingBucket } from '@/core/purchasing/purchase-calc';
 import { stockAgingDays, stockAgingBucket } from '@/core/inventory/inventory-calc';
@@ -1468,6 +1475,28 @@ export function createSupabaseAdapter(
           };
         });
       },
+
+      // Phase 8 — Daily Cash Report
+      async dailyCash(company_id, date): Promise<DailyCashLine[]> {
+        const { data, error } = await (client.rpc as any)('get_daily_cash_report', {
+          p_company_id: company_id,
+          p_date: date,
+        });
+        assertNoError(error, 'reports.dailyCash');
+        return (data ?? []) as DailyCashLine[];
+      },
+
+      // Phase 8 — Bank Reconciliation
+      async bankRecon(company_id, account_id, date_from, date_to): Promise<BankReconLine[]> {
+        const { data, error } = await (client.rpc as any)('get_bank_recon', {
+          p_company_id: company_id,
+          p_account_id: account_id,
+          p_date_from: date_from,
+          p_date_to: date_to,
+        });
+        assertNoError(error, 'reports.bankRecon');
+        return (data ?? []) as BankReconLine[];
+      },
     },
 
     // ── Purchase Orders ───────────────────────────────────────────────────────
@@ -1903,6 +1932,152 @@ export function createSupabaseAdapter(
           entry.invoice_count++;
         }
         return Array.from(byDate.values());
+      },
+    },
+
+    // ── Phase 8: Bank Transfers ───────────────────────────────────────────────
+    bankTransfers: {
+      async list(company_id, params) {
+        let q = client.from('bank_transfers').select('*').eq('company_id', company_id);
+        if (params?.status)    q = q.eq('status', params.status);
+        if (params?.date_from) q = q.gte('date', params.date_from);
+        if (params?.date_to)   q = q.lte('date', params.date_to);
+        const { data, error } = await q.order('date', { ascending: false });
+        assertNoError(error, 'bankTransfers.list');
+        return (data ?? []) as BankTransferRow[];
+      },
+      async getById(id) {
+        const { data, error } = await client.from('bank_transfers').select('*').eq('id', id).single();
+        assertNoError(error, 'bankTransfers.getById');
+        return data as BankTransferRow;
+      },
+      async create(data) {
+        const { data: row, error } = await client.from('bank_transfers').insert(data).select().single();
+        assertNoError(error, 'bankTransfers.create');
+        return row as BankTransferRow;
+      },
+      async update(id, data) {
+        const { data: row, error } = await client.from('bank_transfers').update(data).eq('id', id).select().single();
+        assertNoError(error, 'bankTransfers.update');
+        return row as BankTransferRow;
+      },
+      async confirm(id) {
+        const { data, error } = await (client.rpc as any)('confirm_bank_transfer', { p_transfer_id: id });
+        assertNoError(error, 'bankTransfers.confirm');
+        return data as unknown as BankTransferConfirmResult;
+      },
+      async void(id, reason) {
+        const { data, error } = await (client.rpc as any)('void_bank_transfer', { p_transfer_id: id, p_void_reason: reason ?? null });
+        assertNoError(error, 'bankTransfers.void');
+        return;
+      },
+      async getNextNumber(company_id) {
+        const { data, error } = await client.rpc('get_next_document_number', { p_company_id: company_id, p_prefix: 'TRF' });
+        assertNoError(error, 'bankTransfers.getNextNumber');
+        return data as string;
+      },
+    },
+
+    // ── Phase 8: Expenses ─────────────────────────────────────────────────────
+    expenses: {
+      async list(company_id, params) {
+        let q = client.from('expenses').select('*').eq('company_id', company_id);
+        if (params?.status)    q = q.eq('status', params.status);
+        if (params?.date_from) q = q.gte('date', params.date_from);
+        if (params?.date_to)   q = q.lte('date', params.date_to);
+        const { data, error } = await q.order('date', { ascending: false });
+        assertNoError(error, 'expenses.list');
+        return (data ?? []) as ExpenseRow[];
+      },
+      async getById(id) {
+        const { data, error } = await client.from('expenses').select('*').eq('id', id).single();
+        assertNoError(error, 'expenses.getById');
+        return data as ExpenseRow;
+      },
+      async create(data) {
+        const { data: row, error } = await client.from('expenses').insert(data).select().single();
+        assertNoError(error, 'expenses.create');
+        return row as ExpenseRow;
+      },
+      async update(id, data) {
+        const { data: row, error } = await client.from('expenses').update(data).eq('id', id).select().single();
+        assertNoError(error, 'expenses.update');
+        return row as ExpenseRow;
+      },
+      async confirm(id) {
+        const { data, error } = await (client.rpc as any)('confirm_expense', { p_expense_id: id });
+        assertNoError(error, 'expenses.confirm');
+        return data as unknown as ExpenseConfirmResult;
+      },
+      async void(id, reason) {
+        const { data, error } = await (client.rpc as any)('void_expense', { p_expense_id: id, p_void_reason: reason ?? null });
+        assertNoError(error, 'expenses.void');
+        return;
+      },
+      async getNextNumber(company_id) {
+        const { data, error } = await client.rpc('get_next_document_number', { p_company_id: company_id, p_prefix: 'EXP' });
+        assertNoError(error, 'expenses.getNextNumber');
+        return data as string;
+      },
+    },
+
+    // ── Phase 8: PDC Cheques ──────────────────────────────────────────────────
+    pdcCheques: {
+      async list(company_id, params) {
+        let q = client.from('pdc_cheques').select('*').eq('company_id', company_id);
+        if (params?.type)      q = q.eq('type', params.type);
+        if (params?.status)    q = q.eq('status', params.status);
+        if (params?.date_from) q = q.gte('due_date', params.date_from);
+        if (params?.date_to)   q = q.lte('due_date', params.date_to);
+        const { data, error } = await q.order('due_date', { ascending: false });
+        assertNoError(error, 'pdcCheques.list');
+        return (data ?? []) as PDCChequeRow[];
+      },
+      async getById(id) {
+        const { data, error } = await client.from('pdc_cheques').select('*').eq('id', id).single();
+        assertNoError(error, 'pdcCheques.getById');
+        return data as PDCChequeRow;
+      },
+      async create(params: PDCCreateParams) {
+        const { data, error } = await (client.rpc as any)('create_pdc', {
+          p_type:               params.type,
+          p_contact_id:         params.contact_id,
+          p_cheque_number:      params.cheque_number,
+          p_bank_name:          params.bank_name ?? null,
+          p_amount:             params.amount,
+          p_currency:           params.currency,
+          p_issue_date:         params.issue_date,
+          p_due_date:           params.due_date,
+          p_deposit_account_id: params.deposit_account_id ?? null,
+          p_linked_payment_id:  params.linked_payment_id ?? null,
+          p_is_advance:         params.is_advance ?? false,
+          p_notes:              params.notes ?? null,
+        });
+        assertNoError(error, 'pdcCheques.create');
+        return data as unknown as CreatePDCResult;
+      },
+      async deposit(pdc_id) {
+        const { data, error } = await (client.rpc as any)('deposit_pdc', { p_pdc_id: pdc_id });
+        assertNoError(error, 'pdcCheques.deposit');
+        return data as unknown as PDCActionResult;
+      },
+      async clear(pdc_id, deposit_account_id) {
+        const { data, error } = await (client.rpc as any)('clear_pdc', {
+          p_pdc_id:             pdc_id,
+          p_deposit_account_id: deposit_account_id ?? null,
+        });
+        assertNoError(error, 'pdcCheques.clear');
+        return data as unknown as PDCActionResult;
+      },
+      async bounce(pdc_id) {
+        const { data, error } = await (client.rpc as any)('bounce_pdc', { p_pdc_id: pdc_id });
+        assertNoError(error, 'pdcCheques.bounce');
+        return data as unknown as PDCActionResult;
+      },
+      async cancel(pdc_id) {
+        const { data, error } = await (client.rpc as any)('cancel_pdc', { p_pdc_id: pdc_id });
+        assertNoError(error, 'pdcCheques.cancel');
+        return data as unknown as PDCActionResult;
       },
     },
   };

@@ -478,6 +478,9 @@ export interface ReportsAPI {
   getReorderReport(company_id: string): Promise<ReorderLine[]>;
   getStockAging(company_id: string, as_of: string): Promise<StockAgingLine[]>;
   getInventoryAdjustmentReport(company_id: string, from: string, to: string): Promise<InventoryAdjustmentReportLine[]>;
+  // Phase 8 reports
+  dailyCash(company_id: string, date: string): Promise<DailyCashLine[]>;
+  bankRecon(company_id: string, account_id: string, date_from: string, date_to: string): Promise<BankReconLine[]>;
 }
 
 // ── Phase 5 row types ─────────────────────────────────────────────────────────
@@ -841,6 +844,90 @@ export interface PosAPI {
   getDailySalesSummary(company_id: string, params: { date_from: string; date_to: string }): Promise<DailySalesSummaryLine[]>;
 }
 
+// ── Phase 8 row types ─────────────────────────────────────────────────────────
+export type BankTransferRow = Tables['bank_transfers']['Row'];
+export type BankTransferInsert = Omit<Tables['bank_transfers']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type BankTransferUpdate = Tables['bank_transfers']['Update'];
+
+export type ExpenseRow = Tables['expenses']['Row'];
+export type ExpenseInsert = Omit<Tables['expenses']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type ExpenseUpdate = Tables['expenses']['Update'];
+
+export type PDCChequeRow = Tables['pdc_cheques']['Row'];
+export type PDCChequeInsert = Omit<Tables['pdc_cheques']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+
+// Phase 8 result types
+export interface BankTransferConfirmResult { transfer_id: string; journal_entry_id: string }
+export interface ExpenseConfirmResult { expense_id: string; journal_entry_id: string }
+export interface CreatePDCResult { pdc_id: string; pdc_number: string; journal_entry_id: string }
+export interface PDCActionResult { pdc_id: string; status: string; journal_entry_id?: string }
+
+// Phase 8 report line types
+export interface DailyCashLine {
+  account_id:       string;
+  account_code:     string;
+  account_name:     string;
+  opening_balance:  number;
+  total_in:         number;
+  total_out:        number;
+  closing_balance:  number;
+}
+export interface BankReconLine {
+  date:             string;
+  je_number:        string;
+  source_type:      string;
+  description:      string;
+  debit:            number;
+  credit:           number;
+  running_balance:  number;
+}
+
+// Phase 8 API interfaces
+export interface BankTransfersAPI {
+  list(company_id: string, params?: { status?: string; date_from?: string; date_to?: string }): Promise<BankTransferRow[]>;
+  getById(id: string): Promise<BankTransferRow>;
+  create(data: BankTransferInsert): Promise<BankTransferRow>;
+  update(id: string, data: BankTransferUpdate): Promise<BankTransferRow>;
+  confirm(id: string): Promise<BankTransferConfirmResult>;
+  void(id: string, reason?: string): Promise<void>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface ExpensesAPI {
+  list(company_id: string, params?: { status?: string; date_from?: string; date_to?: string }): Promise<ExpenseRow[]>;
+  getById(id: string): Promise<ExpenseRow>;
+  create(data: ExpenseInsert): Promise<ExpenseRow>;
+  update(id: string, data: ExpenseUpdate): Promise<ExpenseRow>;
+  confirm(id: string): Promise<ExpenseConfirmResult>;
+  void(id: string, reason?: string): Promise<void>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface PDCCreateParams {
+  type:                'received' | 'issued';
+  contact_id:          string;
+  cheque_number:       string;
+  bank_name?:          string;
+  amount:              number;
+  currency:            string;
+  issue_date:          string;
+  due_date:            string;
+  deposit_account_id?: string;
+  linked_payment_id?:  string;
+  is_advance?:         boolean;
+  notes?:              string;
+}
+
+export interface PDCChequesAPI {
+  list(company_id: string, params?: { type?: 'received' | 'issued'; status?: string; date_from?: string; date_to?: string }): Promise<PDCChequeRow[]>;
+  getById(id: string): Promise<PDCChequeRow>;
+  create(params: PDCCreateParams): Promise<CreatePDCResult>;
+  deposit(pdc_id: string): Promise<PDCActionResult>;
+  clear(pdc_id: string, deposit_account_id?: string): Promise<PDCActionResult>;
+  bounce(pdc_id: string): Promise<PDCActionResult>;
+  cancel(pdc_id: string): Promise<PDCActionResult>;
+}
+
 // ── Root adapter ──────────────────────────────────────────────────────────────
 export interface DataAdapter {
   auth: AuthAPI;
@@ -878,4 +965,8 @@ export interface DataAdapter {
   productSerials: ProductSerialsAPI;
   // Phase 7
   pos: PosAPI;
+  // Phase 8
+  bankTransfers: BankTransfersAPI;
+  expenses: ExpensesAPI;
+  pdcCheques: PDCChequesAPI;
 }

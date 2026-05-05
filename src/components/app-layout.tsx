@@ -316,6 +316,15 @@ export function AppLayout({ children }: AppLayoutProps) {
       ],
     },
     {
+      title: t('nav.banking'),
+      items: [
+        { to: '/banking/transfers',    label: t('banking.transfers_title'),    icon: <ArrowsIcon /> },
+        { to: '/banking/expenses',     label: t('banking.expenses_title'),     icon: <ReceiptIcon /> },
+        { to: '/banking/pdc-received', label: t('banking.pdc_received_title'), icon: <CreditCardIcon /> },
+        { to: '/banking/pdc-issued',   label: t('banking.pdc_issued_title'),   icon: <CreditCardIcon /> },
+      ],
+    },
+    {
       title: t('nav.accounting'),
       items: [
         { to: '/accounting/chart-of-accounts', label: t('nav.coa'), icon: <LedgerIcon /> },
@@ -342,6 +351,8 @@ export function AppLayout({ children }: AppLayoutProps) {
         { to: '/reports/inventory-adjustment-report',label: t('reports.inventory_adjustment_report'), icon: <SliderIcon /> },
         { to: '/reports/pos-session',                label: t('reports.pos_session_report'),          icon: <RegisterIcon /> },
         { to: '/reports/daily-sales',                label: t('reports.daily_sales_summary'),         icon: <ChartIcon /> },
+        { to: '/reports/daily-cash',                 label: t('reports.daily_cash_title'),            icon: <ChartIcon /> },
+        { to: '/reports/bank-recon',                 label: t('reports.bank_recon_title'),            icon: <LedgerIcon /> },
       ],
     },
     {

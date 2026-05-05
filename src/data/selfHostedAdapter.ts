@@ -179,6 +179,8 @@ export function createSelfHostedAdapter(): DataAdapter {
       getReorderReport:           () => notImplemented('reports.getReorderReport'),
       getStockAging:              () => notImplemented('reports.getStockAging'),
       getInventoryAdjustmentReport: () => notImplemented('reports.getInventoryAdjustmentReport'),
+      dailyCash: () => notImplemented('reports.dailyCash'),
+      bankRecon: () => notImplemented('reports.bankRecon'),
     },
     purchaseOrders: {
       list:          () => notImplemented('purchaseOrders.list'),
@@ -249,6 +251,33 @@ export function createSelfHostedAdapter(): DataAdapter {
       listSessions:         () => notImplemented('pos.listSessions'),
       getPOSSessionReport:  () => notImplemented('pos.getPOSSessionReport'),
       getDailySalesSummary: () => notImplemented('pos.getDailySalesSummary'),
+    },
+    bankTransfers: {
+      list:          () => notImplemented('bankTransfers.list'),
+      getById:       () => notImplemented('bankTransfers.getById'),
+      create:        () => notImplemented('bankTransfers.create'),
+      update:        () => notImplemented('bankTransfers.update'),
+      confirm:       () => notImplemented('bankTransfers.confirm'),
+      void:          () => notImplemented('bankTransfers.void'),
+      getNextNumber: () => notImplemented('bankTransfers.getNextNumber'),
+    },
+    expenses: {
+      list:          () => notImplemented('expenses.list'),
+      getById:       () => notImplemented('expenses.getById'),
+      create:        () => notImplemented('expenses.create'),
+      update:        () => notImplemented('expenses.update'),
+      confirm:       () => notImplemented('expenses.confirm'),
+      void:          () => notImplemented('expenses.void'),
+      getNextNumber: () => notImplemented('expenses.getNextNumber'),
+    },
+    pdcCheques: {
+      list:    () => notImplemented('pdcCheques.list'),
+      getById: () => notImplemented('pdcCheques.getById'),
+      create:  () => notImplemented('pdcCheques.create'),
+      deposit: () => notImplemented('pdcCheques.deposit'),
+      clear:   () => notImplemented('pdcCheques.clear'),
+      bounce:  () => notImplemented('pdcCheques.bounce'),
+      cancel:  () => notImplemented('pdcCheques.cancel'),
     },
   };
 }

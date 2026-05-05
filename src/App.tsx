@@ -92,6 +92,18 @@ const POSScreenPage                   = lazy(() => import('@/modules/pos/pos-scr
 const POSSessionReportPage            = lazy(() => import('@/modules/reports/pos-session'));
 const DailySalesReportPage            = lazy(() => import('@/modules/reports/daily-sales'));
 
+// Phase 8 — Banking & PDC
+const BankTransfersPage               = lazy(() => import('@/modules/banking/bank-transfers'));
+const BankTransferEditorPage          = lazy(() => import('@/modules/banking/bank-transfer-editor'));
+const ExpensesPage                    = lazy(() => import('@/modules/banking/expenses'));
+const ExpenseEditorPage               = lazy(() => import('@/modules/banking/expense-editor'));
+const PDCReceivedPage                 = lazy(() => import('@/modules/banking/pdc-received'));
+const PDCIssuedPage                   = lazy(() => import('@/modules/banking/pdc-issued'));
+
+// Phase 8 — Banking reports
+const DailyCashPage                   = lazy(() => import('@/modules/reports/daily-cash'));
+const BankReconPage                   = lazy(() => import('@/modules/reports/bank-recon'));
+
 function Loading() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-surface-page">
@@ -218,6 +230,20 @@ function AppRoutes() {
               {/* Phase 7 — POS reports */}
               <Route path="/reports/pos-session"                element={<POSSessionReportPage />} />
               <Route path="/reports/daily-sales"                element={<DailySalesReportPage />} />
+
+              {/* Phase 8 — Banking & PDC */}
+              <Route path="/banking/transfers/new"              element={<BankTransferEditorPage />} />
+              <Route path="/banking/transfers/:id"              element={<BankTransferEditorPage />} />
+              <Route path="/banking/transfers"                  element={<BankTransfersPage />} />
+              <Route path="/banking/expenses/new"               element={<ExpenseEditorPage />} />
+              <Route path="/banking/expenses/:id"               element={<ExpenseEditorPage />} />
+              <Route path="/banking/expenses"                   element={<ExpensesPage />} />
+              <Route path="/banking/pdc-received"               element={<PDCReceivedPage />} />
+              <Route path="/banking/pdc-issued"                 element={<PDCIssuedPage />} />
+
+              {/* Phase 8 — Banking reports */}
+              <Route path="/reports/daily-cash"                 element={<DailyCashPage />} />
+              <Route path="/reports/bank-recon"                 element={<BankReconPage />} />
             </Route>
           </Route>
         </Route>

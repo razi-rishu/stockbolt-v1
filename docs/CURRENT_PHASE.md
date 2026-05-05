@@ -1,12 +1,12 @@
 # Current Phase
 
-**Active Phase:** Phase 8 — (Serial Numbers & remaining per Doc 5)
+**Active Phase:** Phase 9 — (next per Doc 5)
 
-**Status:** Phase 7 closed 2026-05-05. All 18 verification assertions passed (18/18). Verification gate: `npm run test:phase7`.
+**Status:** Phase 8 closed 2026-05-05. All 32 verification assertions passed (32/32). Verification gate: `npm run test:phase8`.
 
-**Last completed:** Phase 7 in full. POS Counter Sales: 2 Supabase RPCs (open_pos_session, close_pos_session, confirm_pos_sale A2/A3/A4 + COGS A1.b), PosAPI with 8 methods, pos-screen.tsx (full-viewport two-panel UI with F2/F4/Esc shortcuts, session lifecycle, product grid, cart, payment modal), POS Session Report, Daily Sales Summary report, nav wiring, EN+AR i18n (pos.* section + reports.* POS keys), Phase 7 verification test 18/18. Awaiting `supabase db push` + `supabase gen types` to remove `(client.rpc as any)` casts for POS RPCs.
+**Last completed:** Phase 8 — Banking & PDC. 4 Supabase RPCs (confirm_bank_transfer D1, void_bank_transfer, confirm_expense D3, void_expense, create_pdc E1/E5, deposit_pdc E2, clear_pdc E3/E6, bounce_pdc E4, cancel_pdc); 2 report RPCs (get_daily_cash_report G2, get_bank_recon G4). UI: BankTransfers list+editor, Expenses list+editor, PDCReceived, PDCIssued. Reports: DailyCash, BankRecon. 4 migrations copied to main project. Banking nav section + 2 report links. EN+AR i18n (banking.* + reports.* banking keys). Phase 8 verification test 32/32.
 
-**Next milestone:** Phase 8 — Run `supabase db push` in main project to apply Phase 7 migrations, then `supabase gen types` to regenerate types and remove `(client.rpc as any)` casts.
+**Next milestone:** Run `supabase db push` in main project to apply Phase 8 migrations (20260505000016–20260505000019), then `supabase gen types` to regenerate database.ts, copy back to worktree, remove `(client.rpc as any)` casts for all Phase 8 RPCs.
 
 **Notes:**
 - Building from clean slate after rebuild decision
@@ -328,3 +328,50 @@ This file is read by Claude Code at the start of every session, so keep it accur
 - `expected_cash` for session close only counts `pos_cash` invoices; card/credit do not affect the physical cash drawer.
 - getDailySalesSummary groups invoices by date in TypeScript (not DB) — consistent with other client-side report aggregations; acceptable for v1 volumes.
 - Phase 7 POS RPCs use `(client.rpc as any)` casts until `supabase db push` + `supabase gen types` is run from the main project.
+
+### Phase 8 — Banking & PDC
+- Started: 2026-05-05
+- Closed: 2026-05-05
+- Definition of Done: see Document_5_Build_Phases.md, Phase 8 section
+
+**Stage progress:**
+- [x] Stage 1 — DB: 4 migrations (20260505000016–20260505000019): confirm/void_bank_transfer D1, confirm/void_expense D3, create/deposit/clear/bounce/cancel_pdc E1–E6, get_daily_cash_report G2, get_bank_recon G4
+- [x] Stage 2 — Adapter layer: BankTransfersAPI, ExpensesAPI, PDCChequesAPI (7 methods each); DailyCashLine + BankReconLine types; reports.dailyCash + reports.bankRecon methods; supabaseAdapter + selfHostedAdapter updated
+- [x] Stage 3 — Bank Transfers UI: `bank-transfers.tsx` (list) + `bank-transfer-editor.tsx` (create/confirm/void; from/to excludes same account)
+- [x] Stage 4 — Expenses UI: `expenses.tsx` (list) + `expense-editor.tsx` (create/confirm/void; expense COA filtered to 5xxx/6xxx; live total; optional supplier + void-reason section)
+- [x] Stage 5 — PDC Received UI: `pdc-received.tsx` (list with inline status actions: deposit/clear/bounce/cancel; Create PDC modal with is_advance checkbox; Clear modal)
+- [x] Stage 6 — PDC Issued UI: `pdc-issued.tsx` (list with clear/cancel actions; Create modal with supplier select; no deposit/bounce for issued cheques)
+- [x] Stage 7 — Reports: `daily-cash.tsx` (per-account opening/in/out/closing summary cards + table) + `bank-recon.tsx` (account+date range selector; running balance worksheet)
+- [x] Stage 8 — App layout: Banking sidebar section (Transfers, Expenses, PDC Received, PDC Issued) + 2 new report links
+- [x] Stage 9 — Routing: 8 banking routes + 2 report routes added to App.tsx
+- [x] Stage 10 — i18n: `banking.*` section (60 keys) + `reports.*` banking additions (18 keys) + `nav.banking` in EN + AR
+- [x] Stage 11 — Verification test: `phase8-verification.test.ts` (32 pure unit assertions); `test:phase8` script added
+
+**Phase 8 DoD — final state (all passed 2026-05-05):**
+- [x] confirm_bank_transfer RPC: D1 — DR to_account COA, CR from_account COA; source_type='bank_transfer'; period lock guard
+- [x] void_bank_transfer RPC: reverses D1 JE; marks original is_reversed=TRUE; status='void'
+- [x] confirm_expense RPC: D3 — DR expense_account, DR 1500 Input VAT (if tax_amount>0), CR paid_from COA; source_type='expense'
+- [x] void_expense RPC: reverses D3 JE; records void_reason/voided_at/voided_by; status='void'
+- [x] create_pdc RPC: received E1 (DR 1250, CR 1200 or 2400 if is_advance); issued E5 (DR 2100, CR 2450)
+- [x] deposit_pdc RPC: E2 — status change only (pending→deposited), no GL
+- [x] clear_pdc RPC: received E3 (DR bank COA, CR 1250); issued E6 (DR 2450, CR bank COA)
+- [x] bounce_pdc RPC: E4 — DR 1260 Bounced Cheques, CR 1250 PDC Receivable (received only)
+- [x] cancel_pdc RPC: reverses creation JE; status='cancelled' (accepted from pending or deposited)
+- [x] get_daily_cash_report RPC: G2 — per-bank-account opening/in/out/closing for a given date
+- [x] get_bank_recon RPC: G4 — GL line worksheet with running balance for account+date range
+- [x] Bank Transfers list + editor at `/banking/transfers`
+- [x] Expenses list + editor at `/banking/expenses`
+- [x] PDC Received at `/banking/pdc-received`
+- [x] PDC Issued at `/banking/pdc-issued`
+- [x] Daily Cash Report at `/reports/daily-cash`
+- [x] Bank Reconciliation at `/reports/bank-recon`
+- [x] EN + AR i18n for all Phase 8 screens
+- [x] Verification test: 32/32 assertions passed (`npm run test:phase8`)
+
+**Decisions made in Phase 8:**
+- PDC E2 (deposit) is a status-only change with no GL — the cheque is physically deposited but clearing is the settlement event (E3). This matches Gulf banking practice.
+- PDC advance received credits 2400 Customer Advances (not 1200 AR) — the `is_advance` flag routes the GL; UI exposes this as a checkbox.
+- cancel_pdc accepts status IN ('pending','deposited') — a deposited-but-not-cleared cheque can still be cancelled (reversed before settlement).
+- get_daily_cash_report uses bank_accounts.coa_account_id to find the relevant COA accounts — only bank accounts with a linked COA ID appear in the report.
+- get_bank_recon uses a window function (SUM OVER ROWS UNBOUNDED PRECEDING) for running balance, starting from the pre-period opening balance.
+- Phase 8 RPCs (create_pdc etc.) use `(client.rpc as any)` casts until `supabase db push` + `supabase gen types` is run from the main project.
