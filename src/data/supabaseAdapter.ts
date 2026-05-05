@@ -44,10 +44,10 @@ import type {
   // Phase 7
   PosSessionRow,
   OpenSessionResult, CloseSessionResult, PosSaleResult,
-  POSSaleItem, POSSessionReportLine, DailySalesSummaryLine,
+  POSSessionReportLine, DailySalesSummaryLine,
   // Phase 8
-  BankTransferRow, BankTransferInsert, BankTransferUpdate,
-  ExpenseRow, ExpenseInsert, ExpenseUpdate,
+  BankTransferRow,
+  ExpenseRow,
   PDCChequeRow,
   BankTransferConfirmResult, ExpenseConfirmResult,
   CreatePDCResult, PDCActionResult, PDCCreateParams,
@@ -1325,31 +1325,34 @@ export function createSupabaseAdapter(
       },
 
       // Phase 6 reports ──────────────────────────────────────────────────────
-      async getStockMovement(company_id, product_id, from, to): Promise<StockMovementLine[]> {
-        const { data, error } = await client
+      async getStockMovement(company_id, params): Promise<StockMovementLine[]> {
+        let q = client
           .from('stock_ledger')
-          .select('product_id, warehouse_id, date, type, direction, quantity, unit_cost, running_qty, products(name, sku), warehouses(name)')
+          .select('product_id, warehouse_id, date, type, direction, quantity, unit_cost, running_qty, running_avg_cost, products(name, sku), warehouses(name)')
           .eq('company_id', company_id)
-          .eq('product_id', product_id)
-          .gte('date', from)
-          .lte('date', to)
-          .order('created_at');
+          .gte('date', params.date_from)
+          .lte('date', params.date_to);
+        if (params.product_id)   q = q.eq('product_id',   params.product_id);
+        if (params.warehouse_id) q = q.eq('warehouse_id', params.warehouse_id);
+        const { data, error } = await q.order('created_at');
         assertNoError(error, 'reports.getStockMovement');
         return (data ?? []).map(r => {
           const p = r.products as unknown as { name: string; sku: string } | null;
           const w = r.warehouses as unknown as { name: string } | null;
+          const qty = Number(r.running_qty);
+          const cost = Number(r.unit_cost);
           return {
             product_id: r.product_id, product_name: p?.name ?? '', sku: p?.sku ?? '',
             warehouse_id: r.warehouse_id, warehouse_name: w?.name ?? '',
-            date: r.date as string, type: r.type, direction: Number(r.direction),
-            quantity: Number(r.quantity), unit_cost: Number(r.unit_cost),
-            running_qty: Number(r.running_qty),
+            date: r.date as string, movement_type: r.type ?? '', direction: Number(r.direction),
+            quantity: Number(r.quantity), unit_cost: cost,
+            running_qty: qty, running_value: qty * Number(r.running_avg_cost ?? 0),
           };
         });
       },
 
-      async getSlowMoving(company_id, threshold_days, as_of): Promise<SlowMovingLine[]> {
-        // Get latest stock_ledger row per product+warehouse
+      async getSlowMoving(company_id, params): Promise<SlowMovingLine[]> {
+        const today = new Date().toISOString().slice(0, 10);
         const { data, error } = await client
           .from('stock_ledger')
           .select('product_id, warehouse_id, running_qty, running_avg_cost, date, products(name, sku), warehouses(name)')
@@ -1365,26 +1368,26 @@ export function createSupabaseAdapter(
           seen.add(key);
           const qty = Number(row.running_qty);
           if (qty <= 0) continue;
-          const days = stockAgingDays(row.date as string, as_of);
-          if (days < threshold_days) continue;
+          const days = stockAgingDays(row.date as string, today);
+          if (days < params.threshold_days) continue;
+          const cost = Number(row.running_avg_cost ?? 0);
           const p = row.products as unknown as { name: string; sku: string } | null;
           const w = row.warehouses as unknown as { name: string } | null;
           lines.push({
             product_id: row.product_id, product_name: p?.name ?? '', sku: p?.sku ?? '',
             warehouse_id: row.warehouse_id, warehouse_name: w?.name ?? '',
-            current_qty: qty, last_movement_date: row.date as string,
-            days_since_movement: days,
-            stock_value: qty * Number(row.running_avg_cost),
+            qty_on_hand: qty, unit_cost: cost, stock_value: qty * cost,
+            last_movement_date: row.date as string,
+            days_idle: days, aging_bucket: stockAgingBucket(days),
           });
         }
-        return lines.sort((a, b) => b.days_since_movement - a.days_since_movement);
+        return lines.sort((a, b) => b.days_idle - a.days_idle);
       },
 
       async getReorderReport(company_id): Promise<ReorderLine[]> {
-        // Get current qty per product+warehouse; join products for min_stock_level
         const { data, error } = await client
           .from('stock_ledger')
-          .select('product_id, warehouse_id, running_qty, products(name, sku, min_stock_level), warehouses(name)')
+          .select('product_id, warehouse_id, running_qty, running_avg_cost, products(name, sku, min_stock_level), warehouses(name)')
           .eq('company_id', company_id)
           .order('created_at', { ascending: false });
         assertNoError(error, 'reports.getReorderReport');
@@ -1403,18 +1406,19 @@ export function createSupabaseAdapter(
           lines.push({
             product_id: row.product_id, product_name: p?.name ?? '', sku: p?.sku ?? '',
             warehouse_id: row.warehouse_id, warehouse_name: w?.name ?? '',
-            current_qty: qty, min_stock_level: min, shortage: min - qty,
+            qty_on_hand: qty, unit_cost: Number(row.running_avg_cost ?? 0),
+            min_stock_level: min, shortage: min - qty,
           });
         }
         return lines.sort((a, b) => b.shortage - a.shortage);
       },
 
-      async getStockAging(company_id, as_of): Promise<StockAgingLine[]> {
+      async getStockAging(company_id): Promise<StockAgingLine[]> {
+        const today = new Date().toISOString().slice(0, 10);
         const { data, error } = await client
           .from('stock_ledger')
           .select('product_id, warehouse_id, running_qty, running_avg_cost, date, products(name, sku), warehouses(name)')
           .eq('company_id', company_id)
-          .lte('date', as_of)
           .order('created_at', { ascending: false });
         assertNoError(error, 'reports.getStockAging');
 
@@ -1426,38 +1430,32 @@ export function createSupabaseAdapter(
           seen.add(key);
           const qty = Number(row.running_qty);
           if (qty <= 0) continue;
-          const cost = Number(row.running_avg_cost);
-          const days = stockAgingDays(row.date as string, as_of);
-          const bucket = stockAgingBucket(days);
-          const value = qty * cost;
+          const cost = Number(row.running_avg_cost ?? 0);
+          const days = stockAgingDays(row.date as string, today);
           const p = row.products as unknown as { name: string; sku: string } | null;
           const w = row.warehouses as unknown as { name: string } | null;
           lines.push({
             product_id: row.product_id, product_name: p?.name ?? '', sku: p?.sku ?? '',
             warehouse_id: row.warehouse_id, warehouse_name: w?.name ?? '',
-            current_qty: qty, unit_cost: cost,
-            bucket_0_30:    bucket === '0_30'    ? value : 0,
-            bucket_31_60:   bucket === '31_60'   ? value : 0,
-            bucket_61_90:   bucket === '61_90'   ? value : 0,
-            bucket_over_90: bucket === 'over_90' ? value : 0,
-            total_value: value,
+            qty_on_hand: qty, unit_cost: cost, stock_value: qty * cost,
+            last_movement_date: row.date as string,
+            days_idle: days, aging_bucket: stockAgingBucket(days),
           });
         }
         return lines;
       },
 
-      async getInventoryAdjustmentReport(company_id, from, to): Promise<InventoryAdjustmentReportLine[]> {
+      async getInventoryAdjustmentReport(company_id, params): Promise<InventoryAdjustmentReportLine[]> {
         const { data, error } = await client
           .from('inventory_adjustments')
-          .select('id, adjustment_number, date, reason, warehouses(name), inventory_adjustment_items(difference, unit_cost)')
+          .select('id, adjustment_number, date, reason, warehouse_id, inventory_adjustment_items(difference, unit_cost)')
           .eq('company_id', company_id)
           .eq('status', 'confirmed')
-          .gte('date', from)
-          .lte('date', to)
+          .gte('date', params.date_from)
+          .lte('date', params.date_to)
           .order('date');
         assertNoError(error, 'reports.getInventoryAdjustmentReport');
         return (data ?? []).map(adj => {
-          const w = adj.warehouses as unknown as { name: string } | null;
           const items = adj.inventory_adjustment_items as unknown as { difference: number; unit_cost: number | null }[] | null ?? [];
           const totalGain = items.filter(i => Number(i.difference) > 0)
             .reduce((s, i) => s + Number(i.difference) * Number(i.unit_cost ?? 0), 0);
@@ -1467,7 +1465,7 @@ export function createSupabaseAdapter(
             adjustment_id: adj.id,
             adjustment_number: adj.adjustment_number,
             date: adj.date as string,
-            warehouse_name: w?.name ?? '',
+            warehouse_id: adj.warehouse_id ?? '',
             reason: adj.reason,
             total_gain: totalGain,
             total_loss: totalLoss,
@@ -1478,7 +1476,7 @@ export function createSupabaseAdapter(
 
       // Phase 8 — Daily Cash Report
       async dailyCash(company_id, date): Promise<DailyCashLine[]> {
-        const { data, error } = await (client.rpc as any)('get_daily_cash_report', {
+        const { data, error } = await client.rpc('get_daily_cash_report', {
           p_company_id: company_id,
           p_date: date,
         });
@@ -1488,7 +1486,7 @@ export function createSupabaseAdapter(
 
       // Phase 8 — Bank Reconciliation
       async bankRecon(company_id, account_id, date_from, date_to): Promise<BankReconLine[]> {
-        const { data, error } = await (client.rpc as any)('get_bank_recon', {
+        const { data, error } = await client.rpc('get_bank_recon', {
           p_company_id: company_id,
           p_account_id: account_id,
           p_date_from: date_from,
@@ -1848,7 +1846,7 @@ export function createSupabaseAdapter(
         const { data, error } = await client.rpc('close_pos_session', {
           p_session_id:       session_id,
           p_counted_cash:     counted_cash,
-          p_variance_reason:  variance_reason ?? null,
+          p_variance_reason:  variance_reason ?? undefined,
         });
         assertNoError(error, 'pos.closeSession');
         return data as unknown as CloseSessionResult;
@@ -1858,8 +1856,8 @@ export function createSupabaseAdapter(
           p_session_id:     session_id,
           p_items:          items as unknown as Json,
           p_payment_method: payment_method,
-          p_customer_id:    customer_id ?? null,
-          p_notes:          notes ?? null,
+          p_customer_id:    customer_id ?? undefined,
+          p_notes:          notes ?? undefined,
         });
         assertNoError(error, 'pos.confirmSale');
         return data as unknown as PosSaleResult;
@@ -1962,12 +1960,12 @@ export function createSupabaseAdapter(
         return row as BankTransferRow;
       },
       async confirm(id) {
-        const { data, error } = await (client.rpc as any)('confirm_bank_transfer', { p_transfer_id: id });
+        const { data, error } = await client.rpc('confirm_bank_transfer', { p_transfer_id: id });
         assertNoError(error, 'bankTransfers.confirm');
         return data as unknown as BankTransferConfirmResult;
       },
       async void(id, reason) {
-        const { data, error } = await (client.rpc as any)('void_bank_transfer', { p_transfer_id: id, p_void_reason: reason ?? null });
+        const { error } = await client.rpc('void_bank_transfer', { p_transfer_id: id, p_void_reason: reason ?? undefined });
         assertNoError(error, 'bankTransfers.void');
         return;
       },
@@ -2005,12 +2003,12 @@ export function createSupabaseAdapter(
         return row as ExpenseRow;
       },
       async confirm(id) {
-        const { data, error } = await (client.rpc as any)('confirm_expense', { p_expense_id: id });
+        const { data, error } = await client.rpc('confirm_expense', { p_expense_id: id });
         assertNoError(error, 'expenses.confirm');
         return data as unknown as ExpenseConfirmResult;
       },
       async void(id, reason) {
-        const { data, error } = await (client.rpc as any)('void_expense', { p_expense_id: id, p_void_reason: reason ?? null });
+        const { error } = await client.rpc('void_expense', { p_expense_id: id, p_void_reason: reason ?? undefined });
         assertNoError(error, 'expenses.void');
         return;
       },
@@ -2039,43 +2037,43 @@ export function createSupabaseAdapter(
         return data as PDCChequeRow;
       },
       async create(params: PDCCreateParams) {
-        const { data, error } = await (client.rpc as any)('create_pdc', {
+        const { data, error } = await client.rpc('create_pdc', {
           p_type:               params.type,
           p_contact_id:         params.contact_id,
           p_cheque_number:      params.cheque_number,
-          p_bank_name:          params.bank_name ?? null,
           p_amount:             params.amount,
-          p_currency:           params.currency,
           p_issue_date:         params.issue_date,
           p_due_date:           params.due_date,
-          p_deposit_account_id: params.deposit_account_id ?? null,
-          p_linked_payment_id:  params.linked_payment_id ?? null,
+          p_bank_name:          params.bank_name ?? undefined,
+          p_currency:           params.currency,
+          p_deposit_account_id: params.deposit_account_id ?? undefined,
+          p_linked_payment_id:  params.linked_payment_id ?? undefined,
           p_is_advance:         params.is_advance ?? false,
-          p_notes:              params.notes ?? null,
+          p_notes:              params.notes ?? undefined,
         });
         assertNoError(error, 'pdcCheques.create');
         return data as unknown as CreatePDCResult;
       },
       async deposit(pdc_id) {
-        const { data, error } = await (client.rpc as any)('deposit_pdc', { p_pdc_id: pdc_id });
+        const { data, error } = await client.rpc('deposit_pdc', { p_pdc_id: pdc_id });
         assertNoError(error, 'pdcCheques.deposit');
         return data as unknown as PDCActionResult;
       },
       async clear(pdc_id, deposit_account_id) {
-        const { data, error } = await (client.rpc as any)('clear_pdc', {
+        const { data, error } = await client.rpc('clear_pdc', {
           p_pdc_id:             pdc_id,
-          p_deposit_account_id: deposit_account_id ?? null,
+          p_deposit_account_id: deposit_account_id ?? undefined,
         });
         assertNoError(error, 'pdcCheques.clear');
         return data as unknown as PDCActionResult;
       },
       async bounce(pdc_id) {
-        const { data, error } = await (client.rpc as any)('bounce_pdc', { p_pdc_id: pdc_id });
+        const { data, error } = await client.rpc('bounce_pdc', { p_pdc_id: pdc_id });
         assertNoError(error, 'pdcCheques.bounce');
         return data as unknown as PDCActionResult;
       },
       async cancel(pdc_id) {
-        const { data, error } = await (client.rpc as any)('cancel_pdc', { p_pdc_id: pdc_id });
+        const { data, error } = await client.rpc('cancel_pdc', { p_pdc_id: pdc_id });
         assertNoError(error, 'pdcCheques.cancel');
         return data as unknown as PDCActionResult;
       },

@@ -6,7 +6,6 @@
 
 import { describe, it, expect } from 'vitest';
 import type {
-  DataAdapter,
   BankTransfersAPI,
   ExpensesAPI,
   PDCChequesAPI,
@@ -198,7 +197,7 @@ describe('PDC advance GL routing', () => {
   });
 
   it('received PDC: debits PDC Receivable (1250)', () => {
-    const type = 'received';
+    const type: string = 'received';
     const debitAccount = type === 'issued' ? '2100' : '1250';
     expect(debitAccount).toBe('1250');
   });

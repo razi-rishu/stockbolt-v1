@@ -473,11 +473,11 @@ export interface ReportsAPI {
   getSupplierStatement(company_id: string, contact_id: string, from: string, to: string): Promise<SupplierStatement>;
   getGRNReconciliation(company_id: string, as_of_date: string): Promise<GRNReconciliationReport>;
   // Phase 6 reports
-  getStockMovement(company_id: string, product_id: string, from: string, to: string): Promise<StockMovementLine[]>;
-  getSlowMoving(company_id: string, threshold_days: number, as_of: string): Promise<SlowMovingLine[]>;
+  getStockMovement(company_id: string, params: { product_id?: string; warehouse_id?: string; date_from: string; date_to: string }): Promise<StockMovementLine[]>;
+  getSlowMoving(company_id: string, params: { threshold_days: number }): Promise<SlowMovingLine[]>;
   getReorderReport(company_id: string): Promise<ReorderLine[]>;
-  getStockAging(company_id: string, as_of: string): Promise<StockAgingLine[]>;
-  getInventoryAdjustmentReport(company_id: string, from: string, to: string): Promise<InventoryAdjustmentReportLine[]>;
+  getStockAging(company_id: string): Promise<StockAgingLine[]>;
+  getInventoryAdjustmentReport(company_id: string, params: { date_from: string; date_to: string }): Promise<InventoryAdjustmentReportLine[]>;
   // Phase 8 reports
   dailyCash(company_id: string, date: string): Promise<DailyCashLine[]>;
   bankRecon(company_id: string, account_id: string, date_from: string, date_to: string): Promise<BankReconLine[]>;
@@ -676,11 +676,12 @@ export interface StockMovementLine {
   warehouse_id: string;
   warehouse_name: string;
   date: string;
-  type: string;
+  movement_type: string;
   direction: number;
   quantity: number;
   unit_cost: number;
   running_qty: number;
+  running_value: number;
 }
 
 export interface SlowMovingLine {
@@ -689,10 +690,12 @@ export interface SlowMovingLine {
   sku: string;
   warehouse_id: string;
   warehouse_name: string;
-  current_qty: number;
-  last_movement_date: string | null;
-  days_since_movement: number;
+  qty_on_hand: number;
+  unit_cost: number;
   stock_value: number;
+  last_movement_date: string | null;
+  days_idle: number;
+  aging_bucket: string;
 }
 
 export interface ReorderLine {
@@ -701,7 +704,8 @@ export interface ReorderLine {
   sku: string;
   warehouse_id: string;
   warehouse_name: string;
-  current_qty: number;
+  qty_on_hand: number;
+  unit_cost: number;
   min_stock_level: number;
   shortage: number;
 }
@@ -712,20 +716,19 @@ export interface StockAgingLine {
   sku: string;
   warehouse_id: string;
   warehouse_name: string;
-  current_qty: number;
+  qty_on_hand: number;
   unit_cost: number;
-  bucket_0_30: number;
-  bucket_31_60: number;
-  bucket_61_90: number;
-  bucket_over_90: number;
-  total_value: number;
+  stock_value: number;
+  last_movement_date: string | null;
+  days_idle: number;
+  aging_bucket: string;
 }
 
 export interface InventoryAdjustmentReportLine {
   adjustment_id: string;
   adjustment_number: string;
   date: string;
-  warehouse_name: string;
+  warehouse_id: string;
   reason: string;
   total_gain: number;
   total_loss: number;
