@@ -52,6 +52,11 @@ import type {
   BankTransferConfirmResult, ExpenseConfirmResult,
   CreatePDCResult, PDCActionResult, PDCCreateParams,
   DailyCashLine, BankReconLine,
+  // Phase 9
+  CreditNoteRow, CreditNoteItemRow, CreditNoteInsert, CreditNoteUpdate, CreditNoteItemInsert,
+  SalesReturnRow, SalesReturnItemRow, SalesReturnInsert, SalesReturnItemInsert,
+  DebitNoteRow, DebitNoteItemRow, DebitNoteInsert, DebitNoteUpdate, DebitNoteItemInsert,
+  CreditNoteConfirmResult, DebitNoteConfirmResult,
 } from './adapter';
 import { apAgingBucket } from '@/core/purchasing/purchase-calc';
 import { stockAgingDays, stockAgingBucket } from '@/core/inventory/inventory-calc';
@@ -2076,6 +2081,171 @@ export function createSupabaseAdapter(
         const { data, error } = await client.rpc('cancel_pdc', { p_pdc_id: pdc_id });
         assertNoError(error, 'pdcCheques.cancel');
         return data as unknown as PDCActionResult;
+      },
+    },
+
+    // ── Phase 9: Credit Notes ─────────────────────────────────────────────────
+    creditNotes: {
+      async list(company_id, params): Promise<CreditNoteRow[]> {
+        let q = client.from('credit_notes').select('*').eq('company_id', company_id);
+        if (params?.status)     q = q.eq('status', params.status);
+        if (params?.contact_id) q = q.eq('contact_id', params.contact_id);
+        if (params?.date_from)  q = q.gte('date', params.date_from);
+        if (params?.date_to)    q = q.lte('date', params.date_to);
+        const { data, error } = await q.order('date', { ascending: false });
+        assertNoError(error, 'creditNotes.list');
+        return (data ?? []) as CreditNoteRow[];
+      },
+      async getById(id): Promise<CreditNoteRow | null> {
+        const { data, error } = await client.from('credit_notes').select('*').eq('id', id).single();
+        if (error?.code === 'PGRST116') return null;
+        assertNoError(error, 'creditNotes.getById');
+        return data as CreditNoteRow;
+      },
+      async getItems(credit_note_id): Promise<CreditNoteItemRow[]> {
+        const { data, error } = await client.from('credit_note_items').select('*')
+          .eq('credit_note_id', credit_note_id).order('sort_order');
+        assertNoError(error, 'creditNotes.getItems');
+        return (data ?? []) as CreditNoteItemRow[];
+      },
+      async create(row: CreditNoteInsert, items: CreditNoteItemInsert[]): Promise<CreditNoteRow> {
+        const { data: cn, error: hErr } = await client.from('credit_notes').insert(row).select().single();
+        assertNoError(hErr, 'creditNotes.create header');
+        const itemsWithId = items.map((it, i) => ({ ...it, credit_note_id: cn!.id, sort_order: i }));
+        const { error: iErr } = await client.from('credit_note_items').insert(itemsWithId);
+        assertNoError(iErr, 'creditNotes.create items');
+        return cn as CreditNoteRow;
+      },
+      async update(id, row: CreditNoteUpdate, items: CreditNoteItemInsert[]): Promise<void> {
+        const { error: hErr } = await client.from('credit_notes').update(row).eq('id', id);
+        assertNoError(hErr, 'creditNotes.update header');
+        await client.from('credit_note_items').delete().eq('credit_note_id', id);
+        const itemsWithId = items.map((it, i) => ({ ...it, credit_note_id: id, sort_order: i }));
+        const { error: iErr } = await client.from('credit_note_items').insert(itemsWithId);
+        assertNoError(iErr, 'creditNotes.update items');
+      },
+      async confirm(id): Promise<CreditNoteConfirmResult> {
+        const { data, error } = await client.rpc('confirm_credit_note', { p_credit_note_id: id });
+        assertNoError(error, 'creditNotes.confirm');
+        return data as unknown as CreditNoteConfirmResult;
+      },
+      async void(id, reason?): Promise<void> {
+        const { error } = await client.rpc('void_credit_note', {
+          p_credit_note_id: id,
+          p_reason: reason ?? undefined,
+        });
+        assertNoError(error, 'creditNotes.void');
+      },
+      async getNextNumber(company_id): Promise<string> {
+        const { data, error } = await client.rpc('get_next_document_number', {
+          p_company_id: company_id,
+          p_prefix: 'CN',
+        });
+        assertNoError(error, 'creditNotes.getNextNumber');
+        return data as string;
+      },
+    },
+
+    // ── Phase 9: Sales Returns ────────────────────────────────────────────────
+    salesReturns: {
+      async list(company_id, params): Promise<SalesReturnRow[]> {
+        let q = client.from('sales_returns').select('*').eq('company_id', company_id);
+        if (params?.status)    q = q.eq('status', params.status);
+        if (params?.date_from) q = q.gte('date', params.date_from);
+        if (params?.date_to)   q = q.lte('date', params.date_to);
+        const { data, error } = await q.order('date', { ascending: false });
+        assertNoError(error, 'salesReturns.list');
+        return (data ?? []) as SalesReturnRow[];
+      },
+      async getById(id): Promise<SalesReturnRow | null> {
+        const { data, error } = await client.from('sales_returns').select('*').eq('id', id).single();
+        if (error?.code === 'PGRST116') return null;
+        assertNoError(error, 'salesReturns.getById');
+        return data as SalesReturnRow;
+      },
+      async getItems(sales_return_id): Promise<SalesReturnItemRow[]> {
+        const { data, error } = await client.from('sales_return_items').select('*')
+          .eq('sales_return_id', sales_return_id);
+        assertNoError(error, 'salesReturns.getItems');
+        return (data ?? []) as SalesReturnItemRow[];
+      },
+      async create(row: SalesReturnInsert, items: SalesReturnItemInsert[]): Promise<SalesReturnRow> {
+        const { data: sr, error: hErr } = await client.from('sales_returns').insert(row).select().single();
+        assertNoError(hErr, 'salesReturns.create header');
+        const itemsWithId = items.map(it => ({ ...it, sales_return_id: sr!.id }));
+        const { error: iErr } = await client.from('sales_return_items').insert(itemsWithId);
+        assertNoError(iErr, 'salesReturns.create items');
+        return sr as SalesReturnRow;
+      },
+      async getNextNumber(company_id): Promise<string> {
+        const { data, error } = await client.rpc('get_next_document_number', {
+          p_company_id: company_id,
+          p_prefix: 'SR',
+        });
+        assertNoError(error, 'salesReturns.getNextNumber');
+        return data as string;
+      },
+    },
+
+    // ── Phase 9: Debit Notes ──────────────────────────────────────────────────
+    debitNotes: {
+      async list(company_id, params): Promise<DebitNoteRow[]> {
+        let q = client.from('debit_notes').select('*').eq('company_id', company_id);
+        if (params?.status)      q = q.eq('status', params.status);
+        if (params?.supplier_id) q = q.eq('supplier_id', params.supplier_id);
+        if (params?.date_from)   q = q.gte('date', params.date_from);
+        if (params?.date_to)     q = q.lte('date', params.date_to);
+        const { data, error } = await q.order('date', { ascending: false });
+        assertNoError(error, 'debitNotes.list');
+        return (data ?? []) as DebitNoteRow[];
+      },
+      async getById(id): Promise<DebitNoteRow | null> {
+        const { data, error } = await client.from('debit_notes').select('*').eq('id', id).single();
+        if (error?.code === 'PGRST116') return null;
+        assertNoError(error, 'debitNotes.getById');
+        return data as DebitNoteRow;
+      },
+      async getItems(debit_note_id): Promise<DebitNoteItemRow[]> {
+        const { data, error } = await client.from('debit_note_items').select('*')
+          .eq('debit_note_id', debit_note_id).order('sort_order');
+        assertNoError(error, 'debitNotes.getItems');
+        return (data ?? []) as DebitNoteItemRow[];
+      },
+      async create(row: DebitNoteInsert, items: DebitNoteItemInsert[]): Promise<DebitNoteRow> {
+        const { data: dn, error: hErr } = await client.from('debit_notes').insert(row).select().single();
+        assertNoError(hErr, 'debitNotes.create header');
+        const itemsWithId = items.map((it, i) => ({ ...it, debit_note_id: dn!.id, sort_order: i }));
+        const { error: iErr } = await client.from('debit_note_items').insert(itemsWithId);
+        assertNoError(iErr, 'debitNotes.create items');
+        return dn as DebitNoteRow;
+      },
+      async update(id, row: DebitNoteUpdate, items: DebitNoteItemInsert[]): Promise<void> {
+        const { error: hErr } = await client.from('debit_notes').update(row).eq('id', id);
+        assertNoError(hErr, 'debitNotes.update header');
+        await client.from('debit_note_items').delete().eq('debit_note_id', id);
+        const itemsWithId = items.map((it, i) => ({ ...it, debit_note_id: id, sort_order: i }));
+        const { error: iErr } = await client.from('debit_note_items').insert(itemsWithId);
+        assertNoError(iErr, 'debitNotes.update items');
+      },
+      async confirm(id): Promise<DebitNoteConfirmResult> {
+        const { data, error } = await client.rpc('confirm_debit_note', { p_debit_note_id: id });
+        assertNoError(error, 'debitNotes.confirm');
+        return data as unknown as DebitNoteConfirmResult;
+      },
+      async void(id, reason?): Promise<void> {
+        const { error } = await client.rpc('void_debit_note', {
+          p_debit_note_id: id,
+          p_reason: reason ?? undefined,
+        });
+        assertNoError(error, 'debitNotes.void');
+      },
+      async getNextNumber(company_id): Promise<string> {
+        const { data, error } = await client.rpc('get_next_document_number', {
+          p_company_id: company_id,
+          p_prefix: 'DN',
+        });
+        assertNoError(error, 'debitNotes.getNextNumber');
+        return data as string;
       },
     },
   };

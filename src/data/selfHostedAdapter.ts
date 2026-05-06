@@ -279,5 +279,32 @@ export function createSelfHostedAdapter(): DataAdapter {
       bounce:  () => notImplemented('pdcCheques.bounce'),
       cancel:  () => notImplemented('pdcCheques.cancel'),
     },
+    creditNotes: {
+      list:          () => notImplemented('creditNotes.list'),
+      getById:       () => notImplemented('creditNotes.getById'),
+      getItems:      () => notImplemented('creditNotes.getItems'),
+      create:        () => notImplemented('creditNotes.create'),
+      update:        () => notImplemented('creditNotes.update'),
+      confirm:       () => notImplemented('creditNotes.confirm'),
+      void:          () => notImplemented('creditNotes.void'),
+      getNextNumber: () => notImplemented('creditNotes.getNextNumber'),
+    },
+    salesReturns: {
+      list:          () => notImplemented('salesReturns.list'),
+      getById:       () => notImplemented('salesReturns.getById'),
+      getItems:      () => notImplemented('salesReturns.getItems'),
+      create:        () => notImplemented('salesReturns.create'),
+      getNextNumber: () => notImplemented('salesReturns.getNextNumber'),
+    },
+    debitNotes: {
+      list:          () => notImplemented('debitNotes.list'),
+      getById:       () => notImplemented('debitNotes.getById'),
+      getItems:      () => notImplemented('debitNotes.getItems'),
+      create:        () => notImplemented('debitNotes.create'),
+      update:        () => notImplemented('debitNotes.update'),
+      confirm:       () => notImplemented('debitNotes.confirm'),
+      void:          () => notImplemented('debitNotes.void'),
+      getNextNumber: () => notImplemented('debitNotes.getNextNumber'),
+    },
   };
 }

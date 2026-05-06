@@ -287,18 +287,21 @@ export function AppLayout({ children }: AppLayoutProps) {
     {
       title: t('nav.sales'),
       items: [
-        { to: '/sales/invoices', label: t('nav.invoices'), icon: <JournalIcon /> },
-        { to: '/sales/quotes', label: t('nav.quotes'), icon: <LedgerIcon /> },
-        { to: '/sales/payments', label: t('nav.payments'), icon: <ChartIcon /> },
+        { to: '/sales/invoices',      label: t('nav.invoices'),                    icon: <JournalIcon /> },
+        { to: '/sales/quotes',        label: t('nav.quotes'),                      icon: <LedgerIcon /> },
+        { to: '/sales/payments',      label: t('nav.payments'),                    icon: <ChartIcon /> },
+        { to: '/sales/returns',       label: t('returns.sales_returns_title'),     icon: <ArrowsIcon /> },
+        { to: '/sales/credit-notes',  label: t('returns.credit_notes_title'),      icon: <ReceiptIcon /> },
       ],
     },
     {
       title: t('purchasing.nav_title'),
       items: [
-        { to: '/purchasing/orders',   label: t('purchasing.po_title'),    icon: <ClipboardIcon /> },
-        { to: '/purchasing/grns',     label: t('purchasing.grn_title'),   icon: <TruckIcon /> },
-        { to: '/purchasing/bills',    label: t('purchasing.bills_title'), icon: <ReceiptIcon /> },
-        { to: '/purchasing/payments', label: t('purchasing.vp_title'),    icon: <CreditCardIcon /> },
+        { to: '/purchasing/orders',      label: t('purchasing.po_title'),    icon: <ClipboardIcon /> },
+        { to: '/purchasing/grns',        label: t('purchasing.grn_title'),   icon: <TruckIcon /> },
+        { to: '/purchasing/bills',       label: t('purchasing.bills_title'), icon: <ReceiptIcon /> },
+        { to: '/purchasing/payments',    label: t('purchasing.vp_title'),    icon: <CreditCardIcon /> },
+        { to: '/purchasing/debit-notes', label: t('returns.debit_notes_title'), icon: <ArrowsIcon /> },
       ],
     },
     {

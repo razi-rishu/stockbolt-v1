@@ -847,6 +847,69 @@ export interface PosAPI {
   getDailySalesSummary(company_id: string, params: { date_from: string; date_to: string }): Promise<DailySalesSummaryLine[]>;
 }
 
+// ── Phase 9 row types ─────────────────────────────────────────────────────────
+export type CreditNoteRow     = Tables['credit_notes']['Row'];
+export type CreditNoteItemRow = Tables['credit_note_items']['Row'];
+export type CreditNoteInsert  = Omit<Tables['credit_notes']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type CreditNoteUpdate  = Tables['credit_notes']['Update'];
+export type CreditNoteItemInsert = Omit<Tables['credit_note_items']['Insert'], 'id' | 'created_at'>;
+
+export type SalesReturnRow     = Tables['sales_returns']['Row'];
+export type SalesReturnItemRow = Tables['sales_return_items']['Row'];
+export type SalesReturnInsert  = Omit<Tables['sales_returns']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type SalesReturnUpdate  = Tables['sales_returns']['Update'];
+export type SalesReturnItemInsert = Omit<Tables['sales_return_items']['Insert'], 'id' | 'created_at'>;
+
+export type DebitNoteItemRow    = Tables['debit_note_items']['Row'];
+export type DebitNoteInsert     = Omit<Tables['debit_notes']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type DebitNoteUpdate     = Tables['debit_notes']['Update'];
+export type DebitNoteItemInsert = Omit<Tables['debit_note_items']['Insert'], 'id' | 'created_at'>;
+
+// Phase 9 RPC result types
+export interface CreditNoteConfirmResult {
+  credit_note_id:     string;
+  credit_note_number: string;
+  journal_entry_id:   string;
+  entry_number:       string;
+}
+export interface DebitNoteConfirmResult {
+  debit_note_id:     string;
+  debit_note_number: string;
+  journal_entry_id:  string;
+  entry_number:      string;
+}
+
+// Phase 9 API interfaces
+export interface CreditNotesAPI {
+  list(company_id: string, params?: { status?: string; contact_id?: string; date_from?: string; date_to?: string }): Promise<CreditNoteRow[]>;
+  getById(id: string): Promise<CreditNoteRow | null>;
+  getItems(credit_note_id: string): Promise<CreditNoteItemRow[]>;
+  create(row: CreditNoteInsert, items: CreditNoteItemInsert[]): Promise<CreditNoteRow>;
+  update(id: string, row: CreditNoteUpdate, items: CreditNoteItemInsert[]): Promise<void>;
+  confirm(id: string): Promise<CreditNoteConfirmResult>;
+  void(id: string, reason?: string): Promise<void>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface SalesReturnsAPI {
+  list(company_id: string, params?: { status?: string; date_from?: string; date_to?: string }): Promise<SalesReturnRow[]>;
+  getById(id: string): Promise<SalesReturnRow | null>;
+  getItems(sales_return_id: string): Promise<SalesReturnItemRow[]>;
+  create(row: SalesReturnInsert, items: SalesReturnItemInsert[]): Promise<SalesReturnRow>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface DebitNotesAPI {
+  list(company_id: string, params?: { status?: string; supplier_id?: string; date_from?: string; date_to?: string }): Promise<DebitNoteRow[]>;
+  getById(id: string): Promise<DebitNoteRow | null>;
+  getItems(debit_note_id: string): Promise<DebitNoteItemRow[]>;
+  create(row: DebitNoteInsert, items: DebitNoteItemInsert[]): Promise<DebitNoteRow>;
+  update(id: string, row: DebitNoteUpdate, items: DebitNoteItemInsert[]): Promise<void>;
+  confirm(id: string): Promise<DebitNoteConfirmResult>;
+  void(id: string, reason?: string): Promise<void>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
 // ── Phase 8 row types ─────────────────────────────────────────────────────────
 export type BankTransferRow = Tables['bank_transfers']['Row'];
 export type BankTransferInsert = Omit<Tables['bank_transfers']['Insert'], 'id' | 'created_at' | 'updated_at'>;
@@ -972,4 +1035,8 @@ export interface DataAdapter {
   bankTransfers: BankTransfersAPI;
   expenses: ExpensesAPI;
   pdcCheques: PDCChequesAPI;
+  // Phase 9
+  creditNotes: CreditNotesAPI;
+  salesReturns: SalesReturnsAPI;
+  debitNotes: DebitNotesAPI;
 }

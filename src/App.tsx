@@ -104,6 +104,14 @@ const PDCIssuedPage                   = lazy(() => import('@/modules/banking/pdc
 const DailyCashPage                   = lazy(() => import('@/modules/reports/daily-cash'));
 const BankReconPage                   = lazy(() => import('@/modules/reports/bank-recon'));
 
+// Phase 9 — Returns & Credit/Debit Notes
+const CreditNotesPage                 = lazy(() => import('@/modules/sales/credit-notes'));
+const CreditNoteEditorPage            = lazy(() => import('@/modules/sales/credit-note-editor'));
+const SalesReturnsPage                = lazy(() => import('@/modules/sales/sales-returns'));
+const SalesReturnEditorPage           = lazy(() => import('@/modules/sales/sales-return-editor'));
+const DebitNotesPage                  = lazy(() => import('@/modules/purchasing/debit-notes'));
+const DebitNoteEditorPage             = lazy(() => import('@/modules/purchasing/debit-note-editor'));
+
 function Loading() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-surface-page">
@@ -244,6 +252,17 @@ function AppRoutes() {
               {/* Phase 8 — Banking reports */}
               <Route path="/reports/daily-cash"                 element={<DailyCashPage />} />
               <Route path="/reports/bank-recon"                 element={<BankReconPage />} />
+
+              {/* Phase 9 — Returns & Credit/Debit Notes */}
+              <Route path="/sales/returns/new"                  element={<SalesReturnEditorPage />} />
+              <Route path="/sales/returns/:id"                  element={<SalesReturnEditorPage />} />
+              <Route path="/sales/returns"                      element={<SalesReturnsPage />} />
+              <Route path="/sales/credit-notes/new"             element={<CreditNoteEditorPage />} />
+              <Route path="/sales/credit-notes/:id"             element={<CreditNoteEditorPage />} />
+              <Route path="/sales/credit-notes"                 element={<CreditNotesPage />} />
+              <Route path="/purchasing/debit-notes/new"         element={<DebitNoteEditorPage />} />
+              <Route path="/purchasing/debit-notes/:id"         element={<DebitNoteEditorPage />} />
+              <Route path="/purchasing/debit-notes"             element={<DebitNotesPage />} />
             </Route>
           </Route>
         </Route>

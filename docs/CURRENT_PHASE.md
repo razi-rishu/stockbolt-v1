@@ -1,12 +1,12 @@
 # Current Phase
 
-**Active Phase:** Phase 9 — (next per Doc 5)
+**Active Phase:** Phase 9 — Returns & Credit/Debit Notes
 
-**Status:** Phase 8 closed 2026-05-05. All 32 verification assertions passed (32/32). Verification gate: `npm run test:phase8`.
+**Status:** Phase 9 implementation complete 2026-05-06. Awaiting `supabase db push` (migrations 20 & 21) + `supabase gen types` to finalize. Verification gate: `npm run test:phase9` (40 assertions).
 
-**Last completed:** Phase 8 — Banking & PDC. 4 Supabase RPCs (confirm_bank_transfer D1, void_bank_transfer, confirm_expense D3, void_expense, create_pdc E1/E5, deposit_pdc E2, clear_pdc E3/E6, bounce_pdc E4, cancel_pdc); 2 report RPCs (get_daily_cash_report G2, get_bank_recon G4). UI: BankTransfers list+editor, Expenses list+editor, PDCReceived, PDCIssued. Reports: DailyCash, BankRecon. 4 migrations copied to main project. Banking nav section + 2 report links. EN+AR i18n (banking.* + reports.* banking keys). Phase 8 verification test 32/32.
+**Last completed:** Phase 9 — Sales Returns, Credit Notes, Debit Notes. 2 Supabase RPCs (confirm_credit_note A9/A10, confirm_debit_note B9/B10, plus void variants). Adapter layer: CreditNotesAPI (8 methods), SalesReturnsAPI (5 methods), DebitNotesAPI (8 methods). UI: 6 pages (sales-returns list+editor, credit-notes list+editor, debit-notes list+editor). App-layout nav: Sales Returns + Credit Notes under Sales; Debit Notes under Purchasing. EN+AR i18n (returns.* section, 50+ keys). 2 migrations (20260505000020–21) copied to main project.
 
-**Next milestone:** Run `supabase db push` in main project to apply Phase 8 migrations (20260505000016–20260505000019), then `supabase gen types` to regenerate database.ts, copy back to worktree, remove `(client.rpc as any)` casts for all Phase 8 RPCs.
+**Next milestone:** Run `supabase db push`, then `supabase gen types`, copy database.ts back to worktree, run `npm run typecheck` and `npm run test:phase9`. Then Phase 10 per Doc 5.
 
 **Notes:**
 - Building from clean slate after rebuild decision
@@ -375,3 +375,39 @@ This file is read by Claude Code at the start of every session, so keep it accur
 - get_daily_cash_report uses bank_accounts.coa_account_id to find the relevant COA accounts — only bank accounts with a linked COA ID appear in the report.
 - get_bank_recon uses a window function (SUM OVER ROWS UNBOUNDED PRECEDING) for running balance, starting from the pre-period opening balance.
 - Phase 8 RPCs (create_pdc etc.) use `(client.rpc as any)` casts until `supabase db push` + `supabase gen types` is run from the main project.
+
+### Phase 9 — Returns & Credit/Debit Notes
+- Started: 2026-05-06
+- Definition of Done: see Document_5_Build_Phases.md, Phase 9 section
+
+**Stage progress:**
+- [x] Stage 1 — DB: 2 migrations (20260505000020 confirm/void_credit_note A9/A10; 20260505000021 confirm/void_debit_note B9/B10); copied to main project
+- [x] Stage 2 — Adapter layer: CreditNotesAPI (8 methods), SalesReturnsAPI (5 methods), DebitNotesAPI (8 methods); Row/Insert/Update types; ConfirmResult interfaces; supabaseAdapter + selfHostedAdapter stubs updated
+- [x] Stage 3 — Sales Returns UI: `sales-returns.tsx` (list) + `sales-return-editor.tsx` (invoice selector, import-lines, condition flag, save→redirect to CN editor)
+- [x] Stage 4 — Credit Notes UI: `credit-notes.tsx` (list) + `credit-note-editor.tsx` (customer+invoice select, import-lines with cost_at_sale, restock checkbox, confirm/void)
+- [x] Stage 5 — Debit Notes UI: `debit-notes.tsx` (list) + `debit-note-editor.tsx` (supplier+bill select, import-lines, confirm/void)
+- [x] Stage 6 — App layout: Sales Returns + Credit Notes added to Sales nav section; Debit Notes added to Purchasing nav section
+- [x] Stage 7 — Routing: 9 Phase 9 routes added to App.tsx (sales/returns, sales/credit-notes, purchasing/debit-notes — list+new+:id each)
+- [x] Stage 8 — i18n: `returns.*` section (50+ keys) in EN + AR
+- [x] Stage 9 — Verification test: `phase9-verification.test.ts` (40 pure unit assertions); `test:phase9` script added
+
+**Phase 9 DoD — pending verification run:**
+- [x] confirm_credit_note RPC: A9 (Dr 4100/Dr 2200/Cr 1200) + COGS reversal per item at cost_at_sale (Dr 1300/Cr 5100) + stock_ledger type='sales_return' direction=+1 + MAC recalc; A10 (restock=false: header JE only, no stock movement)
+- [x] void_credit_note RPC: reverses header JE + COGS JE; negates stock_ledger rows; status='void'
+- [x] confirm_debit_note RPC: B9/B10 (Dr 2100/Cr 1300/Cr 1500) + stock_ledger type='purchase_return' direction=-1 per item with product_id
+- [x] void_debit_note RPC: reverses JE; negates stock_ledger rows; status='void'
+- [x] calcCreditNoteGL: Dr 4100 + Dr 2200 = Cr 1200 (balanced for all discount/VAT combos)
+- [x] calcCOGSReversal: uses cost_at_sale NOT current MAC — critical correctness constraint
+- [x] calcDebitNoteGL: Dr 2100 = Cr 1300 + Cr 1500 (balanced)
+- [x] Sales Returns list + editor at `/sales/returns`
+- [x] Credit Notes list + editor at `/sales/credit-notes`
+- [x] Debit Notes list + editor at `/purchasing/debit-notes`
+- [x] Nav: Sales Returns + Credit Notes in Sales; Debit Notes in Purchasing
+- [x] EN + AR i18n for all Phase 9 screens
+- [ ] Verification test: run `npm run test:phase9` (target: 40/40)
+
+**Decisions made in Phase 9:**
+- Sales Return (SR) is a tracking document only — no direct GL posting from the SR itself. The GL is triggered when the linked Credit Note is confirmed. SR editor redirects to CN editor pre-filled with invoice data.
+- COGS reversal uses `cost_at_sale` from credit_note_items (not current MAC) — this matches the original inventory outflow and avoids MAC fluctuations affecting P&L on returns.
+- Debit Note confirm posts B9 (with stock) and B10 (without stock) using the same RPC — the RPC checks whether each line item has a `product_id` to decide if a stock_ledger row is needed.
+- Phase 9 RPCs (confirm_credit_note, void_credit_note, confirm_debit_note, void_debit_note) use `(client.rpc as any)` casts pending `supabase db push` + `supabase gen types`.
