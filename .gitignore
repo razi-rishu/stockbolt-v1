@@ -43,3 +43,6 @@ supabase/.temp
 
 # Claude Code working directory
 .claude/
+
+# Ignore corrupt ghost files from bad shell copy commands
+supabase/migrations/*&&*
