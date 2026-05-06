@@ -441,6 +441,7 @@ export type Database = {
           period_lock_date: string | null
           phone: string | null
           prices_inclusive_of_tax: boolean
+          print_config: Json
           state: string | null
           tax_id: string | null
           updated_at: string
@@ -466,6 +467,7 @@ export type Database = {
           period_lock_date?: string | null
           phone?: string | null
           prices_inclusive_of_tax?: boolean
+          print_config?: Json
           state?: string | null
           tax_id?: string | null
           updated_at?: string
@@ -491,6 +493,7 @@ export type Database = {
           period_lock_date?: string | null
           phone?: string | null
           prices_inclusive_of_tax?: boolean
+          print_config?: Json
           state?: string | null
           tax_id?: string | null
           updated_at?: string
@@ -4322,6 +4325,8 @@ export type Database = {
       }
       complete_onboarding: { Args: { p_data: Json }; Returns: Json }
       confirm_bank_transfer: { Args: { p_transfer_id: string }; Returns: Json }
+      confirm_credit_note: { Args: { p_credit_note_id: string }; Returns: Json }
+      confirm_debit_note: { Args: { p_debit_note_id: string }; Returns: Json }
       confirm_expense: { Args: { p_expense_id: string }; Returns: Json }
       confirm_grn: { Args: { p_grn_id: string }; Returns: Json }
       confirm_inventory_adjustment: {
@@ -4415,6 +4420,14 @@ export type Database = {
       }
       void_bank_transfer: {
         Args: { p_transfer_id: string; p_void_reason?: string }
+        Returns: Json
+      }
+      void_credit_note: {
+        Args: { p_credit_note_id: string; p_reason?: string }
+        Returns: Json
+      }
+      void_debit_note: {
+        Args: { p_debit_note_id: string; p_reason?: string }
         Returns: Json
       }
       void_expense: {

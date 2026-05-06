@@ -162,17 +162,12 @@ export function createSupabaseAdapter(
         return data.publicUrl;
       },
       async getPrintConfig(company_id) {
-        // print_config JSONB column is added in migration 23; bypass generated types until gen types runs
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const c = client as any;
-        const { data, error } = await c.from('companies').select('print_config').eq('id', company_id).single();
+        const { data, error } = await client.from('companies').select('print_config').eq('id', company_id).single();
         assertNoError(error, 'companies.getPrintConfig');
-        return (data?.print_config ?? {}) as import('./adapter').PrintConfig;
+        return (data?.print_config ?? {}) as unknown as import('./adapter').PrintConfig;
       },
       async savePrintConfig(company_id, config) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const c = client as any;
-        const { error } = await c.from('companies').update({ print_config: config }).eq('id', company_id);
+        const { error } = await client.from('companies').update({ print_config: config as unknown as import('../types/database').Json }).eq('id', company_id);
         assertNoError(error, 'companies.savePrintConfig');
       },
     },
@@ -2658,14 +2653,12 @@ export function createSupabaseAdapter(
         assertNoError(iErr, 'creditNotes.update items');
       },
       async confirm(id): Promise<CreditNoteConfirmResult> {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (client.rpc as any)('confirm_credit_note', { p_credit_note_id: id });
+        const { data, error } = await client.rpc('confirm_credit_note', { p_credit_note_id: id });
         assertNoError(error, 'creditNotes.confirm');
         return data as unknown as CreditNoteConfirmResult;
       },
       async void(id, reason?): Promise<void> {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error } = await (client.rpc as any)('void_credit_note', {
+        const { error } = await client.rpc('void_credit_note', {
           p_credit_note_id: id,
           p_reason: reason ?? undefined,
         });
@@ -2763,14 +2756,12 @@ export function createSupabaseAdapter(
         assertNoError(iErr, 'debitNotes.update items');
       },
       async confirm(id): Promise<DebitNoteConfirmResult> {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (client.rpc as any)('confirm_debit_note', { p_debit_note_id: id });
+        const { data, error } = await client.rpc('confirm_debit_note', { p_debit_note_id: id });
         assertNoError(error, 'debitNotes.confirm');
         return data as unknown as DebitNoteConfirmResult;
       },
       async void(id, reason?): Promise<void> {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error } = await (client.rpc as any)('void_debit_note', {
+        const { error } = await client.rpc('void_debit_note', {
           p_debit_note_id: id,
           p_reason: reason ?? undefined,
         });
