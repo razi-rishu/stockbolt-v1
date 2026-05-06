@@ -95,6 +95,64 @@ function TruckIcon() {
   );
 }
 
+function ClipboardIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <rect x="4" y="3" width="12" height="14" rx="1.5" />
+      <path strokeLinecap="round" d="M7 3v2h6V3" />
+      <path strokeLinecap="round" d="M7 9h6M7 12h4" />
+    </svg>
+  );
+}
+
+function ReceiptIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path strokeLinecap="round" d="M3 2h14v16l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5V2z" />
+      <path strokeLinecap="round" d="M7 7h6M7 10h6M7 13h3" />
+    </svg>
+  );
+}
+
+function CreditCardIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <rect x="1" y="4" width="18" height="12" rx="1.5" />
+      <path strokeLinecap="round" d="M1 8h18" />
+      <path strokeLinecap="round" d="M4 13h3" />
+    </svg>
+  );
+}
+
+function ArrowsIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h12M4 7l3-3M4 7l3 3M16 13H4M16 13l-3-3M16 13l-3 3" />
+    </svg>
+  );
+}
+
+function SliderIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path strokeLinecap="round" d="M3 5h14M3 10h14M3 15h14" />
+      <circle cx="7" cy="5" r="2" fill="white" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="13" cy="10" r="2" fill="white" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="8" cy="15" r="2" fill="white" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+function RegisterIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <rect x="2" y="7" width="16" height="10" rx="1.5" />
+      <path strokeLinecap="round" d="M6 7V5a4 4 0 018 0v2" />
+      <path strokeLinecap="round" d="M7 12h2m2 0h2M10 10v4" />
+    </svg>
+  );
+}
+
 function CogIcon() {
   return (
     <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -229,9 +287,44 @@ export function AppLayout({ children }: AppLayoutProps) {
     {
       title: t('nav.sales'),
       items: [
-        { to: '/sales/invoices', label: t('nav.invoices'), icon: <JournalIcon /> },
-        { to: '/sales/quotes', label: t('nav.quotes'), icon: <LedgerIcon /> },
-        { to: '/sales/payments', label: t('nav.payments'), icon: <ChartIcon /> },
+        { to: '/sales/invoices',      label: t('nav.invoices'),                    icon: <JournalIcon /> },
+        { to: '/sales/quotes',        label: t('nav.quotes'),                      icon: <LedgerIcon /> },
+        { to: '/sales/payments',      label: t('nav.payments'),                    icon: <ChartIcon /> },
+        { to: '/sales/returns',       label: t('returns.sales_returns_title'),     icon: <ArrowsIcon /> },
+        { to: '/sales/credit-notes',  label: t('returns.credit_notes_title'),      icon: <ReceiptIcon /> },
+      ],
+    },
+    {
+      title: t('purchasing.nav_title'),
+      items: [
+        { to: '/purchasing/orders',      label: t('purchasing.po_title'),    icon: <ClipboardIcon /> },
+        { to: '/purchasing/grns',        label: t('purchasing.grn_title'),   icon: <TruckIcon /> },
+        { to: '/purchasing/bills',       label: t('purchasing.bills_title'), icon: <ReceiptIcon /> },
+        { to: '/purchasing/payments',    label: t('purchasing.vp_title'),    icon: <CreditCardIcon /> },
+        { to: '/purchasing/debit-notes', label: t('returns.debit_notes_title'), icon: <ArrowsIcon /> },
+      ],
+    },
+    {
+      title: t('nav.inventory'),
+      items: [
+        { to: '/inventory/transfers',   label: t('inventory.transfers_title'),   icon: <ArrowsIcon /> },
+        { to: '/inventory/adjustments', label: t('inventory.adjustments_title'), icon: <SliderIcon /> },
+        { to: '/inventory/stock-ledger',label: t('inventory.stock_ledger_title'),icon: <LedgerIcon /> },
+      ],
+    },
+    {
+      title: t('nav.pos'),
+      items: [
+        { to: '/pos', label: t('pos.counter_sales'), icon: <RegisterIcon /> },
+      ],
+    },
+    {
+      title: t('nav.banking'),
+      items: [
+        { to: '/banking/transfers',    label: t('banking.transfers_title'),    icon: <ArrowsIcon /> },
+        { to: '/banking/expenses',     label: t('banking.expenses_title'),     icon: <ReceiptIcon /> },
+        { to: '/banking/pdc-received', label: t('banking.pdc_received_title'), icon: <CreditCardIcon /> },
+        { to: '/banking/pdc-issued',   label: t('banking.pdc_issued_title'),   icon: <CreditCardIcon /> },
       ],
     },
     {
@@ -246,20 +339,47 @@ export function AppLayout({ children }: AppLayoutProps) {
     {
       title: t('nav.reports'),
       items: [
-        { to: '/reports/trial-balance',     label: t('nav.trial_balance'),   icon: <ChartIcon /> },
-        { to: '/reports/profit-loss',        label: t('nav.profit_loss'),     icon: <ChartIcon /> },
-        { to: '/reports/balance-sheet',      label: t('nav.balance_sheet'),   icon: <LedgerIcon /> },
-        { to: '/reports/ar-aging',           label: t('nav.ar_aging'),        icon: <UsersIcon /> },
-        { to: '/reports/stock-valuation',    label: t('nav.stock_valuation'), icon: <BoxIcon /> },
+        { to: '/reports/trial-balance',        label: t('nav.trial_balance'),          icon: <ChartIcon /> },
+        { to: '/reports/profit-loss',          label: t('nav.profit_loss'),            icon: <ChartIcon /> },
+        { to: '/reports/balance-sheet',        label: t('nav.balance_sheet'),          icon: <LedgerIcon /> },
+        { to: '/reports/ar-aging',             label: t('nav.ar_aging'),               icon: <UsersIcon /> },
+        { to: '/reports/ap-aging',             label: t('reports.ap_aging'),           icon: <TruckIcon /> },
+        { to: '/reports/stock-valuation',      label: t('nav.stock_valuation'),        icon: <BoxIcon /> },
+        { to: '/reports/supplier-statement',   label: t('reports.supplier_statement'), icon: <ReceiptIcon /> },
+        { to: '/reports/grn-reconciliation',         label: t('reports.grn_reconciliation'),          icon: <ClipboardIcon /> },
+        { to: '/reports/stock-movement',             label: t('reports.stock_movement'),              icon: <ArrowsIcon /> },
+        { to: '/reports/slow-moving',                label: t('reports.slow_moving'),                 icon: <BoxIcon /> },
+        { to: '/reports/reorder',                    label: t('reports.reorder'),                     icon: <TruckIcon /> },
+        { to: '/reports/stock-aging',                label: t('reports.stock_aging'),                 icon: <ChartIcon /> },
+        { to: '/reports/inventory-adjustment-report',label: t('reports.inventory_adjustment_report'), icon: <SliderIcon /> },
+        { to: '/reports/pos-session',                label: t('reports.pos_session_report'),          icon: <RegisterIcon /> },
+        { to: '/reports/daily-sales',                label: t('reports.daily_sales_summary'),         icon: <ChartIcon /> },
+        { to: '/reports/daily-cash',                 label: t('reports.daily_cash_title'),            icon: <ChartIcon /> },
+        { to: '/reports/bank-recon',                 label: t('reports.bank_recon_title'),            icon: <LedgerIcon /> },
+        { to: '/reports/sales-by-customer',          label: t('reports.sales_by_customer'),           icon: <ChartIcon /> },
+        { to: '/reports/sales-by-product',           label: t('reports.sales_by_product'),            icon: <ChartIcon /> },
+        { to: '/reports/sales-by-brand',             label: t('reports.sales_by_brand'),              icon: <ChartIcon /> },
+        { to: '/reports/sales-by-vehicle',           label: t('reports.sales_by_vehicle'),            icon: <ChartIcon /> },
+        { to: '/reports/sales-by-salesperson',       label: t('reports.sales_by_salesperson'),        icon: <ChartIcon /> },
+        { to: '/reports/sales-trend',                label: t('reports.sales_trend'),                 icon: <ChartIcon /> },
+        { to: '/reports/purchases-by-supplier',      label: t('reports.purchases_by_supplier'),       icon: <LedgerIcon /> },
+        { to: '/reports/purchases-by-product',       label: t('reports.purchases_by_product'),        icon: <LedgerIcon /> },
+        { to: '/reports/outstanding-pos',            label: t('reports.outstanding_pos'),             icon: <ClipboardIcon /> },
+        { to: '/reports/vat-return',                 label: t('reports.vat_return'),                  icon: <ReceiptIcon /> },
+        { to: '/reports/cash-flow',                  label: t('reports.cash_flow'),                   icon: <ChartIcon /> },
+        { to: '/reports/audit-log',                  label: t('reports.audit_log'),                   icon: <JournalIcon /> },
+        { to: '/reports/reversal-trail',             label: t('reports.reversal_trail'),              icon: <JournalIcon /> },
       ],
     },
     {
       title: t('nav.settings'),
       items: [
-        { to: '/settings/company', label: t('nav.company'), icon: <CogIcon /> },
-        { to: '/settings/warehouses', label: t('nav.warehouses'), icon: <WarehouseIcon /> },
-        { to: '/settings/units', label: t('nav.units'), icon: <RulerIcon /> },
-        { to: '/settings/price-levels', label: t('nav.price_levels'), icon: <PriceTagIcon /> },
+        { to: '/settings/company',       label: t('nav.company'),       icon: <CogIcon /> },
+        { to: '/settings/warehouses',    label: t('nav.warehouses'),    icon: <WarehouseIcon /> },
+        { to: '/settings/units',         label: t('nav.units'),         icon: <RulerIcon /> },
+        { to: '/settings/price-levels',  label: t('nav.price_levels'),  icon: <PriceTagIcon /> },
+        { to: '/settings/system-health', label: t('settings.system_health'), icon: <CogIcon /> },
+        { to: '/settings/print',         label: t('print.settings_title'),   icon: <CogIcon /> },
       ],
     },
   ];

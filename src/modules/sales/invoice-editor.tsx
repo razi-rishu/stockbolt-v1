@@ -392,6 +392,12 @@ export default function InvoiceEditorPage() {
               {confirmMutation.isPending ? '…' : t('sales.confirm_invoice')}
             </Button>
           )}
+          {/* Print (any non-new invoice) */}
+          {!isNew && existing?.id && (
+            <Button variant="ghost" size="sm" onClick={() => window.open(`/print/invoice/${existing.id}`, '_blank')}>
+              🖨 {t('print.print')}
+            </Button>
+          )}
           {/* Edit & Void (confirmed only) */}
           {isConfirmed && !editMode && (
             <>

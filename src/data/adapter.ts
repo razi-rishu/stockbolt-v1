@@ -53,6 +53,23 @@ export type ProductPriceLevelInsert = Omit<Tables['product_price_levels']['Inser
 // code → id mapping returned after COA seeding
 export type CoaMap = Record<string, string>;
 
+// ── Phase 11 — Print config ───────────────────────────────────────────────────
+export interface PrintConfig {
+  invoice_template:     'classic' | 'bilingual' | 'thermal';
+  quote_template:       'classic' | 'bilingual';
+  statement_template:   'classic';
+  credit_note_template: 'classic' | 'bilingual';
+  debit_note_template:  'classic' | 'bilingual';
+  po_template:          'classic' | 'bilingual';
+  bill_template:        'classic' | 'bilingual';
+  footer_en:            string;
+  footer_ar:            string;
+  show_salesperson:     boolean;
+  show_due_date:        boolean;
+  show_bank_details:    boolean;
+  accent_color:         string;
+}
+
 // ── Auth API ──────────────────────────────────────────────────────────────────
 export interface AuthAPI {
   signUp(params: { email: string; password: string }): Promise<{ user_id: string }>;
@@ -73,6 +90,8 @@ export interface CompaniesAPI {
   getById(id: string): Promise<Company | null>;
   update(id: string, data: CompanyUpdate): Promise<void>;
   uploadLogo(company_id: string, file: File): Promise<string>;
+  getPrintConfig(company_id: string): Promise<PrintConfig>;
+  savePrintConfig(company_id: string, config: PrintConfig): Promise<void>;
 }
 
 // ── Profiles API ──────────────────────────────────────────────────────────────
@@ -469,6 +488,722 @@ export interface ReportsAPI {
   getARAgingReport(company_id: string, as_of_date: string): Promise<ARAgingReport>;
   getCustomerStatement(company_id: string, contact_id: string, from: string, to: string): Promise<CustomerStatement>;
   getStockValuation(company_id: string, as_of_date: string): Promise<StockValuationReport>;
+  getAPAgingReport(company_id: string, as_of_date: string): Promise<APAgingReport>;
+  getSupplierStatement(company_id: string, contact_id: string, from: string, to: string): Promise<SupplierStatement>;
+  getGRNReconciliation(company_id: string, as_of_date: string): Promise<GRNReconciliationReport>;
+  // Phase 6 reports
+  getStockMovement(company_id: string, params: { product_id?: string; warehouse_id?: string; date_from: string; date_to: string }): Promise<StockMovementLine[]>;
+  getSlowMoving(company_id: string, params: { threshold_days: number }): Promise<SlowMovingLine[]>;
+  getReorderReport(company_id: string): Promise<ReorderLine[]>;
+  getStockAging(company_id: string): Promise<StockAgingLine[]>;
+  getInventoryAdjustmentReport(company_id: string, params: { date_from: string; date_to: string }): Promise<InventoryAdjustmentReportLine[]>;
+  // Phase 8 reports
+  dailyCash(company_id: string, date: string): Promise<DailyCashLine[]>;
+  bankRecon(company_id: string, account_id: string, date_from: string, date_to: string): Promise<BankReconLine[]>;
+  // Phase 10 reports
+  getSalesByCustomer(company_id: string, from: string, to: string): Promise<SalesByCustomerLine[]>;
+  getSalesByProduct(company_id: string, from: string, to: string): Promise<SalesByProductLine[]>;
+  getSalesByBrand(company_id: string, from: string, to: string): Promise<SalesByBrandLine[]>;
+  getSalesByVehicle(company_id: string, from: string, to: string): Promise<SalesByVehicleLine[]>;
+  getSalesBySalesperson(company_id: string, from: string, to: string): Promise<SalesBySalespersonLine[]>;
+  getSalesTrend(company_id: string, from: string, to: string, bucket: 'day' | 'week' | 'month'): Promise<SalesTrendLine[]>;
+  getPurchasesBySupplier(company_id: string, from: string, to: string): Promise<PurchasesBySupplierLine[]>;
+  getPurchasesByProduct(company_id: string, from: string, to: string): Promise<PurchasesByProductLine[]>;
+  getOutstandingPOs(company_id: string): Promise<OutstandingPOLine[]>;
+  getVATReturn(company_id: string, from: string, to: string): Promise<VATReturn>;
+  getAuditLog(company_id: string, params: { from?: string; to?: string; limit?: number }): Promise<AuditLogLine[]>;
+  getReversalTrail(company_id: string, from: string, to: string): Promise<ReversalTrailLine[]>;
+  getCashFlow(company_id: string, from: string, to: string): Promise<CashFlowStatement>;
+  getOwnerDashboard(company_id: string): Promise<OwnerDashboard>;
+}
+
+// ── Phase 10 report types ─────────────────────────────────────────────────────
+
+export interface SalesByCustomerLine {
+  contact_id: string;
+  contact_name: string;
+  invoice_count: number;
+  gross_sales: number;
+  returns: number;
+  net_sales: number;
+  gross_profit: number;
+  gp_pct: number;
+}
+
+export interface SalesByProductLine {
+  product_id: string;
+  sku: string;
+  product_name: string;
+  brand_name: string;
+  qty_sold: number;
+  net_sales: number;
+  gross_profit: number;
+  gp_pct: number;
+}
+
+export interface SalesByBrandLine {
+  brand_id: string;
+  brand_name: string;
+  qty_sold: number;
+  revenue: number;
+  gross_profit: number;
+  gp_pct: number;
+  stock_value: number;
+}
+
+export interface SalesByVehicleLine {
+  make_id: string;
+  make_name: string;
+  model_id: string | null;
+  model_name: string | null;
+  qty: number;
+  revenue: number;
+  gross_profit: number;
+}
+
+export interface SalesBySalespersonLine {
+  salesperson_id: string | null;
+  salesperson_name: string;
+  invoice_count: number;
+  net_sales: number;
+  gross_profit: number;
+  gp_pct: number;
+  avg_invoice_value: number;
+}
+
+export interface SalesTrendLine {
+  bucket: string;
+  invoice_count: number;
+  gross_sales: number;
+  returns: number;
+  net_sales: number;
+  gross_profit: number;
+}
+
+export interface PurchasesBySupplierLine {
+  contact_id: string;
+  contact_name: string;
+  bill_count: number;
+  gross_purchases: number;
+  returns: number;
+  net_purchases: number;
+  pct_of_total: number;
+}
+
+export interface PurchasesByProductLine {
+  product_id: string;
+  sku: string;
+  product_name: string;
+  qty_purchased: number;
+  total_cost: number;
+  avg_unit_cost: number;
+}
+
+export interface OutstandingPOLine {
+  po_id: string;
+  po_number: string;
+  supplier_name: string;
+  date: string;
+  expected_delivery: string | null;
+  total: number;
+  received_value: number;
+  pending_value: number;
+}
+
+export interface VATReturnBox {
+  box: string;
+  label: string;
+  taxable_amount: number;
+  vat_amount: number;
+}
+
+export interface VATReturn {
+  period_start: string;
+  period_end: string;
+  output_boxes: VATReturnBox[];
+  total_output_vat: number;
+  input_boxes: VATReturnBox[];
+  total_input_vat: number;
+  net_vat_payable: number;
+}
+
+export interface AuditLogLine {
+  id: string;
+  created_at: string;
+  user_id: string;
+  user_email: string;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
+}
+
+export interface ReversalTrailLine {
+  original_entry_number: string;
+  original_date: string;
+  reversal_entry_number: string;
+  reversal_date: string;
+  amount: number;
+  source_type: string;
+  reversed_by: string;
+}
+
+export interface CashFlowSection {
+  label: string;
+  amount: number;
+}
+
+export interface CashFlowStatement {
+  period_start: string;
+  period_end: string;
+  net_profit: number;
+  operating_adjustments: CashFlowSection[];
+  working_capital_changes: CashFlowSection[];
+  net_operating: number;
+  investing_activities: CashFlowSection[];
+  net_investing: number;
+  financing_activities: CashFlowSection[];
+  net_financing: number;
+  net_increase: number;
+  opening_cash: number;
+  closing_cash: number;
+}
+
+export interface OwnerDashboard {
+  today_sales_count: number;
+  today_sales_amount: number;
+  outstanding_ar: number;
+  outstanding_ap: number;
+  cash_and_bank: number;
+  top_products: { product_id: string; name: string; qty: number; revenue: number }[];
+  top_customers: { contact_id: string; name: string; sales: number }[];
+  low_stock_count: number;
+  overdue_invoices_count: number;
+  sales_trend: { date: string; amount: number }[];
+}
+
+export interface InvariantResult {
+  name: string;
+  invariant: string;
+  pass: boolean;
+  difference?: number;
+  [key: string]: unknown;
+}
+
+export interface SystemHealthAPI {
+  check(company_id: string, as_of_date?: string): Promise<InvariantResult[]>;
+}
+
+// ── Phase 5 row types ─────────────────────────────────────────────────────────
+export type PurchaseOrderRow = Tables['purchase_orders']['Row'];
+export type PurchaseOrderItemRow = Tables['purchase_order_items']['Row'];
+export type GoodsReceiptRow = Tables['goods_receipts']['Row'];
+export type GoodsReceiptItemRow = Tables['goods_receipt_items']['Row'];
+export type VendorBillRow = Tables['vendor_bills']['Row'];
+export type VendorBillItemRow = Tables['vendor_bill_items']['Row'] & { coa_account_id?: string | null };
+export type DebitNoteRow = Tables['debit_notes']['Row'];
+
+// Phase 5 insert / update types
+export type PurchaseOrderInsert = Omit<Tables['purchase_orders']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type PurchaseOrderUpdate = Tables['purchase_orders']['Update'];
+export type PurchaseOrderItemInsert = Omit<Tables['purchase_order_items']['Insert'], 'id' | 'created_at'>;
+export type GoodsReceiptInsert = Omit<Tables['goods_receipts']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type GoodsReceiptUpdate = Tables['goods_receipts']['Update'];
+export type GoodsReceiptItemInsert = Omit<Tables['goods_receipt_items']['Insert'], 'id' | 'created_at'>;
+export type VendorBillInsert = Omit<Tables['vendor_bills']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type VendorBillUpdate = Tables['vendor_bills']['Update'];
+export type VendorBillItemInsert = Omit<Tables['vendor_bill_items']['Insert'], 'id' | 'created_at'> & { coa_account_id?: string | null };
+
+// Phase 5 RPC result types
+export interface GRNConfirmResult {
+  grn_id: string;
+  grn_number: string;
+  je_id: string;
+  entry_number: string;
+}
+
+export interface BillConfirmResult {
+  bill_id: string;
+  bill_number: string;
+  je_id: string;
+  entry_number: string;
+}
+
+export interface VendorPaymentConfirmResult {
+  payment_id: string;
+  payment_number: string;
+  je_id: string;
+  entry_number: string;
+}
+
+export interface ApplyVendorAdvanceResult {
+  je_id: string;
+  entry_number: string;
+  payment_id: string;
+  bill_id: string;
+  amount: number;
+}
+
+// Phase 5 report types
+export interface APAgingBucket {
+  contact_id: string;
+  contact_name: string;
+  current: number;
+  days_31_60: number;
+  days_61_90: number;
+  over_90: number;
+  total: number;
+}
+
+export interface APAgingReport {
+  as_of_date: string;
+  buckets: APAgingBucket[];
+  total_current: number;
+  total_31_60: number;
+  total_61_90: number;
+  total_over_90: number;
+  grand_total: number;
+}
+
+export interface SupplierStatementLine {
+  date: string;
+  doc_type: string;
+  doc_number: string;
+  debit: number;
+  credit: number;
+  balance: number;
+}
+
+export interface SupplierStatement {
+  contact_id: string;
+  contact_name: string;
+  from_date: string;
+  to_date: string;
+  opening_balance: number;
+  lines: SupplierStatementLine[];
+  closing_balance: number;
+}
+
+export interface GRNReconciliationLine {
+  grn_id: string;
+  grn_number: string;
+  supplier_id: string;
+  supplier_name: string;
+  date: string;
+  total_cost: number;
+  billed_amount: number;
+  unbilled_amount: number;
+}
+
+export interface GRNReconciliationReport {
+  as_of_date: string;
+  lines: GRNReconciliationLine[];
+  total_accrual: number;
+  total_billed: number;
+  total_unbilled: number;
+}
+
+// ── Phase 5 APIs ──────────────────────────────────────────────────────────────
+
+export interface PurchaseOrdersAPI {
+  list(company_id: string, status?: string): Promise<PurchaseOrderRow[]>;
+  getById(id: string): Promise<PurchaseOrderRow | null>;
+  getItems(po_id: string): Promise<PurchaseOrderItemRow[]>;
+  create(row: PurchaseOrderInsert, items: PurchaseOrderItemInsert[]): Promise<PurchaseOrderRow>;
+  update(id: string, row: PurchaseOrderUpdate, items: PurchaseOrderItemInsert[]): Promise<void>;
+  send(id: string): Promise<void>;
+  close(id: string): Promise<void>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface GoodsReceiptsAPI {
+  list(company_id: string, status?: string): Promise<GoodsReceiptRow[]>;
+  getById(id: string): Promise<GoodsReceiptRow | null>;
+  getItems(grn_id: string): Promise<GoodsReceiptItemRow[]>;
+  create(row: GoodsReceiptInsert, items: GoodsReceiptItemInsert[]): Promise<GoodsReceiptRow>;
+  update(id: string, row: GoodsReceiptUpdate, items: GoodsReceiptItemInsert[]): Promise<void>;
+  confirm(grn_id: string): Promise<GRNConfirmResult>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface VendorBillsAPI {
+  list(company_id: string, status?: string): Promise<VendorBillRow[]>;
+  getById(id: string): Promise<VendorBillRow | null>;
+  getItems(bill_id: string): Promise<VendorBillItemRow[]>;
+  create(row: VendorBillInsert, items: VendorBillItemInsert[]): Promise<VendorBillRow>;
+  update(id: string, row: VendorBillUpdate, items: VendorBillItemInsert[]): Promise<void>;
+  confirm(bill_id: string): Promise<BillConfirmResult>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface VendorPaymentsAPI {
+  list(company_id: string): Promise<PaymentRow[]>;
+  getById(id: string): Promise<PaymentRow | null>;
+  getAllocations(payment_id: string): Promise<PaymentAllocationRow[]>;
+  create(row: PaymentInsert, allocations?: PaymentAllocationInsert[]): Promise<PaymentRow>;
+  confirm(payment_id: string): Promise<VendorPaymentConfirmResult>;
+  applyAdvance(payment_id: string, bill_id: string, amount: number): Promise<ApplyVendorAdvanceResult>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+// ── Phase 6 row types ─────────────────────────────────────────────────────────
+
+export type StockTransferRow     = Tables['stock_transfers']['Row'];
+export type StockTransferInsert  = Tables['stock_transfers']['Insert'];
+export type StockTransferUpdate  = Tables['stock_transfers']['Update'];
+export type StockTransferItemRow    = Tables['stock_transfer_items']['Row'];
+export type StockTransferItemInsert = Tables['stock_transfer_items']['Insert'];
+
+export type InventoryAdjustmentRow    = Tables['inventory_adjustments']['Row'];
+export type InventoryAdjustmentInsert = Tables['inventory_adjustments']['Insert'];
+export type InventoryAdjustmentUpdate = Tables['inventory_adjustments']['Update'];
+export type AdjustmentItemRow    = Tables['inventory_adjustment_items']['Row'];
+export type AdjustmentItemInsert = Tables['inventory_adjustment_items']['Insert'];
+
+export type ProductSerialRow    = Tables['product_serials']['Row'];
+export type ProductSerialInsert = Tables['product_serials']['Insert'];
+export type ProductSerialUpdate = Tables['product_serials']['Update'];
+
+// Phase 6 RPC result types
+export interface TransferConfirmResult {
+  transfer_id: string;
+  transfer_number: string;
+}
+
+export interface AdjustmentConfirmResult {
+  adjustment_id: string;
+  adjustment_number: string;
+  gain_je_id: string | null;
+  loss_je_id: string | null;
+  total_gain: number;
+  total_loss: number;
+}
+
+// Phase 6 report types
+export interface StockMovementLine {
+  product_id: string;
+  product_name: string;
+  sku: string;
+  warehouse_id: string;
+  warehouse_name: string;
+  date: string;
+  movement_type: string;
+  direction: number;
+  quantity: number;
+  unit_cost: number;
+  running_qty: number;
+  running_value: number;
+}
+
+export interface SlowMovingLine {
+  product_id: string;
+  product_name: string;
+  sku: string;
+  warehouse_id: string;
+  warehouse_name: string;
+  qty_on_hand: number;
+  unit_cost: number;
+  stock_value: number;
+  last_movement_date: string | null;
+  days_idle: number;
+  aging_bucket: string;
+}
+
+export interface ReorderLine {
+  product_id: string;
+  product_name: string;
+  sku: string;
+  warehouse_id: string;
+  warehouse_name: string;
+  qty_on_hand: number;
+  unit_cost: number;
+  min_stock_level: number;
+  shortage: number;
+}
+
+export interface StockAgingLine {
+  product_id: string;
+  product_name: string;
+  sku: string;
+  warehouse_id: string;
+  warehouse_name: string;
+  qty_on_hand: number;
+  unit_cost: number;
+  stock_value: number;
+  last_movement_date: string | null;
+  days_idle: number;
+  aging_bucket: string;
+}
+
+export interface InventoryAdjustmentReportLine {
+  adjustment_id: string;
+  adjustment_number: string;
+  date: string;
+  warehouse_id: string;
+  reason: string;
+  total_gain: number;
+  total_loss: number;
+  net: number;
+}
+
+// ── Phase 6 APIs ──────────────────────────────────────────────────────────────
+
+export interface StockTransfersAPI {
+  list(company_id: string, status?: string): Promise<StockTransferRow[]>;
+  getById(id: string): Promise<StockTransferRow | null>;
+  getItems(transfer_id: string): Promise<StockTransferItemRow[]>;
+  create(row: StockTransferInsert, items: StockTransferItemInsert[]): Promise<StockTransferRow>;
+  update(id: string, row: StockTransferUpdate, items: StockTransferItemInsert[]): Promise<void>;
+  confirm(transfer_id: string): Promise<TransferConfirmResult>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface InventoryAdjustmentsAPI {
+  list(company_id: string, status?: string): Promise<InventoryAdjustmentRow[]>;
+  getById(id: string): Promise<InventoryAdjustmentRow | null>;
+  getItems(adjustment_id: string): Promise<AdjustmentItemRow[]>;
+  create(row: InventoryAdjustmentInsert, items: AdjustmentItemInsert[]): Promise<InventoryAdjustmentRow>;
+  confirm(adjustment_id: string): Promise<AdjustmentConfirmResult>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface ProductSerialsAPI {
+  listByProduct(company_id: string, product_id: string): Promise<ProductSerialRow[]>;
+  listByWarehouse(company_id: string, warehouse_id: string, status?: string): Promise<ProductSerialRow[]>;
+  create(row: ProductSerialInsert): Promise<ProductSerialRow>;
+  updateStatus(id: string, status: string): Promise<void>;
+}
+
+// ── Phase 7 row types ─────────────────────────────────────────────────────────
+
+export type PosSessionRow = Tables['pos_sessions']['Row'];
+
+// Phase 7 RPC result types
+export interface OpenSessionResult {
+  session_id:     string;
+  session_number: string;
+  warehouse_id:   string;
+  opening_cash:   number;
+  opened_at:      string;
+}
+
+export interface CloseSessionResult {
+  session_id:          string;
+  session_number:      string;
+  opening_cash:        number;
+  cash_sales:          number;
+  expected_cash:       number;
+  counted_cash:        number;
+  variance:            number;
+  total_sales_amount:  number;
+  total_sales_count:   number;
+}
+
+export interface PosSaleResult {
+  invoice_id:     string;
+  invoice_number: string;
+  total_amount:   number;
+}
+
+// Phase 7 report types
+export interface POSSessionReportLine {
+  session_id:          string;
+  session_number:      string;
+  opened_at:           string;
+  closed_at:           string | null;
+  warehouse_id:        string;
+  warehouse_name:      string;
+  opening_cash:        number;
+  total_sales_amount:  number;
+  total_sales_count:   number;
+  closing_cash_counted: number | null;
+  cash_variance:        number | null;
+  status:              string;
+}
+
+export interface DailySalesSummaryLine {
+  date:         string;
+  cash_total:   number;
+  card_total:   number;
+  credit_total: number;
+  grand_total:  number;
+  invoice_count: number;
+}
+
+// Phase 7 POS cart item (sent to confirm_pos_sale RPC)
+export interface POSSaleItem {
+  product_id:       string;
+  description:      string;
+  quantity:         number;
+  unit_price:       number;
+  discount_percent: number;
+  tax_rate:         number;
+}
+
+// Phase 7 API
+export interface PosAPI {
+  openSession(warehouse_id: string, opening_cash: number): Promise<OpenSessionResult>;
+  getOpenSession(company_id: string): Promise<PosSessionRow | null>;
+  closeSession(session_id: string, counted_cash: number, variance_reason?: string): Promise<CloseSessionResult>;
+  confirmSale(
+    session_id: string,
+    items: POSSaleItem[],
+    payment_method: 'cash' | 'card' | 'credit',
+    customer_id?: string | null,
+    notes?: string
+  ): Promise<PosSaleResult>;
+  getSessionSales(session_id: string): Promise<InvoiceRow[]>;
+  listSessions(company_id: string, params?: { status?: string; date_from?: string; date_to?: string }): Promise<PosSessionRow[]>;
+  getPOSSessionReport(company_id: string, params?: { date_from?: string; date_to?: string }): Promise<POSSessionReportLine[]>;
+  getDailySalesSummary(company_id: string, params: { date_from: string; date_to: string }): Promise<DailySalesSummaryLine[]>;
+}
+
+// ── Phase 9 row types ─────────────────────────────────────────────────────────
+export type CreditNoteRow     = Tables['credit_notes']['Row'];
+export type CreditNoteItemRow = Tables['credit_note_items']['Row'];
+export type CreditNoteInsert  = Omit<Tables['credit_notes']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type CreditNoteUpdate  = Tables['credit_notes']['Update'];
+export type CreditNoteItemInsert = Omit<Tables['credit_note_items']['Insert'], 'id' | 'created_at'>;
+
+export type SalesReturnRow     = Tables['sales_returns']['Row'];
+export type SalesReturnItemRow = Tables['sales_return_items']['Row'];
+export type SalesReturnInsert  = Omit<Tables['sales_returns']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type SalesReturnUpdate  = Tables['sales_returns']['Update'];
+export type SalesReturnItemInsert = Omit<Tables['sales_return_items']['Insert'], 'id' | 'created_at'>;
+
+export type DebitNoteItemRow    = Tables['debit_note_items']['Row'];
+export type DebitNoteInsert     = Omit<Tables['debit_notes']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type DebitNoteUpdate     = Tables['debit_notes']['Update'];
+export type DebitNoteItemInsert = Omit<Tables['debit_note_items']['Insert'], 'id' | 'created_at'>;
+
+// Phase 9 RPC result types
+export interface CreditNoteConfirmResult {
+  credit_note_id:     string;
+  credit_note_number: string;
+  journal_entry_id:   string;
+  entry_number:       string;
+}
+export interface DebitNoteConfirmResult {
+  debit_note_id:     string;
+  debit_note_number: string;
+  journal_entry_id:  string;
+  entry_number:      string;
+}
+
+// Phase 9 API interfaces
+export interface CreditNotesAPI {
+  list(company_id: string, params?: { status?: string; contact_id?: string; date_from?: string; date_to?: string }): Promise<CreditNoteRow[]>;
+  getById(id: string): Promise<CreditNoteRow | null>;
+  getItems(credit_note_id: string): Promise<CreditNoteItemRow[]>;
+  create(row: CreditNoteInsert, items: CreditNoteItemInsert[]): Promise<CreditNoteRow>;
+  update(id: string, row: CreditNoteUpdate, items: CreditNoteItemInsert[]): Promise<void>;
+  confirm(id: string): Promise<CreditNoteConfirmResult>;
+  void(id: string, reason?: string): Promise<void>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface SalesReturnsAPI {
+  list(company_id: string, params?: { status?: string; date_from?: string; date_to?: string }): Promise<SalesReturnRow[]>;
+  getById(id: string): Promise<SalesReturnRow | null>;
+  getItems(sales_return_id: string): Promise<SalesReturnItemRow[]>;
+  create(row: SalesReturnInsert, items: SalesReturnItemInsert[]): Promise<SalesReturnRow>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface DebitNotesAPI {
+  list(company_id: string, params?: { status?: string; supplier_id?: string; date_from?: string; date_to?: string }): Promise<DebitNoteRow[]>;
+  getById(id: string): Promise<DebitNoteRow | null>;
+  getItems(debit_note_id: string): Promise<DebitNoteItemRow[]>;
+  create(row: DebitNoteInsert, items: DebitNoteItemInsert[]): Promise<DebitNoteRow>;
+  update(id: string, row: DebitNoteUpdate, items: DebitNoteItemInsert[]): Promise<void>;
+  confirm(id: string): Promise<DebitNoteConfirmResult>;
+  void(id: string, reason?: string): Promise<void>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+// ── Phase 8 row types ─────────────────────────────────────────────────────────
+export type BankTransferRow = Tables['bank_transfers']['Row'];
+export type BankTransferInsert = Omit<Tables['bank_transfers']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type BankTransferUpdate = Tables['bank_transfers']['Update'];
+
+export type ExpenseRow = Tables['expenses']['Row'];
+export type ExpenseInsert = Omit<Tables['expenses']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type ExpenseUpdate = Tables['expenses']['Update'];
+
+export type PDCChequeRow = Tables['pdc_cheques']['Row'];
+export type PDCChequeInsert = Omit<Tables['pdc_cheques']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+
+// Phase 8 result types
+export interface BankTransferConfirmResult { transfer_id: string; journal_entry_id: string }
+export interface ExpenseConfirmResult { expense_id: string; journal_entry_id: string }
+export interface CreatePDCResult { pdc_id: string; pdc_number: string; journal_entry_id: string }
+export interface PDCActionResult { pdc_id: string; status: string; journal_entry_id?: string }
+
+// Phase 8 report line types
+export interface DailyCashLine {
+  account_id:       string;
+  account_code:     string;
+  account_name:     string;
+  opening_balance:  number;
+  total_in:         number;
+  total_out:        number;
+  closing_balance:  number;
+}
+export interface BankReconLine {
+  date:             string;
+  je_number:        string;
+  source_type:      string;
+  description:      string;
+  debit:            number;
+  credit:           number;
+  running_balance:  number;
+}
+
+// Phase 8 API interfaces
+export interface BankTransfersAPI {
+  list(company_id: string, params?: { status?: string; date_from?: string; date_to?: string }): Promise<BankTransferRow[]>;
+  getById(id: string): Promise<BankTransferRow>;
+  create(data: BankTransferInsert): Promise<BankTransferRow>;
+  update(id: string, data: BankTransferUpdate): Promise<BankTransferRow>;
+  confirm(id: string): Promise<BankTransferConfirmResult>;
+  void(id: string, reason?: string): Promise<void>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface ExpensesAPI {
+  list(company_id: string, params?: { status?: string; date_from?: string; date_to?: string }): Promise<ExpenseRow[]>;
+  getById(id: string): Promise<ExpenseRow>;
+  create(data: ExpenseInsert): Promise<ExpenseRow>;
+  update(id: string, data: ExpenseUpdate): Promise<ExpenseRow>;
+  confirm(id: string): Promise<ExpenseConfirmResult>;
+  void(id: string, reason?: string): Promise<void>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
+export interface PDCCreateParams {
+  type:                'received' | 'issued';
+  contact_id:          string;
+  cheque_number:       string;
+  bank_name?:          string;
+  amount:              number;
+  currency:            string;
+  issue_date:          string;
+  due_date:            string;
+  deposit_account_id?: string;
+  linked_payment_id?:  string;
+  is_advance?:         boolean;
+  notes?:              string;
+}
+
+export interface PDCChequesAPI {
+  list(company_id: string, params?: { type?: 'received' | 'issued'; status?: string; date_from?: string; date_to?: string }): Promise<PDCChequeRow[]>;
+  getById(id: string): Promise<PDCChequeRow>;
+  create(params: PDCCreateParams): Promise<CreatePDCResult>;
+  deposit(pdc_id: string): Promise<PDCActionResult>;
+  clear(pdc_id: string, deposit_account_id?: string): Promise<PDCActionResult>;
+  bounce(pdc_id: string): Promise<PDCActionResult>;
+  cancel(pdc_id: string): Promise<PDCActionResult>;
 }
 
 // ── Root adapter ──────────────────────────────────────────────────────────────
@@ -497,4 +1232,25 @@ export interface DataAdapter {
   bankAccounts: BankAccountsAPI;
   taxRates: TaxRatesAPI;
   reports: ReportsAPI;
+  // Phase 5
+  purchaseOrders: PurchaseOrdersAPI;
+  goodsReceipts: GoodsReceiptsAPI;
+  vendorBills: VendorBillsAPI;
+  vendorPayments: VendorPaymentsAPI;
+  // Phase 6
+  stockTransfers: StockTransfersAPI;
+  inventoryAdjustments: InventoryAdjustmentsAPI;
+  productSerials: ProductSerialsAPI;
+  // Phase 7
+  pos: PosAPI;
+  // Phase 8
+  bankTransfers: BankTransfersAPI;
+  expenses: ExpensesAPI;
+  pdcCheques: PDCChequesAPI;
+  // Phase 9
+  creditNotes: CreditNotesAPI;
+  salesReturns: SalesReturnsAPI;
+  debitNotes: DebitNotesAPI;
+  // Phase 10
+  systemHealth: SystemHealthAPI;
 }
