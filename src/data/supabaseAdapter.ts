@@ -57,6 +57,15 @@ import type {
   SalesReturnRow, SalesReturnItemRow, SalesReturnInsert, SalesReturnItemInsert,
   DebitNoteRow, DebitNoteItemRow, DebitNoteInsert, DebitNoteUpdate, DebitNoteItemInsert,
   CreditNoteConfirmResult, DebitNoteConfirmResult,
+  // Phase 10
+  SalesByCustomerLine, SalesByProductLine, SalesByBrandLine,
+  SalesByVehicleLine, SalesBySalespersonLine, SalesTrendLine,
+  PurchasesBySupplierLine, PurchasesByProductLine, OutstandingPOLine,
+  VATReturn, VATReturnBox,
+  AuditLogLine, ReversalTrailLine,
+  CashFlowStatement, CashFlowSection,
+  OwnerDashboard,
+  InvariantResult,
 } from './adapter';
 import { apAgingBucket } from '@/core/purchasing/purchase-calc';
 import { stockAgingDays, stockAgingBucket } from '@/core/inventory/inventory-calc';
@@ -1500,6 +1509,517 @@ export function createSupabaseAdapter(
         assertNoError(error, 'reports.bankRecon');
         return (data ?? []) as BankReconLine[];
       },
+
+      // Phase 10 reports ─────────────────────────────────────────────────────
+      async getSalesByCustomer(company_id, from, to): Promise<SalesByCustomerLine[]> {
+        const { data: invRows, error: invErr } = await client
+          .from('invoices')
+          .select('id, contact_id, subtotal, contacts(name), invoice_items(quantity, unit_price, discount_pct, cost_at_sale)')
+          .eq('company_id', company_id)
+          .eq('status', 'confirmed')
+          .gte('date', from).lte('date', to);
+        assertNoError(invErr, 'getSalesByCustomer invoices');
+
+        const { data: cnRows, error: cnErr } = await client
+          .from('credit_notes')
+          .select('contact_id, subtotal')
+          .eq('company_id', company_id)
+          .eq('status', 'confirmed')
+          .gte('date', from).lte('date', to);
+        assertNoError(cnErr, 'getSalesByCustomer credit_notes');
+
+        const byContact: Record<string, { name: string; count: number; gross: number; cogs: number; returns: number }> = {};
+        for (const inv of invRows ?? []) {
+          const contact = inv.contacts as unknown as { name: string } | null;
+          if (!byContact[inv.contact_id]) byContact[inv.contact_id] = { name: contact?.name ?? '', count: 0, gross: 0, cogs: 0, returns: 0 };
+          byContact[inv.contact_id].count += 1;
+          byContact[inv.contact_id].gross += Number(inv.subtotal);
+          const items = (inv.invoice_items as unknown as { quantity: number; unit_price: number; discount_pct: number; cost_at_sale: number | null }[] | null) ?? [];
+          for (const it of items) {
+            const net = Number(it.quantity) * Number(it.unit_price) * (1 - Number(it.discount_pct ?? 0) / 100);
+            byContact[inv.contact_id].cogs += Number(it.cost_at_sale ?? 0) * Number(it.quantity);
+          }
+        }
+        for (const cn of cnRows ?? []) {
+          if (byContact[cn.contact_id]) byContact[cn.contact_id].returns += Number(cn.subtotal);
+        }
+        return Object.entries(byContact).map(([id, b]) => {
+          const net = b.gross - b.returns;
+          const gp = net - b.cogs;
+          return { contact_id: id, contact_name: b.name, invoice_count: b.count, gross_sales: b.gross, returns: b.returns, net_sales: net, gross_profit: gp, gp_pct: net > 0 ? Math.round(gp / net * 1000) / 10 : 0 };
+        }).sort((a, b) => b.net_sales - a.net_sales);
+      },
+
+      async getSalesByProduct(company_id, from, to): Promise<SalesByProductLine[]> {
+        const { data, error } = await client
+          .from('invoice_items')
+          .select('product_id, quantity, unit_price, discount_pct, cost_at_sale, products(code, name, brands(name)), invoices!inner(company_id, status, date)')
+          .eq('invoices.company_id', company_id)
+          .eq('invoices.status', 'confirmed')
+          .gte('invoices.date', from).lte('invoices.date', to);
+        assertNoError(error, 'getSalesByProduct');
+        const byProduct: Record<string, { sku: string; name: string; brand: string; qty: number; sales: number; cogs: number }> = {};
+        for (const row of data ?? []) {
+          const p = row.products as unknown as { code: string; name: string; brands: { name: string } | null } | null;
+          const id = row.product_id ?? 'none';
+          if (!byProduct[id]) byProduct[id] = { sku: p?.code ?? '', name: p?.name ?? '', brand: p?.brands?.name ?? '', qty: 0, sales: 0, cogs: 0 };
+          const qty = Number(row.quantity);
+          const net = qty * Number(row.unit_price) * (1 - Number(row.discount_pct ?? 0) / 100);
+          byProduct[id].qty += qty;
+          byProduct[id].sales += net;
+          byProduct[id].cogs += Number(row.cost_at_sale ?? 0) * qty;
+        }
+        return Object.entries(byProduct).map(([id, b]) => {
+          const gp = b.sales - b.cogs;
+          return { product_id: id, sku: b.sku, product_name: b.name, brand_name: b.brand, qty_sold: b.qty, net_sales: b.sales, gross_profit: gp, gp_pct: b.sales > 0 ? Math.round(gp / b.sales * 1000) / 10 : 0 };
+        }).sort((a, b) => b.net_sales - a.net_sales);
+      },
+
+      async getSalesByBrand(company_id, from, to): Promise<SalesByBrandLine[]> {
+        const { data, error } = await client
+          .from('invoice_items')
+          .select('quantity, unit_price, discount_pct, cost_at_sale, products(brand_id, brands(name)), invoices!inner(company_id, status, date)')
+          .eq('invoices.company_id', company_id)
+          .eq('invoices.status', 'confirmed')
+          .gte('invoices.date', from).lte('invoices.date', to);
+        assertNoError(error, 'getSalesByBrand');
+        const byBrand: Record<string, { name: string; qty: number; revenue: number; cogs: number }> = {};
+        for (const row of data ?? []) {
+          const p = row.products as unknown as { brand_id: string | null; brands: { name: string } | null } | null;
+          const id = p?.brand_id ?? 'none';
+          if (!byBrand[id]) byBrand[id] = { name: p?.brands?.name ?? 'No Brand', qty: 0, revenue: 0, cogs: 0 };
+          const qty = Number(row.quantity);
+          const net = qty * Number(row.unit_price) * (1 - Number(row.discount_pct ?? 0) / 100);
+          byBrand[id].qty += qty;
+          byBrand[id].revenue += net;
+          byBrand[id].cogs += Number(row.cost_at_sale ?? 0) * qty;
+        }
+        return Object.entries(byBrand).map(([id, b]) => {
+          const gp = b.revenue - b.cogs;
+          return { brand_id: id, brand_name: b.name, qty_sold: b.qty, revenue: b.revenue, gross_profit: gp, gp_pct: b.revenue > 0 ? Math.round(gp / b.revenue * 1000) / 10 : 0, stock_value: 0 };
+        }).sort((a, b) => b.revenue - a.revenue);
+      },
+
+      async getSalesByVehicle(company_id, from, to): Promise<SalesByVehicleLine[]> {
+        const { data, error } = await client
+          .from('invoice_items')
+          .select('quantity, unit_price, discount_pct, cost_at_sale, product_id, invoices!inner(company_id, status, date)')
+          .eq('invoices.company_id', company_id)
+          .eq('invoices.status', 'confirmed')
+          .gte('invoices.date', from).lte('invoices.date', to);
+        assertNoError(error, 'getSalesByVehicle inv_items');
+
+        const productIds = [...new Set((data ?? []).map(r => r.product_id).filter(Boolean) as string[])];
+        if (productIds.length === 0) return [];
+
+        const { data: compatData, error: cErr } = await client
+          .from('product_compatibility')
+          .select('product_id, make_id, model_id, vehicle_makes(name), vehicle_models(name)')
+          .in('product_id', productIds);
+        assertNoError(cErr, 'getSalesByVehicle compat');
+
+        const itemMap: Record<string, { qty: number; sales: number; cogs: number }> = {};
+        for (const row of data ?? []) {
+          if (!row.product_id) continue;
+          if (!itemMap[row.product_id]) itemMap[row.product_id] = { qty: 0, sales: 0, cogs: 0 };
+          const qty = Number(row.quantity);
+          itemMap[row.product_id].qty += qty;
+          itemMap[row.product_id].sales += qty * Number(row.unit_price) * (1 - Number(row.discount_pct ?? 0) / 100);
+          itemMap[row.product_id].cogs += Number(row.cost_at_sale ?? 0) * qty;
+        }
+
+        const byVehicle: Record<string, SalesByVehicleLine> = {};
+        for (const c of compatData ?? []) {
+          const make = c.vehicle_makes as unknown as { name: string } | null;
+          const model = c.vehicle_models as unknown as { name: string } | null;
+          const key = `${c.make_id}::${c.model_id ?? 'all'}`;
+          if (!byVehicle[key]) byVehicle[key] = { make_id: c.make_id, make_name: make?.name ?? '', model_id: c.model_id, model_name: model?.name ?? null, qty: 0, revenue: 0, gross_profit: 0 };
+          const m = itemMap[c.product_id];
+          if (m) {
+            byVehicle[key].qty += m.qty;
+            byVehicle[key].revenue += m.sales;
+            byVehicle[key].gross_profit += m.sales - m.cogs;
+          }
+        }
+        return Object.values(byVehicle).sort((a, b) => b.revenue - a.revenue);
+      },
+
+      async getSalesBySalesperson(company_id, from, to): Promise<SalesBySalespersonLine[]> {
+        const { data, error } = await client
+          .from('invoices')
+          .select('id, salesperson_id, subtotal, profiles(full_name), invoice_items(quantity, unit_price, discount_pct, cost_at_sale)')
+          .eq('company_id', company_id)
+          .eq('status', 'confirmed')
+          .gte('date', from).lte('date', to);
+        assertNoError(error, 'getSalesBySalesperson');
+        const by: Record<string, { name: string; count: number; sales: number; cogs: number }> = {};
+        for (const inv of data ?? []) {
+          const spId = inv.salesperson_id ?? 'unassigned';
+          const profile = inv.profiles as unknown as { full_name: string } | null;
+          if (!by[spId]) by[spId] = { name: profile?.full_name ?? 'Unassigned', count: 0, sales: 0, cogs: 0 };
+          by[spId].count += 1;
+          const items = (inv.invoice_items as unknown as { quantity: number; unit_price: number; discount_pct: number; cost_at_sale: number | null }[] | null) ?? [];
+          for (const it of items) {
+            const net = Number(it.quantity) * Number(it.unit_price) * (1 - Number(it.discount_pct ?? 0) / 100);
+            by[spId].sales += net;
+            by[spId].cogs += Number(it.cost_at_sale ?? 0) * Number(it.quantity);
+          }
+        }
+        return Object.entries(by).map(([id, b]) => {
+          const gp = b.sales - b.cogs;
+          return { salesperson_id: id === 'unassigned' ? null : id, salesperson_name: b.name, invoice_count: b.count, net_sales: b.sales, gross_profit: gp, gp_pct: b.sales > 0 ? Math.round(gp / b.sales * 1000) / 10 : 0, avg_invoice_value: b.count > 0 ? Math.round(b.sales / b.count * 100) / 100 : 0 };
+        }).sort((a, b) => b.net_sales - a.net_sales);
+      },
+
+      async getSalesTrend(company_id, from, to, bucket): Promise<SalesTrendLine[]> {
+        const { data, error } = await client
+          .from('invoices')
+          .select('id, date, subtotal, invoice_items(quantity, unit_price, discount_pct, cost_at_sale)')
+          .eq('company_id', company_id)
+          .eq('status', 'confirmed')
+          .gte('date', from).lte('date', to)
+          .order('date');
+        assertNoError(error, 'getSalesTrend');
+
+        const { data: cnRows } = await client
+          .from('credit_notes')
+          .select('date, subtotal')
+          .eq('company_id', company_id)
+          .eq('status', 'confirmed')
+          .gte('date', from).lte('date', to);
+
+        const bucketKey = (date: string) => {
+          const d = new Date(date);
+          if (bucket === 'day')   return date.slice(0, 10);
+          if (bucket === 'week')  { const w = new Date(d); w.setDate(d.getDate() - d.getDay()); return w.toISOString().slice(0, 10); }
+          return date.slice(0, 7);
+        };
+        const by: Record<string, { count: number; gross: number; cogs: number; returns: number }> = {};
+        for (const inv of data ?? []) {
+          const k = bucketKey(inv.date as string);
+          if (!by[k]) by[k] = { count: 0, gross: 0, cogs: 0, returns: 0 };
+          by[k].count += 1;
+          by[k].gross += Number(inv.subtotal);
+          const items = (inv.invoice_items as unknown as { quantity: number; unit_price: number; discount_pct: number; cost_at_sale: number | null }[] | null) ?? [];
+          for (const it of items) {
+            by[k].cogs += Number(it.cost_at_sale ?? 0) * Number(it.quantity);
+          }
+        }
+        for (const cn of cnRows ?? []) {
+          const k = bucketKey((cn as { date: string; subtotal: number }).date);
+          if (!by[k]) by[k] = { count: 0, gross: 0, cogs: 0, returns: 0 };
+          by[k].returns += Number((cn as { date: string; subtotal: number }).subtotal);
+        }
+        return Object.entries(by).sort(([a], [b]) => a.localeCompare(b)).map(([k, b]) => {
+          const net = b.gross - b.returns;
+          return { bucket: k, invoice_count: b.count, gross_sales: b.gross, returns: b.returns, net_sales: net, gross_profit: net - b.cogs };
+        });
+      },
+
+      async getPurchasesBySupplier(company_id, from, to): Promise<PurchasesBySupplierLine[]> {
+        const { data, error } = await client
+          .from('vendor_bills')
+          .select('contact_id, total_amount, contacts(name)')
+          .eq('company_id', company_id)
+          .eq('status', 'confirmed')
+          .gte('date', from).lte('date', to);
+        assertNoError(error, 'getPurchasesBySupplier');
+        const by: Record<string, { name: string; count: number; total: number }> = {};
+        let grandTotal = 0;
+        for (const b of data ?? []) {
+          const contact = b.contacts as unknown as { name: string } | null;
+          if (!by[b.contact_id]) by[b.contact_id] = { name: contact?.name ?? '', count: 0, total: 0 };
+          by[b.contact_id].count += 1;
+          by[b.contact_id].total += Number(b.total_amount);
+          grandTotal += Number(b.total_amount);
+        }
+        return Object.entries(by).map(([id, s]) => ({
+          contact_id: id, contact_name: s.name, bill_count: s.count, gross_purchases: s.total, returns: 0, net_purchases: s.total,
+          pct_of_total: grandTotal > 0 ? Math.round(s.total / grandTotal * 1000) / 10 : 0,
+        })).sort((a, b) => b.net_purchases - a.net_purchases);
+      },
+
+      async getPurchasesByProduct(company_id, from, to): Promise<PurchasesByProductLine[]> {
+        const { data, error } = await client
+          .from('goods_receipt_items')
+          .select('product_id, quantity_received, unit_cost, products(code, name), goods_receipts!inner(company_id, status, date)')
+          .eq('goods_receipts.company_id', company_id)
+          .eq('goods_receipts.status', 'received')
+          .gte('goods_receipts.date', from).lte('goods_receipts.date', to);
+        assertNoError(error, 'getPurchasesByProduct');
+        const by: Record<string, { sku: string; name: string; qty: number; cost: number }> = {};
+        for (const row of data ?? []) {
+          const p = row.products as unknown as { code: string; name: string } | null;
+          const id = row.product_id ?? 'none';
+          if (!by[id]) by[id] = { sku: p?.code ?? '', name: p?.name ?? '', qty: 0, cost: 0 };
+          const qty = Number(row.quantity_received);
+          by[id].qty += qty;
+          by[id].cost += qty * Number(row.unit_cost ?? 0);
+        }
+        return Object.entries(by).map(([id, b]) => ({
+          product_id: id, sku: b.sku, product_name: b.name, qty_purchased: b.qty, total_cost: b.cost, avg_unit_cost: b.qty > 0 ? Math.round(b.cost / b.qty * 100) / 100 : 0,
+        })).sort((a, b) => b.total_cost - a.total_cost);
+      },
+
+      async getOutstandingPOs(company_id): Promise<OutstandingPOLine[]> {
+        const { data, error } = await client
+          .from('purchase_orders')
+          .select('id, po_number, supplier_id, date, expected_delivery_date, total_amount, contacts(name), goods_receipts(total_amount, status)')
+          .eq('company_id', company_id)
+          .in('status', ['draft', 'sent', 'partial'])
+          .order('date', { ascending: false });
+        assertNoError(error, 'getOutstandingPOs');
+        return (data ?? []).map(po => {
+          const contact = po.contacts as unknown as { name: string } | null;
+          const grns = (po.goods_receipts as unknown as { total_amount: number; status: string }[] | null) ?? [];
+          const received = grns.filter(g => g.status === 'received').reduce((s, g) => s + Number(g.total_amount), 0);
+          const total = Number(po.total_amount ?? 0);
+          return { po_id: po.id, po_number: po.po_number, supplier_name: contact?.name ?? '', date: po.date as string, expected_delivery: po.expected_delivery_date as string | null, total, received_value: received, pending_value: Math.max(0, total - received) };
+        });
+      },
+
+      async getVATReturn(company_id, from, to): Promise<VATReturn> {
+        // Output VAT (account 2200) — credits = VAT collected on sales
+        const { data: outRows, error: outErr } = await client
+          .from('general_ledger')
+          .select('amount, debit_credit, contact_id')
+          .eq('company_id', company_id)
+          .eq('account_code', '2200')
+          .gte('date', from).lte('date', to);
+        assertNoError(outErr, 'getVATReturn output');
+
+        const totalOutputVAT = (outRows ?? []).reduce((s, r) => s + (r.debit_credit === 'credit' ? Number(r.amount) : -Number(r.amount)), 0);
+
+        // Input VAT (account 1500) — debits = VAT paid on purchases
+        const { data: inRows, error: inErr } = await client
+          .from('general_ledger')
+          .select('amount, debit_credit')
+          .eq('company_id', company_id)
+          .eq('account_code', '1500')
+          .gte('date', from).lte('date', to);
+        assertNoError(inErr, 'getVATReturn input');
+
+        const totalInputVAT = (inRows ?? []).reduce((s, r) => s + (r.debit_credit === 'debit' ? Number(r.amount) : -Number(r.amount)), 0);
+
+        // Get sales subtotal for Box 1 (standard-rated)
+        const { data: salesRows, error: salesErr } = await client
+          .from('general_ledger')
+          .select('amount, debit_credit')
+          .eq('company_id', company_id)
+          .eq('account_code', '4100')
+          .gte('date', from).lte('date', to);
+        assertNoError(salesErr, 'getVATReturn sales');
+        const totalSales = (salesRows ?? []).reduce((s, r) => s + (r.debit_credit === 'credit' ? Number(r.amount) : -Number(r.amount)), 0);
+
+        const { data: expRows, error: expErr } = await client
+          .from('general_ledger')
+          .select('amount, debit_credit')
+          .eq('company_id', company_id)
+          .eq('account_code', '5100')
+          .gte('date', from).lte('date', to);
+        assertNoError(expErr, 'getVATReturn expenses');
+        const totalExpenses = (expRows ?? []).reduce((s, r) => s + (r.debit_credit === 'debit' ? Number(r.amount) : -Number(r.amount)), 0);
+
+        const outputBoxes: VATReturnBox[] = [
+          { box: '1', label: 'Standard Rated Supplies', taxable_amount: Math.max(0, totalSales), vat_amount: Math.max(0, totalOutputVAT) },
+          { box: '4', label: 'Zero Rated Supplies', taxable_amount: 0, vat_amount: 0 },
+          { box: '5', label: 'Exempt Supplies', taxable_amount: 0, vat_amount: 0 },
+        ];
+        const inputBoxes: VATReturnBox[] = [
+          { box: '9', label: 'Standard Rated Expenses', taxable_amount: Math.max(0, totalExpenses), vat_amount: Math.max(0, totalInputVAT) },
+        ];
+        return { period_start: from, period_end: to, output_boxes: outputBoxes, total_output_vat: Math.max(0, totalOutputVAT), input_boxes: inputBoxes, total_input_vat: Math.max(0, totalInputVAT), net_vat_payable: Math.max(0, totalOutputVAT) - Math.max(0, totalInputVAT) };
+      },
+
+      async getAuditLog(company_id, params): Promise<AuditLogLine[]> {
+        let q = client
+          .from('audit_log')
+          .select('id, created_at, user_id, action, entity_type, entity_id, old_values, new_values, profiles(email)')
+          .eq('company_id', company_id)
+          .order('created_at', { ascending: false })
+          .limit(params.limit ?? 500);
+        if (params.from) q = q.gte('created_at', params.from);
+        if (params.to)   q = q.lte('created_at', params.to + 'T23:59:59');
+        const { data, error } = await q;
+        assertNoError(error, 'getAuditLog');
+        return (data ?? []).map(r => {
+          const profile = r.profiles as unknown as { email: string } | null;
+          return {
+            id: r.id, created_at: r.created_at as string,
+            user_id: r.user_id, user_email: profile?.email ?? r.user_id,
+            action: r.action, entity_type: r.entity_type, entity_id: r.entity_id,
+            old_values: r.old_values as Record<string, unknown> | null,
+            new_values: r.new_values as Record<string, unknown> | null,
+          };
+        });
+      },
+
+      async getReversalTrail(company_id, from, to): Promise<ReversalTrailLine[]> {
+        const { data, error } = await client
+          .from('journal_entries')
+          .select('id, entry_number, date, source_type, total_debit, reversed_by_id, reversed_je:journal_entries!reversed_by_id(entry_number, date, profiles(email))')
+          .eq('company_id', company_id)
+          .not('reversed_by_id', 'is', null)
+          .gte('date', from).lte('date', to)
+          .order('date', { ascending: false });
+        assertNoError(error, 'getReversalTrail');
+        return (data ?? []).map(r => {
+          const rev = r.reversed_je as unknown as { entry_number: string; date: string; profiles: { email: string } | null } | null;
+          return {
+            original_entry_number: r.entry_number,
+            original_date: r.date as string,
+            reversal_entry_number: rev?.entry_number ?? '',
+            reversal_date: rev?.date ?? '',
+            amount: Number(r.total_debit),
+            source_type: r.source_type ?? '',
+            reversed_by: rev?.profiles?.email ?? '',
+          };
+        });
+      },
+
+      async getCashFlow(company_id, from, to): Promise<CashFlowStatement> {
+        // Net profit from P&L
+        const pl = await this.getProfitAndLoss(company_id, from, to);
+        const netProfit = pl.net_profit;
+
+        // Cash = sum of 11xx accounts
+        const getBalance = async (account_prefix: string, date: string) => {
+          const { data } = await client
+            .from('general_ledger')
+            .select('amount, debit_credit')
+            .eq('company_id', company_id)
+            .like('account_code', account_prefix + '%')
+            .lte('date', date);
+          return (data ?? []).reduce((s, r) => s + (r.debit_credit === 'debit' ? Number(r.amount) : -Number(r.amount)), 0);
+        };
+
+        const getBalanceSingle = async (code: string, date: string, normalDebit: boolean) => {
+          const { data } = await client
+            .from('general_ledger')
+            .select('amount, debit_credit')
+            .eq('company_id', company_id)
+            .eq('account_code', code)
+            .lte('date', date);
+          const net = (data ?? []).reduce((s, r) => s + (r.debit_credit === 'debit' ? Number(r.amount) : -Number(r.amount)), 0);
+          return normalDebit ? net : -net;
+        };
+
+        const prevDay = (d: string) => { const dt = new Date(d); dt.setDate(dt.getDate() - 1); return dt.toISOString().slice(0, 10); };
+
+        const openingCash = await getBalance('11', prevDay(from));
+        const closingCash = await getBalance('11', to);
+
+        const arOpen = await getBalanceSingle('1200', prevDay(from), true);
+        const arClose = await getBalanceSingle('1200', to, true);
+        const invOpen = await getBalanceSingle('1300', prevDay(from), true);
+        const invClose = await getBalanceSingle('1300', to, true);
+        const apOpen  = await getBalanceSingle('2100', prevDay(from), false);
+        const apClose = await getBalanceSingle('2100', to, false);
+        const advOpen = await getBalanceSingle('2400', prevDay(from), false);
+        const advClose = await getBalanceSingle('2400', to, false);
+
+        const { data: adjRows } = await client
+          .from('general_ledger')
+          .select('amount, debit_credit')
+          .eq('company_id', company_id)
+          .in('account_code', ['6700', '4300'])
+          .gte('date', from).lte('date', to);
+
+        let invLoss = 0, invGain = 0;
+        for (const r of adjRows ?? []) {
+          if (r.debit_credit === 'debit') invLoss += Number(r.amount);
+          else invGain += Number(r.amount);
+        }
+
+        const operatingAdj: CashFlowSection[] = [
+          { label: 'Add: Inventory Loss (non-cash)', amount: invLoss },
+          { label: 'Less: Inventory Gain (non-cash)', amount: -invGain },
+        ];
+        const wcChanges: CashFlowSection[] = [
+          { label: '(Increase)/Decrease in AR',       amount: -(arClose - arOpen) },
+          { label: '(Increase)/Decrease in Inventory', amount: -(invClose - invOpen) },
+          { label: 'Increase/(Decrease) in AP',        amount: apClose - apOpen },
+          { label: 'Increase/(Decrease) in Adv',       amount: advClose - advOpen },
+        ];
+
+        const netOperating = netProfit + operatingAdj.reduce((s, i) => s + i.amount, 0) + wcChanges.reduce((s, i) => s + i.amount, 0);
+
+        return {
+          period_start: from, period_end: to,
+          net_profit: netProfit,
+          operating_adjustments: operatingAdj,
+          working_capital_changes: wcChanges,
+          net_operating: netOperating,
+          investing_activities: [],
+          net_investing: 0,
+          financing_activities: [],
+          net_financing: 0,
+          net_increase: netOperating,
+          opening_cash: openingCash,
+          closing_cash: closingCash,
+        };
+      },
+
+      async getOwnerDashboard(company_id): Promise<OwnerDashboard> {
+        const today = new Date().toISOString().slice(0, 10);
+        const monthStart = today.slice(0, 7) + '-01';
+        const last30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+
+        const [{ data: todayInvs }, { data: ar }, { data: ap }, { data: bankRows }, { data: topProds }, { data: lowStock }, { data: overdueInvs }, { data: trendInvs }] = await Promise.all([
+          client.from('invoices').select('total_amount').eq('company_id', company_id).eq('status', 'confirmed').eq('date', today),
+          client.from('general_ledger').select('amount, debit_credit').eq('company_id', company_id).eq('account_code', '1200'),
+          client.from('general_ledger').select('amount, debit_credit').eq('company_id', company_id).eq('account_code', '2100'),
+          client.from('general_ledger').select('amount, debit_credit').eq('company_id', company_id).like('account_code', '11%'),
+          client.from('invoice_items').select('product_id, quantity, unit_price, discount_pct, products(name), invoices!inner(company_id, status, date)').eq('invoices.company_id', company_id).eq('invoices.status', 'confirmed').gte('invoices.date', monthStart).lte('invoices.date', today).limit(500),
+          client.from('stock_active').select('product_id, quantity_on_hand, products(name, min_stock_level)').eq('company_id', company_id).limit(1000),
+          client.from('invoices').select('id').eq('company_id', company_id).eq('status', 'confirmed').lt('due_date', today).gt('amount_due', 0).limit(200),
+          client.from('invoices').select('date, total_amount').eq('company_id', company_id).eq('status', 'confirmed').gte('date', last30).order('date'),
+        ]);
+
+        const arTotal = (ar ?? []).reduce((s, r) => s + (r.debit_credit === 'debit' ? Number(r.amount) : -Number(r.amount)), 0);
+        const apTotal = (ap ?? []).reduce((s, r) => s + (r.debit_credit === 'credit' ? Number(r.amount) : -Number(r.amount)), 0);
+        const cash   = (bankRows ?? []).reduce((s, r) => s + (r.debit_credit === 'debit' ? Number(r.amount) : -Number(r.amount)), 0);
+
+        const todayCount  = (todayInvs ?? []).length;
+        const todayAmount = (todayInvs ?? []).reduce((s, r) => s + Number(r.total_amount ?? 0), 0);
+
+        // Top products by revenue this month
+        const prodRevenue: Record<string, { name: string; qty: number; rev: number }> = {};
+        for (const r of (topProds ?? []) as unknown as { product_id: string | null; quantity: number; unit_price: number; discount_pct: number; products: { name: string } | null }[]) {
+          const id = r.product_id ?? 'none';
+          if (!prodRevenue[id]) prodRevenue[id] = { name: r.products?.name ?? '', qty: 0, rev: 0 };
+          prodRevenue[id].qty += Number(r.quantity);
+          prodRevenue[id].rev += Number(r.quantity) * Number(r.unit_price) * (1 - Number(r.discount_pct ?? 0) / 100);
+        }
+        const topProducts = Object.entries(prodRevenue).sort(([, a], [, b]) => b.rev - a.rev).slice(0, 5).map(([id, v]) => ({ product_id: id, name: v.name, qty: v.qty, revenue: v.rev }));
+
+        // Low stock count
+        const lowStockCount = (lowStock ?? []).filter((r: unknown) => {
+          const row = r as { quantity_on_hand: number | null; products: { min_stock_level: number | null } | null };
+          const qty = Number(row.quantity_on_hand ?? 0);
+          const min = Number(row.products?.min_stock_level ?? 0);
+          return min > 0 && qty <= min;
+        }).length;
+
+        // Sales trend last 30 days
+        const salesTrend = (trendInvs ?? []).map((r: unknown) => {
+          const row = r as { date: string; total_amount: number };
+          return { date: row.date, amount: Number(row.total_amount ?? 0) };
+        });
+
+        return {
+          today_sales_count: todayCount,
+          today_sales_amount: todayAmount,
+          outstanding_ar: Math.max(0, arTotal),
+          outstanding_ap: Math.max(0, apTotal),
+          cash_and_bank: cash,
+          top_products: topProducts,
+          top_customers: [],
+          low_stock_count: lowStockCount,
+          overdue_invoices_count: (overdueInvs ?? []).length,
+          sales_trend: salesTrend,
+        };
+      },
     },
 
     // ── Purchase Orders ───────────────────────────────────────────────────────
@@ -2246,6 +2766,19 @@ export function createSupabaseAdapter(
         });
         assertNoError(error, 'debitNotes.getNextNumber');
         return data as string;
+      },
+    },
+
+    // ── Phase 10: System Health ───────────────────────────────────────────────
+    systemHealth: {
+      async check(company_id, as_of_date): Promise<InvariantResult[]> {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)
+          ('verify_invariants', {
+            p_company_id: company_id,
+            p_as_of_date: as_of_date ?? new Date().toISOString().slice(0, 10),
+          });
+        assertNoError(error as Error | null, 'systemHealth.check');
+        return (data as InvariantResult[]) ?? [];
       },
     },
   };

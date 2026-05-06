@@ -481,6 +481,199 @@ export interface ReportsAPI {
   // Phase 8 reports
   dailyCash(company_id: string, date: string): Promise<DailyCashLine[]>;
   bankRecon(company_id: string, account_id: string, date_from: string, date_to: string): Promise<BankReconLine[]>;
+  // Phase 10 reports
+  getSalesByCustomer(company_id: string, from: string, to: string): Promise<SalesByCustomerLine[]>;
+  getSalesByProduct(company_id: string, from: string, to: string): Promise<SalesByProductLine[]>;
+  getSalesByBrand(company_id: string, from: string, to: string): Promise<SalesByBrandLine[]>;
+  getSalesByVehicle(company_id: string, from: string, to: string): Promise<SalesByVehicleLine[]>;
+  getSalesBySalesperson(company_id: string, from: string, to: string): Promise<SalesBySalespersonLine[]>;
+  getSalesTrend(company_id: string, from: string, to: string, bucket: 'day' | 'week' | 'month'): Promise<SalesTrendLine[]>;
+  getPurchasesBySupplier(company_id: string, from: string, to: string): Promise<PurchasesBySupplierLine[]>;
+  getPurchasesByProduct(company_id: string, from: string, to: string): Promise<PurchasesByProductLine[]>;
+  getOutstandingPOs(company_id: string): Promise<OutstandingPOLine[]>;
+  getVATReturn(company_id: string, from: string, to: string): Promise<VATReturn>;
+  getAuditLog(company_id: string, params: { from?: string; to?: string; limit?: number }): Promise<AuditLogLine[]>;
+  getReversalTrail(company_id: string, from: string, to: string): Promise<ReversalTrailLine[]>;
+  getCashFlow(company_id: string, from: string, to: string): Promise<CashFlowStatement>;
+  getOwnerDashboard(company_id: string): Promise<OwnerDashboard>;
+}
+
+// ── Phase 10 report types ─────────────────────────────────────────────────────
+
+export interface SalesByCustomerLine {
+  contact_id: string;
+  contact_name: string;
+  invoice_count: number;
+  gross_sales: number;
+  returns: number;
+  net_sales: number;
+  gross_profit: number;
+  gp_pct: number;
+}
+
+export interface SalesByProductLine {
+  product_id: string;
+  sku: string;
+  product_name: string;
+  brand_name: string;
+  qty_sold: number;
+  net_sales: number;
+  gross_profit: number;
+  gp_pct: number;
+}
+
+export interface SalesByBrandLine {
+  brand_id: string;
+  brand_name: string;
+  qty_sold: number;
+  revenue: number;
+  gross_profit: number;
+  gp_pct: number;
+  stock_value: number;
+}
+
+export interface SalesByVehicleLine {
+  make_id: string;
+  make_name: string;
+  model_id: string | null;
+  model_name: string | null;
+  qty: number;
+  revenue: number;
+  gross_profit: number;
+}
+
+export interface SalesBySalespersonLine {
+  salesperson_id: string | null;
+  salesperson_name: string;
+  invoice_count: number;
+  net_sales: number;
+  gross_profit: number;
+  gp_pct: number;
+  avg_invoice_value: number;
+}
+
+export interface SalesTrendLine {
+  bucket: string;
+  invoice_count: number;
+  gross_sales: number;
+  returns: number;
+  net_sales: number;
+  gross_profit: number;
+}
+
+export interface PurchasesBySupplierLine {
+  contact_id: string;
+  contact_name: string;
+  bill_count: number;
+  gross_purchases: number;
+  returns: number;
+  net_purchases: number;
+  pct_of_total: number;
+}
+
+export interface PurchasesByProductLine {
+  product_id: string;
+  sku: string;
+  product_name: string;
+  qty_purchased: number;
+  total_cost: number;
+  avg_unit_cost: number;
+}
+
+export interface OutstandingPOLine {
+  po_id: string;
+  po_number: string;
+  supplier_name: string;
+  date: string;
+  expected_delivery: string | null;
+  total: number;
+  received_value: number;
+  pending_value: number;
+}
+
+export interface VATReturnBox {
+  box: string;
+  label: string;
+  taxable_amount: number;
+  vat_amount: number;
+}
+
+export interface VATReturn {
+  period_start: string;
+  period_end: string;
+  output_boxes: VATReturnBox[];
+  total_output_vat: number;
+  input_boxes: VATReturnBox[];
+  total_input_vat: number;
+  net_vat_payable: number;
+}
+
+export interface AuditLogLine {
+  id: string;
+  created_at: string;
+  user_id: string;
+  user_email: string;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
+}
+
+export interface ReversalTrailLine {
+  original_entry_number: string;
+  original_date: string;
+  reversal_entry_number: string;
+  reversal_date: string;
+  amount: number;
+  source_type: string;
+  reversed_by: string;
+}
+
+export interface CashFlowSection {
+  label: string;
+  amount: number;
+}
+
+export interface CashFlowStatement {
+  period_start: string;
+  period_end: string;
+  net_profit: number;
+  operating_adjustments: CashFlowSection[];
+  working_capital_changes: CashFlowSection[];
+  net_operating: number;
+  investing_activities: CashFlowSection[];
+  net_investing: number;
+  financing_activities: CashFlowSection[];
+  net_financing: number;
+  net_increase: number;
+  opening_cash: number;
+  closing_cash: number;
+}
+
+export interface OwnerDashboard {
+  today_sales_count: number;
+  today_sales_amount: number;
+  outstanding_ar: number;
+  outstanding_ap: number;
+  cash_and_bank: number;
+  top_products: { product_id: string; name: string; qty: number; revenue: number }[];
+  top_customers: { contact_id: string; name: string; sales: number }[];
+  low_stock_count: number;
+  overdue_invoices_count: number;
+  sales_trend: { date: string; amount: number }[];
+}
+
+export interface InvariantResult {
+  name: string;
+  invariant: string;
+  pass: boolean;
+  difference?: number;
+  [key: string]: unknown;
+}
+
+export interface SystemHealthAPI {
+  check(company_id: string, as_of_date?: string): Promise<InvariantResult[]>;
 }
 
 // ── Phase 5 row types ─────────────────────────────────────────────────────────
@@ -1039,4 +1232,6 @@ export interface DataAdapter {
   creditNotes: CreditNotesAPI;
   salesReturns: SalesReturnsAPI;
   debitNotes: DebitNotesAPI;
+  // Phase 10
+  systemHealth: SystemHealthAPI;
 }

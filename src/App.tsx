@@ -112,6 +112,22 @@ const SalesReturnEditorPage           = lazy(() => import('@/modules/sales/sales
 const DebitNotesPage                  = lazy(() => import('@/modules/purchasing/debit-notes'));
 const DebitNoteEditorPage             = lazy(() => import('@/modules/purchasing/debit-note-editor'));
 
+// Phase 10 — Reports Completion & Dashboards
+const SalesByCustomerPage             = lazy(() => import('@/modules/reports/sales-by-customer'));
+const SalesByProductPage              = lazy(() => import('@/modules/reports/sales-by-product'));
+const SalesByBrandPage                = lazy(() => import('@/modules/reports/sales-by-brand'));
+const SalesByVehiclePage              = lazy(() => import('@/modules/reports/sales-by-vehicle'));
+const SalesBySalespersonPage          = lazy(() => import('@/modules/reports/sales-by-salesperson'));
+const SalesTrendPage                  = lazy(() => import('@/modules/reports/sales-trend'));
+const PurchasesBySupplierPage         = lazy(() => import('@/modules/reports/purchases-by-supplier'));
+const PurchasesByProductPage          = lazy(() => import('@/modules/reports/purchases-by-product'));
+const OutstandingPOsPage              = lazy(() => import('@/modules/reports/outstanding-pos'));
+const VATReturnPage                   = lazy(() => import('@/modules/reports/vat-return'));
+const AuditLogPage                    = lazy(() => import('@/modules/reports/audit-log'));
+const ReversalTrailPage               = lazy(() => import('@/modules/reports/reversal-trail'));
+const CashFlowPage                    = lazy(() => import('@/modules/reports/cash-flow'));
+const SystemHealthPage                = lazy(() => import('@/modules/settings/system-health'));
+
 function Loading() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-surface-page">
@@ -263,6 +279,22 @@ function AppRoutes() {
               <Route path="/purchasing/debit-notes/new"         element={<DebitNoteEditorPage />} />
               <Route path="/purchasing/debit-notes/:id"         element={<DebitNoteEditorPage />} />
               <Route path="/purchasing/debit-notes"             element={<DebitNotesPage />} />
+
+              {/* Phase 10 — Reports Completion & Dashboards */}
+              <Route path="/reports/sales-by-customer"          element={<SalesByCustomerPage />} />
+              <Route path="/reports/sales-by-product"           element={<SalesByProductPage />} />
+              <Route path="/reports/sales-by-brand"             element={<SalesByBrandPage />} />
+              <Route path="/reports/sales-by-vehicle"           element={<SalesByVehiclePage />} />
+              <Route path="/reports/sales-by-salesperson"       element={<SalesBySalespersonPage />} />
+              <Route path="/reports/sales-trend"                element={<SalesTrendPage />} />
+              <Route path="/reports/purchases-by-supplier"      element={<PurchasesBySupplierPage />} />
+              <Route path="/reports/purchases-by-product"       element={<PurchasesByProductPage />} />
+              <Route path="/reports/outstanding-pos"            element={<OutstandingPOsPage />} />
+              <Route path="/reports/vat-return"                 element={<VATReturnPage />} />
+              <Route path="/reports/audit-log"                  element={<AuditLogPage />} />
+              <Route path="/reports/reversal-trail"             element={<ReversalTrailPage />} />
+              <Route path="/reports/cash-flow"                  element={<CashFlowPage />} />
+              <Route path="/settings/system-health"             element={<SystemHealthPage />} />
             </Route>
           </Route>
         </Route>

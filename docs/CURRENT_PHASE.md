@@ -1,12 +1,12 @@
 # Current Phase
 
-**Active Phase:** Phase 9 — Returns & Credit/Debit Notes
+**Active Phase:** Phase 10 — Reports Completion
 
-**Status:** Phase 9 implementation complete 2026-05-06. Awaiting `supabase db push` (migrations 20 & 21) + `supabase gen types` to finalize. Verification gate: `npm run test:phase9` (40 assertions).
+**Status:** Phase 10 implementation complete 2026-05-06. Awaiting `supabase db push` (migration 22) + `supabase gen types`. Verification gate: `npm run test:phase10` (36 assertions).
 
-**Last completed:** Phase 9 — Sales Returns, Credit Notes, Debit Notes. 2 Supabase RPCs (confirm_credit_note A9/A10, confirm_debit_note B9/B10, plus void variants). Adapter layer: CreditNotesAPI (8 methods), SalesReturnsAPI (5 methods), DebitNotesAPI (8 methods). UI: 6 pages (sales-returns list+editor, credit-notes list+editor, debit-notes list+editor). App-layout nav: Sales Returns + Credit Notes under Sales; Debit Notes under Purchasing. EN+AR i18n (returns.* section, 50+ keys). 2 migrations (20260505000020–21) copied to main project.
+**Last completed:** Phase 10 — Reports Completion & Dashboards. 1 SQL migration (verify_invariants RPC, 9 invariants). Adapter: ReportsAPI extended with 14 Phase 10 methods (C1–C6, D1–D3, F1, A5, I1/I2, owner dashboard); SystemHealthAPI added. 13 new report pages + upgraded Owner Dashboard (H1). app-layout nav: 14 new report links + System Health under Settings. EN+AR i18n (reports.* 60+ keys, dashboard.*, settings.*). Migration 22 copied to main project.
 
-**Next milestone:** Run `supabase db push`, then `supabase gen types`, copy database.ts back to worktree, run `npm run typecheck` and `npm run test:phase9`. Then Phase 10 per Doc 5.
+**Next milestone:** Run `supabase db push`, `supabase gen types`, copy database.ts, `npm run typecheck`, `npm run test:phase10`. Then Phase 11 per Doc 5.
 
 **Notes:**
 - Building from clean slate after rebuild decision
@@ -411,3 +411,41 @@ This file is read by Claude Code at the start of every session, so keep it accur
 - COGS reversal uses `cost_at_sale` from credit_note_items (not current MAC) — this matches the original inventory outflow and avoids MAC fluctuations affecting P&L on returns.
 - Debit Note confirm posts B9 (with stock) and B10 (without stock) using the same RPC — the RPC checks whether each line item has a `product_id` to decide if a stock_ledger row is needed.
 - Phase 9 RPCs (confirm_credit_note, void_credit_note, confirm_debit_note, void_debit_note) use `(client.rpc as any)` casts pending `supabase db push` + `supabase gen types`.
+
+### Phase 10 — Reports Completion
+- Started: 2026-05-06
+- Definition of Done: see Document_5_Build_Phases.md, Phase 10 section
+
+**Stage progress:**
+- [x] Stage 1 — DB: migration 20260506000022 (`verify_invariants` RPC: all 9 Doc 4 Part K invariants); copied to main project
+- [x] Stage 2 — Adapter layer: ReportsAPI extended with 14 Phase 10 methods (getSalesByCustomer/Product/Brand/Vehicle/Salesperson, getSalesTrend, getPurchasesBySupplier/Product, getOutstandingPOs, getVATReturn, getAuditLog, getReversalTrail, getCashFlow, getOwnerDashboard); SystemHealthAPI (check method); all types added to adapter.ts; supabaseAdapter + selfHostedAdapter stubs updated
+- [x] Stage 3 — Dashboard upgrade: `dashboard/index.tsx` now shows H1 Owner Dashboard (4 KPI tiles, top products, low-stock alerts, overdue-invoices alert, 30-day sales trend bar chart)
+- [x] Stage 4 — Sales analysis reports: sales-by-customer (C1), sales-by-product (C2), sales-by-brand (C3), sales-by-vehicle (C4), sales-by-salesperson (C5), sales-trend (C6)
+- [x] Stage 5 — Purchase analysis reports: purchases-by-supplier (D1), purchases-by-product (D2), outstanding-pos (D3)
+- [x] Stage 6 — Tax & finance reports: vat-return (F1), cash-flow (A5)
+- [x] Stage 7 — Audit reports: audit-log (I1), reversal-trail (I2)
+- [x] Stage 8 — System Health page at `/settings/system-health` (runs 9 invariants, green/red table)
+- [x] Stage 9 — App.tsx: 14 new routes; app-layout.tsx: 14 new report nav links + System Health in Settings
+- [x] Stage 10 — i18n: reports.* (60+ new keys), dashboard.*, settings.* sections in EN + AR
+- [x] Stage 11 — Verification test: `phase10-verification.test.ts` (36 pure unit assertions); `test:phase10` script added
+
+**Phase 10 DoD — pending verification run:**
+- [x] verify_invariants RPC: all 9 invariants (Trial Balance, Balance Sheet, AR/AP Aging, Stock Val, Advances, GRN Accrual, Cash) as JSONB array
+- [x] Sales reports C1–C6 at `/reports/sales-by-{customer,product,brand,vehicle,salesperson}` + `/reports/sales-trend`
+- [x] Purchase reports D1–D3 at `/reports/purchases-by-{supplier,product}` + `/reports/outstanding-pos`
+- [x] VAT Return F1 at `/reports/vat-return`
+- [x] Cash Flow A5 at `/reports/cash-flow`
+- [x] Audit Log I1 at `/reports/audit-log`
+- [x] Reversal Trail I2 at `/reports/reversal-trail`
+- [x] System Health at `/settings/system-health`
+- [x] Owner Dashboard H1 upgraded at `/dashboard`
+- [x] EN + AR i18n for all Phase 10 screens
+- [ ] Verification test: run `npm run test:phase10` (target: 36/36)
+
+**Decisions made in Phase 10:**
+- Owner Dashboard (H1) computes KPIs client-side from GL + invoice queries — consistent with other report patterns; no stored materialized views needed for v1 data volumes.
+- verify_invariants RPC is SECURITY INVOKER and accepts company_id explicitly — callers must pass the correct company_id from the auth context.
+- Cash Flow (A5) uses indirect method computed entirely from GL movements — no additional schema required; working capital changes derived from opening/closing balances of 1200/1300/2100/2400.
+- VAT Return (F1) simplified for v1: Box 1 uses account 4100 credits (standard-rated supplies) without per-emirate breakdown — per-emirate split requires `company.emirate` per invoice, deferred to v2.
+- getSalesByVehicle counts a product under EACH vehicle it fits (consistent with Doc 4 "count under each" default mode).
+- Phase 10 `verify_invariants` RPC uses `(client.rpc as any)` cast until `supabase db push` + `supabase gen types` is run.

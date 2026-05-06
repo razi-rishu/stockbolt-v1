@@ -181,6 +181,20 @@ export function createSelfHostedAdapter(): DataAdapter {
       getInventoryAdjustmentReport: () => notImplemented('reports.getInventoryAdjustmentReport'),
       dailyCash: () => notImplemented('reports.dailyCash'),
       bankRecon: () => notImplemented('reports.bankRecon'),
+      getSalesByCustomer:   () => notImplemented('reports.getSalesByCustomer'),
+      getSalesByProduct:    () => notImplemented('reports.getSalesByProduct'),
+      getSalesByBrand:      () => notImplemented('reports.getSalesByBrand'),
+      getSalesByVehicle:    () => notImplemented('reports.getSalesByVehicle'),
+      getSalesBySalesperson:() => notImplemented('reports.getSalesBySalesperson'),
+      getSalesTrend:        () => notImplemented('reports.getSalesTrend'),
+      getPurchasesBySupplier: () => notImplemented('reports.getPurchasesBySupplier'),
+      getPurchasesByProduct:  () => notImplemented('reports.getPurchasesByProduct'),
+      getOutstandingPOs:    () => notImplemented('reports.getOutstandingPOs'),
+      getVATReturn:         () => notImplemented('reports.getVATReturn'),
+      getAuditLog:          () => notImplemented('reports.getAuditLog'),
+      getReversalTrail:     () => notImplemented('reports.getReversalTrail'),
+      getCashFlow:          () => notImplemented('reports.getCashFlow'),
+      getOwnerDashboard:    () => notImplemented('reports.getOwnerDashboard'),
     },
     purchaseOrders: {
       list:          () => notImplemented('purchaseOrders.list'),
@@ -305,6 +319,10 @@ export function createSelfHostedAdapter(): DataAdapter {
       confirm:       () => notImplemented('debitNotes.confirm'),
       void:          () => notImplemented('debitNotes.void'),
       getNextNumber: () => notImplemented('debitNotes.getNextNumber'),
+    },
+    // Phase 10
+    systemHealth: {
+      check: () => notImplemented('systemHealth.check'),
     },
   };
 }
