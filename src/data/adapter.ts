@@ -630,11 +630,11 @@ export interface VATReturn {
 export interface AuditLogLine {
   id: string;
   created_at: string;
-  user_id: string;
-  user_email: string;
+  user_id: string | null;
+  user_email: string | null;
   action: string;
   entity_type: string;
-  entity_id: string;
+  entity_id: string | null;
   old_values: Record<string, unknown> | null;
   new_values: Record<string, unknown> | null;
 }

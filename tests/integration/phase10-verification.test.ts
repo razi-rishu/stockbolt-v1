@@ -10,8 +10,6 @@ import type {
   ReportsAPI,
   SystemHealthAPI,
   SalesByCustomerLine,
-  SalesByProductLine,
-  SalesByBrandLine,
   SalesTrendLine,
   PurchasesBySupplierLine,
   VATReturn,

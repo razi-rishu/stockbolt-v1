@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useDataAdapter } from '@/hooks/use-data-adapter';
-import { useAuthStore } from '@/stores/authStore';
+import { getAdapter } from '@/data';
+import { useAuthStore } from '@/store/auth';
 import type { OwnerDashboard } from '@/data/adapter';
 
 function KPICard({ label, value, sub, href }: { label: string; value: string; sub?: string; href?: string }) {
@@ -22,18 +22,18 @@ function fmt(n: number) {
 
 export default function DashboardPage() {
   const { t } = useTranslation();
-  const adapter = useDataAdapter();
-  const company = useAuthStore(s => s.company);
+  const adapter = getAdapter();
+  const company_id = useAuthStore(s => s.company_id);
   const [data, setData]    = useState<OwnerDashboard | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!company?.id) return;
-    adapter.reports.getOwnerDashboard(company.id)
+    if (!company_id) return;
+    adapter.reports.getOwnerDashboard(company_id)
       .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [company?.id]);
+  }, [company_id]);
 
   if (loading) return (
     <div className="flex items-center justify-center py-24">

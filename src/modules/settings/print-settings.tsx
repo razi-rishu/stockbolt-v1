@@ -44,7 +44,7 @@ const STATEMENT_TEMPLATES = [
 
 export default function PrintSettingsPage() {
   const { t }        = useTranslation();
-  const { companyId } = useAuthStore();
+  const company_id = useAuthStore(s => s.company_id);
   const adapter       = getAdapter();
 
   const [config,  setConfig]  = useState<PrintConfig>(DEFAULT_CONFIG);
@@ -54,21 +54,21 @@ export default function PrintSettingsPage() {
   const [error,   setError]   = useState<string | null>(null);
 
   useEffect(() => {
-    if (!companyId) return;
-    adapter.companies.getPrintConfig(companyId)
+    if (!company_id) return;
+    adapter.companies.getPrintConfig(company_id)
       .then(cfg => setConfig({ ...DEFAULT_CONFIG, ...cfg }))
       .catch(err => setError(String(err)))
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyId]);
+  }, [company_id]);
 
   async function handleSave() {
-    if (!companyId) return;
+    if (!company_id) return;
     setSaving(true);
     setError(null);
     setSaved(false);
     try {
-      await adapter.companies.savePrintConfig(companyId, config);
+      await adapter.companies.savePrintConfig(company_id, config);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {

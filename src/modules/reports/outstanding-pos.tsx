@@ -1,23 +1,23 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useDataAdapter } from '@/hooks/use-data-adapter';
-import { useAuthStore } from '@/stores/authStore';
+import { getAdapter } from '@/data';
+import { useAuthStore } from '@/store/auth';
 import type { OutstandingPOLine } from '@/data/adapter';
 
 function fmt(n: number) { return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
 
 export default function OutstandingPOsPage() {
   const { t } = useTranslation();
-  const adapter = useDataAdapter();
-  const company = useAuthStore(s => s.company);
+  const adapter = getAdapter();
+  const company_id = useAuthStore(s => s.company_id);
   const [rows, setRows]     = useState<OutstandingPOLine[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!company?.id) return;
-    adapter.reports.getOutstandingPOs(company.id).then(setRows).catch(console.error).finally(() => setLoading(false));
-  }, [company?.id]);
+    if (!company_id) return;
+    adapter.reports.getOutstandingPOs(company_id).then(setRows).catch(console.error).finally(() => setLoading(false));
+  }, [company_id]);
 
   const totPending = rows.reduce((s, r) => s + r.pending_value, 0);
 

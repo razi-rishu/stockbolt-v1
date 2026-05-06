@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useDataAdapter } from '@/hooks/use-data-adapter';
-import { useAuthStore } from '@/stores/authStore';
+import { getAdapter } from '@/data';
+import { useAuthStore } from '@/store/auth';
 import type { AuditLogLine } from '@/data/adapter';
 
 export default function AuditLogPage() {
   const { t } = useTranslation();
-  const adapter = useDataAdapter();
-  const company = useAuthStore(s => s.company);
+  const adapter = getAdapter();
+  const company_id = useAuthStore(s => s.company_id);
 
   const today = new Date().toISOString().slice(0, 10);
   const [from, setFrom]   = useState(today.slice(0, 7) + '-01');
@@ -17,9 +17,9 @@ export default function AuditLogPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const run = async () => {
-    if (!company?.id) return;
+    if (!company_id) return;
     setLoading(true);
-    try { setRows(await adapter.reports.getAuditLog(company.id, { from, to, limit: 500 })); }
+    try { setRows(await adapter.reports.getAuditLog(company_id, { from, to, limit: 500 })); }
     catch (e) { console.error(e); }
     finally { setLoading(false); }
   };

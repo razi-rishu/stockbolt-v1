@@ -31,8 +31,8 @@ export function BillClassicTemplate({ company, printConfig, bill, items, contact
           {bill.due_date && (
             <div><span className="text-gray-500">Due Date: </span><span className="font-medium">{bill.due_date}</span></div>
           )}
-          {bill.supplier_ref && (
-            <div><span className="text-gray-500">Supplier Ref: </span><span className="font-medium">{bill.supplier_ref}</span></div>
+          {bill.supplier_bill_number && (
+            <div><span className="text-gray-500">Supplier Ref: </span><span className="font-medium">{bill.supplier_bill_number}</span></div>
           )}
           <div><span className="text-gray-500">Currency: </span><span className="font-medium">{bill.currency}</span></div>
         </div>

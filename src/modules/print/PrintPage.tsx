@@ -62,7 +62,7 @@ function defaultPrintConfig(): PrintConfig {
 export default function PrintPage() {
   const { docType, id } = useParams<{ docType: string; id: string }>();
   const navigate        = useNavigate();
-  const { companyId }   = useAuthStore();
+  const company_id = useAuthStore(s => s.company_id);
   const adapter         = getAdapter();
 
   const [state, setState] = useState<{
@@ -95,11 +95,11 @@ export default function PrintPage() {
   });
 
   useEffect(() => {
-    if (!companyId || !docType || !id) return;
+    if (!company_id || !docType || !id) return;
 
     async function load() {
       try {
-        const company = await adapter.companies.getById(companyId!);
+        const company = await adapter.companies.getById(company_id!);
         if (!company) throw new Error('Company not found');
 
         // print_config lives in the JSONB column — cast it
@@ -141,7 +141,7 @@ export default function PrintPage() {
             adapter.debitNotes.getItems(id!),
           ]);
           if (!dn) throw new Error('Debit note not found');
-          const contact = dn.contact_id ? await adapter.contacts.getById(dn.contact_id) : null;
+          const contact = dn.supplier_id ? await adapter.contacts.getById(dn.supplier_id) : null;
           patch = { ...patch, debitNote: dn, debitNoteItems: items, contact };
 
         } else if (docType === 'po') {
@@ -150,7 +150,7 @@ export default function PrintPage() {
             adapter.purchaseOrders.getItems(id!),
           ]);
           if (!po) throw new Error('Purchase order not found');
-          const contact = po.contact_id ? await adapter.contacts.getById(po.contact_id) : null;
+          const contact = po.supplier_id ? await adapter.contacts.getById(po.supplier_id) : null;
           patch = { ...patch, po, poItems: items, contact };
 
         } else if (docType === 'bill') {
@@ -159,7 +159,7 @@ export default function PrintPage() {
             adapter.vendorBills.getItems(id!),
           ]);
           if (!bill) throw new Error('Bill not found');
-          const contact = bill.contact_id ? await adapter.contacts.getById(bill.contact_id) : null;
+          const contact = bill.supplier_id ? await adapter.contacts.getById(bill.supplier_id) : null;
           patch = { ...patch, bill, billItems: items, contact };
 
         } else if (docType === 'statement') {
@@ -167,7 +167,7 @@ export default function PrintPage() {
           const contact = await adapter.contacts.getById(id!);
           const today = new Date().toISOString().slice(0, 10);
           const monthStart = today.slice(0, 7) + '-01';
-          const stmt = await adapter.reports.getCustomerStatement(companyId!, id!, monthStart, today);
+          const stmt = await adapter.reports.getCustomerStatement(company_id!, id!, monthStart, today);
           patch = { ...patch, contact, statementLines: stmt.lines, statementMeta: stmt };
         }
 
@@ -179,7 +179,7 @@ export default function PrintPage() {
 
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyId, docType, id]);
+  }, [company_id, docType, id]);
 
   if (state.loading) {
     return (

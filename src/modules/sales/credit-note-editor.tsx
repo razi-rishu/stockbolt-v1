@@ -172,7 +172,7 @@ export default function CreditNoteEditorPage() {
       if (isNew) {
         return getAdapter().creditNotes.create(header, buildItems());
       } else {
-        await getAdapter().creditNotes.update(id!, header, buildItems());
+        return getAdapter().creditNotes.update(id!, header, buildItems());
       }
     },
     onSuccess: () => {

@@ -28,13 +28,10 @@ export function CreditNoteClassicTemplate({ company, printConfig, creditNote, it
         </div>
         <div className="text-right text-sm">
           <div><span className="text-gray-500">Date: </span><span className="font-medium">{creditNote.date}</span></div>
-          {creditNote.reference && (
-            <div><span className="text-gray-500">Reference: </span><span className="font-medium">{creditNote.reference}</span></div>
+          {creditNote.linked_invoice_id && (
+            <div><span className="text-gray-500">Linked Invoice: </span><span className="font-medium">{creditNote.linked_invoice_id}</span></div>
           )}
           <div><span className="text-gray-500">Currency: </span><span className="font-medium">{creditNote.currency}</span></div>
-          {(creditNote as unknown as { linked_invoice_number?: string }).linked_invoice_number && (
-            <div><span className="text-gray-500">Against Invoice: </span><span className="font-medium">{(creditNote as unknown as { linked_invoice_number?: string }).linked_invoice_number}</span></div>
-          )}
         </div>
       </div>
 
@@ -66,7 +63,7 @@ export function CreditNoteClassicTemplate({ company, printConfig, creditNote, it
       {/* Totals */}
       <div className="mt-4 flex justify-end">
         <PrintTotals
-          subtotal={creditNote.subtotal_amount ?? 0}
+          subtotal={creditNote.subtotal ?? 0}
           discount={creditNote.discount_amount ?? 0}
           tax={creditNote.tax_amount ?? 0}
           total={creditNote.total_amount ?? 0}

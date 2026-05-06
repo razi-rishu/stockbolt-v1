@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useDataAdapter } from '@/hooks/use-data-adapter';
-import { useAuthStore } from '@/stores/authStore';
+import { getAdapter } from '@/data';
+import { useAuthStore } from '@/store/auth';
 import type { CashFlowStatement } from '@/data/adapter';
 
 function fmt(n: number, parens = false) {
@@ -30,8 +30,8 @@ function SubtotalRow({ label, amount }: { label: string; amount: number }) {
 
 export default function CashFlowPage() {
   const { t } = useTranslation();
-  const adapter = useDataAdapter();
-  const company = useAuthStore(s => s.company);
+  const adapter = getAdapter();
+  const company_id = useAuthStore(s => s.company_id);
 
   const today = new Date().toISOString().slice(0, 10);
   const [from, setFrom]   = useState(today.slice(0, 4) + '-01-01');
@@ -40,9 +40,9 @@ export default function CashFlowPage() {
   const [loading, setLoading] = useState(false);
 
   const run = async () => {
-    if (!company?.id) return;
+    if (!company_id) return;
     setLoading(true);
-    try { setData(await adapter.reports.getCashFlow(company.id, from, to)); }
+    try { setData(await adapter.reports.getCashFlow(company_id, from, to)); }
     catch (e) { console.error(e); }
     finally { setLoading(false); }
   };

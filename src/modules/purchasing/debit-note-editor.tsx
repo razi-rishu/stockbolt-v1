@@ -163,7 +163,7 @@ export default function DebitNoteEditorPage() {
       if (isNew) {
         return getAdapter().debitNotes.create(header, buildItems());
       } else {
-        await getAdapter().debitNotes.update(id!, header, buildItems());
+        return getAdapter().debitNotes.update(id!, header, buildItems());
       }
     },
     onSuccess: () => {

@@ -3,7 +3,7 @@
  */
 import type { Company, ContactRow, InvoiceRow, InvoiceItemRow, PrintConfig } from '@/data/adapter';
 import {
-  PrintBilingualHeader, PrintLineTable, PrintBilingualTotals, PrintBilingualFooter, fmt,
+  PrintBilingualHeader, PrintLineTable, PrintBilingualTotals, PrintBilingualFooter,
 } from './_shared';
 
 interface Props {

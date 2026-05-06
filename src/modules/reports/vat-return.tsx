@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useDataAdapter } from '@/hooks/use-data-adapter';
-import { useAuthStore } from '@/stores/authStore';
+import { getAdapter } from '@/data';
+import { useAuthStore } from '@/store/auth';
 import type { VATReturn } from '@/data/adapter';
 
 function fmt(n: number) { return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
 
 export default function VATReturnPage() {
   const { t } = useTranslation();
-  const adapter = useDataAdapter();
-  const company = useAuthStore(s => s.company);
+  const adapter = getAdapter();
+  const company_id = useAuthStore(s => s.company_id);
 
   const today = new Date().toISOString().slice(0, 10);
   const qStart = today.slice(0, 7).replace(/-\d+$/, '') + '-' + String(Math.floor((parseInt(today.slice(5, 7)) - 1) / 3) * 3 + 1).padStart(2, '0') + '-01';
@@ -20,9 +20,9 @@ export default function VATReturnPage() {
   const [loading, setLoading] = useState(false);
 
   const run = async () => {
-    if (!company?.id) return;
+    if (!company_id) return;
     setLoading(true);
-    try { setData(await adapter.reports.getVATReturn(company.id, from, to)); }
+    try { setData(await adapter.reports.getVATReturn(company_id, from, to)); }
     catch (e) { console.error(e); }
     finally { setLoading(false); }
   };

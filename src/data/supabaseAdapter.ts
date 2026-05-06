@@ -1528,7 +1528,7 @@ export function createSupabaseAdapter(
       async getSalesByCustomer(company_id, from, to): Promise<SalesByCustomerLine[]> {
         const { data: invRows, error: invErr } = await client
           .from('invoices')
-          .select('id, contact_id, subtotal, contacts(name), invoice_items(quantity, unit_price, discount_pct, cost_at_sale)')
+          .select('id, contact_id, subtotal, contacts(name), invoice_items(quantity, unit_price, discount_percent, cost_at_sale)')
           .eq('company_id', company_id)
           .eq('status', 'confirmed')
           .gte('date', from).lte('date', to);
@@ -1548,9 +1548,8 @@ export function createSupabaseAdapter(
           if (!byContact[inv.contact_id]) byContact[inv.contact_id] = { name: contact?.name ?? '', count: 0, gross: 0, cogs: 0, returns: 0 };
           byContact[inv.contact_id].count += 1;
           byContact[inv.contact_id].gross += Number(inv.subtotal);
-          const items = (inv.invoice_items as unknown as { quantity: number; unit_price: number; discount_pct: number; cost_at_sale: number | null }[] | null) ?? [];
+          const items = (inv.invoice_items as unknown as { quantity: number; unit_price: number; cost_at_sale: number | null }[] | null) ?? [];
           for (const it of items) {
-            const net = Number(it.quantity) * Number(it.unit_price) * (1 - Number(it.discount_pct ?? 0) / 100);
             byContact[inv.contact_id].cogs += Number(it.cost_at_sale ?? 0) * Number(it.quantity);
           }
         }
@@ -1567,7 +1566,7 @@ export function createSupabaseAdapter(
       async getSalesByProduct(company_id, from, to): Promise<SalesByProductLine[]> {
         const { data, error } = await client
           .from('invoice_items')
-          .select('product_id, quantity, unit_price, discount_pct, cost_at_sale, products(code, name, brands(name)), invoices!inner(company_id, status, date)')
+          .select('product_id, quantity, unit_price, discount_percent, cost_at_sale, products(code, name, brands(name)), invoices!inner(company_id, status, date)')
           .eq('invoices.company_id', company_id)
           .eq('invoices.status', 'confirmed')
           .gte('invoices.date', from).lte('invoices.date', to);
@@ -1578,7 +1577,7 @@ export function createSupabaseAdapter(
           const id = row.product_id ?? 'none';
           if (!byProduct[id]) byProduct[id] = { sku: p?.code ?? '', name: p?.name ?? '', brand: p?.brands?.name ?? '', qty: 0, sales: 0, cogs: 0 };
           const qty = Number(row.quantity);
-          const net = qty * Number(row.unit_price) * (1 - Number(row.discount_pct ?? 0) / 100);
+          const net = qty * Number(row.unit_price) * (1 - Number(row.discount_percent ?? 0) / 100);
           byProduct[id].qty += qty;
           byProduct[id].sales += net;
           byProduct[id].cogs += Number(row.cost_at_sale ?? 0) * qty;
@@ -1592,7 +1591,7 @@ export function createSupabaseAdapter(
       async getSalesByBrand(company_id, from, to): Promise<SalesByBrandLine[]> {
         const { data, error } = await client
           .from('invoice_items')
-          .select('quantity, unit_price, discount_pct, cost_at_sale, products(brand_id, brands(name)), invoices!inner(company_id, status, date)')
+          .select('quantity, unit_price, discount_percent, cost_at_sale, products(brand_id, brands(name)), invoices!inner(company_id, status, date)')
           .eq('invoices.company_id', company_id)
           .eq('invoices.status', 'confirmed')
           .gte('invoices.date', from).lte('invoices.date', to);
@@ -1603,7 +1602,7 @@ export function createSupabaseAdapter(
           const id = p?.brand_id ?? 'none';
           if (!byBrand[id]) byBrand[id] = { name: p?.brands?.name ?? 'No Brand', qty: 0, revenue: 0, cogs: 0 };
           const qty = Number(row.quantity);
-          const net = qty * Number(row.unit_price) * (1 - Number(row.discount_pct ?? 0) / 100);
+          const net = qty * Number(row.unit_price) * (1 - Number(row.discount_percent ?? 0) / 100);
           byBrand[id].qty += qty;
           byBrand[id].revenue += net;
           byBrand[id].cogs += Number(row.cost_at_sale ?? 0) * qty;
@@ -1617,7 +1616,7 @@ export function createSupabaseAdapter(
       async getSalesByVehicle(company_id, from, to): Promise<SalesByVehicleLine[]> {
         const { data, error } = await client
           .from('invoice_items')
-          .select('quantity, unit_price, discount_pct, cost_at_sale, product_id, invoices!inner(company_id, status, date)')
+          .select('quantity, unit_price, discount_percent, cost_at_sale, product_id, invoices!inner(company_id, status, date)')
           .eq('invoices.company_id', company_id)
           .eq('invoices.status', 'confirmed')
           .gte('invoices.date', from).lte('invoices.date', to);
@@ -1638,7 +1637,7 @@ export function createSupabaseAdapter(
           if (!itemMap[row.product_id]) itemMap[row.product_id] = { qty: 0, sales: 0, cogs: 0 };
           const qty = Number(row.quantity);
           itemMap[row.product_id].qty += qty;
-          itemMap[row.product_id].sales += qty * Number(row.unit_price) * (1 - Number(row.discount_pct ?? 0) / 100);
+          itemMap[row.product_id].sales += qty * Number(row.unit_price) * (1 - Number(row.discount_percent ?? 0) / 100);
           itemMap[row.product_id].cogs += Number(row.cost_at_sale ?? 0) * qty;
         }
 
@@ -1661,7 +1660,7 @@ export function createSupabaseAdapter(
       async getSalesBySalesperson(company_id, from, to): Promise<SalesBySalespersonLine[]> {
         const { data, error } = await client
           .from('invoices')
-          .select('id, salesperson_id, subtotal, profiles(full_name), invoice_items(quantity, unit_price, discount_pct, cost_at_sale)')
+          .select('id, salesperson_id, subtotal, profiles(full_name), invoice_items(quantity, unit_price, discount_percent, cost_at_sale)')
           .eq('company_id', company_id)
           .eq('status', 'confirmed')
           .gte('date', from).lte('date', to);
@@ -1672,9 +1671,9 @@ export function createSupabaseAdapter(
           const profile = inv.profiles as unknown as { full_name: string } | null;
           if (!by[spId]) by[spId] = { name: profile?.full_name ?? 'Unassigned', count: 0, sales: 0, cogs: 0 };
           by[spId].count += 1;
-          const items = (inv.invoice_items as unknown as { quantity: number; unit_price: number; discount_pct: number; cost_at_sale: number | null }[] | null) ?? [];
+          const items = (inv.invoice_items as unknown as { quantity: number; unit_price: number; discount_percent: number; cost_at_sale: number | null }[] | null) ?? [];
           for (const it of items) {
-            const net = Number(it.quantity) * Number(it.unit_price) * (1 - Number(it.discount_pct ?? 0) / 100);
+            const net = Number(it.quantity) * Number(it.unit_price) * (1 - Number(it.discount_percent ?? 0) / 100);
             by[spId].sales += net;
             by[spId].cogs += Number(it.cost_at_sale ?? 0) * Number(it.quantity);
           }
@@ -1688,7 +1687,7 @@ export function createSupabaseAdapter(
       async getSalesTrend(company_id, from, to, bucket): Promise<SalesTrendLine[]> {
         const { data, error } = await client
           .from('invoices')
-          .select('id, date, subtotal, invoice_items(quantity, unit_price, discount_pct, cost_at_sale)')
+          .select('id, date, subtotal, invoice_items(quantity, unit_price, discount_percent, cost_at_sale)')
           .eq('company_id', company_id)
           .eq('status', 'confirmed')
           .gte('date', from).lte('date', to)
@@ -1714,7 +1713,7 @@ export function createSupabaseAdapter(
           if (!by[k]) by[k] = { count: 0, gross: 0, cogs: 0, returns: 0 };
           by[k].count += 1;
           by[k].gross += Number(inv.subtotal);
-          const items = (inv.invoice_items as unknown as { quantity: number; unit_price: number; discount_pct: number; cost_at_sale: number | null }[] | null) ?? [];
+          const items = (inv.invoice_items as unknown as { quantity: number; unit_price: number; discount_percent: number; cost_at_sale: number | null }[] | null) ?? [];
           for (const it of items) {
             by[k].cogs += Number(it.cost_at_sale ?? 0) * Number(it.quantity);
           }
@@ -1733,7 +1732,7 @@ export function createSupabaseAdapter(
       async getPurchasesBySupplier(company_id, from, to): Promise<PurchasesBySupplierLine[]> {
         const { data, error } = await client
           .from('vendor_bills')
-          .select('contact_id, total_amount, contacts(name)')
+          .select('supplier_id, total_amount, contacts!vendor_bills_supplier_id_fkey(name)')
           .eq('company_id', company_id)
           .eq('status', 'confirmed')
           .gte('date', from).lte('date', to);
@@ -1742,9 +1741,9 @@ export function createSupabaseAdapter(
         let grandTotal = 0;
         for (const b of data ?? []) {
           const contact = b.contacts as unknown as { name: string } | null;
-          if (!by[b.contact_id]) by[b.contact_id] = { name: contact?.name ?? '', count: 0, total: 0 };
-          by[b.contact_id].count += 1;
-          by[b.contact_id].total += Number(b.total_amount);
+          if (!by[b.supplier_id]) by[b.supplier_id] = { name: contact?.name ?? '', count: 0, total: 0 };
+          by[b.supplier_id].count += 1;
+          by[b.supplier_id].total += Number(b.total_amount);
           grandTotal += Number(b.total_amount);
         }
         return Object.entries(by).map(([id, s]) => ({
@@ -1756,7 +1755,7 @@ export function createSupabaseAdapter(
       async getPurchasesByProduct(company_id, from, to): Promise<PurchasesByProductLine[]> {
         const { data, error } = await client
           .from('goods_receipt_items')
-          .select('product_id, quantity_received, unit_cost, products(code, name), goods_receipts!inner(company_id, status, date)')
+          .select('product_id, qty_received, unit_cost, products(code, name), goods_receipts!inner(company_id, status, date)')
           .eq('goods_receipts.company_id', company_id)
           .eq('goods_receipts.status', 'received')
           .gte('goods_receipts.date', from).lte('goods_receipts.date', to);
@@ -1766,7 +1765,7 @@ export function createSupabaseAdapter(
           const p = row.products as unknown as { code: string; name: string } | null;
           const id = row.product_id ?? 'none';
           if (!by[id]) by[id] = { sku: p?.code ?? '', name: p?.name ?? '', qty: 0, cost: 0 };
-          const qty = Number(row.quantity_received);
+          const qty = Number(row.qty_received);
           by[id].qty += qty;
           by[id].cost += qty * Number(row.unit_cost ?? 0);
         }
@@ -1796,43 +1795,43 @@ export function createSupabaseAdapter(
         // Output VAT (account 2200) — credits = VAT collected on sales
         const { data: outRows, error: outErr } = await client
           .from('general_ledger')
-          .select('amount, debit_credit, contact_id')
+          .select('debit, credit, contact_id')
           .eq('company_id', company_id)
           .eq('account_code', '2200')
           .gte('date', from).lte('date', to);
         assertNoError(outErr, 'getVATReturn output');
 
-        const totalOutputVAT = (outRows ?? []).reduce((s, r) => s + (r.debit_credit === 'credit' ? Number(r.amount) : -Number(r.amount)), 0);
+        const totalOutputVAT = (outRows ?? []).reduce((s, r) => s + Number(r.credit) - Number(r.debit), 0);
 
         // Input VAT (account 1500) — debits = VAT paid on purchases
         const { data: inRows, error: inErr } = await client
           .from('general_ledger')
-          .select('amount, debit_credit')
+          .select('debit, credit')
           .eq('company_id', company_id)
           .eq('account_code', '1500')
           .gte('date', from).lte('date', to);
         assertNoError(inErr, 'getVATReturn input');
 
-        const totalInputVAT = (inRows ?? []).reduce((s, r) => s + (r.debit_credit === 'debit' ? Number(r.amount) : -Number(r.amount)), 0);
+        const totalInputVAT = (inRows ?? []).reduce((s, r) => s + Number(r.debit) - Number(r.credit), 0);
 
         // Get sales subtotal for Box 1 (standard-rated)
         const { data: salesRows, error: salesErr } = await client
           .from('general_ledger')
-          .select('amount, debit_credit')
+          .select('debit, credit')
           .eq('company_id', company_id)
           .eq('account_code', '4100')
           .gte('date', from).lte('date', to);
         assertNoError(salesErr, 'getVATReturn sales');
-        const totalSales = (salesRows ?? []).reduce((s, r) => s + (r.debit_credit === 'credit' ? Number(r.amount) : -Number(r.amount)), 0);
+        const totalSales = (salesRows ?? []).reduce((s, r) => s + Number(r.credit) - Number(r.debit), 0);
 
         const { data: expRows, error: expErr } = await client
           .from('general_ledger')
-          .select('amount, debit_credit')
+          .select('debit, credit')
           .eq('company_id', company_id)
           .eq('account_code', '5100')
           .gte('date', from).lte('date', to);
         assertNoError(expErr, 'getVATReturn expenses');
-        const totalExpenses = (expRows ?? []).reduce((s, r) => s + (r.debit_credit === 'debit' ? Number(r.amount) : -Number(r.amount)), 0);
+        const totalExpenses = (expRows ?? []).reduce((s, r) => s + Number(r.debit) - Number(r.credit), 0);
 
         const outputBoxes: VATReturnBox[] = [
           { box: '1', label: 'Standard Rated Supplies', taxable_amount: Math.max(0, totalSales), vat_amount: Math.max(0, totalOutputVAT) },
@@ -1847,8 +1846,8 @@ export function createSupabaseAdapter(
 
       async getAuditLog(company_id, params): Promise<AuditLogLine[]> {
         let q = client
-          .from('audit_log')
-          .select('id, created_at, user_id, action, entity_type, entity_id, old_values, new_values, profiles(email)')
+          .from('audit_logs')
+          .select('id, created_at, user_id, action, entity_type, entity_id, old_data, new_data, profiles(email)')
           .eq('company_id', company_id)
           .order('created_at', { ascending: false })
           .limit(params.limit ?? 500);
@@ -1862,8 +1861,8 @@ export function createSupabaseAdapter(
             id: r.id, created_at: r.created_at as string,
             user_id: r.user_id, user_email: profile?.email ?? r.user_id,
             action: r.action, entity_type: r.entity_type, entity_id: r.entity_id,
-            old_values: r.old_values as Record<string, unknown> | null,
-            new_values: r.new_values as Record<string, unknown> | null,
+            old_values: r.old_data as Record<string, unknown> | null,
+            new_values: r.new_data as Record<string, unknown> | null,
           };
         });
       },
@@ -1900,21 +1899,21 @@ export function createSupabaseAdapter(
         const getBalance = async (account_prefix: string, date: string) => {
           const { data } = await client
             .from('general_ledger')
-            .select('amount, debit_credit')
+            .select('debit, credit')
             .eq('company_id', company_id)
             .like('account_code', account_prefix + '%')
             .lte('date', date);
-          return (data ?? []).reduce((s, r) => s + (r.debit_credit === 'debit' ? Number(r.amount) : -Number(r.amount)), 0);
+          return (data ?? []).reduce((s, r) => s + (Number(r.debit) - Number(r.credit)), 0);
         };
 
         const getBalanceSingle = async (code: string, date: string, normalDebit: boolean) => {
           const { data } = await client
             .from('general_ledger')
-            .select('amount, debit_credit')
+            .select('debit, credit')
             .eq('company_id', company_id)
             .eq('account_code', code)
             .lte('date', date);
-          const net = (data ?? []).reduce((s, r) => s + (r.debit_credit === 'debit' ? Number(r.amount) : -Number(r.amount)), 0);
+          const net = (data ?? []).reduce((s, r) => s + (Number(r.debit) - Number(r.credit)), 0);
           return normalDebit ? net : -net;
         };
 
@@ -1934,15 +1933,15 @@ export function createSupabaseAdapter(
 
         const { data: adjRows } = await client
           .from('general_ledger')
-          .select('amount, debit_credit')
+          .select('debit, credit')
           .eq('company_id', company_id)
           .in('account_code', ['6700', '4300'])
           .gte('date', from).lte('date', to);
 
         let invLoss = 0, invGain = 0;
         for (const r of adjRows ?? []) {
-          if (r.debit_credit === 'debit') invLoss += Number(r.amount);
-          else invGain += Number(r.amount);
+          invLoss += Number(r.debit);
+          invGain += Number(r.credit);
         }
 
         const operatingAdj: CashFlowSection[] = [
@@ -1981,29 +1980,29 @@ export function createSupabaseAdapter(
 
         const [{ data: todayInvs }, { data: ar }, { data: ap }, { data: bankRows }, { data: topProds }, { data: lowStock }, { data: overdueInvs }, { data: trendInvs }] = await Promise.all([
           client.from('invoices').select('total_amount').eq('company_id', company_id).eq('status', 'confirmed').eq('date', today),
-          client.from('general_ledger').select('amount, debit_credit').eq('company_id', company_id).eq('account_code', '1200'),
-          client.from('general_ledger').select('amount, debit_credit').eq('company_id', company_id).eq('account_code', '2100'),
-          client.from('general_ledger').select('amount, debit_credit').eq('company_id', company_id).like('account_code', '11%'),
-          client.from('invoice_items').select('product_id, quantity, unit_price, discount_pct, products(name), invoices!inner(company_id, status, date)').eq('invoices.company_id', company_id).eq('invoices.status', 'confirmed').gte('invoices.date', monthStart).lte('invoices.date', today).limit(500),
+          client.from('general_ledger').select('debit, credit').eq('company_id', company_id).eq('account_code', '1200'),
+          client.from('general_ledger').select('debit, credit').eq('company_id', company_id).eq('account_code', '2100'),
+          client.from('general_ledger').select('debit, credit').eq('company_id', company_id).like('account_code', '11%'),
+          client.from('invoice_items').select('product_id, quantity, unit_price, discount_percent, products(name), invoices!inner(company_id, status, date)').eq('invoices.company_id', company_id).eq('invoices.status', 'confirmed').gte('invoices.date', monthStart).lte('invoices.date', today).limit(500),
           client.from('stock_active').select('product_id, quantity_on_hand, products(name, min_stock_level)').eq('company_id', company_id).limit(1000),
           client.from('invoices').select('id').eq('company_id', company_id).eq('status', 'confirmed').lt('due_date', today).gt('amount_due', 0).limit(200),
           client.from('invoices').select('date, total_amount').eq('company_id', company_id).eq('status', 'confirmed').gte('date', last30).order('date'),
         ]);
 
-        const arTotal = (ar ?? []).reduce((s, r) => s + (r.debit_credit === 'debit' ? Number(r.amount) : -Number(r.amount)), 0);
-        const apTotal = (ap ?? []).reduce((s, r) => s + (r.debit_credit === 'credit' ? Number(r.amount) : -Number(r.amount)), 0);
-        const cash   = (bankRows ?? []).reduce((s, r) => s + (r.debit_credit === 'debit' ? Number(r.amount) : -Number(r.amount)), 0);
+        const arTotal = (ar ?? []).reduce((s, r) => s + (Number(r.debit) - Number(r.credit)), 0);
+        const apTotal = (ap ?? []).reduce((s, r) => s + (Number(r.credit) - Number(r.debit)), 0);
+        const cash   = (bankRows ?? []).reduce((s, r) => s + (Number(r.debit) - Number(r.credit)), 0);
 
         const todayCount  = (todayInvs ?? []).length;
         const todayAmount = (todayInvs ?? []).reduce((s, r) => s + Number(r.total_amount ?? 0), 0);
 
         // Top products by revenue this month
         const prodRevenue: Record<string, { name: string; qty: number; rev: number }> = {};
-        for (const r of (topProds ?? []) as unknown as { product_id: string | null; quantity: number; unit_price: number; discount_pct: number; products: { name: string } | null }[]) {
+        for (const r of (topProds ?? []) as unknown as { product_id: string | null; quantity: number; unit_price: number; discount_percent: number; products: { name: string } | null }[]) {
           const id = r.product_id ?? 'none';
           if (!prodRevenue[id]) prodRevenue[id] = { name: r.products?.name ?? '', qty: 0, rev: 0 };
           prodRevenue[id].qty += Number(r.quantity);
-          prodRevenue[id].rev += Number(r.quantity) * Number(r.unit_price) * (1 - Number(r.discount_pct ?? 0) / 100);
+          prodRevenue[id].rev += Number(r.quantity) * Number(r.unit_price) * (1 - Number(r.discount_percent ?? 0) / 100);
         }
         const topProducts = Object.entries(prodRevenue).sort(([, a], [, b]) => b.rev - a.rev).slice(0, 5).map(([id, v]) => ({ product_id: id, name: v.name, qty: v.qty, revenue: v.rev }));
 
@@ -2659,12 +2658,14 @@ export function createSupabaseAdapter(
         assertNoError(iErr, 'creditNotes.update items');
       },
       async confirm(id): Promise<CreditNoteConfirmResult> {
-        const { data, error } = await client.rpc('confirm_credit_note', { p_credit_note_id: id });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (client.rpc as any)('confirm_credit_note', { p_credit_note_id: id });
         assertNoError(error, 'creditNotes.confirm');
         return data as unknown as CreditNoteConfirmResult;
       },
       async void(id, reason?): Promise<void> {
-        const { error } = await client.rpc('void_credit_note', {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error } = await (client.rpc as any)('void_credit_note', {
           p_credit_note_id: id,
           p_reason: reason ?? undefined,
         });
@@ -2762,12 +2763,14 @@ export function createSupabaseAdapter(
         assertNoError(iErr, 'debitNotes.update items');
       },
       async confirm(id): Promise<DebitNoteConfirmResult> {
-        const { data, error } = await client.rpc('confirm_debit_note', { p_debit_note_id: id });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (client.rpc as any)('confirm_debit_note', { p_debit_note_id: id });
         assertNoError(error, 'debitNotes.confirm');
         return data as unknown as DebitNoteConfirmResult;
       },
       async void(id, reason?): Promise<void> {
-        const { error } = await client.rpc('void_debit_note', {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error } = await (client.rpc as any)('void_debit_note', {
           p_debit_note_id: id,
           p_reason: reason ?? undefined,
         });

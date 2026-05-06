@@ -28,8 +28,8 @@ export function DebitNoteClassicTemplate({ company, printConfig, debitNote, item
         </div>
         <div className="text-right text-sm">
           <div><span className="text-gray-500">Date: </span><span className="font-medium">{debitNote.date}</span></div>
-          {debitNote.reference && (
-            <div><span className="text-gray-500">Reference: </span><span className="font-medium">{debitNote.reference}</span></div>
+          {debitNote.linked_bill_id && (
+            <div><span className="text-gray-500">Against Bill: </span><span className="font-medium">{debitNote.linked_bill_id}</span></div>
           )}
           <div><span className="text-gray-500">Currency: </span><span className="font-medium">{debitNote.currency}</span></div>
         </div>
@@ -63,7 +63,7 @@ export function DebitNoteClassicTemplate({ company, printConfig, debitNote, item
       {/* Totals */}
       <div className="mt-4 flex justify-end">
         <PrintTotals
-          subtotal={debitNote.subtotal_amount ?? 0}
+          subtotal={debitNote.subtotal ?? 0}
           discount={debitNote.discount_amount ?? 0}
           tax={debitNote.tax_amount ?? 0}
           total={debitNote.total_amount ?? 0}
