@@ -12,11 +12,11 @@ CREATE OR REPLACE FUNCTION public.create_pdc(
   p_type               TEXT,      -- 'received' | 'issued'
   p_contact_id         UUID,
   p_cheque_number      TEXT,
-  p_bank_name          TEXT       DEFAULT NULL,
   p_amount             NUMERIC,
-  p_currency           TEXT       DEFAULT 'AED',
   p_issue_date         DATE,
   p_due_date           DATE,
+  p_bank_name          TEXT       DEFAULT NULL,
+  p_currency           TEXT       DEFAULT 'AED',
   p_deposit_account_id UUID       DEFAULT NULL,
   p_linked_payment_id  UUID       DEFAULT NULL,
   p_is_advance         BOOLEAN    DEFAULT FALSE,

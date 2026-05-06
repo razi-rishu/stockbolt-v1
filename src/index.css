@@ -24,3 +24,56 @@
     box-sizing: border-box;
   }
 }
+
+/* ── Print styles ──────────────────────────────────────────────────────────── */
+@media print {
+  /* Hide all app chrome when printing */
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  /* Show print-only elements */
+  [data-print-only] {
+    display: block !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 11pt;
+  }
+
+  /* Page setup */
+  @page {
+    margin: 12mm 14mm;
+    size: A4;
+  }
+
+  @page.thermal {
+    size: 80mm auto;
+    margin: 4mm;
+  }
+
+  /* Prevent page breaks inside table rows */
+  tr, .no-break {
+    break-inside: avoid;
+  }
+
+  /* Keep table headers on each page */
+  thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
+}
+
+/* Thermal template dimensions */
+.thermal-template {
+  width: 80mm;
+  max-width: 80mm;
+  font-size: 9pt;
+  font-family: 'Courier New', monospace;
+}
+
+@media print {
+  .thermal-template {
+    @page { size: 80mm auto; margin: 3mm; }
+  }
+}

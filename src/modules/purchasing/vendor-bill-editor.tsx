@@ -260,6 +260,11 @@ export default function VendorBillEditorPage() {
         <h1 className="text-xl font-semibold text-ink-primary">{isNew ? t('purchasing.new_bill') : existing?.bill_number ?? '…'}</h1>
         {!isNew && <span className="rounded-pill bg-gray-100 px-2.5 py-0.5 text-xs capitalize text-gray-600">{existing?.status}</span>}
         <div className="ms-auto flex gap-2">
+          {!isNew && existing?.id && (
+            <Button variant="ghost" size="sm" onClick={() => window.open(`/print/bill/${existing.id}`, '_blank')}>
+              🖨 {t('print.print')}
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={() => navigate('/purchasing/bills')}>{t('common.cancel')}</Button>
           {canEdit && (
             <>

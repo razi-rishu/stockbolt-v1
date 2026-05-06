@@ -205,6 +205,11 @@ export default function POEditorPage() {
         <h1 className="text-xl font-semibold text-ink-primary">{isNew ? t('purchasing.new_po') : existing?.po_number ?? '…'}</h1>
         {!isNew && <span className="rounded-pill bg-gray-100 px-2.5 py-0.5 text-xs capitalize text-gray-600">{existing?.status}</span>}
         <div className="ms-auto flex gap-2">
+          {!isNew && existing?.id && (
+            <Button variant="ghost" size="sm" onClick={() => window.open(`/print/po/${existing.id}`, '_blank')}>
+              🖨 {t('print.print')}
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={() => navigate('/purchasing/orders')}>{t('common.cancel')}</Button>
           {canEdit && (
             <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>

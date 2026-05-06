@@ -53,6 +53,23 @@ export type ProductPriceLevelInsert = Omit<Tables['product_price_levels']['Inser
 // code → id mapping returned after COA seeding
 export type CoaMap = Record<string, string>;
 
+// ── Phase 11 — Print config ───────────────────────────────────────────────────
+export interface PrintConfig {
+  invoice_template:     'classic' | 'bilingual' | 'thermal';
+  quote_template:       'classic' | 'bilingual';
+  statement_template:   'classic';
+  credit_note_template: 'classic' | 'bilingual';
+  debit_note_template:  'classic' | 'bilingual';
+  po_template:          'classic' | 'bilingual';
+  bill_template:        'classic' | 'bilingual';
+  footer_en:            string;
+  footer_ar:            string;
+  show_salesperson:     boolean;
+  show_due_date:        boolean;
+  show_bank_details:    boolean;
+  accent_color:         string;
+}
+
 // ── Auth API ──────────────────────────────────────────────────────────────────
 export interface AuthAPI {
   signUp(params: { email: string; password: string }): Promise<{ user_id: string }>;
@@ -73,6 +90,8 @@ export interface CompaniesAPI {
   getById(id: string): Promise<Company | null>;
   update(id: string, data: CompanyUpdate): Promise<void>;
   uploadLogo(company_id: string, file: File): Promise<string>;
+  getPrintConfig(company_id: string): Promise<PrintConfig>;
+  savePrintConfig(company_id: string, config: PrintConfig): Promise<void>;
 }
 
 // ── Profiles API ──────────────────────────────────────────────────────────────

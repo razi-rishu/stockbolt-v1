@@ -24,6 +24,8 @@ export function createSelfHostedAdapter(): DataAdapter {
       getById: () => notImplemented('companies.getById'),
       update: () => notImplemented('companies.update'),
       uploadLogo: () => notImplemented('companies.uploadLogo'),
+      getPrintConfig: () => notImplemented('companies.getPrintConfig'),
+      savePrintConfig: () => notImplemented('companies.savePrintConfig'),
     },
     profiles: {
       getCurrent: () => notImplemented('profiles.getCurrent'),

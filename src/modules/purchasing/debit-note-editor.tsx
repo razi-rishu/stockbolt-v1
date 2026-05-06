@@ -199,6 +199,11 @@ export default function DebitNoteEditorPage() {
           {isNew ? t('returns.new_debit_note') : `${t('returns.dn_number')}: ${existing?.debit_note_number}`}
         </h1>
         <div className="flex gap-2">
+          {!isNew && existing?.id && (
+            <Button variant="ghost" onClick={() => window.open(`/print/debit-note/${existing.id}`, '_blank')}>
+              🖨 {t('print.print')}
+            </Button>
+          )}
           {!isNew && isConfirmed && (
             <Button variant="secondary" onClick={() => setShowVoidDlg(true)}>{t('common.void')}</Button>
           )}

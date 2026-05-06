@@ -161,6 +161,20 @@ export function createSupabaseAdapter(
         const { data } = client.storage.from('logos').getPublicUrl(path);
         return data.publicUrl;
       },
+      async getPrintConfig(company_id) {
+        // print_config JSONB column is added in migration 23; bypass generated types until gen types runs
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const c = client as any;
+        const { data, error } = await c.from('companies').select('print_config').eq('id', company_id).single();
+        assertNoError(error, 'companies.getPrintConfig');
+        return (data?.print_config ?? {}) as import('./adapter').PrintConfig;
+      },
+      async savePrintConfig(company_id, config) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const c = client as any;
+        const { error } = await c.from('companies').update({ print_config: config }).eq('id', company_id);
+        assertNoError(error, 'companies.savePrintConfig');
+      },
     },
 
     // ── Profiles ───────────────────────────────────────────────────────────

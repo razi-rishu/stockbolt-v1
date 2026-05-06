@@ -1,12 +1,12 @@
 # Current Phase
 
-**Active Phase:** Phase 10 — Reports Completion
+**Active Phase:** Phase 11 — Print Templates & Bilingual Polish
 
-**Status:** Phase 10 implementation complete 2026-05-06. Awaiting `supabase db push` (migration 22) + `supabase gen types`. Verification gate: `npm run test:phase10` (36 assertions).
+**Status:** Phase 11 implementation complete 2026-05-06. Awaiting `supabase db push` (migration 23) + `supabase gen types` + typecheck + test:phase11. Verification gate: `npm run test:phase11` (30 assertions).
 
-**Last completed:** Phase 10 — Reports Completion & Dashboards. 1 SQL migration (verify_invariants RPC, 9 invariants). Adapter: ReportsAPI extended with 14 Phase 10 methods (C1–C6, D1–D3, F1, A5, I1/I2, owner dashboard); SystemHealthAPI added. 13 new report pages + upgraded Owner Dashboard (H1). app-layout nav: 14 new report links + System Health under Settings. EN+AR i18n (reports.* 60+ keys, dashboard.*, settings.*). Migration 22 copied to main project.
+**Last completed:** Phase 11 — Print Templates & Bilingual Polish. 1 SQL migration (print_config JSONB on companies, migration 23). Adapter: PrintConfig type + CompaniesAPI.getPrintConfig/savePrintConfig. Print infrastructure: PrintPage.tsx (universal /print/:docType/:id route bypassing AppLayout), 10 templates (invoice-classic, invoice-bilingual, invoice-thermal, quote-classic, statement-classic, credit-note-classic, debit-note-classic, po-classic, bill-classic + _shared primitives). Print Settings page (G1). Print buttons added to: invoice-editor, quote-editor, credit-note-editor, debit-note-editor, po-editor, vendor-bill-editor. App.tsx: /settings/print + /print/:docType/:id routes. App-layout: Print Settings nav link. EN+AR i18n (print.* 19 keys). test:phase11 script added to both package.json files.
 
-**Next milestone:** Run `supabase db push`, `supabase gen types`, copy database.ts, `npm run typecheck`, `npm run test:phase10`. Then Phase 11 per Doc 5.
+**Next milestone:** Run `supabase db push`, `supabase gen types`, copy database.ts, `npm run typecheck`, `npm run test:phase11`. Then git commit [Phase11].
 
 **Notes:**
 - Building from clean slate after rebuild decision

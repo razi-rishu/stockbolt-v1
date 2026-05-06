@@ -208,6 +208,11 @@ export default function CreditNoteEditorPage() {
           {isNew ? t('returns.new_credit_note') : `${t('returns.cn_number')}: ${existing?.credit_note_number}`}
         </h1>
         <div className="flex gap-2">
+          {!isNew && existing?.id && (
+            <Button variant="ghost" onClick={() => window.open(`/print/credit-note/${existing.id}`, '_blank')}>
+              🖨 {t('print.print')}
+            </Button>
+          )}
           {!isNew && isConfirmed && (
             <Button variant="secondary" onClick={() => setShowVoidDlg(true)}>{t('common.void')}</Button>
           )}

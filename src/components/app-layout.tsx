@@ -379,6 +379,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         { to: '/settings/units',         label: t('nav.units'),         icon: <RulerIcon /> },
         { to: '/settings/price-levels',  label: t('nav.price_levels'),  icon: <PriceTagIcon /> },
         { to: '/settings/system-health', label: t('settings.system_health'), icon: <CogIcon /> },
+        { to: '/settings/print',         label: t('print.settings_title'),   icon: <CogIcon /> },
       ],
     },
   ];

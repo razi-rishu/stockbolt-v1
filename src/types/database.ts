@@ -4409,6 +4409,10 @@ export type Database = {
         Args: { p_description?: string; p_je_id: string }
         Returns: Json
       }
+      verify_invariants: {
+        Args: { p_as_of_date?: string; p_company_id: string }
+        Returns: Json
+      }
       void_bank_transfer: {
         Args: { p_transfer_id: string; p_void_reason?: string }
         Returns: Json

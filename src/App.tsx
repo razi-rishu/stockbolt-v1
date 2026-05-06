@@ -112,6 +112,10 @@ const SalesReturnEditorPage           = lazy(() => import('@/modules/sales/sales
 const DebitNotesPage                  = lazy(() => import('@/modules/purchasing/debit-notes'));
 const DebitNoteEditorPage             = lazy(() => import('@/modules/purchasing/debit-note-editor'));
 
+// Phase 11 — Print Templates
+const PrintPage                       = lazy(() => import('@/modules/print/PrintPage'));
+const PrintSettingsPage               = lazy(() => import('@/modules/settings/print-settings'));
+
 // Phase 10 — Reports Completion & Dashboards
 const SalesByCustomerPage             = lazy(() => import('@/modules/reports/sales-by-customer'));
 const SalesByProductPage              = lazy(() => import('@/modules/reports/sales-by-product'));
@@ -295,7 +299,13 @@ function AppRoutes() {
               <Route path="/reports/reversal-trail"             element={<ReversalTrailPage />} />
               <Route path="/reports/cash-flow"                  element={<CashFlowPage />} />
               <Route path="/settings/system-health"             element={<SystemHealthPage />} />
+              <Route path="/settings/print"                     element={<PrintSettingsPage />} />
             </Route>
+          </Route>
+
+          {/* ── Print routes — authenticated + onboarded, NO AppLayout ──── */}
+          <Route element={<RequireOnboarded />}>
+            <Route path="/print/:docType/:id"                   element={<PrintPage />} />
           </Route>
         </Route>
 
