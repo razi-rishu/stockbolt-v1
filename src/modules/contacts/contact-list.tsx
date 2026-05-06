@@ -12,7 +12,10 @@ import { Input } from '@/ui/input';
 import { Modal } from '@/ui/modal';
 import { Table, type Column } from '@/ui/table';
 import { Badge } from '@/ui/badge';
+import { Pagination, paginate } from '@/ui/pagination';
 import type { ContactRow } from '@/data/adapter';
+
+const PAGE_SIZE = 50;
 
 const schema = z.object({
   name:                 z.string().min(1, 'Required'),
@@ -47,6 +50,7 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ContactRow | null>(null);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
 
   const { data: company } = useCompanyQuery({
     queryKey: ['company', company_id],
@@ -118,6 +122,7 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
     (c.email ?? '').toLowerCase().includes(search.toLowerCase()) ||
     (c.phone ?? '').includes(search),
   );
+  const pagedContacts = paginate(filtered, page, PAGE_SIZE);
 
   const typeBadge = (type: string) => {
     if (type === 'both') return <Badge variant="brand">{t('contacts.type_both')}</Badge>;
@@ -152,14 +157,19 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
       <input
         type="search"
         value={search}
-        onChange={(e) => setSearch(e.target.value)}
+        onChange={(e) => { setSearch(e.target.value); setPage(1); }}
         placeholder={t('contacts.search_placeholder')}
         className="h-10 w-full max-w-sm rounded-input border border-border-strong bg-surface-subtle px-4 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
       />
 
       {isLoading
         ? <div className="py-12 text-center text-ink-tertiary">{t('common.loading')}</div>
-        : <Table columns={columns} rows={filtered} keyFn={(r) => r.id} emptyMessage={t('contacts.empty')} />
+        : (
+          <>
+            <Table columns={columns} rows={pagedContacts} keyFn={(r) => r.id} emptyMessage={t('contacts.empty')} />
+            <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onChange={setPage} />
+          </>
+        )
       }
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? t('contacts.edit') : `${t('common.add')} ${t(singularKey)}`} width="xl">

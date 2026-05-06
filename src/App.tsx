@@ -4,6 +4,7 @@ import { useAuthInit } from '@/hooks/use-auth-init';
 import { RequireAuth } from '@/components/require-auth';
 import { RequireOnboarded } from '@/components/require-onboarded';
 import { AppLayout } from '@/components/app-layout';
+import { ErrorBoundary } from '@/components/error-boundary';
 
 // Auth routes
 const LoginPage          = lazy(() => import('@/modules/auth/login'));
@@ -319,8 +320,10 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AppRoutes />
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }

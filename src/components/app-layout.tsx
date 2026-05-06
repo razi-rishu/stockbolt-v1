@@ -226,10 +226,11 @@ function LockIcon() {
   );
 }
 
-function SidebarNavLink({ to, icon, label }: { to: string; icon: ReactNode; label: string }) {
+function SidebarNavLink({ to, icon, label, onNavigate }: { to: string; icon: ReactNode; label: string; onNavigate?: () => void }) {
   return (
     <NavLink
       to={to}
+      onClick={onNavigate}
       className={({ isActive }) =>
         `flex items-center gap-2.5 rounded-card px-3 py-2 text-sm transition-colors ${
           isActive
@@ -384,62 +385,64 @@ export function AppLayout({ children }: AppLayoutProps) {
     },
   ];
 
-  const sidebarContent = (
-    <nav className="flex h-full flex-col">
-      {/* Logo */}
-      <div className="flex items-center gap-2.5 px-4 py-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500">
-          <BoltIcon />
-        </div>
-        <span className="font-semibold text-ink-primary">StockBolt</span>
-      </div>
-
-      {/* Nav sections */}
-      <div className="flex-1 overflow-y-auto px-3 pb-4">
-        {sections.map((section, si) => (
-          <div key={si} className={si > 0 ? 'mt-5' : ''}>
-            {section.title && (
-              <p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-ink-tertiary">
-                {section.title}
-              </p>
-            )}
-            <div className="flex flex-col gap-0.5">
-              {section.items.map((item) => (
-                <SidebarNavLink key={item.to} {...item} />
-              ))}
-            </div>
+  function makeSidebarContent(onNavigate?: () => void) {
+    return (
+      <nav className="flex h-full flex-col">
+        {/* Logo */}
+        <div className="flex items-center gap-2.5 px-4 py-5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500">
+            <BoltIcon />
           </div>
-        ))}
-      </div>
-
-      {/* User footer */}
-      <div className="border-t border-border-subtle px-3 py-3">
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-xs text-ink-tertiary">{email}</span>
-          <button
-            onClick={handleSignOut}
-            className="shrink-0 rounded-pill px-2.5 py-1 text-xs text-ink-secondary transition-colors hover:bg-surface-muted hover:text-ink-primary"
-          >
-            {t('common.sign_out')}
-          </button>
+          <span className="font-semibold text-ink-primary">StockBolt</span>
         </div>
-      </div>
-    </nav>
-  );
+
+        {/* Nav sections */}
+        <div className="flex-1 overflow-y-auto px-3 pb-4">
+          {sections.map((section, si) => (
+            <div key={si} className={si > 0 ? 'mt-5' : ''}>
+              {section.title && (
+                <p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-ink-tertiary">
+                  {section.title}
+                </p>
+              )}
+              <div className="flex flex-col gap-0.5">
+                {section.items.map((item) => (
+                  <SidebarNavLink key={item.to} {...item} onNavigate={onNavigate} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* User footer */}
+        <div className="border-t border-border-subtle px-3 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-xs text-ink-tertiary">{email}</span>
+            <button
+              onClick={handleSignOut}
+              className="shrink-0 rounded-pill px-2.5 py-1 text-xs text-ink-secondary transition-colors hover:bg-surface-muted hover:text-ink-primary"
+            >
+              {t('common.sign_out')}
+            </button>
+          </div>
+        </div>
+      </nav>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-surface-page">
       {/* Sidebar — desktop */}
       <aside className="hidden w-56 shrink-0 flex-col border-e border-border-subtle bg-surface-card lg:flex">
-        {sidebarContent}
+        {makeSidebarContent()}
       </aside>
 
-      {/* Sidebar — mobile overlay */}
+      {/* Sidebar — mobile overlay (closes on nav) */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-black/40" onClick={() => setSidebarOpen(false)} />
-          <aside className="absolute start-0 top-0 h-full w-56 border-e border-border-subtle bg-surface-card">
-            {sidebarContent}
+          <aside className="absolute start-0 top-0 h-full w-64 border-e border-border-subtle bg-surface-card shadow-xl">
+            {makeSidebarContent(() => setSidebarOpen(false))}
           </aside>
         </div>
       )}
@@ -461,7 +464,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto p-4 md:p-6">
           {children}
         </main>
       </div>

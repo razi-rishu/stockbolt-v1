@@ -3,6 +3,7 @@ import { seedCOA } from './seeds/seedCOA';
 import { seedTaxRates } from './seeds/seedTaxRates';
 import { seedPaymentMethods } from './seeds/seedPaymentMethods';
 import { seedUnits } from './seeds/seedUnits';
+import { seedSampleData } from './seeds/seedSampleData';
 
 export interface WizardData {
   // Step 1 — Company basics
@@ -96,6 +97,13 @@ export async function runOnboarding(
     is_active: true,
     opening_balance: 0,
   });
+
+  // E — Optionally seed sample auto-parts data
+  if (wizard.load_sample_data) {
+    const warehouses = await adapter.warehouses.list(company_id);
+    const warehouse_id = warehouses[0]?.id ?? '';
+    await seedSampleData(company_id, adapter, warehouse_id);
+  }
 
   return { company_id };
 }

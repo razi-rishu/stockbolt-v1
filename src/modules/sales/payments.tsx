@@ -1,10 +1,14 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
+import { Pagination, paginate } from '@/ui/pagination';
 import type { PaymentRow } from '@/data/adapter';
+
+const PAGE_SIZE = 50;
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -27,12 +31,15 @@ export default function PaymentsPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const navigate = useNavigate();
+  const [page, setPage] = useState(1);
 
-  const { data: payments = [], isLoading } = useQuery({
+  const { data: allPayments = [], isLoading } = useQuery({
     queryKey: ['payments', company_id],
     queryFn: () => getAdapter().payments.list(company_id!, 'inbound'),
     enabled: !!company_id,
   });
+
+  const paged = paginate(allPayments as PaymentRow[], page, PAGE_SIZE);
 
   return (
     <div className="space-y-4">
@@ -45,10 +52,10 @@ export default function PaymentsPage() {
 
       {isLoading ? (
         <p className="text-sm text-ink-secondary">{t('common.loading')}</p>
-      ) : payments.length === 0 ? (
+      ) : allPayments.length === 0 ? (
         <p className="text-sm text-ink-tertiary">{t('payments.empty')}</p>
       ) : (
-        <div className="rounded-card border border-border-subtle bg-surface-card">
+        <div className="overflow-x-auto rounded-card border border-border-subtle bg-surface-card">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
@@ -60,7 +67,7 @@ export default function PaymentsPage() {
               </tr>
             </thead>
             <tbody>
-              {(payments as PaymentRow[]).map((pmt) => (
+              {paged.map((pmt) => (
                 <tr
                   key={pmt.id}
                   className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50"
@@ -77,6 +84,13 @@ export default function PaymentsPage() {
               ))}
             </tbody>
           </table>
+          <Pagination
+            page={page}
+            pageSize={PAGE_SIZE}
+            total={allPayments.length}
+            onChange={setPage}
+            className="border-t border-border-subtle"
+          />
         </div>
       )}
     </div>

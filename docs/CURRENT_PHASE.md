@@ -2,11 +2,11 @@
 
 **Active Phase:** Phase 12 — Polish, Multi-currency, Beta
 
-**Status:** Phase 11 COMPLETE 2026-05-06 (28/28 tests pass). Phase 12 not yet started.
+**Status:** Phase 12 COMPLETE 2026-05-06 (19/19 tests pass). All phases complete — ready for beta.
 
-**Last completed:** Phase 11 — Print Templates & Bilingual Polish. 1 SQL migration (print_config JSONB on companies). Adapter: PrintConfig type + CompaniesAPI.getPrintConfig/savePrintConfig. PrintPage.tsx (/print/:docType/:id, bypasses AppLayout), 10 templates, Print Settings page. Print 🖨 buttons on all 6 document editors. EN+AR i18n (print.* 19 keys). 28/28 tests. Git committed [Phase11].
+**Last completed:** Phase 12 — Polish, Multi-currency, Beta. 2 SQL migrations (FX gain/loss on confirm_payment; 10 composite DB indexes). UI pagination (Pagination component + paginate() helper on 5 list pages). Mobile responsive app layout (hamburger overlay closes on nav, md:p-6 padding, shadow on mobile sidebar). React ErrorBoundary wraps entire app. Sample data seeder (seedSampleData.ts: 5 categories, 3 brands, 3 makes, 6 models, 2 customers, 2 suppliers, 10 products with OE + compat). 19/19 tests. Git committed [Phase12].
 
-**Next milestone:** Phase 12 — Polish, Multi-currency, Beta. See Doc 5 Phase 12 section. Key items: FX gain/loss (Doc 3 J1/J2), pagination on all lists, mobile/tablet responsiveness, index audit, beta onboarding polish.
+**Next milestone:** Beta deployment — run final E2E smoke test, configure custom domain, invite beta users.
 
 **Notes:**
 - Building from clean slate after rebuild decision
@@ -449,3 +449,43 @@ This file is read by Claude Code at the start of every session, so keep it accur
 - VAT Return (F1) simplified for v1: Box 1 uses account 4100 credits (standard-rated supplies) without per-emirate breakdown — per-emirate split requires `company.emirate` per invoice, deferred to v2.
 - getSalesByVehicle counts a product under EACH vehicle it fits (consistent with Doc 4 "count under each" default mode).
 - Phase 10 `verify_invariants` RPC uses `(client.rpc as any)` cast until `supabase db push` + `supabase gen types` is run.
+
+### Phase 11 — Print Templates & Bilingual Polish
+- Started: 2026-05-06
+- Closed: 2026-05-06
+- Definition of Done: see Document_5_Build_Phases.md, Phase 11 section
+
+**Phase 11 DoD — all passed 2026-05-06:**
+- [x] print_config JSONB column on companies (migration 20260506000023)
+- [x] PrintConfig type + CompaniesAPI.getPrintConfig/savePrintConfig in adapter
+- [x] PrintPage.tsx at `/print/:docType/:id` (bypasses AppLayout, white page, no sidebar)
+- [x] 10 bilingual print templates: Invoice, Quote, Sales Return, Credit Note, Delivery Note, PO, GRN, Debit Note, Expense, Bank Transfer
+- [x] Print Settings page at `/settings/print`
+- [x] Print button on all 6 document editors (Invoice, Quote, PO, GRN, Vendor Bill, Vendor Payment)
+- [x] EN + AR i18n: print.* section (19 keys)
+- [x] Verification test: 28/28 assertions passed (`npm run test:phase11`)
+
+**Decisions made in Phase 11:**
+- PrintPage bypasses AppLayout entirely — print route renders a bare white page with no sidebar/topbar for clean printout.
+- print_config stored as JSONB on companies (not a separate table) — simpler schema for v1; only one print config per company.
+- All templates bilingual: header/footer in both EN+AR, RTL layout adjusts via `dir="rtl"` on the document element.
+
+### Phase 12 — Polish, Multi-currency, Beta
+- Started: 2026-05-06
+- Closed: 2026-05-06
+- Definition of Done: see Document_5_Build_Phases.md, Phase 12 section
+
+**Phase 12 DoD — all passed 2026-05-06:**
+- [x] FX gain/loss auto-posting (Doc 3 J2): `confirm_payment` RPC extended — when payment.currency ≠ 'AED' AND exchange_rate ≠ 1.0, posts fx_diff per allocation (CR 4400 gain / DR 6900 loss). AED path unchanged for full backward compat. Migration 20260506000024.
+- [x] DB index audit: 10 new composite indexes for report performance (GL company+acct+date, contacts company+type+active+name, vendor_bill_items product_id, etc.). Migration 20260506000025.
+- [x] UI pagination: `paginate<T>()` helper + `Pagination` component in `src/ui/pagination.tsx`. Applied to Invoices, Payments, Purchase Orders, Vendor Bills, Contact List (PAGE_SIZE = 50).
+- [x] Mobile/tablet responsive layout: hamburger overlay closes on nav, responsive padding (p-4 md:p-6), shadow on mobile sidebar drawer.
+- [x] React ErrorBoundary: class component wraps entire app; styled fallback with "Try again" + "Go to Dashboard" buttons.
+- [x] Sample data seeder: `seedSampleData.ts` — 5 categories, 3 brands, 3 vehicle makes, 6 models, 2 customers, 2 suppliers, 10 products with OE numbers + vehicle compatibility. Wired to Setup Wizard Step 6 `load_sample_data` flag.
+- [x] Verification test: 19/19 assertions passed (`npm run test:phase12`)
+
+**Decisions made in Phase 12:**
+- FX backward compat: `v_is_fx_payment = (currency ≠ 'AED' AND exchange_rate ≠ 1.0)`. All existing payments have exchange_rate=1.0, so old AED path runs unchanged — zero risk of JE drift on existing data.
+- JE balance identity in FX path: `bank_aed + fx_loss = ar_aed + fx_gain + unallocated_aed`. Proved algebraically; `v_je_total = v_bank_aed + v_total_fx_loss` serves as both total_debit and total_credit in the JE header.
+- Client-side pagination: fetches up to adapter's natural limit then slices — no server-side cursor pagination for v1. Acceptable given GCC SME data volumes (< 10k records per list in practice).
+- seedSampleData column types derived from `src/types/database.ts` (Supabase-generated); no `description` on categories, no `country` on brands, vehicleModels via `vehicleMakes.createModel()`, `selling_price` only on products (no `cost_price` column).
