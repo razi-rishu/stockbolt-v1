@@ -1,12 +1,12 @@
 # Current Phase
 
-**Active Phase:** Phase 11 — Print Templates & Bilingual Polish
+**Active Phase:** Phase 12 — Polish, Multi-currency, Beta
 
-**Status:** Phase 11 implementation complete 2026-05-06. Awaiting `supabase db push` (migration 23) + `supabase gen types` + typecheck + test:phase11. Verification gate: `npm run test:phase11` (30 assertions).
+**Status:** Phase 11 COMPLETE 2026-05-06 (28/28 tests pass). Phase 12 not yet started.
 
-**Last completed:** Phase 11 — Print Templates & Bilingual Polish. 1 SQL migration (print_config JSONB on companies, migration 23). Adapter: PrintConfig type + CompaniesAPI.getPrintConfig/savePrintConfig. Print infrastructure: PrintPage.tsx (universal /print/:docType/:id route bypassing AppLayout), 10 templates (invoice-classic, invoice-bilingual, invoice-thermal, quote-classic, statement-classic, credit-note-classic, debit-note-classic, po-classic, bill-classic + _shared primitives). Print Settings page (G1). Print buttons added to: invoice-editor, quote-editor, credit-note-editor, debit-note-editor, po-editor, vendor-bill-editor. App.tsx: /settings/print + /print/:docType/:id routes. App-layout: Print Settings nav link. EN+AR i18n (print.* 19 keys). test:phase11 script added to both package.json files.
+**Last completed:** Phase 11 — Print Templates & Bilingual Polish. 1 SQL migration (print_config JSONB on companies). Adapter: PrintConfig type + CompaniesAPI.getPrintConfig/savePrintConfig. PrintPage.tsx (/print/:docType/:id, bypasses AppLayout), 10 templates, Print Settings page. Print 🖨 buttons on all 6 document editors. EN+AR i18n (print.* 19 keys). 28/28 tests. Git committed [Phase11].
 
-**Next milestone:** Run `supabase db push`, `supabase gen types`, copy database.ts, `npm run typecheck`, `npm run test:phase11`. Then git commit [Phase11].
+**Next milestone:** Phase 12 — Polish, Multi-currency, Beta. See Doc 5 Phase 12 section. Key items: FX gain/loss (Doc 3 J1/J2), pagination on all lists, mobile/tablet responsiveness, index audit, beta onboarding polish.
 
 **Notes:**
 - Building from clean slate after rebuild decision
