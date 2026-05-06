@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       attachments: {
@@ -3905,6 +3880,7 @@ export type Database = {
       vendor_bill_items: {
         Row: {
           bill_id: string
+          coa_account_id: string | null
           created_at: string
           description: string | null
           description_ar: string | null
@@ -3925,6 +3901,7 @@ export type Database = {
         }
         Insert: {
           bill_id: string
+          coa_account_id?: string | null
           created_at?: string
           description?: string | null
           description_ar?: string | null
@@ -3945,6 +3922,7 @@ export type Database = {
         }
         Update: {
           bill_id?: string
+          coa_account_id?: string | null
           created_at?: string
           description?: string | null
           description_ar?: string | null
@@ -3969,6 +3947,13 @@ export type Database = {
             columns: ["bill_id"]
             isOneToOne: false
             referencedRelation: "vendor_bills"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_bill_items_coa_account_id_fkey"
+            columns: ["coa_account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
@@ -4317,18 +4302,123 @@ export type Database = {
         Args: { p_amount: number; p_invoice_id: string; p_payment_id: string }
         Returns: Json
       }
+      apply_vendor_advance: {
+        Args: { p_amount: number; p_bill_id: string; p_payment_id: string }
+        Returns: Json
+      }
+      bounce_pdc: { Args: { p_pdc_id: string }; Returns: Json }
+      cancel_pdc: { Args: { p_pdc_id: string }; Returns: Json }
+      clear_pdc: {
+        Args: { p_deposit_account_id?: string; p_pdc_id: string }
+        Returns: Json
+      }
+      close_pos_session: {
+        Args: {
+          p_counted_cash: number
+          p_session_id: string
+          p_variance_reason?: string
+        }
+        Returns: Json
+      }
       complete_onboarding: { Args: { p_data: Json }; Returns: Json }
+      confirm_bank_transfer: { Args: { p_transfer_id: string }; Returns: Json }
+      confirm_expense: { Args: { p_expense_id: string }; Returns: Json }
+      confirm_grn: { Args: { p_grn_id: string }; Returns: Json }
+      confirm_inventory_adjustment: {
+        Args: { p_adjustment_id: string }
+        Returns: Json
+      }
       confirm_invoice: { Args: { p_invoice_id: string }; Returns: Json }
       confirm_payment: { Args: { p_payment_id: string }; Returns: Json }
+      confirm_pos_sale: {
+        Args: {
+          p_customer_id?: string
+          p_items: Json
+          p_notes?: string
+          p_payment_method: string
+          p_session_id: string
+        }
+        Returns: Json
+      }
+      confirm_stock_transfer: { Args: { p_transfer_id: string }; Returns: Json }
+      confirm_vendor_bill: { Args: { p_bill_id: string }; Returns: Json }
+      confirm_vendor_payment: { Args: { p_payment_id: string }; Returns: Json }
+      create_pdc: {
+        Args: {
+          p_amount: number
+          p_bank_name?: string
+          p_cheque_number: string
+          p_contact_id: string
+          p_currency?: string
+          p_deposit_account_id?: string
+          p_due_date: string
+          p_is_advance?: boolean
+          p_issue_date: string
+          p_linked_payment_id?: string
+          p_notes?: string
+          p_type: string
+        }
+        Returns: Json
+      }
       current_user_company_id: { Args: never; Returns: string }
+      deposit_pdc: { Args: { p_pdc_id: string }; Returns: Json }
       edit_invoice: { Args: { p_invoice_id: string }; Returns: Json }
+      get_bank_recon: {
+        Args: {
+          p_account_id: string
+          p_company_id: string
+          p_date_from: string
+          p_date_to: string
+        }
+        Returns: {
+          credit: number
+          date: string
+          debit: number
+          description: string
+          je_number: string
+          running_balance: number
+          source_type: string
+        }[]
+      }
+      get_daily_cash_report: {
+        Args: { p_company_id: string; p_date: string }
+        Returns: {
+          account_code: string
+          account_id: string
+          account_name: string
+          closing_balance: number
+          opening_balance: number
+          total_in: number
+          total_out: number
+        }[]
+      }
       get_next_document_number: {
         Args: { p_company_id: string; p_prefix: string }
         Returns: string
       }
+      open_pos_session: {
+        Args: {
+          p_notes?: string
+          p_opening_cash?: number
+          p_warehouse_id: string
+        }
+        Returns: Json
+      }
       post_journal_entry: { Args: { p_data: Json }; Returns: Json }
       reverse_journal_entry: {
         Args: { p_description?: string; p_je_id: string }
+        Returns: Json
+      }
+      verify_invariants: {
+        Args: { p_as_of_date?: string; p_company_id: string }
+        Returns: Json
+      }
+      void_bank_transfer: {
+        Args: { p_transfer_id: string; p_void_reason?: string }
+        Returns: Json
+      }
+      void_expense: {
+        Args: { p_expense_id: string; p_void_reason?: string }
         Returns: Json
       }
       void_invoice: {
@@ -4463,9 +4553,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {},
   },
