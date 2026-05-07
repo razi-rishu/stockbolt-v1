@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
+import { SearchableSelect } from '@/ui/searchable-select';
 import type { VendorBillRow, VendorBillItemInsert, ContactRow, ProductRow, TaxRateRow, CoaRow } from '@/data/adapter';
 import { calcPurchaseLine as _calc } from '@/core/purchasing/purchase-calc';
 
@@ -275,7 +276,9 @@ export default function VendorBillEditorPage() {
   const supplierOpts = [{ value: '', label: t('purchasing.select_supplier') }, ...suppliers.map(s => ({ value: s.id, label: s.name }))];
   const productOpts = [{ value: '', label: '— ' + t('purchasing.select_product') + ' —' }, ...products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }))];
   const taxOpts = [{ value: '0', label: t('sales.no_tax') }, ...taxRates.map(r => ({ value: String(r.rate), label: `${r.name} (${r.rate}%)` }))];
-  const expenseOpts = [{ value: '', label: '— ' + t('purchasing.select_account') + ' —' }, ...accountOpts.map(a => ({ value: a.id, label: `${a.code} ${a.name}` }))];
+  // SearchableSelect handles its own placeholder — don't inject an empty option
+  // (it would otherwise appear as a clickable row in the dropdown list).
+  const expenseOpts = accountOpts.map(a => ({ value: a.id, label: `${a.code} ${a.name}` }));
 
   return (
     <div className="space-y-6 pb-16">
@@ -385,11 +388,14 @@ export default function VendorBillEditorPage() {
                         );
                       })()
                     ) : (
-                      <select className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60"
-                        value={line.coa_account_id ?? ''} disabled={!canEdit}
-                        onChange={e => updateLine(line._key, { coa_account_id: e.target.value || null })}>
-                        {expenseOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                      </select>
+                      <SearchableSelect
+                        value={line.coa_account_id ?? ''}
+                        onChange={(v) => updateLine(line._key, { coa_account_id: v || null })}
+                        options={expenseOpts}
+                        placeholder={'— ' + t('purchasing.select_account') + ' —'}
+                        disabled={!canEdit}
+                        panelWidth={320}
+                      />
                     )}
                   </td>
                   <td className="px-3 py-1.5">
