@@ -835,6 +835,44 @@ export function createSupabaseAdapter(
         assertNoError(error, 'invoices.getNextNumber');
         return data as string;
       },
+
+      async listOpenForContact(company_id, contact_id): Promise<import('./adapter').OpenInvoice[]> {
+        // 1. Confirmed invoices for this contact, oldest first (FIFO)
+        const { data: invs, error: invErr } = await client
+          .from('invoices')
+          .select('*')
+          .eq('company_id', company_id)
+          .eq('contact_id', contact_id)
+          .eq('status', 'confirmed')
+          .order('date', { ascending: true });
+        assertNoError(invErr, 'invoices.listOpenForContact invoices');
+
+        const rows = (invs ?? []) as InvoiceRow[];
+        if (rows.length === 0) return [];
+
+        // 2. Allocations already applied to those invoices
+        const ids = rows.map(r => r.id);
+        const { data: allocs, error: aErr } = await client
+          .from('payment_allocations')
+          .select('doc_id, amount_applied')
+          .eq('company_id', company_id)
+          .eq('doc_type', 'invoice')
+          .in('doc_id', ids);
+        assertNoError(aErr, 'invoices.listOpenForContact allocations');
+
+        const appliedById: Record<string, number> = {};
+        for (const a of (allocs ?? []) as { doc_id: string; amount_applied: number }[]) {
+          appliedById[a.doc_id] = (appliedById[a.doc_id] ?? 0) + Number(a.amount_applied);
+        }
+
+        // 3. Compute outstanding; drop fully-paid invoices
+        return rows
+          .map(r => ({
+            ...r,
+            outstanding: Number(r.total_amount) - (appliedById[r.id] ?? 0),
+          }))
+          .filter(r => r.outstanding > 0.005);
+      },
     },
 
     // ── Phase 4: Sales Quotes ─────────────────────────────────────────────

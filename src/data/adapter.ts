@@ -460,6 +460,11 @@ export interface StockValuationReport {
 
 // ── Phase 4 APIs ──────────────────────────────────────────────────────────────
 
+/** Invoice + computed outstanding (total_amount minus sum of payment_allocations) */
+export interface OpenInvoice extends InvoiceRow {
+  outstanding: number;
+}
+
 export interface InvoicesAPI {
   list(company_id: string, status?: string): Promise<InvoiceRow[]>;
   getById(id: string): Promise<InvoiceRow | null>;
@@ -470,6 +475,12 @@ export interface InvoicesAPI {
   void(invoice_id: string, reason?: string): Promise<void>;
   edit(invoice_id: string): Promise<void>;
   getNextNumber(company_id: string): Promise<string>;
+  /**
+   * Returns confirmed invoices for a customer that still have a positive
+   * outstanding balance (total_amount > sum of payment_allocations applied).
+   * Sorted by date ascending (oldest first) so callers can apply FIFO.
+   */
+  listOpenForContact(company_id: string, contact_id: string): Promise<OpenInvoice[]>;
 }
 
 export interface SalesQuotesAPI {

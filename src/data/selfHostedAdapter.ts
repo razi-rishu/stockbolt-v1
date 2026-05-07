@@ -146,6 +146,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       void:            () => notImplemented('invoices.void'),
       edit:            () => notImplemented('invoices.edit'),
       getNextNumber:   () => notImplemented('invoices.getNextNumber'),
+      listOpenForContact: () => notImplemented('invoices.listOpenForContact'),
     },
     salesQuotes: {
       list:             () => notImplemented('salesQuotes.list'),
