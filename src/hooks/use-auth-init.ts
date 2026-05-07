@@ -28,21 +28,27 @@ export function useAuthInit(): { loading: boolean } {
     let cancelled = false;
 
     async function bootstrap() {
-      const session = await adapter.auth.getSession();
-      if (!session || cancelled) {
-        setLoading(false);
-        return;
-      }
-
-      set_session({ user_id: session.user_id, email: session.email });
-
-      const profile = await adapter.profiles.getCurrent();
-      if (!cancelled) {
-        if (profile) {
-          set_profile({ company_id: profile.company_id, role: profile.role });
-          set_onboarded(true);
+      try {
+        const session = await adapter.auth.getSession();
+        if (!session || cancelled) {
+          setLoading(false);
+          return;
         }
-        setLoading(false);
+
+        set_session({ user_id: session.user_id, email: session.email });
+
+        const profile = await adapter.profiles.getCurrent();
+        if (!cancelled) {
+          if (profile) {
+            set_profile({ company_id: profile.company_id, role: profile.role });
+            set_onboarded(true);
+          }
+          setLoading(false);
+        }
+      } catch {
+        // Network / RLS error during bootstrap — let the app render so the
+        // user can at least see the login page or try again.
+        if (!cancelled) setLoading(false);
       }
     }
 

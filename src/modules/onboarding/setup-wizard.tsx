@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -89,10 +89,16 @@ function StepIndicator({ current, total }: { current: number; total: number }) {
 export default function SetupWizardPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { set_profile, set_onboarded } = useAuthStore();
+  const { set_profile, set_onboarded, is_onboarded } = useAuthStore();
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // If the user is already onboarded (e.g. they navigated here directly or
+  // getCurrent() resolved after the initial render), skip the wizard.
+  useEffect(() => {
+    if (is_onboarded) navigate('/dashboard', { replace: true });
+  }, [is_onboarded, navigate]);
 
   const {
     register,
@@ -166,7 +172,24 @@ export default function SetupWizardPage() {
       set_onboarded(true);
       navigate('/dashboard', { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('wizard.error.generic'));
+      const msg = err instanceof Error ? err.message : '';
+      // If the RPC says the user is already onboarded, treat it as success —
+      // just hydrate the store from the existing profile and go to the dashboard.
+      if (msg.toLowerCase().includes('already onboarded')) {
+        try {
+          const adapter = getAdapter();
+          const profile = await adapter.profiles.getCurrent();
+          if (profile) {
+            set_profile({ company_id: profile.company_id, role: profile.role });
+          }
+          set_onboarded(true);
+          navigate('/dashboard', { replace: true });
+          return;
+        } catch {
+          // fall through to show error below
+        }
+      }
+      setError(msg || t('wizard.error.generic'));
       setSubmitting(false);
     }
   }
