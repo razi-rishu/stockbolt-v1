@@ -48,7 +48,7 @@ export default function PDCIssuedPage() {
     enabled:  !!company_id,
   });
   const { data: suppliers = [] } = useQuery<ContactRow[]>({
-    queryKey: ['contacts_suppliers', company_id],
+    queryKey: ['contacts', company_id, 'supplier'],
     queryFn:  () => getAdapter().contacts.list(company_id!, 'supplier'),
     enabled:  !!company_id,
   });

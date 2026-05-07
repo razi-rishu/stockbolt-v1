@@ -77,7 +77,7 @@ export default function InvoiceEditorPage() {
 
   // ── Reference data ───────────────────────────────────────────────────────
   const { data: contacts = [] } = useQuery<ContactRow[]>({
-    queryKey: ['contacts', company_id],
+    queryKey: ['contacts', company_id, 'customer'],
     queryFn: () => getAdapter().contacts.list(company_id!, 'customer'),
     enabled: !!company_id,
   });

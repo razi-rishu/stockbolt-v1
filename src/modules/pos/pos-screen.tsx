@@ -124,7 +124,7 @@ export default function POSScreen() {
   });
 
   const { data: customers = [] } = useQuery<ContactRow[]>({
-    queryKey: ['contacts_customers', company_id],
+    queryKey: ['contacts', company_id, 'customer'],
     queryFn: () => getAdapter().contacts.list(company_id!, 'customer'),
     enabled: !!company_id,
   });

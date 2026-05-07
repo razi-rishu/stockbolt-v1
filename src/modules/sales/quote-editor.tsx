@@ -50,7 +50,7 @@ export default function QuoteEditorPage() {
   const isNew = id === 'new';
 
   const { data: contacts = [] } = useQuery<ContactRow[]>({
-    queryKey: ['contacts', company_id],
+    queryKey: ['contacts', company_id, 'customer'],
     queryFn: () => getAdapter().contacts.list(company_id!, 'customer'),
     enabled: !!company_id,
   });
@@ -174,6 +174,18 @@ export default function QuoteEditorPage() {
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="col-span-2 md:col-span-1">
             <Select label={t('sales.customer')} required options={contactOpts} value={header.contact_id} disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, contact_id: e.target.value }))} />
+            {contacts.length === 0 && (
+              <p className="mt-1 text-xs text-ink-tertiary">
+                No customers yet.{' '}
+                <button
+                  type="button"
+                  onClick={() => navigate('/contacts/customers')}
+                  className="text-brand-600 hover:text-brand-700 underline"
+                >
+                  Add one →
+                </button>
+              </p>
+            )}
           </div>
           <Input label={t('sales.date')} type="date" required value={header.date} disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, date: e.target.value }))} />
           <Input label={t('sales.expiry_date')} type="date" value={header.expiry_date} disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, expiry_date: e.target.value }))} />
