@@ -179,7 +179,6 @@ function AppRoutes() {
               <Route path="/products/categories"      element={<CategoriesPage />} />
               <Route path="/products/brands"          element={<BrandsPage />} />
               <Route path="/products/vehicles"        element={<VehicleMakesPage />} />
-              <Route path="/products/new"             element={<ProductDetailPage />} />
               <Route path="/products/:id"             element={<ProductDetailPage />} />
               <Route path="/products"                 element={<ProductsListPage />} />
               <Route path="/catalog"                  element={<PartsCatalogPage />} />
@@ -190,7 +189,6 @@ function AppRoutes() {
 
               {/* Accounting */}
               <Route path="/accounting/chart-of-accounts"        element={<CoAPage />} />
-              <Route path="/accounting/journal-entries/new"      element={<JEEditorPage />} />
               <Route path="/accounting/journal-entries/:id"      element={<JEEditorPage />} />
               <Route path="/accounting/journal-entries"          element={<JournalEntriesPage />} />
               <Route path="/accounting/general-ledger"           element={<GeneralLedgerPage />} />
@@ -204,13 +202,10 @@ function AppRoutes() {
               <Route path="/reports/stock-valuation"            element={<StockValuationPage />} />
 
               {/* Sales */}
-              <Route path="/sales/invoices/new"                 element={<InvoiceEditorPage />} />
               <Route path="/sales/invoices/:id"                 element={<InvoiceEditorPage />} />
               <Route path="/sales/invoices"                     element={<InvoicesPage />} />
-              <Route path="/sales/quotes/new"                   element={<QuoteEditorPage />} />
               <Route path="/sales/quotes/:id"                   element={<QuoteEditorPage />} />
               <Route path="/sales/quotes"                       element={<QuotesPage />} />
-              <Route path="/sales/payments/new"                 element={<PaymentEditorPage />} />
               <Route path="/sales/payments/:id"                 element={<PaymentEditorPage />} />
               <Route path="/sales/payments"                     element={<PaymentsPage />} />
 
@@ -219,16 +214,12 @@ function AppRoutes() {
               <Route path="/contacts/suppliers/:id"             element={<SupplierDetailPage />} />
 
               {/* Purchasing */}
-              <Route path="/purchasing/orders/new"              element={<POEditorPage />} />
               <Route path="/purchasing/orders/:id"              element={<POEditorPage />} />
               <Route path="/purchasing/orders"                  element={<PurchaseOrdersPage />} />
-              <Route path="/purchasing/grns/new"                element={<GRNEditorPage />} />
               <Route path="/purchasing/grns/:id"                element={<GRNEditorPage />} />
               <Route path="/purchasing/grns"                    element={<GoodsReceiptsPage />} />
-              <Route path="/purchasing/bills/new"               element={<VendorBillEditorPage />} />
               <Route path="/purchasing/bills/:id"               element={<VendorBillEditorPage />} />
               <Route path="/purchasing/bills"                   element={<VendorBillsPage />} />
-              <Route path="/purchasing/payments/new"            element={<VendorPaymentEditorPage />} />
               <Route path="/purchasing/payments/:id"            element={<VendorPaymentEditorPage />} />
               <Route path="/purchasing/payments"                element={<VendorPaymentsPage />} />
 
@@ -238,10 +229,8 @@ function AppRoutes() {
               <Route path="/reports/grn-reconciliation"         element={<GRNReconciliationPage />} />
 
               {/* Phase 6 — Inventory Operations */}
-              <Route path="/inventory/transfers/new"            element={<TransferEditorPage />} />
               <Route path="/inventory/transfers/:id"            element={<TransferEditorPage />} />
               <Route path="/inventory/transfers"                element={<StockTransfersPage />} />
-              <Route path="/inventory/adjustments/new"          element={<AdjustmentEditorPage />} />
               <Route path="/inventory/adjustments/:id"          element={<AdjustmentEditorPage />} />
               <Route path="/inventory/adjustments"              element={<InventoryAdjustmentsPage />} />
               <Route path="/inventory/stock-ledger"             element={<StockLedgerPage />} />
@@ -261,10 +250,8 @@ function AppRoutes() {
               <Route path="/reports/daily-sales"                element={<DailySalesReportPage />} />
 
               {/* Phase 8 — Banking & PDC */}
-              <Route path="/banking/transfers/new"              element={<BankTransferEditorPage />} />
               <Route path="/banking/transfers/:id"              element={<BankTransferEditorPage />} />
               <Route path="/banking/transfers"                  element={<BankTransfersPage />} />
-              <Route path="/banking/expenses/new"               element={<ExpenseEditorPage />} />
               <Route path="/banking/expenses/:id"               element={<ExpenseEditorPage />} />
               <Route path="/banking/expenses"                   element={<ExpensesPage />} />
               <Route path="/banking/pdc-received"               element={<PDCReceivedPage />} />
@@ -275,13 +262,10 @@ function AppRoutes() {
               <Route path="/reports/bank-recon"                 element={<BankReconPage />} />
 
               {/* Phase 9 — Returns & Credit/Debit Notes */}
-              <Route path="/sales/returns/new"                  element={<SalesReturnEditorPage />} />
               <Route path="/sales/returns/:id"                  element={<SalesReturnEditorPage />} />
               <Route path="/sales/returns"                      element={<SalesReturnsPage />} />
-              <Route path="/sales/credit-notes/new"             element={<CreditNoteEditorPage />} />
               <Route path="/sales/credit-notes/:id"             element={<CreditNoteEditorPage />} />
               <Route path="/sales/credit-notes"                 element={<CreditNotesPage />} />
-              <Route path="/purchasing/debit-notes/new"         element={<DebitNoteEditorPage />} />
               <Route path="/purchasing/debit-notes/:id"         element={<DebitNoteEditorPage />} />
               <Route path="/purchasing/debit-notes"             element={<DebitNotesPage />} />
 
