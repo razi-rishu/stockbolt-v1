@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { getAdapter } from '@/data/index';
@@ -11,7 +11,9 @@ import { Input } from '@/ui/input';
 import { Modal } from '@/ui/modal';
 import type { CoaRow } from '@/data/adapter';
 
-const ACCOUNT_TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense'] as const;
+// Must match the chart_of_accounts.type CHECK constraint exactly:
+// ('asset','liability','equity','income','expense')
+const ACCOUNT_TYPES = ['asset', 'liability', 'equity', 'income', 'expense'] as const;
 
 const schema = z.object({
   code:     z.string().min(1, 'Required'),
@@ -28,7 +30,7 @@ function typeColor(type: string) {
     case 'asset':     return 'bg-blue-50 text-blue-700';
     case 'liability': return 'bg-red-50 text-red-700';
     case 'equity':    return 'bg-purple-50 text-purple-700';
-    case 'revenue':   return 'bg-green-50 text-green-700';
+    case 'income':    return 'bg-green-50 text-green-700';
     case 'expense':   return 'bg-amber-50 text-amber-700';
     default:          return 'bg-surface-muted text-ink-secondary';
   }
@@ -46,10 +48,16 @@ export default function ChartOfAccountsPage() {
     enabled: !!company_id,
   });
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
+  const { register, handleSubmit, reset, control, setValue, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
     defaultValues: { code: '', name: '', name_ar: '', type: 'asset', sub_type: '', parent_id: null },
   });
+
+  // When the user picks income/expense, the Sub-type field becomes a
+  // direct/indirect dropdown (drives Gross Profit grouping in the P&L).
+  // For asset/liability/equity it stays a free-text field (e.g. "cash", "bank").
+  const watchedType = useWatch({ control, name: 'type' });
+  const isPLType = watchedType === 'income' || watchedType === 'expense';
 
   const createMutation = useMutation({
     mutationFn: async (v: FormValues) =>
@@ -162,7 +170,27 @@ export default function ChartOfAccountsPage() {
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.sub_type')}</label>
-            <Input {...register('sub_type')} placeholder="e.g. cash, bank" />
+            {isPLType ? (
+              <>
+                <select
+                  {...register('sub_type')}
+                  className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  onChange={(e) => setValue('sub_type', e.target.value)}
+                >
+                  <option value="direct">
+                    {watchedType === 'income' ? 'Direct (Sales) — above Gross Profit' : 'Direct (COGS) — above Gross Profit'}
+                  </option>
+                  <option value="indirect">
+                    {watchedType === 'income' ? 'Indirect (Other Income) — below Gross Profit' : 'Indirect (Operating Expense) — below Gross Profit'}
+                  </option>
+                </select>
+                <p className="mt-1 text-xs text-ink-tertiary">
+                  Direct = part of Gross Profit calculation. Indirect = reported separately as Other Income / Operating Expense.
+                </p>
+              </>
+            ) : (
+              <Input {...register('sub_type')} placeholder="e.g. cash, bank" />
+            )}
           </div>
           {createMutation.isError && (
             <p className="text-xs text-red-500">{t('common.error')}</p>

@@ -1027,19 +1027,24 @@ export function createSupabaseAdapter(
     // ── Phase 4: Reports ──────────────────────────────────────────────────
     reports: {
       async getProfitAndLoss(company_id, from, to): Promise<ProfitAndLoss> {
+        // Note: chart_of_accounts.type uses values 'asset','liability','equity','income','expense'
+        // (per the CHECK constraint). Earlier code mistakenly read account_type/'revenue';
+        // fixed here to use real column names.
         const { data, error } = await client
           .from('general_ledger')
-          .select('account_code, debit, credit, chart_of_accounts!inner(name, account_type)')
+          .select('account_code, debit, credit, chart_of_accounts!inner(name, type, sub_type)')
           .eq('company_id', company_id)
           .gte('date', from)
           .lte('date', to);
         assertNoError(error, 'reports.getProfitAndLoss');
 
-        const byCode: Record<string, { name: string; type: string; debit: number; credit: number }> = {};
+        const byCode: Record<string, { name: string; type: string; sub_type: string | null; debit: number; credit: number }> = {};
         for (const row of data ?? []) {
-          const coa = row.chart_of_accounts as unknown as { name: string; account_type: string };
-          if (!['revenue', 'expense'].includes(coa.account_type)) continue;
-          if (!byCode[row.account_code]) byCode[row.account_code] = { name: coa.name, type: coa.account_type, debit: 0, credit: 0 };
+          const coa = row.chart_of_accounts as unknown as { name: string; type: string; sub_type: string | null };
+          if (!['income', 'expense'].includes(coa.type)) continue;
+          if (!byCode[row.account_code]) {
+            byCode[row.account_code] = { name: coa.name, type: coa.type, sub_type: coa.sub_type, debit: 0, credit: 0 };
+          }
           byCode[row.account_code].debit += Number(row.debit);
           byCode[row.account_code].credit += Number(row.credit);
         }
@@ -1048,21 +1053,32 @@ export function createSupabaseAdapter(
           account_code: code,
           account_name: v.name,
           account_type: v.type,
-          amount: v.type === 'revenue' ? v.credit - v.debit : v.debit - v.credit,
+          sub_type: v.sub_type,
+          // Income: credit balance is positive. Expense: debit balance is positive.
+          amount: v.type === 'income' ? v.credit - v.debit : v.debit - v.credit,
         }));
 
-        const revenue = lines.filter(l => l.account_type === 'revenue').reduce((s, l) => s + l.amount, 0);
-        const cogs = lines.find(l => l.account_code === '5100')?.amount ?? 0;
-        const opex = lines.filter(l => l.account_type === 'expense' && l.account_code !== '5100').reduce((s, l) => s + l.amount, 0);
+        // Direct income (Sales) ↔ above Gross Profit. NULL sub_type defaults to direct
+        // (so legacy rows still appear in the Sales section rather than disappearing).
+        const isDirect = (l: ProfitAndLossLine) => l.sub_type !== 'indirect';
+
+        const revenue   = lines.filter(l => l.account_type === 'income'  &&  isDirect(l)).reduce((s, l) => s + l.amount, 0);
+        const cogs      = lines.filter(l => l.account_type === 'expense' &&  isDirect(l)).reduce((s, l) => s + l.amount, 0);
+        const otherInc  = lines.filter(l => l.account_type === 'income'  && !isDirect(l)).reduce((s, l) => s + l.amount, 0);
+        const opex      = lines.filter(l => l.account_type === 'expense' && !isDirect(l)).reduce((s, l) => s + l.amount, 0);
+
+        const grossProfit = revenue - cogs;
+        const netProfit   = grossProfit + otherInc - opex;
 
         return {
           period_start: from,
           period_end: to,
           revenue,
           cogs,
-          gross_profit: revenue - cogs,
+          gross_profit: grossProfit,
+          other_income: otherInc,
           operating_expenses: opex,
-          net_profit: revenue - cogs - opex,
+          net_profit: netProfit,
           lines,
         };
       },
@@ -1070,16 +1086,16 @@ export function createSupabaseAdapter(
       async getBalanceSheet(company_id, as_of_date): Promise<BalanceSheet> {
         const { data, error } = await client
           .from('general_ledger')
-          .select('account_code, debit, credit, chart_of_accounts!inner(name, account_type)')
+          .select('account_code, debit, credit, chart_of_accounts!inner(name, type)')
           .eq('company_id', company_id)
           .lte('date', as_of_date);
         assertNoError(error, 'reports.getBalanceSheet');
 
         const byCode: Record<string, { name: string; type: string; debit: number; credit: number }> = {};
         for (const row of data ?? []) {
-          const coa = row.chart_of_accounts as unknown as { name: string; account_type: string };
-          if (!['asset', 'liability', 'equity'].includes(coa.account_type)) continue;
-          if (!byCode[row.account_code]) byCode[row.account_code] = { name: coa.name, type: coa.account_type, debit: 0, credit: 0 };
+          const coa = row.chart_of_accounts as unknown as { name: string; type: string };
+          if (!['asset', 'liability', 'equity'].includes(coa.type)) continue;
+          if (!byCode[row.account_code]) byCode[row.account_code] = { name: coa.name, type: coa.type, debit: 0, credit: 0 };
           byCode[row.account_code].debit += Number(row.debit);
           byCode[row.account_code].credit += Number(row.credit);
         }

@@ -349,17 +349,27 @@ export interface ApplyAdvanceResult {
 export interface ProfitAndLossLine {
   account_code: string;
   account_name: string;
+  /** 'income' | 'expense' (DB type column) */
   account_type: string;
+  /** 'direct' | 'indirect' | null — drives Gross Profit grouping */
+  sub_type: string | null;
   amount: number;
 }
 
 export interface ProfitAndLoss {
   period_start: string;
   period_end: string;
+  /** Direct income (Sales), shown above Gross Profit */
   revenue: number;
+  /** Direct expense (COGS), shown above Gross Profit */
   cogs: number;
+  /** = revenue − cogs */
   gross_profit: number;
+  /** Indirect income (Other Income), shown below Gross Profit */
+  other_income: number;
+  /** Indirect expense (Operating expenses), shown below Gross Profit */
   operating_expenses: number;
+  /** = gross_profit + other_income − operating_expenses */
   net_profit: number;
   lines: ProfitAndLossLine[];
 }

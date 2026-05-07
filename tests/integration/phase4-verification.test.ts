@@ -237,14 +237,16 @@ describe('Phase 4 — Result type shapes', () => {
     expect(result.je_id).toBe('je-3');
   });
 
-  it('31: ProfitAndLossLine has account_code, account_name, account_type, amount', () => {
+  it('31: ProfitAndLossLine has account_code, account_name, account_type, sub_type, amount', () => {
     const line: ProfitAndLossLine = {
       account_code: '4100',
       account_name: 'Sales Revenue',
-      account_type: 'revenue',
+      account_type: 'income',
+      sub_type:     'direct',
       amount:       50000,
     };
-    expect(line.account_type).toBe('revenue');
+    expect(line.account_type).toBe('income');
+    expect(line.sub_type).toBe('direct');
     expect(line.amount).toBe(50000);
   });
 });

@@ -46,20 +46,29 @@ export default function ProfitLossPage() {
       {isLoading && <p className="text-sm text-ink-secondary">{t('common.loading')}</p>}
       {error && <p className="text-sm text-red-600">{String(error)}</p>}
 
-      {pl && (
+      {pl && (() => {
+        // NULL sub_type defaults to 'direct' (matches adapter) so legacy
+        // accounts still appear above Gross Profit rather than disappearing.
+        const isDirect = (l: typeof pl.lines[number]) => l.sub_type !== 'indirect';
+        const directIncome   = pl.lines.filter(l => l.account_type === 'income'  &&  isDirect(l));
+        const directExpense  = pl.lines.filter(l => l.account_type === 'expense' &&  isDirect(l));
+        const otherIncome    = pl.lines.filter(l => l.account_type === 'income'  && !isDirect(l));
+        const operatingExp   = pl.lines.filter(l => l.account_type === 'expense' && !isDirect(l));
+
+        return (
         <div className="rounded-card border border-border-subtle bg-surface-card">
           <div className="border-b border-border-subtle px-5 py-3 text-sm text-ink-secondary">
             {t('reports.period')}: {from} — {to}
           </div>
           <table className="w-full text-sm">
             <tbody>
-              {/* Revenue section */}
+              {/* ── Direct income (Sales) ─────────────────────────── */}
               <tr className="bg-surface-muted">
                 <td colSpan={2} className="px-5 py-2 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">
-                  {t('reports.revenue')}
+                  Revenue (Direct Income)
                 </td>
               </tr>
-              {pl.lines.filter(l => l.account_type === 'revenue').map(l => (
+              {directIncome.map(l => (
                 <tr key={l.account_code} className="border-b border-border-subtle">
                   <td className="px-5 py-2 text-ink-primary">{l.account_code} {l.account_name}</td>
                   <td className="px-5 py-2 text-end font-mono text-ink-primary">{fmt(l.amount)}</td>
@@ -70,37 +79,78 @@ export default function ProfitLossPage() {
                 <td className="px-5 py-2 text-end font-mono text-ink-primary">{fmt(pl.revenue)}</td>
               </tr>
 
-              {/* COGS */}
+              {/* ── Direct expense (COGS) ─────────────────────────── */}
               <tr className="bg-surface-muted">
                 <td colSpan={2} className="px-5 py-2 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">
-                  {t('reports.cogs')}
+                  Cost of Goods Sold (Direct Expense)
                 </td>
               </tr>
-              <tr className="border-b border-border-subtle">
-                <td className="px-5 py-2 text-ink-primary">{t('reports.cogs')}</td>
-                <td className="px-5 py-2 text-end font-mono text-ink-primary">({fmt(pl.cogs)})</td>
-              </tr>
-              <tr className="border-b-2 border-border-subtle font-semibold">
-                <td className="px-5 py-2 text-ink-primary">{t('reports.gross_profit')}</td>
-                <td className={`px-5 py-2 text-end font-mono ${pl.gross_profit < 0 ? 'text-red-600' : 'text-ink-primary'}`}>
-                  {fmt(pl.gross_profit)}
-                </td>
-              </tr>
-
-              {/* Operating expenses */}
-              <tr className="bg-surface-muted">
-                <td colSpan={2} className="px-5 py-2 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">
-                  {t('reports.expenses')}
-                </td>
-              </tr>
-              {pl.lines.filter(l => l.account_type === 'expense' && l.account_code !== '5100').map(l => (
+              {directExpense.length === 0 ? (
+                <tr className="border-b border-border-subtle">
+                  <td className="px-5 py-2 text-ink-tertiary">No direct expenses</td>
+                  <td className="px-5 py-2 text-end font-mono text-ink-tertiary">—</td>
+                </tr>
+              ) : directExpense.map(l => (
                 <tr key={l.account_code} className="border-b border-border-subtle">
                   <td className="px-5 py-2 text-ink-primary">{l.account_code} {l.account_name}</td>
                   <td className="px-5 py-2 text-end font-mono text-ink-primary">({fmt(l.amount)})</td>
                 </tr>
               ))}
 
-              {/* Net profit */}
+              {/* ── Gross Profit ──────────────────────────────────── */}
+              <tr className="border-b-2 border-border-subtle bg-brand-50 font-semibold">
+                <td className="px-5 py-2 text-ink-primary">{t('reports.gross_profit')}</td>
+                <td className={`px-5 py-2 text-end font-mono ${pl.gross_profit < 0 ? 'text-red-600' : 'text-brand-700'}`}>
+                  {fmt(pl.gross_profit)}
+                </td>
+              </tr>
+
+              {/* ── Indirect income (Other Income) ────────────────── */}
+              {otherIncome.length > 0 && (
+                <>
+                  <tr className="bg-surface-muted">
+                    <td colSpan={2} className="px-5 py-2 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">
+                      Other Income (Indirect)
+                    </td>
+                  </tr>
+                  {otherIncome.map(l => (
+                    <tr key={l.account_code} className="border-b border-border-subtle">
+                      <td className="px-5 py-2 text-ink-primary">{l.account_code} {l.account_name}</td>
+                      <td className="px-5 py-2 text-end font-mono text-ink-primary">{fmt(l.amount)}</td>
+                    </tr>
+                  ))}
+                  <tr className="border-b border-border-subtle bg-surface-muted font-semibold">
+                    <td className="px-5 py-2 text-ink-primary">Total Other Income</td>
+                    <td className="px-5 py-2 text-end font-mono text-ink-primary">{fmt(pl.other_income)}</td>
+                  </tr>
+                </>
+              )}
+
+              {/* ── Operating expenses (Indirect) ─────────────────── */}
+              <tr className="bg-surface-muted">
+                <td colSpan={2} className="px-5 py-2 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">
+                  Operating Expenses (Indirect)
+                </td>
+              </tr>
+              {operatingExp.length === 0 ? (
+                <tr className="border-b border-border-subtle">
+                  <td className="px-5 py-2 text-ink-tertiary">No operating expenses</td>
+                  <td className="px-5 py-2 text-end font-mono text-ink-tertiary">—</td>
+                </tr>
+              ) : operatingExp.map(l => (
+                <tr key={l.account_code} className="border-b border-border-subtle">
+                  <td className="px-5 py-2 text-ink-primary">{l.account_code} {l.account_name}</td>
+                  <td className="px-5 py-2 text-end font-mono text-ink-primary">({fmt(l.amount)})</td>
+                </tr>
+              ))}
+              {operatingExp.length > 0 && (
+                <tr className="border-b border-border-subtle bg-surface-muted font-semibold">
+                  <td className="px-5 py-2 text-ink-primary">Total Operating Expenses</td>
+                  <td className="px-5 py-2 text-end font-mono text-ink-primary">({fmt(pl.operating_expenses)})</td>
+                </tr>
+              )}
+
+              {/* ── Net Profit ────────────────────────────────────── */}
               <tr className="border-t-2 border-border-subtle bg-surface-muted font-bold">
                 <td className="px-5 py-3 text-ink-primary">{t('reports.net_profit')}</td>
                 <td className={`px-5 py-3 text-end font-mono text-base ${pl.net_profit < 0 ? 'text-red-600' : 'text-green-700'}`}>
@@ -110,7 +160,8 @@ export default function ProfitLossPage() {
             </tbody>
           </table>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
