@@ -1979,8 +1979,10 @@ export function createSupabaseAdapter(
           client.from('general_ledger').select('debit, credit').eq('company_id', company_id).eq('account_code', '2100'),
           client.from('general_ledger').select('debit, credit').eq('company_id', company_id).like('account_code', '11%'),
           client.from('invoice_items').select('product_id, quantity, unit_price, discount_percent, products(name), invoices!inner(company_id, status, date)').eq('invoices.company_id', company_id).eq('invoices.status', 'confirmed').gte('invoices.date', monthStart).lte('invoices.date', today).limit(500),
-          client.from('stock_active').select('product_id, quantity_on_hand, products(name, min_stock_level)').eq('company_id', company_id).limit(1000),
-          client.from('invoices').select('id').eq('company_id', company_id).eq('status', 'confirmed').lt('due_date', today).gt('amount_due', 0).limit(200),
+          // stock_active has no quantity_on_hand column — query stock_ledger and dedupe to latest row per (product, warehouse)
+          client.from('stock_ledger').select('product_id, warehouse_id, running_qty, created_at, products(min_stock_level)').eq('company_id', company_id).order('created_at', { ascending: false }).limit(2000),
+          // amount_due is not a stored column — fetch overdue candidates and filter via payment_allocations below
+          client.from('invoices').select('id, total_amount').eq('company_id', company_id).eq('status', 'confirmed').lt('due_date', today).limit(500),
           client.from('invoices').select('date, total_amount').eq('company_id', company_id).eq('status', 'confirmed').gte('date', last30).order('date'),
         ]);
 
@@ -2001,19 +2003,42 @@ export function createSupabaseAdapter(
         }
         const topProducts = Object.entries(prodRevenue).sort(([, a], [, b]) => b.rev - a.rev).slice(0, 5).map(([id, v]) => ({ product_id: id, name: v.name, qty: v.qty, revenue: v.rev }));
 
-        // Low stock count
-        const lowStockCount = (lowStock ?? []).filter((r: unknown) => {
-          const row = r as { quantity_on_hand: number | null; products: { min_stock_level: number | null } | null };
-          const qty = Number(row.quantity_on_hand ?? 0);
-          const min = Number(row.products?.min_stock_level ?? 0);
-          return min > 0 && qty <= min;
-        }).length;
+        // Low stock count — rows are ordered by created_at DESC, dedupe to latest per (product, warehouse)
+        const seenStock = new Set<string>();
+        let lowStockCount = 0;
+        for (const r of (lowStock ?? []) as { product_id: string | null; warehouse_id: string | null; running_qty: number | null; products: { min_stock_level: number | null } | null }[]) {
+          const key = `${r.product_id}::${r.warehouse_id}`;
+          if (seenStock.has(key)) continue;
+          seenStock.add(key);
+          const qty = Number(r.running_qty ?? 0);
+          const min = Number(r.products?.min_stock_level ?? 0);
+          if (min > 0 && qty <= min) lowStockCount++;
+        }
 
         // Sales trend last 30 days
         const salesTrend = (trendInvs ?? []).map((r: unknown) => {
           const row = r as { date: string; total_amount: number };
           return { date: row.date, amount: Number(row.total_amount ?? 0) };
         });
+
+        // Overdue count: only invoices past due AND with a positive outstanding balance
+        let overdueCount = 0;
+        const overdueRows = (overdueInvs ?? []) as { id: string; total_amount: number }[];
+        if (overdueRows.length > 0) {
+          const ids = overdueRows.map((i) => i.id);
+          const { data: allocs } = await client
+            .from('payment_allocations')
+            .select('doc_id, amount_applied')
+            .in('doc_id', ids)
+            .eq('doc_type', 'invoice');
+          const paidByInv: Record<string, number> = {};
+          for (const a of (allocs ?? []) as { doc_id: string; amount_applied: number }[]) {
+            paidByInv[a.doc_id] = (paidByInv[a.doc_id] ?? 0) + Number(a.amount_applied);
+          }
+          overdueCount = overdueRows.filter(
+            (i) => Number(i.total_amount) - (paidByInv[i.id] ?? 0) > 0.01,
+          ).length;
+        }
 
         return {
           today_sales_count: todayCount,
@@ -2024,7 +2049,7 @@ export function createSupabaseAdapter(
           top_products: topProducts,
           top_customers: [],
           low_stock_count: lowStockCount,
-          overdue_invoices_count: (overdueInvs ?? []).length,
+          overdue_invoices_count: overdueCount,
           sales_trend: salesTrend,
         };
       },
