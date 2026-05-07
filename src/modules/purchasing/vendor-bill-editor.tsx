@@ -96,9 +96,34 @@ export default function VendorBillEditorPage() {
     enabled: isNew && !!linkedGrnId,
   });
 
-  const expenseAccounts = coaAccounts.filter(a =>
-    (a.type === 'expense' || a.code.startsWith('6')) && a.is_active
+  // Account dropdown for non-product lines (rent, utilities, services, etc.):
+  // include any active asset/cogs/expense account so user can post to e.g. 1300
+  // for direct stock receipts without a product, or 5xxx/6xxx for true expenses.
+  const accountOpts = coaAccounts.filter(a =>
+    a.is_active && (a.type === 'asset' || a.type === 'cogs' || a.type === 'expense')
   );
+
+  // Look up an account by id (for the inline label when product is selected)
+  const accountById = (id: string | null): { code: string; name: string } | null => {
+    if (!id) return null;
+    const a = coaAccounts.find(x => x.id === id);
+    return a ? { code: a.code, name: a.name } : null;
+  };
+
+  // Resolve the account label shown for a product line:
+  //  - if product has a purchase_account_id, use it
+  //  - else fall back to "1300 Inventory" (default in the RPC)
+  const resolveProductAccount = (productId: string | null): { code: string; name: string } => {
+    if (productId) {
+      const p = products.find(x => x.id === productId) as (ProductRow & { purchase_account_id?: string | null }) | undefined;
+      if (p?.purchase_account_id) {
+        const a = accountById(p.purchase_account_id);
+        if (a) return a;
+      }
+    }
+    const inv = coaAccounts.find(a => a.code === '1300');
+    return inv ? { code: inv.code, name: inv.name } : { code: '1300', name: 'Inventory' };
+  };
 
   const [header, setHeader] = useState({
     supplier_id: '', date: todayIso(), due_date: '', reference: '',
@@ -250,7 +275,7 @@ export default function VendorBillEditorPage() {
   const supplierOpts = [{ value: '', label: t('purchasing.select_supplier') }, ...suppliers.map(s => ({ value: s.id, label: s.name }))];
   const productOpts = [{ value: '', label: '— ' + t('purchasing.select_product') + ' —' }, ...products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }))];
   const taxOpts = [{ value: '0', label: t('sales.no_tax') }, ...taxRates.map(r => ({ value: String(r.rate), label: `${r.name} (${r.rate}%)` }))];
-  const expenseOpts = [{ value: '', label: '— ' + t('purchasing.select_account') + ' —' }, ...expenseAccounts.map(a => ({ value: a.id, label: `${a.code} ${a.name}` }))];
+  const expenseOpts = [{ value: '', label: '— ' + t('purchasing.select_account') + ' —' }, ...accountOpts.map(a => ({ value: a.id, label: `${a.code} ${a.name}` }))];
 
   return (
     <div className="space-y-6 pb-16">
@@ -349,11 +374,23 @@ export default function VendorBillEditorPage() {
                     </select>
                   </td>
                   <td className="px-3 py-1.5">
-                    <select className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60"
-                      value={line.coa_account_id ?? ''} disabled={!canEdit || !!line.product_id}
-                      onChange={e => updateLine(line._key, { coa_account_id: e.target.value || null })}>
-                      {expenseOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
+                    {line.product_id ? (
+                      // Resolved from the product's Purchase Account (read-only display)
+                      (() => {
+                        const acc = resolveProductAccount(line.product_id);
+                        return (
+                          <div className="rounded border border-border-subtle bg-surface-muted px-2 py-1 text-xs text-ink-tertiary truncate" title={`${acc.code} ${acc.name}`}>
+                            {acc.code} {acc.name}
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <select className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60"
+                        value={line.coa_account_id ?? ''} disabled={!canEdit}
+                        onChange={e => updateLine(line._key, { coa_account_id: e.target.value || null })}>
+                        {expenseOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    )}
                   </td>
                   <td className="px-3 py-1.5">
                     <input className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60"

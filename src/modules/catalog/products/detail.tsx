@@ -13,7 +13,7 @@ import { Textarea } from '@/ui/textarea';
 import { Select } from '@/ui/select';
 import { Badge } from '@/ui/badge';
 import { Modal } from '@/ui/modal';
-import type { ProductCompatibilityRow, ProductSupplierCodeRow, ContactRow, VehicleMakeRow, VehicleModelRow } from '@/data/adapter';
+import type { ProductCompatibilityRow, ProductSupplierCodeRow, ContactRow, VehicleMakeRow, VehicleModelRow, CoaRow } from '@/data/adapter';
 
 const schema = z.object({
   sku:                z.string().min(1, 'Required'),
@@ -26,6 +26,7 @@ const schema = z.object({
   brand_id:           z.string().nullable(),
   category_id:        z.string().nullable(),
   unit_id:            z.string().nullable(),
+  purchase_account_id:z.string().nullable(),
   quality_tier:       z.string().nullable(),
   selling_price:      z.coerce.number().min(0),
   tax_category:       z.enum(['standard', 'zero_rated', 'exempt']),
@@ -72,6 +73,7 @@ export default function ProductDetailPage() {
   const { data: brands = [] } = useQuery({ queryKey: ['brands', company_id], queryFn: () => getAdapter().brands.list(company_id!), enabled: !!company_id });
   const { data: categories = [] } = useQuery({ queryKey: ['categories', company_id], queryFn: () => getAdapter().categories.list(company_id!), enabled: !!company_id });
   const { data: units = [] } = useQuery({ queryKey: ['units', company_id], queryFn: () => getAdapter().units.list(company_id!), enabled: !!company_id });
+  const { data: coaAccounts = [] } = useQuery<CoaRow[]>({ queryKey: ['coa', company_id], queryFn: () => getAdapter().coa.list(company_id!), enabled: !!company_id });
   const { data: makes = [] } = useQuery<VehicleMakeRow[]>({ queryKey: ['vehicle_makes', company_id], queryFn: () => getAdapter().vehicleMakes.list(company_id!), enabled: !!company_id });
   const { data: models = [] } = useQuery<VehicleModelRow[]>({ queryKey: ['vehicle_models', compatMakeId], queryFn: () => getAdapter().vehicleMakes.listModels(compatMakeId), enabled: !!compatMakeId });
   const { data: suppliers = [] } = useQuery<ContactRow[]>({ queryKey: ['contacts', company_id, 'supplier'], queryFn: () => getAdapter().contacts.list(company_id!, 'supplier'), enabled: !!company_id });
@@ -86,10 +88,11 @@ export default function ProductDetailPage() {
       description: product.description ?? '', description_ar: product.description_ar ?? '',
       oe_number: product.oe_number ?? '', replacement_numbers: (product.replacement_numbers ?? []).join(', '),
       brand_id: product.brand_id ?? null, category_id: product.category_id ?? null, unit_id: product.unit_id ?? null,
+      purchase_account_id: (product as { purchase_account_id?: string | null }).purchase_account_id ?? null,
       quality_tier: product.quality_tier ?? null, selling_price: Number(product.selling_price),
       tax_category: product.tax_category as 'standard' | 'zero_rated' | 'exempt',
       min_stock_level: Number(product.min_stock_level), requires_serial: product.requires_serial, is_active: product.is_active, barcode: product.barcode ?? '',
-    } : { sku: '', name: '', name_ar: '', description: '', description_ar: '', oe_number: '', replacement_numbers: '', brand_id: null, category_id: null, unit_id: null, quality_tier: null, selling_price: 0, tax_category: 'standard', min_stock_level: 0, requires_serial: false, is_active: true, barcode: '' },
+    } : { sku: '', name: '', name_ar: '', description: '', description_ar: '', oe_number: '', replacement_numbers: '', brand_id: null, category_id: null, unit_id: null, purchase_account_id: null, quality_tier: null, selling_price: 0, tax_category: 'standard', min_stock_level: 0, requires_serial: false, is_active: true, barcode: '' },
   });
 
   const saveMutation = useMutation({
@@ -100,6 +103,7 @@ export default function ProductDetailPage() {
         description: values.description || null, description_ar: values.description_ar || null,
         oe_number: values.oe_number || null, replacement_numbers: replacements.length ? replacements : null,
         brand_id: values.brand_id || null, category_id: values.category_id || null, unit_id: values.unit_id || null,
+        purchase_account_id: values.purchase_account_id || null,
         quality_tier: (values.quality_tier as 'genuine' | 'oem' | 'premium' | 'economy' | null) || null,
         selling_price: values.selling_price, tax_category: values.tax_category,
         min_stock_level: values.min_stock_level, requires_serial: values.requires_serial, is_active: values.is_active,
@@ -208,6 +212,24 @@ export default function ProductDetailPage() {
             <Select label={t('products.quality_tier')} options={QUALITY_OPTIONS.map((q) => ({ value: q, label: q ? t(`products.quality_${q}`) : t('common.none') }))} {...register('quality_tier')} />
             <Input label={t('products.selling_price')} type="number" step="0.01" required error={errors.selling_price?.message} {...register('selling_price')} />
             <Select label={t('products.tax_category')} options={TAX_OPTIONS.map((q) => ({ value: q, label: t(`products.tax_${q}`) }))} {...register('tax_category')} />
+          </div>
+          <div className="grid grid-cols-1 gap-4">
+            <div>
+              <Select
+                label="Purchase Account"
+                options={[
+                  { value: '', label: '(default: 1300 Inventory)' },
+                  ...coaAccounts
+                    .filter((a) => a.is_active && (a.type === 'asset' || a.type === 'cogs' || a.type === 'expense'))
+                    .map((a) => ({ value: a.id, label: `${a.code} — ${a.name}` })),
+                ]}
+                {...register('purchase_account_id')}
+              />
+              <p className="mt-1 text-xs text-ink-tertiary">
+                When this product appears on a vendor bill, it will post to this account.
+                Asset accounts (1xxx) also move stock; expense accounts (5xxx/6xxx) post as a pure cost.
+              </p>
+            </div>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Input label={t('products.min_stock')} type="number" step="0.001" {...register('min_stock_level')} />

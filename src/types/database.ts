@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       attachments: {
@@ -2658,6 +2683,7 @@ export type Database = {
           name: string
           name_ar: string | null
           oe_number: string | null
+          purchase_account_id: string | null
           quality_tier: string | null
           replacement_numbers: string[] | null
           requires_serial: boolean
@@ -2684,6 +2710,7 @@ export type Database = {
           name: string
           name_ar?: string | null
           oe_number?: string | null
+          purchase_account_id?: string | null
           quality_tier?: string | null
           replacement_numbers?: string[] | null
           requires_serial?: boolean
@@ -2710,6 +2737,7 @@ export type Database = {
           name?: string
           name_ar?: string | null
           oe_number?: string | null
+          purchase_account_id?: string | null
           quality_tier?: string | null
           replacement_numbers?: string[] | null
           requires_serial?: boolean
@@ -2740,6 +2768,13 @@ export type Database = {
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_purchase_account_id_fkey"
+            columns: ["purchase_account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
           {
@@ -4566,6 +4601,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },
