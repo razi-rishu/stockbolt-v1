@@ -377,15 +377,28 @@ export interface ProfitAndLoss {
 export interface BalanceSheetLine {
   account_code: string;
   account_name: string;
+  /** 'asset' | 'liability' | 'equity' (DB type column) */
   account_type: string;
+  /** asset/liability: 'current' | 'fixed' | 'long_term' | null. equity: free-text tag or null. */
+  sub_type: string | null;
   balance: number;
 }
 
 export interface BalanceSheet {
   as_of_date: string;
+  /** Sum of asset rows where sub_type='current' (or null — null defaults to current) */
+  current_assets: number;
+  /** Sum of asset rows where sub_type='fixed' */
+  fixed_assets: number;
   total_assets: number;
+  /** Sum of liability rows where sub_type='current' (null defaults to current) */
+  current_liabilities: number;
+  /** Sum of liability rows where sub_type='long_term' */
+  long_term_liabilities: number;
   total_liabilities: number;
   total_equity: number;
+  /** = current_assets − current_liabilities */
+  working_capital: number;
   lines: BalanceSheetLine[];
 }
 

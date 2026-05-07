@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { useForm, useWatch } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { getAdapter } from '@/data/index';
@@ -11,30 +11,80 @@ import { Input } from '@/ui/input';
 import { Modal } from '@/ui/modal';
 import type { CoaRow } from '@/data/adapter';
 
-// Must match the chart_of_accounts.type CHECK constraint exactly:
-// ('asset','liability','equity','income','expense')
-const ACCOUNT_TYPES = ['asset', 'liability', 'equity', 'income', 'expense'] as const;
+// ─── Flat 9-option Type dropdown ─────────────────────────────────────────────
+// User-facing values map to (DB type, DB sub_type) tuples. The DB CHECK
+// constraint stays ('asset','liability','equity','income','expense') — the
+// finer Direct/Indirect and Current/Fixed/Long-term distinctions live in
+// the existing sub_type column. This way the schema stays canonical while
+// the UI is one-click.
+type FlatType =
+  | 'current_asset'
+  | 'fixed_asset'
+  | 'current_liability'
+  | 'long_term_liability'
+  | 'equity'
+  | 'direct_income'
+  | 'indirect_income'
+  | 'direct_expense'
+  | 'indirect_expense';
+
+interface FlatTypeMeta {
+  value: FlatType;
+  label: string;
+  type: 'asset' | 'liability' | 'equity' | 'income' | 'expense';
+  sub_type: string | null;
+  /** Section header used to group the COA list display */
+  group: string;
+  /** Tailwind classes for the row pill */
+  pill: string;
+  /** Sort key controlling section order */
+  order: number;
+}
+
+const FLAT_TYPES: FlatTypeMeta[] = [
+  { value: 'current_asset',         label: 'Current Asset',                  type: 'asset',     sub_type: 'current',   group: 'Current Assets',         pill: 'bg-blue-50 text-blue-700',     order: 1 },
+  { value: 'fixed_asset',           label: 'Fixed Asset',                    type: 'asset',     sub_type: 'fixed',     group: 'Fixed Assets',           pill: 'bg-blue-50 text-blue-700',     order: 2 },
+  { value: 'current_liability',     label: 'Current Liability',              type: 'liability', sub_type: 'current',   group: 'Current Liabilities',    pill: 'bg-red-50 text-red-700',       order: 3 },
+  { value: 'long_term_liability',   label: 'Long-term Liability',            type: 'liability', sub_type: 'long_term', group: 'Long-term Liabilities',  pill: 'bg-red-50 text-red-700',       order: 4 },
+  { value: 'equity',                label: 'Equity',                         type: 'equity',    sub_type: null,        group: 'Equity',                 pill: 'bg-purple-50 text-purple-700', order: 5 },
+  { value: 'direct_income',         label: 'Direct Income (Sales)',          type: 'income',    sub_type: 'direct',    group: 'Direct Income',          pill: 'bg-green-50 text-green-700',   order: 6 },
+  { value: 'indirect_income',       label: 'Indirect Income (Other Income)', type: 'income',    sub_type: 'indirect',  group: 'Indirect Income',        pill: 'bg-green-50 text-green-700',   order: 7 },
+  { value: 'direct_expense',        label: 'Direct Expense (COGS)',          type: 'expense',   sub_type: 'direct',    group: 'Direct Expense (COGS)',  pill: 'bg-amber-50 text-amber-700',   order: 8 },
+  { value: 'indirect_expense',      label: 'Indirect Expense (Operating)',   type: 'expense',   sub_type: 'indirect',  group: 'Indirect Expense',       pill: 'bg-amber-50 text-amber-700',   order: 9 },
+];
+
+/** Decode an account from the DB into its flat-type identity. */
+function classifyAccount(a: { type: string; sub_type: string | null }): FlatTypeMeta {
+  // Income/expense default to 'direct' when sub_type is missing — matches the P&L adapter.
+  // Asset/liability default to 'current' for the same reason.
+  if (a.type === 'income') {
+    return FLAT_TYPES.find(t => t.type === 'income' && t.sub_type === (a.sub_type === 'indirect' ? 'indirect' : 'direct'))!;
+  }
+  if (a.type === 'expense') {
+    return FLAT_TYPES.find(t => t.type === 'expense' && t.sub_type === (a.sub_type === 'indirect' ? 'indirect' : 'direct'))!;
+  }
+  if (a.type === 'asset') {
+    return FLAT_TYPES.find(t => t.type === 'asset' && t.sub_type === (a.sub_type === 'fixed' ? 'fixed' : 'current'))!;
+  }
+  if (a.type === 'liability') {
+    return FLAT_TYPES.find(t => t.type === 'liability' && t.sub_type === (a.sub_type === 'long_term' ? 'long_term' : 'current'))!;
+  }
+  return FLAT_TYPES.find(t => t.type === 'equity')!;
+}
+
+const FLAT_VALUES = FLAT_TYPES.map(t => t.value) as [FlatType, ...FlatType[]];
 
 const schema = z.object({
-  code:     z.string().min(1, 'Required'),
-  name:     z.string().min(1, 'Required'),
-  name_ar:  z.string(),
-  type:     z.enum(ACCOUNT_TYPES),
-  sub_type: z.string(),
+  code:      z.string().min(1, 'Required'),
+  name:      z.string().min(1, 'Required'),
+  name_ar:   z.string(),
+  flat_type: z.enum(FLAT_VALUES),
+  // sub_type field is only used for Asset/Liability/Equity free-text tagging
+  // (e.g. "cash", "bank"); for Income/Expense and current/fixed it's owned by flat_type.
+  sub_type_extra: z.string(),
   parent_id: z.string().nullable(),
 });
 type FormValues = z.infer<typeof schema>;
-
-function typeColor(type: string) {
-  switch (type) {
-    case 'asset':     return 'bg-blue-50 text-blue-700';
-    case 'liability': return 'bg-red-50 text-red-700';
-    case 'equity':    return 'bg-purple-50 text-purple-700';
-    case 'income':    return 'bg-green-50 text-green-700';
-    case 'expense':   return 'bg-amber-50 text-amber-700';
-    default:          return 'bg-surface-muted text-ink-secondary';
-  }
-}
 
 export default function ChartOfAccountsPage() {
   const { t } = useTranslation();
@@ -48,30 +98,35 @@ export default function ChartOfAccountsPage() {
     enabled: !!company_id,
   });
 
-  const { register, handleSubmit, reset, control, setValue, formState: { errors, isSubmitting } } = useForm<FormValues>({
+  const { register, handleSubmit, reset, watch, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
-    defaultValues: { code: '', name: '', name_ar: '', type: 'asset', sub_type: '', parent_id: null },
+    defaultValues: { code: '', name: '', name_ar: '', flat_type: 'current_asset', sub_type_extra: '', parent_id: null },
   });
 
-  // When the user picks income/expense, the Sub-type field becomes a
-  // direct/indirect dropdown (drives Gross Profit grouping in the P&L).
-  // For asset/liability/equity it stays a free-text field (e.g. "cash", "bank").
-  const watchedType = useWatch({ control, name: 'type' });
-  const isPLType = watchedType === 'income' || watchedType === 'expense';
+  const flatTypeValue = watch('flat_type');
+  const flatTypeMeta = FLAT_TYPES.find(t => t.value === flatTypeValue);
+  // Equity has no built-in sub_type; user can tag freely (e.g. "owner", "retained")
+  const showSubTypeExtra = flatTypeMeta?.type === 'equity';
 
   const createMutation = useMutation({
-    mutationFn: async (v: FormValues) =>
-      getAdapter().coa.create({
+    mutationFn: async (v: FormValues) => {
+      const meta = FLAT_TYPES.find(t => t.value === v.flat_type)!;
+      // For Equity, accept user's free-text sub_type; for everything else, use the flat-type's mapping.
+      const sub_type = meta.type === 'equity'
+        ? (v.sub_type_extra.trim() || null)
+        : meta.sub_type;
+      return getAdapter().coa.create({
         company_id: company_id!,
         code: v.code,
         name: v.name,
         name_ar: v.name_ar || null,
-        type: v.type,
-        sub_type: v.sub_type || null,
+        type: meta.type,
+        sub_type,
         parent_id: v.parent_id || null,
         is_active: true,
         is_system: false,
-      }),
+      });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['coa', company_id] });
       setOpen(false);
@@ -79,11 +134,19 @@ export default function ChartOfAccountsPage() {
     },
   });
 
-  // Group by type
-  const grouped = ACCOUNT_TYPES.reduce<Record<string, CoaRow[]>>((acc, type) => {
-    acc[type] = accounts.filter((a) => a.type === type).sort((a, b) => a.code.localeCompare(b.code));
+  // Group accounts by flat type (each account decoded from its (type, sub_type) tuple)
+  const grouped = FLAT_TYPES.reduce<Record<FlatType, CoaRow[]>>((acc, ft) => {
+    acc[ft.value] = [];
     return acc;
-  }, {} as Record<string, CoaRow[]>);
+  }, {} as Record<FlatType, CoaRow[]>);
+
+  for (const a of accounts) {
+    const meta = classifyAccount(a);
+    grouped[meta.value].push(a);
+  }
+  for (const ft of FLAT_TYPES) {
+    grouped[ft.value].sort((a, b) => a.code.localeCompare(b.code));
+  }
 
   return (
     <div className="space-y-6">
@@ -96,15 +159,15 @@ export default function ChartOfAccountsPage() {
         <p className="text-sm text-ink-secondary">{t('common.loading')}</p>
       ) : (
         <div className="space-y-4">
-          {ACCOUNT_TYPES.map((type) => (
-            <div key={type} className="rounded-card border border-border-subtle bg-surface-card">
+          {FLAT_TYPES.map((ft) => (
+            <div key={ft.value} className="rounded-card border border-border-subtle bg-surface-card">
               <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-3">
-                <span className={`rounded-pill px-2 py-0.5 text-xs font-medium capitalize ${typeColor(type)}`}>
-                  {t(`accounting.type_${type}`)}
+                <span className={`rounded-pill px-2 py-0.5 text-xs font-medium ${ft.pill}`}>
+                  {ft.group}
                 </span>
-                <span className="text-xs text-ink-tertiary">({grouped[type].length})</span>
+                <span className="text-xs text-ink-tertiary">({grouped[ft.value].length})</span>
               </div>
-              {grouped[type].length === 0 ? (
+              {grouped[ft.value].length === 0 ? (
                 <p className="px-4 py-3 text-sm text-ink-tertiary">{t('accounting.no_accounts')}</p>
               ) : (
                 <table className="w-full text-sm">
@@ -117,7 +180,7 @@ export default function ChartOfAccountsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {grouped[type].map((a) => (
+                    {grouped[ft.value].map((a) => (
                       <tr key={a.id} className="border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
                         <td className="px-4 py-2.5 font-mono text-xs text-ink-primary">{a.code}</td>
                         <td className="px-4 py-2.5 text-ink-primary">{a.name}</td>
@@ -144,17 +207,17 @@ export default function ChartOfAccountsPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.code')}</label>
-              <Input {...register('code')} placeholder="e.g. 1101" />
+              <Input {...register('code')} placeholder="e.g. 1700" />
               {errors.code && <p className="mt-1 text-xs text-red-500">{errors.code.message}</p>}
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.type')}</label>
               <select
-                {...register('type')}
+                {...register('flat_type')}
                 className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
-                {ACCOUNT_TYPES.map((t2) => (
-                  <option key={t2} value={t2}>{t(`accounting.type_${t2}`)}</option>
+                {FLAT_TYPES.map((ft) => (
+                  <option key={ft.value} value={ft.value}>{ft.label}</option>
                 ))}
               </select>
             </div>
@@ -168,32 +231,15 @@ export default function ChartOfAccountsPage() {
             <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.account_name_ar')}</label>
             <Input {...register('name_ar')} dir="rtl" />
           </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.sub_type')}</label>
-            {isPLType ? (
-              <>
-                <select
-                  {...register('sub_type')}
-                  className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  onChange={(e) => setValue('sub_type', e.target.value)}
-                >
-                  <option value="direct">
-                    {watchedType === 'income' ? 'Direct (Sales) — above Gross Profit' : 'Direct (COGS) — above Gross Profit'}
-                  </option>
-                  <option value="indirect">
-                    {watchedType === 'income' ? 'Indirect (Other Income) — below Gross Profit' : 'Indirect (Operating Expense) — below Gross Profit'}
-                  </option>
-                </select>
-                <p className="mt-1 text-xs text-ink-tertiary">
-                  Direct = part of Gross Profit calculation. Indirect = reported separately as Other Income / Operating Expense.
-                </p>
-              </>
-            ) : (
-              <Input {...register('sub_type')} placeholder="e.g. cash, bank" />
-            )}
-          </div>
+          {showSubTypeExtra && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.sub_type')} <span className="text-ink-tertiary">(optional)</span></label>
+              <Input {...register('sub_type_extra')} placeholder="e.g. owner, retained, drawings" />
+              <p className="mt-1 text-xs text-ink-tertiary">Free-text tag for grouping equity accounts.</p>
+            </div>
+          )}
           {createMutation.isError && (
-            <p className="text-xs text-red-500">{t('common.error')}</p>
+            <p className="text-xs text-red-500">{String((createMutation.error as Error)?.message ?? t('common.error'))}</p>
           )}
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>{t('common.cancel')}</Button>

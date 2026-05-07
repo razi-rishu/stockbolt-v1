@@ -1086,16 +1086,18 @@ export function createSupabaseAdapter(
       async getBalanceSheet(company_id, as_of_date): Promise<BalanceSheet> {
         const { data, error } = await client
           .from('general_ledger')
-          .select('account_code, debit, credit, chart_of_accounts!inner(name, type)')
+          .select('account_code, debit, credit, chart_of_accounts!inner(name, type, sub_type)')
           .eq('company_id', company_id)
           .lte('date', as_of_date);
         assertNoError(error, 'reports.getBalanceSheet');
 
-        const byCode: Record<string, { name: string; type: string; debit: number; credit: number }> = {};
+        const byCode: Record<string, { name: string; type: string; sub_type: string | null; debit: number; credit: number }> = {};
         for (const row of data ?? []) {
-          const coa = row.chart_of_accounts as unknown as { name: string; type: string };
+          const coa = row.chart_of_accounts as unknown as { name: string; type: string; sub_type: string | null };
           if (!['asset', 'liability', 'equity'].includes(coa.type)) continue;
-          if (!byCode[row.account_code]) byCode[row.account_code] = { name: coa.name, type: coa.type, debit: 0, credit: 0 };
+          if (!byCode[row.account_code]) {
+            byCode[row.account_code] = { name: coa.name, type: coa.type, sub_type: coa.sub_type, debit: 0, credit: 0 };
+          }
           byCode[row.account_code].debit += Number(row.debit);
           byCode[row.account_code].credit += Number(row.credit);
         }
@@ -1104,14 +1106,43 @@ export function createSupabaseAdapter(
           account_code: code,
           account_name: v.name,
           account_type: v.type,
+          sub_type: v.sub_type,
+          // Asset: debit balance positive. Liability/Equity: credit balance positive.
           balance: v.type === 'asset' ? v.debit - v.credit : v.credit - v.debit,
         }));
 
-        const totalAssets = lines.filter(l => l.account_type === 'asset').reduce((s, l) => s + l.balance, 0);
-        const totalLiabilities = lines.filter(l => l.account_type === 'liability').reduce((s, l) => s + l.balance, 0);
-        const totalEquity = lines.filter(l => l.account_type === 'equity').reduce((s, l) => s + l.balance, 0);
+        // NULL/missing sub_type defaults: assets→'current', liabilities→'current'
+        // (matches the migration backfill — legacy rows still appear in the
+        // "Current" bucket rather than disappearing).
+        const isCurrentAsset = (l: BalanceSheetLine) =>
+          l.account_type === 'asset' && l.sub_type !== 'fixed';
+        const isFixedAsset = (l: BalanceSheetLine) =>
+          l.account_type === 'asset' && l.sub_type === 'fixed';
+        const isCurrentLiab = (l: BalanceSheetLine) =>
+          l.account_type === 'liability' && l.sub_type !== 'long_term';
+        const isLongTermLiab = (l: BalanceSheetLine) =>
+          l.account_type === 'liability' && l.sub_type === 'long_term';
 
-        return { as_of_date, total_assets: totalAssets, total_liabilities: totalLiabilities, total_equity: totalEquity, lines };
+        const currentAssets       = lines.filter(isCurrentAsset).reduce((s, l) => s + l.balance, 0);
+        const fixedAssets         = lines.filter(isFixedAsset).reduce((s, l) => s + l.balance, 0);
+        const currentLiabilities  = lines.filter(isCurrentLiab).reduce((s, l) => s + l.balance, 0);
+        const longTermLiabilities = lines.filter(isLongTermLiab).reduce((s, l) => s + l.balance, 0);
+        const totalAssets         = currentAssets + fixedAssets;
+        const totalLiabilities    = currentLiabilities + longTermLiabilities;
+        const totalEquity         = lines.filter(l => l.account_type === 'equity').reduce((s, l) => s + l.balance, 0);
+
+        return {
+          as_of_date,
+          current_assets: currentAssets,
+          fixed_assets: fixedAssets,
+          total_assets: totalAssets,
+          current_liabilities: currentLiabilities,
+          long_term_liabilities: longTermLiabilities,
+          total_liabilities: totalLiabilities,
+          total_equity: totalEquity,
+          working_capital: currentAssets - currentLiabilities,
+          lines,
+        };
       },
 
       async getARAgingReport(company_id, as_of_date): Promise<ARAgingReport> {

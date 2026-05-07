@@ -7,28 +7,29 @@ type AccountDef = Omit<CoaInsert, 'company_id'>;
 // India: exclude UAE VAT (1500, 2200), include GST (1510–2230)
 // 6100 Salaries excluded from v1 (payroll deferred per Doc 5)
 const ALL_ACCOUNTS: (AccountDef & { gcc_only?: true; india_only?: true })[] = [
-  // ── Assets ────────────────────────────────────────────────────────────────
-  { code: '1100', name: 'Cash in Hand',              name_ar: 'نقدية في الصندوق',        type: 'asset' },
-  { code: '1110', name: 'Bank Account (Main)',        name_ar: 'الحساب البنكي (رئيسي)',    type: 'asset' },
-  { code: '1200', name: 'Accounts Receivable',        name_ar: 'حسابات القبض',            type: 'asset' },
-  { code: '1250', name: 'PDC Receivable (Customer)',  name_ar: 'شيكات آجلة مستلمة',       type: 'asset' },
-  { code: '1260', name: 'Bounced Cheques',            name_ar: 'شيكات مرتجعة',            type: 'asset' },
-  { code: '1300', name: 'Inventory Asset',            name_ar: 'أصول المخزون',            type: 'asset' },
-  { code: '1400', name: 'Vendor Advances / Prepaid',  name_ar: 'سلف الموردين',            type: 'asset' },
-  { code: '1500', name: 'Input VAT (Claimable)',       name_ar: 'ضريبة القيمة المضافة المدخلات', type: 'asset', gcc_only: true },
-  { code: '1510', name: 'Input CGST',                 name_ar: 'ضريبة CGST المدخلات',     type: 'asset', india_only: true },
-  { code: '1520', name: 'Input SGST',                 name_ar: 'ضريبة SGST المدخلات',     type: 'asset', india_only: true },
-  { code: '1530', name: 'Input IGST',                 name_ar: 'ضريبة IGST المدخلات',     type: 'asset', india_only: true },
-  // ── Liabilities ───────────────────────────────────────────────────────────
-  { code: '2100', name: 'Accounts Payable',            name_ar: 'حسابات الدفع',            type: 'liability' },
-  { code: '2150', name: 'GRN Accrual',                 name_ar: 'استحقاق إيصالات البضاعة', type: 'liability' },
-  { code: '2200', name: 'Output VAT Payable',          name_ar: 'ضريبة القيمة المضافة المخرجات', type: 'liability', gcc_only: true },
-  { code: '2210', name: 'Output CGST',                 name_ar: 'ضريبة CGST المخرجات',    type: 'liability', india_only: true },
-  { code: '2220', name: 'Output SGST',                 name_ar: 'ضريبة SGST المخرجات',    type: 'liability', india_only: true },
-  { code: '2230', name: 'Output IGST',                 name_ar: 'ضريبة IGST المخرجات',    type: 'liability', india_only: true },
-  { code: '2300', name: 'Accrued Expenses',            name_ar: 'مصروفات مستحقة',         type: 'liability' },
-  { code: '2400', name: 'Customer Advances',           name_ar: 'سلف العملاء',             type: 'liability' },
-  { code: '2450', name: 'PDC Payable (Vendor)',         name_ar: 'شيكات آجلة صادرة',       type: 'liability' },
+  // ── Assets — sub_type drives Balance Sheet placement ─────────────────────
+  // 'current' = within 12 months / liquid; 'fixed' = long-lived (equipment, vehicles)
+  { code: '1100', name: 'Cash in Hand',              name_ar: 'نقدية في الصندوق',        type: 'asset', sub_type: 'current' },
+  { code: '1110', name: 'Bank Account (Main)',        name_ar: 'الحساب البنكي (رئيسي)',    type: 'asset', sub_type: 'current' },
+  { code: '1200', name: 'Accounts Receivable',        name_ar: 'حسابات القبض',            type: 'asset', sub_type: 'current' },
+  { code: '1250', name: 'PDC Receivable (Customer)',  name_ar: 'شيكات آجلة مستلمة',       type: 'asset', sub_type: 'current' },
+  { code: '1260', name: 'Bounced Cheques',            name_ar: 'شيكات مرتجعة',            type: 'asset', sub_type: 'current' },
+  { code: '1300', name: 'Inventory Asset',            name_ar: 'أصول المخزون',            type: 'asset', sub_type: 'current' },
+  { code: '1400', name: 'Vendor Advances / Prepaid',  name_ar: 'سلف الموردين',            type: 'asset', sub_type: 'current' },
+  { code: '1500', name: 'Input VAT (Claimable)',       name_ar: 'ضريبة القيمة المضافة المدخلات', type: 'asset', sub_type: 'current', gcc_only: true },
+  { code: '1510', name: 'Input CGST',                 name_ar: 'ضريبة CGST المدخلات',     type: 'asset', sub_type: 'current', india_only: true },
+  { code: '1520', name: 'Input SGST',                 name_ar: 'ضريبة SGST المدخلات',     type: 'asset', sub_type: 'current', india_only: true },
+  { code: '1530', name: 'Input IGST',                 name_ar: 'ضريبة IGST المدخلات',     type: 'asset', sub_type: 'current', india_only: true },
+  // ── Liabilities — 'current' = due within 12 months; 'long_term' = beyond ─
+  { code: '2100', name: 'Accounts Payable',            name_ar: 'حسابات الدفع',            type: 'liability', sub_type: 'current' },
+  { code: '2150', name: 'GRN Accrual',                 name_ar: 'استحقاق إيصالات البضاعة', type: 'liability', sub_type: 'current' },
+  { code: '2200', name: 'Output VAT Payable',          name_ar: 'ضريبة القيمة المضافة المخرجات', type: 'liability', sub_type: 'current', gcc_only: true },
+  { code: '2210', name: 'Output CGST',                 name_ar: 'ضريبة CGST المخرجات',    type: 'liability', sub_type: 'current', india_only: true },
+  { code: '2220', name: 'Output SGST',                 name_ar: 'ضريبة SGST المخرجات',    type: 'liability', sub_type: 'current', india_only: true },
+  { code: '2230', name: 'Output IGST',                 name_ar: 'ضريبة IGST المخرجات',    type: 'liability', sub_type: 'current', india_only: true },
+  { code: '2300', name: 'Accrued Expenses',            name_ar: 'مصروفات مستحقة',         type: 'liability', sub_type: 'current' },
+  { code: '2400', name: 'Customer Advances',           name_ar: 'سلف العملاء',             type: 'liability', sub_type: 'current' },
+  { code: '2450', name: 'PDC Payable (Vendor)',         name_ar: 'شيكات آجلة صادرة',       type: 'liability', sub_type: 'current' },
   // ── Equity ────────────────────────────────────────────────────────────────
   { code: '3100', name: "Retained Earnings",            name_ar: 'الأرباح المحتجزة',        type: 'equity' },
   { code: '3200', name: "Owner's Equity",               name_ar: 'حقوق المالك',             type: 'equity' },

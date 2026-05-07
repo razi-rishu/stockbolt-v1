@@ -162,8 +162,8 @@ describe('Phase 4 — Report grouping helpers', () => {
   it('22: asset balance = debit - credit (normal debit balance)', () => {
     // Verify the balance sheet asset convention
     const lines: BalanceSheetLine[] = [
-      { account_code: '1200', account_name: 'AR', account_type: 'asset', balance: 5000 },
-      { account_code: '1100', account_name: 'Cash', account_type: 'asset', balance: 3000 },
+      { account_code: '1200', account_name: 'AR', account_type: 'asset', sub_type: 'current', balance: 5000 },
+      { account_code: '1100', account_name: 'Cash', account_type: 'asset', sub_type: 'current', balance: 3000 },
     ];
     const totalAssets = lines.reduce((s, l) => s + l.balance, 0);
     expect(totalAssets).toBe(8000);
