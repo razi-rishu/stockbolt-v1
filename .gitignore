@@ -33,6 +33,10 @@ pnpm-debug.log*
 # TypeScript
 *.tsbuildinfo
 
+# Build emission from `tsc -b` (vite.config.ts compiled outputs)
+vite.config.js
+vite.config.d.ts
+
 # Testing
 coverage
 .nyc_output
