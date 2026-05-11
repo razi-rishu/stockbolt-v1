@@ -24,7 +24,7 @@ import { Button } from '@/ui/button';
 import { Tabs } from '@/ui/tabs';
 import type {
   ContactRow, InvoiceRow, OpenInvoice, PaymentRow,
-  SalesQuoteRow, CreditNoteRow,
+  SalesQuoteRow, CreditNoteRow, SalesReturnRow,
 } from '@/data/adapter';
 
 function fmt(n: number) {
@@ -186,6 +186,14 @@ export default function CustomerDetailPage() {
     enabled: !!company_id && !!id,
   });
 
+  // Sales returns don't have contact_id directly — they link to an invoice.
+  // Fetch all and filter by the customer's invoice IDs.
+  const { data: allSalesReturns = [] } = useQuery<SalesReturnRow[]>({
+    queryKey: ['sales_returns', company_id],
+    queryFn: () => getAdapter().salesReturns.list(company_id!),
+    enabled: !!company_id,
+  });
+
   const { data: statement, isLoading: stmtLoading } = useQuery({
     queryKey: ['customer_statement', company_id, id, stmtFrom, stmtTo],
     queryFn: () => getAdapter().reports.getCustomerStatement(company_id!, id!, stmtFrom, stmtTo),
@@ -204,6 +212,19 @@ export default function CustomerDetailPage() {
   const quotesForCustomer = useMemo(
     () => allQuotes.filter(q => q.contact_id === id).slice(0, 20),
     [allQuotes, id],
+  );
+
+  // Build an invoice_id -> invoice_number lookup once, used by both the
+  // Sales Returns table (to show "linked to INV-1001") and the count.
+  const invoiceById = useMemo(() => {
+    const m: Record<string, InvoiceRow> = {};
+    for (const inv of allInvoices) if (inv.contact_id === id) m[inv.id] = inv;
+    return m;
+  }, [allInvoices, id]);
+
+  const salesReturnsForCustomer = useMemo(
+    () => allSalesReturns.filter(sr => invoiceById[sr.invoice_id] !== undefined).slice(0, 20),
+    [allSalesReturns, invoiceById],
   );
 
   // KPIs
@@ -305,7 +326,7 @@ export default function CustomerDetailPage() {
         onChange={(v) => setTab(v as typeof tab)}
         items={[
           { value: 'overview', label: 'Overview', badge: openInvoices.length || undefined },
-          { value: 'docs',     label: 'Documents', badge: (invoicesForCustomer.length + quotesForCustomer.length + paymentsForCustomer.length + allCreditNotes.length) || undefined },
+          { value: 'docs',     label: 'Documents', badge: (invoicesForCustomer.length + quotesForCustomer.length + paymentsForCustomer.length + allCreditNotes.length + salesReturnsForCustomer.length) || undefined },
           { value: 'stmt',     label: 'Statement' },
         ]}
       />
@@ -471,6 +492,44 @@ export default function CustomerDetailPage() {
                   <td className="px-4 py-2 text-end font-mono text-ink-primary">{cn.currency} {fmt(Number(cn.total_amount))}</td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        )}
+      </Section>
+
+      {/* ── Sales Returns ────────────────────────────────────────────────
+          Sales returns are tracking documents (the financial impact is on the
+          linked Credit Note). Shown here so the user can see the physical-return
+          history alongside the financial documents. */}
+      <Section title={`Sales Returns (${salesReturnsForCustomer.length})`}>
+        {salesReturnsForCustomer.length === 0 ? (
+          <div className="px-5 py-6 text-sm text-ink-tertiary">No sales returns yet.</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
+                <th className="px-4 py-2 text-start font-medium">Return #</th>
+                <th className="px-4 py-2 text-start font-medium">Date</th>
+                <th className="px-4 py-2 text-start font-medium">Status</th>
+                <th className="px-4 py-2 text-start font-medium">Linked invoice</th>
+                <th className="px-4 py-2 text-start font-medium">Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {salesReturnsForCustomer.map((sr) => {
+                const inv = invoiceById[sr.invoice_id];
+                return (
+                  <tr key={sr.id}
+                    onClick={() => navigate(`/sales/returns/${sr.id}`)}
+                    className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
+                    <td className="px-4 py-2 font-mono text-xs text-brand-600">{sr.return_number}</td>
+                    <td className="px-4 py-2 text-ink-secondary">{sr.date as unknown as string}</td>
+                    <td className="px-4 py-2"><StatusBadge status={sr.status} /></td>
+                    <td className="px-4 py-2 font-mono text-xs text-ink-secondary">{inv?.invoice_number ?? '—'}</td>
+                    <td className="px-4 py-2 text-ink-secondary capitalize">{(sr.reason ?? '').replace(/_/g, ' ') || '—'}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
