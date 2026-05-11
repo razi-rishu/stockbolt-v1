@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
+import { SearchableSelect } from '@/ui/searchable-select';
 import type { SalesReturnRow, InvoiceRow, InvoiceItemRow, SalesReturnItemInsert } from '@/data/adapter';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -145,17 +146,16 @@ export default function SalesReturnEditorPage() {
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">{t('returns.linked_invoice')} *</label>
           <div className="flex gap-2">
-            <select
-              value={invoiceId}
-              onChange={e => setInvoiceId(e.target.value)}
-              disabled={!isDraft}
-              className="flex-1 border border-slate-300 rounded px-3 py-2 text-sm"
-            >
-              <option value="">— {t('common.select')} —</option>
-              {invoices.map(inv => (
-                <option key={inv.id} value={inv.id}>{inv.invoice_number} ({inv.date})</option>
-              ))}
-            </select>
+            <div className="flex-1">
+              <SearchableSelect
+                options={invoices.map((inv) => ({ value: inv.id, label: `${inv.invoice_number} (${inv.date})` }))}
+                value={invoiceId}
+                disabled={!isDraft}
+                onChange={(v) => setInvoiceId(v)}
+                placeholder={`— ${t('common.select')} —`}
+                panelWidth={360}
+              />
+            </div>
             {isDraft && invoiceId && invItems.length > 0 && (
               <Button variant="secondary" onClick={importFromInvoice}>{t('returns.import_lines')}</Button>
             )}

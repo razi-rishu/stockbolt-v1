@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
+import { SearchableSelect } from '@/ui/searchable-select';
 import type { CreditNoteRow, CreditNoteItemInsert, ContactRow, InvoiceRow, InvoiceItemRow } from '@/data/adapter';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -233,15 +234,14 @@ export default function CreditNoteEditorPage() {
       <div className="bg-white border border-slate-200 rounded-lg p-6 grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">{t('common.customer')} *</label>
-          <select
+          <SearchableSelect
+            options={contacts.map((c) => ({ value: c.id, label: c.name }))}
             value={contactId}
-            onChange={e => setContactId(e.target.value)}
             disabled={!isDraft}
-            className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
-          >
-            <option value="">— {t('common.select')} —</option>
-            {contacts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+            onChange={(v) => setContactId(v)}
+            placeholder={`— ${t('common.select')} —`}
+            panelWidth={320}
+          />
         </div>
 
         <div>

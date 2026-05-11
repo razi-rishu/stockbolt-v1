@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
+import { SearchableSelect } from '@/ui/searchable-select';
 import type { DebitNoteRow, DebitNoteItemInsert, ContactRow, VendorBillRow, VendorBillItemRow } from '@/data/adapter';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -223,15 +224,14 @@ export default function DebitNoteEditorPage() {
       <div className="bg-white border border-slate-200 rounded-lg p-6 grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">{t('common.supplier')} *</label>
-          <select
+          <SearchableSelect
+            options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
             value={supplierId}
-            onChange={e => setSupplierId(e.target.value)}
             disabled={!isDraft}
-            className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
-          >
-            <option value="">— {t('common.select')} —</option>
-            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+            onChange={(v) => setSupplierId(v)}
+            placeholder={`— ${t('common.select')} —`}
+            panelWidth={320}
+          />
         </div>
 
         <div>

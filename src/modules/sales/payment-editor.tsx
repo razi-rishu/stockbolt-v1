@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
+import { SearchableSelect } from '@/ui/searchable-select';
 import { Modal } from '@/ui/modal';
 import type { PaymentRow, BankAccountRow, ContactRow, OpenInvoice, PaymentAllocationInsert } from '@/data/adapter';
 
@@ -214,10 +215,7 @@ export default function PaymentEditorPage() {
   const isVoid = status === 'void';
   const canEdit = isNew || status === 'draft';
 
-  const contactOpts = [
-    { value: '', label: t('payments.select_contact') },
-    ...contacts.map(c => ({ value: c.id, label: c.name })),
-  ];
+  const contactOpts = contacts.map(c => ({ value: c.id, label: c.name }));
   const bankOpts = [
     { value: '', label: t('payments.select_bank') },
     ...bankAccounts.map(b => ({ value: b.id, label: b.name })),
@@ -285,18 +283,20 @@ export default function PaymentEditorPage() {
         <h2 className="mb-4 text-sm font-semibold text-ink-primary">{t('payments.payment_details')}</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="col-span-2 md:col-span-1">
-            <Select
-              label={t('payments.customer')}
-              required
+            <label className="mb-1 block text-sm font-medium text-ink-primary">
+              {t('payments.customer')} <span className="text-danger-500">*</span>
+            </label>
+            <SearchableSelect
               options={contactOpts}
               value={header.contact_id}
               disabled={!canEdit || isVoid}
-              onChange={e => {
-                const v = e.target.value;
+              onChange={(v) => {
                 setHeader(h => ({ ...h, contact_id: v }));
                 setSelectedContact(v);
                 setApplyAmounts({}); // open invoice list will refetch; reset apply
               }}
+              placeholder={t('payments.select_contact')}
+              panelWidth={320}
             />
           </div>
           <Input

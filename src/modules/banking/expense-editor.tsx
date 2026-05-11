@@ -6,6 +6,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
+import { SearchableSelect } from '@/ui/searchable-select';
 import type { BankAccountRow, CoaRow, ContactRow, ExpenseRow } from '@/data/adapter';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -143,14 +144,14 @@ export default function ExpenseEditorPage() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">{t('banking.expense_account')}</label>
-            <select disabled={!isDraft} value={expenseAccountId}
-              onChange={e => setExpenseAccountId(e.target.value)}
-              className="w-full h-9 rounded-md border border-slate-300 px-2 text-sm disabled:bg-slate-50">
-              <option value="">{t('banking.select_account')}</option>
-              {expenseAccounts.map(a => (
-                <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
-              ))}
-            </select>
+            <SearchableSelect
+              options={expenseAccounts.map(a => ({ value: a.id, label: `${a.code} — ${a.name}` }))}
+              value={expenseAccountId}
+              disabled={!isDraft}
+              onChange={(v) => setExpenseAccountId(v)}
+              placeholder={t('banking.select_account')}
+              panelWidth={320}
+            />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">{t('banking.paid_from')}</label>
@@ -181,12 +182,17 @@ export default function ExpenseEditorPage() {
             onChange={e => setDate(e.target.value)} disabled={!isDraft} />
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">{t('banking.supplier_optional')}</label>
-            <select disabled={!isDraft} value={supplierId}
-              onChange={e => setSupplierId(e.target.value)}
-              className="w-full h-9 rounded-md border border-slate-300 px-2 text-sm disabled:bg-slate-50">
-              <option value="">— {t('banking.none')} —</option>
-              {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            <SearchableSelect
+              options={[
+                { value: '', label: `— ${t('banking.none')} —` },
+                ...suppliers.map((s) => ({ value: s.id, label: s.name })),
+              ]}
+              value={supplierId}
+              disabled={!isDraft}
+              onChange={(v) => setSupplierId(v)}
+              placeholder={`— ${t('banking.none')} —`}
+              panelWidth={320}
+            />
           </div>
         </div>
         <Input label={t('banking.reference')} value={reference}

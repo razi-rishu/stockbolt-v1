@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Modal } from '@/ui/modal';
+import { SearchableSelect } from '@/ui/searchable-select';
 import type { BankAccountRow, ContactRow, PDCChequeRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -191,11 +192,13 @@ export default function PDCReceivedPage() {
           {createError && <p className="text-sm text-red-600 bg-red-50 rounded p-2">{createError}</p>}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">{t('banking.customer')}</label>
-            <select value={contactId} onChange={e => setContactId(e.target.value)}
-              className="w-full h-9 rounded-md border border-slate-300 px-2 text-sm">
-              <option value="">{t('banking.select_customer')}</option>
-              {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <SearchableSelect
+              options={customers.map((c) => ({ value: c.id, label: c.name }))}
+              value={contactId}
+              onChange={(v) => setContactId(v)}
+              placeholder={t('banking.select_customer')}
+              panelWidth={320}
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input label={t('banking.cheque_number')} value={chequeNumber} onChange={e => setChequeNumber(e.target.value)} />

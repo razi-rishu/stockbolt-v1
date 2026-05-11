@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
+import { SearchableSelect } from '@/ui/searchable-select';
 import type { PaymentRow, ContactRow, BankAccountRow, VendorBillRow, PaymentAllocationInsert, PaymentMethodRow } from '@/data/adapter';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -135,7 +136,7 @@ export default function VendorPaymentEditorPage() {
   const available = (existing ? Number(existing.amount) : 0) - usedAmount;
 
   const canEdit = isNew;
-  const supplierOpts = [{ value: '', label: t('purchasing.select_supplier') }, ...suppliers.map(s => ({ value: s.id, label: s.name }))];
+  const supplierOpts = suppliers.map(s => ({ value: s.id, label: s.name }));
   const bankOpts = [{ value: '', label: t('purchasing.select_bank') }, ...bankAccounts.map(b => ({ value: b.id, label: b.account_number ?? b.bank_name ?? b.id }))];
   const methodOpts = [{ value: '', label: '—' }, ...paymentMethods.map(m => ({ value: m.id, label: m.name }))];
   const classOpts = [
@@ -197,8 +198,17 @@ export default function VendorPaymentEditorPage() {
         <h2 className="mb-4 text-sm font-semibold text-ink-primary">{t('purchasing.payment_details')}</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="col-span-2 md:col-span-1">
-            <Select label={t('purchasing.supplier')} required options={supplierOpts} value={header.contact_id}
-              disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, contact_id: e.target.value }))} />
+            <label className="mb-1 block text-sm font-medium text-ink-primary">
+              {t('purchasing.supplier')} <span className="text-danger-500">*</span>
+            </label>
+            <SearchableSelect
+              options={supplierOpts}
+              value={header.contact_id}
+              disabled={!canEdit}
+              onChange={(v) => setHeader(h => ({ ...h, contact_id: v }))}
+              placeholder={t('purchasing.select_supplier')}
+              panelWidth={320}
+            />
           </div>
           <Select label={t('purchasing.bank_account')} options={bankOpts} value={header.bank_account_id}
             disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, bank_account_id: e.target.value }))} />

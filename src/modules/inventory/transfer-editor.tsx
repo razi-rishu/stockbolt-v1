@@ -8,6 +8,7 @@ import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Button } from '@/ui/button';
 import { Modal } from '@/ui/modal';
+import { SearchableSelect } from '@/ui/searchable-select';
 import type { ProductRow, WarehouseRow, StockTransferItemInsert } from '@/data/adapter';
 
 interface LineRow {
@@ -90,10 +91,7 @@ export default function TransferEditorPage() {
     { value: '', label: t('inventory.select_warehouse') },
     ...warehouses.map(w => ({ value: w.id, label: w.name })),
   ];
-  const productOpts = [
-    { value: '', label: t('inventory.select_product') },
-    ...products.map(p => ({ value: p.id, label: `${p.sku} — ${p.name}` })),
-  ];
+  const productOpts = products.map(p => ({ value: p.id, label: `${p.sku} — ${p.name}` }));
 
   function buildItems(): StockTransferItemInsert[] {
     return lines
@@ -210,9 +208,14 @@ export default function TransferEditorPage() {
             {lines.map(line => (
               <tr key={line._key} className="border-b border-border-subtle last:border-0">
                 <td className="px-4 py-2">
-                  <Select options={productOpts} value={line.product_id ?? ''}
-                    onChange={e => updateLine(line._key, { product_id: e.target.value || null })}
-                    disabled={!canEdit} />
+                  <SearchableSelect
+                    options={productOpts}
+                    value={line.product_id ?? ''}
+                    onChange={(v) => updateLine(line._key, { product_id: v || null })}
+                    disabled={!canEdit}
+                    placeholder={t('inventory.select_product')}
+                    panelWidth={360}
+                  />
                 </td>
                 <td className="px-4 py-2">
                   <Input type="number" value={line.quantity} onChange={e => updateLine(line._key, { quantity: e.target.value })}
