@@ -9,7 +9,7 @@
  * (hidden on actual print via [data-print-hide]).
  */
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import type {
@@ -61,6 +61,7 @@ function defaultPrintConfig(): PrintConfig {
 // ── Main component ────────────────────────────────────────────────────────────
 export default function PrintPage() {
   const { docType, id } = useParams<{ docType: string; id: string }>();
+  const [searchParams]  = useSearchParams();
   const navigate        = useNavigate();
   const company_id = useAuthStore(s => s.company_id);
   const adapter         = getAdapter();
@@ -84,6 +85,8 @@ export default function PrintPage() {
     poItems?:        PurchaseOrderItemRow[];
     bill?:           VendorBillRow;
     billItems?:      VendorBillItemRow[];
+    // Customer + Supplier statements share the same line/header shape, so a
+    // CustomerStatement type works for both (see SupplierStatement in adapter.ts).
     statementLines?: import('@/data/adapter').CustomerStatementLine[];
     statementMeta?:  import('@/data/adapter').CustomerStatement;
   }>({
@@ -162,12 +165,20 @@ export default function PrintPage() {
           const contact = bill.supplier_id ? await adapter.contacts.getById(bill.supplier_id) : null;
           patch = { ...patch, bill, billItems: items, contact };
 
-        } else if (docType === 'statement') {
-          // id = contact_id; fetch current-month statement
-          const contact = await adapter.contacts.getById(id!);
-          const today = new Date().toISOString().slice(0, 10);
+        } else if (docType === 'statement' || docType === 'supplier-statement') {
+          // id = contact_id (customer or supplier). Date range overrideable via
+          // ?from=YYYY-MM-DD&to=YYYY-MM-DD; defaults to current month.
+          const today      = new Date().toISOString().slice(0, 10);
           const monthStart = today.slice(0, 7) + '-01';
-          const stmt = await adapter.reports.getCustomerStatement(company_id!, id!, monthStart, today);
+          const from = searchParams.get('from') || monthStart;
+          const to   = searchParams.get('to')   || today;
+
+          const contact = await adapter.contacts.getById(id!);
+          // Customer + supplier statements have the same shape; cast the
+          // supplier flavour so the shared state type (CustomerStatement) holds.
+          const stmt = docType === 'supplier-statement'
+            ? (await adapter.reports.getSupplierStatement(company_id!, id!, from, to)) as unknown as import('@/data/adapter').CustomerStatement
+            : await adapter.reports.getCustomerStatement(company_id!, id!, from, to);
           patch = { ...patch, contact, statementLines: stmt.lines, statementMeta: stmt };
         }
 
@@ -284,7 +295,7 @@ export default function PrintPage() {
     );
   }
 
-  if (docType === 'statement' && state.statementMeta) {
+  if ((docType === 'statement' || docType === 'supplier-statement') && state.statementMeta) {
     return (
       <>
         {ActionBar}

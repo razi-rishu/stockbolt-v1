@@ -448,6 +448,15 @@ export default function SupplierDetailPage() {
             <Input type="date" value={stmtFrom} onChange={(e) => setStmtFrom(e.target.value)} className="h-8 text-xs" />
             <span className="text-ink-tertiary">–</span>
             <Input type="date" value={stmtTo}   onChange={(e) => setStmtTo(e.target.value)}   className="h-8 text-xs" />
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={!id}
+              onClick={() => window.open(`/print/supplier-statement/${id}?from=${stmtFrom}&to=${stmtTo}`, '_blank')}
+              title="Open a print-ready statement in a new tab (use the browser's Print → Save as PDF)"
+            >
+              🖨 Print / PDF
+            </Button>
           </div>
         </div>
         {stmtLoading ? (
