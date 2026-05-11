@@ -21,6 +21,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
+import { Tabs } from '@/ui/tabs';
 import type {
   ContactRow, InvoiceRow, OpenInvoice, PaymentRow,
   SalesQuoteRow, CreditNoteRow,
@@ -146,6 +147,7 @@ export default function CustomerDetailPage() {
 
   const [stmtFrom, setStmtFrom] = useState(monthsAgoIso(3));
   const [stmtTo, setStmtTo]     = useState(todayIso);
+  const [tab, setTab] = useState<'overview' | 'docs' | 'stmt'>('overview');
 
   // ── Data fetches ───────────────────────────────────────────────────────────
   const { data: contact } = useQuery<ContactRow | null>({
@@ -297,6 +299,20 @@ export default function CustomerDetailPage() {
       {/* Aging breakdown */}
       <AgingBar buckets={aging} total={outstandingTotal} />
 
+      {/* ── Tabs ──────────────────────────────────────────────────────── */}
+      <Tabs
+        value={tab}
+        onChange={(v) => setTab(v as typeof tab)}
+        items={[
+          { value: 'overview', label: 'Overview', badge: openInvoices.length || undefined },
+          { value: 'docs',     label: 'Documents', badge: (invoicesForCustomer.length + quotesForCustomer.length + paymentsForCustomer.length + allCreditNotes.length) || undefined },
+          { value: 'stmt',     label: 'Statement' },
+        ]}
+      />
+
+      {tab === 'overview' && (
+      <>
+
       {/* ── Open Invoices ──────────────────────────────────────────────── */}
       <Section
         title={`Open Invoices (${openInvoices.length})`}
@@ -333,6 +349,12 @@ export default function CustomerDetailPage() {
           </table>
         )}
       </Section>
+
+      </>
+      )}
+
+      {tab === 'docs' && (
+      <>
 
       {/* ── All Invoices ───────────────────────────────────────────────── */}
       <Section title={`All Invoices (last ${invoicesForCustomer.length})`}>
@@ -454,6 +476,12 @@ export default function CustomerDetailPage() {
         )}
       </Section>
 
+      </>
+      )}
+
+      {tab === 'stmt' && (
+      <>
+
       {/* ── Account Statement ────────────────────────────────────────── */}
       <div className="rounded-card border border-border-subtle bg-surface-card">
         <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-3">
@@ -512,6 +540,9 @@ export default function CustomerDetailPage() {
           </table>
         )}
       </div>
+
+      </>
+      )}
     </div>
   );
 }

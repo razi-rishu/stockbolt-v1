@@ -22,6 +22,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
+import { Tabs } from '@/ui/tabs';
 import type {
   ContactRow, VendorBillRow, OpenVendorBill, PaymentRow,
   DebitNoteRow, PurchaseOrderRow,
@@ -140,6 +141,7 @@ export default function SupplierDetailPage() {
 
   const [stmtFrom, setStmtFrom] = useState(monthsAgoIso(3));
   const [stmtTo, setStmtTo]     = useState(todayIso);
+  const [tab, setTab] = useState<'overview' | 'docs' | 'stmt'>('overview');
 
   const { data: contact } = useQuery<ContactRow | null>({
     queryKey: ['contact', id],
@@ -288,6 +290,20 @@ export default function SupplierDetailPage() {
       {/* Aging */}
       <AgingBar buckets={aging} total={outstandingTotal} />
 
+      {/* ── Tabs ──────────────────────────────────────────────────────── */}
+      <Tabs
+        value={tab}
+        onChange={(v) => setTab(v as typeof tab)}
+        items={[
+          { value: 'overview', label: 'Overview', badge: openBills.length || undefined },
+          { value: 'docs',     label: 'Documents', badge: (billsForSupplier.length + posForSupplier.length + paymentsForSupplier.length + allDebitNotes.length) || undefined },
+          { value: 'stmt',     label: 'Statement' },
+        ]}
+      />
+
+      {tab === 'overview' && (
+      <>
+
       {/* Open Bills */}
       <Section title={`Open Bills (${openBills.length})`}>
         {openBills.length === 0 ? (
@@ -319,6 +335,12 @@ export default function SupplierDetailPage() {
           </table>
         )}
       </Section>
+
+      </>
+      )}
+
+      {tab === 'docs' && (
+      <>
 
       {/* All Bills */}
       <Section title={`All Bills (last ${billsForSupplier.length})`}>
@@ -440,6 +462,12 @@ export default function SupplierDetailPage() {
         )}
       </Section>
 
+      </>
+      )}
+
+      {tab === 'stmt' && (
+      <>
+
       {/* Statement */}
       <div className="rounded-card border border-border-subtle bg-surface-card">
         <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-3">
@@ -494,6 +522,9 @@ export default function SupplierDetailPage() {
           </table>
         )}
       </div>
+
+      </>
+      )}
     </div>
   );
 }
