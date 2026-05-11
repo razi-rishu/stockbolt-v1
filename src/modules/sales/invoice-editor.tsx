@@ -8,6 +8,7 @@ import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Modal } from '@/ui/modal';
+import { SearchableSelect } from '@/ui/searchable-select';
 import type { InvoiceRow, InvoiceItemInsert, ContactRow, ProductRow, WarehouseRow, TaxRateRow } from '@/data/adapter';
 import { calcLine as _calcLine } from '@/core/sales/invoice-calc';
 
@@ -336,18 +337,14 @@ export default function InvoiceEditorPage() {
   const isVoid = status === 'void';
 
   // ── Contact / warehouse options ──────────────────────────────────────────
-  const contactOpts = [
-    { value: '', label: t('sales.select_contact') },
-    ...contacts.map(c => ({ value: c.id, label: c.name })),
-  ];
+  // SearchableSelect owns its own placeholder, so option lists don't include
+  // an empty entry. Plain <Select> elsewhere still needs one.
+  const contactOpts = contacts.map(c => ({ value: c.id, label: c.name }));
   const warehouseOpts = [
     { value: '', label: t('sales.select_warehouse') },
     ...warehouses.map(w => ({ value: w.id, label: w.name })),
   ];
-  const productOpts = [
-    { value: '', label: '— ' + t('sales.select_product') + ' —' },
-    ...products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` })),
-  ];
+  const productOpts = products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }));
   const taxOpts = [
     { value: '0', label: t('sales.no_tax') },
     ...taxRates.map(r => ({ value: String(r.rate), label: `${r.name} (${r.rate}%)` })),
@@ -432,13 +429,16 @@ export default function InvoiceEditorPage() {
         <h2 className="mb-4 text-sm font-semibold text-ink-primary">{t('sales.invoice_details')}</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="col-span-2 md:col-span-1">
-            <Select
-              label={t('sales.customer')}
-              required
+            <label className="mb-1 block text-sm font-medium text-ink-primary">
+              {t('sales.customer')} <span className="text-danger-500">*</span>
+            </label>
+            <SearchableSelect
               options={contactOpts}
               value={header.contact_id}
               disabled={!canEdit || isVoid}
-              onChange={e => setHeader(h => ({ ...h, contact_id: e.target.value }))}
+              onChange={(v) => setHeader(h => ({ ...h, contact_id: v }))}
+              placeholder={t('sales.select_contact')}
+              panelWidth={320}
             />
           </div>
           <Input
@@ -509,14 +509,14 @@ export default function InvoiceEditorPage() {
               {lines.map(line => (
                 <tr key={line._key} className="border-b border-border-subtle last:border-0">
                   <td className="px-3 py-1.5">
-                    <select
-                      className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-ink-primary disabled:opacity-60"
+                    <SearchableSelect
+                      options={productOpts}
                       value={line.product_id ?? ''}
                       disabled={!canEdit || isVoid}
-                      onChange={e => handleProductChange(line._key, e.target.value)}
-                    >
-                      {productOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
+                      onChange={(v) => handleProductChange(line._key, v)}
+                      placeholder={'— ' + t('sales.select_product') + ' —'}
+                      panelWidth={360}
+                    />
                   </td>
                   <td className="px-3 py-1.5">
                     <input

@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
+import { SearchableSelect } from '@/ui/searchable-select';
 import type { PurchaseOrderRow, PurchaseOrderItemInsert, ContactRow, ProductRow, TaxRateRow, WarehouseRow } from '@/data/adapter';
 import { calcPurchaseLine as _calc } from '@/core/purchasing/purchase-calc';
 
@@ -192,9 +193,9 @@ export default function POEditorPage() {
   });
 
   const canEdit = isNew || existing?.status === 'draft';
-  const supplierOpts = [{ value: '', label: t('purchasing.select_supplier') }, ...suppliers.map(s => ({ value: s.id, label: s.name }))];
+  const supplierOpts = suppliers.map(s => ({ value: s.id, label: s.name }));
   const warehouseOpts = [{ value: '', label: t('purchasing.select_warehouse') }, ...warehouses.map(w => ({ value: w.id, label: w.name }))];
-  const productOpts = [{ value: '', label: '— ' + t('purchasing.select_product') + ' —' }, ...products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }))];
+  const productOpts = products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }));
   const taxOpts = [{ value: '0', label: t('sales.no_tax') }, ...taxRates.map(r => ({ value: String(r.rate), label: `${r.name} (${r.rate}%)` }))];
 
   return (
@@ -230,8 +231,17 @@ export default function POEditorPage() {
         <h2 className="mb-4 text-sm font-semibold text-ink-primary">{t('purchasing.po_details')}</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="col-span-2 md:col-span-1">
-            <Select label={t('purchasing.supplier')} required options={supplierOpts} value={header.supplier_id}
-              disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, supplier_id: e.target.value }))} />
+            <label className="mb-1 block text-sm font-medium text-ink-primary">
+              {t('purchasing.supplier')} <span className="text-danger-500">*</span>
+            </label>
+            <SearchableSelect
+              options={supplierOpts}
+              value={header.supplier_id}
+              disabled={!canEdit}
+              onChange={(v) => setHeader(h => ({ ...h, supplier_id: v }))}
+              placeholder={t('purchasing.select_supplier')}
+              panelWidth={320}
+            />
           </div>
           <Select label={t('purchasing.warehouse')} options={warehouseOpts} value={header.warehouse_id}
             disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, warehouse_id: e.target.value }))} />
@@ -272,11 +282,14 @@ export default function POEditorPage() {
               {lines.map(line => (
                 <tr key={line._key} className="border-b border-border-subtle last:border-0">
                   <td className="px-3 py-1.5">
-                    <select className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60"
-                      value={line.product_id ?? ''} disabled={!canEdit}
-                      onChange={e => handleProductChange(line._key, e.target.value)}>
-                      {productOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
+                    <SearchableSelect
+                      options={productOpts}
+                      value={line.product_id ?? ''}
+                      disabled={!canEdit}
+                      onChange={(v) => handleProductChange(line._key, v)}
+                      placeholder={'— ' + t('purchasing.select_product') + ' —'}
+                      panelWidth={360}
+                    />
                   </td>
                   <td className="px-3 py-1.5">
                     <input className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60"

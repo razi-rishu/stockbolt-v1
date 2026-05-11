@@ -6,7 +6,6 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
-import { Select } from '@/ui/select';
 import { SearchableSelect } from '@/ui/searchable-select';
 import type { VendorBillRow, VendorBillItemInsert, ContactRow, ProductRow, TaxRateRow, CoaRow } from '@/data/adapter';
 import { calcPurchaseLine as _calc } from '@/core/purchasing/purchase-calc';
@@ -273,8 +272,8 @@ export default function VendorBillEditorPage() {
   });
 
   const canEdit = isNew || existing?.status === 'draft';
-  const supplierOpts = [{ value: '', label: t('purchasing.select_supplier') }, ...suppliers.map(s => ({ value: s.id, label: s.name }))];
-  const productOpts = [{ value: '', label: '— ' + t('purchasing.select_product') + ' —' }, ...products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }))];
+  const supplierOpts = suppliers.map(s => ({ value: s.id, label: s.name }));
+  const productOpts = products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }));
   const taxOpts = [{ value: '0', label: t('sales.no_tax') }, ...taxRates.map(r => ({ value: String(r.rate), label: `${r.name} (${r.rate}%)` }))];
   // SearchableSelect handles its own placeholder — don't inject an empty option
   // (it would otherwise appear as a clickable row in the dropdown list).
@@ -328,8 +327,17 @@ export default function VendorBillEditorPage() {
         <h2 className="mb-4 text-sm font-semibold text-ink-primary">{t('purchasing.bill_details')}</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="col-span-2 md:col-span-1">
-            <Select label={t('purchasing.supplier')} required options={supplierOpts} value={header.supplier_id}
-              disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, supplier_id: e.target.value }))} />
+            <label className="mb-1 block text-sm font-medium text-ink-primary">
+              {t('purchasing.supplier')} <span className="text-danger-500">*</span>
+            </label>
+            <SearchableSelect
+              options={supplierOpts}
+              value={header.supplier_id}
+              disabled={!canEdit}
+              onChange={(v) => setHeader(h => ({ ...h, supplier_id: v }))}
+              placeholder={t('purchasing.select_supplier')}
+              panelWidth={320}
+            />
           </div>
           <Input label={t('purchasing.date')} type="date" required value={header.date}
             disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, date: e.target.value }))} />
@@ -370,11 +378,14 @@ export default function VendorBillEditorPage() {
               {lines.map(line => (
                 <tr key={line._key} className="border-b border-border-subtle last:border-0">
                   <td className="px-3 py-1.5">
-                    <select className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60"
-                      value={line.product_id ?? ''} disabled={!canEdit}
-                      onChange={e => handleProductChange(line._key, e.target.value)}>
-                      {productOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
+                    <SearchableSelect
+                      options={productOpts}
+                      value={line.product_id ?? ''}
+                      disabled={!canEdit}
+                      onChange={(v) => handleProductChange(line._key, v)}
+                      placeholder={'— ' + t('purchasing.select_product') + ' —'}
+                      panelWidth={360}
+                    />
                   </td>
                   <td className="px-3 py-1.5">
                     {line.product_id ? (

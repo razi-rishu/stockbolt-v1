@@ -6,7 +6,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
-import { Select } from '@/ui/select';
+import { SearchableSelect } from '@/ui/searchable-select';
 import type { SalesQuoteRow, SalesQuoteItemInsert, ContactRow, ProductRow, TaxRateRow } from '@/data/adapter';
 import { calcLine as _calcLine } from '@/core/sales/invoice-calc';
 
@@ -159,8 +159,8 @@ export default function QuoteEditorPage() {
   });
 
   const canEdit = isNew || existing?.status === 'draft';
-  const contactOpts = [{ value: '', label: t('sales.select_contact') }, ...contacts.map(c => ({ value: c.id, label: c.name }))];
-  const productOpts = [{ value: '', label: '— ' + t('sales.select_product') + ' —' }, ...products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }))];
+  const contactOpts = contacts.map(c => ({ value: c.id, label: c.name }));
+  const productOpts = products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }));
   const taxOpts = [{ value: '0', label: t('sales.no_tax') }, ...taxRates.map(r => ({ value: String(r.rate), label: `${r.name} (${r.rate}%)` }))];
 
   return (
@@ -195,7 +195,17 @@ export default function QuoteEditorPage() {
         <h2 className="mb-4 text-sm font-semibold text-ink-primary">{t('sales.quote_details')}</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="col-span-2 md:col-span-1">
-            <Select label={t('sales.customer')} required options={contactOpts} value={header.contact_id} disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, contact_id: e.target.value }))} />
+            <label className="mb-1 block text-sm font-medium text-ink-primary">
+              {t('sales.customer')} <span className="text-danger-500">*</span>
+            </label>
+            <SearchableSelect
+              options={contactOpts}
+              value={header.contact_id}
+              disabled={!canEdit}
+              onChange={(v) => setHeader(h => ({ ...h, contact_id: v }))}
+              placeholder={t('sales.select_contact')}
+              panelWidth={320}
+            />
             {contacts.length === 0 && (
               <p className="mt-1 text-xs text-ink-tertiary">
                 No customers yet.{' '}
@@ -239,7 +249,16 @@ export default function QuoteEditorPage() {
             <tbody>
               {lines.map(line => (
                 <tr key={line._key} className="border-b border-border-subtle last:border-0">
-                  <td className="px-3 py-1.5"><select className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60" value={line.product_id ?? ''} disabled={!canEdit} onChange={e => handleProductChange(line._key, e.target.value)}>{productOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></td>
+                  <td className="px-3 py-1.5">
+                    <SearchableSelect
+                      options={productOpts}
+                      value={line.product_id ?? ''}
+                      disabled={!canEdit}
+                      onChange={(v) => handleProductChange(line._key, v)}
+                      placeholder={'— ' + t('sales.select_product') + ' —'}
+                      panelWidth={360}
+                    />
+                  </td>
                   <td className="px-3 py-1.5"><input className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60" value={line.description} disabled={!canEdit} onChange={e => updateLine(line._key, { description: e.target.value })} /></td>
                   <td className="px-3 py-1.5"><input type="number" min="0" step="0.001" className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60" value={line.quantity} disabled={!canEdit} onChange={e => updateLine(line._key, { quantity: e.target.value })} /></td>
                   <td className="px-3 py-1.5"><input type="number" min="0" step="0.01" className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60" value={line.unit_price} disabled={!canEdit} onChange={e => updateLine(line._key, { unit_price: e.target.value })} /></td>
