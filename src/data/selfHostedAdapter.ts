@@ -226,6 +226,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       update:        () => notImplemented('vendorBills.update'),
       confirm:       () => notImplemented('vendorBills.confirm'),
       getNextNumber: () => notImplemented('vendorBills.getNextNumber'),
+      listOpenForSupplier: () => notImplemented('vendorBills.listOpenForSupplier'),
     },
     vendorPayments: {
       list:          () => notImplemented('vendorPayments.list'),

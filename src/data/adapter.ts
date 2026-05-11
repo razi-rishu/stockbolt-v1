@@ -861,6 +861,11 @@ export interface GoodsReceiptsAPI {
   getNextNumber(company_id: string): Promise<string>;
 }
 
+/** Vendor bill + computed outstanding (total_amount minus sum of payment_allocations) */
+export interface OpenVendorBill extends VendorBillRow {
+  outstanding: number;
+}
+
 export interface VendorBillsAPI {
   list(company_id: string, status?: string): Promise<VendorBillRow[]>;
   getById(id: string): Promise<VendorBillRow | null>;
@@ -869,6 +874,11 @@ export interface VendorBillsAPI {
   update(id: string, row: VendorBillUpdate, items: VendorBillItemInsert[]): Promise<void>;
   confirm(bill_id: string): Promise<BillConfirmResult>;
   getNextNumber(company_id: string): Promise<string>;
+  /**
+   * Confirmed vendor bills for a supplier that still have a positive
+   * outstanding balance. Mirror of InvoicesAPI.listOpenForContact.
+   */
+  listOpenForSupplier(company_id: string, supplier_id: string): Promise<OpenVendorBill[]>;
 }
 
 export interface VendorPaymentsAPI {

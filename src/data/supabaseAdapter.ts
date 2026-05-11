@@ -2294,6 +2294,41 @@ export function createSupabaseAdapter(
         assertNoError(error, 'vendorBills.getNextNumber');
         return data as string;
       },
+
+      async listOpenForSupplier(company_id, supplier_id): Promise<import('./adapter').OpenVendorBill[]> {
+        const { data: bills, error: bErr } = await client
+          .from('vendor_bills')
+          .select('*')
+          .eq('company_id', company_id)
+          .eq('supplier_id', supplier_id)
+          .eq('status', 'confirmed')
+          .order('date', { ascending: true });
+        assertNoError(bErr, 'vendorBills.listOpenForSupplier bills');
+
+        const rows = (bills ?? []) as VendorBillRow[];
+        if (rows.length === 0) return [];
+
+        const ids = rows.map(r => r.id);
+        const { data: allocs, error: aErr } = await client
+          .from('payment_allocations')
+          .select('doc_id, amount_applied')
+          .eq('company_id', company_id)
+          .eq('doc_type', 'vendor_bill')
+          .in('doc_id', ids);
+        assertNoError(aErr, 'vendorBills.listOpenForSupplier allocations');
+
+        const appliedById: Record<string, number> = {};
+        for (const a of (allocs ?? []) as { doc_id: string; amount_applied: number }[]) {
+          appliedById[a.doc_id] = (appliedById[a.doc_id] ?? 0) + Number(a.amount_applied);
+        }
+
+        return rows
+          .map(r => ({
+            ...r,
+            outstanding: Number(r.total_amount) - (appliedById[r.id] ?? 0),
+          }))
+          .filter(r => r.outstanding > 0.005);
+      },
     },
 
     // ── Vendor Payments ───────────────────────────────────────────────────────

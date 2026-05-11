@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useQuery as useCompanyQuery } from '@tanstack/react-query';
@@ -46,11 +47,16 @@ interface ContactListPageProps {
 export function ContactListPage({ defaultType, titleKey, singularKey }: ContactListPageProps) {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ContactRow | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+
+  // Path used by the Name link in the table — supports both customer and supplier flavours
+  const detailBase = defaultType === 'supplier' ? '/contacts/suppliers' : '/contacts/customers';
 
   const { data: company } = useCompanyQuery({
     queryKey: ['company', company_id],
@@ -89,6 +95,22 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
     });
     setOpen(true);
   }
+
+  // Auto-open the edit modal when the page is reached with ?edit=<contact_id>
+  // (used by the Edit button on the customer/supplier detail page).
+  const editId = searchParams.get('edit');
+  useEffect(() => {
+    if (!editId || contacts.length === 0) return;
+    const row = contacts.find((c) => c.id === editId);
+    if (row) {
+      openEdit(row);
+      // Clear the param so refreshing the page doesn't keep re-opening the modal
+      const next = new URLSearchParams(searchParams);
+      next.delete('edit');
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editId, contacts]);
 
   const saveMutation = useMutation({
     mutationFn: async (values: FormValues) => {
@@ -130,7 +152,22 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
   };
 
   const columns: Column<ContactRow>[] = [
-    { key: 'name', header: t('contacts.name'), render: (r) => <div><span className="font-medium">{r.name}</span>{typeBadge(r.type) && <span className="ms-2">{typeBadge(r.type)}</span>}</div> },
+    {
+      key: 'name',
+      header: t('contacts.name'),
+      render: (r) => (
+        <div>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); navigate(`${detailBase}/${r.id}`); }}
+            className="font-medium text-brand-600 hover:text-brand-700 hover:underline"
+          >
+            {r.name}
+          </button>
+          {typeBadge(r.type) && <span className="ms-2">{typeBadge(r.type)}</span>}
+        </div>
+      ),
+    },
     { key: 'name_ar', header: t('contacts.name_ar'), render: (r) => <span dir="rtl">{r.name_ar ?? '—'}</span> },
     { key: 'phone', header: t('contacts.phone'), render: (r) => r.phone ?? r.mobile ?? '—' },
     { key: 'email', header: t('contacts.email'), render: (r) => r.email ?? '—' },
