@@ -289,7 +289,7 @@ export default function GRNEditorPage() {
                     />
                   </td>
                   <td className="px-3 py-1.5">
-                    <input type="number" min="0" step="0.001"
+                    <input type="number" min="0" step="1"
                       className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60"
                       value={line.qty_received} disabled={!canEdit}
                       onChange={e => updateLine(line._key, { qty_received: e.target.value })} />

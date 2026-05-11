@@ -211,7 +211,7 @@ export default function SalesReturnEditorPage() {
                     className="w-full border border-slate-300 rounded px-2 py-1 text-sm" />
                 </td>
                 <td className="px-3 py-2">
-                  <input type="number" min="0.001" step="0.001" value={l.qty_returned}
+                  <input type="number" min="1" step="1" value={l.qty_returned}
                     onChange={e => updateLine(i, 'qty_returned', Number(e.target.value))}
                     disabled={!isDraft} className="w-24 border border-slate-300 rounded px-2 py-1 text-sm text-right" />
                 </td>

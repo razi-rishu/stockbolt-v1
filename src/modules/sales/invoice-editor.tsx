@@ -528,7 +528,7 @@ export default function InvoiceEditorPage() {
                   </td>
                   <td className="px-3 py-1.5">
                     <input
-                      type="number" min="0" step="0.001"
+                      type="number" min="0" step="1"
                       className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end text-ink-primary disabled:opacity-60"
                       value={line.quantity}
                       disabled={!canEdit || isVoid}
