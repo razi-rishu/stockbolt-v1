@@ -146,6 +146,18 @@ export default function QuoteEditorPage() {
     onError: (e: Error) => setError(e.message),
   });
 
+  // Convert this quote to an invoice. Mirrors the action available on the
+  // Quotes list page; available here so the user can act from the editor too.
+  const convertMutation = useMutation({
+    mutationFn: () => getAdapter().salesQuotes.convertToInvoice(id!),
+    onSuccess: (inv) => {
+      qc.invalidateQueries({ queryKey: ['sales_quotes', company_id] });
+      qc.invalidateQueries({ queryKey: ['invoices', company_id] });
+      navigate(`/sales/invoices/${inv.id}`);
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
   const canEdit = isNew || existing?.status === 'draft';
   const contactOpts = [{ value: '', label: t('sales.select_contact') }, ...contacts.map(c => ({ value: c.id, label: c.name }))];
   const productOpts = [{ value: '', label: '— ' + t('sales.select_product') + ' —' }, ...products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }))];
@@ -166,6 +178,16 @@ export default function QuoteEditorPage() {
           )}
           <Button variant="ghost" size="sm" onClick={() => navigate('/sales/quotes')}>{t('common.cancel')}</Button>
           {canEdit && <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>{saveMutation.isPending ? t('common.saving') : t('common.save')}</Button>}
+          {!isNew && existing && ['draft', 'sent', 'accepted'].includes(existing.status) && (
+            <Button
+              size="sm"
+              onClick={() => { setError(null); convertMutation.mutate(); }}
+              disabled={convertMutation.isPending}
+              title="Create a draft invoice from this quote and open it"
+            >
+              {convertMutation.isPending ? '…' : `→ ${t('sales.convert_to_invoice')}`}
+            </Button>
+          )}
         </div>
       </div>
       {error && <div className="rounded-input bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
