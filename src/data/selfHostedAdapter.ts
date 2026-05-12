@@ -326,7 +326,8 @@ export function createSelfHostedAdapter(): DataAdapter {
     },
     // Phase 10
     systemHealth: {
-      check: () => notImplemented('systemHealth.check'),
+      check:            () => notImplemented('systemHealth.check'),
+      findMalformedJEs: () => notImplemented('systemHealth.findMalformedJEs'),
     },
   };
 }

@@ -1,17 +1,24 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
-import type { InvariantResult } from '@/data/adapter';
+import type { InvariantResult, MalformedJE } from '@/data/adapter';
+
+function fmt(n: number) {
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 export default function SystemHealthPage() {
   const { t } = useTranslation();
   const adapter = getAdapter();
+  const navigate = useNavigate();
   const company_id = useAuthStore(s => s.company_id);
 
   const today = new Date().toISOString().slice(0, 10);
   const [asOf, setAsOf]     = useState(today);
   const [results, setResults] = useState<InvariantResult[]>([]);
+  const [malformed, setMalformed] = useState<MalformedJE[]>([]);
   const [loading, setLoading] = useState(false);
   const [ran, setRan]         = useState(false);
 
@@ -21,6 +28,15 @@ export default function SystemHealthPage() {
     try {
       const data = await adapter.systemHealth.check(company_id, asOf);
       setResults(data);
+      // If the per-JE invariant fails, immediately fetch the list of malformed JEs so the
+      // user can drill in without a second click.
+      const jeBal = data.find(r => r.invariant === 'JE_BAL');
+      if (jeBal && !jeBal.pass) {
+        const list = await adapter.systemHealth.findMalformedJEs(company_id, asOf);
+        setMalformed(list);
+      } else {
+        setMalformed([]);
+      }
       setRan(true);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -87,6 +103,62 @@ export default function SystemHealthPage() {
               </tbody>
             </table>
           </div>
+
+          {/* ── Malformed JE drill-down (shown when JE_BAL fails) ──────── */}
+          {malformed.length > 0 && (
+            <div className="overflow-x-auto rounded-lg border border-red-200 bg-surface-card shadow-sm">
+              <div className="border-b border-red-200 bg-red-50 px-4 py-3">
+                <p className="font-semibold text-red-800">Malformed journal entries ({malformed.length})</p>
+                <p className="mt-0.5 text-xs text-red-700">
+                  These journal entries are out of balance. Click an entry number to inspect the
+                  underlying source document. To fix, void + repost the source document (invoice,
+                  bill, payment, etc.) — or post a manual reversing JE.
+                </p>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-surface-subtle">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium text-ink-secondary">Entry #</th>
+                    <th className="px-3 py-2 text-left font-medium text-ink-secondary">Date</th>
+                    <th className="px-3 py-2 text-left font-medium text-ink-secondary">Source</th>
+                    <th className="px-3 py-2 text-right font-medium text-ink-secondary">Hdr DR / CR</th>
+                    <th className="px-3 py-2 text-right font-medium text-ink-secondary">Body DR / CR</th>
+                    <th className="px-3 py-2 text-right font-medium text-ink-secondary">Δ internal</th>
+                    <th className="px-3 py-2 text-left font-medium text-ink-secondary">Problem</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {malformed.map(je => (
+                    <tr key={je.je_id} className="hover:bg-surface-muted/50">
+                      <td className="px-3 py-2 font-mono text-xs">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/accounting/journal-entries/${je.je_id}`)}
+                          className="text-brand-600 hover:underline"
+                        >
+                          {je.entry_number}
+                        </button>
+                      </td>
+                      <td className="px-3 py-2 text-ink-secondary">{je.date}</td>
+                      <td className="px-3 py-2 text-ink-secondary capitalize">
+                        {(je.source_type ?? '').replace(/_/g, ' ') || '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-xs text-ink-secondary">
+                        {fmt(je.header_debit)} / {fmt(je.header_credit)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-xs text-ink-primary">
+                        {fmt(je.body_debit)} / {fmt(je.body_credit)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-xs font-semibold text-red-700">
+                        {fmt(je.delta_internal)}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-red-700">{je.problem}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {!allPass && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">

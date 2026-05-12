@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
@@ -14,14 +15,37 @@ function fmt(n: number) {
 export default function GeneralLedgerPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
+  const [searchParams] = useSearchParams();
 
   const today = new Date().toISOString().slice(0, 10);
   const firstOfYear = today.slice(0, 4) + '-01-01';
 
-  const [accountCode, setAccountCode] = useState('');
-  const [from, setFrom] = useState(firstOfYear);
-  const [to, setTo] = useState(today);
-  const [query, setQuery] = useState<{ code: string; from: string; to: string } | null>(null);
+  // URL params (set by Trial Balance drill-down) take precedence as initial state.
+  const initialCode = searchParams.get('code') ?? '';
+  const initialFrom = searchParams.get('from') ?? firstOfYear;
+  const initialTo   = searchParams.get('to')   ?? today;
+
+  const [accountCode, setAccountCode] = useState(initialCode);
+  const [from, setFrom] = useState(initialFrom);
+  const [to, setTo] = useState(initialTo);
+  const [query, setQuery] = useState<{ code: string; from: string; to: string } | null>(
+    initialCode ? { code: initialCode, from: initialFrom, to: initialTo } : null,
+  );
+
+  // If the URL params change after mount (e.g. user navigates from TB again with a different account),
+  // re-run the query without requiring a manual click.
+  useEffect(() => {
+    const code = searchParams.get('code');
+    const f = searchParams.get('from');
+    const t2 = searchParams.get('to');
+    if (code) {
+      setAccountCode(code);
+      if (f) setFrom(f);
+      if (t2) setTo(t2);
+      setQuery({ code, from: f ?? firstOfYear, to: t2 ?? today });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const { data: accounts = [] } = useQuery<CoaRow[]>({
     queryKey: ['coa', company_id],

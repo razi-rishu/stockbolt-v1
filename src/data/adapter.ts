@@ -740,8 +740,26 @@ export interface InvariantResult {
   [key: string]: unknown;
 }
 
+/** One malformed journal entry surfaced by find_malformed_jes. */
+export interface MalformedJE {
+  je_id: string;
+  entry_number: string;
+  date: string;
+  source_type: string | null;
+  source_id: string | null;
+  header_debit: number;
+  header_credit: number;
+  body_debit: number;
+  body_credit: number;
+  delta_vs_header: number;
+  delta_internal: number;
+  problem: string;
+}
+
 export interface SystemHealthAPI {
   check(company_id: string, as_of_date?: string): Promise<InvariantResult[]>;
+  /** Lists the specific JEs that fail the JE_BAL invariant (orphan / unbalanced / header-mismatch). */
+  findMalformedJEs(company_id: string, as_of_date?: string): Promise<MalformedJE[]>;
 }
 
 // ── Phase 5 row types ─────────────────────────────────────────────────────────

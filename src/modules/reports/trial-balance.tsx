@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
@@ -11,14 +12,25 @@ function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-const TYPE_ORDER = ['asset', 'liability', 'equity', 'revenue', 'expense'];
+// DB type values per CHECK constraint: ('asset','liability','equity','income','expense').
+// 'revenue' is kept as an alias so legacy/test data using the old label still renders.
+const TYPE_ORDER = ['asset', 'liability', 'equity', 'income', 'revenue', 'expense'];
 
 export default function TrialBalancePage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
+  const navigate = useNavigate();
 
   const [asOfDate, setAsOfDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [queryDate, setQueryDate] = useState<string | null>(null);
+
+  // Drill-down: clicking a TB row opens the General Ledger for that account.
+  // Use the start of the same fiscal year as a sensible lower bound.
+  function openLedgerForAccount(code: string) {
+    if (!queryDate) return;
+    const yearStart = queryDate.slice(0, 4) + '-01-01';
+    navigate(`/accounting/general-ledger?code=${encodeURIComponent(code)}&from=${yearStart}&to=${queryDate}`);
+  }
 
   const { data, isFetching } = useQuery<TrialBalance>({
     queryKey: ['trial_balance', company_id, queryDate],
@@ -84,8 +96,13 @@ export default function TrialBalancePage() {
                       </td>
                     </tr>
                     {grouped[type].map((line) => (
-                      <tr key={line.account_code} className="border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
-                        <td className="px-4 py-2.5 font-mono text-xs text-ink-primary">{line.account_code}</td>
+                      <tr
+                        key={line.account_code}
+                        onClick={() => openLedgerForAccount(line.account_code)}
+                        className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50"
+                        title="Open this account in General Ledger"
+                      >
+                        <td className="px-4 py-2.5 font-mono text-xs text-brand-600 underline-offset-2 hover:underline">{line.account_code}</td>
                         <td className="px-4 py-2.5 text-ink-primary">{line.account_name}</td>
                         <td className="px-4 py-2.5 text-ink-secondary capitalize">{line.account_type}</td>
                         <td className="px-4 py-2.5 text-end font-mono">{line.debit > 0 ? fmt(line.debit) : ''}</td>
