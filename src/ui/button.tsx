@@ -8,8 +8,9 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const base = 'inline-flex items-center justify-center gap-2 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50';
 
+// Primary uses brand-600 to match the dashboard's CTAs and FAB.
 const variants = {
-  primary: 'bg-brand-500 text-white hover:bg-brand-600 active:bg-brand-700',
+  primary: 'bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800',
   secondary: 'border border-border-strong text-ink-primary bg-white hover:bg-surface-subtle',
   ghost: 'text-ink-secondary hover:bg-surface-muted hover:text-ink-primary',
   danger: 'bg-danger-500 text-white hover:bg-danger-600',

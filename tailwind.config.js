@@ -18,8 +18,10 @@ export default {
           900: '#312E81',
         },
         // Surfaces
+        // surface.page is a very subtle off-white so cards (#FFFFFF) lift off
+        // the page with a hint of elevation. Matches the new dashboard design.
         surface: {
-          page: '#FFFFFF',
+          page: '#F8FAFC',
           card: '#FFFFFF',
           muted: '#F3F4F6', // Nav pill background, search input bg
           subtle: '#F9FAFB',
@@ -72,8 +74,10 @@ export default {
         input: '9999px',
       },
       boxShadow: {
-        card: '0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06)',
-        elevated: '0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.06)',
+        // Slightly more visible than the previous near-flat shadow so cards
+        // have a hint of depth against the off-white page background.
+        card: '0 1px 3px 0 rgb(15 23 42 / 0.06), 0 1px 2px 0 rgb(15 23 42 / 0.04)',
+        elevated: '0 10px 15px -3px rgb(15 23 42 / 0.08), 0 4px 6px -4px rgb(15 23 42 / 0.06)',
       },
     },
   },
