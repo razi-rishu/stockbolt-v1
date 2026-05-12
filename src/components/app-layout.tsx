@@ -1,21 +1,48 @@
-import { useState, type ReactNode } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+/**
+ * AppLayout — top-nav shell that wraps every authenticated, onboarded page.
+ *
+ * Replaces the previous left sidebar with a horizontal nav: brand on the
+ * left, 6 nav sections in the middle (Dashboard + 5 dropdowns + Payroll
+ * "coming in v2"), and tools on the right (bell, settings, language,
+ * avatar menu).
+ *
+ * Mobile: collapses to a hamburger → side drawer with the same content
+ * but in a stacked accordion view.
+ */
+import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth';
 import { getAdapter } from '@/data/index';
 import { LanguageToggle } from '@/components/language-toggle';
 
+// ── Types ───────────────────────────────────────────────────────────────────
 interface NavItem {
   to: string;
   label: string;
-  icon: ReactNode;
 }
 
-interface NavSection {
-  title: string;
+interface NavGroup {
+  /** Group label shown as a section header inside the dropdown (optional) */
+  label?: string;
   items: NavItem[];
 }
 
+interface NavSection {
+  /** Top-bar button label */
+  label: string;
+  /** If set, the section is a single direct link (no dropdown) */
+  to?: string;
+  /** Dropdown contents grouped into subsections */
+  groups?: NavGroup[];
+  /** Renders as greyed/disabled with a title-tooltip */
+  disabled?: boolean;
+  disabledHint?: string;
+  /** Mega-menu (renders dropdown in 2/3 columns) */
+  wide?: boolean;
+}
+
+// ── Icons ───────────────────────────────────────────────────────────────────
 function BoltIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="white" className="h-5 w-5">
@@ -23,228 +50,579 @@ function BoltIcon() {
     </svg>
   );
 }
-
-function DashboardIcon() {
+function ChevronDownIcon() {
   return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <rect x="2" y="2" width="7" height="7" rx="1.5" /><rect x="11" y="2" width="7" height="7" rx="1.5" />
-      <rect x="2" y="11" width="7" height="7" rx="1.5" /><rect x="11" y="11" width="7" height="7" rx="1.5" />
+    <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
+      <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 011.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
     </svg>
   );
 }
-
-function BoxIcon() {
+function BellIcon() {
   return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M10 2l8 4v8l-8 4-8-4V6l8-4z" />
-      <path strokeLinecap="round" d="M10 14V8m-8-2l8 4 8-4" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
     </svg>
   );
 }
-
-function TagIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9.293 2.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6z" />
-    </svg>
-  );
-}
-
-function ShieldIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M10 2l7 3v5c0 3.5-3 6.5-7 8-4-1.5-7-4.5-7-8V5l7-3z" />
-    </svg>
-  );
-}
-
-function CarIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <path strokeLinecap="round" d="M3 10l2-4h10l2 4M1 14h18M5 14v2m10-2v2" />
-      <circle cx="6" cy="13" r="1.5" fill="currentColor" stroke="none" />
-      <circle cx="14" cy="13" r="1.5" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-function BookOpenIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <path strokeLinecap="round" d="M3 4a1 1 0 011-1h5a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM17 4a1 1 0 00-1-1h-5a1 1 0 00-1 1v12a1 1 0 001 1h5a1 1 0 001-1V4z" />
-    </svg>
-  );
-}
-
-function UsersIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <path strokeLinecap="round" d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 16a6 6 0 10-12 0" />
-      <path strokeLinecap="round" d="M19 16a5 5 0 00-4-4.9" />
-    </svg>
-  );
-}
-
-function TruckIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <path strokeLinecap="round" d="M1 5h12v8H1zM13 8l4 2v3h-4V8z" />
-      <circle cx="5" cy="14" r="1.5" fill="currentColor" stroke="none" />
-      <circle cx="14.5" cy="14" r="1.5" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-function ClipboardIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <rect x="4" y="3" width="12" height="14" rx="1.5" />
-      <path strokeLinecap="round" d="M7 3v2h6V3" />
-      <path strokeLinecap="round" d="M7 9h6M7 12h4" />
-    </svg>
-  );
-}
-
-function ReceiptIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <path strokeLinecap="round" d="M3 2h14v16l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5V2z" />
-      <path strokeLinecap="round" d="M7 7h6M7 10h6M7 13h3" />
-    </svg>
-  );
-}
-
-function CreditCardIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <rect x="1" y="4" width="18" height="12" rx="1.5" />
-      <path strokeLinecap="round" d="M1 8h18" />
-      <path strokeLinecap="round" d="M4 13h3" />
-    </svg>
-  );
-}
-
-function ArrowsIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h12M4 7l3-3M4 7l3 3M16 13H4M16 13l-3-3M16 13l-3 3" />
-    </svg>
-  );
-}
-
-function SliderIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <path strokeLinecap="round" d="M3 5h14M3 10h14M3 15h14" />
-      <circle cx="7" cy="5" r="2" fill="white" stroke="currentColor" strokeWidth="1.6" />
-      <circle cx="13" cy="10" r="2" fill="white" stroke="currentColor" strokeWidth="1.6" />
-      <circle cx="8" cy="15" r="2" fill="white" stroke="currentColor" strokeWidth="1.6" />
-    </svg>
-  );
-}
-
-function RegisterIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <rect x="2" y="7" width="16" height="10" rx="1.5" />
-      <path strokeLinecap="round" d="M6 7V5a4 4 0 018 0v2" />
-      <path strokeLinecap="round" d="M7 12h2m2 0h2M10 10v4" />
-    </svg>
-  );
-}
-
 function CogIcon() {
   return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <circle cx="10" cy="10" r="3" />
-      <path strokeLinecap="round" d="M10 1v3m0 12v3M1 10h3m12 0h3m-2.636-6.364l-2.121 2.121M6.757 13.243l-2.121 2.121m0-12.728l2.121 2.121M13.243 13.243l2.121 2.121" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+function MenuIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+      <line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="20" y2="18" />
+    </svg>
+  );
+}
+function XIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
     </svg>
   );
 }
 
-function WarehouseIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <path strokeLinecap="round" d="M2 8l8-5 8 5v9a1 1 0 01-1 1H3a1 1 0 01-1-1V8z" />
-      <rect x="7" y="11" width="6" height="7" rx="0.5" />
-    </svg>
-  );
+// ── Build the nav structure once per render (translated labels) ──────────────
+function useNavSections(t: (k: string) => string): NavSection[] {
+  return [
+    { label: t('nav.dashboard'), to: '/dashboard' },
+
+    {
+      label: t('nav.sales'),
+      groups: [{
+        items: [
+          { to: '/sales/invoices',     label: t('nav.invoices') },
+          { to: '/sales/quotes',       label: t('nav.quotes') },
+          { to: '/sales/payments',     label: t('nav.payments') },
+          { to: '/sales/returns',      label: t('returns.sales_returns_title') },
+          { to: '/sales/credit-notes', label: t('returns.credit_notes_title') },
+          { to: '/contacts/customers', label: t('nav.customers') },
+          { to: '/pos',                label: t('pos.counter_sales') },
+        ],
+      }],
+    },
+
+    {
+      label: t('purchasing.nav_title'),
+      groups: [{
+        items: [
+          { to: '/purchasing/orders',      label: t('purchasing.po_title') },
+          { to: '/purchasing/grns',        label: t('purchasing.grn_title') },
+          { to: '/purchasing/bills',       label: t('purchasing.bills_title') },
+          { to: '/purchasing/payments',    label: t('purchasing.vp_title') },
+          { to: '/purchasing/debit-notes', label: t('returns.debit_notes_title') },
+          { to: '/contacts/suppliers',     label: t('nav.suppliers') },
+        ],
+      }],
+    },
+
+    {
+      label: t('nav.inventory'),
+      groups: [
+        {
+          label: 'Catalog',
+          items: [
+            { to: '/products',            label: t('nav.all_products') },
+            { to: '/products/categories', label: t('nav.categories') },
+            { to: '/products/brands',     label: t('nav.brands') },
+            { to: '/products/vehicles',   label: t('nav.vehicles') },
+            { to: '/catalog',             label: t('nav.parts_catalog') },
+          ],
+        },
+        {
+          label: 'Stock',
+          items: [
+            { to: '/inventory/transfers',    label: t('inventory.transfers_title') },
+            { to: '/inventory/adjustments',  label: t('inventory.adjustments_title') },
+            { to: '/inventory/stock-ledger', label: t('inventory.stock_ledger_title') },
+          ],
+        },
+      ],
+    },
+
+    {
+      label: t('nav.accounting'),
+      groups: [
+        {
+          label: 'Books',
+          items: [
+            { to: '/accounting/chart-of-accounts', label: t('nav.coa') },
+            { to: '/accounting/journal-entries',   label: t('nav.journal_entries') },
+            { to: '/accounting/general-ledger',    label: t('nav.general_ledger') },
+            { to: '/accounting/period-lock',       label: t('nav.period_lock') },
+          ],
+        },
+        {
+          label: t('nav.banking'),
+          items: [
+            { to: '/banking/transfers',    label: t('banking.transfers_title') },
+            { to: '/banking/expenses',     label: t('banking.expenses_title') },
+            { to: '/banking/pdc-received', label: t('banking.pdc_received_title') },
+            { to: '/banking/pdc-issued',   label: t('banking.pdc_issued_title') },
+          ],
+        },
+      ],
+    },
+
+    {
+      label: 'Payroll',
+      disabled: true,
+      disabledHint: 'Coming in v2',
+    },
+
+    {
+      label: t('nav.reports'),
+      wide: true,
+      groups: [
+        {
+          label: 'Financial',
+          items: [
+            { to: '/reports/trial-balance', label: t('nav.trial_balance') },
+            { to: '/reports/profit-loss',   label: t('nav.profit_loss') },
+            { to: '/reports/balance-sheet', label: t('nav.balance_sheet') },
+            { to: '/reports/cash-flow',     label: t('reports.cash_flow') },
+            { to: '/reports/vat-return',    label: t('reports.vat_return') },
+          ],
+        },
+        {
+          label: 'Sales',
+          items: [
+            { to: '/reports/ar-aging',              label: t('nav.ar_aging') },
+            { to: '/reports/sales-by-customer',     label: t('reports.sales_by_customer') },
+            { to: '/reports/sales-by-product',      label: t('reports.sales_by_product') },
+            { to: '/reports/sales-by-brand',        label: t('reports.sales_by_brand') },
+            { to: '/reports/sales-by-vehicle',      label: t('reports.sales_by_vehicle') },
+            { to: '/reports/sales-by-salesperson',  label: t('reports.sales_by_salesperson') },
+            { to: '/reports/sales-trend',           label: t('reports.sales_trend') },
+            { to: '/reports/daily-sales',           label: t('reports.daily_sales_summary') },
+            { to: '/reports/pos-session',           label: t('reports.pos_session_report') },
+          ],
+        },
+        {
+          label: 'Purchases',
+          items: [
+            { to: '/reports/ap-aging',             label: t('reports.ap_aging') },
+            { to: '/reports/supplier-statement',   label: t('reports.supplier_statement') },
+            { to: '/reports/grn-reconciliation',   label: t('reports.grn_reconciliation') },
+            { to: '/reports/purchases-by-supplier',label: t('reports.purchases_by_supplier') },
+            { to: '/reports/purchases-by-product', label: t('reports.purchases_by_product') },
+            { to: '/reports/outstanding-pos',      label: t('reports.outstanding_pos') },
+          ],
+        },
+        {
+          label: 'Inventory',
+          items: [
+            { to: '/reports/stock-valuation',             label: t('nav.stock_valuation') },
+            { to: '/reports/stock-movement',              label: t('reports.stock_movement') },
+            { to: '/reports/slow-moving',                 label: t('reports.slow_moving') },
+            { to: '/reports/reorder',                     label: t('reports.reorder') },
+            { to: '/reports/stock-aging',                 label: t('reports.stock_aging') },
+            { to: '/reports/inventory-adjustment-report', label: t('reports.inventory_adjustment_report') },
+          ],
+        },
+        {
+          label: 'Banking',
+          items: [
+            { to: '/reports/daily-cash', label: t('reports.daily_cash_title') },
+            { to: '/reports/bank-recon', label: t('reports.bank_recon_title') },
+          ],
+        },
+        {
+          label: 'Audit',
+          items: [
+            { to: '/reports/audit-log',      label: t('reports.audit_log') },
+            { to: '/reports/reversal-trail', label: t('reports.reversal_trail') },
+          ],
+        },
+      ],
+    },
+  ];
 }
 
-function RulerIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <rect x="2" y="7" width="16" height="6" rx="1" />
-      <path strokeLinecap="round" d="M5 7v2m5-2v3m5-3v2" />
-    </svg>
-  );
-}
+// ── NavButton — a section in the top bar ────────────────────────────────────
+function NavButton({
+  section,
+  isOpen,
+  isActive,
+  onToggle,
+  onItemClick,
+}: {
+  section: NavSection;
+  isOpen: boolean;
+  isActive: boolean;
+  onToggle: () => void;
+  onItemClick: () => void;
+}) {
+  const navigate = useNavigate();
 
-function PriceTagIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <path strokeLinecap="round" d="M4 4h6l6 6-6 6-6-6V4z" />
-      <circle cx="7" cy="7" r="1" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
+  // Direct link (Dashboard)
+  if (section.to) {
+    return (
+      <NavLink
+        to={section.to}
+        onClick={onItemClick}
+        className={({ isActive }) =>
+          `flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+            isActive
+              ? 'bg-brand-600 text-white'
+              : 'text-ink-secondary hover:bg-surface-muted hover:text-ink-primary'
+          }`
+        }
+      >
+        {section.label}
+      </NavLink>
+    );
+  }
 
-function LedgerIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <rect x="3" y="2" width="14" height="16" rx="1.5" />
-      <path strokeLinecap="round" d="M7 6h6M7 10h6M7 14h4" />
-    </svg>
-  );
-}
+  if (section.disabled) {
+    return (
+      <button
+        type="button"
+        disabled
+        title={section.disabledHint}
+        className="flex cursor-not-allowed items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium text-ink-tertiary/60"
+      >
+        {section.label}
+        <ChevronDownIcon />
+      </button>
+    );
+  }
 
-function JournalIcon() {
   return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <rect x="4" y="2" width="12" height="16" rx="1" />
-      <path strokeLinecap="round" d="M7 7h6M7 10h6M7 13h3" />
-      <path strokeLinecap="round" d="M2 5h2M2 10h2M2 15h2" />
-    </svg>
-  );
-}
-
-function ChartIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <path strokeLinecap="round" d="M2 14l4-4 4 2 4-6 4 2" />
-      <path strokeLinecap="round" d="M2 17h16" />
-    </svg>
-  );
-}
-
-function LockIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <rect x="4" y="9" width="12" height="9" rx="1.5" />
-      <path strokeLinecap="round" d="M7 9V6a3 3 0 016 0v3" />
-    </svg>
-  );
-}
-
-function SidebarNavLink({ to, icon, label, onNavigate }: { to: string; icon: ReactNode; label: string; onNavigate?: () => void }) {
-  return (
-    <NavLink
-      to={to}
-      onClick={onNavigate}
-      className={({ isActive }) =>
-        `flex items-center gap-2.5 rounded-card px-3 py-2 text-sm transition-colors ${
-          isActive
-            ? 'bg-brand-50 font-medium text-brand-600'
-            : 'text-ink-secondary hover:bg-surface-muted hover:text-ink-primary'
-        }`
-      }
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+        isActive
+          ? 'bg-brand-50 text-brand-700'
+          : isOpen
+          ? 'bg-surface-muted text-ink-primary'
+          : 'text-ink-secondary hover:bg-surface-muted hover:text-ink-primary'
+      }`}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowDown' && !isOpen) onToggle();
+        if (e.key === 'Enter') {
+          // navigate to the first item on Enter
+          const first = section.groups?.[0]?.items?.[0];
+          if (first) navigate(first.to);
+        }
+      }}
+      aria-haspopup="true"
+      aria-expanded={isOpen}
     >
-      {icon}
-      {label}
-    </NavLink>
+      {section.label}
+      <ChevronDownIcon />
+    </button>
   );
 }
 
+// ── NavDropdownPanel — popover with grouped items ───────────────────────────
+function NavDropdownPanel({ section, onItemClick }: { section: NavSection; onItemClick: () => void }) {
+  const groups = section.groups ?? [];
+  const wide = section.wide;
+  return (
+    <div
+      className={`absolute z-50 mt-2 rounded-2xl border border-border-subtle bg-surface-card p-2 shadow-xl ${
+        wide ? 'w-[640px]' : 'w-56'
+      }`}
+    >
+      <div className={wide ? 'grid grid-cols-3 gap-2' : 'flex flex-col'}>
+        {groups.map((g, gi) => (
+          <div key={gi}>
+            {g.label && (
+              <p className="px-3 pt-2 text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
+                {g.label}
+              </p>
+            )}
+            <ul className="py-1">
+              {g.items.map((it) => (
+                <li key={it.to}>
+                  <NavLink
+                    to={it.to}
+                    onClick={onItemClick}
+                    className={({ isActive }) =>
+                      `block rounded-card px-3 py-1.5 text-sm transition-colors ${
+                        isActive
+                          ? 'bg-brand-50 text-brand-700'
+                          : 'text-ink-primary hover:bg-surface-muted'
+                      }`
+                    }
+                  >
+                    {it.label}
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── User menu dropdown ──────────────────────────────────────────────────────
+function UserMenu({ email, onSignOut }: { email: string | null; onSignOut: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  const initial = (email ?? '?').charAt(0).toUpperCase();
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white hover:bg-brand-700"
+        aria-label="User menu"
+      >
+        {initial}
+      </button>
+      {open && (
+        <div className="absolute end-0 z-50 mt-2 w-56 overflow-hidden rounded-card border border-border-subtle bg-surface-card shadow-xl">
+          <div className="border-b border-border-subtle px-4 py-3">
+            <p className="truncate text-xs text-ink-tertiary">Signed in as</p>
+            <p className="truncate text-sm font-medium text-ink-primary">{email ?? '—'}</p>
+          </div>
+          <ul className="py-1">
+            <li>
+              <Link
+                to="/settings/company"
+                onClick={() => setOpen(false)}
+                className="block px-4 py-2 text-sm text-ink-primary hover:bg-surface-muted"
+              >
+                Company Settings
+              </Link>
+            </li>
+            <li>
+              <Link
+                to="/settings/system-health"
+                onClick={() => setOpen(false)}
+                className="block px-4 py-2 text-sm text-ink-primary hover:bg-surface-muted"
+              >
+                System Health
+              </Link>
+            </li>
+            <li className="border-t border-border-subtle">
+              <button
+                type="button"
+                onClick={() => { setOpen(false); onSignOut(); }}
+                className="block w-full px-4 py-2 text-start text-sm text-red-600 hover:bg-red-50"
+              >
+                Sign out
+              </button>
+            </li>
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Settings dropdown ───────────────────────────────────────────────────────
+function SettingsMenu() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation();
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  const settings: NavItem[] = [
+    { to: '/settings/company',       label: t('nav.company') },
+    { to: '/settings/warehouses',    label: t('nav.warehouses') },
+    { to: '/settings/units',         label: t('nav.units') },
+    { to: '/settings/price-levels',  label: t('nav.price_levels') },
+    { to: '/settings/print',         label: t('print.settings_title') },
+    { to: '/settings/system-health', label: t('settings.system_health') },
+  ];
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-9 w-9 items-center justify-center rounded-full text-ink-secondary hover:bg-surface-muted hover:text-ink-primary"
+        aria-label="Settings"
+      >
+        <CogIcon />
+      </button>
+      {open && (
+        <div className="absolute end-0 z-50 mt-2 w-56 overflow-hidden rounded-card border border-border-subtle bg-surface-card shadow-xl">
+          <p className="border-b border-border-subtle bg-surface-muted px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-ink-tertiary">
+            Settings
+          </p>
+          <ul className="py-1">
+            {settings.map((s) => (
+              <li key={s.to}>
+                <Link
+                  to={s.to}
+                  onClick={() => setOpen(false)}
+                  className="block px-4 py-2 text-sm text-ink-primary hover:bg-surface-muted"
+                >
+                  {s.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Notification bell — placeholder until Stage C (real notifications) ─────
+function NotificationsBell() {
+  const hasUnread = false; // wired in Stage C
+  return (
+    <button
+      type="button"
+      title="Notifications (coming soon)"
+      className="relative flex h-9 w-9 items-center justify-center rounded-full text-ink-secondary hover:bg-surface-muted hover:text-ink-primary"
+      aria-label="Notifications"
+    >
+      <BellIcon />
+      {hasUnread && (
+        <span className="absolute end-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
+      )}
+    </button>
+  );
+}
+
+// ── Mobile drawer (used when viewport is below the top-nav breakpoint) ─────
+function MobileDrawer({
+  open,
+  onClose,
+  sections,
+  email,
+  onSignOut,
+}: {
+  open: boolean;
+  onClose: () => void;
+  sections: NavSection[];
+  email: string | null;
+  onSignOut: () => void;
+}) {
+  if (!open) return null;
+  const { t } = useTranslation();
+  return (
+    <div className="fixed inset-0 z-50 lg:hidden">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <aside className="absolute start-0 top-0 flex h-full w-72 flex-col border-e border-border-subtle bg-surface-card shadow-xl">
+        {/* Drawer header */}
+        <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600">
+              <BoltIcon />
+            </div>
+            <span className="font-semibold text-ink-primary">StockBolt</span>
+          </div>
+          <button type="button" onClick={onClose} className="text-ink-secondary hover:text-ink-primary"><XIcon /></button>
+        </div>
+
+        {/* Drawer body — stacked sections */}
+        <nav className="flex-1 overflow-y-auto p-3">
+          {sections.map((section, si) => {
+            if (section.disabled) {
+              return (
+                <div key={si} className="mb-3">
+                  <p className="px-3 py-2 text-xs font-medium uppercase tracking-wider text-ink-tertiary/60">
+                    {section.label} <span className="text-[10px]">({section.disabledHint})</span>
+                  </p>
+                </div>
+              );
+            }
+            if (section.to) {
+              return (
+                <NavLink
+                  key={si}
+                  to={section.to}
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    `mb-1 block rounded-card px-3 py-2 text-sm font-medium ${
+                      isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-primary hover:bg-surface-muted'
+                    }`
+                  }
+                >
+                  {section.label}
+                </NavLink>
+              );
+            }
+            return (
+              <div key={si} className="mb-3">
+                <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
+                  {section.label}
+                </p>
+                {(section.groups ?? []).flatMap((g) => g.items).map((it) => (
+                  <NavLink
+                    key={it.to}
+                    to={it.to}
+                    onClick={onClose}
+                    className={({ isActive }) =>
+                      `block rounded-card px-3 py-1.5 text-sm ${
+                        isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-secondary hover:bg-surface-muted hover:text-ink-primary'
+                      }`
+                    }
+                  >
+                    {it.label}
+                  </NavLink>
+                ))}
+              </div>
+            );
+          })}
+          <div className="mt-3 border-t border-border-subtle pt-3">
+            <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">Settings</p>
+            {(['company', 'warehouses', 'units', 'price-levels', 'print', 'system-health'] as const).map((key) => (
+              <NavLink
+                key={key}
+                to={`/settings/${key}`}
+                onClick={onClose}
+                className="block rounded-card px-3 py-1.5 text-sm text-ink-secondary hover:bg-surface-muted hover:text-ink-primary"
+              >
+                {key.replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase())}
+              </NavLink>
+            ))}
+          </div>
+        </nav>
+
+        {/* Drawer footer */}
+        <div className="border-t border-border-subtle p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="truncate text-xs text-ink-tertiary">{email ?? '—'}</span>
+            <LanguageToggle />
+          </div>
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="w-full rounded-card border border-border-strong px-3 py-1.5 text-sm text-ink-secondary hover:bg-surface-muted"
+          >
+            {t('common.sign_out')}
+          </button>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+// ── AppLayout ───────────────────────────────────────────────────────────────
 interface AppLayoutProps {
   children: ReactNode;
 }
@@ -253,7 +631,34 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { t } = useTranslation();
   const { email, clear } = useAuthStore();
   const navigate = useNavigate();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const navRef = useRef<HTMLDivElement>(null);
+  const sections = useNavSections(t);
+
+  // Close dropdowns on outside click or route change or Escape
+  useEffect(() => { setOpenIdx(null); }, [location.pathname]);
+  useEffect(() => {
+    if (openIdx === null) return;
+    const onClick = (e: MouseEvent) => {
+      if (navRef.current && !navRef.current.contains(e.target as Node)) setOpenIdx(null);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpenIdx(null); };
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [openIdx]);
+
+  // Detect which top-level section the current path belongs to, for the active style.
+  const isSectionActive = (section: NavSection): boolean => {
+    if (section.to) return location.pathname.startsWith(section.to);
+    const items = (section.groups ?? []).flatMap((g) => g.items);
+    return items.some((it) => location.pathname.startsWith(it.to));
+  };
 
   async function handleSignOut() {
     await getAdapter().auth.signOut();
@@ -261,213 +666,75 @@ export function AppLayout({ children }: AppLayoutProps) {
     navigate('/login', { replace: true });
   }
 
-  const sections: NavSection[] = [
-    {
-      title: '',
-      items: [
-        { to: '/dashboard', label: t('nav.dashboard'), icon: <DashboardIcon /> },
-      ],
-    },
-    {
-      title: t('nav.products'),
-      items: [
-        { to: '/products', label: t('nav.all_products'), icon: <BoxIcon /> },
-        { to: '/products/categories', label: t('nav.categories'), icon: <TagIcon /> },
-        { to: '/products/brands', label: t('nav.brands'), icon: <ShieldIcon /> },
-        { to: '/products/vehicles', label: t('nav.vehicles'), icon: <CarIcon /> },
-        { to: '/catalog', label: t('nav.parts_catalog'), icon: <BookOpenIcon /> },
-      ],
-    },
-    {
-      title: t('nav.contacts'),
-      items: [
-        { to: '/contacts/customers', label: t('nav.customers'), icon: <UsersIcon /> },
-        { to: '/contacts/suppliers', label: t('nav.suppliers'), icon: <TruckIcon /> },
-      ],
-    },
-    {
-      title: t('nav.sales'),
-      items: [
-        { to: '/sales/invoices',      label: t('nav.invoices'),                    icon: <JournalIcon /> },
-        { to: '/sales/quotes',        label: t('nav.quotes'),                      icon: <LedgerIcon /> },
-        { to: '/sales/payments',      label: t('nav.payments'),                    icon: <ChartIcon /> },
-        { to: '/sales/returns',       label: t('returns.sales_returns_title'),     icon: <ArrowsIcon /> },
-        { to: '/sales/credit-notes',  label: t('returns.credit_notes_title'),      icon: <ReceiptIcon /> },
-      ],
-    },
-    {
-      title: t('purchasing.nav_title'),
-      items: [
-        { to: '/purchasing/orders',      label: t('purchasing.po_title'),    icon: <ClipboardIcon /> },
-        { to: '/purchasing/grns',        label: t('purchasing.grn_title'),   icon: <TruckIcon /> },
-        { to: '/purchasing/bills',       label: t('purchasing.bills_title'), icon: <ReceiptIcon /> },
-        { to: '/purchasing/payments',    label: t('purchasing.vp_title'),    icon: <CreditCardIcon /> },
-        { to: '/purchasing/debit-notes', label: t('returns.debit_notes_title'), icon: <ArrowsIcon /> },
-      ],
-    },
-    {
-      title: t('nav.inventory'),
-      items: [
-        { to: '/inventory/transfers',   label: t('inventory.transfers_title'),   icon: <ArrowsIcon /> },
-        { to: '/inventory/adjustments', label: t('inventory.adjustments_title'), icon: <SliderIcon /> },
-        { to: '/inventory/stock-ledger',label: t('inventory.stock_ledger_title'),icon: <LedgerIcon /> },
-      ],
-    },
-    {
-      title: t('nav.pos'),
-      items: [
-        { to: '/pos', label: t('pos.counter_sales'), icon: <RegisterIcon /> },
-      ],
-    },
-    {
-      title: t('nav.banking'),
-      items: [
-        { to: '/banking/transfers',    label: t('banking.transfers_title'),    icon: <ArrowsIcon /> },
-        { to: '/banking/expenses',     label: t('banking.expenses_title'),     icon: <ReceiptIcon /> },
-        { to: '/banking/pdc-received', label: t('banking.pdc_received_title'), icon: <CreditCardIcon /> },
-        { to: '/banking/pdc-issued',   label: t('banking.pdc_issued_title'),   icon: <CreditCardIcon /> },
-      ],
-    },
-    {
-      title: t('nav.accounting'),
-      items: [
-        { to: '/accounting/chart-of-accounts', label: t('nav.coa'), icon: <LedgerIcon /> },
-        { to: '/accounting/journal-entries', label: t('nav.journal_entries'), icon: <JournalIcon /> },
-        { to: '/accounting/general-ledger', label: t('nav.general_ledger'), icon: <BookOpenIcon /> },
-        { to: '/accounting/period-lock', label: t('nav.period_lock'), icon: <LockIcon /> },
-      ],
-    },
-    {
-      title: t('nav.reports'),
-      items: [
-        { to: '/reports/trial-balance',        label: t('nav.trial_balance'),          icon: <ChartIcon /> },
-        { to: '/reports/profit-loss',          label: t('nav.profit_loss'),            icon: <ChartIcon /> },
-        { to: '/reports/balance-sheet',        label: t('nav.balance_sheet'),          icon: <LedgerIcon /> },
-        { to: '/reports/ar-aging',             label: t('nav.ar_aging'),               icon: <UsersIcon /> },
-        { to: '/reports/ap-aging',             label: t('reports.ap_aging'),           icon: <TruckIcon /> },
-        { to: '/reports/stock-valuation',      label: t('nav.stock_valuation'),        icon: <BoxIcon /> },
-        { to: '/reports/supplier-statement',   label: t('reports.supplier_statement'), icon: <ReceiptIcon /> },
-        { to: '/reports/grn-reconciliation',         label: t('reports.grn_reconciliation'),          icon: <ClipboardIcon /> },
-        { to: '/reports/stock-movement',             label: t('reports.stock_movement'),              icon: <ArrowsIcon /> },
-        { to: '/reports/slow-moving',                label: t('reports.slow_moving'),                 icon: <BoxIcon /> },
-        { to: '/reports/reorder',                    label: t('reports.reorder'),                     icon: <TruckIcon /> },
-        { to: '/reports/stock-aging',                label: t('reports.stock_aging'),                 icon: <ChartIcon /> },
-        { to: '/reports/inventory-adjustment-report',label: t('reports.inventory_adjustment_report'), icon: <SliderIcon /> },
-        { to: '/reports/pos-session',                label: t('reports.pos_session_report'),          icon: <RegisterIcon /> },
-        { to: '/reports/daily-sales',                label: t('reports.daily_sales_summary'),         icon: <ChartIcon /> },
-        { to: '/reports/daily-cash',                 label: t('reports.daily_cash_title'),            icon: <ChartIcon /> },
-        { to: '/reports/bank-recon',                 label: t('reports.bank_recon_title'),            icon: <LedgerIcon /> },
-        { to: '/reports/sales-by-customer',          label: t('reports.sales_by_customer'),           icon: <ChartIcon /> },
-        { to: '/reports/sales-by-product',           label: t('reports.sales_by_product'),            icon: <ChartIcon /> },
-        { to: '/reports/sales-by-brand',             label: t('reports.sales_by_brand'),              icon: <ChartIcon /> },
-        { to: '/reports/sales-by-vehicle',           label: t('reports.sales_by_vehicle'),            icon: <ChartIcon /> },
-        { to: '/reports/sales-by-salesperson',       label: t('reports.sales_by_salesperson'),        icon: <ChartIcon /> },
-        { to: '/reports/sales-trend',                label: t('reports.sales_trend'),                 icon: <ChartIcon /> },
-        { to: '/reports/purchases-by-supplier',      label: t('reports.purchases_by_supplier'),       icon: <LedgerIcon /> },
-        { to: '/reports/purchases-by-product',       label: t('reports.purchases_by_product'),        icon: <LedgerIcon /> },
-        { to: '/reports/outstanding-pos',            label: t('reports.outstanding_pos'),             icon: <ClipboardIcon /> },
-        { to: '/reports/vat-return',                 label: t('reports.vat_return'),                  icon: <ReceiptIcon /> },
-        { to: '/reports/cash-flow',                  label: t('reports.cash_flow'),                   icon: <ChartIcon /> },
-        { to: '/reports/audit-log',                  label: t('reports.audit_log'),                   icon: <JournalIcon /> },
-        { to: '/reports/reversal-trail',             label: t('reports.reversal_trail'),              icon: <JournalIcon /> },
-      ],
-    },
-    {
-      title: t('nav.settings'),
-      items: [
-        { to: '/settings/company',       label: t('nav.company'),       icon: <CogIcon /> },
-        { to: '/settings/warehouses',    label: t('nav.warehouses'),    icon: <WarehouseIcon /> },
-        { to: '/settings/units',         label: t('nav.units'),         icon: <RulerIcon /> },
-        { to: '/settings/price-levels',  label: t('nav.price_levels'),  icon: <PriceTagIcon /> },
-        { to: '/settings/system-health', label: t('settings.system_health'), icon: <CogIcon /> },
-        { to: '/settings/print',         label: t('print.settings_title'),   icon: <CogIcon /> },
-      ],
-    },
-  ];
+  return (
+    <div className="flex h-screen flex-col bg-surface-page">
+      {/* ── Top nav ───────────────────────────────────────────────────── */}
+      <header
+        ref={navRef}
+        className="relative z-30 flex h-16 shrink-0 items-center gap-2 border-b border-border-subtle bg-surface-card px-4 lg:px-6"
+      >
+        {/* Mobile hamburger */}
+        <button
+          type="button"
+          className="flex h-9 w-9 items-center justify-center rounded-full text-ink-secondary hover:bg-surface-muted hover:text-ink-primary lg:hidden"
+          onClick={() => setDrawerOpen(true)}
+          aria-label="Open menu"
+        >
+          <MenuIcon />
+        </button>
 
-  function makeSidebarContent(onNavigate?: () => void) {
-    return (
-      <nav className="flex h-full flex-col">
-        {/* Logo */}
-        <div className="flex items-center gap-2.5 px-4 py-5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500">
+        {/* Brand */}
+        <Link to="/dashboard" className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600">
             <BoltIcon />
           </div>
-          <span className="font-semibold text-ink-primary">StockBolt</span>
-        </div>
+          <span className="hidden text-base font-bold text-ink-primary sm:block">StockBolt</span>
+        </Link>
 
-        {/* Nav sections */}
-        <div className="flex-1 overflow-y-auto px-3 pb-4">
-          {sections.map((section, si) => (
-            <div key={si} className={si > 0 ? 'mt-5' : ''}>
-              {section.title && (
-                <p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-ink-tertiary">
-                  {section.title}
-                </p>
-              )}
-              <div className="flex flex-col gap-0.5">
-                {section.items.map((item) => (
-                  <SidebarNavLink key={item.to} {...item} onNavigate={onNavigate} />
-                ))}
+        {/* Desktop nav — sections */}
+        <nav className="ms-4 hidden flex-1 items-center gap-1 lg:flex">
+          {sections.map((section, idx) => {
+            const isOpen = openIdx === idx;
+            const isActive = isSectionActive(section);
+            return (
+              <div key={idx} className="relative">
+                <NavButton
+                  section={section}
+                  isOpen={isOpen}
+                  isActive={isActive}
+                  onToggle={() => setOpenIdx(isOpen ? null : idx)}
+                  onItemClick={() => setOpenIdx(null)}
+                />
+                {isOpen && section.groups && (
+                  <NavDropdownPanel section={section} onItemClick={() => setOpenIdx(null)} />
+                )}
               </div>
-            </div>
-          ))}
-        </div>
+            );
+          })}
+        </nav>
 
-        {/* User footer */}
-        <div className="border-t border-border-subtle px-3 py-3">
-          <div className="flex items-center justify-between gap-2">
-            <span className="truncate text-xs text-ink-tertiary">{email}</span>
-            <button
-              onClick={handleSignOut}
-              className="shrink-0 rounded-pill px-2.5 py-1 text-xs text-ink-secondary transition-colors hover:bg-surface-muted hover:text-ink-primary"
-            >
-              {t('common.sign_out')}
-            </button>
-          </div>
-        </div>
-      </nav>
-    );
-  }
-
-  return (
-    <div className="flex h-screen bg-surface-page">
-      {/* Sidebar — desktop */}
-      <aside className="hidden w-56 shrink-0 flex-col border-e border-border-subtle bg-surface-card lg:flex">
-        {makeSidebarContent()}
-      </aside>
-
-      {/* Sidebar — mobile overlay (closes on nav) */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setSidebarOpen(false)} />
-          <aside className="absolute start-0 top-0 h-full w-64 border-e border-border-subtle bg-surface-card shadow-xl">
-            {makeSidebarContent(() => setSidebarOpen(false))}
-          </aside>
-        </div>
-      )}
-
-      {/* Main area */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Top bar */}
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-border-subtle bg-surface-card px-4">
-          <button
-            className="flex h-8 w-8 items-center justify-center rounded-card text-ink-secondary hover:bg-surface-muted lg:hidden"
-            onClick={() => setSidebarOpen(true)}
-          >
-            <svg className="h-5 w-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-              <path strokeLinecap="round" d="M3 5h14M3 10h14M3 15h14" />
-            </svg>
-          </button>
-          <div className="flex-1" />
+        {/* Right tools */}
+        <div className="ms-auto flex items-center gap-1">
           <LanguageToggle />
-        </header>
+          <NotificationsBell />
+          <SettingsMenu />
+          <UserMenu email={email} onSignOut={handleSignOut} />
+        </div>
+      </header>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
-          {children}
-        </main>
-      </div>
+      {/* ── Mobile drawer ──────────────────────────────────────────────── */}
+      <MobileDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        sections={sections}
+        email={email}
+        onSignOut={handleSignOut}
+      />
+
+      {/* ── Main content ──────────────────────────────────────────────── */}
+      <main className="flex-1 overflow-y-auto p-4 md:p-6">
+        {children}
+      </main>
     </div>
   );
 }
