@@ -756,10 +756,24 @@ export interface MalformedJE {
   problem: string;
 }
 
+/** Result of a one-click repair on a malformed JE. */
+export interface RepairResult {
+  status: 'repaired' | 'already_balanced' | 'partial';
+  rows_added: number;
+  new_body_debit: number;
+  new_body_credit: number;
+}
+
 export interface SystemHealthAPI {
   check(company_id: string, as_of_date?: string): Promise<InvariantResult[]>;
   /** Lists the specific JEs that fail the JE_BAL invariant (orphan / unbalanced / header-mismatch). */
   findMalformedJEs(company_id: string, as_of_date?: string): Promise<MalformedJE[]>;
+  /**
+   * Surgical repair for a vendor_bill JE whose body is unbalanced because the
+   * goods-side DR rows were never posted (pre-Phase-12 confirm_vendor_bill bug).
+   * Idempotent — no-ops on an already-balanced JE.
+   */
+  repairVendorBillJE(je_id: string): Promise<RepairResult>;
 }
 
 // ── Phase 5 row types ─────────────────────────────────────────────────────────

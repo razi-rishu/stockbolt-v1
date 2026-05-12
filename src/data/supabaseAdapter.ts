@@ -3041,6 +3041,12 @@ export function createSupabaseAdapter(
         assertNoError(error as Error | null, 'systemHealth.findMalformedJEs');
         return (data as import('./adapter').MalformedJE[]) ?? [];
       },
+      async repairVendorBillJE(je_id): Promise<import('./adapter').RepairResult> {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)
+          ('repair_vendor_bill_je', { p_je_id: je_id });
+        assertNoError(error as Error | null, 'systemHealth.repairVendorBillJE');
+        return data as import('./adapter').RepairResult;
+      },
     },
   };
 }

@@ -42,6 +42,27 @@ export default function SystemHealthPage() {
     finally { setLoading(false); }
   };
 
+  // Track per-JE repair state so the button can show a spinner / disabled state
+  const [repairing, setRepairing] = useState<Record<string, boolean>>({});
+  const [repairMsg, setRepairMsg] = useState<string | null>(null);
+
+  const repair = async (je_id: string) => {
+    if (!company_id) return;
+    setRepairing(r => ({ ...r, [je_id]: true }));
+    setRepairMsg(null);
+    try {
+      const result = await adapter.systemHealth.repairVendorBillJE(je_id);
+      setRepairMsg(`✅ ${result.status}: ${result.rows_added} row(s) added. Body now ${result.new_body_debit.toFixed(2)} DR / ${result.new_body_credit.toFixed(2)} CR.`);
+      // Re-run the full check to refresh status + drop repaired rows from the table
+      await run();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setRepairMsg(`❌ Repair failed: ${msg}`);
+    } finally {
+      setRepairing(r => ({ ...r, [je_id]: false }));
+    }
+  };
+
   const allPass = results.length > 0 && results.every(r => r.pass);
   const failCount = results.filter(r => !r.pass).length;
 
@@ -125,38 +146,65 @@ export default function SystemHealthPage() {
                     <th className="px-3 py-2 text-right font-medium text-ink-secondary">Body DR / CR</th>
                     <th className="px-3 py-2 text-right font-medium text-ink-secondary">Δ internal</th>
                     <th className="px-3 py-2 text-left font-medium text-ink-secondary">Problem</th>
+                    <th className="px-3 py-2 text-right font-medium text-ink-secondary">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {malformed.map(je => (
-                    <tr key={je.je_id} className="hover:bg-surface-muted/50">
-                      <td className="px-3 py-2 font-mono text-xs">
-                        <button
-                          type="button"
-                          onClick={() => navigate(`/accounting/journal-entries/${je.je_id}`)}
-                          className="text-brand-600 hover:underline"
-                        >
-                          {je.entry_number}
-                        </button>
-                      </td>
-                      <td className="px-3 py-2 text-ink-secondary">{je.date}</td>
-                      <td className="px-3 py-2 text-ink-secondary capitalize">
-                        {(je.source_type ?? '').replace(/_/g, ' ') || '—'}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-xs text-ink-secondary">
-                        {fmt(je.header_debit)} / {fmt(je.header_credit)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-xs text-ink-primary">
-                        {fmt(je.body_debit)} / {fmt(je.body_credit)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-xs font-semibold text-red-700">
-                        {fmt(je.delta_internal)}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-red-700">{je.problem}</td>
-                    </tr>
-                  ))}
+                  {malformed.map(je => {
+                    const canRepair = je.source_type === 'vendor_bill';
+                    const isRepairing = !!repairing[je.je_id];
+                    return (
+                      <tr key={je.je_id} className="hover:bg-surface-muted/50">
+                        <td className="px-3 py-2 font-mono text-xs">
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/accounting/journal-entries/${je.je_id}`)}
+                            className="text-brand-600 hover:underline"
+                          >
+                            {je.entry_number}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2 text-ink-secondary">{je.date}</td>
+                        <td className="px-3 py-2 text-ink-secondary capitalize">
+                          {(je.source_type ?? '').replace(/_/g, ' ') || '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-xs text-ink-secondary">
+                          {fmt(je.header_debit)} / {fmt(je.header_credit)}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-xs text-ink-primary">
+                          {fmt(je.body_debit)} / {fmt(je.body_credit)}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-xs font-semibold text-red-700">
+                          {fmt(je.delta_internal)}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-red-700">{je.problem}</td>
+                        <td className="px-3 py-2 text-right">
+                          {canRepair ? (
+                            <button
+                              type="button"
+                              onClick={() => repair(je.je_id)}
+                              disabled={isRepairing}
+                              className="rounded-pill bg-brand-600 px-3 py-1 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+                              title="Re-derive the missing GL rows + stock movement from the underlying vendor bill"
+                            >
+                              {isRepairing ? '…' : 'Repair'}
+                            </button>
+                          ) : (
+                            <span className="text-xs text-ink-tertiary" title="Auto-repair only supports vendor_bill JEs in v1">
+                              Manual fix
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
+              {repairMsg && (
+                <div className="border-t border-border-subtle bg-surface-muted px-4 py-2 text-xs">
+                  {repairMsg}
+                </div>
+              )}
             </div>
           )}
 
