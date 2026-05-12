@@ -705,16 +705,31 @@ export interface CashFlowStatement {
 }
 
 export interface OwnerDashboard {
+  // ── Today snapshots ────────────────────────────────────────────────────
   today_sales_count: number;
   today_sales_amount: number;
+  today_sales_amount_prev: number;     // yesterday's confirmed sales (for delta %)
+  today_purchases_amount: number;      // confirmed vendor bills today
+  today_purchases_amount_prev: number; // yesterday's confirmed bill total
+  // ── Snapshot totals (current value + value 30 days ago for delta) ─────
+  inventory_value: number;
+  inventory_value_prev: number;
+  sku_count: number;
+  sku_count_prev: number;
   outstanding_ar: number;
+  outstanding_ar_prev: number;
   outstanding_ap: number;
+  outstanding_ap_prev: number;
   cash_and_bank: number;
+  // ── Lists & trends ────────────────────────────────────────────────────
   top_products: { product_id: string; name: string; qty: number; revenue: number }[];
   top_customers: { contact_id: string; name: string; sales: number }[];
   low_stock_count: number;
   overdue_invoices_count: number;
-  sales_trend: { date: string; amount: number }[];
+  /** 7-day trend (sales + purchases per day) */
+  trend_7d: { date: string; sales: number; purchases: number }[];
+  /** Recent inventory additions — latest products created */
+  recent_inventory: { product_id: string; name: string; oe_number: string | null; sku: string; unit_code: string; quantity: number }[];
 }
 
 export interface InvariantResult {

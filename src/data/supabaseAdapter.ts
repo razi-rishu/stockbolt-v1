@@ -2054,29 +2054,95 @@ export function createSupabaseAdapter(
       },
 
       async getOwnerDashboard(company_id): Promise<OwnerDashboard> {
-        const today = new Date().toISOString().slice(0, 10);
+        // Date helpers
+        const todayDate = new Date();
+        const today = todayDate.toISOString().slice(0, 10);
+        const yesterday = new Date(todayDate.getTime() - 86_400_000).toISOString().slice(0, 10);
         const monthStart = today.slice(0, 7) + '-01';
-        const last30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+        const last7 = new Date(todayDate.getTime() - 6 * 86_400_000).toISOString().slice(0, 10);
+        const last30 = new Date(todayDate.getTime() - 30 * 86_400_000).toISOString().slice(0, 10);
 
-        const [{ data: todayInvs }, { data: ar }, { data: ap }, { data: bankRows }, { data: topProds }, { data: lowStock }, { data: overdueInvs }, { data: trendInvs }] = await Promise.all([
+        // Helper: GL balance for a single account code up to a given date (inclusive).
+        // normalDebit=true for asset/expense (DR-CR), false for liability/revenue (CR-DR).
+        const balanceAsOf = async (code: string, asOf: string, normalDebit: boolean): Promise<number> => {
+          const { data } = await client
+            .from('general_ledger')
+            .select('debit, credit')
+            .eq('company_id', company_id)
+            .eq('account_code', code)
+            .lte('date', asOf);
+          const net = (data ?? []).reduce((s, r) => s + (Number(r.debit) - Number(r.credit)), 0);
+          return normalDebit ? net : -net;
+        };
+        // Same as above but matches code prefix (e.g. "11" matches 1100, 1110).
+        const balanceLikeAsOf = async (prefix: string, asOf: string): Promise<number> => {
+          const { data } = await client
+            .from('general_ledger')
+            .select('debit, credit')
+            .eq('company_id', company_id)
+            .like('account_code', prefix + '%')
+            .lte('date', asOf);
+          return (data ?? []).reduce((s, r) => s + (Number(r.debit) - Number(r.credit)), 0);
+        };
+
+        const [
+          { data: todayInvs },     { data: yestInvs },
+          { data: todayBills },    { data: yestBills },
+          arNow, arPrev,
+          apNow, apPrev,
+          invNow, invPrev,
+          cashNow,
+          { count: skuCountNow },
+          { count: skuCountPrev },
+          { data: topProds },
+          { data: lowStock },
+          { data: overdueInvs },
+          { data: trendInvs },
+          { data: trendBills },
+          { data: recentProds },
+        ] = await Promise.all([
           client.from('invoices').select('total_amount').eq('company_id', company_id).eq('status', 'confirmed').eq('date', today),
-          client.from('general_ledger').select('debit, credit').eq('company_id', company_id).eq('account_code', '1200'),
-          client.from('general_ledger').select('debit, credit').eq('company_id', company_id).eq('account_code', '2100'),
-          client.from('general_ledger').select('debit, credit').eq('company_id', company_id).like('account_code', '11%'),
+          client.from('invoices').select('total_amount').eq('company_id', company_id).eq('status', 'confirmed').eq('date', yesterday),
+          client.from('vendor_bills').select('total_amount').eq('company_id', company_id).eq('status', 'confirmed').eq('date', today),
+          client.from('vendor_bills').select('total_amount').eq('company_id', company_id).eq('status', 'confirmed').eq('date', yesterday),
+
+          balanceAsOf('1200', today,  true),
+          balanceAsOf('1200', last30, true),
+          balanceAsOf('2100', today,  false),
+          balanceAsOf('2100', last30, false),
+          balanceAsOf('1300', today,  true),
+          balanceAsOf('1300', last30, true),
+          balanceLikeAsOf('11', today),
+
+          client.from('products').select('*', { count: 'exact', head: true })
+            .eq('company_id', company_id).eq('is_active', true),
+          client.from('products').select('*', { count: 'exact', head: true })
+            .eq('company_id', company_id).eq('is_active', true)
+            .lt('created_at', last30 + 'T00:00:00'),
+
           client.from('invoice_items').select('product_id, quantity, unit_price, discount_percent, products(name), invoices!inner(company_id, status, date)').eq('invoices.company_id', company_id).eq('invoices.status', 'confirmed').gte('invoices.date', monthStart).lte('invoices.date', today).limit(500),
-          // stock_active has no quantity_on_hand column — query stock_ledger and dedupe to latest row per (product, warehouse)
+
+          // For low stock count: stock_ledger ordered DESC, deduped to latest per (product, warehouse)
           client.from('stock_ledger').select('product_id, warehouse_id, running_qty, created_at, products(min_stock_level)').eq('company_id', company_id).order('created_at', { ascending: false }).limit(2000),
-          // amount_due is not a stored column — fetch overdue candidates and filter via payment_allocations below
+
           client.from('invoices').select('id, total_amount').eq('company_id', company_id).eq('status', 'confirmed').lt('due_date', today).limit(500),
-          client.from('invoices').select('date, total_amount').eq('company_id', company_id).eq('status', 'confirmed').gte('date', last30).order('date'),
+
+          // 7-day trend — sales
+          client.from('invoices').select('date, total_amount').eq('company_id', company_id).eq('status', 'confirmed').gte('date', last7).lte('date', today),
+          // 7-day trend — purchases
+          client.from('vendor_bills').select('date, total_amount').eq('company_id', company_id).eq('status', 'confirmed').gte('date', last7).lte('date', today),
+
+          // Recent inventory: latest 5 active products + a unit code (best-effort)
+          client.from('products').select('id, name, oe_number, sku, unit_id, units(code)')
+            .eq('company_id', company_id).eq('is_active', true)
+            .order('created_at', { ascending: false }).limit(5),
         ]);
 
-        const arTotal = (ar ?? []).reduce((s, r) => s + (Number(r.debit) - Number(r.credit)), 0);
-        const apTotal = (ap ?? []).reduce((s, r) => s + (Number(r.credit) - Number(r.debit)), 0);
-        const cash   = (bankRows ?? []).reduce((s, r) => s + (Number(r.debit) - Number(r.credit)), 0);
-
-        const todayCount  = (todayInvs ?? []).length;
-        const todayAmount = (todayInvs ?? []).reduce((s, r) => s + Number(r.total_amount ?? 0), 0);
+        const todayCount     = (todayInvs ?? []).length;
+        const todayAmount    = (todayInvs ?? []).reduce((s, r) => s + Number(r.total_amount ?? 0), 0);
+        const yestAmount     = (yestInvs ?? []).reduce((s, r) => s + Number(r.total_amount ?? 0), 0);
+        const todayPurchases = (todayBills ?? []).reduce((s, r) => s + Number(r.total_amount ?? 0), 0);
+        const yestPurchases  = (yestBills ?? []).reduce((s, r) => s + Number(r.total_amount ?? 0), 0);
 
         // Top products by revenue this month
         const prodRevenue: Record<string, { name: string; qty: number; rev: number }> = {};
@@ -2088,8 +2154,9 @@ export function createSupabaseAdapter(
         }
         const topProducts = Object.entries(prodRevenue).sort(([, a], [, b]) => b.rev - a.rev).slice(0, 5).map(([id, v]) => ({ product_id: id, name: v.name, qty: v.qty, revenue: v.rev }));
 
-        // Low stock count — rows are ordered by created_at DESC, dedupe to latest per (product, warehouse)
+        // Low stock count — rows DESC, dedupe to latest per (product, warehouse); also build current-qty map for recent inventory display
         const seenStock = new Set<string>();
+        const latestQtyByProduct: Record<string, number> = {};
         let lowStockCount = 0;
         for (const r of (lowStock ?? []) as { product_id: string | null; warehouse_id: string | null; running_qty: number | null; products: { min_stock_level: number | null } | null }[]) {
           const key = `${r.product_id}::${r.warehouse_id}`;
@@ -2098,15 +2165,27 @@ export function createSupabaseAdapter(
           const qty = Number(r.running_qty ?? 0);
           const min = Number(r.products?.min_stock_level ?? 0);
           if (min > 0 && qty <= min) lowStockCount++;
+          if (r.product_id) {
+            latestQtyByProduct[r.product_id] = (latestQtyByProduct[r.product_id] ?? 0) + qty;
+          }
         }
 
-        // Sales trend last 30 days
-        const salesTrend = (trendInvs ?? []).map((r: unknown) => {
-          const row = r as { date: string; total_amount: number };
-          return { date: row.date, amount: Number(row.total_amount ?? 0) };
-        });
+        // 7-day trend — build a date-keyed map then iterate days for a complete series
+        const salesByDate: Record<string, number> = {};
+        for (const r of (trendInvs ?? []) as { date: string; total_amount: number }[]) {
+          salesByDate[r.date] = (salesByDate[r.date] ?? 0) + Number(r.total_amount ?? 0);
+        }
+        const purchasesByDate: Record<string, number> = {};
+        for (const r of (trendBills ?? []) as { date: string; total_amount: number }[]) {
+          purchasesByDate[r.date] = (purchasesByDate[r.date] ?? 0) + Number(r.total_amount ?? 0);
+        }
+        const trend7d: { date: string; sales: number; purchases: number }[] = [];
+        for (let i = 6; i >= 0; i--) {
+          const d = new Date(todayDate.getTime() - i * 86_400_000).toISOString().slice(0, 10);
+          trend7d.push({ date: d, sales: salesByDate[d] ?? 0, purchases: purchasesByDate[d] ?? 0 });
+        }
 
-        // Overdue count: only invoices past due AND with a positive outstanding balance
+        // Overdue: confirmed invoices past due AND with positive outstanding
         let overdueCount = 0;
         const overdueRows = (overdueInvs ?? []) as { id: string; total_amount: number }[];
         if (overdueRows.length > 0) {
@@ -2125,17 +2204,37 @@ export function createSupabaseAdapter(
           ).length;
         }
 
+        // Recent inventory: map latest products + their current stock total
+        const recentInventory = ((recentProds ?? []) as unknown as { id: string; name: string; oe_number: string | null; sku: string; units: { code: string } | null }[]).map((p) => ({
+          product_id: p.id,
+          name: p.name,
+          oe_number: p.oe_number,
+          sku: p.sku,
+          unit_code: p.units?.code ?? 'PCS',
+          quantity: latestQtyByProduct[p.id] ?? 0,
+        }));
+
         return {
           today_sales_count: todayCount,
           today_sales_amount: todayAmount,
-          outstanding_ar: Math.max(0, arTotal),
-          outstanding_ap: Math.max(0, apTotal),
-          cash_and_bank: cash,
+          today_sales_amount_prev: yestAmount,
+          today_purchases_amount: todayPurchases,
+          today_purchases_amount_prev: yestPurchases,
+          inventory_value: Math.max(0, invNow),
+          inventory_value_prev: Math.max(0, invPrev),
+          sku_count: skuCountNow ?? 0,
+          sku_count_prev: skuCountPrev ?? 0,
+          outstanding_ar: Math.max(0, arNow),
+          outstanding_ar_prev: Math.max(0, arPrev),
+          outstanding_ap: Math.max(0, apNow),
+          outstanding_ap_prev: Math.max(0, apPrev),
+          cash_and_bank: cashNow,
           top_products: topProducts,
           top_customers: [],
           low_stock_count: lowStockCount,
           overdue_invoices_count: overdueCount,
-          sales_trend: salesTrend,
+          trend_7d: trend7d,
+          recent_inventory: recentInventory,
         };
       },
     },
