@@ -326,9 +326,11 @@ export function createSelfHostedAdapter(): DataAdapter {
     },
     // Phase 10
     systemHealth: {
-      check:              () => notImplemented('systemHealth.check'),
-      findMalformedJEs:   () => notImplemented('systemHealth.findMalformedJEs'),
-      repairVendorBillJE: () => notImplemented('systemHealth.repairVendorBillJE'),
+      check:               () => notImplemented('systemHealth.check'),
+      findMalformedJEs:    () => notImplemented('systemHealth.findMalformedJEs'),
+      repairVendorBillJE:  () => notImplemented('systemHealth.repairVendorBillJE'),
+      findArMismatches:    () => notImplemented('systemHealth.findArMismatches'),
+      findStockMismatches: () => notImplemented('systemHealth.findStockMismatches'),
     },
   };
 }

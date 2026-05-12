@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
-import type { InvariantResult, MalformedJE } from '@/data/adapter';
+import type { InvariantResult, MalformedJE, ArMismatch, StockMismatch } from '@/data/adapter';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -19,6 +19,8 @@ export default function SystemHealthPage() {
   const [asOf, setAsOf]     = useState(today);
   const [results, setResults] = useState<InvariantResult[]>([]);
   const [malformed, setMalformed] = useState<MalformedJE[]>([]);
+  const [arMismatches, setArMismatches] = useState<ArMismatch[]>([]);
+  const [stockMismatches, setStockMismatches] = useState<StockMismatch[]>([]);
   const [loading, setLoading] = useState(false);
   const [ran, setRan]         = useState(false);
 
@@ -28,15 +30,19 @@ export default function SystemHealthPage() {
     try {
       const data = await adapter.systemHealth.check(company_id, asOf);
       setResults(data);
-      // If the per-JE invariant fails, immediately fetch the list of malformed JEs so the
-      // user can drill in without a second click.
+      // Fan out drill-down fetches in parallel for any failing invariant that has one.
       const jeBal = data.find(r => r.invariant === 'JE_BAL');
-      if (jeBal && !jeBal.pass) {
-        const list = await adapter.systemHealth.findMalformedJEs(company_id, asOf);
-        setMalformed(list);
-      } else {
-        setMalformed([]);
-      }
+      const b1    = data.find(r => r.invariant === 'B1');
+      const e1    = data.find(r => r.invariant === 'E1');
+
+      const [jeList, arList, stockList] = await Promise.all([
+        jeBal && !jeBal.pass ? adapter.systemHealth.findMalformedJEs(company_id, asOf)   : Promise.resolve([] as MalformedJE[]),
+        b1    && !b1.pass    ? adapter.systemHealth.findArMismatches(company_id, asOf)   : Promise.resolve([] as ArMismatch[]),
+        e1    && !e1.pass    ? adapter.systemHealth.findStockMismatches(company_id, asOf): Promise.resolve([] as StockMismatch[]),
+      ]);
+      setMalformed(jeList);
+      setArMismatches(arList);
+      setStockMismatches(stockList);
       setRan(true);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -205,6 +211,105 @@ export default function SystemHealthPage() {
                   {repairMsg}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── B1 drill-down: per-customer AR drift ───────────────────── */}
+          {arMismatches.length > 0 && (
+            <div className="overflow-x-auto rounded-lg border border-red-200 bg-surface-card shadow-sm">
+              <div className="border-b border-red-200 bg-red-50 px-4 py-3">
+                <p className="font-semibold text-red-800">AR drift by customer ({arMismatches.length})</p>
+                <p className="mt-0.5 text-xs text-red-700">
+                  These customers have a difference between what the AR aging
+                  calc says they owe and what GL 1200 says. Common cause:
+                  an unlinked credit note, or an apply_advance allocation that
+                  pointed at a now-voided invoice. Click the customer name to
+                  inspect their statement.
+                </p>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-surface-subtle">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium text-ink-secondary">Customer</th>
+                    <th className="px-3 py-2 text-right font-medium text-ink-secondary">GL says (1200)</th>
+                    <th className="px-3 py-2 text-right font-medium text-ink-secondary">Aging calc</th>
+                    <th className="px-3 py-2 text-right font-medium text-ink-secondary">Δ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {arMismatches.map(r => (
+                    <tr key={r.contact_id ?? r.contact_name} className="hover:bg-surface-muted/50">
+                      <td className="px-3 py-2">
+                        {r.contact_id ? (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/contacts/customers/${r.contact_id}`)}
+                            className="text-brand-600 hover:underline"
+                          >
+                            {r.contact_name}
+                          </button>
+                        ) : (
+                          <span className="text-ink-tertiary">{r.contact_name}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-xs text-ink-secondary">{fmt(r.gl_balance)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-xs text-ink-primary">{fmt(r.aging_balance)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-xs font-semibold text-red-700">{fmt(r.difference)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* ── E1 drill-down: per-product stock value drift ───────────── */}
+          {stockMismatches.length > 0 && (
+            <div className="overflow-x-auto rounded-lg border border-amber-200 bg-surface-card shadow-sm">
+              <div className="border-b border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="font-semibold text-amber-800">Stock value drift by product ({stockMismatches.length})</p>
+                <p className="mt-0.5 text-xs text-amber-700">
+                  For each product, the latest "running qty × MAC" should
+                  equal the sum of all its stock_ledger movements. A drift
+                  usually means a stock row was written with a different
+                  unit cost than the GL entry (the discount-on-vendor-bill
+                  bug — now fixed for new bills). Click the product name
+                  to inspect its stock ledger.
+                </p>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-surface-subtle">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium text-ink-secondary">Product</th>
+                    <th className="px-3 py-2 text-left font-medium text-ink-secondary">SKU</th>
+                    <th className="px-3 py-2 text-right font-medium text-ink-secondary">Latest value (qty × MAC)</th>
+                    <th className="px-3 py-2 text-right font-medium text-ink-secondary">Txn-sum</th>
+                    <th className="px-3 py-2 text-right font-medium text-ink-secondary">Δ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {stockMismatches.map(r => (
+                    <tr key={r.product_id ?? r.sku} className="hover:bg-surface-muted/50">
+                      <td className="px-3 py-2">
+                        {r.product_id ? (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/products/${r.product_id}`)}
+                            className="text-brand-600 hover:underline"
+                          >
+                            {r.product_name}
+                          </button>
+                        ) : (
+                          <span className="text-ink-tertiary">{r.product_name}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-ink-secondary text-xs font-mono">{r.sku}</td>
+                      <td className="px-3 py-2 text-right font-mono text-xs text-ink-primary">{fmt(r.stock_value)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-xs text-ink-secondary">{fmt(r.stock_txn_sum)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-xs font-semibold text-amber-700">{fmt(r.difference)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
 

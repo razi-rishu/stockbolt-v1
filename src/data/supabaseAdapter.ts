@@ -3047,6 +3047,24 @@ export function createSupabaseAdapter(
         assertNoError(error as Error | null, 'systemHealth.repairVendorBillJE');
         return data as import('./adapter').RepairResult;
       },
+      async findArMismatches(company_id, as_of_date): Promise<import('./adapter').ArMismatch[]> {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)
+          ('find_ar_mismatches', {
+            p_company_id: company_id,
+            p_as_of_date: as_of_date ?? new Date().toISOString().slice(0, 10),
+          });
+        assertNoError(error as Error | null, 'systemHealth.findArMismatches');
+        return (data as import('./adapter').ArMismatch[]) ?? [];
+      },
+      async findStockMismatches(company_id, as_of_date): Promise<import('./adapter').StockMismatch[]> {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)
+          ('find_stock_mismatches', {
+            p_company_id: company_id,
+            p_as_of_date: as_of_date ?? new Date().toISOString().slice(0, 10),
+          });
+        assertNoError(error as Error | null, 'systemHealth.findStockMismatches');
+        return (data as import('./adapter').StockMismatch[]) ?? [];
+      },
     },
   };
 }

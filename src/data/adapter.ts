@@ -764,16 +764,35 @@ export interface RepairResult {
   new_body_credit: number;
 }
 
+/** One customer's drift between AR-aging calc and GL 1200 (for B1). */
+export interface ArMismatch {
+  contact_id: string;
+  contact_name: string;
+  gl_balance: number;     // net DR on 1200 for this contact
+  aging_balance: number;  // sum(invoices) - sum(allocations) - sum(CNs)
+  difference: number;
+}
+
+/** One product's drift between latest stock-value and its txn-sum (for E1). */
+export interface StockMismatch {
+  product_id: string;
+  product_name: string;
+  sku: string;
+  stock_value: number;   // sum(running_qty * MAC) latest per warehouse
+  stock_txn_sum: number; // sum(qty * direction * unit_cost) all rows
+  difference: number;
+}
+
 export interface SystemHealthAPI {
   check(company_id: string, as_of_date?: string): Promise<InvariantResult[]>;
-  /** Lists the specific JEs that fail the JE_BAL invariant (orphan / unbalanced / header-mismatch). */
+  /** Lists the specific JEs that fail the JE_BAL invariant. */
   findMalformedJEs(company_id: string, as_of_date?: string): Promise<MalformedJE[]>;
-  /**
-   * Surgical repair for a vendor_bill JE whose body is unbalanced because the
-   * goods-side DR rows were never posted (pre-Phase-12 confirm_vendor_bill bug).
-   * Idempotent — no-ops on an already-balanced JE.
-   */
+  /** Surgical repair for a vendor_bill JE whose body is unbalanced. */
   repairVendorBillJE(je_id: string): Promise<RepairResult>;
+  /** Per-customer AR drift table (for B1 failures). */
+  findArMismatches(company_id: string, as_of_date?: string): Promise<ArMismatch[]>;
+  /** Per-product stock value drift table (for E1 failures). */
+  findStockMismatches(company_id: string, as_of_date?: string): Promise<StockMismatch[]>;
 }
 
 // ── Phase 5 row types ─────────────────────────────────────────────────────────
