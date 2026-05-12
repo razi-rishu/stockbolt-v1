@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth';
 import { getAdapter } from '@/data/index';
 import { LanguageToggle } from '@/components/language-toggle';
+import { NotificationsBell } from '@/components/notifications-bell';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 interface NavItem {
@@ -54,14 +55,6 @@ function ChevronDownIcon() {
   return (
     <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
       <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 011.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-    </svg>
-  );
-}
-function BellIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
-      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
     </svg>
   );
 }
@@ -486,24 +479,6 @@ function SettingsMenu() {
         </div>
       )}
     </div>
-  );
-}
-
-// ── Notification bell — placeholder until Stage C (real notifications) ─────
-function NotificationsBell() {
-  const hasUnread = false; // wired in Stage C
-  return (
-    <button
-      type="button"
-      title="Notifications (coming soon)"
-      className="relative flex h-9 w-9 items-center justify-center rounded-full text-ink-secondary hover:bg-surface-muted hover:text-ink-primary"
-      aria-label="Notifications"
-    >
-      <BellIcon />
-      {hasUnread && (
-        <span className="absolute end-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
-      )}
-    </button>
   );
 }
 
