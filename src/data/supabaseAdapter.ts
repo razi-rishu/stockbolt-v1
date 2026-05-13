@@ -2182,7 +2182,7 @@ export function createSupabaseAdapter(
           client.from('vendor_bills').select('date, total_amount').eq('company_id', company_id).eq('status', 'confirmed').gte('date', last7).lte('date', today),
 
           // Recent inventory: latest 5 active products + a unit code (best-effort)
-          client.from('products').select('id, name, oe_number, sku, unit_id, units(code)')
+          client.from('products').select('id, name, oe_number, sku, unit_id, units_of_measure(code)')
             .eq('company_id', company_id).eq('is_active', true)
             .order('created_at', { ascending: false }).limit(5),
         ]);
@@ -2254,12 +2254,12 @@ export function createSupabaseAdapter(
         }
 
         // Recent inventory: map latest products + their current stock total
-        const recentInventory = ((recentProds ?? []) as unknown as { id: string; name: string; oe_number: string | null; sku: string; units: { code: string } | null }[]).map((p) => ({
+        const recentInventory = ((recentProds ?? []) as unknown as { id: string; name: string; oe_number: string | null; sku: string; units_of_measure: { code: string } | null }[]).map((p) => ({
           product_id: p.id,
           name: p.name,
           oe_number: p.oe_number,
           sku: p.sku,
-          unit_code: p.units?.code ?? 'PCS',
+          unit_code: p.units_of_measure?.code ?? 'PCS',
           quantity: latestQtyByProduct[p.id] ?? 0,
         }));
 
