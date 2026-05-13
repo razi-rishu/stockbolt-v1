@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom
 import { useAuthInit } from '@/hooks/use-auth-init';
 import { RequireAuth } from '@/components/require-auth';
 import { RequireOnboarded } from '@/components/require-onboarded';
+import { RequireNotOnboarded } from '@/components/require-not-onboarded';
 import { AppLayout } from '@/components/app-layout';
 import { ErrorBoundary } from '@/components/error-boundary';
 
@@ -163,7 +164,13 @@ function AppRoutes() {
 
         {/* ── Authenticated ────────────────────────────────────────── */}
         <Route element={<RequireAuth />}>
-          <Route path="/setup" element={<SetupWizardPage />} />
+          {/* /setup is only reachable when NOT yet onboarded; otherwise
+              bounce to /dashboard (avoids a one-frame flash of the wizard
+              on refresh and Rules-of-Hooks issues from an in-component
+              early return). */}
+          <Route element={<RequireNotOnboarded />}>
+            <Route path="/setup" element={<SetupWizardPage />} />
+          </Route>
 
           {/* ── Authenticated + onboarded (wrapped in AppLayout) ───── */}
           <Route element={<RequireOnboarded />}>

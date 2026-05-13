@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -89,18 +89,15 @@ function StepIndicator({ current, total }: { current: number; total: number }) {
 export default function SetupWizardPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { set_profile, set_onboarded, is_onboarded } = useAuthStore();
+  const { set_profile, set_onboarded } = useAuthStore();
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  // If the user is already onboarded, bounce them BEFORE the wizard renders.
-  // (Previously this used useEffect, which fires AFTER paint — causing a
-  // one-frame flash of the wizard on every refresh.) <Navigate> is processed
-  // during render by react-router, so nothing visible paints.
-  if (is_onboarded) {
-    return <Navigate to="/dashboard" replace />;
-  }
+  // The "already onboarded → /dashboard" redirect is handled at the routing
+  // level by RequireNotOnboarded (see src/components/require-not-onboarded.tsx).
+  // Doing it inside this component with an early return broke the Rules of
+  // Hooks (useForm below would be skipped on the redirect render).
 
   const {
     register,
