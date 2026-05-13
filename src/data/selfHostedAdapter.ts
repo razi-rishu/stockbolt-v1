@@ -196,6 +196,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       getOutstandingPOs:    () => notImplemented('reports.getOutstandingPOs'),
       getVATReturn:         () => notImplemented('reports.getVATReturn'),
       getAuditLog:          () => notImplemented('reports.getAuditLog'),
+      getEntityAuditLog:    () => notImplemented('reports.getEntityAuditLog'),
       getReversalTrail:     () => notImplemented('reports.getReversalTrail'),
       getCashFlow:          () => notImplemented('reports.getCashFlow'),
       getOwnerDashboard:    () => notImplemented('reports.getOwnerDashboard'),

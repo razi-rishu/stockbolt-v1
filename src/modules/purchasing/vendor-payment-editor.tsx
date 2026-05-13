@@ -8,6 +8,8 @@ import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { SearchableSelect } from '@/ui/searchable-select';
+import { AccountingPreview, buildVendorPaymentPreview } from '@/components/accounting-preview';
+import { ActivityLog } from '@/components/activity-log';
 import type { PaymentRow, ContactRow, BankAccountRow, VendorBillRow, OpenVendorBill, PaymentAllocationInsert, PaymentMethodRow } from '@/data/adapter';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -464,6 +466,20 @@ export default function VendorPaymentEditorPage() {
         );
       })()}
 
+      {/* Accounting preview — sanity check the JE before Confirm.
+           Only shown for drafts (new or existing) with a positive amount. */}
+      {isDraftLike && parseFloat(header.amount) > 0 && (() => {
+        const bank = bankAccounts.find(b => b.id === header.bank_account_id);
+        const lines = buildVendorPaymentPreview({
+          amount:             parseFloat(header.amount) || 0,
+          classification:     header.classification,
+          bank_account_name:  bank?.name ?? bank?.account_number ?? undefined,
+          allocated_total:    totalToApply,
+          payment_number:     existing?.payment_number,
+        });
+        return <AccountingPreview lines={lines} currency={header.currency || 'AED'} />;
+      })()}
+
       {!isNew && existing?.status !== 'draft' && existingAllocations.length > 0 && (
         <div className="rounded-card border border-border-subtle bg-surface-card">
           <div className="border-b border-border-subtle px-5 py-3">
@@ -491,6 +507,10 @@ export default function VendorPaymentEditorPage() {
           </div>
         </div>
       )}
+
+      {/* Activity log — every confirm/void writes an audit_logs row.
+           Hidden for new payments (nothing to show yet). */}
+      {!isNew && id && <ActivityLog entityType="payment" entityId={id} />}
     </div>
   );
 }

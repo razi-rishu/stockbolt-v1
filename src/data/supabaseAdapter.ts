@@ -1972,6 +1972,30 @@ export function createSupabaseAdapter(
         });
       },
 
+      async getEntityAuditLog(company_id, entity_type, entity_id, limit): Promise<AuditLogLine[]> {
+        // Per-document activity feed. Same shape as getAuditLog but
+        // filtered to a single (entity_type, entity_id).
+        const { data, error } = await client
+          .from('audit_logs')
+          .select('id, created_at, user_id, action, entity_type, entity_id, old_data, new_data, profiles(email)')
+          .eq('company_id', company_id)
+          .eq('entity_type', entity_type)
+          .eq('entity_id', entity_id)
+          .order('created_at', { ascending: false })
+          .limit(limit ?? 100);
+        assertNoError(error, 'getEntityAuditLog');
+        return (data ?? []).map(r => {
+          const profile = r.profiles as unknown as { email: string } | null;
+          return {
+            id: r.id, created_at: r.created_at as string,
+            user_id: r.user_id, user_email: profile?.email ?? r.user_id,
+            action: r.action, entity_type: r.entity_type, entity_id: r.entity_id,
+            old_values: r.old_data as Record<string, unknown> | null,
+            new_values: r.new_data as Record<string, unknown> | null,
+          };
+        });
+      },
+
       async getReversalTrail(company_id, from, to): Promise<ReversalTrailLine[]> {
         const { data, error } = await client
           .from('journal_entries')

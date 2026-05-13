@@ -9,6 +9,8 @@ import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { Modal } from '@/ui/modal';
+import { AccountingPreview, buildCustomerPaymentPreview } from '@/components/accounting-preview';
+import { ActivityLog } from '@/components/activity-log';
 import type { PaymentRow, BankAccountRow, ContactRow, OpenInvoice, PaymentAllocationInsert } from '@/data/adapter';
 
 function fmt(n: number) {
@@ -553,6 +555,21 @@ export default function PaymentEditorPage() {
         );
       })()}
 
+      {/* Accounting preview — shown for drafts (and new) so the user
+           can sanity-check the JE before clicking Confirm. Lives outside
+           the allocation panel so it shows even for advance/on_account. */}
+      {isDraftLike && parseFloat(header.amount) > 0 && (() => {
+        const bank = bankAccounts.find(b => b.id === header.bank_account_id);
+        const lines = buildCustomerPaymentPreview({
+          amount:             parseFloat(header.amount) || 0,
+          classification:     header.classification,
+          bank_account_name:  bank?.name,
+          allocated_total:    totalToApply,
+          payment_number:     existing?.payment_number,
+        });
+        return <AccountingPreview lines={lines} currency={header.currency || 'AED'} />;
+      })()}
+
       {/* Apply advance modal */}
       <Modal open={applyModal} onClose={() => setApplyModal(false)} title={t('payments.apply_advance')}>
         <div className="space-y-4">
@@ -584,6 +601,10 @@ export default function PaymentEditorPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Activity log — every confirm/void writes an audit_logs row.
+           Hidden for new payments (nothing to show yet). */}
+      {!isNew && id && <ActivityLog entityType="payment" entityId={id} />}
     </div>
   );
 }

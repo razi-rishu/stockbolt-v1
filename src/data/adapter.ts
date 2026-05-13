@@ -552,6 +552,11 @@ export interface ReportsAPI {
   getOutstandingPOs(company_id: string): Promise<OutstandingPOLine[]>;
   getVATReturn(company_id: string, from: string, to: string): Promise<VATReturn>;
   getAuditLog(company_id: string, params: { from?: string; to?: string; limit?: number }): Promise<AuditLogLine[]>;
+  /**
+   * Audit log entries for a specific document (entity_type, entity_id).
+   * Used by the per-document Activity tab on editors. Sorted newest first.
+   */
+  getEntityAuditLog(company_id: string, entity_type: string, entity_id: string, limit?: number): Promise<AuditLogLine[]>;
   getReversalTrail(company_id: string, from: string, to: string): Promise<ReversalTrailLine[]>;
   getCashFlow(company_id: string, from: string, to: string): Promise<CashFlowStatement>;
   getOwnerDashboard(company_id: string): Promise<OwnerDashboard>;
