@@ -7,7 +7,7 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Badge } from '@/ui/badge';
 import { Pagination, paginate } from '@/ui/pagination';
-import type { PurchaseOrderRow } from '@/data/adapter';
+import type { PurchaseOrderRow, ContactRow } from '@/data/adapter';
 
 const PAGE_SIZE = 50;
 
@@ -27,6 +27,12 @@ export default function PurchaseOrdersPage() {
     queryFn: () => getAdapter().purchaseOrders.list(company_id!),
     enabled: !!company_id,
   });
+  const { data: suppliers = [] } = useQuery<ContactRow[]>({
+    queryKey: ['contacts', company_id, 'supplier'],
+    queryFn: () => getAdapter().contacts.list(company_id!, 'supplier'),
+    enabled: !!company_id,
+  });
+  const supplierName = (id: string) => suppliers.find(s => s.id === id)?.name ?? `${id.slice(0, 8)}…`;
 
   const paged = paginate(orders, page, PAGE_SIZE);
 
@@ -57,7 +63,7 @@ export default function PurchaseOrdersPage() {
                 <tr key={po.id} className="border-b border-border-subtle last:border-0 hover:bg-surface-muted cursor-pointer"
                   onClick={() => navigate(`/purchasing/orders/${po.id}`)}>
                   <td className="px-4 py-3 font-mono text-xs text-brand-700">{po.po_number}</td>
-                  <td className="px-4 py-3 text-ink-primary">{po.supplier_id}</td>
+                  <td className="px-4 py-3 text-ink-primary">{supplierName(po.supplier_id)}</td>
                   <td className="px-4 py-3 text-ink-secondary">{po.date as string}</td>
                   <td className="px-4 py-3 text-end font-mono">{Number(po.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                   <td className="px-4 py-3 text-center">

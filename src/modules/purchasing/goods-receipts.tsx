@@ -5,7 +5,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Badge } from '@/ui/badge';
-import type { GoodsReceiptRow } from '@/data/adapter';
+import type { GoodsReceiptRow, ContactRow } from '@/data/adapter';
 
 const statusColor: Record<string, string> = {
   draft: 'muted', received: 'success', billed: 'brand', void: 'danger',
@@ -21,6 +21,12 @@ export default function GoodsReceiptsPage() {
     queryFn: () => getAdapter().goodsReceipts.list(company_id!),
     enabled: !!company_id,
   });
+  const { data: suppliers = [] } = useQuery<ContactRow[]>({
+    queryKey: ['contacts', company_id, 'supplier'],
+    queryFn: () => getAdapter().contacts.list(company_id!, 'supplier'),
+    enabled: !!company_id,
+  });
+  const supplierName = (id: string) => suppliers.find(s => s.id === id)?.name ?? `${id.slice(0, 8)}…`;
 
   return (
     <div className="space-y-4">
@@ -48,7 +54,7 @@ export default function GoodsReceiptsPage() {
                 <tr key={grn.id} className="border-b border-border-subtle last:border-0 hover:bg-surface-muted cursor-pointer"
                   onClick={() => navigate(`/purchasing/grns/${grn.id}`)}>
                   <td className="px-4 py-3 font-mono text-xs text-brand-700">{grn.grn_number}</td>
-                  <td className="px-4 py-3 text-ink-primary">{grn.supplier_id}</td>
+                  <td className="px-4 py-3 text-ink-primary">{supplierName(grn.supplier_id)}</td>
                   <td className="px-4 py-3 text-ink-secondary">{grn.date as string}</td>
                   <td className="px-4 py-3 text-center">
                     <Badge variant={statusColor[grn.status] as 'muted' | 'success' | 'brand' | 'danger'}>{grn.status}</Badge>

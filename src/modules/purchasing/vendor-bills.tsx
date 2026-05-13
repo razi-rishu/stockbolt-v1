@@ -7,7 +7,7 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Badge } from '@/ui/badge';
 import { Pagination, paginate } from '@/ui/pagination';
-import type { VendorBillRow } from '@/data/adapter';
+import type { VendorBillRow, ContactRow } from '@/data/adapter';
 
 const PAGE_SIZE = 50;
 
@@ -26,6 +26,15 @@ export default function VendorBillsPage() {
     queryFn: () => getAdapter().vendorBills.list(company_id!),
     enabled: !!company_id,
   });
+
+  // Suppliers — for resolving supplier_id → name on the row. Same cache
+  // key as other purchasing screens so this is usually a hit.
+  const { data: suppliers = [] } = useQuery<ContactRow[]>({
+    queryKey: ['contacts', company_id, 'supplier'],
+    queryFn: () => getAdapter().contacts.list(company_id!, 'supplier'),
+    enabled: !!company_id,
+  });
+  const supplierName = (id: string) => suppliers.find(s => s.id === id)?.name ?? `${id.slice(0, 8)}…`;
 
   const paged = paginate(bills, page, PAGE_SIZE);
 
@@ -57,7 +66,7 @@ export default function VendorBillsPage() {
                 <tr key={bill.id} className="border-b border-border-subtle last:border-0 hover:bg-surface-muted cursor-pointer"
                   onClick={() => navigate(`/purchasing/bills/${bill.id}`)}>
                   <td className="px-4 py-3 font-mono text-xs text-brand-700">{bill.bill_number}</td>
-                  <td className="px-4 py-3 text-ink-primary">{bill.supplier_id}</td>
+                  <td className="px-4 py-3 text-ink-primary">{supplierName(bill.supplier_id)}</td>
                   <td className="px-4 py-3 text-ink-secondary">{bill.date as string}</td>
                   <td className="px-4 py-3 text-ink-secondary">{(bill.due_date as string | null) ?? '—'}</td>
                   <td className="px-4 py-3 text-end font-mono">{Number(bill.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>

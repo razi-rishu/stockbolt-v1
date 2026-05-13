@@ -5,7 +5,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Badge } from '@/ui/badge';
-import type { PaymentRow } from '@/data/adapter';
+import type { PaymentRow, ContactRow } from '@/data/adapter';
 
 const statusColor: Record<string, string> = { draft: 'muted', confirmed: 'success', void: 'danger' };
 
@@ -39,6 +39,13 @@ export default function VendorPaymentsPage() {
     enabled: !!company_id,
   });
 
+  const { data: suppliers = [] } = useQuery<ContactRow[]>({
+    queryKey: ['contacts', company_id, 'supplier'],
+    queryFn: () => getAdapter().contacts.list(company_id!, 'supplier'),
+    enabled: !!company_id,
+  });
+  const supplierName = (id: string) => suppliers.find(s => s.id === id)?.name ?? `${id.slice(0, 8)}…`;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -67,7 +74,7 @@ export default function VendorPaymentsPage() {
                 <tr key={pmt.id} className="border-b border-border-subtle last:border-0 hover:bg-surface-muted cursor-pointer"
                   onClick={() => navigate(`/purchasing/payments/${pmt.id}`)}>
                   <td className="px-4 py-3 font-mono text-xs text-brand-700">{pmt.payment_number}</td>
-                  <td className="px-4 py-3 text-ink-primary">{pmt.contact_id}</td>
+                  <td className="px-4 py-3 text-ink-primary">{supplierName(pmt.contact_id)}</td>
                   <td className="px-4 py-3 text-ink-secondary">{pmt.date as string}</td>
                   <td className="px-4 py-3 text-end font-mono">{Number(pmt.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                   <td className="px-4 py-3 text-ink-secondary capitalize">{pmt.classification}</td>

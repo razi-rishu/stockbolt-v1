@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
-import type { DebitNoteRow } from '@/data/adapter';
+import type { DebitNoteRow, ContactRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -24,6 +24,12 @@ export default function DebitNotesPage() {
     queryFn:  () => getAdapter().debitNotes.list(company_id!),
     enabled:  !!company_id,
   });
+  const { data: suppliers = [] } = useQuery<ContactRow[]>({
+    queryKey: ['contacts', company_id, 'supplier'],
+    queryFn: () => getAdapter().contacts.list(company_id!, 'supplier'),
+    enabled: !!company_id,
+  });
+  const supplierName = (id: string) => suppliers.find(s => s.id === id)?.name ?? `${id.slice(0, 8)}…`;
 
   return (
     <div className="space-y-6">
@@ -61,7 +67,7 @@ export default function DebitNotesPage() {
                   <tr key={dn.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3 font-mono text-blue-600">{dn.debit_note_number}</td>
                     <td className="px-4 py-3 text-slate-600">{dn.date}</td>
-                    <td className="px-4 py-3 text-slate-500 font-mono text-xs">{dn.supplier_id.slice(0, 8)}…</td>
+                    <td className="px-4 py-3 text-slate-700">{supplierName(dn.supplier_id)}</td>
                     <td className="px-4 py-3 text-slate-600 capitalize">{dn.reason ?? '—'}</td>
                     <td className="px-4 py-3 text-right font-semibold text-slate-800">{fmt(dn.total_amount)}</td>
                     <td className="px-4 py-3"><StatusBadge status={dn.status} /></td>
