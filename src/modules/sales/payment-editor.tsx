@@ -169,29 +169,47 @@ export default function PaymentEditorPage() {
         }
       }
 
-      const num = isNew ? await getAdapter().payments.getNextNumber(company_id!) : existing!.payment_number;
-      return getAdapter().payments.create(
-        {
-          company_id:        company_id!,
-          payment_number:    num,
-          type:              'inbound',
-          contact_id:        header.contact_id,
-          date:              header.date,
-          amount:            parseFloat(header.amount),
-          currency:          header.currency,
-          exchange_rate:     1,
-          bank_account_id:   header.bank_account_id || null,
-          reference:         header.reference || null,
-          classification:    header.classification,
-          status:            'draft',
-          notes:             header.notes || null,
-          payment_method_id: null,
-          void_reason:       null,
-          voided_at:         null,
-          voided_by:         null,
-        },
-        allocations.length > 0 ? allocations : undefined,
-      );
+      if (isNew) {
+        const num = await getAdapter().payments.getNextNumber(company_id!);
+        return getAdapter().payments.create(
+          {
+            company_id:        company_id!,
+            payment_number:    num,
+            type:              'inbound',
+            contact_id:        header.contact_id,
+            date:              header.date,
+            amount:            parseFloat(header.amount),
+            currency:          header.currency,
+            exchange_rate:     1,
+            bank_account_id:   header.bank_account_id || null,
+            reference:         header.reference || null,
+            classification:    header.classification,
+            status:            'draft',
+            notes:             header.notes || null,
+            payment_method_id: null,
+            void_reason:       null,
+            voided_at:         null,
+            voided_by:         null,
+          },
+          allocations.length > 0 ? allocations : undefined,
+        );
+      }
+
+      // Existing draft: update via RPC. We don't rebuild allocations from
+      // the panel here (panel is only shown for isNew) — pass undefined
+      // so the RPC leaves existing allocations untouched. To change
+      // allocations on a draft, cancel and recreate, or use Apply Advance
+      // after confirm. (Future: surface allocation editing for drafts.)
+      return getAdapter().payments.update(id!, {
+        contact_id:        header.contact_id,
+        date:              header.date,
+        amount:            parseFloat(header.amount),
+        currency:          header.currency,
+        bank_account_id:   header.bank_account_id || null,
+        reference:         header.reference || null,
+        classification:    header.classification,
+        notes:             header.notes || null,
+      });
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['payments', company_id] });

@@ -1030,6 +1030,31 @@ export function createSupabaseAdapter(
         }
         return pmt!;
       },
+      async update(id, row, allocations): Promise<PaymentRow> {
+        // Atomic update + allocation replace via update_payment_draft RPC.
+        // RPC enforces status='draft', period-lock, doc/contact match,
+        // doc_type/payment_type match, and total <= amount.
+        // Semantics:
+        //   allocations === undefined → do NOT touch existing allocations
+        //   allocations === []        → clear all allocations
+        //   allocations === [...]     → replace with this set
+        const allocPayload =
+          allocations === undefined
+            ? null
+            : allocations.map(a => ({
+                doc_type:       a.doc_type,
+                doc_id:         a.doc_id,
+                amount_applied: a.amount_applied,
+              }));
+        const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)
+          ('update_payment_draft', {
+            p_payment_id:  id,
+            p_row:         row as Record<string, unknown>,
+            p_allocations: allocPayload,
+          });
+        assertNoError(error as Error | null, 'payments.update');
+        return data as PaymentRow;
+      },
       async confirm(payment_id): Promise<PaymentConfirmResult> {
         const { data, error } = await client.rpc('confirm_payment', { p_payment_id: payment_id });
         assertNoError(error, 'payments.confirm');
@@ -2460,6 +2485,29 @@ export function createSupabaseAdapter(
           assertNoError(aErr, 'vendorPayments.create allocations');
         }
         return pmt;
+      },
+      async update(id, row, allocations) {
+        // Same RPC as customer side — the RPC checks payment.type
+        // internally and validates doc_type accordingly.
+        // undefined → don't touch existing allocations.
+        // []        → clear all allocations.
+        // [...]     → replace.
+        const allocPayload =
+          allocations === undefined
+            ? null
+            : allocations.map(a => ({
+                doc_type:       a.doc_type,
+                doc_id:         a.doc_id,
+                amount_applied: a.amount_applied,
+              }));
+        const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)
+          ('update_payment_draft', {
+            p_payment_id:  id,
+            p_row:         row as Record<string, unknown>,
+            p_allocations: allocPayload,
+          });
+        assertNoError(error as Error | null, 'vendorPayments.update');
+        return data as PaymentRow;
       },
       async confirm(payment_id) {
         const { data, error } = await client.rpc('confirm_vendor_payment', { p_payment_id: payment_id });

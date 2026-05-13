@@ -155,29 +155,46 @@ export default function VendorPaymentEditorPage() {
         }
       }
 
-      const pmtNum = isNew ? await getAdapter().vendorPayments.getNextNumber(company_id!) : existing!.payment_number;
-      const row = {
-        company_id: company_id!, payment_number: pmtNum,
-        type: 'outbound' as const,
-        contact_id: header.contact_id,
-        date: header.date, amount: Number(header.amount),
-        currency: header.currency, exchange_rate: 1,
-        payment_method_id: header.payment_method_id || null,
-        bank_account_id: header.bank_account_id || null,
-        reference: header.reference || null,
-        classification: header.classification,
-        status: 'draft' as const,
-        void_reason: null, voided_at: null, voided_by: null,
-        notes: header.notes || null,
-      };
       if (isNew) {
+        const pmtNum = await getAdapter().vendorPayments.getNextNumber(company_id!);
+        const row = {
+          company_id: company_id!, payment_number: pmtNum,
+          type: 'outbound' as const,
+          contact_id: header.contact_id,
+          date: header.date, amount: Number(header.amount),
+          currency: header.currency, exchange_rate: 1,
+          payment_method_id: header.payment_method_id || null,
+          bank_account_id: header.bank_account_id || null,
+          reference: header.reference || null,
+          classification: header.classification,
+          status: 'draft' as const,
+          void_reason: null, voided_at: null, voided_by: null,
+          notes: header.notes || null,
+        };
         return getAdapter().vendorPayments.create(row, allocations.length > 0 ? allocations : undefined);
       }
-      return null;
+
+      // Existing draft: header-only update via RPC. Allocations are not
+      // rebuilt from the panel here (the panel only renders for isNew) —
+      // pass undefined so the RPC leaves existing allocations untouched.
+      // RPC enforces status='draft' server-side.
+      return getAdapter().vendorPayments.update(id!, {
+        contact_id:        header.contact_id,
+        date:              header.date,
+        amount:            Number(header.amount),
+        currency:          header.currency,
+        payment_method_id: header.payment_method_id || null,
+        bank_account_id:   header.bank_account_id || null,
+        reference:         header.reference || null,
+        classification:    header.classification,
+        notes:             header.notes || null,
+      });
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['vendor_payments', company_id] });
       qc.invalidateQueries({ queryKey: ['open_bills_for_supplier', company_id, header.contact_id] });
+      qc.invalidateQueries({ queryKey: ['vendor_payment', id] });
+      qc.invalidateQueries({ queryKey: ['vendor_payment_allocations', id] });
       if (isNew && data) navigate(`/purchasing/payments/${data.id}`);
     },
     onError: (e: Error) => setError(e.message),
@@ -204,7 +221,9 @@ export default function VendorPaymentEditorPage() {
   const usedAmount = allocations.reduce((s, a) => s + Number(a.amount_applied), 0);
   const available = (existing ? Number(existing.amount) : 0) - usedAmount;
 
-  const canEdit = isNew;
+  // Drafts are editable; confirmed/void are locked. The RPC (update_payment_draft)
+  // is the source of truth — it refuses anything that isn't status='draft'.
+  const canEdit = isNew || existing?.status === 'draft';
   const supplierOpts = suppliers.map(s => ({ value: s.id, label: s.name }));
   const bankOpts = [{ value: '', label: t('purchasing.select_bank') }, ...bankAccounts.map(b => ({ value: b.id, label: b.account_number ?? b.bank_name ?? b.id }))];
   const bankLabel = `${t('purchasing.bank_account')} *`;

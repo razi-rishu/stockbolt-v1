@@ -499,6 +499,12 @@ export interface PaymentsAPI {
   getById(id: string): Promise<PaymentRow | null>;
   getAllocations(payment_id: string): Promise<PaymentAllocationRow[]>;
   create(row: PaymentInsert, allocations?: PaymentAllocationInsert[]): Promise<PaymentRow>;
+  /**
+   * Update a DRAFT payment + replace its allocations atomically.
+   * Server-side guards: refuses if status != 'draft', refuses if any
+   * allocation doesn't belong to this contact, refuses if total > amount.
+   */
+  update(id: string, row: Partial<PaymentInsert>, allocations?: PaymentAllocationInsert[]): Promise<PaymentRow>;
   confirm(payment_id: string): Promise<PaymentConfirmResult>;
   applyAdvance(payment_id: string, invoice_id: string, amount: number): Promise<ApplyAdvanceResult>;
   void(payment_id: string, reason?: string): Promise<void>;
@@ -952,6 +958,12 @@ export interface VendorPaymentsAPI {
   getById(id: string): Promise<PaymentRow | null>;
   getAllocations(payment_id: string): Promise<PaymentAllocationRow[]>;
   create(row: PaymentInsert, allocations?: PaymentAllocationInsert[]): Promise<PaymentRow>;
+  /**
+   * Update a DRAFT vendor payment + replace its allocations atomically.
+   * Server-side guards: refuses if status != 'draft', refuses if any
+   * allocation doesn't belong to this supplier, refuses if total > amount.
+   */
+  update(id: string, row: Partial<PaymentInsert>, allocations?: PaymentAllocationInsert[]): Promise<PaymentRow>;
   confirm(payment_id: string): Promise<VendorPaymentConfirmResult>;
   applyAdvance(payment_id: string, bill_id: string, amount: number): Promise<ApplyVendorAdvanceResult>;
   getNextNumber(company_id: string): Promise<string>;
