@@ -277,6 +277,18 @@ export default function VendorPaymentEditorPage() {
         <span className="text-ink-tertiary">/</span>
         <h1 className="text-xl font-semibold text-ink-primary">{isNew ? t('purchasing.new_vp') : existing?.payment_number ?? '…'}</h1>
         {!isNew && <span className="rounded-pill bg-gray-100 px-2.5 py-0.5 text-xs capitalize text-gray-600">{existing?.status}</span>}
+        {!isNew && (() => {
+          const alloc = (existing as (PaymentRow & { allocation_status?: 'unallocated' | 'partial' | 'full' | null }) | null | undefined)?.allocation_status;
+          if (existing?.status !== 'confirmed' || !alloc) return null;
+          const map: Record<string, { label: string; cls: string }> = {
+            unallocated: { label: 'Advance',       cls: 'bg-purple-50 text-purple-700' },
+            partial:     { label: 'Partial',       cls: 'bg-amber-50 text-amber-700'   },
+            full:        { label: 'Fully applied', cls: 'bg-sky-50 text-sky-700'       },
+          };
+          const cfg = map[alloc];
+          if (!cfg) return null;
+          return <span className={`rounded-pill px-2.5 py-0.5 text-xs font-medium ${cfg.cls}`}>{cfg.label}</span>;
+        })()}
         <div className="ms-auto flex gap-2">
           <Button variant="ghost" size="sm" onClick={() => navigate('/purchasing/payments')}>{t('common.cancel')}</Button>
           {canEdit && (

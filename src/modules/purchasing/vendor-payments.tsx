@@ -9,14 +9,33 @@ import type { PaymentRow } from '@/data/adapter';
 
 const statusColor: Record<string, string> = { draft: 'muted', confirmed: 'success', void: 'danger' };
 
+// Type extension until Supabase types regenerate with the new
+// payments.allocation_status column (Phase 12.11).
+type AllocStatus = 'unallocated' | 'partial' | 'full' | null;
+type PaymentWithAlloc = PaymentRow & { allocation_status?: AllocStatus };
+
+function AllocationBadge({ status, alloc }: { status: string; alloc: AllocStatus }) {
+  if (status !== 'confirmed' || !alloc) return null;
+  const map: Record<string, { label: string; cls: string }> = {
+    unallocated: { label: 'Advance',       cls: 'bg-purple-50 text-purple-700' },
+    partial:     { label: 'Partial',       cls: 'bg-amber-50 text-amber-700'   },
+    full:        { label: 'Fully applied', cls: 'bg-sky-50 text-sky-700'       },
+  };
+  const cfg = map[alloc];
+  if (!cfg) return null;
+  return (
+    <span className={`ms-1 rounded-pill px-2 py-0.5 text-xs font-medium ${cfg.cls}`}>{cfg.label}</span>
+  );
+}
+
 export default function VendorPaymentsPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const navigate = useNavigate();
 
-  const { data: payments = [], isLoading } = useQuery<PaymentRow[]>({
+  const { data: payments = [], isLoading } = useQuery<PaymentWithAlloc[]>({
     queryKey: ['vendor_payments', company_id],
-    queryFn: () => getAdapter().vendorPayments.list(company_id!),
+    queryFn: () => getAdapter().vendorPayments.list(company_id!) as Promise<PaymentWithAlloc[]>,
     enabled: !!company_id,
   });
 
@@ -54,6 +73,7 @@ export default function VendorPaymentsPage() {
                   <td className="px-4 py-3 text-ink-secondary capitalize">{pmt.classification}</td>
                   <td className="px-4 py-3 text-center">
                     <Badge variant={statusColor[pmt.status] as 'muted' | 'success' | 'danger'}>{pmt.status}</Badge>
+                    <AllocationBadge status={pmt.status} alloc={pmt.allocation_status ?? null} />
                   </td>
                 </tr>
               ))}

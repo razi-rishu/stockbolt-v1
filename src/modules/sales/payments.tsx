@@ -10,6 +10,11 @@ import type { PaymentRow } from '@/data/adapter';
 
 const PAGE_SIZE = 50;
 
+// Type extension until the Supabase generated types pick up the new
+// payments.allocation_status column from Phase 12.11 migration.
+type AllocStatus = 'unallocated' | 'partial' | 'full' | null;
+type PaymentWithAlloc = PaymentRow & { allocation_status?: AllocStatus };
+
 function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -27,6 +32,25 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// Secondary badge: how much of a confirmed payment has actually been
+// applied. Hidden for non-confirmed states (draft/void) where it isn't
+// meaningful.
+function AllocationBadge({ status, alloc }: { status: string; alloc: AllocStatus }) {
+  if (status !== 'confirmed' || !alloc) return null;
+  const map: Record<string, { label: string; cls: string }> = {
+    unallocated: { label: 'Advance',    cls: 'bg-purple-50 text-purple-700' },
+    partial:     { label: 'Partial',    cls: 'bg-amber-50 text-amber-700'   },
+    full:        { label: 'Fully applied', cls: 'bg-sky-50 text-sky-700'    },
+  };
+  const cfg = map[alloc];
+  if (!cfg) return null;
+  return (
+    <span className={`ml-1 rounded-pill px-2 py-0.5 text-xs font-medium ${cfg.cls}`}>
+      {cfg.label}
+    </span>
+  );
+}
+
 export default function PaymentsPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
@@ -39,7 +63,7 @@ export default function PaymentsPage() {
     enabled: !!company_id,
   });
 
-  const paged = paginate(allPayments as PaymentRow[], page, PAGE_SIZE);
+  const paged = paginate(allPayments as PaymentWithAlloc[], page, PAGE_SIZE);
 
   return (
     <div className="space-y-4">
@@ -79,7 +103,10 @@ export default function PaymentsPage() {
                   <td className="px-4 py-2.5 text-end font-mono text-ink-primary">
                     {pmt.currency} {fmt(Number(pmt.amount))}
                   </td>
-                  <td className="px-4 py-2.5"><StatusBadge status={pmt.status} /></td>
+                  <td className="px-4 py-2.5">
+                    <StatusBadge status={pmt.status} />
+                    <AllocationBadge status={pmt.status} alloc={pmt.allocation_status ?? null} />
+                  </td>
                 </tr>
               ))}
             </tbody>
