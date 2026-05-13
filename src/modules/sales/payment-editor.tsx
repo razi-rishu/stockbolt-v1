@@ -56,6 +56,15 @@ export default function PaymentEditorPage() {
     enabled: !isNew && !!id,
   });
 
+  // Existing allocations — needed so drafts can be re-edited without losing
+  // the previous allocation rows. Confirmed payments also show this list
+  // (separate read-only section further down).
+  const { data: existingAllocations = [] } = useQuery({
+    queryKey: ['payment_allocations', id],
+    queryFn: () => getAdapter().payments.getAllocations(id!),
+    enabled: !isNew && !!id,
+  });
+
   // Open invoices (with computed outstanding) for the allocation panel and advance modal
   const [selectedContact, setSelectedContact] = useState('');
   const { data: openInvoices = [] } = useQuery<OpenInvoice[]>({
@@ -100,6 +109,23 @@ export default function PaymentEditorPage() {
     }
   }, [existing]);
 
+  // Pre-fill the apply panel from existing allocations on DRAFT mount.
+  // For confirmed/void payments the panel is hidden, so this is a no-op
+  // visually. We only do this once per draft load.
+  const [appliedSeed, setAppliedSeed] = useState(false);
+  useEffect(() => {
+    if (!appliedSeed && existing && existing.status === 'draft' && existingAllocations.length > 0) {
+      const seed: Record<string, string> = {};
+      for (const a of existingAllocations) {
+        if (a.doc_type === 'invoice') {
+          seed[a.doc_id] = Number(a.amount_applied).toFixed(2);
+        }
+      }
+      setApplyAmounts(seed);
+      setAppliedSeed(true);
+    }
+  }, [existing, existingAllocations, appliedSeed]);
+
   // FIFO auto-fill: when the payment Amount changes (or invoices load), distribute
   // the amount across open invoices oldest-first. Skip rows the user has already
   // manually overridden in this session.
@@ -125,10 +151,25 @@ export default function PaymentEditorPage() {
     return Object.values(applyAmounts).reduce((s, v) => s + (parseFloat(v) || 0), 0);
   }, [applyAmounts]);
 
-  const showAllocationPanel = isNew
+  // Panel renders for any editable payment (new or existing draft) with
+  // against_invoice classification, a chosen contact, and at least one
+  // open invoice. Confirmed/void payments hide the panel — they already
+  // have a separate read-only allocations section.
+  const isDraftLike = isNew || existing?.status === 'draft';
+  const showAllocationPanel = isDraftLike
     && header.classification === 'against_invoice'
     && !!header.contact_id
     && openInvoices.length > 0;
+
+  // Stale-allocation guard: an existing allocation may reference an
+  // invoice that's no longer in the open list (e.g. it was voided after
+  // the draft was saved). Surface a warning so the user knows those
+  // entries will be dropped on Save.
+  const staleAllocations = useMemo(() => {
+    if (!isDraftLike) return [];
+    const openIds = new Set(openInvoices.map(i => i.id));
+    return existingAllocations.filter(a => a.doc_type === 'invoice' && !openIds.has(a.doc_id));
+  }, [isDraftLike, existingAllocations, openInvoices]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -137,9 +178,10 @@ export default function PaymentEditorPage() {
       if (parseFloat(header.amount) <= 0) throw new Error('Amount must be greater than zero');
       if (!header.bank_account_id) throw new Error('Bank / cash account is required — every receipt must hit a real GL account');
 
-      // Build allocations from the panel inputs (only for against_invoice on a new draft)
+      // Build allocations from the panel inputs — for both new payments
+      // and existing drafts that are still in against_invoice mode.
       const allocations: PaymentAllocationInsert[] = [];
-      if (isNew && header.classification === 'against_invoice') {
+      if (isDraftLike && header.classification === 'against_invoice') {
         for (const [doc_id, raw] of Object.entries(applyAmounts)) {
           const amt = parseFloat(raw);
           if (isFinite(amt) && amt > 0) {
@@ -147,7 +189,11 @@ export default function PaymentEditorPage() {
             // invoice's current outstanding (would drive the invoice to a
             // negative outstanding and break AR aging + customer balance).
             const inv = openInvoices.find(i => i.id === doc_id);
-            if (inv && amt > inv.outstanding + 0.005) {
+            // Drop stale entries — applyAmounts can hold keys for invoices
+            // that aren't in the open list anymore (voided, fully paid by
+            // another payment, etc). The amber banner warns about this.
+            if (!inv) continue;
+            if (amt > inv.outstanding + 0.005) {
               throw new Error(
                 `Invoice ${inv.invoice_number}: applied ${amt.toFixed(2)} exceeds outstanding ${inv.outstanding.toFixed(2)}`,
               );
@@ -195,11 +241,15 @@ export default function PaymentEditorPage() {
         );
       }
 
-      // Existing draft: update via RPC. We don't rebuild allocations from
-      // the panel here (panel is only shown for isNew) — pass undefined
-      // so the RPC leaves existing allocations untouched. To change
-      // allocations on a draft, cancel and recreate, or use Apply Advance
-      // after confirm. (Future: surface allocation editing for drafts.)
+      // Existing draft: update via RPC, atomically replacing allocations.
+      // Allocation rules (RPC also enforces):
+      //   classification = against_invoice → send the panel's allocations
+      //     (may be empty — empty array means "no allocations, leftover
+      //     becomes a customer advance on confirm").
+      //   classification != against_invoice → send [] to clear any stale
+      //     allocations from a previous against_invoice session.
+      const updateAllocations =
+        header.classification === 'against_invoice' ? allocations : [];
       return getAdapter().payments.update(id!, {
         contact_id:        header.contact_id,
         date:              header.date,
@@ -209,10 +259,12 @@ export default function PaymentEditorPage() {
         reference:         header.reference || null,
         classification:    header.classification,
         notes:             header.notes || null,
-      });
+      }, updateAllocations);
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['payments', company_id] });
+      qc.invalidateQueries({ queryKey: ['payment', id] });
+      qc.invalidateQueries({ queryKey: ['payment_allocations', id] });
       qc.invalidateQueries({ queryKey: ['open_invoices', company_id, selectedContact] });
       if (isNew && data) navigate(`/sales/payments/${data.id}`);
     },
@@ -306,6 +358,14 @@ export default function PaymentEditorPage() {
 
       {error && (
         <div className="rounded-input bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>
+      )}
+
+      {staleAllocations.length > 0 && (
+        <div className="rounded-input bg-amber-50 px-4 py-2 text-sm text-amber-800">
+          <strong>Stale allocation{staleAllocations.length === 1 ? '' : 's'} detected.</strong>{' '}
+          {staleAllocations.length} previously-allocated invoice{staleAllocations.length === 1 ? ' is' : 's are'} no
+          longer in the open list (likely voided or fully paid by another payment). They will be dropped on Save.
+        </div>
       )}
 
       <div className="rounded-card border border-border-subtle bg-surface-card p-5">

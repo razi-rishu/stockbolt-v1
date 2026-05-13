@@ -46,7 +46,7 @@ export default function VendorPaymentEditorPage() {
     queryFn: () => getAdapter().vendorPayments.getById(id!),
     enabled: !isNew && !!id,
   });
-  const { data: allocations = [] } = useQuery({
+  const { data: existingAllocations = [] } = useQuery({
     queryKey: ['vendor_payment_allocations', id],
     queryFn: () => getAdapter().vendorPayments.getAllocations(id!),
     enabled: !isNew && !!id,
@@ -69,10 +69,13 @@ export default function VendorPaymentEditorPage() {
   // and a supplier is picked, we fetch their open bills, let the user split the
   // payment across them (FIFO auto-fill, per-row override), and on Save we
   // create payment_allocations rows along with the payment.
+  // Drafts (new or existing) can edit allocations. Confirmed payments hide
+  // the panel — they have a separate read-only allocations section.
+  const isDraftLike = isNew || existing?.status === 'draft';
   const { data: openBillsForPanel = [] } = useQuery<OpenVendorBill[]>({
     queryKey: ['open_bills_for_supplier', company_id, header.contact_id],
     queryFn: () => getAdapter().vendorBills.listOpenForSupplier(company_id!, header.contact_id),
-    enabled: !!company_id && !!header.contact_id && isNew,
+    enabled: !!company_id && !!header.contact_id && isDraftLike,
   });
   const [applyAmounts, setApplyAmounts] = useState<Record<string, string>>({});
   const totalToApply = useMemo(
@@ -80,8 +83,17 @@ export default function VendorPaymentEditorPage() {
     [applyAmounts],
   );
   const showAllocationPanel =
-    isNew && header.classification === 'against_invoice'
+    isDraftLike && header.classification === 'against_invoice'
     && !!header.contact_id && openBillsForPanel.length > 0;
+
+  // Stale allocations on existing drafts: a previously-allocated bill may
+  // have been voided or fully paid since the draft was last saved. Warn
+  // the user before save drops them.
+  const staleAllocations = useMemo(() => {
+    if (!isDraftLike) return [];
+    const openIds = new Set(openBillsForPanel.map(b => b.id));
+    return existingAllocations.filter(a => a.doc_type === 'vendor_bill' && !openIds.has(a.doc_id));
+  }, [isDraftLike, existingAllocations, openBillsForPanel]);
 
   function autoFillFIFO(amountStr: string, bills: OpenVendorBill[]) {
     const amt = parseFloat(amountStr);
@@ -110,6 +122,23 @@ export default function VendorPaymentEditorPage() {
     }
   }, [existing]);
 
+  // Pre-fill applyAmounts from existing allocations on a draft load. Only
+  // seeds once per draft so the user's edits during the session aren't
+  // clobbered. No-op for confirmed/void payments.
+  const [appliedSeed, setAppliedSeed] = useState(false);
+  useEffect(() => {
+    if (!appliedSeed && existing && existing.status === 'draft' && existingAllocations.length > 0) {
+      const seed: Record<string, string> = {};
+      for (const a of existingAllocations) {
+        if (a.doc_type === 'vendor_bill') {
+          seed[a.doc_id] = Number(a.amount_applied).toFixed(2);
+        }
+      }
+      setApplyAmounts(seed);
+      setAppliedSeed(true);
+    }
+  }, [existing, existingAllocations, appliedSeed]);
+
   useEffect(() => {
     if (applyModal && existing) {
       getAdapter().vendorBills.list(company_id!, 'confirmed')
@@ -124,9 +153,10 @@ export default function VendorPaymentEditorPage() {
       if (Number(header.amount) <= 0) throw new Error('Amount must be greater than zero');
       if (!header.bank_account_id) throw new Error('Bank / cash account is required — every payment must hit a real GL account');
 
-      // Build allocations from the panel (only for against_invoice on a new draft)
+      // Build allocations from the panel — for both new payments and
+      // existing drafts that are still in against_invoice mode.
       const allocations: PaymentAllocationInsert[] = [];
-      if (isNew && header.classification === 'against_invoice') {
+      if (isDraftLike && header.classification === 'against_invoice') {
         for (const [doc_id, raw] of Object.entries(applyAmounts)) {
           const amt = parseFloat(raw);
           if (isFinite(amt) && amt > 0) {
@@ -134,7 +164,10 @@ export default function VendorPaymentEditorPage() {
             // bill's current outstanding (would drive the bill to a
             // negative outstanding and break AP aging + supplier balance).
             const bill = openBillsForPanel.find(b => b.id === doc_id);
-            if (bill && amt > bill.outstanding + 0.005) {
+            // Drop stale entries (bill no longer in the open list).
+            // The amber banner already warns the user.
+            if (!bill) continue;
+            if (amt > bill.outstanding + 0.005) {
               throw new Error(
                 `Bill ${bill.bill_number}: applied ${amt.toFixed(2)} exceeds outstanding ${bill.outstanding.toFixed(2)}`,
               );
@@ -174,10 +207,12 @@ export default function VendorPaymentEditorPage() {
         return getAdapter().vendorPayments.create(row, allocations.length > 0 ? allocations : undefined);
       }
 
-      // Existing draft: header-only update via RPC. Allocations are not
-      // rebuilt from the panel here (the panel only renders for isNew) —
-      // pass undefined so the RPC leaves existing allocations untouched.
-      // RPC enforces status='draft' server-side.
+      // Existing draft: update via RPC and atomically replace allocations.
+      //   against_invoice → send the panel's allocations (may be empty).
+      //   advance/on_account → send [] to clear stale allocations from a
+      //     previous against_invoice session.
+      const updateAllocations =
+        header.classification === 'against_invoice' ? allocations : [];
       return getAdapter().vendorPayments.update(id!, {
         contact_id:        header.contact_id,
         date:              header.date,
@@ -188,7 +223,7 @@ export default function VendorPaymentEditorPage() {
         reference:         header.reference || null,
         classification:    header.classification,
         notes:             header.notes || null,
-      });
+      }, updateAllocations);
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['vendor_payments', company_id] });
@@ -218,7 +253,7 @@ export default function VendorPaymentEditorPage() {
     onError: (e: Error) => setError(e.message),
   });
 
-  const usedAmount = allocations.reduce((s, a) => s + Number(a.amount_applied), 0);
+  const usedAmount = existingAllocations.reduce((s, a) => s + Number(a.amount_applied), 0);
   const available = (existing ? Number(existing.amount) : 0) - usedAmount;
 
   // Drafts are editable; confirmed/void are locked. The RPC (update_payment_draft)
@@ -263,6 +298,14 @@ export default function VendorPaymentEditorPage() {
       </div>
 
       {error && <div className="rounded-input bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
+
+      {staleAllocations.length > 0 && (
+        <div className="rounded-input bg-amber-50 px-4 py-2 text-sm text-amber-800">
+          <strong>Stale allocation{staleAllocations.length === 1 ? '' : 's'} detected.</strong>{' '}
+          {staleAllocations.length} previously-allocated bill{staleAllocations.length === 1 ? ' is' : 's are'} no
+          longer in the open list (likely voided or fully paid by another payment). They will be dropped on Save.
+        </div>
+      )}
 
       {applyModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -409,7 +452,7 @@ export default function VendorPaymentEditorPage() {
         );
       })()}
 
-      {!isNew && allocations.length > 0 && (
+      {!isNew && existing?.status !== 'draft' && existingAllocations.length > 0 && (
         <div className="rounded-card border border-border-subtle bg-surface-card">
           <div className="border-b border-border-subtle px-5 py-3">
             <h2 className="text-sm font-semibold text-ink-primary">{t('purchasing.allocations')}</h2>
@@ -422,7 +465,7 @@ export default function VendorPaymentEditorPage() {
               </tr>
             </thead>
             <tbody>
-              {allocations.map(a => (
+              {existingAllocations.map(a => (
                 <tr key={a.id} className="border-b border-border-subtle last:border-0">
                   <td className="px-4 py-3 font-mono text-xs text-ink-secondary">{a.doc_id}</td>
                   <td className="px-4 py-3 text-end font-mono">{fmt(Number(a.amount_applied))}</td>
