@@ -1282,6 +1282,73 @@ export interface BankReconLine {
   running_balance:  number;
 }
 
+// ── Phase 12.12: Bank Reconciliation ─────────────────────────────────────
+export interface BankReconciliationRow {
+  id:                          string;
+  company_id:                  string;
+  bank_account_id:             string;
+  statement_end_date:          string;
+  statement_closing_balance:   number;
+  reconciled_book_balance:     number;
+  outstanding_amount:          number;
+  line_count:                  number;
+  notes:                       string | null;
+  status:                      'open' | 'locked';
+  created_at:                  string;
+  created_by:                  string | null;
+  locked_at:                   string | null;
+  locked_by:                   string | null;
+}
+
+/**
+ * A general_ledger line eligible for bank reconciliation:
+ * those posted to the bank account's COA, up to the statement end date.
+ */
+export interface ReconGlLine {
+  id:                  string;          // general_ledger.id
+  date:                string;
+  je_number:           string;
+  source_type:         string;
+  source_id:           string | null;
+  related_doc_type:    string | null;
+  related_doc_id:      string | null;
+  description:         string | null;
+  debit:               number;
+  credit:              number;
+  reconciliation_id:   string | null;
+}
+
+export interface BankReconciliationSaveInput {
+  company_id:                  string;
+  bank_account_id:             string;
+  statement_end_date:          string;
+  statement_closing_balance:   number;
+  gl_line_ids:                 string[];
+  notes?:                      string | null;
+  lock?:                       boolean;
+}
+
+export interface BankReconciliationsAPI {
+  /** List recon headers, optionally filtered by bank account. Most recent first. */
+  list(company_id: string, bank_account_id?: string): Promise<BankReconciliationRow[]>;
+  getById(id: string): Promise<BankReconciliationRow | null>;
+  /**
+   * GL lines on the bank account's COA up to the statement end date.
+   * Includes:
+   *   - all unreconciled lines (reconciliation_id IS NULL), and
+   *   - lines already reconciled UNDER THIS recon (so editing works)
+   * Caller can also opt into including all reconciled lines for an audit view.
+   */
+  listGlLines(
+    company_id: string,
+    bank_account_id: string,
+    up_to_date: string,
+    opts?: { reconciliation_id?: string; include_all_reconciled?: boolean }
+  ): Promise<ReconGlLine[]>;
+  save(input: BankReconciliationSaveInput): Promise<BankReconciliationRow>;
+  delete(id: string): Promise<void>;
+}
+
 // Phase 8 API interfaces
 export interface BankTransfersAPI {
   list(company_id: string, params?: { status?: string; date_from?: string; date_to?: string }): Promise<BankTransferRow[]>;
@@ -1375,4 +1442,6 @@ export interface DataAdapter {
   debitNotes: DebitNotesAPI;
   // Phase 10
   systemHealth: SystemHealthAPI;
+  // Phase 12.12: Bank Reconciliation
+  bankReconciliations: BankReconciliationsAPI;
 }

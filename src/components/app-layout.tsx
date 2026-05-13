@@ -158,6 +158,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
             { to: '/banking/expenses',     label: t('banking.expenses_title') },
             { to: '/banking/pdc-received', label: t('banking.pdc_received_title') },
             { to: '/banking/pdc-issued',   label: t('banking.pdc_issued_title') },
+            { to: '/banking/reconciliation', label: 'Bank Reconciliation' },
           ],
         },
       ],

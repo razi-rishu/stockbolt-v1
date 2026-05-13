@@ -100,6 +100,7 @@ const ExpensesPage                    = lazy(() => import('@/modules/banking/exp
 const ExpenseEditorPage               = lazy(() => import('@/modules/banking/expense-editor'));
 const PDCReceivedPage                 = lazy(() => import('@/modules/banking/pdc-received'));
 const PDCIssuedPage                   = lazy(() => import('@/modules/banking/pdc-issued'));
+const BankReconciliationPage          = lazy(() => import('@/modules/banking/bank-reconciliation'));
 
 // Phase 8 — Banking reports
 const DailyCashPage                   = lazy(() => import('@/modules/reports/daily-cash'));
@@ -256,6 +257,7 @@ function AppRoutes() {
               <Route path="/banking/expenses"                   element={<ExpensesPage />} />
               <Route path="/banking/pdc-received"               element={<PDCReceivedPage />} />
               <Route path="/banking/pdc-issued"                 element={<PDCIssuedPage />} />
+              <Route path="/banking/reconciliation"             element={<BankReconciliationPage />} />
 
               {/* Phase 8 — Banking reports */}
               <Route path="/reports/daily-cash"                 element={<DailyCashPage />} />

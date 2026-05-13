@@ -334,5 +334,13 @@ export function createSelfHostedAdapter(): DataAdapter {
       findArMismatches:    () => notImplemented('systemHealth.findArMismatches'),
       findStockMismatches: () => notImplemented('systemHealth.findStockMismatches'),
     },
+    // Phase 12.12: Bank Reconciliation
+    bankReconciliations: {
+      list:        () => notImplemented('bankReconciliations.list'),
+      getById:     () => notImplemented('bankReconciliations.getById'),
+      listGlLines: () => notImplemented('bankReconciliations.listGlLines'),
+      save:        () => notImplemented('bankReconciliations.save'),
+      delete:      () => notImplemented('bankReconciliations.delete'),
+    },
   };
 }

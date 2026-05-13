@@ -3114,5 +3114,137 @@ export function createSupabaseAdapter(
         return (data as import('./adapter').StockMismatch[]) ?? [];
       },
     },
+
+    // ── Phase 12.12: Bank Reconciliation ──────────────────────────────────────
+    bankReconciliations: {
+      async list(company_id, bank_account_id): Promise<import('./adapter').BankReconciliationRow[]> {
+        // Use raw client cast since bank_reconciliations isn't in the
+        // generated types yet (added in Phase 12.12 migration).
+        const c = client as unknown as {
+          from: (t: string) => {
+            select: (c: string) => {
+              eq: (k: string, v: unknown) => {
+                eq: (k: string, v: unknown) => { order: (col: string, opts: { ascending: boolean }) => Promise<{ data: unknown; error: unknown }> };
+                order: (col: string, opts: { ascending: boolean }) => Promise<{ data: unknown; error: unknown }>;
+              };
+            };
+          };
+        };
+        const base = c.from('bank_reconciliations').select('*').eq('company_id', company_id);
+        const q = bank_account_id ? base.eq('bank_account_id', bank_account_id) : base;
+        const { data, error } = await q.order('statement_end_date', { ascending: false });
+        assertNoError(error as Error | null, 'bankReconciliations.list');
+        return (data as import('./adapter').BankReconciliationRow[]) ?? [];
+      },
+
+      async getById(id): Promise<import('./adapter').BankReconciliationRow | null> {
+        const { data, error } = await (client.from as unknown as (t: string) => { select: (c: string) => { eq: (col: string, val: unknown) => { single: () => Promise<{ data: unknown; error: { code?: string } | null }> } } })('bank_reconciliations')
+          .select('*').eq('id', id).single();
+        if (error?.code === 'PGRST116') return null;
+        assertNoError(error as Error | null, 'bankReconciliations.getById');
+        return data as import('./adapter').BankReconciliationRow;
+      },
+
+      async listGlLines(company_id, bank_account_id, up_to_date, opts): Promise<import('./adapter').ReconGlLine[]> {
+        // Read general_ledger joined to journal_entries for je_number +
+        // source_type, filtered to the bank account's COA, dated <=
+        // statement end. By default we exclude lines reconciled under
+        // OTHER recons; lines reconciled under THIS recon (if editing)
+        // are included so the user sees their existing matches.
+        // The bank-account-to-COA lookup is done with a sub-select.
+        const includeAll = opts?.include_all_reconciled === true;
+        const reconId    = opts?.reconciliation_id ?? null;
+
+        // Step 1: get bank's COA id.
+        const { data: ba, error: baErr } = await (client.from as unknown as (t: string) => { select: (c: string) => { eq: (col: string, val: unknown) => { single: () => Promise<{ data: unknown; error: unknown }> } } })('bank_accounts')
+          .select('coa_account_id').eq('id', bank_account_id).single();
+        assertNoError(baErr as Error | null, 'bankReconciliations.listGlLines/bank lookup');
+        const coa = (ba as { coa_account_id: string } | null)?.coa_account_id;
+        if (!coa) throw new Error('Bank account has no GL account mapped');
+
+        // Step 2: pull GL lines on that COA up to the statement date.
+        const filters: Record<string, unknown> = {
+          company_id,
+          account_id: coa,
+        };
+        // We can't easily express "lte date" + optional "reconciliation_id IS NULL OR = X"
+        // through the typed client. Use the raw any-cast pattern (same as other
+        // dynamic queries elsewhere in this adapter).
+        const rawClient = client as unknown as {
+          from: (t: string) => {
+            select: (c: string) => {
+              match: (m: Record<string, unknown>) => {
+                lte: (col: string, val: string) => {
+                  order: (col: string, opts: { ascending: boolean }) => Promise<{ data: unknown; error: unknown }>;
+                };
+              };
+            };
+          };
+        };
+        const { data, error } = await rawClient
+          .from('general_ledger')
+          .select(`
+            id, date, debit, credit, description, source_type,
+            related_doc_type, related_doc_id, reconciliation_id,
+            journal_entries:journal_entry_id ( entry_number, source_type, source_id )
+          `)
+          .match(filters)
+          .lte('date', up_to_date)
+          .order('date', { ascending: true });
+        assertNoError(error as Error | null, 'bankReconciliations.listGlLines/gl select');
+
+        const rows = (data ?? []) as Array<{
+          id: string; date: string; debit: number; credit: number;
+          description: string | null;
+          source_type: string | null;
+          related_doc_type: string | null;
+          related_doc_id: string | null;
+          reconciliation_id: string | null;
+          journal_entries: { entry_number: string; source_type: string; source_id: string | null } | null;
+        }>;
+
+        return rows
+          .filter(r => {
+            if (includeAll) return true;
+            if (r.reconciliation_id === null) return true;
+            if (reconId && r.reconciliation_id === reconId) return true;
+            return false;
+          })
+          .map(r => ({
+            id:                 r.id,
+            date:               r.date,
+            je_number:          r.journal_entries?.entry_number ?? '',
+            source_type:        r.journal_entries?.source_type ?? r.source_type ?? '',
+            source_id:          r.journal_entries?.source_id ?? null,
+            related_doc_type:   r.related_doc_type,
+            related_doc_id:     r.related_doc_id,
+            description:        r.description,
+            debit:              Number(r.debit),
+            credit:             Number(r.credit),
+            reconciliation_id:  r.reconciliation_id,
+          }));
+      },
+
+      async save(input): Promise<import('./adapter').BankReconciliationRow> {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)
+          ('save_bank_reconciliation', {
+            p_company_id:                input.company_id,
+            p_bank_account_id:           input.bank_account_id,
+            p_statement_end_date:        input.statement_end_date,
+            p_statement_closing_balance: input.statement_closing_balance,
+            p_gl_line_ids:               input.gl_line_ids,
+            p_notes:                     input.notes ?? null,
+            p_lock:                      input.lock ?? false,
+          });
+        assertNoError(error as Error | null, 'bankReconciliations.save');
+        return data as import('./adapter').BankReconciliationRow;
+      },
+
+      async delete(id): Promise<void> {
+        const { error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)
+          ('delete_bank_reconciliation', { p_id: id });
+        assertNoError(error as Error | null, 'bankReconciliations.delete');
+      },
+    },
   };
 }
