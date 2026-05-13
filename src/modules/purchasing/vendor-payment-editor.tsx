@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -8,7 +8,7 @@ import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { SearchableSelect } from '@/ui/searchable-select';
-import type { PaymentRow, ContactRow, BankAccountRow, VendorBillRow, PaymentAllocationInsert, PaymentMethodRow } from '@/data/adapter';
+import type { PaymentRow, ContactRow, BankAccountRow, VendorBillRow, OpenVendorBill, PaymentAllocationInsert, PaymentMethodRow } from '@/data/adapter';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -64,6 +64,39 @@ export default function VendorPaymentEditorPage() {
   const [applyAmount, setApplyAmount] = useState('');
   const [openBills, setOpenBills] = useState<VendorBillRow[]>([]);
 
+  // ── Inline "Apply to Bills" panel state ──────────────────────────────────
+  // Mirrors the customer payment editor: when classification === 'against_invoice'
+  // and a supplier is picked, we fetch their open bills, let the user split the
+  // payment across them (FIFO auto-fill, per-row override), and on Save we
+  // create payment_allocations rows along with the payment.
+  const { data: openBillsForPanel = [] } = useQuery<OpenVendorBill[]>({
+    queryKey: ['open_bills_for_supplier', company_id, header.contact_id],
+    queryFn: () => getAdapter().vendorBills.listOpenForSupplier(company_id!, header.contact_id),
+    enabled: !!company_id && !!header.contact_id && isNew,
+  });
+  const [applyAmounts, setApplyAmounts] = useState<Record<string, string>>({});
+  const totalToApply = useMemo(
+    () => Object.values(applyAmounts).reduce((s, v) => s + (parseFloat(v) || 0), 0),
+    [applyAmounts],
+  );
+  const showAllocationPanel =
+    isNew && header.classification === 'against_invoice'
+    && !!header.contact_id && openBillsForPanel.length > 0;
+
+  function autoFillFIFO(amountStr: string, bills: OpenVendorBill[]) {
+    const amt = parseFloat(amountStr);
+    if (!isFinite(amt) || amt <= 0) { setApplyAmounts({}); return; }
+    let remaining = amt;
+    const next: Record<string, string> = {};
+    for (const b of bills) {
+      if (remaining <= 0.005) break;
+      const apply = Math.min(remaining, b.outstanding);
+      next[b.id] = apply.toFixed(2);
+      remaining -= apply;
+    }
+    setApplyAmounts(next);
+  }
+
   useEffect(() => {
     if (existing) {
       setHeader({
@@ -88,8 +121,30 @@ export default function VendorPaymentEditorPage() {
     mutationFn: async () => {
       if (!header.contact_id) throw new Error(t('purchasing.error_supplier_required'));
       if (!header.amount || isNaN(Number(header.amount))) throw new Error(t('purchasing.error_amount_required'));
-      const pmtNum = isNew ? await getAdapter().vendorPayments.getNextNumber(company_id!) : existing!.payment_number;
+
+      // Build allocations from the panel (only for against_invoice on a new draft)
       const allocations: PaymentAllocationInsert[] = [];
+      if (isNew && header.classification === 'against_invoice') {
+        for (const [doc_id, raw] of Object.entries(applyAmounts)) {
+          const amt = parseFloat(raw);
+          if (isFinite(amt) && amt > 0) {
+            allocations.push({
+              company_id: company_id!,
+              payment_id: '',                  // adapter fills with new payment id
+              doc_id,
+              doc_type: 'vendor_bill',
+              amount_applied: +amt.toFixed(2),
+            });
+          }
+        }
+        const totalAlloc = allocations.reduce((s, a) => s + a.amount_applied, 0);
+        const payAmt = parseFloat(header.amount);
+        if (totalAlloc > payAmt + 0.005) {
+          throw new Error(`Allocations (${totalAlloc.toFixed(2)}) exceed payment amount (${payAmt.toFixed(2)})`);
+        }
+      }
+
+      const pmtNum = isNew ? await getAdapter().vendorPayments.getNextNumber(company_id!) : existing!.payment_number;
       const row = {
         company_id: company_id!, payment_number: pmtNum,
         type: 'outbound' as const,
@@ -104,11 +159,14 @@ export default function VendorPaymentEditorPage() {
         void_reason: null, voided_at: null, voided_by: null,
         notes: header.notes || null,
       };
-      if (isNew) return getAdapter().vendorPayments.create(row, allocations);
+      if (isNew) {
+        return getAdapter().vendorPayments.create(row, allocations.length > 0 ? allocations : undefined);
+      }
       return null;
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['vendor_payments', company_id] });
+      qc.invalidateQueries({ queryKey: ['open_bills_for_supplier', company_id, header.contact_id] });
       if (isNew && data) navigate(`/purchasing/payments/${data.id}`);
     },
     onError: (e: Error) => setError(e.message),
@@ -205,7 +263,10 @@ export default function VendorPaymentEditorPage() {
               options={supplierOpts}
               value={header.contact_id}
               disabled={!canEdit}
-              onChange={(v) => setHeader(h => ({ ...h, contact_id: v }))}
+              onChange={(v) => {
+                setHeader(h => ({ ...h, contact_id: v }));
+                setApplyAmounts({}); // bill list will refetch; reset apply
+              }}
               placeholder={t('purchasing.select_supplier')}
               panelWidth={320}
             />
@@ -217,13 +278,105 @@ export default function VendorPaymentEditorPage() {
           <Input label={t('purchasing.date')} type="date" required value={header.date}
             disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, date: e.target.value }))} />
           <Input label={t('purchasing.amount')} type="number" required value={header.amount}
-            disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, amount: e.target.value }))} />
+            disabled={!canEdit} onChange={e => {
+              const v = e.target.value;
+              setHeader(h => ({ ...h, amount: v }));
+              if (isNew && header.classification === 'against_invoice' && header.contact_id) {
+                autoFillFIFO(v, openBillsForPanel);
+              }
+            }} />
           <Select label={t('purchasing.classification')} options={classOpts} value={header.classification}
-            disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, classification: e.target.value as 'against_invoice' | 'advance' | 'on_account' }))} />
+            disabled={!canEdit} onChange={e => {
+              const v = e.target.value as 'against_invoice' | 'advance' | 'on_account';
+              setHeader(h => ({ ...h, classification: v }));
+              if (v !== 'against_invoice') setApplyAmounts({});
+              else if (header.amount) autoFillFIFO(header.amount, openBillsForPanel);
+            }} />
           <Input label={t('purchasing.reference')} value={header.reference}
             disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, reference: e.target.value }))} />
         </div>
       </div>
+
+      {/* ── Apply to Bills panel ─────────────────────────────────────────
+           Shown only on a NEW draft when classification is "against_invoice"
+           and the chosen supplier has open bills. Auto-fills oldest-first
+           when the payment Amount changes; user can override per row. */}
+      {showAllocationPanel && (() => {
+        const payAmt = parseFloat(header.amount) || 0;
+        const difference = +(payAmt - totalToApply).toFixed(2);
+        return (
+          <div className="rounded-card border border-border-subtle bg-surface-card">
+            <div className="border-b border-border-subtle px-5 py-3">
+              <h2 className="text-sm font-semibold text-ink-primary">Apply to Bills</h2>
+              <p className="mt-0.5 text-xs text-ink-tertiary">
+                Distribute the payment across {openBillsForPanel.length} open bill{openBillsForPanel.length === 1 ? '' : 's'}. Oldest first by default — edit any row to override.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
+                    <th className="px-4 py-2 text-start font-medium">Bill #</th>
+                    <th className="px-4 py-2 text-start font-medium">Date</th>
+                    <th className="px-4 py-2 text-end font-medium">Total</th>
+                    <th className="px-4 py-2 text-end font-medium">Outstanding</th>
+                    <th className="px-4 py-2 text-end font-medium w-32">Apply</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {openBillsForPanel.map((bill) => {
+                    const applyVal = applyAmounts[bill.id] ?? '';
+                    const applyNum = parseFloat(applyVal) || 0;
+                    const overApplied = applyNum > bill.outstanding + 0.005;
+                    return (
+                      <tr key={bill.id} className="border-b border-border-subtle last:border-0">
+                        <td className="px-4 py-2 font-mono text-xs text-ink-primary">{bill.bill_number}</td>
+                        <td className="px-4 py-2 text-ink-secondary">{bill.date as unknown as string}</td>
+                        <td className="px-4 py-2 text-end font-mono text-ink-secondary">{fmt(Number(bill.total_amount))}</td>
+                        <td className="px-4 py-2 text-end font-mono text-ink-primary">{fmt(bill.outstanding)}</td>
+                        <td className="px-4 py-2">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={applyVal}
+                            placeholder="0.00"
+                            className={`w-full rounded border bg-surface-subtle px-2 py-1 text-end text-xs ${overApplied ? 'border-red-400 text-red-700' : 'border-border-strong text-ink-primary'}`}
+                            onChange={(e) => setApplyAmounts(prev => ({ ...prev, [bill.id]: e.target.value }))}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="border-t border-border-subtle px-5 py-3">
+              <div className="ms-auto w-72 space-y-1 text-sm">
+                <div className="flex justify-between text-ink-secondary">
+                  <span>Payment amount</span>
+                  <span className="font-mono">{fmt(payAmt)}</span>
+                </div>
+                <div className="flex justify-between text-ink-secondary">
+                  <span>Total to apply</span>
+                  <span className="font-mono">{fmt(totalToApply)}</span>
+                </div>
+                <div className={`flex justify-between font-semibold ${
+                  difference < 0 ? 'text-red-600' : difference > 0 ? 'text-amber-600' : 'text-green-700'
+                }`}>
+                  <span>{difference < 0 ? 'Over-applied' : difference > 0 ? 'Unallocated (advance)' : 'Fully allocated'}</span>
+                  <span className="font-mono">{fmt(Math.abs(difference))}</span>
+                </div>
+                {difference > 0 && (
+                  <p className="pt-1 text-xs text-ink-tertiary">
+                    The unallocated portion will sit as a vendor advance and can be applied to future bills.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {!isNew && allocations.length > 0 && (
         <div className="rounded-card border border-border-subtle bg-surface-card">
