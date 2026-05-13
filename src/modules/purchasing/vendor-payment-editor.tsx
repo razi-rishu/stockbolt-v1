@@ -121,6 +121,8 @@ export default function VendorPaymentEditorPage() {
     mutationFn: async () => {
       if (!header.contact_id) throw new Error(t('purchasing.error_supplier_required'));
       if (!header.amount || isNaN(Number(header.amount))) throw new Error(t('purchasing.error_amount_required'));
+      if (Number(header.amount) <= 0) throw new Error('Amount must be greater than zero');
+      if (!header.bank_account_id) throw new Error('Bank / cash account is required — every payment must hit a real GL account');
 
       // Build allocations from the panel (only for against_invoice on a new draft)
       const allocations: PaymentAllocationInsert[] = [];
@@ -196,6 +198,7 @@ export default function VendorPaymentEditorPage() {
   const canEdit = isNew;
   const supplierOpts = suppliers.map(s => ({ value: s.id, label: s.name }));
   const bankOpts = [{ value: '', label: t('purchasing.select_bank') }, ...bankAccounts.map(b => ({ value: b.id, label: b.account_number ?? b.bank_name ?? b.id }))];
+  const bankLabel = `${t('purchasing.bank_account')} *`;
   const methodOpts = [{ value: '', label: '—' }, ...paymentMethods.map(m => ({ value: m.id, label: m.name }))];
   const classOpts = [
     { value: 'against_invoice', label: t('purchasing.against_invoice') },
@@ -271,7 +274,7 @@ export default function VendorPaymentEditorPage() {
               panelWidth={320}
             />
           </div>
-          <Select label={t('purchasing.bank_account')} options={bankOpts} value={header.bank_account_id}
+          <Select label={bankLabel} required options={bankOpts} value={header.bank_account_id}
             disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, bank_account_id: e.target.value }))} />
           <Select label={t('purchasing.payment_method')} options={methodOpts} value={header.payment_method_id}
             disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, payment_method_id: e.target.value }))} />

@@ -134,6 +134,8 @@ export default function PaymentEditorPage() {
     mutationFn: async () => {
       if (!header.contact_id) throw new Error(t('payments.error_contact_required'));
       if (!header.amount || isNaN(parseFloat(header.amount))) throw new Error(t('payments.error_amount_required'));
+      if (parseFloat(header.amount) <= 0) throw new Error('Amount must be greater than zero');
+      if (!header.bank_account_id) throw new Error('Bank / cash account is required — every receipt must hit a real GL account');
 
       // Build allocations from the panel inputs (only for against_invoice on a new draft)
       const allocations: PaymentAllocationInsert[] = [];
@@ -327,7 +329,8 @@ export default function PaymentEditorPage() {
             }}
           />
           <Select
-            label={t('payments.bank_account')}
+            label={`${t('payments.bank_account')} *`}
+            required
             options={bankOpts}
             value={header.bank_account_id}
             disabled={!canEdit || isVoid}
