@@ -314,7 +314,13 @@ function AppRoutes() {
 export default function App() {
   return (
     <ErrorBoundary>
-      <BrowserRouter>
+      {/*
+        Opt into v7 behavior NOW so the console-warning noise goes away.
+        Both flags are safe — we already render under React 18 with
+        Suspense for code-splitting, and our routes are all absolute,
+        so the relative-splat-path change is a no-op for us.
+      */}
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AppRoutes />
       </BrowserRouter>
     </ErrorBoundary>
