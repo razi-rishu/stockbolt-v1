@@ -62,6 +62,10 @@ export default function BankTransferEditorPage() {
       if (!fromAccountId || !toAccountId || !amount || fromAccountId === toAccountId) {
         throw new Error(t('banking.error_transfer_invalid'));
       }
+      const amt = parseFloat(amount);
+      if (!isFinite(amt) || amt <= 0) {
+        throw new Error('Amount must be greater than zero');
+      }
       const payload = {
         company_id:      company_id!,
         transfer_number: nextNumber ?? 'TRF-DRAFT',

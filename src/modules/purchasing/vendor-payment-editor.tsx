@@ -130,6 +130,15 @@ export default function VendorPaymentEditorPage() {
         for (const [doc_id, raw] of Object.entries(applyAmounts)) {
           const amt = parseFloat(raw);
           if (isFinite(amt) && amt > 0) {
+            // Per-row over-allocation guard — cannot apply more than the
+            // bill's current outstanding (would drive the bill to a
+            // negative outstanding and break AP aging + supplier balance).
+            const bill = openBillsForPanel.find(b => b.id === doc_id);
+            if (bill && amt > bill.outstanding + 0.005) {
+              throw new Error(
+                `Bill ${bill.bill_number}: applied ${amt.toFixed(2)} exceeds outstanding ${bill.outstanding.toFixed(2)}`,
+              );
+            }
             allocations.push({
               company_id: company_id!,
               payment_id: '',                  // adapter fills with new payment id

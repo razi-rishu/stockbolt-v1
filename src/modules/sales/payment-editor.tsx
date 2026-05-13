@@ -143,6 +143,15 @@ export default function PaymentEditorPage() {
         for (const [doc_id, raw] of Object.entries(applyAmounts)) {
           const amt = parseFloat(raw);
           if (isFinite(amt) && amt > 0) {
+            // Per-row over-allocation guard — cannot apply more than the
+            // invoice's current outstanding (would drive the invoice to a
+            // negative outstanding and break AR aging + customer balance).
+            const inv = openInvoices.find(i => i.id === doc_id);
+            if (inv && amt > inv.outstanding + 0.005) {
+              throw new Error(
+                `Invoice ${inv.invoice_number}: applied ${amt.toFixed(2)} exceeds outstanding ${inv.outstanding.toFixed(2)}`,
+              );
+            }
             allocations.push({
               company_id:     company_id!,
               payment_id:     '', // adapter fills in the new payment id

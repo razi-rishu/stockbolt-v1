@@ -81,6 +81,14 @@ export default function ExpenseEditorPage() {
       if (!expenseAccountId || !paidFromId || !amount || !description) {
         throw new Error(t('banking.error_expense_invalid'));
       }
+      const amt = parseFloat(amount);
+      if (!isFinite(amt) || amt <= 0) {
+        throw new Error('Amount must be greater than zero');
+      }
+      const tax = parseFloat(taxAmount || '0');
+      if (!isFinite(tax) || tax < 0) {
+        throw new Error('Tax amount cannot be negative');
+      }
       const payload = {
         company_id:           company_id!,
         expense_number:       nextNumber ?? 'EXP-DRAFT',
