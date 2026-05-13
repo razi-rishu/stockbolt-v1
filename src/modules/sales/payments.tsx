@@ -51,6 +51,18 @@ function AllocationBadge({ status, alloc }: { status: string; alloc: AllocStatus
   );
 }
 
+// Reconciled badge: shown when the payment's bank-account GL line is
+// stamped with a reconciliation_id (Batch C). Only meaningful for
+// confirmed payments (drafts haven't posted GL yet).
+function ReconciledBadge({ reconciled, status }: { reconciled: boolean; status: string }) {
+  if (!reconciled || status !== 'confirmed') return null;
+  return (
+    <span className="ml-1 rounded-pill bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+      Reconciled
+    </span>
+  );
+}
+
 export default function PaymentsPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
@@ -62,6 +74,15 @@ export default function PaymentsPage() {
     queryFn: () => getAdapter().payments.list(company_id!, 'inbound'),
     enabled: !!company_id,
   });
+
+  // IDs of payments that have been reconciled against a bank statement
+  // (Batch C). Cheap single-query Set lookup avoids per-row joins.
+  const { data: reconciledIds = [] } = useQuery({
+    queryKey: ['reconciled_payment_ids', company_id],
+    queryFn: () => getAdapter().bankReconciliations.listReconciledPaymentIds(company_id!),
+    enabled: !!company_id,
+  });
+  const reconciledSet = new Set(reconciledIds);
 
   const paged = paginate(allPayments as PaymentWithAlloc[], page, PAGE_SIZE);
 
@@ -106,6 +127,7 @@ export default function PaymentsPage() {
                   <td className="px-4 py-2.5">
                     <StatusBadge status={pmt.status} />
                     <AllocationBadge status={pmt.status} alloc={pmt.allocation_status ?? null} />
+                    <ReconciledBadge status={pmt.status} reconciled={reconciledSet.has(pmt.id)} />
                   </td>
                 </tr>
               ))}

@@ -114,6 +114,8 @@ export default function BankReconciliationPage() {
       setEditingReconId(recon.id);
       qc.invalidateQueries({ queryKey: ['bank_recons', company_id, bankAccountId] });
       qc.invalidateQueries({ queryKey: ['bank_recon_gl_lines', company_id, bankAccountId, statementDate] });
+      // Invalidate the Reconciled-badge cache used by payment lists/editors
+      qc.invalidateQueries({ queryKey: ['reconciled_payment_ids', company_id] });
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -127,6 +129,7 @@ export default function BankReconciliationPage() {
       setNotes('');
       qc.invalidateQueries({ queryKey: ['bank_recons', company_id, bankAccountId] });
       qc.invalidateQueries({ queryKey: ['bank_recon_gl_lines', company_id, bankAccountId, statementDate] });
+      qc.invalidateQueries({ queryKey: ['reconciled_payment_ids', company_id] });
     },
     onError: (e: Error) => setError(e.message),
   });

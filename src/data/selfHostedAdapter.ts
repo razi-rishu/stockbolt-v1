@@ -337,11 +337,12 @@ export function createSelfHostedAdapter(): DataAdapter {
     },
     // Phase 12.12: Bank Reconciliation
     bankReconciliations: {
-      list:        () => notImplemented('bankReconciliations.list'),
-      getById:     () => notImplemented('bankReconciliations.getById'),
-      listGlLines: () => notImplemented('bankReconciliations.listGlLines'),
-      save:        () => notImplemented('bankReconciliations.save'),
-      delete:      () => notImplemented('bankReconciliations.delete'),
+      list:                       () => notImplemented('bankReconciliations.list'),
+      getById:                    () => notImplemented('bankReconciliations.getById'),
+      listGlLines:                () => notImplemented('bankReconciliations.listGlLines'),
+      save:                       () => notImplemented('bankReconciliations.save'),
+      delete:                     () => notImplemented('bankReconciliations.delete'),
+      listReconciledPaymentIds:   () => notImplemented('bankReconciliations.listReconciledPaymentIds'),
     },
   };
 }

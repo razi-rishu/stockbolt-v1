@@ -28,6 +28,17 @@ function AllocationBadge({ status, alloc }: { status: string; alloc: AllocStatus
   );
 }
 
+// Reconciled badge — Batch C. Shown when the vendor payment's bank GL
+// line is matched against a bank statement.
+function ReconciledBadge({ reconciled, status }: { reconciled: boolean; status: string }) {
+  if (!reconciled || status !== 'confirmed') return null;
+  return (
+    <span className="ms-1 rounded-pill bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+      Reconciled
+    </span>
+  );
+}
+
 export default function VendorPaymentsPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
@@ -45,6 +56,14 @@ export default function VendorPaymentsPage() {
     enabled: !!company_id,
   });
   const supplierName = (id: string) => suppliers.find(s => s.id === id)?.name ?? `${id.slice(0, 8)}…`;
+
+  // Reconciled-payment IDs (Batch C).
+  const { data: reconciledIds = [] } = useQuery({
+    queryKey: ['reconciled_payment_ids', company_id],
+    queryFn: () => getAdapter().bankReconciliations.listReconciledPaymentIds(company_id!),
+    enabled: !!company_id,
+  });
+  const reconciledSet = new Set(reconciledIds);
 
   return (
     <div className="space-y-4">
@@ -81,6 +100,7 @@ export default function VendorPaymentsPage() {
                   <td className="px-4 py-3 text-center">
                     <Badge variant={statusColor[pmt.status] as 'muted' | 'success' | 'danger'}>{pmt.status}</Badge>
                     <AllocationBadge status={pmt.status} alloc={pmt.allocation_status ?? null} />
+                    <ReconciledBadge status={pmt.status} reconciled={reconciledSet.has(pmt.id)} />
                   </td>
                 </tr>
               ))}

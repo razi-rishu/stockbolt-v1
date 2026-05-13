@@ -3269,6 +3269,37 @@ export function createSupabaseAdapter(
           ('delete_bank_reconciliation', { p_id: id });
         assertNoError(error as Error | null, 'bankReconciliations.delete');
       },
+
+      async listReconciledPaymentIds(company_id): Promise<string[]> {
+        // Pulls the set of payment IDs that have at least one
+        // general_ledger line stamped with a reconciliation_id.
+        // related_doc_type='payment' covers BOTH customer (inbound)
+        // and vendor (outbound) payments since they share the
+        // payments table and the confirm_* RPCs both write
+        // related_doc_type='payment' on the bank-account GL line.
+        const c = client as unknown as {
+          from: (t: string) => {
+            select: (c: string) => {
+              eq: (k: string, v: unknown) => {
+                eq: (k: string, v: unknown) => {
+                  not: (k: string, op: string, v: unknown) => Promise<{ data: unknown; error: unknown }>;
+                };
+              };
+            };
+          };
+        };
+        const { data, error } = await c
+          .from('general_ledger')
+          .select('related_doc_id')
+          .eq('company_id', company_id)
+          .eq('related_doc_type', 'payment')
+          .not('reconciliation_id', 'is', null);
+        assertNoError(error as Error | null, 'bankReconciliations.listReconciledPaymentIds');
+        const ids = ((data ?? []) as Array<{ related_doc_id: string | null }>)
+          .map(r => r.related_doc_id)
+          .filter((id): id is string => !!id);
+        return Array.from(new Set(ids));
+      },
     },
   };
 }

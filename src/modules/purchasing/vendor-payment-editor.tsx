@@ -54,6 +54,15 @@ export default function VendorPaymentEditorPage() {
     enabled: !isNew && !!id,
   });
 
+  // Reconciled-payment IDs (Batch C) — shared cache across both
+  // customer + vendor payment screens.
+  const { data: reconciledIds = [] } = useQuery({
+    queryKey: ['reconciled_payment_ids', company_id],
+    queryFn: () => getAdapter().bankReconciliations.listReconciledPaymentIds(company_id!),
+    enabled: !!company_id && !isNew,
+  });
+  const isReconciled = !!id && reconciledIds.includes(id);
+
   const [header, setHeader] = useState({
     contact_id: '', bank_account_id: '', payment_method_id: '',
     date: todayIso(), amount: '', currency: 'AED',
@@ -291,6 +300,11 @@ export default function VendorPaymentEditorPage() {
           if (!cfg) return null;
           return <span className={`rounded-pill px-2.5 py-0.5 text-xs font-medium ${cfg.cls}`}>{cfg.label}</span>;
         })()}
+        {!isNew && isReconciled && existing?.status === 'confirmed' && (
+          <span className="rounded-pill bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+            Reconciled
+          </span>
+        )}
         <div className="ms-auto flex gap-2">
           <Button variant="ghost" size="sm" onClick={() => navigate('/purchasing/payments')}>{t('common.cancel')}</Button>
           {canEdit && (

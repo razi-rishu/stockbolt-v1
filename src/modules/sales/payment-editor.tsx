@@ -67,6 +67,15 @@ export default function PaymentEditorPage() {
     enabled: !isNew && !!id,
   });
 
+  // Reconciled-payment IDs from Batch C — single batched query, cached
+  // app-wide. Used to show a "Reconciled" badge in the header.
+  const { data: reconciledIds = [] } = useQuery({
+    queryKey: ['reconciled_payment_ids', company_id],
+    queryFn: () => getAdapter().bankReconciliations.listReconciledPaymentIds(company_id!),
+    enabled: !!company_id && !isNew,
+  });
+  const isReconciled = !!id && reconciledIds.includes(id);
+
   // Open invoices (with computed outstanding) for the allocation panel and advance modal
   const [selectedContact, setSelectedContact] = useState('');
   const { data: openInvoices = [] } = useQuery<OpenInvoice[]>({
@@ -350,6 +359,11 @@ export default function PaymentEditorPage() {
                 </span>
               );
             })()}
+            {isReconciled && status === 'confirmed' && (
+              <span className="rounded-pill bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+                Reconciled
+              </span>
+            )}
           </>
         )}
         <div className="ms-auto flex gap-2">

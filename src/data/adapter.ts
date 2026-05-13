@@ -1352,6 +1352,13 @@ export interface BankReconciliationsAPI {
   ): Promise<ReconGlLine[]>;
   save(input: BankReconciliationSaveInput): Promise<BankReconciliationRow>;
   delete(id: string): Promise<void>;
+  /**
+   * IDs of payments that have at least one general_ledger line reconciled
+   * (their bank-account GL line is matched against a bank statement).
+   * Used by payment lists/editors to show a "Reconciled" badge.
+   * Single batched query — far cheaper than per-row joins.
+   */
+  listReconciledPaymentIds(company_id: string): Promise<string[]>;
 }
 
 // Phase 8 API interfaces
