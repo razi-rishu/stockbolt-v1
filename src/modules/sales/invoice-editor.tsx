@@ -434,14 +434,17 @@ export default function InvoiceEditorPage() {
               </Button>
             </>
           )}
-          {/* Save & Repost (edit mode on confirmed) */}
+          {/* Edit-mode save (confirmed invoice). One button, labelled "Save".
+               Internally calls edit_invoice RPC which atomically reverses the
+               old JE and posts a new one — so the user just sees "save the
+               change", which is what they expect. */}
           {editMode && isConfirmed && (
             <>
               <Button variant="ghost" size="sm" onClick={() => { setEditMode(false); }}>
                 {t('common.cancel')}
               </Button>
               <Button size="sm" onClick={() => { setError(null); editRepostMutation.mutate(); }} disabled={editRepostMutation.isPending}>
-                {editRepostMutation.isPending ? '…' : t('sales.save_repost')}
+                {editRepostMutation.isPending ? t('common.saving') : t('common.save')}
               </Button>
             </>
           )}
