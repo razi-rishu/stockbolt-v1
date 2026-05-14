@@ -44,21 +44,38 @@ export default function ResetDataPage() {
   const canConfirm = isAdmin && !!expected && typed === expected;
 
   const resetMutation = useMutation({
-    mutationFn: () => getAdapter().admin.resetCompanyData(company_id!, typed),
+    mutationFn: async () => {
+      console.log('[reset] calling reset_company_data', { company_id, typed });
+      const data = await getAdapter().admin.resetCompanyData(company_id!, typed);
+      console.log('[reset] RPC returned', data);
+      return data;
+    },
     onSuccess: (data) => {
+      console.log('[reset] success — setting result', data);
       setResult(data);
       setError(null);
       qc.clear(); // invalidate everything — most data we cached is gone
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => {
+      console.error('[reset] FAILED', e);
+      setError(e.message || String(e) || 'Unknown error');
+    },
   });
 
   function onConfirmReset() {
-    if (!canConfirm) return;
-    if (!window.confirm(
+    console.log('[reset] click reset button', { canConfirm, isAdmin, role, expected, typed });
+    if (!canConfirm) {
+      console.warn('[reset] aborted — canConfirm is false');
+      return;
+    }
+    const ok = window.confirm(
       `Final confirmation. Wipe ALL transactional data for "${expected}"?\n\n` +
       `This cannot be undone. Click OK to proceed.`
-    )) return;
+    );
+    if (!ok) {
+      console.log('[reset] aborted — user clicked Cancel on browser dialog');
+      return;
+    }
     setError(null);
     setResult(null);
     resetMutation.mutate();
@@ -149,8 +166,19 @@ export default function ResetDataPage() {
       </div>
 
       {error && (
-        <div className="rounded bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-          {error}
+        <div className="sticky top-2 z-10 rounded-lg border-2 border-red-500 bg-red-50 p-4 shadow-lg">
+          <p className="text-sm font-bold text-red-800">Reset failed</p>
+          <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-red-700 font-mono">{error}</pre>
+          <p className="mt-2 text-xs text-red-600">
+            Also check the browser DevTools Console + Network tab for the underlying error
+            (look for the POST request to <code className="font-mono bg-red-100 px-1 rounded">reset_company_data</code>).
+          </p>
+        </div>
+      )}
+
+      {resetMutation.isPending && (
+        <div className="rounded-lg border-2 border-blue-500 bg-blue-50 p-4">
+          <p className="text-sm font-semibold text-blue-800">Resetting… this may take a few seconds.</p>
         </div>
       )}
 
