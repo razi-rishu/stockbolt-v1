@@ -803,8 +803,23 @@ export function createSupabaseAdapter(
         return inv!;
       },
       async update(id, row: InvoiceUpdate, items: InvoiceItemInsert[]): Promise<void> {
+        // 1. Update invoice header
         const { error: hErr } = await client.from('invoices').update(row).eq('id', id);
         assertNoError(hErr, 'invoices.update header');
+
+        // 2. Clear deferred_cogs_queue rows for this invoice BEFORE deleting
+        //    items. deferred_cogs_queue.invoice_item_id has ON DELETE RESTRICT
+        //    (per Phase 0 §I), so any pending or flushed COGS rows pointing
+        //    to the items would block the delete below. After edit_invoice
+        //    runs (called by the editor's saveMutation), it will:
+        //      - reverse the original JE incl. any flushed COGS JEs
+        //      - re-queue deferred COGS for the new items if needed
+        //    So the old queue entries are safely disposable here.
+        const { error: dcqErr } = await client.from('deferred_cogs_queue')
+          .delete().eq('sale_invoice_id', id);
+        assertNoError(dcqErr, 'invoices.update clear deferred_cogs_queue');
+
+        // 3. Replace items
         const { error: dErr } = await client.from('invoice_items').delete().eq('invoice_id', id);
         assertNoError(dErr, 'invoices.update delete items');
         const itemsWithId = items.map((it, i) => ({ ...it, invoice_id: id, sort_order: i }));
