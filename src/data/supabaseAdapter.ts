@@ -560,7 +560,7 @@ export function createSupabaseAdapter(
         const { data: coa } = await client.from('chart_of_accounts').select('code, name, name_ar, type').eq('company_id', company_id);
         const coaMap = Object.fromEntries((coa ?? []).map((a) => [a.code, a]));
 
-        // Aggregate by account_code
+        // Aggregate gross debit + credit per account
         const map: Record<string, { debit: number; credit: number }> = {};
         for (const row of rows ?? []) {
           if (!map[row.account_code]) map[row.account_code] = { debit: 0, credit: 0 };
@@ -568,15 +568,29 @@ export function createSupabaseAdapter(
           map[row.account_code].credit += row.credit;
         }
 
+        // A proper Trial Balance shows the NET balance per account on
+        // whichever side is normal for that account. Accounts whose net
+        // is exactly zero (e.g. fully-reversed JEs after a void) are
+        // hidden — otherwise the user sees big gross numbers and
+        // mistakenly thinks the void didn't work.
+        //
+        // Net = debit - credit.
+        //   net > 0   → show in debit column,  credit = 0
+        //   net < 0   → show in credit column, debit  = 0
+        //   net ≈ 0   → drop the row entirely
+        const EPS = 0.005;
         const lines: import('./adapter').TrialBalanceLine[] = Object.entries(map)
-          .filter(([, v]) => v.debit !== 0 || v.credit !== 0)
-          .map(([code, v]) => ({
-            account_code: code,
-            account_name: coaMap[code]?.name ?? code,
-            account_type: coaMap[code]?.type ?? '',
-            debit:  v.debit,
-            credit: v.credit,
-          }))
+          .map(([code, v]) => {
+            const net = +(v.debit - v.credit).toFixed(2);
+            return {
+              account_code: code,
+              account_name: coaMap[code]?.name ?? code,
+              account_type: coaMap[code]?.type ?? '',
+              debit:  net >  EPS ? net      : 0,
+              credit: net < -EPS ? -net     : 0,
+            };
+          })
+          .filter(l => l.debit !== 0 || l.credit !== 0)
           .sort((a, b) => a.account_code.localeCompare(b.account_code));
 
         const total_debit  = lines.reduce((s, l) => s + l.debit,  0);
