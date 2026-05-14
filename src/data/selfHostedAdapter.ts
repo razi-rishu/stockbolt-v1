@@ -344,5 +344,9 @@ export function createSelfHostedAdapter(): DataAdapter {
       delete:                     () => notImplemented('bankReconciliations.delete'),
       listReconciledPaymentIds:   () => notImplemented('bankReconciliations.listReconciledPaymentIds'),
     },
+    // Phase 12.13: Admin
+    admin: {
+      resetCompanyData: () => notImplemented('admin.resetCompanyData'),
+    },
   };
 }

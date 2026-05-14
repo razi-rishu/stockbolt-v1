@@ -1456,4 +1456,25 @@ export interface DataAdapter {
   systemHealth: SystemHealthAPI;
   // Phase 12.12: Bank Reconciliation
   bankReconciliations: BankReconciliationsAPI;
+  // Phase 12.13: Admin / destructive operations
+  admin: AdminAPI;
+}
+
+// ── Phase 12.13: Admin ────────────────────────────────────────────────────
+export interface ResetCompanyDataResult {
+  company_id: string;
+  reset_at:   string;
+  counts:     Record<string, number>;
+}
+
+export interface AdminAPI {
+  /**
+   * DESTRUCTIVE. Wipes all transactional and operational data for a company
+   * (invoices, bills, payments, GL, inventory ledger, contacts, products,
+   * etc.) while preserving company, profiles, chart_of_accounts, masters,
+   * and onboarding. The caller must be admin and must type the exact
+   * company name as confirmation. Atomic — fails completely or succeeds
+   * completely.
+   */
+  resetCompanyData(company_id: string, confirmation: string): Promise<ResetCompanyDataResult>;
 }

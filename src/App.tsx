@@ -134,6 +134,7 @@ const AuditLogPage                    = lazy(() => import('@/modules/reports/aud
 const ReversalTrailPage               = lazy(() => import('@/modules/reports/reversal-trail'));
 const CashFlowPage                    = lazy(() => import('@/modules/reports/cash-flow'));
 const SystemHealthPage                = lazy(() => import('@/modules/settings/system-health'));
+const ResetDataPage                   = lazy(() => import('@/modules/settings/reset-data'));
 
 function Loading() {
   return (
@@ -293,6 +294,7 @@ function AppRoutes() {
               <Route path="/reports/reversal-trail"             element={<ReversalTrailPage />} />
               <Route path="/reports/cash-flow"                  element={<CashFlowPage />} />
               <Route path="/settings/system-health"             element={<SystemHealthPage />} />
+              <Route path="/settings/reset-data"                element={<ResetDataPage />} />
               <Route path="/settings/print"                     element={<PrintSettingsPage />} />
             </Route>
           </Route>

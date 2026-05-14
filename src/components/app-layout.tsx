@@ -447,6 +447,7 @@ function SettingsMenu() {
     { to: '/settings/price-levels',  label: t('nav.price_levels') },
     { to: '/settings/print',         label: t('print.settings_title') },
     { to: '/settings/system-health', label: t('settings.system_health') },
+    { to: '/settings/reset-data',    label: 'Reset Data' },
   ];
 
   return (
