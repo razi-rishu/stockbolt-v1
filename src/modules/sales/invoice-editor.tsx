@@ -166,6 +166,27 @@ export default function InvoiceEditorPage() {
   const taxTotal      = lines.reduce((s, l) => s + l.tax_amount, 0);
   const grandTotal    = lines.reduce((s, l) => s + l.line_total, 0);
 
+  // ── Credit limit check ───────────────────────────────────────────────────
+  // Fetch the customer's open invoices to compute current outstanding.
+  // Adds this invoice's grand total to get projected outstanding. If
+  // projected exceeds credit_limit (and credit_limit > 0 — 0 means "no
+  // limit"), surface a warning banner. We DON'T block save — admin
+  // override is implicit. We exclude this invoice from the calc when
+  // editing an existing draft.
+  const { data: openCustomerInvoices = [] } = useQuery({
+    queryKey: ['open_invoices_for_credit_check', company_id, header.contact_id],
+    queryFn:  () => getAdapter().invoices.listOpenForContact(company_id!, header.contact_id),
+    enabled:  !!company_id && !!header.contact_id,
+  });
+  const selectedCustomer = contacts.find(c => c.id === header.contact_id);
+  const creditLimit      = Number(selectedCustomer?.credit_limit ?? 0);
+  const currentOutstanding = openCustomerInvoices
+    .filter(inv => inv.id !== id)  // exclude this draft if it's already in the list
+    .reduce((s, inv) => s + Number(inv.outstanding ?? 0), 0);
+  const projectedOutstanding = currentOutstanding + grandTotal;
+  const creditOverage        = projectedOutstanding - creditLimit;
+  const overCreditLimit      = creditLimit > 0 && creditOverage > 0.005;
+
   // ── Line helpers ─────────────────────────────────────────────────────────
   const updateLine = useCallback((key: string, patch: Partial<LineRow>) => {
     setLines(prev => prev.map(l => {
@@ -422,6 +443,30 @@ export default function InvoiceEditorPage() {
 
       {error && (
         <div className="rounded-input bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>
+      )}
+
+      {/* Credit-limit warning — non-blocking. Shows when projected
+           outstanding (existing open invoices + this invoice's total)
+           exceeds the customer's credit_limit. credit_limit = 0 means
+           "no limit set" and is intentionally not enforced. */}
+      {overCreditLimit && selectedCustomer && (
+        <div className="rounded-input border border-amber-300 bg-amber-50 px-4 py-3 text-sm">
+          <p className="font-semibold text-amber-900">
+            ⚠ Over credit limit
+          </p>
+          <p className="mt-1 text-amber-800">
+            <strong>{selectedCustomer.name}</strong>'s credit limit is{' '}
+            <span className="font-mono">{header.currency} {fmt(creditLimit)}</span>.
+            Current outstanding: <span className="font-mono">{fmt(currentOutstanding)}</span>.
+            After this invoice ({fmt(grandTotal)}), outstanding will be{' '}
+            <span className="font-mono font-semibold">{fmt(projectedOutstanding)}</span>{' '}
+            — over by <span className="font-mono font-semibold">{fmt(creditOverage)}</span>.
+          </p>
+          <p className="mt-1 text-xs text-amber-700">
+            Save is still allowed — this is a warning, not a block. Raise the customer's
+            credit limit on their detail page to clear this.
+          </p>
+        </div>
       )}
 
       {/* Invoice Header */}

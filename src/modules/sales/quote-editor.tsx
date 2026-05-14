@@ -99,6 +99,23 @@ export default function QuoteEditorPage() {
   const taxTotal      = lines.reduce((s, l) => s + l.tax_amount, 0);
   const grandTotal    = lines.reduce((s, l) => s + l.line_total, 0);
 
+  // ── Credit limit check (same logic as invoice editor) ───────────────────
+  // Quotes don't post AR so they don't change outstanding, but flagging an
+  // over-limit quote lets the salesperson know there's a problem BEFORE
+  // it gets converted to an invoice and confirmed.
+  const { data: openCustomerInvoices = [] } = useQuery({
+    queryKey: ['open_invoices_for_credit_check', company_id, header.contact_id],
+    queryFn:  () => getAdapter().invoices.listOpenForContact(company_id!, header.contact_id),
+    enabled:  !!company_id && !!header.contact_id,
+  });
+  const selectedCustomer = contacts.find(c => c.id === header.contact_id);
+  const creditLimit      = Number(selectedCustomer?.credit_limit ?? 0);
+  const currentOutstanding = openCustomerInvoices
+    .reduce((s, inv) => s + Number(inv.outstanding ?? 0), 0);
+  const projectedOutstanding = currentOutstanding + grandTotal;
+  const creditOverage        = projectedOutstanding - creditLimit;
+  const overCreditLimit      = creditLimit > 0 && creditOverage > 0.005;
+
   const updateLine = useCallback((key: string, patch: Partial<LineRow>) => {
     setLines(prev => prev.map(l => { if (l._key !== key) return l; const u = { ...l, ...patch }; return { ...u, ...calcLine(u) }; }));
   }, []);
@@ -191,6 +208,25 @@ export default function QuoteEditorPage() {
         </div>
       </div>
       {error && <div className="rounded-input bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
+
+      {/* Credit-limit warning — non-blocking. Quotes don't post AR, but
+           it's better to surface this NOW than after conversion to invoice. */}
+      {overCreditLimit && selectedCustomer && (
+        <div className="rounded-input border border-amber-300 bg-amber-50 px-4 py-3 text-sm">
+          <p className="font-semibold text-amber-900">⚠ Over credit limit</p>
+          <p className="mt-1 text-amber-800">
+            <strong>{selectedCustomer.name}</strong>'s credit limit is{' '}
+            <span className="font-mono">{header.currency} {fmt(creditLimit)}</span>.
+            Current outstanding: <span className="font-mono">{fmt(currentOutstanding)}</span>.
+            After this quote ({fmt(grandTotal)}), outstanding would be{' '}
+            <span className="font-mono font-semibold">{fmt(projectedOutstanding)}</span>{' '}
+            — over by <span className="font-mono font-semibold">{fmt(creditOverage)}</span>.
+          </p>
+          <p className="mt-1 text-xs text-amber-700">
+            This quote doesn't post receivables, but converting to an invoice will.
+          </p>
+        </div>
+      )}
       <div className="rounded-card border border-border-subtle bg-surface-card p-5">
         <h2 className="mb-4 text-sm font-semibold text-ink-primary">{t('sales.quote_details')}</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
