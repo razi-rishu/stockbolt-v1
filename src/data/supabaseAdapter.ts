@@ -1147,6 +1147,11 @@ export function createSupabaseAdapter(
       },
 
       async getBalanceSheet(company_id, as_of_date): Promise<BalanceSheet> {
+        // Pull ALL GL rows up to as_of_date (asset, liability, equity, income,
+        // expense). Income and expense get folded into a synthetic equity line
+        // below ("Current Period Earnings") so the accounting identity
+        //   Assets = Liabilities + Equity
+        // holds — without that fold the BS never balances during an open period.
         const { data, error } = await client
           .from('general_ledger')
           .select('account_code, debit, credit, chart_of_accounts!inner(name, type, sub_type)')
@@ -1155,14 +1160,33 @@ export function createSupabaseAdapter(
         assertNoError(error, 'reports.getBalanceSheet');
 
         const byCode: Record<string, { name: string; type: string; sub_type: string | null; debit: number; credit: number }> = {};
+        // Net income running total (Revenue − Expenses) over the period
+        // from fiscal start to as_of_date. Year-end close JEs zero out the
+        // income/expense accounts and push into retained earnings, so this
+        // sum naturally tracks the un-closed period's earnings only.
+        let incomeMinusExpense = 0;
         for (const row of data ?? []) {
           const coa = row.chart_of_accounts as unknown as { name: string; type: string; sub_type: string | null };
+          const debit  = Number(row.debit);
+          const credit = Number(row.credit);
+
+          if (coa.type === 'income') {
+            // Revenue: natural credit balance. Add (credit − debit) to net income.
+            incomeMinusExpense += credit - debit;
+            continue;
+          }
+          if (coa.type === 'expense') {
+            // Expense: natural debit balance. Subtract (debit − credit) from net income.
+            incomeMinusExpense -= debit - credit;
+            continue;
+          }
           if (!['asset', 'liability', 'equity'].includes(coa.type)) continue;
+
           if (!byCode[row.account_code]) {
             byCode[row.account_code] = { name: coa.name, type: coa.type, sub_type: coa.sub_type, debit: 0, credit: 0 };
           }
-          byCode[row.account_code].debit += Number(row.debit);
-          byCode[row.account_code].credit += Number(row.credit);
+          byCode[row.account_code].debit  += debit;
+          byCode[row.account_code].credit += credit;
         }
 
         const lines: BalanceSheetLine[] = Object.entries(byCode).map(([code, v]) => ({
@@ -1173,6 +1197,20 @@ export function createSupabaseAdapter(
           // Asset: debit balance positive. Liability/Equity: credit balance positive.
           balance: v.type === 'asset' ? v.debit - v.credit : v.credit - v.debit,
         }));
+
+        // Synthetic equity line — the period's net income. Without this the
+        // BS never balances mid-period. After year-end close this naturally
+        // becomes zero (income/expense accounts get zeroed and the amount
+        // is moved into a real retained-earnings equity account).
+        if (Math.abs(incomeMinusExpense) > 0.005) {
+          lines.push({
+            account_code: '__CPE__',
+            account_name: 'Current Period Earnings',
+            account_type: 'equity',
+            sub_type: null,
+            balance: incomeMinusExpense,
+          });
+        }
 
         // NULL/missing sub_type defaults: assets→'current', liabilities→'current'
         // (matches the migration backfill — legacy rows still appear in the
