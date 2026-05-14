@@ -33,6 +33,18 @@ export default function ResetDataPage() {
   const [result, setResult] = useState<ResetCompanyDataResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // QA convenience: skip the typed-name gate. Confirmation is auto-passed
+  // from company.name. Server-side RPC still validates admin + name match,
+  // so this only relaxes UI friction — not safety guarantees. Persisted
+  // to localStorage so QA users don't have to re-toggle every visit.
+  const [expressMode, setExpressMode] = useState<boolean>(
+    () => localStorage.getItem('stockbolt.qa.expressReset') === '1'
+  );
+  function setExpressModePersist(v: boolean) {
+    setExpressMode(v);
+    localStorage.setItem('stockbolt.qa.expressReset', v ? '1' : '0');
+  }
+
   const { data: company } = useQuery<Company | null>({
     queryKey: ['company', company_id],
     queryFn:  () => getAdapter().companies.getById(company_id!),
@@ -41,12 +53,15 @@ export default function ResetDataPage() {
 
   const isAdmin = role === 'admin';
   const expected = company?.name ?? '';
-  const canConfirm = isAdmin && !!expected && typed === expected;
+  // In express mode we pass company.name automatically. Otherwise the user
+  // must type it exactly. Either way the RPC re-checks the value server-side.
+  const effectiveConfirmation = expressMode ? expected : typed;
+  const canConfirm = isAdmin && !!expected && effectiveConfirmation === expected;
 
   const resetMutation = useMutation({
     mutationFn: async () => {
-      console.log('[reset] calling reset_company_data', { company_id, typed });
-      const data = await getAdapter().admin.resetCompanyData(company_id!, typed);
+      console.log('[reset] calling reset_company_data', { company_id, expressMode });
+      const data = await getAdapter().admin.resetCompanyData(company_id!, effectiveConfirmation);
       console.log('[reset] RPC returned', data);
       return data;
     },
@@ -63,13 +78,13 @@ export default function ResetDataPage() {
   });
 
   function onConfirmReset() {
-    console.log('[reset] click reset button', { canConfirm, isAdmin, role, expected, typed });
+    console.log('[reset] click reset button', { canConfirm, isAdmin, role, expected, typed, expressMode });
     if (!canConfirm) {
       console.warn('[reset] aborted — canConfirm is false');
       return;
     }
     const ok = window.confirm(
-      `Final confirmation. Wipe ALL transactional data for "${expected}"?\n\n` +
+      `${expressMode ? '[Express] ' : 'Final confirmation. '}Wipe ALL transactional data for "${expected}"?\n\n` +
       `This cannot be undone. Click OK to proceed.`
     );
     if (!ok) {
@@ -138,6 +153,23 @@ export default function ResetDataPage() {
         </div>
       )}
 
+      {/* QA Express Mode — for the testing loop (seed → test → wipe → repeat).
+           Skips the typed-name gate; server-side guards stay intact. */}
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={expressMode}
+            onChange={e => setExpressModePersist(e.target.checked)}
+            className="mt-1 h-4 w-4 accent-amber-600"
+          />
+          <span className="text-sm">
+            <strong className="text-amber-900">Express mode (QA)</strong>
+            <span className="text-amber-800"> — skip the type-the-name gate so you can wipe in one click during testing. Server-side admin + name match still apply. Setting is persisted in this browser.</span>
+          </span>
+        </label>
+      </div>
+
       <div className="rounded-card border border-red-300 bg-red-50 p-5 space-y-3">
         <h2 className="text-lg font-semibold text-red-700">⚠ This action cannot be undone</h2>
         <p className="text-sm text-red-800">
@@ -183,26 +215,32 @@ export default function ResetDataPage() {
       )}
 
       <div className="rounded-card border border-border-subtle bg-surface-card p-5 space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-ink-primary mb-1">
-            To confirm, type the company name <strong>exactly</strong>:
-          </label>
-          <p className="text-xs text-ink-tertiary mb-2">
-            Expected: <span className="font-mono">{expected || '…'}</span>
+        {expressMode ? (
+          <p className="text-sm text-ink-secondary">
+            Express mode is ON — clicking the button below will wipe data for <strong className="font-mono">{expected || '…'}</strong> after a single browser confirmation. Uncheck Express above to require typed confirmation.
           </p>
-          <input
-            type="text"
-            value={typed}
-            onChange={e => setTyped(e.target.value)}
-            placeholder={expected}
-            disabled={!isAdmin || resetMutation.isPending}
-            className="w-full h-10 rounded-md border border-slate-300 px-3 text-sm font-mono disabled:bg-slate-50"
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
-          />
-        </div>
+        ) : (
+          <div>
+            <label className="block text-sm font-medium text-ink-primary mb-1">
+              To confirm, type the company name <strong>exactly</strong>:
+            </label>
+            <p className="text-xs text-ink-tertiary mb-2">
+              Expected: <span className="font-mono">{expected || '…'}</span>
+            </p>
+            <input
+              type="text"
+              value={typed}
+              onChange={e => setTyped(e.target.value)}
+              placeholder={expected}
+              disabled={!isAdmin || resetMutation.isPending}
+              className="w-full h-10 rounded-md border border-slate-300 px-3 text-sm font-mono disabled:bg-slate-50"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+            />
+          </div>
+        )}
 
         <div className="flex gap-2 pt-2">
           <Button variant="ghost" onClick={() => navigate('/dashboard')} disabled={resetMutation.isPending}>
