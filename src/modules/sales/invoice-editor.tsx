@@ -393,8 +393,15 @@ export default function InvoiceEditorPage() {
           </span>
         )}
         <div className="ms-auto flex gap-2">
-          {/* Draft actions */}
-          {canEdit && (
+          {/* Draft actions — Save is ONLY shown for new invoices or drafts.
+               When editing a CONFIRMED invoice (editMode=true), this button is
+               hidden because saveMutation silently downgrades status to
+               'draft' and replaces items WITHOUT reversing the GL — which
+               leads to duplicate journal entries when the user re-confirms.
+               The "Save & Repost" button (rendered further below for the
+               edit-confirmed case) is the only safe save path; it calls
+               edit_invoice RPC which atomically reverses old JE + reposts new. */}
+          {canEdit && !editMode && (
             <>
               <Button variant="ghost" size="sm" onClick={() => navigate('/sales/invoices')}>
                 {t('common.cancel')}
