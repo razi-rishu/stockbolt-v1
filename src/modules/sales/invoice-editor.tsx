@@ -735,40 +735,51 @@ export default function InvoiceEditorPage() {
                             setProductQcSeed(query);
                             setProductQcOpen(true);
                           }}
-                          className="rounded bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
+                          className="flex w-full items-center gap-2 text-xs font-medium text-brand-600 hover:text-brand-700"
                         >
-                          + Quick create product "{query}"
+                          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-brand-100 text-brand-700">+</span>
+                          Add new item{query ? ` "${query}"` : ''}
                         </button>
                       )}
-                      renderRow={(row, { query }) => {
+                      renderRow={(row, { highlighted, query }) => {
                         const s = stockMap[row.id];
                         const qty = s?.qty ?? 0;
                         const mac = s?.mac ?? 0;
+                        // When the row is highlighted (selected nav state),
+                        // background is solid brand-500 — switch all text
+                        // tones to white-ish for contrast.
+                        const titleCls    = highlighted ? 'text-white' : 'text-ink-primary';
+                        const subCls      = highlighted ? 'text-white/80' : 'text-ink-tertiary';
+                        const stockLabelCls = highlighted ? 'text-white/80' : 'text-ink-tertiary';
+                        const stockNumCls = highlighted
+                          ? 'text-white font-semibold'
+                          : qty <= 0
+                            ? 'text-red-600 font-semibold'
+                            : qty < 5
+                              ? 'text-amber-700 font-semibold'
+                              : 'text-emerald-700 font-semibold';
                         return (
-                          <div className="space-y-0.5">
-                            <div className="flex items-baseline justify-between gap-2">
-                              <div className="flex items-baseline gap-2 min-w-0">
-                                <span className="font-mono text-xs text-brand-700 flex-none">{highlightMatch(row.sku, query)}</span>
-                                <span className="text-xs text-ink-primary truncate">{highlightMatch(row.name, query)}</span>
+                          <div className="flex items-start justify-between gap-3">
+                            {/* LEFT: name + sub-line */}
+                            <div className="min-w-0 flex-1">
+                              <div className={`text-sm font-medium truncate ${titleCls}`}>
+                                {highlightMatch(row.name, query)}
                               </div>
-                              <span className="font-mono text-xs text-ink-primary flex-none">
-                                {Number(row.selling_price ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </span>
+                              <div className={`mt-0.5 text-[11px] truncate ${subCls}`}>
+                                SKU: <span className="font-mono">{highlightMatch(row.sku, query)}</span>
+                                {row.brand_name && <> · {row.brand_name}</>}
+                                {row.oe_number && <> · OEM {highlightMatch(row.oe_number, query)}</>}
+                                {mac > 0 && <> · Rate {row.unit_code ? `${row.unit_code} ` : ''}{Number(row.selling_price ?? 0).toFixed(2)}</>}
+                              </div>
                             </div>
-                            <div className="flex gap-2 text-[10px] text-ink-tertiary">
-                              {row.brand_name && <span>{row.brand_name}</span>}
-                              {row.oe_number && <span>OEM {highlightMatch(row.oe_number, query)}</span>}
-                              {row.unit_code && <span>/ {row.unit_code}</span>}
-                            </div>
-                            <div className="flex gap-2 text-[10px]">
-                              <span className={qty <= 0 ? 'text-red-600 font-semibold' : qty < 5 ? 'text-amber-700' : 'text-emerald-700'}>
-                                Stock {qty.toFixed(0)}
-                              </span>
-                              {mac > 0 && (
-                                <span className="text-ink-tertiary">
-                                  MAC {mac.toFixed(2)}
-                                </span>
-                              )}
+                            {/* RIGHT: stock-on-hand label + value */}
+                            <div className="flex-none text-end">
+                              <div className={`text-[10px] uppercase tracking-wide ${stockLabelCls}`}>
+                                Stock on Hand
+                              </div>
+                              <div className={`text-sm ${stockNumCls}`}>
+                                {qty.toFixed(2)} {row.unit_code ?? 'pcs'}
+                              </div>
                             </div>
                           </div>
                         );

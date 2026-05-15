@@ -62,32 +62,41 @@ export function ContactPicker({
         <button
           type="button"
           onClick={() => { setQcSeed(query); setQcOpen(true); }}
-          className="rounded bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
+          className="flex w-full items-center gap-2 text-xs font-medium text-brand-600 hover:text-brand-700"
         >
-          + Quick create {label} "{query}"
+          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-brand-100 text-brand-700">+</span>
+          Add new {label}{query ? ` "${query}"` : ''}
         </button>
       )}
-      renderRow={(row, { query }) => (
-        <div className="space-y-0.5">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="text-xs font-medium text-ink-primary truncate">
-              {highlightMatch(row.name, query)}
-            </span>
-            {row.tax_id && (
-              <span className="text-[10px] font-mono text-ink-tertiary flex-none">
-                TRN {highlightMatch(row.tax_id, query)}
-              </span>
-            )}
-          </div>
-          <div className="flex gap-2 text-[10px] text-ink-tertiary">
-            {row.phone && <span>📞 {highlightMatch(row.phone, query)}</span>}
-            {row.email && <span>✉ {row.email}</span>}
+      renderRow={(row, { highlighted, query }) => {
+        const titleCls  = highlighted ? 'text-white'      : 'text-ink-primary';
+        const subCls    = highlighted ? 'text-white/80'   : 'text-ink-tertiary';
+        const limitCls  = highlighted ? 'text-white/90'   : 'text-ink-secondary';
+        return (
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className={`text-sm font-medium truncate ${titleCls}`}>
+                {highlightMatch(row.name, query)}
+              </div>
+              <div className={`mt-0.5 text-[11px] truncate ${subCls}`}>
+                {row.phone && <>📞 {highlightMatch(row.phone, query)}</>}
+                {row.email && <> · ✉ {row.email}</>}
+                {row.tax_id && <> · TRN {highlightMatch(row.tax_id, query)}</>}
+              </div>
+            </div>
             {Number(row.credit_limit) > 0 && (
-              <span>Limit {Number(row.credit_limit).toLocaleString('en-US', { minimumFractionDigits: 0 })}</span>
+              <div className="flex-none text-end">
+                <div className={`text-[10px] uppercase tracking-wide ${subCls}`}>
+                  Credit Limit
+                </div>
+                <div className={`text-sm font-semibold ${limitCls}`}>
+                  {Number(row.credit_limit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+              </div>
             )}
           </div>
-        </div>
-      )}
+        );
+      }}
     />
     <ContactQuickCreate
       open={qcOpen}

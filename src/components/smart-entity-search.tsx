@@ -276,29 +276,31 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
   return (
     <div ref={containerRef} className="relative">
       {/* Closed state: show selected label as text + clear button.
-           Open state: show input. */}
+           Open state: text input.
+           Plain text-input look (no chrome-bordered "button" feel) —
+           matches modern ERP convention. Clear (×) is inline-right. */}
       {!open ? (
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => { if (!disabled) { setOpen(true); setTimeout(() => inputRef.current?.focus(), 0); } }}
-          className={
-            'flex w-full items-center justify-between rounded border border-border-strong bg-surface-subtle ' +
-            'px-2 py-1 text-xs text-start disabled:opacity-60 hover:border-brand-300 transition-colors ' +
-            (selectedRow ? 'text-ink-primary' : 'text-ink-tertiary')
-          }
+        <div
+          className={`relative w-full ${disabled ? 'opacity-60 pointer-events-none' : ''}`}
         >
-          <span className="truncate">{selectedRow ? getDisplayLabel(selectedRow) : placeholder}</span>
-          {selectedRow && !disabled ? (
-            <span
+          <input
+            type="text"
+            readOnly
+            value={selectedRow ? getDisplayLabel(selectedRow) : ''}
+            placeholder={placeholder}
+            onClick={() => { setOpen(true); setTimeout(() => inputRef.current?.focus(), 0); }}
+            onFocus={() => { setOpen(true); setTimeout(() => inputRef.current?.focus(), 0); }}
+            className="w-full rounded-md border border-border-strong bg-surface-card px-3 py-1.5 text-xs text-ink-primary placeholder:text-ink-tertiary hover:border-brand-300 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-200 cursor-pointer"
+          />
+          {selectedRow && !disabled && (
+            <button
+              type="button"
               onClick={(e) => { e.stopPropagation(); clearSelection(); }}
-              className="ms-2 flex-none text-ink-tertiary hover:text-red-500 cursor-pointer"
+              className="absolute end-2 top-1/2 -translate-y-1/2 text-ink-tertiary hover:text-red-500"
               aria-label="Clear selection"
-            >×</span>
-          ) : (
-            <span className="ms-2 flex-none text-ink-tertiary">▾</span>
+            >×</button>
           )}
-        </button>
+        </div>
       ) : (
         <input
           ref={inputRef}
@@ -307,7 +309,7 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder={placeholder}
-          className="w-full rounded border border-brand-400 bg-surface-card px-2 py-1 text-xs text-ink-primary focus:outline-none focus:ring-1 focus:ring-brand-500"
+          className="w-full rounded-md border border-brand-400 bg-surface-card px-3 py-1.5 text-xs text-ink-primary placeholder:text-ink-tertiary focus:outline-none focus:ring-2 focus:ring-brand-200"
           autoComplete="off"
           autoCorrect="off"
           autoCapitalize="off"
@@ -318,44 +320,54 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
       {/* Dropdown panel */}
       {open && (
         <div
-          className="absolute z-50 mt-1 max-h-[420px] overflow-y-auto rounded-lg border border-border-strong bg-surface-card shadow-xl"
+          className="absolute z-50 mt-1 overflow-hidden rounded-lg border border-border-subtle bg-surface-card shadow-2xl"
           style={{ width: panelWidth }}
         >
-          {/* Header label */}
-          {(isShowingRecent || loading || visibleRows.length > 0) && (
-            <div className="sticky top-0 border-b border-border-subtle bg-surface-muted/60 px-3 py-1.5 text-[10px] uppercase tracking-wide text-ink-tertiary">
-              {loading ? 'Searching…' : isShowingRecent ? 'Recent' : `${visibleRows.length} result${visibleRows.length === 1 ? '' : 's'}`}
+          <div className="max-h-[420px] overflow-y-auto">
+            {/* Subtle header label — only shown when there's results context to label */}
+            {(isShowingRecent || loading) && (
+              <div className="sticky top-0 z-10 border-b border-border-subtle bg-surface-card px-4 py-2 text-[10px] uppercase tracking-wide text-ink-tertiary">
+                {loading ? 'Searching…' : 'Recent'}
+              </div>
+            )}
+
+            {/* Results */}
+            {visibleRows.length > 0 ? (
+              <ul className="py-1">
+                {visibleRows.map((row, i) => {
+                  const k = getKey(row);
+                  const isHi = i === highlighted;
+                  return (
+                    <li
+                      key={k}
+                      onMouseEnter={() => setHighlighted(i)}
+                      onMouseDown={(e) => { e.preventDefault(); pickRow(row); }}
+                      className={`cursor-pointer px-4 py-2.5 transition-colors ${isHi ? 'bg-brand-500 text-white' : 'hover:bg-surface-muted text-ink-primary'}`}
+                    >
+                      {renderRow(row, { highlighted: isHi, query })}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : !loading && query.trim().length >= minChars ? (
+              <div className="px-4 py-6 text-center text-xs text-ink-tertiary">
+                No results for "{query}"
+              </div>
+            ) : !loading && query.trim().length < minChars && recent.length === 0 ? (
+              <div className="px-4 py-6 text-center text-xs text-ink-tertiary">
+                Start typing to search…
+              </div>
+            ) : null}
+          </div>
+
+          {/* Persistent footer — Quick Create always available when the
+               caller passes an emptyState slot. Single click whether the
+               list is empty or full. */}
+          {emptyState && (
+            <div className="border-t border-border-subtle bg-surface-muted/40 px-4 py-2">
+              {emptyState(query)}
             </div>
           )}
-
-          {/* Results */}
-          {visibleRows.length > 0 ? (
-            <ul className="py-1">
-              {visibleRows.map((row, i) => {
-                const k = getKey(row);
-                const isHi = i === highlighted;
-                return (
-                  <li
-                    key={k}
-                    onMouseEnter={() => setHighlighted(i)}
-                    onMouseDown={(e) => { e.preventDefault(); pickRow(row); }}
-                    className={`cursor-pointer px-3 py-2 transition-colors ${isHi ? 'bg-brand-50' : 'hover:bg-surface-muted'}`}
-                  >
-                    {renderRow(row, { highlighted: isHi, query })}
-                  </li>
-                );
-              })}
-            </ul>
-          ) : !loading && query.trim().length >= minChars ? (
-            <div className="px-3 py-4 text-center">
-              <p className="text-xs text-ink-tertiary">No results for "{query}"</p>
-              {emptyState && <div className="mt-3">{emptyState(query)}</div>}
-            </div>
-          ) : !loading && query.trim().length < minChars && recent.length === 0 ? (
-            <div className="px-3 py-4 text-center text-xs text-ink-tertiary">
-              Start typing to search…
-            </div>
-          ) : null}
         </div>
       )}
     </div>
