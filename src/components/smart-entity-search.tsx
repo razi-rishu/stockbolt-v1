@@ -147,6 +147,7 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<T[]>([]);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
   const [selectedRow, setSelectedRow] = useState<T | null>(null);
@@ -227,6 +228,7 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
     if (!open) return;
     const trimmed = query.trim();
     setLoading(true);
+    setSearchError(null);
     const myToken = ++reqToken.current;
     // Empty query → fetch immediately, no debounce
     const delay = trimmed.length === 0 ? 0 : debounceMs;
@@ -249,8 +251,16 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
           setHighlighted(0);
           setLoading(false);
         })
-        .catch(() => {
+        .catch((err: unknown) => {
           if (myToken !== reqToken.current) return;
+          // Surface the failure instead of silently showing "No results" —
+          // 99% of the time this means the search RPC migration hasn't been
+          // applied to Supabase, and a generic empty-state message hides
+          // that root cause.
+          // eslint-disable-next-line no-console
+          console.error('[SmartEntitySearch] search failed:', err);
+          const msg = err instanceof Error ? err.message : String(err);
+          setSearchError(msg);
           setResults([]);
           setLoading(false);
         });
@@ -408,6 +418,19 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
             {(isShowingRecent || loading) && (
               <div className="sticky top-0 z-10 border-b border-border-subtle bg-surface-card px-4 py-2 text-[10px] uppercase tracking-wide text-ink-tertiary">
                 {loading ? 'Searching…' : 'Recent'}
+              </div>
+            )}
+
+            {/* Error banner — when the search RPC errors out (almost always
+                 a missing migration on Supabase) we want it loud, not silent. */}
+            {searchError && !loading && (
+              <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-[11px] text-red-700">
+                <div className="font-semibold">Search failed</div>
+                <div className="mt-0.5 break-words">{searchError}</div>
+                <div className="mt-1 text-red-600/80">
+                  If this mentions “search_products” / “search_contacts”,
+                  apply migration 20260515000004 in your Supabase SQL editor.
+                </div>
               </div>
             )}
 
