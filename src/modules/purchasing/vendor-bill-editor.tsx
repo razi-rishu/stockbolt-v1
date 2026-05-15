@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
+import { ContactPicker } from '@/components/contact-picker';
 import { AccountingPreview, buildVendorBillPreview } from '@/components/accounting-preview';
 import type { VendorBillRow, VendorBillItemInsert, ContactRow, ProductRow, TaxRateRow, CoaRow } from '@/data/adapter';
 import { calcPurchaseLine as _calc } from '@/core/purchasing/purchase-calc';
@@ -339,7 +340,7 @@ export default function VendorBillEditorPage() {
   });
 
   const canEdit = isNew || existing?.status === 'draft';
-  const supplierOpts = suppliers.map(s => ({ value: s.id, label: s.name }));
+  // supplierOpts removed — supplier picker uses ContactPicker (D3).
   const productOpts = products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }));
   const taxOpts = [{ value: '0', label: t('sales.no_tax') }, ...taxRates.map(r => ({ value: String(r.rate), label: `${r.name} (${r.rate}%)` }))];
   // SearchableSelect handles its own placeholder — don't inject an empty option
@@ -443,13 +444,13 @@ export default function VendorBillEditorPage() {
             <label className="mb-1 block text-sm font-medium text-ink-primary">
               {t('purchasing.supplier')} <span className="text-danger-500">*</span>
             </label>
-            <SearchableSelect
-              options={supplierOpts}
+            <ContactPicker
+              type="supplier"
               value={header.supplier_id}
               disabled={!canEdit}
-              onChange={(v) => setHeader(h => ({ ...h, supplier_id: v }))}
+              onChange={(id) => setHeader(h => ({ ...h, supplier_id: id ?? '' }))}
               placeholder={t('purchasing.select_supplier')}
-              panelWidth={320}
+              panelWidth={380}
             />
           </div>
           <Input label={t('purchasing.date')} type="date" required value={header.date}

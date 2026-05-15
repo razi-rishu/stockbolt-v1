@@ -7,10 +7,10 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
-import { SearchableSelect } from '@/ui/searchable-select';
+import { ContactPicker } from '@/components/contact-picker';
 import { AccountingPreview, buildVendorPaymentPreview } from '@/components/accounting-preview';
 import { ActivityLog } from '@/components/activity-log';
-import type { PaymentRow, ContactRow, BankAccountRow, VendorBillRow, OpenVendorBill, PaymentAllocationInsert, PaymentMethodRow } from '@/data/adapter';
+import type { PaymentRow, BankAccountRow, VendorBillRow, OpenVendorBill, PaymentAllocationInsert, PaymentMethodRow } from '@/data/adapter';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -23,11 +23,7 @@ export default function VendorPaymentEditorPage() {
   const qc = useQueryClient();
   const isNew = id === 'new';
 
-  const { data: suppliers = [] } = useQuery<ContactRow[]>({
-    queryKey: ['contacts', company_id, 'supplier'],
-    queryFn: () => getAdapter().contacts.list(company_id!, 'supplier'),
-    enabled: !!company_id,
-  });
+  // suppliers list removed — supplier picker now uses ContactPicker (D3).
   const { data: bankAccounts = [] } = useQuery<BankAccountRow[]>({
     queryKey: ['bankAccounts', company_id],
     queryFn: () => getAdapter().bankAccounts.list(company_id!),
@@ -270,7 +266,7 @@ export default function VendorPaymentEditorPage() {
   // Drafts are editable; confirmed/void are locked. The RPC (update_payment_draft)
   // is the source of truth — it refuses anything that isn't status='draft'.
   const canEdit = isNew || existing?.status === 'draft';
-  const supplierOpts = suppliers.map(s => ({ value: s.id, label: s.name }));
+  // supplierOpts removed — supplier picker uses ContactPicker (D3).
   const bankOpts = [{ value: '', label: t('purchasing.select_bank') }, ...bankAccounts.map(b => ({ value: b.id, label: b.account_number ?? b.bank_name ?? b.id }))];
   const bankLabel = `${t('purchasing.bank_account')} *`;
   const methodOpts = [{ value: '', label: '—' }, ...paymentMethods.map(m => ({ value: m.id, label: m.name }))];
@@ -361,16 +357,16 @@ export default function VendorPaymentEditorPage() {
             <label className="mb-1 block text-sm font-medium text-ink-primary">
               {t('purchasing.supplier')} <span className="text-danger-500">*</span>
             </label>
-            <SearchableSelect
-              options={supplierOpts}
+            <ContactPicker
+              type="supplier"
               value={header.contact_id}
               disabled={!canEdit}
-              onChange={(v) => {
-                setHeader(h => ({ ...h, contact_id: v }));
-                setApplyAmounts({}); // bill list will refetch; reset apply
+              onChange={(id) => {
+                setHeader(h => ({ ...h, contact_id: id ?? '' }));
+                setApplyAmounts({});
               }}
               placeholder={t('purchasing.select_supplier')}
-              panelWidth={320}
+              panelWidth={380}
             />
           </div>
           <Select label={bankLabel} required options={bankOpts} value={header.bank_account_id}

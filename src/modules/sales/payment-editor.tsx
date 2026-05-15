@@ -7,11 +7,11 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
-import { SearchableSelect } from '@/ui/searchable-select';
+import { ContactPicker } from '@/components/contact-picker';
 import { Modal } from '@/ui/modal';
 import { AccountingPreview, buildCustomerPaymentPreview } from '@/components/accounting-preview';
 import { ActivityLog } from '@/components/activity-log';
-import type { PaymentRow, BankAccountRow, ContactRow, OpenInvoice, PaymentAllocationInsert } from '@/data/adapter';
+import type { PaymentRow, BankAccountRow, OpenInvoice, PaymentAllocationInsert } from '@/data/adapter';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -41,11 +41,7 @@ export default function PaymentEditorPage() {
   const qc = useQueryClient();
   const isNew = id === 'new';
 
-  const { data: contacts = [] } = useQuery<ContactRow[]>({
-    queryKey: ['contacts', company_id, 'customer'],
-    queryFn: () => getAdapter().contacts.list(company_id!, 'customer'),
-    enabled: !!company_id,
-  });
+  // contacts list removed — customer picker uses ContactPicker (D3).
   const { data: bankAccounts = [] } = useQuery<BankAccountRow[]>({
     queryKey: ['bankAccounts', company_id],
     queryFn: () => getAdapter().bankAccounts.list(company_id!),
@@ -307,7 +303,7 @@ export default function PaymentEditorPage() {
   const isVoid = status === 'void';
   const canEdit = isNew || status === 'draft';
 
-  const contactOpts = contacts.map(c => ({ value: c.id, label: c.name }));
+  // contactOpts removed — customer picker uses ContactPicker (D3).
   const bankOpts = [
     { value: '', label: t('payments.select_bank') },
     ...bankAccounts.map(b => ({ value: b.id, label: b.name })),
@@ -409,17 +405,18 @@ export default function PaymentEditorPage() {
             <label className="mb-1 block text-sm font-medium text-ink-primary">
               {t('payments.customer')} <span className="text-danger-500">*</span>
             </label>
-            <SearchableSelect
-              options={contactOpts}
+            <ContactPicker
+              type="customer"
               value={header.contact_id}
               disabled={!canEdit || isVoid}
-              onChange={(v) => {
+              onChange={(id) => {
+                const v = id ?? '';
                 setHeader(h => ({ ...h, contact_id: v }));
                 setSelectedContact(v);
-                setApplyAmounts({}); // open invoice list will refetch; reset apply
+                setApplyAmounts({});
               }}
               placeholder={t('payments.select_contact')}
-              panelWidth={320}
+              panelWidth={380}
             />
           </div>
           <Input

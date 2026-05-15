@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
+import { ContactPicker } from '@/components/contact-picker';
 import type { SalesQuoteRow, SalesQuoteItemInsert, ContactRow, ProductRow, TaxRateRow } from '@/data/adapter';
 import { calcLine as _calcLine } from '@/core/sales/invoice-calc';
 
@@ -184,7 +185,7 @@ export default function QuoteEditorPage() {
   });
 
   const canEdit = isNew || existing?.status === 'draft';
-  const contactOpts = contacts.map(c => ({ value: c.id, label: c.name }));
+  // contactOpts removed — customer picker uses ContactPicker (D3).
   const productOpts = products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }));
   const taxOpts = [{ value: '0', label: t('sales.no_tax') }, ...taxRates.map(r => ({ value: String(r.rate), label: `${r.name} (${r.rate}%)` }))];
 
@@ -242,13 +243,13 @@ export default function QuoteEditorPage() {
             <label className="mb-1 block text-sm font-medium text-ink-primary">
               {t('sales.customer')} <span className="text-danger-500">*</span>
             </label>
-            <SearchableSelect
-              options={contactOpts}
+            <ContactPicker
+              type="customer"
               value={header.contact_id}
               disabled={!canEdit}
-              onChange={(v) => setHeader(h => ({ ...h, contact_id: v }))}
+              onChange={(id) => setHeader(h => ({ ...h, contact_id: id ?? '' }))}
               placeholder={t('sales.select_contact')}
-              panelWidth={320}
+              panelWidth={380}
             />
             {contacts.length === 0 && (
               <p className="mt-1 text-xs text-ink-tertiary">

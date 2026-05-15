@@ -10,6 +10,7 @@ import { Select } from '@/ui/select';
 import { Modal } from '@/ui/modal';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { SmartEntitySearch, highlightMatch } from '@/components/smart-entity-search';
+import { ContactPicker } from '@/components/contact-picker';
 import { AccountingPreview, buildSalesInvoicePreview } from '@/components/accounting-preview';
 import type { InvoiceRow, InvoiceItemInsert, ContactRow, ProductRow, WarehouseRow, TaxRateRow, ProductSearchRow } from '@/data/adapter';
 import { calcLine as _calcLine } from '@/core/sales/invoice-calc';
@@ -399,7 +400,7 @@ export default function InvoiceEditorPage() {
   // ── Contact / warehouse options ──────────────────────────────────────────
   // SearchableSelect owns its own placeholder, so option lists don't include
   // an empty entry. Plain <Select> elsewhere still needs one.
-  const contactOpts = contacts.map(c => ({ value: c.id, label: c.name }));
+  // contactOpts removed — customer picker now uses ContactPicker (D3).
   const warehouseOpts = [
     { value: '', label: t('sales.select_warehouse') },
     ...warehouses.map(w => ({ value: w.id, label: w.name })),
@@ -583,13 +584,13 @@ export default function InvoiceEditorPage() {
             <label className="mb-1 block text-sm font-medium text-ink-primary">
               {t('sales.customer')} <span className="text-danger-500">*</span>
             </label>
-            <SearchableSelect
-              options={contactOpts}
+            <ContactPicker
+              type="customer"
               value={header.contact_id}
               disabled={!canEdit || isVoid}
-              onChange={(v) => setHeader(h => ({ ...h, contact_id: v }))}
+              onChange={(id) => setHeader(h => ({ ...h, contact_id: id ?? '' }))}
               placeholder={t('sales.select_contact')}
-              panelWidth={320}
+              panelWidth={380}
             />
           </div>
           <div>
