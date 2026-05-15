@@ -84,6 +84,8 @@ export function SearchableSelect({
   }, [open]);
 
   // ── Panel position: measure + react to scroll/resize ────────────────
+  // See SmartEntitySearch for the rationale on `position: absolute` with
+  // document-relative coordinates instead of `position: fixed`.
   useLayoutEffect(() => {
     if (!open) { setPanelPos(null); return; }
     const compute = () => {
@@ -96,11 +98,13 @@ export function SearchableSelect({
       const spaceBelow = vh - rect.bottom;
       const spaceAbove = rect.top;
       const openUpward = spaceBelow < 200 && spaceAbove > spaceBelow;
-      const top = openUpward
+      const viewportTop = openUpward
         ? Math.max(8, rect.top - GAP - Math.min(PANEL_MAX, spaceAbove - 8))
         : rect.bottom + GAP;
+      const top  = viewportTop + window.scrollY;
+      const left = rect.left   + window.scrollX;
       const width = panelWidth ?? Math.max(rect.width, panelMinWidth);
-      setPanelPos({ top, left: rect.left, width, openUpward });
+      setPanelPos({ top, left, width, openUpward });
     };
     compute();
     const onScroll = () => compute();
@@ -187,7 +191,7 @@ export function SearchableSelect({
           ref={panelRef}
           className="max-h-64 overflow-hidden rounded-card border border-border-subtle bg-surface-card shadow-lg"
           style={{
-            position: 'fixed',
+            position: 'absolute',
             top:      panelPos.top,
             left:     panelPos.left,
             width:    panelPos.width,

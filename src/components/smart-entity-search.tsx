@@ -175,6 +175,14 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
   // ── Panel position: measure + react to scroll/resize ──────────────────
   // useLayoutEffect ensures the position is set BEFORE the browser paints
   // the panel the first time, so there's no visible flash at (0,0).
+  //
+  // We render the panel with `position: absolute` in document.body using
+  // document-relative coordinates (rect + window.scrollY/X). `position:
+  // fixed` is intentionally NOT used here because it silently breaks when
+  // ANY ancestor of the body has a CSS `transform`, `filter`, `perspective`
+  // or `will-change` set — those create a new containing block and the
+  // panel ends up landing at the wrong screen coordinates. Absolute with
+  // document-relative coords is robust to all of those.
   useLayoutEffect(() => {
     if (!open) { setPanelPos(null); return; }
     const compute = () => {
@@ -188,11 +196,15 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
       const spaceAbove = rect.top;
       // Flip upward only when bottom space is tight AND top has more room.
       const openUpward = spaceBelow < 200 && spaceAbove > spaceBelow;
-      const top = openUpward
+      // Viewport-relative top for placement decision …
+      const viewportTop = openUpward
         ? Math.max(8, rect.top - GAP - Math.min(PANEL_MAX, spaceAbove - 8))
         : rect.bottom + GAP;
+      // … converted to document-relative for `position: absolute`.
+      const top  = viewportTop + window.scrollY;
+      const left = rect.left   + window.scrollX;
       const width = panelWidth ?? Math.max(rect.width, panelMinWidth);
-      setPanelPos({ top, left: rect.left, width, openUpward });
+      setPanelPos({ top, left, width, openUpward });
     };
     compute();
     // Capture-phase scroll catches scrolls in ANY ancestor (tables, modal
@@ -401,7 +413,7 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
           ref={panelRef}
           className="overflow-hidden rounded-lg border border-border-subtle bg-surface-card shadow-2xl"
           style={{
-            position: 'fixed',
+            position: 'absolute',
             top:      panelPos.top,
             left:     panelPos.left,
             width:    panelPos.width,
