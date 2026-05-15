@@ -66,6 +66,21 @@ export interface SmartEntitySearchProps<T> {
   debounceMs?: number;
   /** Min chars to trigger a search. Default 1. */
   minChars?: number;
+  /**
+   * Barcode auto-select. When enabled and the search returns exactly ONE
+   * result whose `match_rank` is ≥ this threshold AND the query length is
+   * ≥ minQueryLen, the result is auto-picked and the dropdown closes.
+   *
+   * Use the rank threshold 2.0 (set by search_products RPC for exact
+   * barcode match). minQueryLen prevents premature auto-pick while typing.
+   *
+   * Pass undefined to disable. T must expose match_rank for this to work.
+   */
+  autoPickOnExact?: {
+    rankAtLeast: number;
+    minQueryLen: number;
+    getRank: (row: T) => number;
+  };
 }
 
 interface RecentEntry<T> {
@@ -91,6 +106,7 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
     panelWidth = 320,
     debounceMs = 250,
     minChars = 1,
+    autoPickOnExact,
   } = props;
 
   const getKey = useCallback(
@@ -110,6 +126,9 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
   const inputRef    = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const reqToken    = useRef(0); // stale-token to ignore late responses
+  // pickRow used by the search effect for auto-pick — declared below.
+  // We forward via ref so the effect doesn't need to depend on it.
+  const pickRowRef  = useRef<(row: T) => void>(() => { /* set below */ });
 
   // ── Load recent picks on mount ────────────────────────────────────────
   useEffect(() => {
@@ -156,6 +175,17 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
       search(trimmed)
         .then(rows => {
           if (myToken !== reqToken.current) return; // stale — ignore
+          // Barcode auto-pick: exactly one row whose rank is "exact match"
+          // AND the user typed enough chars to look like a barcode scan.
+          if (
+            autoPickOnExact
+            && rows.length === 1
+            && trimmed.length >= autoPickOnExact.minQueryLen
+            && autoPickOnExact.getRank(rows[0]) >= autoPickOnExact.rankAtLeast
+          ) {
+            pickRowRef.current(rows[0]);
+            return;
+          }
           setResults(rows);
           setHighlighted(0);
           setLoading(false);
@@ -210,6 +240,10 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
       });
     }
   }, [getKey, onChange, recentKey, recentLimit]);
+
+  // Keep ref in sync so the search effect can call latest pickRow without
+  // re-triggering on every callback identity change.
+  useEffect(() => { pickRowRef.current = pickRow; }, [pickRow]);
 
   // ── Clear selection ───────────────────────────────────────────────────
   const clearSelection = useCallback(() => {

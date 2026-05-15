@@ -11,6 +11,7 @@ import { Modal } from '@/ui/modal';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { SmartEntitySearch, highlightMatch } from '@/components/smart-entity-search';
 import { ContactPicker } from '@/components/contact-picker';
+import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 import { AccountingPreview, buildSalesInvoicePreview } from '@/components/accounting-preview';
 import type { InvoiceRow, InvoiceItemInsert, ContactRow, ProductRow, WarehouseRow, TaxRateRow, ProductSearchRow } from '@/data/adapter';
 import { calcLine as _calcLine } from '@/core/sales/invoice-calc';
@@ -134,6 +135,11 @@ export default function InvoiceEditorPage() {
   };
   const [header, setHeader] = useState<InvHeader>(defaultHeader);
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
+  // Product Quick Create state — shared across all line pickers.
+  // We remember which line opened the modal so onCreated updates THAT line.
+  const [productQcOpen,    setProductQcOpen]    = useState(false);
+  const [productQcSeed,    setProductQcSeed]    = useState('');
+  const [productQcLineKey, setProductQcLineKey] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [voidModal, setVoidModal] = useState(false);
   const [voidReason, setVoidReason] = useState('');
@@ -690,6 +696,15 @@ export default function InvoiceEditorPage() {
                       search={(q) => getAdapter().products.smartSearch({
                         company_id: company_id!, q, limit: 20,
                       })}
+                      // Barcode auto-pick: if a query of ≥6 chars returns
+                      // exactly one row with match_rank ≥ 2 (set by RPC on
+                      // exact barcode hit), pick it instantly and close.
+                      // Lets the user scan a barcode → line auto-fills.
+                      autoPickOnExact={{
+                        rankAtLeast: 2,
+                        minQueryLen: 6,
+                        getRank: (row) => row.match_rank,
+                      }}
                       resolveById={async (pid) => {
                         // Try cached list first (cheap), fallback to fetch.
                         const fromList = products.find(p => p.id === pid);
@@ -712,6 +727,19 @@ export default function InvoiceEditorPage() {
                       onChange={(id) => { if (id) handleProductChange(line._key, id); }}
                       getDisplayLabel={(row) => `${row.sku}  ${row.name}`}
                       getKey={(row) => row.id}
+                      emptyState={(query) => (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProductQcLineKey(line._key);
+                            setProductQcSeed(query);
+                            setProductQcOpen(true);
+                          }}
+                          className="rounded bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
+                        >
+                          + Quick create product "{query}"
+                        </button>
+                      )}
                       renderRow={(row, { query }) => {
                         const s = stockMap[row.id];
                         const qty = s?.qty ?? 0;
@@ -935,6 +963,18 @@ export default function InvoiceEditorPage() {
         })()}
       </aside>
       </div>
+
+      {/* Product Quick Create modal — opened from any line's picker emptyState */}
+      <ProductQuickCreate
+        open={productQcOpen}
+        initialQuery={productQcSeed}
+        onClose={() => setProductQcOpen(false)}
+        onCreated={(productId) => {
+          setProductQcOpen(false);
+          if (productQcLineKey) handleProductChange(productQcLineKey, productId);
+          setProductQcLineKey(null);
+        }}
+      />
 
       {/* Void modal */}
       <Modal

@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { SmartEntitySearch, highlightMatch } from './smart-entity-search';
+import { ContactQuickCreate } from './quick-create/contact-quick-create';
 import type { ContactSearchRow, ContactRow } from '@/data/adapter';
 
 /**
@@ -30,7 +32,12 @@ export function ContactPicker({
   const { company_id } = useAuthStore();
   const label = type === 'customer' ? 'customer' : 'supplier';
 
+  // Quick Create modal state
+  const [qcOpen, setQcOpen] = useState(false);
+  const [qcSeed, setQcSeed] = useState('');
+
   return (
+    <>
     <SmartEntitySearch<ContactSearchRow>
       value={value}
       disabled={disabled}
@@ -51,6 +58,15 @@ export function ContactPicker({
       onChange={(id) => onChange(id ?? null)}
       getDisplayLabel={(row) => row.name}
       getKey={(row) => row.id}
+      emptyState={(query) => (
+        <button
+          type="button"
+          onClick={() => { setQcSeed(query); setQcOpen(true); }}
+          className="rounded bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
+        >
+          + Quick create {label} "{query}"
+        </button>
+      )}
       renderRow={(row, { query }) => (
         <div className="space-y-0.5">
           <div className="flex items-baseline justify-between gap-2">
@@ -73,6 +89,14 @@ export function ContactPicker({
         </div>
       )}
     />
+    <ContactQuickCreate
+      open={qcOpen}
+      type={type}
+      initialName={qcSeed}
+      onClose={() => setQcOpen(false)}
+      onCreated={(id) => { setQcOpen(false); onChange(id); }}
+    />
+    </>
   );
 }
 
