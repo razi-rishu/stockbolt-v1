@@ -287,8 +287,10 @@ export interface VendorBillPreviewLine {
   tax_amount:        number;
 }
 export interface VendorBillPreviewInput {
-  lines:        VendorBillPreviewLine[];
-  bill_number?: string;
+  lines:               VendorBillPreviewLine[];
+  bill_number?:        string;
+  /** Phase 12.17 — freight/duty/customs allocated to inventory DR */
+  landed_cost_total?:  number;
 }
 
 /**
@@ -335,18 +337,24 @@ export function buildVendorBillPreview(input: VendorBillPreviewInput): PreviewLi
     vat += l.tax_amount;
   }
 
+  // Add landed cost into inventory DR (it's allocated across product lines
+  // by the RPC; preview shows the aggregate.) Only valid when there are
+  // product lines to allocate to.
+  const landed = (input.landed_cost_total ?? 0);
+  const landedToInventory = inventory > 0 ? landed : 0;
   const total = inventory
+    + landedToInventory
     + Object.values(expenseByAccount).reduce((s, e) => s + e.amount, 0)
     + vat;
   if (total <= 0) return lines;
 
-  // DR Inventory (aggregated)
-  if (inventory > 0) {
+  // DR Inventory (aggregated, includes landed cost)
+  if (inventory + landedToInventory > 0) {
     lines.push({
       account_code: '1300',
-      account_name: 'Inventory',
+      account_name: 'Inventory' + (landedToInventory > 0 ? ' (incl. landed cost)' : ''),
       description:  desc,
-      debit:        inventory,
+      debit:        inventory + landedToInventory,
       credit:       0,
     });
   }

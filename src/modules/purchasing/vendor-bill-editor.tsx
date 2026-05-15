@@ -15,6 +15,7 @@ interface LineRow {
   _key: string;
   product_id: string | null;
   coa_account_id: string | null;
+  warehouse_id: string | null;        // Phase 12.17 — per-line destination warehouse
   description: string;
   quantity: string;
   unit_cost: string;
@@ -39,7 +40,7 @@ function calcLine(l: LineRow) {
 }
 
 const emptyLine = (): LineRow => ({
-  _key: newKey(), product_id: null, coa_account_id: null, description: '',
+  _key: newKey(), product_id: null, coa_account_id: null, warehouse_id: null, description: '',
   quantity: '1', unit_cost: '0', discount_percent: '0', tax_rate: '0',
   line_subtotal: 0, discount_amount: 0, tax_amount: 0, line_total: 0,
 });
@@ -74,6 +75,11 @@ export default function VendorBillEditorPage() {
   const { data: coaAccounts = [] } = useQuery<CoaRow[]>({
     queryKey: ['coa', company_id],
     queryFn: () => getAdapter().coa.list(company_id!),
+    enabled: !!company_id,
+  });
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['warehouses', company_id],
+    queryFn: () => getAdapter().warehouses.list(company_id!),
     enabled: !!company_id,
   });
   const { data: existing } = useQuery<VendorBillRow | null>({
@@ -130,6 +136,7 @@ export default function VendorBillEditorPage() {
     supplier_id: '', date: todayIso(), due_date: '', reference: '',
     supplier_bill_number: '', notes: '', currency: 'AED',
     linked_grn_id: linkedGrnId ?? '',
+    landed_cost_total: '0',          // Phase 12.17 — freight + duty + customs
   });
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
   const [error, setError] = useState<string | null>(null);
@@ -146,6 +153,7 @@ export default function VendorBillEditorPage() {
         notes: existing.notes ?? '',
         currency: existing.currency,
         linked_grn_id: existing.linked_grn_id ?? '',
+        landed_cost_total: String((existing as { landed_cost_total?: number }).landed_cost_total ?? 0),
       });
     }
   }, [existing]);
@@ -156,6 +164,7 @@ export default function VendorBillEditorPage() {
         const base: LineRow = {
           _key: newKey(), product_id: item.product_id ?? null,
           coa_account_id: (item as { coa_account_id?: string | null }).coa_account_id ?? null,
+          warehouse_id: (item as { warehouse_id?: string | null }).warehouse_id ?? null,
           description: item.description ?? '',
           quantity: String(item.quantity), unit_cost: String(item.unit_cost),
           discount_percent: String(item.discount_percent ?? 0),
@@ -179,6 +188,7 @@ export default function VendorBillEditorPage() {
       setLines(grnItems.map(item => {
         const base: LineRow = {
           _key: newKey(), product_id: item.product_id, coa_account_id: null,
+          warehouse_id: (item as { warehouse_id?: string | null }).warehouse_id ?? null,
           description: '',
           quantity: String(item.qty_received), unit_cost: String(item.unit_cost),
           discount_percent: '0', tax_rate: '0',
@@ -247,6 +257,7 @@ export default function VendorBillEditorPage() {
       bill_id: '',
       product_id: l.product_id,
       coa_account_id: l.coa_account_id,
+      warehouse_id: l.warehouse_id,     // Phase 12.17 — per-line destination
       description: l.description || null,
       description_ar: null,
       quantity: parseFloat(l.quantity) || 0,
@@ -261,13 +272,31 @@ export default function VendorBillEditorPage() {
       line_total: l.line_total,
       linked_grn_item_id: null,
       sort_order: i,
-    }));
+    // VendorBillItemInsert type is regenerated from Supabase types; until
+    // those refresh post-migration, allow the unknown warehouse_id field.
+    } as unknown as VendorBillItemInsert));
   }
+
+  const landedCost = parseFloat(header.landed_cost_total) || 0;
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!header.supplier_id) throw new Error(t('purchasing.error_supplier_required'));
+      if (landedCost < 0) throw new Error('Landed cost cannot be negative');
+      if (landedCost > 0 && header.linked_grn_id) {
+        throw new Error('Landed cost is not allowed on GRN-linked bills. Post freight separately.');
+      }
+      // Per-product warehouse is required on standalone bills (the RPC
+      // falls back to default if NULL, but explicit is better).
+      const productLinesWithoutWh = lines.filter(l => l.product_id && !l.warehouse_id);
+      if (!header.linked_grn_id && productLinesWithoutWh.length > 0) {
+        throw new Error(`Pick a warehouse for ${productLinesWithoutWh.length} product line${productLinesWithoutWh.length === 1 ? '' : 's'}`);
+      }
+
       const billNum = isNew ? await getAdapter().vendorBills.getNextNumber(company_id!) : existing!.bill_number;
+      // total_amount includes landed cost so CR AP captures the full
+      // commitment to the supplier.
+      const totalWithLanded = +(grandTotal + landedCost).toFixed(2);
       const row = {
         company_id: company_id!, bill_number: billNum,
         supplier_bill_number: header.supplier_bill_number || null,
@@ -275,14 +304,17 @@ export default function VendorBillEditorPage() {
         due_date: header.due_date || null, reference: header.reference || null,
         currency: header.currency, exchange_rate: 1,
         subtotal: +subtotal.toFixed(2), discount_amount: +discountTotal.toFixed(2),
-        tax_amount: +taxTotal.toFixed(2), total_amount: +grandTotal.toFixed(2),
+        tax_amount: +taxTotal.toFixed(2), total_amount: totalWithLanded,
+        landed_cost_total: +landedCost.toFixed(2),    // Phase 12.17
         status: 'draft' as const,
         linked_grn_id: header.linked_grn_id || null,
         void_reason: null, voided_at: null, voided_by: null,
         notes: header.notes || null,
       };
-      if (isNew) return getAdapter().vendorBills.create(row, buildItems());
-      await getAdapter().vendorBills.update(id!, row, buildItems());
+      // Type cast: landed_cost_total isn't in the generated VendorBillInsert
+      // yet (Supabase types regenerate post-migration).
+      if (isNew) return getAdapter().vendorBills.create(row as unknown as Parameters<ReturnType<typeof getAdapter>['vendorBills']['create']>[0], buildItems());
+      await getAdapter().vendorBills.update(id!, row as unknown as Parameters<ReturnType<typeof getAdapter>['vendorBills']['update']>[1], buildItems());
       return null;
     },
     onSuccess: (data) => {
@@ -430,6 +462,17 @@ export default function VendorBillEditorPage() {
             disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, reference: e.target.value }))} />
           <Input label={t('purchasing.currency')} value={header.currency}
             disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, currency: e.target.value }))} />
+          {/* Landed cost — freight + duty + customs + insurance.
+               Only allowed on standalone bills (RPC enforces). */}
+          {!header.linked_grn_id && (
+            <Input
+              label="Landed cost (freight/duty)"
+              type="number" min="0" step="0.01"
+              value={header.landed_cost_total}
+              disabled={!canEdit}
+              onChange={e => setHeader(h => ({ ...h, landed_cost_total: e.target.value }))}
+            />
+          )}
         </div>
         {header.linked_grn_id && (
           <p className="mt-2 text-xs text-ink-tertiary">{t('purchasing.linked_grn')}: {header.linked_grn_id}</p>
@@ -453,6 +496,7 @@ export default function VendorBillEditorPage() {
                 <th className="px-3 py-2 text-end font-medium w-24">{t('purchasing.unit_cost')}</th>
                 <th className="px-3 py-2 text-end font-medium w-20">{t('purchasing.disc_pct')}</th>
                 <th className="px-3 py-2 text-end font-medium w-24">{t('purchasing.tax')}</th>
+                <th className="px-3 py-2 text-start font-medium w-32" title="Destination warehouse for this line">Warehouse</th>
                 <th className="px-3 py-2 text-end font-medium w-20" title="On-hand stock">Stock</th>
                 <th className="px-3 py-2 text-end font-medium w-24" title="Projected MAC after this purchase">MAC →</th>
                 <th className="px-3 py-2 text-end font-medium w-24">{t('purchasing.line_total')}</th>
@@ -523,6 +567,24 @@ export default function VendorBillEditorPage() {
                       onChange={e => updateLine(line._key, { tax_rate: e.target.value })}>
                       {taxOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
+                  </td>
+                  {/* Warehouse picker — only meaningful for product lines on
+                       standalone bills (no GRN). For GRN-linked bills the
+                       GRN's warehouse already governs; leave disabled. */}
+                  <td className="px-3 py-1.5">
+                    {line.product_id && !header.linked_grn_id ? (
+                      <select
+                        className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60"
+                        value={line.warehouse_id ?? ''}
+                        disabled={!canEdit}
+                        onChange={e => updateLine(line._key, { warehouse_id: e.target.value || null })}
+                      >
+                        <option value="">— pick —</option>
+                        {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                      </select>
+                    ) : (
+                      <span className="text-ink-tertiary text-xs">—</span>
+                    )}
                   </td>
                   {(() => {
                     // Stock + projected MAC. Only meaningful for product lines.
@@ -608,9 +670,15 @@ export default function VendorBillEditorPage() {
                 <span className="font-mono">{fmt(taxTotal)}</span>
               </div>
             )}
+            {landedCost > 0 && (
+              <div className="flex justify-between text-ink-secondary">
+                <span>Landed cost</span>
+                <span className="font-mono">{fmt(landedCost)}</span>
+              </div>
+            )}
             <div className="flex justify-between border-t border-border-subtle pt-2.5 mt-1 text-base font-semibold text-ink-primary">
               <span>Grand Total</span>
-              <span className="font-mono">{header.currency} {fmt(grandTotal)}</span>
+              <span className="font-mono">{header.currency} {fmt(grandTotal + landedCost)}</span>
             </div>
             {(() => {
               // Paid / Balance Due only for existing confirmed bills.
@@ -618,7 +686,7 @@ export default function VendorBillEditorPage() {
               const thisBill = openSupplierBills.find(b => b.id === id);
               if (!thisBill) return null;
               const outstanding = Number(thisBill.outstanding ?? 0);
-              const paid = grandTotal - outstanding;
+              const paid = (grandTotal + landedCost) - outstanding;
               return (
                 <>
                   <div className="flex justify-between text-ink-secondary border-t border-border-subtle pt-2.5">
@@ -639,6 +707,7 @@ export default function VendorBillEditorPage() {
         {lines.some(l => l.product_id || l.coa_account_id) && (() => {
           const preview = buildVendorBillPreview({
             bill_number: existing?.bill_number,
+            landed_cost_total: landedCost,
             lines: lines.map(l => {
               // For inventory lines: product_id is set; for expense lines:
               // coa_account_id is set and we attach the COA code/name for display.
