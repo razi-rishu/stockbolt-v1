@@ -677,21 +677,24 @@ export function createSupabaseAdapter(
       async getBalance(company_id, product_id, warehouse_id): Promise<StockBalance> {
         const { data, error } = await client
           .from('stock_ledger')
-          .select('quantity, direction, unit_cost, running_qty, running_avg_cost')
+          .select('direction, quantity, running_avg_cost')
           .eq('company_id', company_id)
           .eq('product_id', product_id)
-          .eq('warehouse_id', warehouse_id)
-          .is('reversal_of_id', null)
-          .order('created_at', { ascending: false })
-          .limit(1);
+          .eq('warehouse_id', warehouse_id);
         assertNoError(error, 'stockLedger.getBalance');
-        if (data && data.length > 0) {
-          const last = data[0];
-          const qty  = last.running_qty as unknown as number ?? 0;
-          const mac  = last.running_avg_cost as unknown as number ?? 0;
-          return { product_id, warehouse_id, quantity: qty, unit_cost: mac, total_value: qty * mac };
+        // Sum direction × quantity over ALL rows (including reversals).
+        // Previously we picked latest row by created_at + excluded
+        // reversals — wrong because (a) reversal rows are legitimate
+        // movements that should net out, and (b) multiple rows in one
+        // transaction share created_at, making the "latest" non-deterministic.
+        let qty = 0;
+        let mac = 0;
+        for (const r of (data ?? []) as { direction: number | null; quantity: number | null; running_avg_cost: number | null }[]) {
+          qty += Number(r.direction ?? 0) * Number(r.quantity ?? 0);
+          const c = Number(r.running_avg_cost ?? 0);
+          if (c > 0) mac = c; // MAC is constant within a transaction; last non-zero is the current value
         }
-        return { product_id, warehouse_id, quantity: 0, unit_cost: 0, total_value: 0 };
+        return { product_id, warehouse_id, quantity: qty, unit_cost: mac, total_value: qty * mac };
       },
       async getMAC(company_id, product_id): Promise<number> {
         // MAC is company-wide: take the most recent running_avg_cost across all warehouses
@@ -1482,40 +1485,69 @@ export function createSupabaseAdapter(
       },
 
       async getStockValuation(company_id, as_of_date): Promise<StockValuationReport> {
+        // Phase 12.16 fix: sum direction × quantity per (product, warehouse)
+        // to get current on-hand qty. Previous version used "latest row by
+        // created_at" but rows from the same transaction (e.g. void
+        // reversing multiple sales at once) share identical created_at
+        // and Postgres's tiebreaker is undefined — leading to wrong qty.
         const { data, error } = await client
           .from('stock_ledger')
-          .select('product_id, warehouse_id, running_qty, running_avg_cost, created_at, products(code, name), warehouses(name)')
+          .select('product_id, warehouse_id, direction, quantity, running_avg_cost, products(sku, name), warehouses(name)')
           .eq('company_id', company_id)
-          .lte('date', as_of_date)
-          .order('created_at', { ascending: false });
+          .lte('date', as_of_date);
         assertNoError(error, 'reports.getStockValuation');
 
-        const seen = new Set<string>();
-        const lines: StockValuationLine[] = [];
+        type Row = {
+          product_id: string;
+          warehouse_id: string;
+          direction: number | null;
+          quantity: number | null;
+          running_avg_cost: number | null;
+          products: { sku: string; name: string } | null;
+          warehouses: { name: string } | null;
+        };
+        const agg: Record<string, {
+          product_id: string;
+          warehouse_id: string;
+          product_code: string;
+          product_name: string;
+          warehouse_name: string;
+          qty: number;
+          unit_cost: number;
+        }> = {};
 
-        for (const row of data ?? []) {
+        for (const row of (data ?? []) as Row[]) {
+          if (!row.product_id || !row.warehouse_id) continue;
           const key = `${row.product_id}::${row.warehouse_id}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-
-          const qty = Number(row.running_qty);
-          if (qty <= 0) continue;
-
-          const product = row.products as unknown as { code: string; name: string } | null;
-          const warehouse = row.warehouses as unknown as { name: string } | null;
-          const unitCost = Number(row.running_avg_cost);
-
-          lines.push({
-            product_id: row.product_id,
-            product_code: product?.code ?? '',
-            product_name: product?.name ?? '',
-            warehouse_id: row.warehouse_id,
-            warehouse_name: warehouse?.name ?? '',
-            quantity: qty,
-            unit_cost: unitCost,
-            total_value: qty * unitCost,
-          });
+          if (!agg[key]) {
+            agg[key] = {
+              product_id:     row.product_id,
+              warehouse_id:   row.warehouse_id,
+              product_code:   row.products?.sku ?? '',
+              product_name:   row.products?.name ?? '',
+              warehouse_name: row.warehouses?.name ?? '',
+              qty:            0,
+              unit_cost:      Number(row.running_avg_cost ?? 0),
+            };
+          }
+          agg[key].qty += Number(row.direction ?? 0) * Number(row.quantity ?? 0);
+          // MAC is constant within a transaction; latest non-zero wins.
+          const cost = Number(row.running_avg_cost ?? 0);
+          if (cost > 0) agg[key].unit_cost = cost;
         }
+
+        const lines: StockValuationLine[] = Object.values(agg)
+          .filter(a => a.qty > 0)
+          .map(a => ({
+            product_id:     a.product_id,
+            product_code:   a.product_code,
+            product_name:   a.product_name,
+            warehouse_id:   a.warehouse_id,
+            warehouse_name: a.warehouse_name,
+            quantity:       a.qty,
+            unit_cost:      a.unit_cost,
+            total_value:    a.qty * a.unit_cost,
+          }));
 
         return {
           as_of_date,
@@ -2240,8 +2272,15 @@ export function createSupabaseAdapter(
 
           client.from('invoice_items').select('product_id, quantity, unit_price, discount_percent, products(name), invoices!inner(company_id, status, date)').eq('invoices.company_id', company_id).eq('invoices.status', 'confirmed').gte('invoices.date', monthStart).lte('invoices.date', today).limit(500),
 
-          // For low stock count: stock_ledger ordered DESC, deduped to latest per (product, warehouse)
-          client.from('stock_ledger').select('product_id, warehouse_id, running_qty, created_at, products(min_stock_level)').eq('company_id', company_id).order('created_at', { ascending: false }).limit(2000),
+          // Current stock per (product, warehouse) — pulled directly from
+          // stock_ledger via SUM(direction × quantity). We used to read
+          // the latest running_qty by created_at, but multiple rows in
+          // one transaction (e.g. a void that reverses 4 sales at once)
+          // share identical created_at, so Postgres returned them in
+          // undefined order and the dedup could pick an intermediate row.
+          // SUM is deterministic and self-corrects against any historical
+          // chaos in the ledger.
+          client.from('stock_ledger').select('product_id, warehouse_id, direction, quantity, products(min_stock_level)').eq('company_id', company_id).limit(5000),
 
           client.from('invoices').select('id, total_amount').eq('company_id', company_id).eq('status', 'confirmed').lt('due_date', today).limit(500),
 
@@ -2272,20 +2311,35 @@ export function createSupabaseAdapter(
         }
         const topProducts = Object.entries(prodRevenue).sort(([, a], [, b]) => b.rev - a.rev).slice(0, 5).map(([id, v]) => ({ product_id: id, name: v.name, qty: v.qty, revenue: v.rev }));
 
-        // Low stock count — rows DESC, dedupe to latest per (product, warehouse); also build current-qty map for recent inventory display
-        const seenStock = new Set<string>();
+        // Sum direction × quantity over all stock_ledger rows per
+        // (product, warehouse). Result = current on-hand quantity. Then
+        // collapse to per-product totals and apply min_stock_level for
+        // the low-stock count. Authoritative and order-independent.
+        type LowStockRow = {
+          product_id: string | null;
+          warehouse_id: string | null;
+          direction: number | null;
+          quantity: number | null;
+          products: { min_stock_level: number | null } | null;
+        };
+        const perPwh: Record<string, { product_id: string; qty: number; min: number }> = {};
+        for (const r of (lowStock ?? []) as LowStockRow[]) {
+          if (!r.product_id) continue;
+          const key = `${r.product_id}::${r.warehouse_id ?? ''}`;
+          if (!perPwh[key]) {
+            perPwh[key] = {
+              product_id: r.product_id,
+              qty:        0,
+              min:        Number(r.products?.min_stock_level ?? 0),
+            };
+          }
+          perPwh[key].qty += Number(r.direction ?? 0) * Number(r.quantity ?? 0);
+        }
         const latestQtyByProduct: Record<string, number> = {};
         let lowStockCount = 0;
-        for (const r of (lowStock ?? []) as { product_id: string | null; warehouse_id: string | null; running_qty: number | null; products: { min_stock_level: number | null } | null }[]) {
-          const key = `${r.product_id}::${r.warehouse_id}`;
-          if (seenStock.has(key)) continue;
-          seenStock.add(key);
-          const qty = Number(r.running_qty ?? 0);
-          const min = Number(r.products?.min_stock_level ?? 0);
-          if (min > 0 && qty <= min) lowStockCount++;
-          if (r.product_id) {
-            latestQtyByProduct[r.product_id] = (latestQtyByProduct[r.product_id] ?? 0) + qty;
-          }
+        for (const row of Object.values(perPwh)) {
+          latestQtyByProduct[row.product_id] = (latestQtyByProduct[row.product_id] ?? 0) + row.qty;
+          if (row.min > 0 && row.qty <= row.min) lowStockCount++;
         }
 
         // 7-day trend — build a date-keyed map then iterate days for a complete series
