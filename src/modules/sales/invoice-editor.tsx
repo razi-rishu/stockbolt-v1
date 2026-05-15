@@ -98,10 +98,11 @@ export default function InvoiceEditorPage() {
     queryFn: () => getAdapter().taxRates.list(company_id!),
     enabled: !!company_id,
   });
-  // Salespeople = active profiles in this company. Required field below.
+  // Salespeople — dedicated master table (Phase 12.16). Required field
+  // below. Add/edit/deactivate names from Settings → Salespeople.
   const { data: salespeople = [] } = useQuery({
     queryKey: ['salespeople', company_id],
-    queryFn: () => getAdapter().profiles.list(company_id!),
+    queryFn: () => getAdapter().salespeople.list(company_id!),
     enabled: !!company_id,
   });
 
@@ -512,11 +513,11 @@ export default function InvoiceEditorPage() {
               Salesperson <span className="text-danger-500">*</span>
             </label>
             <SearchableSelect
-              options={salespeople.map(p => ({ value: p.id, label: p.full_name }))}
+              options={salespeople.map(p => ({ value: p.id, label: p.name }))}
               value={header.salesperson_id}
               disabled={!canEdit || isVoid}
               onChange={(v) => setHeader(h => ({ ...h, salesperson_id: v }))}
-              placeholder="Select salesperson"
+              placeholder={salespeople.length === 0 ? 'No salespeople — add in Settings' : 'Select salesperson'}
               panelWidth={280}
             />
           </div>

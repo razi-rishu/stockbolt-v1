@@ -182,14 +182,6 @@ export function createSupabaseAdapter(
         assertNoError(error, 'profiles.getCurrent');
         return data;
       },
-      async list(company_id): Promise<Profile[]> {
-        const { data, error } = await client.from('profiles').select('*')
-          .eq('company_id', company_id)
-          .eq('is_active', true)
-          .order('full_name');
-        assertNoError(error, 'profiles.list');
-        return (data ?? []) as Profile[];
-      },
     },
 
     // ── Onboarding ─────────────────────────────────────────────────────────
@@ -1838,9 +1830,11 @@ export function createSupabaseAdapter(
       },
 
       async getSalesBySalesperson(company_id, from, to): Promise<SalesBySalespersonLine[]> {
+        // Phase 12.16: salesperson_id now FKs to salespeople (not profiles).
+        // Join salespeople(name) instead of profiles(full_name).
         const { data, error } = await client
           .from('invoices')
-          .select('id, salesperson_id, subtotal, profiles(full_name), invoice_items(quantity, unit_price, discount_percent, cost_at_sale)')
+          .select('id, salesperson_id, subtotal, salespeople(name), invoice_items(quantity, unit_price, discount_percent, cost_at_sale)')
           .eq('company_id', company_id)
           .eq('status', 'confirmed')
           .gte('date', from).lte('date', to);
@@ -1848,8 +1842,8 @@ export function createSupabaseAdapter(
         const by: Record<string, { name: string; count: number; sales: number; cogs: number }> = {};
         for (const inv of data ?? []) {
           const spId = inv.salesperson_id ?? 'unassigned';
-          const profile = inv.profiles as unknown as { full_name: string } | null;
-          if (!by[spId]) by[spId] = { name: profile?.full_name ?? 'Unassigned', count: 0, sales: 0, cogs: 0 };
+          const sp = inv.salespeople as unknown as { name: string } | null;
+          if (!by[spId]) by[spId] = { name: sp?.name ?? 'Unassigned', count: 0, sales: 0, cogs: 0 };
           by[spId].count += 1;
           const items = (inv.invoice_items as unknown as { quantity: number; unit_price: number; discount_percent: number; cost_at_sale: number | null }[] | null) ?? [];
           for (const it of items) {
@@ -3387,6 +3381,55 @@ export function createSupabaseAdapter(
           });
         assertNoError(error as Error | null, 'admin.resetCompanyData');
         return data as import('./adapter').ResetCompanyDataResult;
+      },
+    },
+
+    // ── Phase 12.16: Salespeople master ───────────────────────────────────
+    salespeople: {
+      async list(company_id, opts) {
+        const c = client as unknown as {
+          from: (t: string) => {
+            select: (cols: string) => {
+              eq: (k: string, v: unknown) => {
+                eq: (k: string, v: unknown) => { order: (col: string) => Promise<{ data: unknown; error: unknown }> };
+                order: (col: string) => Promise<{ data: unknown; error: unknown }>;
+              };
+            };
+          };
+        };
+        const base = c.from('salespeople').select('*').eq('company_id', company_id);
+        const q = opts?.include_inactive ? base : base.eq('is_active', true);
+        const { data, error } = await q.order('name');
+        assertNoError(error as Error | null, 'salespeople.list');
+        return (data as import('./adapter').SalespersonRow[]) ?? [];
+      },
+      async getById(id) {
+        const { data, error } = await (client.from as unknown as (t: string) => { select: (c: string) => { eq: (k: string, v: unknown) => { single: () => Promise<{ data: unknown; error: { code?: string } | null }> } } })('salespeople')
+          .select('*').eq('id', id).single();
+        if (error?.code === 'PGRST116') return null;
+        assertNoError(error as Error | null, 'salespeople.getById');
+        return data as import('./adapter').SalespersonRow;
+      },
+      async create(row) {
+        const { data, error } = await (client.from as unknown as (t: string) => { insert: (r: unknown) => { select: () => { single: () => Promise<{ data: unknown; error: unknown }> } } })('salespeople')
+          .insert(row).select().single();
+        assertNoError(error as Error | null, 'salespeople.create');
+        return data as import('./adapter').SalespersonRow;
+      },
+      async update(id, row) {
+        const { error } = await (client.from as unknown as (t: string) => { update: (r: unknown) => { eq: (k: string, v: unknown) => Promise<{ error: unknown }> } })('salespeople')
+          .update(row).eq('id', id);
+        assertNoError(error as Error | null, 'salespeople.update');
+      },
+      async deactivate(id) {
+        const { error } = await (client.from as unknown as (t: string) => { update: (r: unknown) => { eq: (k: string, v: unknown) => Promise<{ error: unknown }> } })('salespeople')
+          .update({ is_active: false }).eq('id', id);
+        assertNoError(error as Error | null, 'salespeople.deactivate');
+      },
+      async activate(id) {
+        const { error } = await (client.from as unknown as (t: string) => { update: (r: unknown) => { eq: (k: string, v: unknown) => Promise<{ error: unknown }> } })('salespeople')
+          .update({ is_active: true }).eq('id', id);
+        assertNoError(error as Error | null, 'salespeople.activate');
       },
     },
   };

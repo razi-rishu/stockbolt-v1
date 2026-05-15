@@ -54,10 +54,11 @@ export default function QuoteEditorPage() {
     queryFn: () => getAdapter().contacts.list(company_id!, 'customer'),
     enabled: !!company_id,
   });
-  // Salespeople for the mandatory Salesperson picker below
+  // Salespeople — dedicated master table (Phase 12.16). Manage in
+  // Settings → Salespeople.
   const { data: salespeople = [] } = useQuery({
     queryKey: ['salespeople', company_id],
-    queryFn: () => getAdapter().profiles.list(company_id!),
+    queryFn: () => getAdapter().salespeople.list(company_id!),
     enabled: !!company_id,
   });
   const { data: products = [] } = useQuery<ProductRow[]>({
@@ -267,11 +268,11 @@ export default function QuoteEditorPage() {
               Salesperson <span className="text-danger-500">*</span>
             </label>
             <SearchableSelect
-              options={salespeople.map(p => ({ value: p.id, label: p.full_name }))}
+              options={salespeople.map(p => ({ value: p.id, label: p.name }))}
               value={header.salesperson_id}
               disabled={!canEdit}
               onChange={(v) => setHeader(h => ({ ...h, salesperson_id: v }))}
-              placeholder="Select salesperson"
+              placeholder={salespeople.length === 0 ? 'No salespeople — add in Settings' : 'Select salesperson'}
               panelWidth={280}
             />
           </div>

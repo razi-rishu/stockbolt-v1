@@ -29,7 +29,6 @@ export function createSelfHostedAdapter(): DataAdapter {
     },
     profiles: {
       getCurrent: () => notImplemented('profiles.getCurrent'),
-      list:       () => notImplemented('profiles.list'),
     },
     onboarding: {
       createCompanyAndProfile: () => notImplemented('onboarding.createCompanyAndProfile'),
@@ -348,6 +347,15 @@ export function createSelfHostedAdapter(): DataAdapter {
     // Phase 12.13: Admin
     admin: {
       resetCompanyData: () => notImplemented('admin.resetCompanyData'),
+    },
+    // Phase 12.16: Salespeople
+    salespeople: {
+      list:       () => notImplemented('salespeople.list'),
+      getById:    () => notImplemented('salespeople.getById'),
+      create:     () => notImplemented('salespeople.create'),
+      update:     () => notImplemented('salespeople.update'),
+      deactivate: () => notImplemented('salespeople.deactivate'),
+      activate:   () => notImplemented('salespeople.activate'),
     },
   };
 }

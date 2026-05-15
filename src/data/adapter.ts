@@ -97,12 +97,34 @@ export interface CompaniesAPI {
 // ── Profiles API ──────────────────────────────────────────────────────────────
 export interface ProfilesAPI {
   getCurrent(): Promise<Profile | null>;
-  /**
-   * Active profiles in the company, used to populate Salesperson pickers
-   * on quote / invoice editors. Returns all roles (admin/sales/counter/etc)
-   * because in small shops anyone with system access may close a sale.
-   */
-  list(company_id: string): Promise<Profile[]>;
+}
+
+// ── Salespeople (Phase 12.16) ─────────────────────────────────────────────
+export interface SalespersonRow {
+  id:             string;
+  company_id:     string;
+  name:           string;
+  name_ar:        string | null;
+  email:          string | null;
+  phone:          string | null;
+  commission_pct: number;
+  is_active:      boolean;
+  notes:          string | null;
+  created_at:     string;
+  updated_at:     string;
+}
+export type SalespersonInsert = Omit<SalespersonRow, 'id' | 'created_at' | 'updated_at'>;
+export type SalespersonUpdate = Partial<Omit<SalespersonRow, 'id' | 'company_id' | 'created_at' | 'updated_at'>>;
+
+export interface SalespeopleAPI {
+  /** Active salespeople for pickers. Active-only by default. */
+  list(company_id: string, opts?: { include_inactive?: boolean }): Promise<SalespersonRow[]>;
+  getById(id: string): Promise<SalespersonRow | null>;
+  create(row: SalespersonInsert): Promise<SalespersonRow>;
+  update(id: string, row: SalespersonUpdate): Promise<void>;
+  /** Soft delete — sets is_active=false. Historical sales keep the FK. */
+  deactivate(id: string): Promise<void>;
+  activate(id: string): Promise<void>;
 }
 
 // ── Onboarding API ────────────────────────────────────────────────────────────
@@ -1464,6 +1486,8 @@ export interface DataAdapter {
   bankReconciliations: BankReconciliationsAPI;
   // Phase 12.13: Admin / destructive operations
   admin: AdminAPI;
+  // Phase 12.16: Salespeople master data
+  salespeople: SalespeopleAPI;
 }
 
 // ── Phase 12.13: Admin ────────────────────────────────────────────────────
