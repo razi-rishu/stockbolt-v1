@@ -9,8 +9,9 @@ import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Modal } from '@/ui/modal';
 import { SearchableSelect } from '@/ui/searchable-select';
+import { SmartEntitySearch, highlightMatch } from '@/components/smart-entity-search';
 import { AccountingPreview, buildSalesInvoicePreview } from '@/components/accounting-preview';
-import type { InvoiceRow, InvoiceItemInsert, ContactRow, ProductRow, WarehouseRow, TaxRateRow } from '@/data/adapter';
+import type { InvoiceRow, InvoiceItemInsert, ContactRow, ProductRow, WarehouseRow, TaxRateRow, ProductSearchRow } from '@/data/adapter';
 import { calcLine as _calcLine } from '@/core/sales/invoice-calc';
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -403,7 +404,8 @@ export default function InvoiceEditorPage() {
     { value: '', label: t('sales.select_warehouse') },
     ...warehouses.map(w => ({ value: w.id, label: w.name })),
   ];
-  const productOpts = products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }));
+  // productOpts removed — product picker now uses SmartEntitySearch (D2).
+  // Keeping the products list for resolveById fallback in the picker.
   const taxOpts = [
     { value: '0', label: t('sales.no_tax') },
     ...taxRates.map(r => ({ value: String(r.rate), label: `${r.name} (${r.rate}%)` })),
@@ -674,13 +676,74 @@ export default function InvoiceEditorPage() {
               {lines.map(line => (
                 <tr key={line._key} className="border-b border-border-subtle last:border-0">
                   <td className="px-3 py-1.5">
-                    <SearchableSelect
-                      options={productOpts}
-                      value={line.product_id ?? ''}
+                    {/* SmartEntitySearch — Phase 12.18.
+                         Server-side trigram search + rich-list dropdown.
+                         Falls back to the cached `products` list to resolve
+                         the currently-selected row by id. */}
+                    <SmartEntitySearch<ProductSearchRow>
+                      value={line.product_id}
                       disabled={!canEdit || isVoid}
-                      onChange={(v) => handleProductChange(line._key, v)}
-                      placeholder={'— ' + t('sales.select_product') + ' —'}
-                      panelWidth={360}
+                      placeholder={t('sales.select_product')}
+                      panelWidth={520}
+                      recentKey={company_id ? `recent_products::${company_id}` : undefined}
+                      search={(q) => getAdapter().products.smartSearch({
+                        company_id: company_id!, q, limit: 20,
+                      })}
+                      resolveById={async (pid) => {
+                        // Try cached list first (cheap), fallback to fetch.
+                        const fromList = products.find(p => p.id === pid);
+                        if (fromList) {
+                          return {
+                            id: fromList.id, sku: fromList.sku, name: fromList.name,
+                            name_ar: fromList.name_ar ?? null,
+                            oe_number: fromList.oe_number ?? null,
+                            barcode: fromList.barcode ?? null,
+                            brand_id: fromList.brand_id ?? null, brand_name: null,
+                            category_id: fromList.category_id ?? null, category_name: null,
+                            unit_id: fromList.unit_id ?? null, unit_code: null,
+                            selling_price: Number(fromList.selling_price ?? 0),
+                            is_active: fromList.is_active,
+                            match_rank: 0,
+                          };
+                        }
+                        return null;
+                      }}
+                      onChange={(id) => { if (id) handleProductChange(line._key, id); }}
+                      getDisplayLabel={(row) => `${row.sku}  ${row.name}`}
+                      getKey={(row) => row.id}
+                      renderRow={(row, { query }) => {
+                        const s = stockMap[row.id];
+                        const qty = s?.qty ?? 0;
+                        const mac = s?.mac ?? 0;
+                        return (
+                          <div className="space-y-0.5">
+                            <div className="flex items-baseline justify-between gap-2">
+                              <div className="flex items-baseline gap-2 min-w-0">
+                                <span className="font-mono text-xs text-brand-700 flex-none">{highlightMatch(row.sku, query)}</span>
+                                <span className="text-xs text-ink-primary truncate">{highlightMatch(row.name, query)}</span>
+                              </div>
+                              <span className="font-mono text-xs text-ink-primary flex-none">
+                                {Number(row.selling_price ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                            <div className="flex gap-2 text-[10px] text-ink-tertiary">
+                              {row.brand_name && <span>{row.brand_name}</span>}
+                              {row.oe_number && <span>OEM {highlightMatch(row.oe_number, query)}</span>}
+                              {row.unit_code && <span>/ {row.unit_code}</span>}
+                            </div>
+                            <div className="flex gap-2 text-[10px]">
+                              <span className={qty <= 0 ? 'text-red-600 font-semibold' : qty < 5 ? 'text-amber-700' : 'text-emerald-700'}>
+                                Stock {qty.toFixed(0)}
+                              </span>
+                              {mac > 0 && (
+                                <span className="text-ink-tertiary">
+                                  MAC {mac.toFixed(2)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      }}
                     />
                   </td>
                   <td className="px-3 py-1.5">
