@@ -1,29 +1,43 @@
-import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { Z } from '@/ui/z-index';
 
 /**
  * SmartEntitySearch — reusable ERP-grade combobox.
  *
- * Single component, generic over T, used for products / customers / suppliers
- * / warehouses / accounts. Replaces the preload-everything SearchableSelect
- * with a server-side debounced search and rich-list dropdown.
+ * Generic over T. Used for products / customers / suppliers / warehouses /
+ * accounts. Replaces preload-everything dropdowns with server-side
+ * debounced search and rich-list rendering.
+ *
+ * Phase D5 — Portal-based floating panel.
+ *   The dropdown is rendered into document.body via createPortal so it
+ *   NEVER affects the document flow. Inside an invoice line-item cell
+ *   the row height stays fixed; inside a card with overflow:hidden the
+ *   panel still appears above; inside a modal the panel layers correctly
+ *   via z-index tokens.
+ *
+ *   Panel position is computed from the input's getBoundingClientRect()
+ *   and updated on:
+ *     - open / re-open
+ *     - window scroll (capture phase, so nested scrolls fire too)
+ *     - window resize
+ *     - ResizeObserver on the input
+ *
+ *   Auto-flips upward when bottom space < 200px AND top space ≥ 200px.
+ *   Width defaults to max(inputWidth, 320px); consumer can override
+ *   via panelWidth or panelMinWidth.
  *
  * Behaviour:
- *   - 250ms debounce on keystrokes (with stale-token race protection)
+ *   - 250ms debounce on keystrokes (stale-token race protection)
  *   - Min 1 char triggers a search
- *   - Empty query shows recent picks (from localStorage)
+ *   - Empty query shows recent picks (localStorage)
  *   - Keyboard: ↑/↓ navigate, Enter selects, Esc closes, Tab moves on
  *   - Mouse: hover highlights, click selects
- *   - Caller controls row rendering (passes renderRow) — same component
- *     can show product rows, contact rows, anything
- *   - Caller can provide an empty-state slot (typically a Quick Create
- *     button — D4)
+ *   - Caller controls row rendering (renderRow prop)
+ *   - Caller can pass emptyState (Quick Create slot)
  *
- * NOT included here (deferred):
- *   - Barcode scan auto-select (D4)
- *   - Pinned items (D4)
- *
- * ERP integrity: returns the same id the old SearchableSelect did.
- * Confirm RPCs, allocations, inventory writes — all unchanged.
+ * ERP integrity: returns the same id the old dropdown did. Confirm RPCs,
+ * allocations, inventory writes — all unchanged.
  */
 
 export interface SmartEntitySearchProps<T> {
@@ -60,8 +74,15 @@ export interface SmartEntitySearchProps<T> {
   recentKey?: string;
   /** Max number of recent items to keep. Default 5. */
   recentLimit?: number;
-  /** Dropdown panel width (CSS px). Default 320. */
+  /**
+   * Dropdown panel width (CSS px). When omitted (default), the panel
+   * auto-sizes to max(inputWidth, panelMinWidth). Pass an explicit number
+   * when a fixed width is required (e.g. very narrow line-item cells where
+   * the panel should still show product details legibly).
+   */
   panelWidth?: number;
+  /** Minimum auto-width floor when panelWidth is omitted. Default 320. */
+  panelMinWidth?: number;
   /** Debounce in ms. Default 250. */
   debounceMs?: number;
   /** Min chars to trigger a search. Default 1. */
@@ -103,7 +124,8 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
     emptyState,
     recentKey,
     recentLimit = 5,
-    panelWidth = 320,
+    panelWidth,
+    panelMinWidth = 320,
     debounceMs = 250,
     minChars = 1,
     autoPickOnExact,
@@ -125,7 +147,16 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
 
   const inputRef    = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef    = useRef<HTMLDivElement>(null);
   const reqToken    = useRef(0); // stale-token to ignore late responses
+
+  // Panel positioning — computed from the input's bounding rect and kept
+  // in sync via scroll / resize / ResizeObserver listeners. Rendered into
+  // document.body via createPortal so no parent overflow / transform /
+  // table cell can clip it or push layout.
+  const [panelPos, setPanelPos] = useState<{
+    top: number; left: number; width: number; openUpward: boolean;
+  } | null>(null);
   // pickRow used by the search effect for auto-pick — declared below.
   // We forward via ref so the effect doesn't need to depend on it.
   const pickRowRef  = useRef<(row: T) => void>(() => { /* set below */ });
@@ -140,6 +171,47 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
       if (Array.isArray(parsed)) setRecent(parsed);
     } catch { /* ignore corrupt JSON */ }
   }, [recentKey]);
+
+  // ── Panel position: measure + react to scroll/resize ──────────────────
+  // useLayoutEffect ensures the position is set BEFORE the browser paints
+  // the panel the first time, so there's no visible flash at (0,0).
+  useLayoutEffect(() => {
+    if (!open) { setPanelPos(null); return; }
+    const compute = () => {
+      const anchor = containerRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const vh   = window.innerHeight;
+      const PANEL_MAX = 460; // max-h-[420px] + footer + a little slack
+      const GAP       = 4;
+      const spaceBelow = vh - rect.bottom;
+      const spaceAbove = rect.top;
+      // Flip upward only when bottom space is tight AND top has more room.
+      const openUpward = spaceBelow < 200 && spaceAbove > spaceBelow;
+      const top = openUpward
+        ? Math.max(8, rect.top - GAP - Math.min(PANEL_MAX, spaceAbove - 8))
+        : rect.bottom + GAP;
+      const width = panelWidth ?? Math.max(rect.width, panelMinWidth);
+      setPanelPos({ top, left: rect.left, width, openUpward });
+    };
+    compute();
+    // Capture-phase scroll catches scrolls in ANY ancestor (tables, modal
+    // bodies, sidebars) — addEventListener with `true` = capture.
+    const onScroll = () => compute();
+    const onResize = () => compute();
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onResize);
+    let ro: ResizeObserver | null = null;
+    if (containerRef.current && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => compute());
+      ro.observe(containerRef.current);
+    }
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onResize);
+      ro?.disconnect();
+    };
+  }, [open, panelWidth, panelMinWidth]);
 
   // ── Resolve initial value (if not in recent / results) ────────────────
   useEffect(() => {
@@ -203,7 +275,10 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const inContainer = containerRef.current?.contains(target);
+      const inPanel     = panelRef.current?.contains(target);
+      if (!inContainer && !inPanel) {
         setOpen(false);
         setQuery('');
       }
@@ -317,11 +392,21 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
         />
       )}
 
-      {/* Dropdown panel */}
-      {open && (
+      {/* Dropdown panel — rendered into document.body via React Portal so
+           it can never push layout, resize the parent row/cell, or get
+           clipped by an ancestor's overflow/transform. Position is
+           absolute relative to the viewport (position: fixed). */}
+      {open && panelPos && typeof document !== 'undefined' && createPortal(
         <div
-          className="absolute z-50 mt-1 overflow-hidden rounded-lg border border-border-subtle bg-surface-card shadow-2xl"
-          style={{ width: panelWidth }}
+          ref={panelRef}
+          className="overflow-hidden rounded-lg border border-border-subtle bg-surface-card shadow-2xl"
+          style={{
+            position: 'fixed',
+            top:      panelPos.top,
+            left:     panelPos.left,
+            width:    panelPos.width,
+            zIndex:   Z.dropdown,
+          }}
         >
           <div className="max-h-[420px] overflow-y-auto">
             {/* Subtle header label — only shown when there's results context to label */}
@@ -368,7 +453,8 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
               {emptyState(query)}
             </div>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
