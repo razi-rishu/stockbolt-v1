@@ -29,6 +29,7 @@ export function createSelfHostedAdapter(): DataAdapter {
     },
     profiles: {
       getCurrent: () => notImplemented('profiles.getCurrent'),
+      list:       () => notImplemented('profiles.list'),
     },
     onboarding: {
       createCompanyAndProfile: () => notImplemented('onboarding.createCompanyAndProfile'),

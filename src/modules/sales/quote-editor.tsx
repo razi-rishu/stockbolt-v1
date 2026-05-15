@@ -54,6 +54,12 @@ export default function QuoteEditorPage() {
     queryFn: () => getAdapter().contacts.list(company_id!, 'customer'),
     enabled: !!company_id,
   });
+  // Salespeople for the mandatory Salesperson picker below
+  const { data: salespeople = [] } = useQuery({
+    queryKey: ['salespeople', company_id],
+    queryFn: () => getAdapter().profiles.list(company_id!),
+    enabled: !!company_id,
+  });
   const { data: products = [] } = useQuery<ProductRow[]>({
     queryKey: ['products', company_id],
     queryFn: () => getAdapter().products.list(company_id!),
@@ -75,13 +81,13 @@ export default function QuoteEditorPage() {
     enabled: !isNew && !!id,
   });
 
-  const [header, setHeader] = useState({ contact_id: '', date: todayIso(), expiry_date: '', reference: '', notes: '', currency: companyCurrency ?? 'AED' });
+  const [header, setHeader] = useState({ contact_id: '', salesperson_id: '', date: todayIso(), expiry_date: '', reference: '', notes: '', currency: companyCurrency ?? 'AED' });
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (existing) {
-      setHeader({ contact_id: existing.contact_id, date: existing.date as string, expiry_date: (existing.expiry_date as string | null) ?? '', reference: existing.reference ?? '', notes: existing.notes ?? '', currency: existing.currency });
+      setHeader({ contact_id: existing.contact_id, salesperson_id: existing.salesperson_id ?? '', date: existing.date as string, expiry_date: (existing.expiry_date as string | null) ?? '', reference: existing.reference ?? '', notes: existing.notes ?? '', currency: existing.currency });
     }
   }, [existing]);
 
@@ -149,8 +155,9 @@ export default function QuoteEditorPage() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!header.contact_id) throw new Error(t('sales.error_contact_required'));
+      if (!header.salesperson_id) throw new Error('Salesperson is required');
       const quoteNum = isNew ? await getAdapter().salesQuotes.getNextNumber(company_id!) : existing!.quote_number;
-      const row = { company_id: company_id!, quote_number: quoteNum, contact_id: header.contact_id, salesperson_id: null, date: header.date, expiry_date: header.expiry_date || null, reference: header.reference || null, price_level_id: null, currency: header.currency, exchange_rate: 1, prices_inclusive: false, subtotal: +subtotal.toFixed(2), discount_amount: +discountTotal.toFixed(2), tax_amount: +taxTotal.toFixed(2), total_amount: +grandTotal.toFixed(2), status: 'draft' as const, invoiced_amount: 0, terms: null, terms_ar: null, notes: header.notes || null };
+      const row = { company_id: company_id!, quote_number: quoteNum, contact_id: header.contact_id, salesperson_id: header.salesperson_id, date: header.date, expiry_date: header.expiry_date || null, reference: header.reference || null, price_level_id: null, currency: header.currency, exchange_rate: 1, prices_inclusive: false, subtotal: +subtotal.toFixed(2), discount_amount: +discountTotal.toFixed(2), tax_amount: +taxTotal.toFixed(2), total_amount: +grandTotal.toFixed(2), status: 'draft' as const, invoiced_amount: 0, terms: null, terms_ar: null, notes: header.notes || null };
       if (isNew) return getAdapter().salesQuotes.create(row, buildItems());
       await getAdapter().salesQuotes.update(id!, row, buildItems());
       return null;
@@ -254,6 +261,19 @@ export default function QuoteEditorPage() {
                 </button>
               </p>
             )}
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-ink-primary">
+              Salesperson <span className="text-danger-500">*</span>
+            </label>
+            <SearchableSelect
+              options={salespeople.map(p => ({ value: p.id, label: p.full_name }))}
+              value={header.salesperson_id}
+              disabled={!canEdit}
+              onChange={(v) => setHeader(h => ({ ...h, salesperson_id: v }))}
+              placeholder="Select salesperson"
+              panelWidth={280}
+            />
           </div>
           <Input label={t('sales.date')} type="date" required value={header.date} disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, date: e.target.value }))} />
           <Input label={t('sales.expiry_date')} type="date" value={header.expiry_date} disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, expiry_date: e.target.value }))} />

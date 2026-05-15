@@ -182,6 +182,14 @@ export function createSupabaseAdapter(
         assertNoError(error, 'profiles.getCurrent');
         return data;
       },
+      async list(company_id): Promise<Profile[]> {
+        const { data, error } = await client.from('profiles').select('*')
+          .eq('company_id', company_id)
+          .eq('is_active', true)
+          .order('full_name');
+        assertNoError(error, 'profiles.list');
+        return (data ?? []) as Profile[];
+      },
     },
 
     // ── Onboarding ─────────────────────────────────────────────────────────

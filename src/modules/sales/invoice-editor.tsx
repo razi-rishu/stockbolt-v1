@@ -31,6 +31,7 @@ interface LineRow {
 
 interface InvHeader {
   contact_id: string;
+  salesperson_id: string;
   date: string;
   due_date: string;
   warehouse_id: string;
@@ -97,6 +98,12 @@ export default function InvoiceEditorPage() {
     queryFn: () => getAdapter().taxRates.list(company_id!),
     enabled: !!company_id,
   });
+  // Salespeople = active profiles in this company. Required field below.
+  const { data: salespeople = [] } = useQuery({
+    queryKey: ['salespeople', company_id],
+    queryFn: () => getAdapter().profiles.list(company_id!),
+    enabled: !!company_id,
+  });
 
   // ── Existing invoice ─────────────────────────────────────────────────────
   const { data: existing } = useQuery<InvoiceRow | null>({
@@ -113,6 +120,7 @@ export default function InvoiceEditorPage() {
   // ── Form state ───────────────────────────────────────────────────────────
   const defaultHeader: InvHeader = {
     contact_id: '',
+    salesperson_id: '',
     date: todayIso(),
     due_date: '',
     warehouse_id: '',
@@ -131,13 +139,14 @@ export default function InvoiceEditorPage() {
   useEffect(() => {
     if (existing) {
       setHeader({
-        contact_id:   existing.contact_id,
-        date:         existing.date as string,
-        due_date:     (existing.due_date as string | null) ?? '',
-        warehouse_id: existing.warehouse_id ?? '',
-        reference:    existing.reference ?? '',
-        notes:        existing.notes ?? '',
-        currency:     existing.currency,
+        contact_id:     existing.contact_id,
+        salesperson_id: existing.salesperson_id ?? '',
+        date:           existing.date as string,
+        due_date:       (existing.due_date as string | null) ?? '',
+        warehouse_id:   existing.warehouse_id ?? '',
+        reference:      existing.reference ?? '',
+        notes:          existing.notes ?? '',
+        currency:       existing.currency,
       });
     }
   }, [existing]);
@@ -239,13 +248,14 @@ export default function InvoiceEditorPage() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!header.contact_id) throw new Error(t('sales.error_contact_required'));
+      if (!header.salesperson_id) throw new Error('Salesperson is required');
       if (lines.length === 0) throw new Error(t('sales.error_no_lines'));
 
       const row = {
         company_id:      company_id!,
         invoice_number:  isNew ? await getAdapter().invoices.getNextNumber(company_id!) : existing!.invoice_number,
         contact_id:      header.contact_id,
-        salesperson_id:  null,
+        salesperson_id:  header.salesperson_id,
         warehouse_id:    header.warehouse_id || null,
         date:            header.date,
         due_date:        header.due_date || null,
@@ -311,11 +321,12 @@ export default function InvoiceEditorPage() {
 
   const editRepostMutation = useMutation({
     mutationFn: async () => {
+      if (!header.salesperson_id) throw new Error('Salesperson is required');
       const row = {
         company_id:      company_id!,
         invoice_number:  existing!.invoice_number,
         contact_id:      header.contact_id,
-        salesperson_id:  null,
+        salesperson_id:  header.salesperson_id,
         warehouse_id:    header.warehouse_id || null,
         date:            header.date,
         due_date:        header.due_date || null,
@@ -494,6 +505,19 @@ export default function InvoiceEditorPage() {
               onChange={(v) => setHeader(h => ({ ...h, contact_id: v }))}
               placeholder={t('sales.select_contact')}
               panelWidth={320}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-ink-primary">
+              Salesperson <span className="text-danger-500">*</span>
+            </label>
+            <SearchableSelect
+              options={salespeople.map(p => ({ value: p.id, label: p.full_name }))}
+              value={header.salesperson_id}
+              disabled={!canEdit || isVoid}
+              onChange={(v) => setHeader(h => ({ ...h, salesperson_id: v }))}
+              placeholder="Select salesperson"
+              panelWidth={280}
             />
           </div>
           <Input

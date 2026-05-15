@@ -97,6 +97,12 @@ export interface CompaniesAPI {
 // ── Profiles API ──────────────────────────────────────────────────────────────
 export interface ProfilesAPI {
   getCurrent(): Promise<Profile | null>;
+  /**
+   * Active profiles in the company, used to populate Salesperson pickers
+   * on quote / invoice editors. Returns all roles (admin/sales/counter/etc)
+   * because in small shops anyone with system access may close a sale.
+   */
+  list(company_id: string): Promise<Profile[]>;
 }
 
 // ── Onboarding API ────────────────────────────────────────────────────────────
