@@ -274,6 +274,115 @@ export function buildSalesInvoicePreview(input: SalesInvoicePreviewInput): Previ
   return lines;
 }
 
+// ── Vendor Bill preview ──────────────────────────────────────────────────
+export interface VendorBillPreviewLine {
+  product_id:        string | null;
+  /** GL expense account for non-inventory lines (services, expenses) */
+  coa_account_id?:   string | null;
+  coa_account_code?: string;
+  coa_account_name?: string;
+  quantity:          number;
+  unit_cost:         number;
+  discount_percent:  number;
+  tax_amount:        number;
+}
+export interface VendorBillPreviewInput {
+  lines:        VendorBillPreviewLine[];
+  bill_number?: string;
+}
+
+/**
+ * Build the preview lines for a vendor bill.
+ * Mirrors confirm_vendor_bill (Phase 5.2):
+ *   - For each line with a product_id (inventory line):
+ *       DR 1300 Inventory  (line subtotal — qty × cost × (1−disc))
+ *   - For each line with a coa_account_id (standalone expense line):
+ *       DR <expense account>  (line subtotal)
+ *   - DR 1500 Input VAT  (sum of tax_amount) — if > 0
+ *   - CR 2100 Accounts Payable  (grand total)
+ *
+ * NOTE: actual stock_ledger MAC update happens inside the RPC using the
+ * effective unit cost (line_subtotal / qty). The preview only shows GL
+ * lines, not stock_ledger entries.
+ */
+export function buildVendorBillPreview(input: VendorBillPreviewInput): PreviewLine[] {
+  const lines: PreviewLine[] = [];
+  const desc = input.bill_number ? `Bill ${input.bill_number}` : 'Vendor Bill';
+
+  let inventory = 0;
+  let vat       = 0;
+  // Expense lines keyed by COA — different expense accounts get their own DR lines
+  const expenseByAccount: Record<string, { code: string; name: string; amount: number }> = {};
+
+  for (const l of input.lines) {
+    const gross = l.quantity * l.unit_cost;
+    const net   = gross * (1 - (l.discount_percent || 0) / 100);
+    if (l.product_id) {
+      inventory += net;
+    } else if (l.coa_account_id) {
+      const key = l.coa_account_id;
+      if (!expenseByAccount[key]) {
+        expenseByAccount[key] = {
+          code:   l.coa_account_code ?? '',
+          name:   l.coa_account_name ?? 'Expense',
+          amount: 0,
+        };
+      }
+      expenseByAccount[key].amount += net;
+    } else {
+      // No product, no account → user hasn't picked yet. Skip.
+    }
+    vat += l.tax_amount;
+  }
+
+  const total = inventory
+    + Object.values(expenseByAccount).reduce((s, e) => s + e.amount, 0)
+    + vat;
+  if (total <= 0) return lines;
+
+  // DR Inventory (aggregated)
+  if (inventory > 0) {
+    lines.push({
+      account_code: '1300',
+      account_name: 'Inventory',
+      description:  desc,
+      debit:        inventory,
+      credit:       0,
+    });
+  }
+  // DR each expense account
+  for (const e of Object.values(expenseByAccount)) {
+    if (e.amount > 0) {
+      lines.push({
+        account_code: e.code,
+        account_name: e.name,
+        description:  desc,
+        debit:        e.amount,
+        credit:       0,
+      });
+    }
+  }
+  // DR Input VAT
+  if (vat > 0.005) {
+    lines.push({
+      account_code: '1500',
+      account_name: 'Input VAT Receivable',
+      description:  desc,
+      debit:        vat,
+      credit:       0,
+    });
+  }
+  // CR Accounts Payable
+  lines.push({
+    account_code: '2100',
+    account_name: 'Accounts Payable',
+    description:  desc,
+    debit:        0,
+    credit:       total,
+  });
+  return lines;
+}
+
 export interface VendorPaymentPreviewInput {
   amount:               number;
   classification:       'against_invoice' | 'advance' | 'on_account';

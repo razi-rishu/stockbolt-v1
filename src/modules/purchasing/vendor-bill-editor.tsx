@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
+import { AccountingPreview, buildVendorBillPreview } from '@/components/accounting-preview';
 import type { VendorBillRow, VendorBillItemInsert, ContactRow, ProductRow, TaxRateRow, CoaRow } from '@/data/adapter';
 import { calcPurchaseLine as _calc } from '@/core/purchasing/purchase-calc';
 
@@ -193,6 +194,40 @@ export default function VendorBillEditorPage() {
   const taxTotal      = lines.reduce((s, l) => s + l.tax_amount, 0);
   const grandTotal    = lines.reduce((s, l) => s + l.line_total, 0);
 
+  // ── Supplier insight panel data ──────────────────────────────────────────
+  // Pulls in once the supplier is picked. Same shape as the invoice
+  // editor's customer insight.
+  const { data: openSupplierBills = [] } = useQuery({
+    queryKey: ['open_bills_for_supplier_insight', company_id, header.supplier_id],
+    queryFn:  () => getAdapter().vendorBills.listOpenForSupplier(company_id!, header.supplier_id),
+    enabled:  !!company_id && !!header.supplier_id,
+  });
+  const selectedSupplier = suppliers.find(s => s.id === header.supplier_id);
+  const todayStr = todayIso();
+  const supplierOutstanding = openSupplierBills
+    .filter(b => b.id !== id)
+    .reduce((s, b) => s + Number(b.outstanding ?? 0), 0);
+  const overdueBills = openSupplierBills.filter(
+    b => b.due_date && (b.due_date as unknown as string) < todayStr && Number(b.outstanding ?? 0) > 0.005,
+  );
+
+  // Last vendor payment to this supplier
+  const { data: supplierPayments = [] } = useQuery({
+    queryKey: ['vendor_payments_for_supplier', company_id, header.supplier_id],
+    queryFn:  () => getAdapter().vendorPayments.list(company_id!),
+    enabled:  !!company_id && !!header.supplier_id,
+  });
+  const lastVendorPayment = supplierPayments
+    .filter(p => p.contact_id === header.supplier_id && p.status === 'confirmed')
+    .sort((a, b) => (b.date as string).localeCompare(a.date as string))[0];
+
+  // Live stock + MAC map (for projected stock + MAC-after columns)
+  const { data: stockMap = {} } = useQuery({
+    queryKey: ['current_stock_map', company_id],
+    queryFn:  () => getAdapter().stockLedger.getCurrentStockMap(company_id!),
+    enabled:  !!company_id,
+  });
+
   const updateLine = useCallback((key: string, patch: Partial<LineRow>) => {
     setLines(prev => prev.map(l => {
       if (l._key !== key) return l;
@@ -308,6 +343,52 @@ export default function VendorBillEditorPage() {
 
       {error && <div className="rounded-input bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
 
+      {/* Supplier Insight Panel — appears once a supplier is picked.
+           Shows payable, overdue, last payment so the buyer has full
+           context while writing the bill. */}
+      {selectedSupplier && (
+        <div className="rounded-card border border-border-subtle bg-surface-card p-4">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-ink-tertiary">Payable</p>
+              <p className={`mt-0.5 text-lg font-mono font-semibold ${supplierOutstanding > 0 ? 'text-amber-700' : 'text-ink-primary'}`}>
+                {header.currency} {fmt(supplierOutstanding)}
+              </p>
+              <p className="text-xs text-ink-tertiary mt-0.5">
+                {openSupplierBills.filter(b => b.id !== id).length} pending bill{openSupplierBills.length === 1 ? '' : 's'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-ink-tertiary">Overdue</p>
+              <p className={`mt-0.5 text-lg font-mono font-semibold ${overdueBills.length > 0 ? 'text-red-600' : 'text-ink-primary'}`}>
+                {overdueBills.length}
+              </p>
+              <p className="text-xs text-ink-tertiary mt-0.5">
+                {overdueBills.length > 0
+                  ? `${fmt(overdueBills.reduce((s, b) => s + Number(b.outstanding ?? 0), 0))} past due`
+                  : 'No overdue'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-ink-tertiary">Last payment</p>
+              {lastVendorPayment ? (
+                <>
+                  <p className="mt-0.5 text-lg font-mono font-semibold text-ink-primary">
+                    {header.currency} {fmt(Number(lastVendorPayment.amount))}
+                  </p>
+                  <p className="text-xs text-ink-tertiary mt-0.5">{lastVendorPayment.date as string}</p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-0.5 text-lg font-mono font-semibold text-ink-tertiary">—</p>
+                  <p className="text-xs text-ink-tertiary mt-0.5">No payments yet</p>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-80 rounded-card bg-surface-card p-6 shadow-xl">
@@ -355,6 +436,8 @@ export default function VendorBillEditorPage() {
         )}
       </div>
 
+      {/* Line items + Sticky sidebar */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
       <div className="rounded-card border border-border-subtle bg-surface-card">
         <div className="border-b border-border-subtle px-5 py-3">
           <h2 className="text-sm font-semibold text-ink-primary">{t('purchasing.line_items')}</h2>
@@ -365,11 +448,13 @@ export default function VendorBillEditorPage() {
               <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary">
                 <th className="px-3 py-2 text-start font-medium w-36">{t('purchasing.product')}</th>
                 <th className="px-3 py-2 text-start font-medium w-36">{t('purchasing.account')}</th>
-                <th className="px-3 py-2 text-start font-medium w-36">{t('purchasing.description')}</th>
+                <th className="px-3 py-2 text-start font-medium w-32">{t('purchasing.description')}</th>
                 <th className="px-3 py-2 text-end font-medium w-20">{t('purchasing.qty')}</th>
                 <th className="px-3 py-2 text-end font-medium w-24">{t('purchasing.unit_cost')}</th>
                 <th className="px-3 py-2 text-end font-medium w-20">{t('purchasing.disc_pct')}</th>
-                <th className="px-3 py-2 text-end font-medium w-28">{t('purchasing.tax')}</th>
+                <th className="px-3 py-2 text-end font-medium w-24">{t('purchasing.tax')}</th>
+                <th className="px-3 py-2 text-end font-medium w-20" title="On-hand stock">Stock</th>
+                <th className="px-3 py-2 text-end font-medium w-24" title="Projected MAC after this purchase">MAC →</th>
                 <th className="px-3 py-2 text-end font-medium w-24">{t('purchasing.line_total')}</th>
                 {canEdit && <th className="w-10" />}
               </tr>
@@ -439,6 +524,44 @@ export default function VendorBillEditorPage() {
                       {taxOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   </td>
+                  {(() => {
+                    // Stock + projected MAC. Only meaningful for product lines.
+                    const pid = line.product_id;
+                    if (!pid) {
+                      return (
+                        <>
+                          <td className="px-3 py-1.5 text-end font-mono text-ink-tertiary">—</td>
+                          <td className="px-3 py-1.5 text-end font-mono text-ink-tertiary">—</td>
+                        </>
+                      );
+                    }
+                    const s = stockMap[pid];
+                    const curQty = s?.qty ?? 0;
+                    const curMac = s?.mac ?? 0;
+                    const addQty = parseFloat(line.quantity) || 0;
+                    const addCost = parseFloat(line.unit_cost) || 0;
+                    const disc   = parseFloat(line.discount_percent) || 0;
+                    const effUnit = addCost * (1 - disc / 100);
+                    // MAC after = (existing value + incoming value) / (existing qty + incoming qty)
+                    const totalQty = curQty + addQty;
+                    const newMac = totalQty > 0
+                      ? (curQty * curMac + addQty * effUnit) / totalQty
+                      : 0;
+                    const macDelta = newMac - curMac;
+                    const macCls = curMac > 0 && Math.abs(macDelta) > 0.005
+                      ? (macDelta > 0 ? 'text-amber-700' : 'text-emerald-700')
+                      : 'text-ink-secondary';
+                    return (
+                      <>
+                        <td className="px-3 py-1.5 text-end font-mono text-ink-secondary" title={`On-hand: ${fmt(curQty)}, after: ${fmt(totalQty)}`}>
+                          {fmt(curQty)}
+                        </td>
+                        <td className={`px-3 py-1.5 text-end font-mono ${macCls}`} title={curMac > 0 ? `Current MAC: ${fmt(curMac)} → after: ${fmt(newMac)}` : `New MAC will be ${fmt(newMac)}`}>
+                          {addQty > 0 ? fmt(newMac) : (curMac > 0 ? fmt(curMac) : '—')}
+                        </td>
+                      </>
+                    );
+                  })()}
                   <td className="px-3 py-1.5 text-end font-mono text-ink-primary">{fmt(line.line_total)}</td>
                   {canEdit && (
                     <td className="px-3 py-1.5">
@@ -460,17 +583,84 @@ export default function VendorBillEditorPage() {
             </button>
           </div>
         )}
-        <div className="border-t border-border-subtle px-5 py-4">
-          <div className="ms-auto w-60 space-y-1.5 text-sm">
-            <div className="flex justify-between text-ink-secondary"><span>{t('purchasing.subtotal')}</span><span className="font-mono">{fmt(subtotal)}</span></div>
-            {discountTotal > 0 && <div className="flex justify-between text-ink-secondary"><span>{t('purchasing.discount')}</span><span className="font-mono text-red-600">−{fmt(discountTotal)}</span></div>}
-            {taxTotal > 0 && <div className="flex justify-between text-ink-secondary"><span>{t('purchasing.vat')}</span><span className="font-mono">{fmt(taxTotal)}</span></div>}
-            <div className="flex justify-between border-t border-border-subtle pt-1.5 font-semibold text-ink-primary">
-              <span>{t('purchasing.total_amount')}</span>
+      </div>
+
+      {/* Sticky financial summary sidebar + accounting preview */}
+      <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
+        <div className="rounded-card border border-border-subtle bg-surface-card overflow-hidden">
+          <div className="border-b border-border-subtle px-4 py-2.5 bg-surface-muted/40">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-tertiary">Summary</h3>
+          </div>
+          <div className="p-4 space-y-2 text-sm">
+            <div className="flex justify-between text-ink-secondary">
+              <span>{t('purchasing.subtotal')}</span>
+              <span className="font-mono">{fmt(subtotal)}</span>
+            </div>
+            {discountTotal > 0 && (
+              <div className="flex justify-between text-ink-secondary">
+                <span>{t('purchasing.discount')}</span>
+                <span className="font-mono text-red-600">−{fmt(discountTotal)}</span>
+              </div>
+            )}
+            {taxTotal > 0 && (
+              <div className="flex justify-between text-ink-secondary">
+                <span>{t('purchasing.vat')}</span>
+                <span className="font-mono">{fmt(taxTotal)}</span>
+              </div>
+            )}
+            <div className="flex justify-between border-t border-border-subtle pt-2.5 mt-1 text-base font-semibold text-ink-primary">
+              <span>Grand Total</span>
               <span className="font-mono">{header.currency} {fmt(grandTotal)}</span>
             </div>
+            {(() => {
+              // Paid / Balance Due only for existing confirmed bills.
+              if (isNew || !id) return null;
+              const thisBill = openSupplierBills.find(b => b.id === id);
+              if (!thisBill) return null;
+              const outstanding = Number(thisBill.outstanding ?? 0);
+              const paid = grandTotal - outstanding;
+              return (
+                <>
+                  <div className="flex justify-between text-ink-secondary border-t border-border-subtle pt-2.5">
+                    <span>Paid</span>
+                    <span className="font-mono text-emerald-700">{fmt(paid)}</span>
+                  </div>
+                  <div className={`flex justify-between font-semibold ${outstanding > 0.005 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                    <span>Balance Due</span>
+                    <span className="font-mono">{header.currency} {fmt(outstanding)}</span>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
+
+        {/* Accounting preview — what confirm_vendor_bill will post. */}
+        {lines.some(l => l.product_id || l.coa_account_id) && (() => {
+          const preview = buildVendorBillPreview({
+            bill_number: existing?.bill_number,
+            lines: lines.map(l => {
+              // For inventory lines: product_id is set; for expense lines:
+              // coa_account_id is set and we attach the COA code/name for display.
+              const expenseAcc = !l.product_id && l.coa_account_id
+                ? coaAccounts.find(a => a.id === l.coa_account_id)
+                : undefined;
+              return {
+                product_id:        l.product_id,
+                coa_account_id:    l.coa_account_id,
+                coa_account_code:  expenseAcc?.code,
+                coa_account_name:  expenseAcc?.name,
+                quantity:          parseFloat(l.quantity) || 0,
+                unit_cost:         parseFloat(l.unit_cost) || 0,
+                discount_percent:  parseFloat(l.discount_percent) || 0,
+                tax_amount:        l.tax_amount,
+              };
+            }),
+          });
+          if (preview.length === 0) return null;
+          return <AccountingPreview lines={preview} currency={header.currency || 'AED'} />;
+        })()}
+      </aside>
       </div>
     </div>
   );
