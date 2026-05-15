@@ -9,6 +9,7 @@ import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Modal } from '@/ui/modal';
 import { SearchableSelect } from '@/ui/searchable-select';
+import { AccountingPreview, buildSalesInvoicePreview } from '@/components/accounting-preview';
 import type { InvoiceRow, InvoiceItemInsert, ContactRow, ProductRow, WarehouseRow, TaxRateRow } from '@/data/adapter';
 import { calcLine as _calcLine } from '@/core/sales/invoice-calc';
 
@@ -647,7 +648,8 @@ export default function InvoiceEditorPage() {
         </div>
       </div>
 
-      {/* Line Items */}
+      {/* Line Items + Sticky Sidebar */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
       <div className="rounded-card border border-border-subtle bg-surface-card">
         <div className="border-b border-border-subtle px-5 py-3">
           <h2 className="text-sm font-semibold text-ink-primary">{t('sales.line_items')}</h2>
@@ -794,9 +796,18 @@ export default function InvoiceEditorPage() {
           </div>
         )}
 
-        {/* Totals */}
-        <div className="border-t border-border-subtle px-5 py-4">
-          <div className="ms-auto w-60 space-y-1.5 text-sm">
+      </div>
+
+      {/* Sticky financial summary sidebar.
+           Lives in the right column of the grid; stays visible while the
+           user scrolls long line lists. Highlights Grand Total and (for
+           confirmed invoices) Balance Due. */}
+      <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
+        <div className="rounded-card border border-border-subtle bg-surface-card overflow-hidden">
+          <div className="border-b border-border-subtle px-4 py-2.5 bg-surface-muted/40">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-tertiary">Summary</h3>
+          </div>
+          <div className="p-4 space-y-2 text-sm">
             <div className="flex justify-between text-ink-secondary">
               <span>{t('sales.subtotal')}</span>
               <span className="font-mono">{fmt(subtotal)}</span>
@@ -813,12 +824,52 @@ export default function InvoiceEditorPage() {
                 <span className="font-mono">{fmt(taxTotal)}</span>
               </div>
             )}
-            <div className="flex justify-between border-t border-border-subtle pt-1.5 font-semibold text-ink-primary">
-              <span>{t('sales.total_amount')}</span>
+            <div className="flex justify-between border-t border-border-subtle pt-2.5 mt-1 text-base font-semibold text-ink-primary">
+              <span>Grand Total</span>
               <span className="font-mono">{header.currency} {fmt(grandTotal)}</span>
             </div>
+            {(() => {
+              // Paid amount + balance: only meaningful for an existing
+              // confirmed invoice that's in the openCustomerInvoices list.
+              if (isNew || !id) return null;
+              const thisInv = openCustomerInvoices.find(inv => inv.id === id);
+              if (!thisInv) return null;
+              const outstanding = Number(thisInv.outstanding ?? 0);
+              const paid = grandTotal - outstanding;
+              return (
+                <>
+                  <div className="flex justify-between text-ink-secondary border-t border-border-subtle pt-2.5">
+                    <span>Paid</span>
+                    <span className="font-mono text-emerald-700">{fmt(paid)}</span>
+                  </div>
+                  <div className={`flex justify-between font-semibold ${outstanding > 0.005 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                    <span>Balance Due</span>
+                    <span className="font-mono">{header.currency} {fmt(outstanding)}</span>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
+
+        {/* Accounting preview — what confirm_invoice will post to GL.
+             Best-effort; ground truth is the RPC. */}
+        {!isVoid && lines.some(l => l.product_id) && (() => {
+          const preview = buildSalesInvoicePreview({
+            invoice_number: existing?.invoice_number,
+            lines: lines.map(l => ({
+              product_id:        l.product_id,
+              quantity:          parseFloat(l.quantity) || 0,
+              unit_price:        parseFloat(l.unit_price) || 0,
+              discount_percent:  parseFloat(l.discount_percent) || 0,
+              tax_amount:        l.tax_amount,
+              mac:               (l.product_id && stockMap[l.product_id]?.mac) || 0,
+            })),
+          });
+          if (preview.length === 0) return null;
+          return <AccountingPreview lines={preview} currency={header.currency || 'AED'} />;
+        })()}
+      </aside>
       </div>
 
       {/* Void modal */}

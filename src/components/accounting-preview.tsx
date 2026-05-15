@@ -164,6 +164,116 @@ export function buildCustomerPaymentPreview(input: CustomerPaymentPreviewInput):
   return lines;
 }
 
+// ── Sales Invoice preview ────────────────────────────────────────────────
+export interface SalesInvoicePreviewLine {
+  product_id: string | null;
+  quantity:   number;
+  unit_price: number;
+  discount_percent: number;
+  tax_amount: number;
+  /** MAC (moving avg cost) at time of preview. 0 = no cost basis → COGS deferred. */
+  mac: number;
+}
+export interface SalesInvoicePreviewInput {
+  lines:            SalesInvoicePreviewLine[];
+  invoice_number?:  string;
+}
+
+/**
+ * Build the preview lines for a sales invoice.
+ * Mirrors confirm_invoice (Phase 4.2):
+ *   - DR 1200 Accounts Receivable (grand total)
+ *   - CR 4100 Sales Revenue (sum of line subtotals = qty × unit_price × (1−disc))
+ *   - CR 2200 VAT Output (sum of tax_amount) — only if > 0
+ *   - For each line with MAC > 0:
+ *       DR 5100 COGS (qty × MAC)
+ *       CR 1300 Inventory (qty × MAC)
+ *     Aggregated into one DR / one CR for readability.
+ *   - For lines with MAC = 0: deferred to deferred_cogs_queue at confirm.
+ *     Surfaced in the preview as a note in the description, not as
+ *     fake DR/CR lines.
+ */
+export function buildSalesInvoicePreview(input: SalesInvoicePreviewInput): PreviewLine[] {
+  const lines: PreviewLine[] = [];
+  const desc = input.invoice_number ? `Invoice ${input.invoice_number}` : 'Sales Invoice';
+
+  let revenue = 0;
+  let vat     = 0;
+  let cogs    = 0;
+  let deferredLines = 0;
+
+  for (const l of input.lines) {
+    const gross = l.quantity * l.unit_price;
+    const net   = gross * (1 - (l.discount_percent || 0) / 100);
+    revenue += net;
+    vat     += l.tax_amount;
+    if (l.mac > 0) cogs += l.quantity * l.mac;
+    else if (l.product_id && l.quantity > 0) deferredLines++;
+  }
+
+  const total = revenue + vat;
+  if (total <= 0 && cogs <= 0) return lines;
+
+  // DR AR
+  if (total > 0) {
+    lines.push({
+      account_code: '1200',
+      account_name: 'Accounts Receivable',
+      description:  desc,
+      debit:        total,
+      credit:       0,
+    });
+  }
+  // CR Revenue
+  if (revenue > 0) {
+    lines.push({
+      account_code: '4100',
+      account_name: 'Sales Revenue',
+      description:  desc,
+      debit:        0,
+      credit:       revenue,
+    });
+  }
+  // CR VAT (if any)
+  if (vat > 0.005) {
+    lines.push({
+      account_code: '2200',
+      account_name: 'Output VAT Payable',
+      description:  desc,
+      debit:        0,
+      credit:       vat,
+    });
+  }
+  // COGS pair (aggregate)
+  if (cogs > 0) {
+    lines.push({
+      account_code: '5100',
+      account_name: 'Cost of Goods Sold',
+      description:  `${desc} — COGS`,
+      debit:        cogs,
+      credit:       0,
+    });
+    lines.push({
+      account_code: '1300',
+      account_name: 'Inventory',
+      description:  `${desc} — COGS`,
+      debit:        0,
+      credit:       cogs,
+    });
+  }
+  // Deferred-COGS hint as a synthetic informational row (zero amount)
+  if (deferredLines > 0) {
+    lines.push({
+      account_code: '—',
+      account_name: 'COGS deferred',
+      description:  `${deferredLines} line${deferredLines === 1 ? '' : 's'} have no MAC yet — COGS will post once stock is purchased`,
+      debit:        0,
+      credit:       0,
+    });
+  }
+  return lines;
+}
+
 export interface VendorPaymentPreviewInput {
   amount:               number;
   classification:       'against_invoice' | 'advance' | 'on_account';
