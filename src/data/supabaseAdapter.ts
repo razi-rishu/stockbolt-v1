@@ -717,6 +717,27 @@ export function createSupabaseAdapter(
         assertNoError(error, 'stockLedger.getLedger');
         return data ?? [];
       },
+      async getCurrentStockMap(company_id): Promise<Record<string, { qty: number; mac: number }>> {
+        // Single query, then SUM(direction × quantity) per product across
+        // all warehouses + take latest non-zero running_avg_cost as MAC.
+        // Matches the dashboard / valuation approach so numbers stay
+        // consistent app-wide.
+        const { data, error } = await client.from('stock_ledger')
+          .select('product_id, direction, quantity, running_avg_cost')
+          .eq('company_id', company_id)
+          .limit(10000);
+        assertNoError(error, 'stockLedger.getCurrentStockMap');
+        const map: Record<string, { qty: number; mac: number }> = {};
+        for (const r of (data ?? []) as { product_id: string | null; direction: number | null; quantity: number | null; running_avg_cost: number | null }[]) {
+          if (!r.product_id) continue;
+          if (!map[r.product_id]) map[r.product_id] = { qty: 0, mac: 0 };
+          map[r.product_id].qty += Number(r.direction ?? 0) * Number(r.quantity ?? 0);
+          const c = Number(r.running_avg_cost ?? 0);
+          // MAC is constant within a transaction; keep last non-zero.
+          if (c > 0) map[r.product_id].mac = c;
+        }
+        return map;
+      },
     },
 
     // ── Phase 3: Chart of Accounts ────────────────────────────────────────

@@ -329,6 +329,13 @@ export interface StockLedgerAPI {
   getBalance(company_id: string, product_id: string, warehouse_id: string): Promise<StockBalance>;
   getMAC(company_id: string, product_id: string): Promise<number>;
   getLedger(company_id: string, product_id: string, warehouse_id?: string): Promise<StockLedgerRow[]>;
+  /**
+   * Current on-hand quantity + MAC per product (summed across all warehouses).
+   * Used by editor grids that need live "Available Stock" + "Margin %"
+   * without N round trips. Sum-based (direction × quantity) so it's
+   * correct even with reversal rows.
+   */
+  getCurrentStockMap(company_id: string): Promise<Record<string, { qty: number; mac: number }>>;
 }
 
 // ── Phase 4 row types ─────────────────────────────────────────────────────────

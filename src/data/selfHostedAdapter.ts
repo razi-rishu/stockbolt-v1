@@ -122,10 +122,11 @@ export function createSelfHostedAdapter(): DataAdapter {
       setPeriodLock:     () => notImplemented('accounting.setPeriodLock'),
     },
     stockLedger: {
-      postMovement: () => notImplemented('stockLedger.postMovement'),
-      getBalance:   () => notImplemented('stockLedger.getBalance'),
-      getMAC:       () => notImplemented('stockLedger.getMAC'),
-      getLedger:    () => notImplemented('stockLedger.getLedger'),
+      postMovement:       () => notImplemented('stockLedger.postMovement'),
+      getBalance:         () => notImplemented('stockLedger.getBalance'),
+      getMAC:             () => notImplemented('stockLedger.getMAC'),
+      getLedger:          () => notImplemented('stockLedger.getLedger'),
+      getCurrentStockMap: () => notImplemented('stockLedger.getCurrentStockMap'),
     },
     taxRates: {
       list: () => notImplemented('taxRates.list'),

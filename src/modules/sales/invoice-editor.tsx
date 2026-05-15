@@ -197,6 +197,31 @@ export default function InvoiceEditorPage() {
   const creditOverage        = projectedOutstanding - creditLimit;
   const overCreditLimit      = creditLimit > 0 && creditOverage > 0.005;
 
+  // ── Customer insight panel data ──────────────────────────────────────────
+  // Overdue: open invoices past due_date.
+  const todayStr = todayIso();
+  const overdueInvoices = openCustomerInvoices.filter(
+    inv => inv.due_date && (inv.due_date as unknown as string) < todayStr && Number(inv.outstanding ?? 0) > 0.005,
+  );
+  // Last payment to this customer (inbound). One small query, cached per contact.
+  const { data: customerPayments = [] } = useQuery({
+    queryKey: ['payments_for_contact', company_id, header.contact_id],
+    queryFn:  () => getAdapter().payments.list(company_id!, 'inbound'),
+    enabled:  !!company_id && !!header.contact_id,
+  });
+  const lastPayment = customerPayments
+    .filter(p => p.contact_id === header.contact_id && p.status === 'confirmed')
+    .sort((a, b) => (b.date as string).localeCompare(a.date as string))[0];
+
+  // ── Live stock + MAC per product (for Available Stock + Margin columns) ──
+  // One batched query at editor mount. Cached app-wide so multiple editor
+  // sessions / line edits don't re-fetch.
+  const { data: stockMap = {} } = useQuery({
+    queryKey: ['current_stock_map', company_id],
+    queryFn:  () => getAdapter().stockLedger.getCurrentStockMap(company_id!),
+    enabled:  !!company_id,
+  });
+
   // ── Line helpers ─────────────────────────────────────────────────────────
   const updateLine = useCallback((key: string, patch: Partial<LineRow>) => {
     setLines(prev => prev.map(l => {
@@ -467,6 +492,62 @@ export default function InvoiceEditorPage() {
         <div className="rounded-input bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>
       )}
 
+      {/* Customer Insight Panel — appears once a customer is picked.
+           Shows outstanding, overdue, credit limit, last payment in a
+           compact horizontal card so the salesperson has full context
+           while writing the invoice. */}
+      {selectedCustomer && (
+        <div className="rounded-card border border-border-subtle bg-surface-card p-4">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-ink-tertiary">Outstanding</p>
+              <p className={`mt-0.5 text-lg font-mono font-semibold ${currentOutstanding > 0 ? 'text-amber-700' : 'text-ink-primary'}`}>
+                {header.currency} {fmt(currentOutstanding)}
+              </p>
+              <p className="text-xs text-ink-tertiary mt-0.5">
+                {openCustomerInvoices.filter(inv => inv.id !== id).length} open invoice{openCustomerInvoices.length === 1 ? '' : 's'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-ink-tertiary">Overdue</p>
+              <p className={`mt-0.5 text-lg font-mono font-semibold ${overdueInvoices.length > 0 ? 'text-red-600' : 'text-ink-primary'}`}>
+                {overdueInvoices.length}
+              </p>
+              <p className="text-xs text-ink-tertiary mt-0.5">
+                {overdueInvoices.length > 0
+                  ? `${fmt(overdueInvoices.reduce((s, inv) => s + Number(inv.outstanding ?? 0), 0))} past due`
+                  : 'No overdue'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-ink-tertiary">Credit limit</p>
+              <p className="mt-0.5 text-lg font-mono font-semibold text-ink-primary">
+                {creditLimit > 0 ? `${header.currency} ${fmt(creditLimit)}` : '—'}
+              </p>
+              <p className="text-xs text-ink-tertiary mt-0.5">
+                {creditLimit > 0 ? `${fmt(Math.max(0, creditLimit - currentOutstanding))} available` : 'No limit set'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-ink-tertiary">Last payment</p>
+              {lastPayment ? (
+                <>
+                  <p className="mt-0.5 text-lg font-mono font-semibold text-ink-primary">
+                    {header.currency} {fmt(Number(lastPayment.amount))}
+                  </p>
+                  <p className="text-xs text-ink-tertiary mt-0.5">{lastPayment.date as string}</p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-0.5 text-lg font-mono font-semibold text-ink-tertiary">—</p>
+                  <p className="text-xs text-ink-tertiary mt-0.5">No payments yet</p>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Credit-limit warning — non-blocking. Shows when projected
            outstanding (existing open invoices + this invoice's total)
            exceeds the customer's credit_limit. credit_limit = 0 means
@@ -576,11 +657,13 @@ export default function InvoiceEditorPage() {
             <thead>
               <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary">
                 <th className="px-3 py-2 text-start font-medium w-48">{t('sales.product')}</th>
-                <th className="px-3 py-2 text-start font-medium w-48">{t('sales.description')}</th>
+                <th className="px-3 py-2 text-start font-medium w-40">{t('sales.description')}</th>
                 <th className="px-3 py-2 text-end font-medium w-20">{t('sales.qty')}</th>
                 <th className="px-3 py-2 text-end font-medium w-24">{t('sales.unit_price')}</th>
                 <th className="px-3 py-2 text-end font-medium w-20">{t('sales.disc_pct')}</th>
-                <th className="px-3 py-2 text-end font-medium w-28">{t('sales.tax')}</th>
+                <th className="px-3 py-2 text-end font-medium w-24">{t('sales.tax')}</th>
+                <th className="px-3 py-2 text-end font-medium w-20" title="Available stock (sum across warehouses)">Stock</th>
+                <th className="px-3 py-2 text-end font-medium w-20" title="Margin % vs MAC. Negative = selling at a loss.">Margin</th>
                 <th className="px-3 py-2 text-end font-medium w-24">{t('sales.line_total')}</th>
                 {canEdit && !isVoid && <th className="w-10" />}
               </tr>
@@ -643,6 +726,43 @@ export default function InvoiceEditorPage() {
                       {taxOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   </td>
+                  {(() => {
+                    // Live stock + margin per line.
+                    const pid = line.product_id ?? '';
+                    const s = pid ? stockMap[pid] : undefined;
+                    const stock = s?.qty ?? 0;
+                    const mac   = s?.mac ?? 0;
+                    const qty   = parseFloat(line.quantity) || 0;
+                    const price = parseFloat(line.unit_price) || 0;
+                    const disc  = parseFloat(line.discount_percent) || 0;
+                    const netPrice = price * (1 - disc / 100);
+                    const margin   = netPrice > 0 && mac > 0 ? ((netPrice - mac) / netPrice) * 100 : 0;
+                    const projectedStock = stock - qty;
+                    const stockCls = !pid
+                      ? 'text-ink-tertiary'
+                      : projectedStock < 0
+                        ? 'text-red-600 font-semibold'
+                        : projectedStock <= 0.005
+                          ? 'text-amber-700 font-semibold'
+                          : 'text-ink-secondary';
+                    const marginCls = !pid || mac <= 0
+                      ? 'text-ink-tertiary'
+                      : margin < 0
+                        ? 'text-red-600 font-semibold'
+                        : margin < 10
+                          ? 'text-amber-700'
+                          : 'text-emerald-700';
+                    return (
+                      <>
+                        <td className={`px-3 py-1.5 text-end font-mono ${stockCls}`} title={pid ? `On-hand: ${fmt(stock)} · After this line: ${fmt(projectedStock)}` : ''}>
+                          {!pid ? '—' : projectedStock < 0 ? `${fmt(projectedStock)} ⚠` : fmt(stock)}
+                        </td>
+                        <td className={`px-3 py-1.5 text-end font-mono ${marginCls}`} title={pid && mac > 0 ? `MAC: ${fmt(mac)} · Net price: ${fmt(netPrice)}` : 'No cost basis yet'}>
+                          {!pid || mac <= 0 ? '—' : `${margin.toFixed(1)}%`}
+                        </td>
+                      </>
+                    );
+                  })()}
                   <td className="px-3 py-1.5 text-end font-mono text-ink-primary">
                     {fmt(line.line_total)}
                   </td>
