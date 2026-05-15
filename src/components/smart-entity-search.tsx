@@ -1,5 +1,13 @@
-import { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
+import {
+  useFloating,
+  autoUpdate,
+  flip,
+  shift,
+  offset,
+  size as floatingSize,
+  FloatingPortal,
+} from '@floating-ui/react';
 import { Z } from '@/ui/z-index';
 
 /**
@@ -9,22 +17,21 @@ import { Z } from '@/ui/z-index';
  * accounts. Replaces preload-everything dropdowns with server-side
  * debounced search and rich-list rendering.
  *
- * Phase D5 — Portal-based floating panel.
- *   The dropdown is rendered into document.body via createPortal so it
- *   NEVER affects the document flow. Inside an invoice line-item cell
- *   the row height stays fixed; inside a card with overflow:hidden the
- *   panel still appears above; inside a modal the panel layers correctly
- *   via z-index tokens.
+ * Phase D5 — Floating panel via @floating-ui/react.
+ *   The dropdown is rendered through a FloatingPortal so it NEVER affects
+ *   document flow. Inside an invoice line-item cell the row height stays
+ *   fixed; inside a card with overflow:hidden the panel still appears
+ *   above; inside a modal the panel layers correctly via z-index tokens.
  *
- *   Panel position is computed from the input's getBoundingClientRect()
- *   and updated on:
- *     - open / re-open
- *     - window scroll (capture phase, so nested scrolls fire too)
- *     - window resize
- *     - ResizeObserver on the input
+ *   Position is computed by floating-ui's `autoUpdate`, which correctly
+ *   handles every edge case the hand-rolled version got wrong: nested
+ *   scrollable ancestors (`<main className="overflow-y-auto">`), CSS
+ *   transform/filter ancestors that break `position: fixed`, browser zoom,
+ *   fractional pixels, and viewport resize. `flip()` auto-flips when space
+ *   below is tight; `shift()` keeps the panel on screen horizontally;
+ *   `size()` matches the panel width to the trigger (with a min floor).
  *
- *   Auto-flips upward when bottom space < 200px AND top space ≥ 200px.
- *   Width defaults to max(inputWidth, 320px); consumer can override
+ *   Width defaults to max(triggerWidth, 320px); consumer can override
  *   via panelWidth or panelMinWidth.
  *
  * Behaviour:
@@ -146,17 +153,36 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
   const [recent, setRecent] = useState<RecentEntry<T>[]>([]);
 
   const inputRef    = useRef<HTMLInputElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const panelRef    = useRef<HTMLDivElement>(null);
   const reqToken    = useRef(0); // stale-token to ignore late responses
 
-  // Panel positioning — computed from the input's bounding rect and kept
-  // in sync via scroll / resize / ResizeObserver listeners. Rendered into
-  // document.body via createPortal so no parent overflow / transform /
-  // table cell can clip it or push layout.
-  const [panelPos, setPanelPos] = useState<{
-    top: number; left: number; width: number; openUpward: boolean;
-  } | null>(null);
+  // ── Floating-UI positioning ──────────────────────────────────────────
+  // `useFloating` returns a ref for the trigger (refs.setReference) and
+  // for the floating panel (refs.setFloating), plus `floatingStyles` that
+  // already contains the correct top/left/position values. `autoUpdate`
+  // wires up listeners for every scrollable ancestor, resize, transform
+  // change, etc., so the panel stays glued to the trigger no matter what.
+  const [floatingWidth, setFloatingWidth] = useState<number | undefined>(undefined);
+  const { refs, floatingStyles } = useFloating({
+    open,
+    onOpenChange: setOpen,
+    placement: 'bottom-start',
+    whileElementsMounted: autoUpdate,
+    middleware: [
+      offset(4),
+      flip({ padding: 8 }),
+      shift({ padding: 8 }),
+      floatingSize({
+        apply({ rects }) {
+          // Width = explicit override, else max(trigger, min floor).
+          const w = panelWidth ?? Math.max(rects.reference.width, panelMinWidth);
+          setFloatingWidth(w);
+        },
+      }),
+    ],
+  });
+  const containerRef = refs.setReference;
+  const panelRef     = refs.setFloating;
+
   // pickRow used by the search effect for auto-pick — declared below.
   // We forward via ref so the effect doesn't need to depend on it.
   const pickRowRef  = useRef<(row: T) => void>(() => { /* set below */ });
@@ -171,59 +197,6 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
       if (Array.isArray(parsed)) setRecent(parsed);
     } catch { /* ignore corrupt JSON */ }
   }, [recentKey]);
-
-  // ── Panel position: measure + react to scroll/resize ──────────────────
-  // useLayoutEffect ensures the position is set BEFORE the browser paints
-  // the panel the first time, so there's no visible flash at (0,0).
-  //
-  // We render the panel with `position: absolute` in document.body using
-  // document-relative coordinates (rect + window.scrollY/X). `position:
-  // fixed` is intentionally NOT used here because it silently breaks when
-  // ANY ancestor of the body has a CSS `transform`, `filter`, `perspective`
-  // or `will-change` set — those create a new containing block and the
-  // panel ends up landing at the wrong screen coordinates. Absolute with
-  // document-relative coords is robust to all of those.
-  useLayoutEffect(() => {
-    if (!open) { setPanelPos(null); return; }
-    const compute = () => {
-      const anchor = containerRef.current;
-      if (!anchor) return;
-      const rect = anchor.getBoundingClientRect();
-      const vh   = window.innerHeight;
-      const PANEL_MAX = 460; // max-h-[420px] + footer + a little slack
-      const GAP       = 4;
-      const spaceBelow = vh - rect.bottom;
-      const spaceAbove = rect.top;
-      // Flip upward only when bottom space is tight AND top has more room.
-      const openUpward = spaceBelow < 200 && spaceAbove > spaceBelow;
-      // Viewport-relative top for placement decision …
-      const viewportTop = openUpward
-        ? Math.max(8, rect.top - GAP - Math.min(PANEL_MAX, spaceAbove - 8))
-        : rect.bottom + GAP;
-      // … converted to document-relative for `position: absolute`.
-      const top  = viewportTop + window.scrollY;
-      const left = rect.left   + window.scrollX;
-      const width = panelWidth ?? Math.max(rect.width, panelMinWidth);
-      setPanelPos({ top, left, width, openUpward });
-    };
-    compute();
-    // Capture-phase scroll catches scrolls in ANY ancestor (tables, modal
-    // bodies, sidebars) — addEventListener with `true` = capture.
-    const onScroll = () => compute();
-    const onResize = () => compute();
-    window.addEventListener('scroll', onScroll, true);
-    window.addEventListener('resize', onResize);
-    let ro: ResizeObserver | null = null;
-    if (containerRef.current && typeof ResizeObserver !== 'undefined') {
-      ro = new ResizeObserver(() => compute());
-      ro.observe(containerRef.current);
-    }
-    return () => {
-      window.removeEventListener('scroll', onScroll, true);
-      window.removeEventListener('resize', onResize);
-      ro?.disconnect();
-    };
-  }, [open, panelWidth, panelMinWidth]);
 
   // ── Resolve initial value (if not in recent / results) ────────────────
   useEffect(() => {
@@ -288,8 +261,9 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
     if (!open) return;
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
-      const inContainer = containerRef.current?.contains(target);
-      const inPanel     = panelRef.current?.contains(target);
+      const inContainer = refs.reference.current instanceof Element
+        && refs.reference.current.contains(target);
+      const inPanel     = refs.floating.current?.contains(target);
       if (!inContainer && !inPanel) {
         setOpen(false);
         setQuery('');
@@ -297,7 +271,7 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
+  }, [open, refs.reference, refs.floating]);
 
   // ── Visible list — search results OR recent ──────────────────────────
   const visibleRows: T[] = useMemo(() => {
@@ -404,19 +378,18 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
         />
       )}
 
-      {/* Dropdown panel — rendered into document.body via React Portal so
-           it can never push layout, resize the parent row/cell, or get
-           clipped by an ancestor's overflow/transform. Position is
-           absolute relative to the viewport (position: fixed). */}
-      {open && panelPos && typeof document !== 'undefined' && createPortal(
+      {/* Dropdown panel — positioned by @floating-ui/react and rendered
+           through FloatingPortal. The library wires up listeners for every
+           scrollable ancestor, transform ancestor, resize, etc., so the
+           panel stays glued to the trigger no matter what. */}
+      {open && (
+      <FloatingPortal>
         <div
           ref={panelRef}
           className="overflow-hidden rounded-lg border border-border-subtle bg-surface-card shadow-2xl"
           style={{
-            position: 'absolute',
-            top:      panelPos.top,
-            left:     panelPos.left,
-            width:    panelPos.width,
+            ...floatingStyles,
+            width:    floatingWidth,
             zIndex:   Z.dropdown,
           }}
         >
@@ -465,8 +438,8 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
               {emptyState(query)}
             </div>
           )}
-        </div>,
-        document.body,
+        </div>
+      </FloatingPortal>
       )}
     </div>
   );

@@ -10,17 +10,24 @@
  * a native <select> becomes painful — e.g. picking a COA account from a
  * 50-item chart of accounts on a vendor bill line.
  *
- * Phase D5 — Portal-based floating panel.
- *   The dropdown is rendered into document.body via createPortal with
- *   position: fixed, so it NEVER pushes layout, resizes table rows, or
- *   gets clipped by an ancestor's overflow/transform. Position is
- *   re-computed on window scroll (capture phase), window resize, and
- *   trigger ResizeObserver. Auto-flips upward when bottom space is tight.
- *   z-index uses the shared Z.dropdown token so it layers correctly above
- *   sticky chrome (Z.sticky) and below modals (Z.modal).
+ * Phase D5 — Floating panel via @floating-ui/react.
+ *   The dropdown is rendered through a FloatingPortal and positioned by
+ *   the library's `autoUpdate` machinery, which correctly handles every
+ *   edge case the hand-rolled version got wrong: nested scrollable
+ *   ancestors (`<main className="overflow-y-auto">`), CSS transform/filter
+ *   ancestors that break `position: fixed`, browser zoom, fractional
+ *   pixels, viewport resize. z-index uses the shared Z.dropdown token.
  */
-import { useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useRef, useState, useMemo } from 'react';
+import {
+  useFloating,
+  autoUpdate,
+  flip,
+  shift,
+  offset,
+  size as floatingSize,
+  FloatingPortal,
+} from '@floating-ui/react';
 import { Z } from './z-index';
 
 export interface SearchableSelectOption {
@@ -54,15 +61,27 @@ export function SearchableSelect({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlightIdx, setHighlightIdx] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const panelRef     = useRef<HTMLDivElement>(null);
-  const inputRef     = useRef<HTMLInputElement>(null);
-  const listRef      = useRef<HTMLUListElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef  = useRef<HTMLUListElement>(null);
 
-  // Panel positioning — computed from trigger rect, updated on scroll/resize.
-  const [panelPos, setPanelPos] = useState<{
-    top: number; left: number; width: number; openUpward: boolean;
-  } | null>(null);
+  const [floatingWidth, setFloatingWidth] = useState<number | undefined>(undefined);
+  const { refs, floatingStyles } = useFloating({
+    open,
+    onOpenChange: setOpen,
+    placement: 'bottom-start',
+    whileElementsMounted: autoUpdate,
+    middleware: [
+      offset(4),
+      flip({ padding: 8 }),
+      shift({ padding: 8 }),
+      floatingSize({
+        apply({ rects }) {
+          const w = panelWidth ?? Math.max(rects.reference.width, panelMinWidth);
+          setFloatingWidth(w);
+        },
+      }),
+    ],
+  });
 
   const selected = options.find((o) => o.value === value);
   const filtered = useMemo(() => {
@@ -83,53 +102,14 @@ export function SearchableSelect({
     return () => clearTimeout(id);
   }, [open]);
 
-  // ── Panel position: measure + react to scroll/resize ────────────────
-  // See SmartEntitySearch for the rationale on `position: absolute` with
-  // document-relative coordinates instead of `position: fixed`.
-  useLayoutEffect(() => {
-    if (!open) { setPanelPos(null); return; }
-    const compute = () => {
-      const anchor = containerRef.current;
-      if (!anchor) return;
-      const rect = anchor.getBoundingClientRect();
-      const vh   = window.innerHeight;
-      const PANEL_MAX = 320; // search box + max-h-48 list + a little slack
-      const GAP       = 4;
-      const spaceBelow = vh - rect.bottom;
-      const spaceAbove = rect.top;
-      const openUpward = spaceBelow < 200 && spaceAbove > spaceBelow;
-      const viewportTop = openUpward
-        ? Math.max(8, rect.top - GAP - Math.min(PANEL_MAX, spaceAbove - 8))
-        : rect.bottom + GAP;
-      const top  = viewportTop + window.scrollY;
-      const left = rect.left   + window.scrollX;
-      const width = panelWidth ?? Math.max(rect.width, panelMinWidth);
-      setPanelPos({ top, left, width, openUpward });
-    };
-    compute();
-    const onScroll = () => compute();
-    const onResize = () => compute();
-    window.addEventListener('scroll', onScroll, true);
-    window.addEventListener('resize', onResize);
-    let ro: ResizeObserver | null = null;
-    if (containerRef.current && typeof ResizeObserver !== 'undefined') {
-      ro = new ResizeObserver(() => compute());
-      ro.observe(containerRef.current);
-    }
-    return () => {
-      window.removeEventListener('scroll', onScroll, true);
-      window.removeEventListener('resize', onResize);
-      ro?.disconnect();
-    };
-  }, [open, panelWidth, panelMinWidth]);
-
   // Close on outside click — must also exclude the portal panel
   useEffect(() => {
     if (!open) return;
     function onDocMouseDown(e: MouseEvent) {
       const target = e.target as Node;
-      const inContainer = containerRef.current?.contains(target);
-      const inPanel     = panelRef.current?.contains(target);
+      const inContainer = refs.reference.current instanceof Element
+        && refs.reference.current.contains(target);
+      const inPanel     = refs.floating.current?.contains(target);
       if (!inContainer && !inPanel) {
         setOpen(false);
         setQuery('');
@@ -137,7 +117,7 @@ export function SearchableSelect({
     }
     document.addEventListener('mousedown', onDocMouseDown);
     return () => document.removeEventListener('mousedown', onDocMouseDown);
-  }, [open]);
+  }, [open, refs.reference, refs.floating]);
 
   // Scroll the highlighted row into view
   useEffect(() => {
@@ -169,8 +149,9 @@ export function SearchableSelect({
   }
 
   return (
-    <div ref={containerRef} className={`relative ${className}`}>
+    <div className={`relative ${className}`}>
       <button
+        ref={refs.setReference}
         type="button"
         disabled={disabled}
         onClick={() => !disabled && setOpen((o) => !o)}
@@ -184,17 +165,14 @@ export function SearchableSelect({
         </svg>
       </button>
 
-      {/* Dropdown panel — portaled to document.body so it cannot push
-           the underlying table row or get clipped by overflow:hidden. */}
-      {open && panelPos && typeof document !== 'undefined' && createPortal(
+      {open && (
+      <FloatingPortal>
         <div
-          ref={panelRef}
+          ref={refs.setFloating}
           className="max-h-64 overflow-hidden rounded-card border border-border-subtle bg-surface-card shadow-lg"
           style={{
-            position: 'absolute',
-            top:      panelPos.top,
-            left:     panelPos.left,
-            width:    panelPos.width,
+            ...floatingStyles,
+            width:    floatingWidth,
             zIndex:   Z.dropdown,
           }}
         >
@@ -242,8 +220,8 @@ export function SearchableSelect({
               })
             )}
           </ul>
-        </div>,
-        document.body,
+        </div>
+      </FloatingPortal>
       )}
     </div>
   );
