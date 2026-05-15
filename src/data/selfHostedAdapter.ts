@@ -78,6 +78,7 @@ export function createSelfHostedAdapter(): DataAdapter {
     products: {
       list: () => notImplemented('products.list'),
       search: () => notImplemented('products.search'),
+      smartSearch: () => notImplemented('products.smartSearch'),
       listByModel: () => notImplemented('products.listByModel'),
       getById: () => notImplemented('products.getById'),
       create: () => notImplemented('products.create'),
@@ -100,6 +101,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       create: () => notImplemented('contacts.create'),
       update: () => notImplemented('contacts.update'),
       remove: () => notImplemented('contacts.remove'),
+      smartSearch: () => notImplemented('contacts.smartSearch'),
     },
     priceLevels: {
       list: () => notImplemented('priceLevels.list'),

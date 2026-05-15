@@ -401,6 +401,21 @@ export function createSupabaseAdapter(
 
         return [...(direct ?? []), ...extra];
       },
+      async smartSearch(input): Promise<import('./adapter').ProductSearchRow[]> {
+        // Calls Phase 12.18 search_products RPC. Server-side trigram +
+        // exact match; hard-capped at 100 rows.
+        const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)
+          ('search_products', {
+            p_company_id:        input.company_id,
+            p_q:                 input.q ?? null,
+            p_limit:             input.limit ?? 20,
+            p_brand_id:          input.brand_id ?? null,
+            p_category_id:       input.category_id ?? null,
+            p_include_inactive:  input.include_inactive ?? false,
+          });
+        assertNoError(error as Error | null, 'products.smartSearch');
+        return (data as import('./adapter').ProductSearchRow[]) ?? [];
+      },
       async listByModel(company_id, model_id, year?): Promise<ProductRow[]> {
         let q = client
           .from('product_compatibility')
@@ -513,6 +528,18 @@ export function createSupabaseAdapter(
       async remove(id) {
         const { error } = await client.from('contacts').delete().eq('id', id);
         assertNoError(error, 'contacts.remove');
+      },
+      async smartSearch(input): Promise<import('./adapter').ContactSearchRow[]> {
+        // Calls Phase 12.18 search_contacts RPC.
+        const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)
+          ('search_contacts', {
+            p_company_id: input.company_id,
+            p_q:          input.q ?? null,
+            p_type:       input.type ?? null,
+            p_limit:      input.limit ?? 20,
+          });
+        assertNoError(error as Error | null, 'contacts.smartSearch');
+        return (data as import('./adapter').ContactSearchRow[]) ?? [];
       },
     },
 

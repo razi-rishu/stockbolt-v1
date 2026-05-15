@@ -193,9 +193,60 @@ export interface VehicleMakesAPI {
   removeModel(id: string): Promise<void>;
 }
 
+// ── Phase 12.18: SmartEntitySearch result shapes ──────────────────────────
+export interface ProductSearchRow {
+  id:            string;
+  sku:           string;
+  name:          string;
+  name_ar:       string | null;
+  oe_number:     string | null;
+  barcode:       string | null;
+  brand_id:      string | null;
+  brand_name:    string | null;
+  category_id:   string | null;
+  category_name: string | null;
+  unit_id:       string | null;
+  unit_code:     string | null;
+  selling_price: number;
+  is_active:     boolean;
+  match_rank:    number;
+}
+export interface ProductSearchInput {
+  company_id:        string;
+  q?:                string;
+  limit?:            number;
+  brand_id?:         string;
+  category_id?:      string;
+  include_inactive?: boolean;
+}
+export interface ContactSearchRow {
+  id:           string;
+  type:         string;
+  name:         string;
+  name_ar:      string | null;
+  phone:        string | null;
+  email:        string | null;
+  tax_id:       string | null;
+  credit_limit: number;
+  match_rank:   number;
+}
+export interface ContactSearchInput {
+  company_id: string;
+  q?:         string;
+  type?:      'customer' | 'supplier' | null;
+  limit?:     number;
+}
+
 export interface ProductsAPI {
   list(company_id: string): Promise<ProductRow[]>;
   search(company_id: string, query: string): Promise<ProductRow[]>;
+  /**
+   * SmartEntitySearch backend — server-side trigram-ranked search.
+   * Returns inline display columns (sku, name, brand, oe, price) so the
+   * dropdown can render the rich list without N+1 queries.
+   * Hard-capped at 100 rows/query — designed for 100k+ catalogs.
+   */
+  smartSearch(input: ProductSearchInput): Promise<ProductSearchRow[]>;
   listByModel(company_id: string, model_id: string, year?: number): Promise<ProductRow[]>;
   getById(id: string): Promise<ProductRow | null>;
   create(row: ProductInsert): Promise<ProductRow>;
@@ -219,6 +270,12 @@ export interface ContactsAPI {
   create(row: ContactInsert): Promise<ContactRow>;
   update(id: string, row: ContactUpdate): Promise<void>;
   remove(id: string): Promise<void>;
+  /**
+   * SmartEntitySearch backend — server-side ranked search on name/phone/
+   * tax_id/email. Returns columns the customer/supplier pickers display.
+   * Hard-capped at 100 rows/query.
+   */
+  smartSearch(input: ContactSearchInput): Promise<ContactSearchRow[]>;
 }
 
 export interface PriceLevelsAPI {
