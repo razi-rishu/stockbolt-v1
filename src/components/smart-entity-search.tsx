@@ -217,17 +217,19 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
   }, [value, recent, resolveById, getKey, selectedRow]);
 
   // ── Debounced search ──────────────────────────────────────────────────
+  // When the dropdown is open we ALWAYS hit the server, even for an empty
+  // query. The RPC (search_products / search_contacts) treats an empty
+  // string as "browse mode" and returns the first N rows by name — this
+  // matches what Zoho / Odoo / SAP do: click the picker, see something
+  // immediately, no need to know what to type. Recents (if any) are
+  // merged in front of the browse list inside `visibleRows` below.
   useEffect(() => {
     if (!open) return;
     const trimmed = query.trim();
-    // Empty query → show recent (no search call)
-    if (trimmed.length < minChars) {
-      setResults([]);
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     const myToken = ++reqToken.current;
+    // Empty query → fetch immediately, no debounce
+    const delay = trimmed.length === 0 ? 0 : debounceMs;
     const t = setTimeout(() => {
       search(trimmed)
         .then(rows => {
@@ -252,9 +254,9 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
           setResults([]);
           setLoading(false);
         });
-    }, debounceMs);
+    }, delay);
     return () => clearTimeout(t);
-  }, [query, open, search, debounceMs, minChars]);
+  }, [query, open, search, debounceMs]);
 
   // ── Outside click to close ────────────────────────────────────────────
   useEffect(() => {
@@ -273,11 +275,19 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
     return () => document.removeEventListener('mousedown', handler);
   }, [open, refs.reference, refs.floating]);
 
-  // ── Visible list — search results OR recent ──────────────────────────
+  // ── Visible list — recents pinned on top, then server results ────────
+  // When a query is typed we show ONLY the server results (already ranked
+  // by trigram match). When the query is empty we show recents first, then
+  // the server's "browse" results, deduped by key so a recent doesn't
+  // appear twice.
   const visibleRows: T[] = useMemo(() => {
-    if (query.trim().length >= minChars) return results;
-    return recent.map(r => r.row);
-  }, [query, results, recent, minChars]);
+    const trimmed = query.trim();
+    if (trimmed.length >= minChars) return results;
+    const recentRows = recent.map(r => r.row);
+    const seen = new Set(recentRows.map(getKey));
+    const tail = results.filter(r => !seen.has(getKey(r)));
+    return [...recentRows, ...tail];
+  }, [query, results, recent, minChars, getKey]);
 
   const isShowingRecent = query.trim().length < minChars && recent.length > 0;
 
@@ -419,13 +429,13 @@ export function SmartEntitySearch<T>(props: SmartEntitySearchProps<T>) {
                   );
                 })}
               </ul>
-            ) : !loading && query.trim().length >= minChars ? (
+            ) : !loading && query.trim().length > 0 ? (
               <div className="px-4 py-6 text-center text-xs text-ink-tertiary">
                 No results for "{query}"
               </div>
-            ) : !loading && query.trim().length < minChars && recent.length === 0 ? (
+            ) : !loading ? (
               <div className="px-4 py-6 text-center text-xs text-ink-tertiary">
-                Start typing to search…
+                Nothing here yet — use the button below to add one.
               </div>
             ) : null}
           </div>
