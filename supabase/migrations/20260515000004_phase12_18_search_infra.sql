@@ -112,7 +112,12 @@ BEGIN
     c.name           AS category_name,
     p.unit_id,
     u.code           AS unit_code,
-    p.selling_price,
+    -- Cast to unconstrained NUMERIC so the actual column type
+    -- (NUMERIC(15,2)) matches the RETURNS TABLE declaration. Without this
+    -- Postgres errors with "structure of query does not match function
+    -- result type" because NUMERIC(15,2) and NUMERIC are not the same
+    -- pseudo-type in a RETURNS TABLE context.
+    p.selling_price::NUMERIC AS selling_price,
     p.is_active,
     -- Rank:
     --   2.0 = exact barcode hit
@@ -196,7 +201,9 @@ BEGIN
     ct.phone,
     ct.email,
     ct.tax_id,
-    ct.credit_limit,
+    -- See note in search_products: cast to plain NUMERIC so the column
+    -- type matches the RETURNS TABLE declaration.
+    ct.credit_limit::NUMERIC AS credit_limit,
     CASE
       WHEN v_q IS NULL THEN 0::REAL
       WHEN ct.phone  = v_q                 THEN 2.0::REAL
