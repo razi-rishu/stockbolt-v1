@@ -9,8 +9,19 @@
  * Designed for cases where the option list grows large enough that scrolling
  * a native <select> becomes painful — e.g. picking a COA account from a
  * 50-item chart of accounts on a vendor bill line.
+ *
+ * Phase D5 — Portal-based floating panel.
+ *   The dropdown is rendered into document.body via createPortal with
+ *   position: fixed, so it NEVER pushes layout, resizes table rows, or
+ *   gets clipped by an ancestor's overflow/transform. Position is
+ *   re-computed on window scroll (capture phase), window resize, and
+ *   trigger ResizeObserver. Auto-flips upward when bottom space is tight.
+ *   z-index uses the shared Z.dropdown token so it layers correctly above
+ *   sticky chrome (Z.sticky) and below modals (Z.modal).
  */
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import { Z } from './z-index';
 
 export interface SearchableSelectOption {
   value: string;
@@ -24,8 +35,10 @@ interface Props {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
-  /** Width of the dropdown panel in px. Defaults to fitting the trigger. */
+  /** Width of the dropdown panel in px. Defaults to max(triggerWidth, 288). */
   panelWidth?: number;
+  /** Minimum auto-width floor when panelWidth is omitted. Default 288 (≈18rem). */
+  panelMinWidth?: number;
 }
 
 export function SearchableSelect({
@@ -36,13 +49,20 @@ export function SearchableSelect({
   disabled = false,
   className = '',
   panelWidth,
+  panelMinWidth = 288,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlightIdx, setHighlightIdx] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLUListElement>(null);
+  const panelRef     = useRef<HTMLDivElement>(null);
+  const inputRef     = useRef<HTMLInputElement>(null);
+  const listRef      = useRef<HTMLUListElement>(null);
+
+  // Panel positioning — computed from trigger rect, updated on scroll/resize.
+  const [panelPos, setPanelPos] = useState<{
+    top: number; left: number; width: number; openUpward: boolean;
+  } | null>(null);
 
   const selected = options.find((o) => o.value === value);
   const filtered = useMemo(() => {
@@ -63,11 +83,50 @@ export function SearchableSelect({
     return () => clearTimeout(id);
   }, [open]);
 
-  // Close on outside click
+  // ── Panel position: measure + react to scroll/resize ────────────────
+  useLayoutEffect(() => {
+    if (!open) { setPanelPos(null); return; }
+    const compute = () => {
+      const anchor = containerRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const vh   = window.innerHeight;
+      const PANEL_MAX = 320; // search box + max-h-48 list + a little slack
+      const GAP       = 4;
+      const spaceBelow = vh - rect.bottom;
+      const spaceAbove = rect.top;
+      const openUpward = spaceBelow < 200 && spaceAbove > spaceBelow;
+      const top = openUpward
+        ? Math.max(8, rect.top - GAP - Math.min(PANEL_MAX, spaceAbove - 8))
+        : rect.bottom + GAP;
+      const width = panelWidth ?? Math.max(rect.width, panelMinWidth);
+      setPanelPos({ top, left: rect.left, width, openUpward });
+    };
+    compute();
+    const onScroll = () => compute();
+    const onResize = () => compute();
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onResize);
+    let ro: ResizeObserver | null = null;
+    if (containerRef.current && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => compute());
+      ro.observe(containerRef.current);
+    }
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onResize);
+      ro?.disconnect();
+    };
+  }, [open, panelWidth, panelMinWidth]);
+
+  // Close on outside click — must also exclude the portal panel
   useEffect(() => {
     if (!open) return;
     function onDocMouseDown(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const inContainer = containerRef.current?.contains(target);
+      const inPanel     = panelRef.current?.contains(target);
+      if (!inContainer && !inPanel) {
         setOpen(false);
         setQuery('');
       }
@@ -121,10 +180,19 @@ export function SearchableSelect({
         </svg>
       </button>
 
-      {open && (
+      {/* Dropdown panel — portaled to document.body so it cannot push
+           the underlying table row or get clipped by overflow:hidden. */}
+      {open && panelPos && typeof document !== 'undefined' && createPortal(
         <div
-          className="absolute z-50 mt-1 max-h-64 overflow-hidden rounded-card border border-border-subtle bg-surface-card shadow-lg"
-          style={{ width: panelWidth ?? 'max(100%, 18rem)' }}
+          ref={panelRef}
+          className="max-h-64 overflow-hidden rounded-card border border-border-subtle bg-surface-card shadow-lg"
+          style={{
+            position: 'fixed',
+            top:      panelPos.top,
+            left:     panelPos.left,
+            width:    panelPos.width,
+            zIndex:   Z.dropdown,
+          }}
         >
           <div className="border-b border-border-subtle bg-surface-muted p-2">
             <input
@@ -148,7 +216,10 @@ export function SearchableSelect({
                   <li
                     key={o.value}
                     onMouseEnter={() => setHighlightIdx(i)}
-                    onClick={() => {
+                    onMouseDown={(e) => {
+                      // mouseDown (not click) so we beat the outside-click
+                      // handler when this panel is portaled.
+                      e.preventDefault();
                       onChange(o.value);
                       setOpen(false);
                       setQuery('');
@@ -167,7 +238,8 @@ export function SearchableSelect({
               })
             )}
           </ul>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
