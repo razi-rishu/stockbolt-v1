@@ -99,41 +99,41 @@ DECLARE
   v_limit INTEGER := LEAST(GREATEST(COALESCE(p_limit, 20), 1), 100);
 BEGIN
   RETURN QUERY
+  -- Defensive: every column is explicitly cast to its declared RETURNS
+  -- TABLE type. Postgres rejects the function with "structure of query
+  -- does not match function result type" if ANY column's actual type
+  -- differs (e.g. NUMERIC(15,2) vs NUMERIC, VARCHAR(N) vs TEXT). Cheap
+  -- runtime cost, immune to schema drift.
   SELECT
-    p.id,
-    p.sku,
-    p.name,
-    p.name_ar,
-    p.oe_number,
-    p.barcode,
-    p.brand_id,
-    b.name           AS brand_name,
-    p.category_id,
-    c.name           AS category_name,
-    p.unit_id,
-    u.code           AS unit_code,
-    -- Cast to unconstrained NUMERIC so the actual column type
-    -- (NUMERIC(15,2)) matches the RETURNS TABLE declaration. Without this
-    -- Postgres errors with "structure of query does not match function
-    -- result type" because NUMERIC(15,2) and NUMERIC are not the same
-    -- pseudo-type in a RETURNS TABLE context.
-    p.selling_price::NUMERIC AS selling_price,
-    p.is_active,
+    p.id::UUID,
+    p.sku::TEXT,
+    p.name::TEXT,
+    p.name_ar::TEXT,
+    p.oe_number::TEXT,
+    p.barcode::TEXT,
+    p.brand_id::UUID,
+    b.name::TEXT,
+    p.category_id::UUID,
+    c.name::TEXT,
+    p.unit_id::UUID,
+    u.code::TEXT,
+    p.selling_price::NUMERIC,
+    p.is_active::BOOLEAN,
     -- Rank:
     --   2.0 = exact barcode hit
     --   1.5 = exact SKU hit
     --   1.0 + similarity = trigram match on SKU/name/oe_number
     --   0.0 = no query (just list-all path)
-    CASE
+    (CASE
       WHEN v_q IS NULL THEN 0::REAL
       WHEN p.barcode = v_q THEN 2.0::REAL
       WHEN LOWER(p.sku) = LOWER(v_q) THEN 1.5::REAL
-      ELSE 1.0 + GREATEST(
+      ELSE (1.0 + GREATEST(
         similarity(p.sku,                 v_q),
         similarity(p.name,                v_q),
         similarity(COALESCE(p.oe_number,''), v_q)
-      )
-    END AS match_rank
+      ))::REAL
+    END)::REAL AS match_rank
   FROM public.products p
   LEFT JOIN public.brands               b ON b.id = p.brand_id
   LEFT JOIN public.categories           c ON c.id = p.category_id
@@ -149,9 +149,10 @@ BEGIN
       OR p.name      ILIKE '%' || v_q || '%'
       OR p.oe_number ILIKE '%' || v_q || '%'
     )
-  ORDER BY
-    match_rank DESC,
-    p.name ASC
+  -- Order by position 15 (the cast match_rank) rather than the alias —
+  -- PostgreSQL's ORDER BY can't see a SELECT-list alias defined by the
+  -- enclosing CASE expression in some plan-cache paths.
+  ORDER BY 15 DESC, p.name ASC
   LIMIT v_limit;
 END;
 $$;
@@ -193,24 +194,23 @@ DECLARE
   v_limit INTEGER := LEAST(GREATEST(COALESCE(p_limit, 20), 1), 100);
 BEGIN
   RETURN QUERY
+  -- See defensive-cast note in search_products above.
   SELECT
-    ct.id,
-    ct.type,
-    ct.name,
-    ct.name_ar,
-    ct.phone,
-    ct.email,
-    ct.tax_id,
-    -- See note in search_products: cast to plain NUMERIC so the column
-    -- type matches the RETURNS TABLE declaration.
-    ct.credit_limit::NUMERIC AS credit_limit,
-    CASE
+    ct.id::UUID,
+    ct.type::TEXT,
+    ct.name::TEXT,
+    ct.name_ar::TEXT,
+    ct.phone::TEXT,
+    ct.email::TEXT,
+    ct.tax_id::TEXT,
+    ct.credit_limit::NUMERIC,
+    (CASE
       WHEN v_q IS NULL THEN 0::REAL
       WHEN ct.phone  = v_q                 THEN 2.0::REAL
       WHEN ct.tax_id = v_q                 THEN 1.8::REAL
       WHEN LOWER(ct.email) = LOWER(v_q)    THEN 1.5::REAL
-      ELSE 1.0 + similarity(ct.name, v_q)
-    END AS match_rank
+      ELSE (1.0 + similarity(ct.name, v_q))::REAL
+    END)::REAL AS match_rank
   FROM public.contacts ct
   WHERE ct.company_id = p_company_id
     AND (p_type IS NULL OR ct.type = p_type)
@@ -221,9 +221,7 @@ BEGIN
       OR ct.name    ILIKE '%' || v_q || '%'
       OR ct.email   ILIKE v_q || '%'
     )
-  ORDER BY
-    match_rank DESC,
-    ct.name ASC
+  ORDER BY 9 DESC, ct.name ASC
   LIMIT v_limit;
 END;
 $$;
