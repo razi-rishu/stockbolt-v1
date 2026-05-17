@@ -25,7 +25,8 @@
     "test:phase10": "vitest run tests/integration/phase10-verification.test.ts",
     "test:phase11": "vitest run tests/integration/phase11-verification.test.ts",
     "test:phase12": "vitest run tests/integration/phase12-verification.test.ts",
-    "test:regressions": "vitest run tests/integration/regressions.test.ts"
+    "test:regressions": "vitest run tests/integration/regressions.test.ts",
+    "prepare": "husky"
   },
   "dependencies": {
     "@floating-ui/react": "^0.27.19",
@@ -60,6 +61,7 @@
     "eslint-plugin-react-hooks": "^5.0.0",
     "eslint-plugin-react-refresh": "^0.4.12",
     "globals": "^15.15.0",
+    "husky": "^9.1.7",
     "postcss": "^8.4.47",
     "prettier": "^3.3.3",
     "tailwindcss": "^3.4.13",

@@ -1,0 +1,33 @@
+#!/usr/bin/env sh
+# ─────────────────────────────────────────────────────────────────────────
+# Pre-commit hook — locks every fix we've shipped against regressions.
+#
+# What runs:
+#   1. `npm run test:regressions` — 12 tripwires against the live Supabase
+#      DB (~5 seconds). Each one asserts that a previously-fixed bug is
+#      still fixed. If any fail, the commit is blocked.
+#
+# When NOT to run:
+#   The regression suite hits a real database, so it needs internet.
+#   If you genuinely need to commit offline (rare), use:
+#       git commit --no-verify -m "..."
+#   Use this escape hatch sparingly — the next online commit should
+#   restore safety.
+#
+# Why not run the full test suite:
+#   The phase0-12 verification tests are slower and assume a clean DB
+#   state. They are still runnable via `npm test` when needed. The
+#   regressions file is purpose-built for this hook: cheap, read-only,
+#   and exhaustive over the bugs we've fixed.
+# ─────────────────────────────────────────────────────────────────────────
+
+set -e
+
+echo "→ Running regression suite (locks every fix we have shipped)..."
+echo "  (Skip with: git commit --no-verify  — only if you're offline.)"
+echo ""
+
+npm run test:regressions --silent
+
+echo ""
+echo "✓ All regressions clean. Proceeding with commit."
