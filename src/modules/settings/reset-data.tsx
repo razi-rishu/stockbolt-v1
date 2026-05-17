@@ -70,6 +70,24 @@ export default function ResetDataPage() {
       setResult(data);
       setError(null);
       qc.clear(); // invalidate everything — most data we cached is gone
+
+      // Also wipe SmartEntitySearch's "recent picks" cache. Those live in
+      // localStorage under keys like `recent_customer::<company>`,
+      // `recent_supplier::<company>`, `recent_products::<company>`. After
+      // a wipe the recents reference rows that no longer exist in DB —
+      // they'd render at the top of every picker dropdown with stale
+      // names and resolve to broken selections. Drop them all.
+      try {
+        const toDrop: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('recent_')) toDrop.push(k);
+        }
+        for (const k of toDrop) localStorage.removeItem(k);
+        if (toDrop.length > 0) console.log('[reset] cleared', toDrop.length, 'recent_* localStorage keys');
+      } catch {
+        // localStorage can throw (Safari private mode, quota, etc.) — non-fatal.
+      }
     },
     onError: (e: Error) => {
       console.error('[reset] FAILED', e);
