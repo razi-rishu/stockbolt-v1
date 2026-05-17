@@ -24,7 +24,8 @@
     "test:phase9": "vitest run tests/integration/phase9-verification.test.ts",
     "test:phase10": "vitest run tests/integration/phase10-verification.test.ts",
     "test:phase11": "vitest run tests/integration/phase11-verification.test.ts",
-    "test:phase12": "vitest run tests/integration/phase12-verification.test.ts"
+    "test:phase12": "vitest run tests/integration/phase12-verification.test.ts",
+    "test:regressions": "vitest run tests/integration/regressions.test.ts"
   },
   "dependencies": {
     "@floating-ui/react": "^0.27.19",
