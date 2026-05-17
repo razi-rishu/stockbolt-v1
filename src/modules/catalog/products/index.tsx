@@ -36,6 +36,16 @@ export default function ProductsListPage() {
     enabled: !!company_id && search.trim().length >= 2,
   });
 
+  // Current on-hand qty per product (summed across warehouses). One round
+  // trip via the cached getCurrentStockMap RPC. Negative qty is surfaced
+  // explicitly — silently clamping it to 0 hides the inventory mismatch
+  // a user would otherwise need to discover by opening each product.
+  const { data: stockMap = {} } = useQuery({
+    queryKey: ['products_stock_map', company_id],
+    queryFn: () => getAdapter().stockLedger.getCurrentStockMap(company_id!),
+    enabled: !!company_id,
+  });
+
   const rows = search.trim().length >= 2 ? results : all;
   const loading = isLoading || searching;
 
@@ -60,6 +70,21 @@ export default function ProductsListPage() {
     {
       key: 'price', header: t('products.selling_price'), width: '100px',
       render: (r) => <span className="font-medium">{Number(r.selling_price).toFixed(2)}</span>,
+    },
+    {
+      key: 'stock', header: 'Stock', width: '90px',
+      render: (r) => {
+        const qty = stockMap[r.id]?.qty ?? 0;
+        // Red for negative (oversold), amber for low-stock, default ink for
+        // healthy. min_stock_level is per-product so we compare against it.
+        const min = Number(r.min_stock_level ?? 0);
+        const cls = qty < 0
+          ? 'text-red-600 font-semibold'
+          : (min > 0 && qty <= min)
+            ? 'text-amber-700 font-semibold'
+            : 'text-ink-primary font-medium';
+        return <span className={`font-mono ${cls}`}>{qty.toFixed(qty % 1 === 0 ? 0 : 2)}</span>;
+      },
     },
     {
       key: 'status', header: '', width: '80px',

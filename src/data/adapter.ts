@@ -624,7 +624,7 @@ export interface ReportsAPI {
   getSupplierStatement(company_id: string, contact_id: string, from: string, to: string): Promise<SupplierStatement>;
   getGRNReconciliation(company_id: string, as_of_date: string): Promise<GRNReconciliationReport>;
   // Phase 6 reports
-  getStockMovement(company_id: string, params: { product_id?: string; warehouse_id?: string; date_from: string; date_to: string }): Promise<StockMovementLine[]>;
+  getStockMovement(company_id: string, params: { product_id?: string; warehouse_id?: string; date_from: string; date_to: string; hide_reversed?: boolean }): Promise<StockMovementLine[]>;
   getSlowMoving(company_id: string, params: { threshold_days: number }): Promise<SlowMovingLine[]>;
   getReorderReport(company_id: string): Promise<ReorderLine[]>;
   getStockAging(company_id: string): Promise<StockAgingLine[]>;

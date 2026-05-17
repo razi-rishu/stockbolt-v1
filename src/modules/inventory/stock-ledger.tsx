@@ -11,13 +11,18 @@ import type { ProductRow, WarehouseRow } from '@/data/adapter';
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const TYPE_LABELS: Record<string, string> = {
-  purchase:       'Purchase',
-  sale:           'Sale',
-  transfer_in:    'Transfer In',
-  transfer_out:   'Transfer Out',
-  adjustment_in:  'Adjustment In',
-  adjustment_out: 'Adjustment Out',
-  opening:        'Opening',
+  purchase:        'Purchase',
+  sale:            'Sale',
+  sales_return:    'Sales Return',
+  purchase_return: 'Purchase Return',
+  transfer_in:     'Transfer In',
+  transfer_out:    'Transfer Out',
+  adjustment_in:   'Adjustment In',
+  adjustment_out:  'Adjustment Out',
+  opening_balance: 'Opening',
+  opening:         'Opening',
+  void:            'Void (reversal)',
+  edit_reversal:   'Edit Reversal',
 };
 
 export default function StockLedgerPage() {
@@ -31,6 +36,10 @@ export default function StockLedgerPage() {
   const [warehouseId, setWarehouseId] = useState('');
   const [dateFrom, setDateFrom] = useState(firstOfMonth);
   const [dateTo, setDateTo] = useState(today);
+  // Default ON: show only entries that contribute to current stock — hides
+  // both halves of any void/edit-reversal pair so the user sees a clean
+  // state instead of the raw audit log. Toggle OFF for the full history.
+  const [hideReversed, setHideReversed] = useState(true);
   const [submitted, setSubmitted] = useState(false);
 
   const { data: products = [] } = useQuery<ProductRow[]>({
@@ -46,12 +55,13 @@ export default function StockLedgerPage() {
   });
 
   const { data: rows = [], isFetching } = useQuery({
-    queryKey: ['stock_movement', company_id, productId, warehouseId, dateFrom, dateTo, submitted],
+    queryKey: ['stock_movement', company_id, productId, warehouseId, dateFrom, dateTo, hideReversed, submitted],
     queryFn: () => getAdapter().reports.getStockMovement(company_id!, {
       product_id: productId || undefined,
       warehouse_id: warehouseId || undefined,
       date_from: dateFrom,
       date_to: dateTo,
+      hide_reversed: hideReversed,
     }),
     enabled: !!company_id && submitted,
   });
@@ -81,7 +91,19 @@ export default function StockLedgerPage() {
           <Input label={t('inventory.date_to')} type="date" value={dateTo}
             onChange={e => { setDateTo(e.target.value); setSubmitted(false); }} />
         </div>
-        <div className="mt-4 flex justify-end">
+        <div className="mt-4 flex items-center justify-between gap-4">
+          <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-ink-secondary">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-border-strong text-brand-600 focus:ring-brand-500/30"
+              checked={hideReversed}
+              onChange={(e) => { setHideReversed(e.target.checked); setSubmitted(false); }}
+            />
+            <span>Hide reversed entries (voids &amp; edits)</span>
+            <span className="text-xs text-ink-tertiary">
+              {hideReversed ? '— showing only entries that affect current stock' : '— showing full audit trail'}
+            </span>
+          </label>
           <Button size="sm" onClick={() => setSubmitted(true)} disabled={isFetching}>
             {isFetching ? t('common.loading') : t('common.run')}
           </Button>

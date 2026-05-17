@@ -1606,9 +1606,16 @@ export function createSupabaseAdapter(
 
       // Phase 6 reports ──────────────────────────────────────────────────────
       async getStockMovement(company_id, params): Promise<StockMovementLine[]> {
+        // We fetch `id` + `reversal_of_id` so we can collapse reversal
+        // pairs when the caller asks for a "clean" view. The stock_ledger
+        // is an audit log — every void / edit_reversal leaves both the
+        // original row AND its reversal row in place. When hide_reversed
+        // is true we drop BOTH halves of each cancelled pair so the user
+        // sees only the entries that actually contribute to the current
+        // on-hand quantity.
         let q = client
           .from('stock_ledger')
-          .select('product_id, warehouse_id, date, type, direction, quantity, unit_cost, running_qty, running_avg_cost, products(name, sku), warehouses(name)')
+          .select('id, reversal_of_id, product_id, warehouse_id, date, type, direction, quantity, unit_cost, running_qty, running_avg_cost, products(name, sku), warehouses(name)')
           .eq('company_id', company_id)
           .gte('date', params.date_from)
           .lte('date', params.date_to);
@@ -1616,15 +1623,45 @@ export function createSupabaseAdapter(
         if (params.warehouse_id) q = q.eq('warehouse_id', params.warehouse_id);
         const { data, error } = await q.order('created_at');
         assertNoError(error, 'reports.getStockMovement');
-        return (data ?? []).map(r => {
-          const p = r.products as unknown as { name: string; sku: string } | null;
-          const w = r.warehouses as unknown as { name: string } | null;
-          const qty = Number(r.running_qty);
+
+        type Row = {
+          id: string;
+          reversal_of_id: string | null;
+          product_id: string;
+          warehouse_id: string;
+          date: string;
+          type: string | null;
+          direction: number;
+          quantity: number;
+          unit_cost: number;
+          running_qty: number;
+          running_avg_cost: number | null;
+          products: { name: string; sku: string } | null;
+          warehouses: { name: string } | null;
+        };
+        let rows = (data ?? []) as unknown as Row[];
+
+        if (params.hide_reversed) {
+          // Step 1: collect ids of original rows that have been reversed.
+          //         A reversal row carries reversal_of_id = original.id.
+          const reversedOriginalIds = new Set<string>();
+          for (const r of rows) {
+            if (r.reversal_of_id) reversedOriginalIds.add(r.reversal_of_id);
+          }
+          // Step 2: keep only rows that are neither a reversal entry
+          //         themselves nor an original that has been reversed.
+          rows = rows.filter(r =>
+            r.reversal_of_id === null && !reversedOriginalIds.has(r.id),
+          );
+        }
+
+        return rows.map(r => {
+          const qty  = Number(r.running_qty);
           const cost = Number(r.unit_cost);
           return {
-            product_id: r.product_id, product_name: p?.name ?? '', sku: p?.sku ?? '',
-            warehouse_id: r.warehouse_id, warehouse_name: w?.name ?? '',
-            date: r.date as string, movement_type: r.type ?? '', direction: Number(r.direction),
+            product_id: r.product_id, product_name: r.products?.name ?? '', sku: r.products?.sku ?? '',
+            warehouse_id: r.warehouse_id, warehouse_name: r.warehouses?.name ?? '',
+            date: r.date, movement_type: r.type ?? '', direction: Number(r.direction),
             quantity: Number(r.quantity), unit_cost: cost,
             running_qty: qty, running_value: qty * Number(r.running_avg_cost ?? 0),
           };
