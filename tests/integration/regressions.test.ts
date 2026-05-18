@@ -178,6 +178,44 @@ describe('Function source — fixes are still installed', () => {
     expect(row?.src).toBeTruthy();
     expect(row.src).toMatch(/credit_limit\s*::\s*NUMERIC/i);
   });
+
+  it('Phase 12.22: confirm_invoice posts to 4150 Sales Discounts (gross method)', async () => {
+    const [row] = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src
+       FROM pg_proc WHERE proname = 'confirm_invoice' AND pronargs = 1`,
+    );
+    expect(row?.src).toBeTruthy();
+    expect(row.src, 'phase tag missing').toMatch(/Phase 12\.22/);
+    // Both signals: looks up 4150, and the SELECT for the 4100 credit
+    // amount switches on whether 4150 exists + discount > 0.
+    expect(row.src, "must look up '4150' in CoA").toMatch(/code\s*=\s*'4150'/);
+    expect(row.src, 'must conditionally use subtotal vs subtotal - discount').toMatch(/v_sales_disc_id\s+IS\s+NOT\s+NULL/i);
+  });
+
+  it('Phase 12.22: edit_invoice posts to 4150 Sales Discounts on repost', async () => {
+    const [row] = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src
+       FROM pg_proc WHERE proname = 'edit_invoice' AND pronargs = 1`,
+    );
+    expect(row?.src).toBeTruthy();
+    expect(row.src).toMatch(/Phase 12\.22/);
+    expect(row.src).toMatch(/code\s*=\s*'4150'/);
+  });
+
+  it('Phase 12.22: 4150 Sales Discounts is seeded for every company', async () => {
+    // The CoA seed (src/core/seeds/seedCOA.ts) should produce a 4150 row
+    // for every company. If a future migration drops it, gross method
+    // silently degrades to net method without anyone noticing.
+    const missing = await sql<{ company_id: string }>(
+      `SELECT c.id::text AS company_id
+       FROM companies c
+       WHERE NOT EXISTS (
+         SELECT 1 FROM chart_of_accounts coa
+         WHERE coa.company_id = c.id AND coa.code = '4150' AND coa.is_active
+       )`,
+    );
+    expect(missing, 'companies without 4150 — re-run seedCOA').toEqual([]);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -296,5 +334,31 @@ describe('Data invariants — no accounting corruption', () => {
        HAVING ABS(SUM(debit) - SUM(credit)) > 0.01`,
     );
     expect(rows, 'GL rows that do not balance per JE').toEqual([]);
+  });
+
+  it('every confirmed invoice with a discount has a 4150 Sales Discounts entry', async () => {
+    // Phase 12.22 invariant: any confirmed invoice that records a
+    // discount_amount > 0 must also have a corresponding contra-revenue
+    // row in general_ledger pointing at 4150 inside the active sales JE.
+    // Drift detection — if the gross-method posting ever gets bypassed,
+    // this invariant catches it.
+    const rows = await sql<{ invoice_number: string; discount_amount: number }>(
+      `SELECT i.invoice_number, i.discount_amount::numeric AS discount_amount
+       FROM invoices i
+       JOIN journal_entries je ON je.source_id = i.id
+                              AND je.source_type = 'sales_invoice'
+                              AND je.reversed_by_id IS NULL
+                              AND je.reversal_of_id IS NULL
+       WHERE i.status = 'confirmed'
+         AND i.discount_amount > 0
+         AND NOT EXISTS (
+           SELECT 1 FROM general_ledger gl
+           WHERE gl.journal_entry_id = je.id AND gl.account_code = '4150'
+         )`,
+    );
+    expect(
+      rows,
+      'invoices with discount but no 4150 GL row — gross method bypassed',
+    ).toEqual([]);
   });
 });

@@ -1,0 +1,581 @@
+-- ─────────────────────────────────────────────────────────────────────────
+-- StockBolt v1 — Phase 12 — Migration 22: Gross-method invoice discount
+-- ─────────────────────────────────────────────────────────────────────────
+-- Until now, both confirm_invoice and edit_invoice posted Sales Revenue
+-- at NET of discount: `Cr 4100 = subtotal - discount`. The discount
+-- amount was invisible in the GL — only the net revenue appeared on the
+-- P&L. That's the "net method" of recording sales discounts.
+--
+-- This migration switches both functions to the GROSS METHOD, which keeps
+-- the gross sale on the revenue line and posts the discount as a separate
+-- contra-revenue debit to 4150 Sales Discounts:
+--
+--     OLD (net method)                  NEW (gross method)
+--     ──────────────────                ───────────────────────
+--     Dr AR        49.88                Dr AR              49.88
+--                  Cr Sales  47.50      Dr Sales Discounts  2.50    ← new
+--                  Cr VAT     2.38                 Cr Sales        50.00
+--                                                  Cr VAT           2.38
+--
+--     Both balance. Net revenue is the same (47.50). Difference: gross
+--     method gives the P&L this shape:
+--
+--       Sales Revenue                50.00
+--       Less: Sales Discounts        (2.50)
+--       Net Revenue                  47.50
+--
+--     instead of just `Net Revenue 47.50` with the discount invisible.
+--
+-- Why gross method:
+--   • Visibility — the business owner sees how much margin gets given
+--     away as discounts.
+--   • Reconciliation — VAT/tax authorities sometimes want gross-of-
+--     discount sales reported.
+--   • Sales analytics — distinguishes "we sold $50 and gave $2 away"
+--     from "we sold $48".
+--
+-- 4150 Sales Discounts is already in the CoA (seed: src/core/seeds/seedCOA.ts)
+-- with type='income' and sub_type='direct' — i.e. it sits in the Revenue
+-- section of the P&L (above Gross Profit) and is netted into total revenue.
+-- The P&L adapter computes `amount = credit - debit` for income, so a row
+-- with only debit naturally shows as a NEGATIVE amount under Revenue —
+-- which is exactly what we want.
+--
+-- Backwards compatibility:
+--   • If 4150 happens to be missing for a company (older companies that
+--     pre-date the seed), the function falls back to the net method for
+--     that one invoice. No exception is raised — the company continues
+--     to function, just without the breakdown.
+--   • Existing invoices already posted with the net method are NOT
+--     migrated automatically. They remain with their net-Sales credit
+--     and no Sales Discounts row. The next time such an invoice is
+--     EDITED, edit_invoice will reverse the net-method posting and
+--     post a fresh one with gross method.
+--
+-- Phase tag: `Phase 12.22` appears in both function bodies so the
+-- regression suite can detect that the fix is still installed.
+-- ─────────────────────────────────────────────────────────────────────────
+
+
+CREATE OR REPLACE FUNCTION public.confirm_invoice(p_invoice_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_user_id     UUID := auth.uid();
+  v_company_id  UUID;
+  v_inv         public.invoices%ROWTYPE;
+  v_item        public.invoice_items%ROWTYPE;
+  v_lock_date   DATE;
+  v_inv_je_id   UUID;
+  v_cogs_je_id  UUID;
+  v_inv_entry   TEXT;
+  v_cogs_entry  TEXT;
+  v_seq         BIGINT;
+  v_ar_id       UUID;
+  v_sales_id    UUID;
+  v_sales_disc_id UUID;  -- Phase 12.22 — 4150 Sales Discounts (contra-revenue)
+  v_vat_id      UUID;
+  v_cogs_id     UUID;
+  v_inv_acc_id  UUID;
+  v_current_mac   NUMERIC(15,2);
+  v_total_cogs    NUMERIC(15,2) := 0;
+  v_wh_id         UUID;
+  v_prev_running  NUMERIC(15,3);
+  v_je_total      NUMERIC(15,2);
+BEGIN
+  SELECT company_id INTO v_company_id FROM public.profiles WHERE id = v_user_id;
+  IF v_company_id IS NULL THEN
+    RAISE EXCEPTION 'confirm_invoice: no company for user %', v_user_id;
+  END IF;
+
+  SELECT * INTO v_inv FROM public.invoices WHERE id = p_invoice_id AND company_id = v_company_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'confirm_invoice: invoice % not found', p_invoice_id;
+  END IF;
+  IF v_inv.status <> 'draft' THEN
+    RAISE EXCEPTION 'confirm_invoice: invoice % not in draft (status=%)', p_invoice_id, v_inv.status;
+  END IF;
+
+  SELECT period_lock_date INTO v_lock_date FROM public.companies WHERE id = v_company_id;
+  IF v_lock_date IS NOT NULL AND v_inv.date <= v_lock_date THEN
+    RAISE EXCEPTION 'confirm_invoice: date % on or before period lock %', v_inv.date, v_lock_date;
+  END IF;
+
+  v_wh_id := v_inv.warehouse_id;
+  IF v_wh_id IS NULL THEN
+    SELECT id INTO v_wh_id FROM public.warehouses WHERE company_id = v_company_id AND is_default = TRUE LIMIT 1;
+  END IF;
+
+  SELECT id INTO v_ar_id        FROM public.chart_of_accounts WHERE company_id = v_company_id AND code = '1200' AND is_active;
+  SELECT id INTO v_sales_id     FROM public.chart_of_accounts WHERE company_id = v_company_id AND code = '4100' AND is_active;
+  -- Phase 12.22 — Sales Discounts (contra-revenue). Optional: if absent
+  -- the function falls back to net method for backwards compat.
+  SELECT id INTO v_sales_disc_id FROM public.chart_of_accounts WHERE company_id = v_company_id AND code = '4150' AND is_active;
+  SELECT id INTO v_cogs_id      FROM public.chart_of_accounts WHERE company_id = v_company_id AND code = '5100' AND is_active;
+  SELECT id INTO v_inv_acc_id   FROM public.chart_of_accounts WHERE company_id = v_company_id AND code = '1300' AND is_active;
+
+  IF v_inv.tax_amount > 0 THEN
+    SELECT id INTO v_vat_id FROM public.chart_of_accounts
+    WHERE company_id = v_company_id AND code LIKE '22%' AND is_active
+    ORDER BY code LIMIT 1;
+  END IF;
+
+  -- ── Sales JE total ──────────────────────────────────────────────────────
+  -- Gross method: total_debit = AR + Sales Discounts = total + discount.
+  -- Net method (fallback if 4150 missing): total_debit = AR = total.
+  IF v_sales_disc_id IS NOT NULL AND v_inv.discount_amount > 0 THEN
+    v_je_total := v_inv.total_amount + v_inv.discount_amount;
+  ELSE
+    v_je_total := v_inv.total_amount;
+  END IF;
+
+  INSERT INTO public.document_sequences (company_id, prefix, current_value, format, pad_zeros, reset_yearly)
+  VALUES (v_company_id, 'JE', 1001, 'JE-{NUMBER}', 0, false)
+  ON CONFLICT (company_id, prefix) DO UPDATE
+    SET current_value = public.document_sequences.current_value + 1, updated_at = NOW()
+  RETURNING current_value INTO v_seq;
+  v_inv_entry := 'JE-' || v_seq::TEXT;
+
+  INSERT INTO public.journal_entries (
+    company_id, entry_number, date, description,
+    source_type, source_id, currency, exchange_rate,
+    total_debit, total_credit, created_by
+  ) VALUES (
+    v_company_id, v_inv_entry, v_inv.date,
+    'Sales Invoice ' || v_inv.invoice_number,
+    'sales_invoice', p_invoice_id,
+    v_inv.currency, v_inv.exchange_rate,
+    v_je_total, v_je_total,
+    v_user_id
+  ) RETURNING id INTO v_inv_je_id;
+
+  -- DR 1200 AR — total payable by customer (always net of discount)
+  INSERT INTO public.general_ledger
+    (company_id, journal_entry_id, account_id, account_code, date,
+     debit, credit, description, contact_id, related_doc_type, related_doc_id)
+  VALUES
+    (v_company_id, v_inv_je_id, v_ar_id, '1200', v_inv.date,
+     v_inv.total_amount, 0,
+     'Sales Invoice ' || v_inv.invoice_number,
+     v_inv.contact_id, 'invoice', p_invoice_id);
+
+  -- DR 4150 Sales Discounts (contra-revenue) — only when 4150 exists AND there's a discount.
+  -- Phase 12.22 — gross method.
+  IF v_sales_disc_id IS NOT NULL AND v_inv.discount_amount > 0 THEN
+    INSERT INTO public.general_ledger
+      (company_id, journal_entry_id, account_id, account_code, date,
+       debit, credit, description, contact_id, related_doc_type, related_doc_id)
+    VALUES
+      (v_company_id, v_inv_je_id, v_sales_disc_id, '4150', v_inv.date,
+       v_inv.discount_amount, 0,
+       'Sales Discount ' || v_inv.invoice_number,
+       v_inv.contact_id, 'invoice', p_invoice_id);
+  END IF;
+
+  -- CR 4100 Sales Revenue
+  --   Gross method: subtotal (full taxable amount before discount)
+  --   Net method:   subtotal - discount (legacy fallback)
+  INSERT INTO public.general_ledger
+    (company_id, journal_entry_id, account_id, account_code, date,
+     debit, credit, description, contact_id, related_doc_type, related_doc_id)
+  VALUES
+    (v_company_id, v_inv_je_id, v_sales_id, '4100', v_inv.date,
+     0,
+     CASE
+       WHEN v_sales_disc_id IS NOT NULL AND v_inv.discount_amount > 0
+       THEN v_inv.subtotal
+       ELSE v_inv.subtotal - v_inv.discount_amount
+     END,
+     'Sales Invoice ' || v_inv.invoice_number,
+     v_inv.contact_id, 'invoice', p_invoice_id);
+
+  -- CR 2200 Output VAT (if any)
+  IF v_inv.tax_amount > 0 AND v_vat_id IS NOT NULL THEN
+    INSERT INTO public.general_ledger
+      (company_id, journal_entry_id, account_id, account_code, date,
+       debit, credit, description, contact_id, related_doc_type, related_doc_id)
+    VALUES
+      (v_company_id, v_inv_je_id, v_vat_id, '2200', v_inv.date,
+       0, v_inv.tax_amount,
+       'Output VAT ' || v_inv.invoice_number,
+       v_inv.contact_id, 'invoice', p_invoice_id);
+  END IF;
+
+  -- ── Per-item: ALWAYS write stock_ledger; defer COGS only when MAC=0 ──────
+  FOR v_item IN SELECT * FROM public.invoice_items WHERE invoice_id = p_invoice_id LOOP
+    CONTINUE WHEN v_item.product_id IS NULL;
+
+    SELECT COALESCE(running_avg_cost, 0)::NUMERIC(15,2) INTO v_current_mac
+    FROM public.stock_ledger
+    WHERE company_id = v_company_id AND product_id = v_item.product_id
+    ORDER BY created_at DESC LIMIT 1;
+    v_current_mac := COALESCE(v_current_mac, 0);
+
+    UPDATE public.invoice_items SET cost_at_sale = v_current_mac WHERE id = v_item.id;
+
+    SELECT COALESCE(running_qty, 0)::NUMERIC(15,3) INTO v_prev_running
+    FROM public.stock_ledger
+    WHERE company_id = v_company_id AND product_id = v_item.product_id AND warehouse_id = v_wh_id
+    ORDER BY created_at DESC LIMIT 1;
+    v_prev_running := COALESCE(v_prev_running, 0);
+
+    INSERT INTO public.stock_ledger
+      (company_id, product_id, warehouse_id, date,
+       type, direction, quantity, unit_cost, total_cost,
+       running_qty, running_avg_cost,
+       related_doc_type, related_doc_id)
+    VALUES
+      (v_company_id, v_item.product_id, v_wh_id, v_inv.date,
+       'sale', -1, v_item.quantity, v_current_mac, v_item.quantity * v_current_mac,
+       v_prev_running - v_item.quantity, v_current_mac,
+       'invoice', p_invoice_id);
+
+    IF v_current_mac > 0 THEN
+      v_total_cogs := v_total_cogs + v_item.quantity * v_current_mac;
+    ELSE
+      INSERT INTO public.deferred_cogs_queue
+        (company_id, product_id, invoice_item_id, sale_invoice_id,
+         sale_date, warehouse_id, quantity, status)
+      VALUES
+        (v_company_id, v_item.product_id, v_item.id, p_invoice_id,
+         v_inv.date, v_wh_id, v_item.quantity, 'pending');
+    END IF;
+  END LOOP;
+
+  IF v_total_cogs > 0 THEN
+    INSERT INTO public.document_sequences (company_id, prefix, current_value, format, pad_zeros, reset_yearly)
+    VALUES (v_company_id, 'JE', 1001, 'JE-{NUMBER}', 0, false)
+    ON CONFLICT (company_id, prefix) DO UPDATE
+      SET current_value = public.document_sequences.current_value + 1, updated_at = NOW()
+    RETURNING current_value INTO v_seq;
+    v_cogs_entry := 'JE-' || v_seq::TEXT;
+
+    INSERT INTO public.journal_entries (
+      company_id, entry_number, date, description,
+      source_type, source_id, currency, exchange_rate,
+      total_debit, total_credit, created_by
+    ) VALUES (
+      v_company_id, v_cogs_entry, v_inv.date,
+      'COGS – Invoice ' || v_inv.invoice_number,
+      'inventory_cogs', p_invoice_id,
+      v_inv.currency, v_inv.exchange_rate,
+      v_total_cogs, v_total_cogs, v_user_id
+    ) RETURNING id INTO v_cogs_je_id;
+
+    INSERT INTO public.general_ledger
+      (company_id, journal_entry_id, account_id, account_code, date,
+       debit, credit, description, related_doc_type, related_doc_id)
+    VALUES
+      (v_company_id, v_cogs_je_id, v_cogs_id, '5100', v_inv.date,
+       v_total_cogs, 0,
+       'COGS ' || v_inv.invoice_number, 'invoice', p_invoice_id);
+
+    INSERT INTO public.general_ledger
+      (company_id, journal_entry_id, account_id, account_code, date,
+       debit, credit, description, related_doc_type, related_doc_id)
+    VALUES
+      (v_company_id, v_cogs_je_id, v_inv_acc_id, '1300', v_inv.date,
+       0, v_total_cogs,
+       'COGS ' || v_inv.invoice_number, 'invoice', p_invoice_id);
+  END IF;
+
+  UPDATE public.invoices SET status = 'confirmed', updated_at = NOW() WHERE id = p_invoice_id;
+
+  BEGIN
+    INSERT INTO public.audit_logs (company_id, user_id, action, entity_type, entity_id, new_data)
+    VALUES (v_company_id, v_user_id, 'confirm', 'invoice', p_invoice_id,
+      jsonb_build_object('invoice_number', v_inv.invoice_number, 'je', v_inv_entry));
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+
+  RETURN jsonb_build_object(
+    'invoice_id',      p_invoice_id,
+    'invoice_number',  v_inv.invoice_number,
+    'je_id',           v_inv_je_id,
+    'entry_number',    v_inv_entry
+  );
+END;
+$$;
+
+
+-- ── edit_invoice — same gross-method posting in Step 3 ─────────────────
+-- This rewrite preserves the Phase 12.20 fix (always write stock_ledger,
+-- defer COGS only when MAC=0) and the Phase 12.21 fix (don't double-
+-- reverse) and adds the Phase 12.22 gross-method discount posting.
+CREATE OR REPLACE FUNCTION public.edit_invoice(p_invoice_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY INVOKER
+AS $$
+DECLARE
+  v_user_id     UUID := auth.uid();
+  v_company_id  UUID;
+  v_inv         public.invoices%ROWTYPE;
+  v_item        public.invoice_items%ROWTYPE;
+  v_lock_date   DATE;
+  v_je          public.journal_entries%ROWTYPE;
+  v_gl          public.general_ledger%ROWTYPE;
+  v_sl          public.stock_ledger%ROWTYPE;
+  v_rev_id      UUID;
+  v_rev_entry   TEXT;
+  v_inv_je_id   UUID;
+  v_cogs_je_id  UUID;
+  v_inv_entry   TEXT;
+  v_cogs_entry  TEXT;
+  v_seq         BIGINT;
+  v_ar_id       UUID;
+  v_sales_id    UUID;
+  v_sales_disc_id UUID;   -- Phase 12.22
+  v_vat_id      UUID;
+  v_cogs_id     UUID;
+  v_inv_acc_id  UUID;
+  v_current_mac   NUMERIC(15,2);
+  v_total_cogs    NUMERIC(15,2) := 0;
+  v_wh_id         UUID;
+  v_prev_running  NUMERIC(15,3);
+  v_je_total      NUMERIC(15,2);
+BEGIN
+  SELECT company_id INTO v_company_id FROM public.profiles WHERE id = v_user_id;
+  IF v_company_id IS NULL THEN
+    RAISE EXCEPTION 'edit_invoice: no company for user';
+  END IF;
+
+  SELECT * INTO v_inv FROM public.invoices WHERE id = p_invoice_id AND company_id = v_company_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'edit_invoice: invoice % not found', p_invoice_id;
+  END IF;
+  IF v_inv.status <> 'confirmed' THEN
+    RAISE EXCEPTION 'edit_invoice: invoice % must be confirmed (status=%)', p_invoice_id, v_inv.status;
+  END IF;
+
+  SELECT period_lock_date INTO v_lock_date FROM public.companies WHERE id = v_company_id;
+  IF v_lock_date IS NOT NULL AND CURRENT_DATE <= v_lock_date THEN
+    RAISE EXCEPTION 'edit_invoice: today % on or before period lock %', CURRENT_DATE, v_lock_date;
+  END IF;
+
+  -- ── Step 1: Reverse existing sales + cogs JEs ───────────────────────────
+  -- Phase 12.21: also filter `reversal_of_id IS NULL`.
+  FOR v_je IN
+    SELECT * FROM public.journal_entries
+    WHERE company_id = v_company_id
+      AND source_id = p_invoice_id
+      AND reversed_by_id IS NULL
+      AND reversal_of_id IS NULL
+      AND source_type IN ('sales_invoice','inventory_cogs')
+  LOOP
+    INSERT INTO public.document_sequences (company_id, prefix, current_value, format, pad_zeros, reset_yearly)
+    VALUES (v_company_id, 'JE', 1001, 'JE-{NUMBER}', 0, false)
+    ON CONFLICT (company_id, prefix) DO UPDATE
+      SET current_value = public.document_sequences.current_value + 1, updated_at = NOW()
+    RETURNING current_value INTO v_seq;
+    v_rev_entry := 'JE-' || v_seq::TEXT;
+
+    INSERT INTO public.journal_entries (
+      company_id, entry_number, date, description,
+      source_type, source_id, currency, exchange_rate,
+      total_debit, total_credit, reversal_of_id, created_by
+    ) VALUES (
+      v_company_id, v_rev_entry, CURRENT_DATE,
+      'Edit Reversal – ' || v_inv.invoice_number,
+      v_je.source_type, p_invoice_id,
+      v_je.currency, v_je.exchange_rate,
+      v_je.total_credit, v_je.total_debit,
+      v_je.id, v_user_id
+    ) RETURNING id INTO v_rev_id;
+
+    FOR v_gl IN SELECT * FROM public.general_ledger WHERE journal_entry_id = v_je.id LOOP
+      INSERT INTO public.general_ledger (
+        company_id, journal_entry_id, account_id, account_code, date,
+        debit, credit, description,
+        contact_id, related_doc_type, related_doc_id, reversal_of_id
+      ) VALUES (
+        v_company_id, v_rev_id, v_gl.account_id, v_gl.account_code, CURRENT_DATE,
+        v_gl.credit, v_gl.debit,
+        'Edit Reversal – ' || v_inv.invoice_number,
+        v_gl.contact_id, v_gl.related_doc_type, v_gl.related_doc_id, v_gl.id
+      );
+    END LOOP;
+
+    UPDATE public.journal_entries SET reversed_by_id = v_rev_id WHERE id = v_je.id;
+  END LOOP;
+
+  -- ── Step 2: Reverse stock_ledger rows ───────────────────────────────────
+  -- Phase 12.21: NOT EXISTS guard against double-reversal.
+  FOR v_sl IN
+    SELECT sl.* FROM public.stock_ledger sl
+    WHERE sl.company_id = v_company_id
+      AND sl.related_doc_id = p_invoice_id
+      AND sl.related_doc_type = 'invoice'
+      AND sl.reversal_of_id IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM public.stock_ledger r WHERE r.reversal_of_id = sl.id
+      )
+  LOOP
+    SELECT COALESCE(running_qty, 0)::NUMERIC(15,3) INTO v_prev_running
+    FROM public.stock_ledger
+    WHERE company_id = v_company_id AND product_id = v_sl.product_id AND warehouse_id = v_sl.warehouse_id
+    ORDER BY created_at DESC LIMIT 1;
+
+    INSERT INTO public.stock_ledger (
+      company_id, product_id, warehouse_id, date,
+      type, direction, quantity, unit_cost, total_cost,
+      running_qty, running_avg_cost,
+      related_doc_type, related_doc_id, reversal_of_id
+    ) VALUES (
+      v_company_id, v_sl.product_id, v_sl.warehouse_id, CURRENT_DATE,
+      'edit_reversal', -v_sl.direction, v_sl.quantity, v_sl.unit_cost, v_sl.total_cost,
+      v_prev_running + v_sl.quantity * (-v_sl.direction),
+      v_sl.running_avg_cost,
+      'invoice', p_invoice_id, v_sl.id
+    );
+  END LOOP;
+
+  -- ── Step 3: Repost based on current items (gross method, Phase 12.22) ───
+  v_wh_id := v_inv.warehouse_id;
+  IF v_wh_id IS NULL THEN
+    SELECT id INTO v_wh_id FROM public.warehouses WHERE company_id = v_company_id AND is_default LIMIT 1;
+  END IF;
+
+  SELECT id INTO v_ar_id        FROM public.chart_of_accounts WHERE company_id = v_company_id AND code = '1200' AND is_active;
+  SELECT id INTO v_sales_id     FROM public.chart_of_accounts WHERE company_id = v_company_id AND code = '4100' AND is_active;
+  SELECT id INTO v_sales_disc_id FROM public.chart_of_accounts WHERE company_id = v_company_id AND code = '4150' AND is_active;
+  SELECT id INTO v_cogs_id      FROM public.chart_of_accounts WHERE company_id = v_company_id AND code = '5100' AND is_active;
+  SELECT id INTO v_inv_acc_id   FROM public.chart_of_accounts WHERE company_id = v_company_id AND code = '1300' AND is_active;
+
+  SELECT * INTO v_inv FROM public.invoices WHERE id = p_invoice_id;
+
+  IF v_inv.tax_amount > 0 THEN
+    SELECT id INTO v_vat_id FROM public.chart_of_accounts
+    WHERE company_id = v_company_id AND code LIKE '22%' AND is_active ORDER BY code LIMIT 1;
+  END IF;
+
+  IF v_sales_disc_id IS NOT NULL AND v_inv.discount_amount > 0 THEN
+    v_je_total := v_inv.total_amount + v_inv.discount_amount;
+  ELSE
+    v_je_total := v_inv.total_amount;
+  END IF;
+
+  INSERT INTO public.document_sequences (company_id, prefix, current_value, format, pad_zeros, reset_yearly)
+  VALUES (v_company_id, 'JE', 1001, 'JE-{NUMBER}', 0, false)
+  ON CONFLICT (company_id, prefix) DO UPDATE
+    SET current_value = public.document_sequences.current_value + 1, updated_at = NOW()
+  RETURNING current_value INTO v_seq;
+  v_inv_entry := 'JE-' || v_seq::TEXT;
+
+  INSERT INTO public.journal_entries (
+    company_id, entry_number, date, description,
+    source_type, source_id, currency, exchange_rate,
+    total_debit, total_credit, created_by
+  ) VALUES (
+    v_company_id, v_inv_entry, v_inv.date,
+    'Sales Invoice (Edited) ' || v_inv.invoice_number,
+    'sales_invoice', p_invoice_id, v_inv.currency, v_inv.exchange_rate,
+    v_je_total, v_je_total, v_user_id
+  ) RETURNING id INTO v_inv_je_id;
+
+  INSERT INTO public.general_ledger
+    (company_id, journal_entry_id, account_id, account_code, date, debit, credit, description, contact_id, related_doc_type, related_doc_id)
+  VALUES
+    (v_company_id, v_inv_je_id, v_ar_id, '1200', v_inv.date, v_inv.total_amount, 0,
+     'Invoice (Edited) ' || v_inv.invoice_number, v_inv.contact_id, 'invoice', p_invoice_id);
+
+  -- DR 4150 Sales Discounts (gross method) — Phase 12.22
+  IF v_sales_disc_id IS NOT NULL AND v_inv.discount_amount > 0 THEN
+    INSERT INTO public.general_ledger
+      (company_id, journal_entry_id, account_id, account_code, date, debit, credit, description, contact_id, related_doc_type, related_doc_id)
+    VALUES
+      (v_company_id, v_inv_je_id, v_sales_disc_id, '4150', v_inv.date, v_inv.discount_amount, 0,
+       'Sales Discount (Edited) ' || v_inv.invoice_number, v_inv.contact_id, 'invoice', p_invoice_id);
+  END IF;
+
+  INSERT INTO public.general_ledger
+    (company_id, journal_entry_id, account_id, account_code, date, debit, credit, description, contact_id, related_doc_type, related_doc_id)
+  VALUES
+    (v_company_id, v_inv_je_id, v_sales_id, '4100', v_inv.date, 0,
+     CASE
+       WHEN v_sales_disc_id IS NOT NULL AND v_inv.discount_amount > 0
+       THEN v_inv.subtotal
+       ELSE v_inv.subtotal - v_inv.discount_amount
+     END,
+     'Invoice (Edited) ' || v_inv.invoice_number, v_inv.contact_id, 'invoice', p_invoice_id);
+
+  IF v_inv.tax_amount > 0 AND v_vat_id IS NOT NULL THEN
+    INSERT INTO public.general_ledger
+      (company_id, journal_entry_id, account_id, account_code, date, debit, credit, description, contact_id, related_doc_type, related_doc_id)
+    VALUES
+      (v_company_id, v_inv_je_id, v_vat_id, '2200', v_inv.date, 0, v_inv.tax_amount,
+       'Output VAT (Edited) ' || v_inv.invoice_number, v_inv.contact_id, 'invoice', p_invoice_id);
+  END IF;
+
+  -- Per-item: always write stock_ledger (Phase 12.20); defer COGS when MAC=0.
+  FOR v_item IN SELECT * FROM public.invoice_items WHERE invoice_id = p_invoice_id LOOP
+    CONTINUE WHEN v_item.product_id IS NULL;
+
+    SELECT COALESCE(running_avg_cost, 0)::NUMERIC(15,2) INTO v_current_mac
+    FROM public.stock_ledger
+    WHERE company_id = v_company_id AND product_id = v_item.product_id
+    ORDER BY created_at DESC LIMIT 1;
+    v_current_mac := COALESCE(v_current_mac, 0);
+
+    UPDATE public.invoice_items SET cost_at_sale = v_current_mac WHERE id = v_item.id;
+
+    SELECT COALESCE(running_qty, 0)::NUMERIC(15,3) INTO v_prev_running
+    FROM public.stock_ledger
+    WHERE company_id = v_company_id AND product_id = v_item.product_id AND warehouse_id = v_wh_id
+    ORDER BY created_at DESC LIMIT 1;
+    v_prev_running := COALESCE(v_prev_running, 0);
+
+    INSERT INTO public.stock_ledger
+      (company_id, product_id, warehouse_id, date, type, direction, quantity, unit_cost, total_cost,
+       running_qty, running_avg_cost, related_doc_type, related_doc_id)
+    VALUES
+      (v_company_id, v_item.product_id, v_wh_id, CURRENT_DATE,
+       'sale', -1, v_item.quantity, v_current_mac, v_item.quantity * v_current_mac,
+       v_prev_running - v_item.quantity, v_current_mac, 'invoice', p_invoice_id);
+
+    IF v_current_mac > 0 THEN
+      v_total_cogs := v_total_cogs + v_item.quantity * v_current_mac;
+    END IF;
+  END LOOP;
+
+  IF v_total_cogs > 0 THEN
+    INSERT INTO public.document_sequences (company_id, prefix, current_value, format, pad_zeros, reset_yearly)
+    VALUES (v_company_id, 'JE', 1001, 'JE-{NUMBER}', 0, false)
+    ON CONFLICT (company_id, prefix) DO UPDATE
+      SET current_value = public.document_sequences.current_value + 1, updated_at = NOW()
+    RETURNING current_value INTO v_seq;
+    v_cogs_entry := 'JE-' || v_seq::TEXT;
+
+    INSERT INTO public.journal_entries (
+      company_id, entry_number, date, description, source_type, source_id,
+      currency, exchange_rate, total_debit, total_credit, created_by
+    ) VALUES (
+      v_company_id, v_cogs_entry, CURRENT_DATE,
+      'COGS (Edited) – ' || v_inv.invoice_number,
+      'inventory_cogs', p_invoice_id, v_inv.currency, v_inv.exchange_rate,
+      v_total_cogs, v_total_cogs, v_user_id
+    ) RETURNING id INTO v_cogs_je_id;
+
+    INSERT INTO public.general_ledger
+      (company_id, journal_entry_id, account_id, account_code, date, debit, credit, description, related_doc_type, related_doc_id)
+    VALUES
+      (v_company_id, v_cogs_je_id, v_cogs_id, '5100', CURRENT_DATE, v_total_cogs, 0,
+       'COGS (Edited) ' || v_inv.invoice_number, 'invoice', p_invoice_id),
+      (v_company_id, v_cogs_je_id, v_inv_acc_id, '1300', CURRENT_DATE, 0, v_total_cogs,
+       'COGS (Edited) ' || v_inv.invoice_number, 'invoice', p_invoice_id);
+  END IF;
+
+  BEGIN
+    INSERT INTO public.audit_logs (company_id, user_id, action, entity_type, entity_id, new_data)
+    VALUES (v_company_id, v_user_id, 'edit', 'invoice', p_invoice_id,
+      jsonb_build_object('invoice_number', v_inv.invoice_number, 'je', v_inv_entry));
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+
+  RETURN jsonb_build_object(
+    'invoice_id', p_invoice_id, 'invoice_number', v_inv.invoice_number,
+    'je_id', v_inv_je_id, 'entry_number', v_inv_entry
+  );
+END;
+$$;

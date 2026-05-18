@@ -50,6 +50,18 @@ WITH checks AS (
         AND pg_get_functiondef(oid) LIKE '%Phase 12.21%'
     ) THEN '✓ pass' ELSE '✗ FAIL — apply migration 20260517000003' END, ''
 
+  UNION ALL SELECT 6, 'Phase 12.22: confirm_invoice uses gross method (Sales Discounts 4150)',
+    CASE WHEN EXISTS (
+      SELECT 1 FROM pg_proc WHERE proname = 'confirm_invoice' AND pronargs = 1
+        AND pg_get_functiondef(oid) LIKE '%Phase 12.22%'
+    ) THEN '✓ pass' ELSE '✗ FAIL — apply migration 20260518000001' END, ''
+
+  UNION ALL SELECT 7, 'Phase 12.22: edit_invoice uses gross method',
+    CASE WHEN EXISTS (
+      SELECT 1 FROM pg_proc WHERE proname = 'edit_invoice' AND pronargs = 1
+        AND pg_get_functiondef(oid) LIKE '%Phase 12.22%'
+    ) THEN '✓ pass' ELSE '✗ FAIL — apply migration 20260518000001' END, ''
+
   -- ─── Triggers / constraints ────────────────────────────────────────────
   UNION ALL SELECT 10, 'journal_entries_guard_no_double_post trigger present',
     CASE WHEN EXISTS (
@@ -99,6 +111,25 @@ WITH checks AS (
       SELECT 1 FROM general_ledger GROUP BY journal_entry_id
       HAVING ABS(SUM(debit) - SUM(credit)) > 0.01
     ) THEN '✓ pass' ELSE '✗ FAIL — GL rows per JE do not balance' END, ''
+
+  UNION ALL SELECT 25, 'Confirmed invoices with discount have 4150 entry (gross method)',
+    CASE WHEN NOT EXISTS (
+      SELECT 1 FROM invoices i
+      JOIN journal_entries je ON je.source_id = i.id
+                            AND je.source_type='sales_invoice'
+                            AND je.reversed_by_id IS NULL
+                            AND je.reversal_of_id IS NULL
+      WHERE i.status='confirmed' AND i.discount_amount > 0
+        AND NOT EXISTS (SELECT 1 FROM general_ledger gl
+                         WHERE gl.journal_entry_id=je.id AND gl.account_code='4150')
+    ) THEN '✓ pass' ELSE '✗ FAIL — gross method skipped on at least one invoice' END,
+    (SELECT COALESCE(string_agg(invoice_number, ', '), '')
+     FROM (SELECT i.invoice_number FROM invoices i
+           JOIN journal_entries je ON je.source_id=i.id AND je.source_type='sales_invoice'
+                                  AND je.reversed_by_id IS NULL AND je.reversal_of_id IS NULL
+           WHERE i.status='confirmed' AND i.discount_amount > 0
+             AND NOT EXISTS (SELECT 1 FROM general_ledger gl
+                              WHERE gl.journal_entry_id=je.id AND gl.account_code='4150')) x)
 
   UNION ALL SELECT 24, 'Confirmed invoices: GL AR matches invoice.total_amount',
     CASE WHEN NOT EXISTS (

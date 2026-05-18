@@ -10,6 +10,18 @@ function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/**
+ * Accounting-style formatter: negative numbers render as parens, no minus.
+ *   -2.50  →  "(2.50)"
+ *    2.50  →  "2.50"
+ * Used for contra-revenue lines (4150 Sales Discounts) on the P&L so
+ * they read as "Less: Sales Discounts (2.50)" instead of "-2.50".
+ */
+function fmtSigned(n: number) {
+  if (n < 0) return `(${fmt(-n)})`;
+  return fmt(n);
+}
+
 function todayIso() { return new Date().toISOString().slice(0, 10); }
 function firstOfMonthIso() {
   const d = new Date();
@@ -68,12 +80,25 @@ export default function ProfitLossPage() {
                   Revenue (Direct Income)
                 </td>
               </tr>
-              {directIncome.map(l => (
-                <tr key={l.account_code} className="border-b border-border-subtle">
-                  <td className="px-5 py-2 text-ink-primary">{l.account_code} {l.account_name}</td>
-                  <td className="px-5 py-2 text-end font-mono text-ink-primary">{fmt(l.amount)}</td>
-                </tr>
-              ))}
+              {directIncome.map(l => {
+                // Contra-revenue (e.g. 4150 Sales Discounts) has a NEGATIVE
+                // amount because it carries a debit balance under the
+                // `credit - debit` income convention. Render with a "Less:"
+                // prefix and parenthesised number so it reads naturally.
+                const isContra = l.amount < 0;
+                return (
+                  <tr key={l.account_code} className="border-b border-border-subtle">
+                    <td className="px-5 py-2 text-ink-primary">
+                      {l.account_code}{' '}
+                      {isContra ? <span className="text-ink-tertiary">Less:</span> : null}{' '}
+                      {l.account_name}
+                    </td>
+                    <td className={`px-5 py-2 text-end font-mono ${isContra ? 'text-ink-tertiary' : 'text-ink-primary'}`}>
+                      {fmtSigned(l.amount)}
+                    </td>
+                  </tr>
+                );
+              })}
               <tr className="border-b border-border-subtle bg-surface-muted font-semibold">
                 <td className="px-5 py-2 text-ink-primary">{t('reports.total_revenue')}</td>
                 <td className="px-5 py-2 text-end font-mono text-ink-primary">{fmt(pl.revenue)}</td>
