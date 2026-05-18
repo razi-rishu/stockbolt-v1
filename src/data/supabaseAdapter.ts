@@ -934,15 +934,15 @@ export function createSupabaseAdapter(
         const ids = rows.map(r => r.id);
         const { data: allocs, error: aErr } = await client
           .from('payment_allocations')
-          .select('doc_id, amount_applied')
+          .select('doc_id, amount_applied, discount_amount')
           .eq('company_id', company_id)
           .eq('doc_type', 'invoice')
           .in('doc_id', ids);
         assertNoError(aErr, 'invoices.listOpenForContact allocations');
 
         const appliedById: Record<string, number> = {};
-        for (const a of (allocs ?? []) as { doc_id: string; amount_applied: number }[]) {
-          appliedById[a.doc_id] = (appliedById[a.doc_id] ?? 0) + Number(a.amount_applied);
+        for (const a of (allocs ?? []) as { doc_id: string; amount_applied: number; discount_amount: number }[]) {
+          appliedById[a.doc_id] = (appliedById[a.doc_id] ?? 0) + Number(a.amount_applied) + Number(a.discount_amount ?? 0);
         }
 
         // 3. Compute outstanding; drop fully-paid invoices
@@ -1337,14 +1337,14 @@ export function createSupabaseAdapter(
 
         const { data: allocs, error: allocErr } = await client
           .from('payment_allocations')
-          .select('doc_id, amount_applied')
+          .select('doc_id, amount_applied, discount_amount')
           .eq('company_id', company_id)
           .eq('doc_type', 'invoice');
         assertNoError(allocErr, 'reports.getARAgingReport allocs');
 
         const allocByInv: Record<string, number> = {};
         for (const a of allocs ?? []) {
-          allocByInv[a.doc_id] = (allocByInv[a.doc_id] ?? 0) + Number(a.amount_applied);
+          allocByInv[a.doc_id] = (allocByInv[a.doc_id] ?? 0) + Number(a.amount_applied) + Number(a.discount_amount ?? 0);
         }
 
         const asOf = new Date(as_of_date);
@@ -2449,12 +2449,12 @@ export function createSupabaseAdapter(
           const ids = overdueRows.map((i) => i.id);
           const { data: allocs } = await client
             .from('payment_allocations')
-            .select('doc_id, amount_applied')
+            .select('doc_id, amount_applied, discount_amount')
             .in('doc_id', ids)
             .eq('doc_type', 'invoice');
           const paidByInv: Record<string, number> = {};
-          for (const a of (allocs ?? []) as { doc_id: string; amount_applied: number }[]) {
-            paidByInv[a.doc_id] = (paidByInv[a.doc_id] ?? 0) + Number(a.amount_applied);
+          for (const a of (allocs ?? []) as { doc_id: string; amount_applied: number; discount_amount: number }[]) {
+            paidByInv[a.doc_id] = (paidByInv[a.doc_id] ?? 0) + Number(a.amount_applied) + Number(a.discount_amount ?? 0);
           }
           overdueCount = overdueRows.filter(
             (i) => Number(i.total_amount) - (paidByInv[i.id] ?? 0) > 0.01,
@@ -2667,15 +2667,15 @@ export function createSupabaseAdapter(
         const ids = rows.map(r => r.id);
         const { data: allocs, error: aErr } = await client
           .from('payment_allocations')
-          .select('doc_id, amount_applied')
+          .select('doc_id, amount_applied, discount_amount')
           .eq('company_id', company_id)
           .eq('doc_type', 'vendor_bill')
           .in('doc_id', ids);
         assertNoError(aErr, 'vendorBills.listOpenForSupplier allocations');
 
         const appliedById: Record<string, number> = {};
-        for (const a of (allocs ?? []) as { doc_id: string; amount_applied: number }[]) {
-          appliedById[a.doc_id] = (appliedById[a.doc_id] ?? 0) + Number(a.amount_applied);
+        for (const a of (allocs ?? []) as { doc_id: string; amount_applied: number; discount_amount: number }[]) {
+          appliedById[a.doc_id] = (appliedById[a.doc_id] ?? 0) + Number(a.amount_applied) + Number(a.discount_amount ?? 0);
         }
 
         return rows

@@ -62,6 +62,19 @@ WITH checks AS (
         AND pg_get_functiondef(oid) LIKE '%Phase 12.22%'
     ) THEN '✓ pass' ELSE '✗ FAIL — apply migration 20260518000001' END, ''
 
+  UNION ALL SELECT 8, 'Phase 12.23: confirm_payment posts post-sale discount to 6850',
+    CASE WHEN EXISTS (
+      SELECT 1 FROM pg_proc WHERE proname = 'confirm_payment' AND pronargs = 1
+        AND pg_get_functiondef(oid) LIKE '%Phase 12.23%'
+    ) THEN '✓ pass' ELSE '✗ FAIL — apply migration 20260518000002' END, ''
+
+  UNION ALL SELECT 9, 'Phase 12.23: payment_allocations.discount_amount column exists',
+    CASE WHEN EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'payment_allocations'
+        AND column_name = 'discount_amount'
+    ) THEN '✓ pass' ELSE '✗ FAIL — apply migration 20260518000002' END, ''
+
   -- ─── Triggers / constraints ────────────────────────────────────────────
   UNION ALL SELECT 10, 'journal_entries_guard_no_double_post trigger present',
     CASE WHEN EXISTS (

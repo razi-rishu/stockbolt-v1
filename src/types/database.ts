@@ -1952,6 +1952,7 @@ export type Database = {
           amount_applied: number
           company_id: string
           created_at: string
+          discount_amount: number
           doc_id: string
           doc_type: string
           id: string
@@ -1961,6 +1962,7 @@ export type Database = {
           amount_applied: number
           company_id: string
           created_at?: string
+          discount_amount?: number
           doc_id: string
           doc_type: string
           id?: string
@@ -1970,6 +1972,7 @@ export type Database = {
           amount_applied?: number
           company_id?: string
           created_at?: string
+          discount_amount?: number
           doc_id?: string
           doc_type?: string
           id?: string

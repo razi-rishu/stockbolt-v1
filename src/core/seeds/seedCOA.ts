@@ -54,6 +54,9 @@ const ALL_ACCOUNTS: (AccountDef & { gcc_only?: true; india_only?: true })[] = [
   { code: '6600', name: 'Bank Charges',                name_ar: 'رسوم بنكية',              type: 'expense', sub_type: 'indirect' },
   { code: '6700', name: 'Inventory Loss',              name_ar: 'خسائر المخزون',           type: 'expense', sub_type: 'indirect' },
   { code: '6800', name: 'Bad Debts Expense',           name_ar: 'مصروف الديون المعدومة',   type: 'expense', sub_type: 'indirect' },
+  // Phase 12.23 — post-sale cash discount given on customer receipt.
+  // Hit by confirm_payment when the sum of allocations' discount_amount > 0.
+  { code: '6850', name: 'Discount Allowed',            name_ar: 'الخصومات المسموح بها',    type: 'expense', sub_type: 'indirect' },
   { code: '6900', name: 'Foreign Exchange Loss',       name_ar: 'خسائر فروق العملة',       type: 'expense', sub_type: 'indirect' },
 ];
 

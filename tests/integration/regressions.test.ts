@@ -216,6 +216,43 @@ describe('Function source — fixes are still installed', () => {
     );
     expect(missing, 'companies without 4150 — re-run seedCOA').toEqual([]);
   });
+
+  it('Phase 12.23: confirm_payment posts post-sale discount to 6850', async () => {
+    const [row] = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src
+       FROM pg_proc WHERE proname = 'confirm_payment' AND pronargs = 1`,
+    );
+    expect(row?.src).toBeTruthy();
+    expect(row.src, 'phase tag missing').toMatch(/Phase 12\.23/);
+    expect(row.src, "must look up '6850' in CoA").toMatch(/code\s*=\s*'6850'/);
+    expect(row.src, 'must sum discount_amount across allocations').toMatch(/SUM\(discount_amount\)/i);
+  });
+
+  it('Phase 12.23: payment_allocations.discount_amount column exists', async () => {
+    // If a future migration drops the column, the per-allocation discount
+    // model breaks silently and gets recorded as a no-op.
+    const rows = await sql<{ column_name: string; data_type: string }>(
+      `SELECT column_name, data_type
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'payment_allocations'
+         AND column_name = 'discount_amount'`,
+    );
+    expect(rows, 'payment_allocations.discount_amount missing').toHaveLength(1);
+    expect(rows[0].data_type).toBe('numeric');
+  });
+
+  it('Phase 12.23: 6850 Discount Allowed is seeded for every company', async () => {
+    const missing = await sql<{ company_id: string }>(
+      `SELECT c.id::text AS company_id
+       FROM companies c
+       WHERE NOT EXISTS (
+         SELECT 1 FROM chart_of_accounts coa
+         WHERE coa.company_id = c.id AND coa.code = '6850' AND coa.is_active
+       )`,
+    );
+    expect(missing, 'companies without 6850 — re-run seedCOA or migration 12.23').toEqual([]);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────

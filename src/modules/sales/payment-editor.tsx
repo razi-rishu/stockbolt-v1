@@ -84,6 +84,11 @@ export default function PaymentEditorPage() {
   // Only used when classification === 'against_invoice' AND status is draft (or new).
   // Map: invoice_id -> string (raw input for editing precision).
   const [applyAmounts, setApplyAmounts] = useState<Record<string, string>>({});
+  // Phase 12.23 — per-invoice post-sale discount. Settles part of the
+  // invoice as Discount Allowed (6850, Indirect Expense) instead of cash.
+  // SUM(amount_applied + discount_amount) per allocation = total closed
+  // on that invoice. Empty string is treated as 0.
+  const [discountAmounts, setDiscountAmounts] = useState<Record<string, string>>({});
 
   const [header, setHeader] = useState<PmtHeader>({
     contact_id: '',
@@ -123,12 +128,17 @@ export default function PaymentEditorPage() {
   useEffect(() => {
     if (!appliedSeed && existing && existing.status === 'draft' && existingAllocations.length > 0) {
       const seed: Record<string, string> = {};
+      const discSeed: Record<string, string> = {};
       for (const a of existingAllocations) {
         if (a.doc_type === 'invoice') {
           seed[a.doc_id] = Number(a.amount_applied).toFixed(2);
+          // Phase 12.23 — also pull any discount already saved.
+          const d = Number((a as { discount_amount?: number }).discount_amount ?? 0);
+          if (d > 0) discSeed[a.doc_id] = d.toFixed(2);
         }
       }
       setApplyAmounts(seed);
+      setDiscountAmounts(discSeed);
       setAppliedSeed(true);
     }
   }, [existing, existingAllocations, appliedSeed]);
@@ -153,10 +163,17 @@ export default function PaymentEditorPage() {
     setApplyAmounts(next);
   }
 
-  // Sum of per-row apply amounts (the live "Total to apply" value in the panel)
+  // Sum of per-row apply amounts (the live "Total to apply" value in the panel).
+  // This is the CASH portion that ties back to payment.amount — discount is
+  // separate and lives in totalDiscount.
   const totalToApply = useMemo(() => {
     return Object.values(applyAmounts).reduce((s, v) => s + (parseFloat(v) || 0), 0);
   }, [applyAmounts]);
+  // Phase 12.23 — total discount across all rows. Hits 6850 Discount Allowed
+  // on confirm_payment; doesn't reduce the cash side.
+  const totalDiscount = useMemo(() => {
+    return Object.values(discountAmounts).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+  }, [discountAmounts]);
 
   // Panel renders for any editable payment (new or existing draft) with
   // against_invoice classification, a chosen contact, and at least one
@@ -187,38 +204,46 @@ export default function PaymentEditorPage() {
 
       // Build allocations from the panel inputs — for both new payments
       // and existing drafts that are still in against_invoice mode.
+      // Phase 12.23 — also pulls discount_amount per row. A row qualifies
+      // if amount_applied + discount_amount > 0 (an allocation with only
+      // a discount and no cash is still valid — write-off case).
       const allocations: PaymentAllocationInsert[] = [];
       if (isDraftLike && header.classification === 'against_invoice') {
-        for (const [doc_id, raw] of Object.entries(applyAmounts)) {
-          const amt = parseFloat(raw);
-          if (isFinite(amt) && amt > 0) {
-            // Per-row over-allocation guard — cannot apply more than the
-            // invoice's current outstanding (would drive the invoice to a
-            // negative outstanding and break AR aging + customer balance).
-            const inv = openInvoices.find(i => i.id === doc_id);
-            // Drop stale entries — applyAmounts can hold keys for invoices
-            // that aren't in the open list anymore (voided, fully paid by
-            // another payment, etc). The amber banner warns about this.
-            if (!inv) continue;
-            if (amt > inv.outstanding + 0.005) {
-              throw new Error(
-                `Invoice ${inv.invoice_number}: applied ${amt.toFixed(2)} exceeds outstanding ${inv.outstanding.toFixed(2)}`,
-              );
-            }
-            allocations.push({
-              company_id:     company_id!,
-              payment_id:     '', // adapter fills in the new payment id
-              doc_id,
-              doc_type:       'invoice',
-              amount_applied: +amt.toFixed(2),
-            });
+        // Union of all invoice ids that have either an apply amount or a
+        // discount amount entered. Pure-discount rows wouldn't show up if
+        // we only iterated applyAmounts.
+        const allKeys = new Set<string>([
+          ...Object.keys(applyAmounts),
+          ...Object.keys(discountAmounts),
+        ]);
+        for (const doc_id of allKeys) {
+          const amt  = parseFloat(applyAmounts[doc_id]    ?? '') || 0;
+          const disc = parseFloat(discountAmounts[doc_id] ?? '') || 0;
+          if (amt <= 0 && disc <= 0) continue;
+          const inv = openInvoices.find(i => i.id === doc_id);
+          if (!inv) continue; // stale entry
+          // Per-row over-settlement guard — apply + discount can't exceed
+          // the outstanding (otherwise AR goes negative for this invoice).
+          const settled = +(amt + disc).toFixed(2);
+          if (settled > inv.outstanding + 0.005) {
+            throw new Error(
+              `Invoice ${inv.invoice_number}: applied ${amt.toFixed(2)} + discount ${disc.toFixed(2)} = ${settled.toFixed(2)} exceeds outstanding ${inv.outstanding.toFixed(2)}`,
+            );
           }
+          allocations.push({
+            company_id:      company_id!,
+            payment_id:      '', // adapter fills in the new payment id
+            doc_id,
+            doc_type:        'invoice',
+            amount_applied:  +amt.toFixed(2),
+            discount_amount: +disc.toFixed(2),
+          });
         }
-        // Reject if total allocations > payment amount (overpayment)
-        const totalAlloc = allocations.reduce((s, a) => s + a.amount_applied, 0);
+        // Reject if cash-applied total > payment amount (overpayment of cash)
+        const totalCashApplied = allocations.reduce((s, a) => s + a.amount_applied, 0);
         const payAmt = parseFloat(header.amount);
-        if (totalAlloc > payAmt + 0.005) {
-          throw new Error(`Allocations (${totalAlloc.toFixed(2)}) exceed payment amount (${payAmt.toFixed(2)})`);
+        if (totalCashApplied > payAmt + 0.005) {
+          throw new Error(`Cash applied (${totalCashApplied.toFixed(2)}) exceeds payment amount (${payAmt.toFixed(2)})`);
         }
       }
 
@@ -414,6 +439,7 @@ export default function PaymentEditorPage() {
                 setHeader(h => ({ ...h, contact_id: v }));
                 setSelectedContact(v);
                 setApplyAmounts({});
+                setDiscountAmounts({});
               }}
               placeholder={t('payments.select_contact')}
               panelWidth={380}
@@ -464,7 +490,7 @@ export default function PaymentEditorPage() {
               const v = e.target.value as PmtHeader['classification'];
               setHeader(h => ({ ...h, classification: v }));
               // Switching away from against_invoice clears any pending allocations
-              if (v !== 'against_invoice') setApplyAmounts({});
+              if (v !== 'against_invoice') { setApplyAmounts({}); setDiscountAmounts({}); }
               else if (header.amount) autoFillFIFO(header.amount, openInvoices);
             }}
           />
@@ -508,14 +534,22 @@ export default function PaymentEditorPage() {
                     <th className="px-4 py-2 text-start font-medium">Date</th>
                     <th className="px-4 py-2 text-end font-medium">Total</th>
                     <th className="px-4 py-2 text-end font-medium">Outstanding</th>
-                    <th className="px-4 py-2 text-end font-medium w-32">Apply</th>
+                    <th className="px-4 py-2 text-end font-medium w-28">Apply</th>
+                    {/* Phase 12.23 — post-sale discount column. Hits 6850
+                         Discount Allowed (Indirect Expense). */}
+                    <th className="px-4 py-2 text-end font-medium w-28" title="Post-sale cash discount (hits 6850 Discount Allowed)">Discount</th>
                   </tr>
                 </thead>
                 <tbody>
                   {openInvoices.map((inv) => {
-                    const applyVal = applyAmounts[inv.id] ?? '';
-                    const applyNum = parseFloat(applyVal) || 0;
-                    const overApplied = applyNum > inv.outstanding + 0.005;
+                    const applyVal    = applyAmounts[inv.id]    ?? '';
+                    const discountVal = discountAmounts[inv.id] ?? '';
+                    const applyNum    = parseFloat(applyVal)    || 0;
+                    const discountNum = parseFloat(discountVal) || 0;
+                    // Over-settlement = cash applied + discount > outstanding.
+                    // Either column alone or the sum exceeding the outstanding
+                    // triggers the red highlight.
+                    const overSettled = (applyNum + discountNum) > inv.outstanding + 0.005;
                     return (
                       <tr key={inv.id} className="border-b border-border-subtle last:border-0">
                         <td className="px-4 py-2 font-mono text-xs text-ink-primary">{inv.invoice_number}</td>
@@ -529,8 +563,20 @@ export default function PaymentEditorPage() {
                             step="0.01"
                             value={applyVal}
                             placeholder="0.00"
-                            className={`w-full rounded border bg-surface-subtle px-2 py-1 text-end text-xs ${overApplied ? 'border-red-400 text-red-700' : 'border-border-strong text-ink-primary'}`}
+                            className={`w-full rounded border bg-surface-subtle px-2 py-1 text-end text-xs ${overSettled ? 'border-red-400 text-red-700' : 'border-border-strong text-ink-primary'}`}
                             onChange={(e) => setApplyAmounts(prev => ({ ...prev, [inv.id]: e.target.value }))}
+                          />
+                        </td>
+                        <td className="px-4 py-2">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={discountVal}
+                            placeholder="0.00"
+                            title="Cash discount given on this invoice. Hits 6850 Discount Allowed."
+                            className={`w-full rounded border bg-surface-subtle px-2 py-1 text-end text-xs ${overSettled ? 'border-red-400 text-red-700' : 'border-border-strong text-ink-primary'}`}
+                            onChange={(e) => setDiscountAmounts(prev => ({ ...prev, [inv.id]: e.target.value }))}
                           />
                         </td>
                       </tr>
@@ -549,6 +595,14 @@ export default function PaymentEditorPage() {
                   <span>Total to apply</span>
                   <span className="font-mono">{fmt(totalToApply)}</span>
                 </div>
+                {totalDiscount > 0 && (
+                  <div className="flex justify-between text-ink-secondary">
+                    <span title="Hits 6850 Discount Allowed (Indirect Expense)">
+                      Total discount given
+                    </span>
+                    <span className="font-mono">{fmt(totalDiscount)}</span>
+                  </div>
+                )}
                 <div className={`flex justify-between font-semibold ${
                   difference < 0 ? 'text-red-600' : difference > 0 ? 'text-amber-600' : 'text-green-700'
                 }`}>
@@ -558,6 +612,11 @@ export default function PaymentEditorPage() {
                 {difference > 0 && (
                   <p className="pt-1 text-xs text-ink-tertiary">
                     The unallocated portion will sit as a customer advance and can be applied to future invoices.
+                  </p>
+                )}
+                {totalDiscount > 0 && (
+                  <p className="pt-1 text-xs text-ink-tertiary">
+                    The discount portion will hit Indirect Expenses (6850 Discount Allowed) on confirm.
                   </p>
                 )}
               </div>
