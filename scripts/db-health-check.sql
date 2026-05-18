@@ -75,6 +75,17 @@ WITH checks AS (
         AND column_name = 'discount_amount'
     ) THEN '✓ pass' ELSE '✗ FAIL — apply migration 20260518000002' END, ''
 
+  UNION ALL SELECT 10, 'Phase 12.17: vendor_bills.landed_cost_total + vendor_bill_items.warehouse_id exist',
+    CASE WHEN
+      EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema='public' AND table_name='vendor_bills'
+                AND column_name='landed_cost_total')
+      AND
+      EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema='public' AND table_name='vendor_bill_items'
+                AND column_name='warehouse_id')
+    THEN '✓ pass' ELSE '✗ FAIL — apply migration 20260515000003' END, ''
+
   -- ─── Triggers / constraints ────────────────────────────────────────────
   UNION ALL SELECT 10, 'journal_entries_guard_no_double_post trigger present',
     CASE WHEN EXISTS (

@@ -253,6 +253,25 @@ describe('Function source — fixes are still installed', () => {
     );
     expect(missing, 'companies without 6850 — re-run seedCOA or migration 12.23').toEqual([]);
   });
+
+  it('Phase 12.17: vendor_bills.landed_cost_total + vendor_bill_items.warehouse_id exist', async () => {
+    // Production caught this: the React code referenced both columns but
+    // migration 12.17 had never been pushed to the Supabase project, so
+    // any query / insert touching them 400'd with "column does not exist".
+    // Lock both columns in so the drift can't recur silently.
+    const rows = await sql<{ table_name: string; column_name: string }>(
+      `SELECT table_name, column_name
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND ((table_name = 'vendor_bills'      AND column_name = 'landed_cost_total')
+           OR (table_name = 'vendor_bill_items' AND column_name = 'warehouse_id'))
+       ORDER BY table_name, column_name`,
+    );
+    expect(rows).toEqual([
+      { table_name: 'vendor_bill_items', column_name: 'warehouse_id' },
+      { table_name: 'vendor_bills',      column_name: 'landed_cost_total' },
+    ]);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────
