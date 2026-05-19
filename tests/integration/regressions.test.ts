@@ -254,6 +254,81 @@ describe('Function source — fixes are still installed', () => {
     expect(missing, 'companies without 6850 — re-run seedCOA or migration 12.23').toEqual([]);
   });
 
+  it('Phase 12.27: confirm_vendor_bill filters stale rows in MAC computation', async () => {
+    const [row] = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src
+       FROM pg_proc WHERE proname = 'confirm_vendor_bill' AND pronargs = 1`,
+    );
+    expect(row?.src).toBeTruthy();
+    expect(row.src, 'phase tag missing').toMatch(/Phase 12\.27/);
+    // The MAC lookup now scopes to active rows via the same NOT EXISTS
+    // pattern Phase 12.21 used for journal_entries. Without this filter,
+    // legacy reversal corruption can make Postgres pick the wrong
+    // running_qty when computing MAC.
+    expect(
+      row.src,
+      'MAC lookup must filter rows pointed to by a reversal entry',
+    ).toMatch(/NOT\s+EXISTS[\s\S]{0,150}reversal_of_id\s*=\s*sl\.id/i);
+  });
+
+  it('Phase 12.27: confirm_vendor_bill flushes deferred_cogs_queue', async () => {
+    const [row] = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src
+       FROM pg_proc WHERE proname = 'confirm_vendor_bill' AND pronargs = 1`,
+    );
+    expect(row?.src).toBeTruthy();
+    expect(row.src, 'must read deferred_cogs_queue').toMatch(/deferred_cogs_queue/);
+    expect(row.src, "must mark pending rows 'flushed'").toMatch(/status\s*=\s*'flushed'/);
+  });
+
+  it('Phase 12.27: edit_invoice re-queues deferred COGS when MAC=0', async () => {
+    const [row] = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src
+       FROM pg_proc WHERE proname = 'edit_invoice' AND pronargs = 1`,
+    );
+    expect(row?.src).toBeTruthy();
+    expect(row.src, 'phase tag missing').toMatch(/Phase 12\.27/);
+    expect(
+      row.src,
+      'must INSERT into deferred_cogs_queue inside the MAC=0 branch',
+    ).toMatch(/INSERT\s+INTO\s+public\.deferred_cogs_queue/i);
+  });
+
+  it('Phase 12.27: no stale "pending" deferred_cogs rows for products that have MAC > 0', async () => {
+    // Invariant: if a product has a positive MAC in the active ledger
+    // AND a pending deferred_cogs_queue row, the flush didn't run. Could
+    // be a bill landed before the migration, or the flush logic got
+    // broken. Either way the operator needs to see it.
+    const rows = await sql<{
+      product_id: string;
+      pending_count: number;
+      latest_mac: number;
+    }>(
+      `WITH product_latest_mac AS (
+         SELECT DISTINCT ON (product_id)
+                product_id,
+                running_avg_cost::numeric AS latest_mac
+         FROM stock_ledger
+         WHERE reversal_of_id IS NULL
+           AND NOT EXISTS (SELECT 1 FROM stock_ledger r WHERE r.reversal_of_id = stock_ledger.id)
+         ORDER BY product_id, created_at DESC, id DESC
+       )
+       SELECT
+         dcq.product_id::text,
+         COUNT(*)::int AS pending_count,
+         pl.latest_mac
+       FROM deferred_cogs_queue dcq
+       JOIN product_latest_mac pl ON pl.product_id = dcq.product_id
+       WHERE dcq.status = 'pending'
+         AND pl.latest_mac > 0
+       GROUP BY dcq.product_id, pl.latest_mac`,
+    );
+    expect(
+      rows,
+      'pending deferred-COGS rows for products with a known MAC — flush did not run',
+    ).toEqual([]);
+  });
+
   it('Phase 12.17: vendor_bills.landed_cost_total + vendor_bill_items.warehouse_id exist', async () => {
     // Production caught this: the React code referenced both columns but
     // migration 12.17 had never been pushed to the Supabase project, so

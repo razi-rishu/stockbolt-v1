@@ -75,6 +75,21 @@ WITH checks AS (
         AND column_name = 'discount_amount'
     ) THEN '✓ pass' ELSE '✗ FAIL — apply migration 20260518000002' END, ''
 
+  UNION ALL SELECT 11, 'Phase 12.27: confirm_vendor_bill filters stale rows + flushes deferred COGS',
+    CASE WHEN EXISTS (
+      SELECT 1 FROM pg_proc WHERE proname = 'confirm_vendor_bill' AND pronargs = 1
+        AND pg_get_functiondef(oid) LIKE '%Phase 12.27%'
+        AND pg_get_functiondef(oid) LIKE '%deferred_cogs_queue%'
+        AND pg_get_functiondef(oid) ~ 'status\s*=\s*''flushed'''
+    ) THEN '✓ pass' ELSE '✗ FAIL — apply migration 20260519000001' END, ''
+
+  UNION ALL SELECT 12, 'Phase 12.27: edit_invoice re-queues deferred COGS when MAC=0',
+    CASE WHEN EXISTS (
+      SELECT 1 FROM pg_proc WHERE proname = 'edit_invoice' AND pronargs = 1
+        AND pg_get_functiondef(oid) LIKE '%Phase 12.27%'
+        AND pg_get_functiondef(oid) ~* 'INSERT\s+INTO\s+public\.deferred_cogs_queue'
+    ) THEN '✓ pass' ELSE '✗ FAIL — apply migration 20260519000001' END, ''
+
   UNION ALL SELECT 10, 'Phase 12.17: vendor_bills.landed_cost_total + vendor_bill_items.warehouse_id exist',
     CASE WHEN
       EXISTS (SELECT 1 FROM information_schema.columns
