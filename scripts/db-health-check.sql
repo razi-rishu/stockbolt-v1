@@ -86,6 +86,43 @@ WITH checks AS (
                 AND column_name='warehouse_id')
     THEN '✓ pass' ELSE '✗ FAIL — apply migration 20260515000003' END, ''
 
+  UNION ALL SELECT 26, 'Phase 12.24: AR (1200) GL rows always carry contact_id',
+    CASE WHEN NOT EXISTS (
+      SELECT 1 FROM general_ledger WHERE account_code='1200' AND contact_id IS NULL
+    ) THEN '✓ pass' ELSE '✗ FAIL — AR rows without contact_id will show as "(no contact)" in drill-downs' END,
+    (SELECT COUNT(*)::text FROM general_ledger WHERE account_code='1200' AND contact_id IS NULL)
+
+  UNION ALL SELECT 27, 'Phase 12.24: per-customer 2400 balance = cash received − allocated',
+    CASE WHEN NOT EXISTS (
+      WITH per_customer_cash AS (
+        SELECT p.contact_id, COALESCE(SUM(p.amount), 0)::numeric AS cash
+        FROM payments p WHERE p.status='confirmed' AND p.type='inbound'
+        GROUP BY p.contact_id
+      ),
+      per_customer_alloc AS (
+        SELECT p.contact_id,
+               COALESCE(SUM(pa.amount_applied + COALESCE(pa.discount_amount, 0)), 0)::numeric AS allocated
+        FROM payments p
+        JOIN payment_allocations pa ON pa.payment_id=p.id AND pa.doc_type='invoice'
+        WHERE p.status='confirmed' AND p.type='inbound'
+        GROUP BY p.contact_id
+      ),
+      per_customer_2400 AS (
+        SELECT contact_id, COALESCE(SUM(credit - debit), 0)::numeric AS gl_balance
+        FROM general_ledger WHERE account_code='2400' AND contact_id IS NOT NULL
+        GROUP BY contact_id
+      ),
+      merged AS (
+        SELECT COALESCE(c.contact_id, a.contact_id, g.contact_id) AS contact_id,
+               COALESCE(c.cash, 0) AS cash, COALESCE(a.allocated, 0) AS allocated,
+               COALESCE(g.gl_balance, 0) AS gl_balance
+        FROM per_customer_cash c
+        FULL OUTER JOIN per_customer_alloc a USING (contact_id)
+        FULL OUTER JOIN per_customer_2400  g USING (contact_id)
+      )
+      SELECT 1 FROM merged WHERE ABS(gl_balance - (cash - allocated)) > 0.01
+    ) THEN '✓ pass' ELSE '✗ FAIL — per-customer 2400 balance does not match payment activity' END, ''
+
   -- ─── Triggers / constraints ────────────────────────────────────────────
   UNION ALL SELECT 10, 'journal_entries_guard_no_double_post trigger present',
     CASE WHEN EXISTS (
@@ -155,19 +192,22 @@ WITH checks AS (
              AND NOT EXISTS (SELECT 1 FROM general_ledger gl
                               WHERE gl.journal_entry_id=je.id AND gl.account_code='4150')) x)
 
-  UNION ALL SELECT 24, 'Confirmed invoices: GL AR matches invoice.total_amount',
+  UNION ALL SELECT 24, 'Confirmed invoices: canonical AR debit = total_amount',
     CASE WHEN NOT EXISTS (
+      WITH canonical_je AS (
+        SELECT id, source_id FROM journal_entries
+        WHERE source_type='sales_invoice'
+          AND reversal_of_id IS NULL
+          AND reversed_by_id IS NULL
+      )
       SELECT 1 FROM invoices i
       LEFT JOIN general_ledger g ON g.related_doc_type='invoice' AND g.related_doc_id=i.id
       WHERE i.status='confirmed'
-      GROUP BY i.id, i.invoice_number, i.total_amount
-      HAVING ABS(i.total_amount - COALESCE(SUM(g.debit - g.credit) FILTER (WHERE g.account_code='1200'), 0)) > 0.01
-    ) THEN '✓ pass' ELSE '✗ FAIL — at least one invoice GL drift' END,
-    (SELECT COALESCE(string_agg(invoice_number, ', '), '')
-     FROM (SELECT i.invoice_number FROM invoices i
-           LEFT JOIN general_ledger g ON g.related_doc_type='invoice' AND g.related_doc_id=i.id
-           WHERE i.status='confirmed'
-           GROUP BY i.id, i.invoice_number, i.total_amount
-           HAVING ABS(i.total_amount - COALESCE(SUM(g.debit - g.credit) FILTER (WHERE g.account_code='1200'), 0)) > 0.01) x)
+      GROUP BY i.id, i.total_amount
+      HAVING ABS(i.total_amount - COALESCE(SUM(g.debit) FILTER (
+        WHERE g.account_code='1200'
+          AND g.journal_entry_id IN (SELECT id FROM canonical_je WHERE source_id = i.id)
+      ), 0)) > 0.01
+    ) THEN '✓ pass' ELSE '✗ FAIL — canonical AR debit drift on at least one invoice' END, ''
 )
 SELECT status, check_name, detail FROM checks ORDER BY sort;

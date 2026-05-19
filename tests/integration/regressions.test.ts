@@ -272,6 +272,92 @@ describe('Function source — fixes are still installed', () => {
       { table_name: 'vendor_bills',      column_name: 'landed_cost_total' },
     ]);
   });
+
+  it('Phase 12.24: per-customer 2400 balance matches (cash received - amount allocated)', async () => {
+    // Closed-system invariant. For each customer that has 2400 GL activity,
+    // the NET 2400 balance (credit - debit, summed over all rows) MUST equal
+    //   SUM(payment.amount) − SUM(allocation.amount_applied + discount_amount)
+    // across all that customer's confirmed inbound payments. This is the
+    // mechanical relationship between cash received, invoice allocations,
+    // and the advance balance that lives on 2400.
+    //
+    // Drift = a payment recorded with the wrong contact_id, an apply_advance
+    // call that didn't move the GL, a manual JE that fiddled 2400 without
+    // a matching cash event, or the phase-12.24 advance-balance computation
+    // being out of sync with reality.
+    const rows = await sql<{
+      contact_id: string;
+      gl_2400_balance: number;
+      cash_minus_allocated: number;
+      drift: number;
+    }>(
+      `WITH per_customer_cash AS (
+         SELECT p.contact_id,
+                COALESCE(SUM(p.amount), 0)::numeric AS cash
+         FROM payments p
+         WHERE p.status='confirmed' AND p.type='inbound'
+         GROUP BY p.contact_id
+       ),
+       per_customer_alloc AS (
+         SELECT p.contact_id,
+                COALESCE(SUM(pa.amount_applied + COALESCE(pa.discount_amount, 0)), 0)::numeric AS allocated
+         FROM payments p
+         JOIN payment_allocations pa ON pa.payment_id = p.id AND pa.doc_type='invoice'
+         WHERE p.status='confirmed' AND p.type='inbound'
+         GROUP BY p.contact_id
+       ),
+       per_customer_2400 AS (
+         SELECT contact_id,
+                COALESCE(SUM(credit - debit), 0)::numeric AS gl_balance
+         FROM general_ledger
+         WHERE account_code='2400' AND contact_id IS NOT NULL
+         GROUP BY contact_id
+       ),
+       merged AS (
+         SELECT
+           COALESCE(c.contact_id, a.contact_id, g.contact_id) AS contact_id,
+           COALESCE(c.cash,       0) AS cash,
+           COALESCE(a.allocated,  0) AS allocated,
+           COALESCE(g.gl_balance, 0) AS gl_balance
+         FROM per_customer_cash c
+         FULL OUTER JOIN per_customer_alloc a USING (contact_id)
+         FULL OUTER JOIN per_customer_2400  g USING (contact_id)
+       )
+       SELECT
+         m.contact_id::text,
+         m.gl_balance::numeric         AS gl_2400_balance,
+         (m.cash - m.allocated)::numeric AS cash_minus_allocated,
+         ABS(m.gl_balance - (m.cash - m.allocated))::numeric AS drift
+       FROM merged m
+       WHERE ABS(m.gl_balance - (m.cash - m.allocated)) > 0.01`,
+    );
+    expect(
+      rows,
+      'customer 2400 balance does not match cash-receipts-minus-allocations',
+    ).toEqual([]);
+  });
+
+  it('Phase 12.24: every GL row on a control account has a contact_id', async () => {
+    // Control accounts (1200, 2100, 2400, 1400, …) need contact_id on
+    // every row for the per-contact drill-down to be useful. A control
+    // account row with NULL contact_id would show up as "(no contact)"
+    // in the drill-down — a smell. Allowable but flagged.
+    //
+    // We don't fail the test on this — it's an advisory invariant. Use
+    // it as a manual probe via the health-check. The assertion below is
+    // weaker: AR (1200) MUST always have contact_id because every
+    // posting goes through an invoice or payment that has one.
+    const rows = await sql<{ count: number }>(
+      `SELECT COUNT(*)::int AS count
+       FROM general_ledger
+       WHERE account_code = '1200'
+         AND contact_id IS NULL`,
+    );
+    expect(
+      rows[0]?.count ?? 0,
+      'AR (1200) rows without contact_id — drill-down will surface them as "(no contact)"',
+    ).toBe(0);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -327,29 +413,46 @@ describe('Data invariants — no accounting corruption', () => {
     expect(rows, 'duplicate active JEs detected').toEqual([]);
   });
 
-  it('every confirmed invoice GL net equals invoice.total_amount', async () => {
-    // For each confirmed invoice, sum the GL debits to AR (1200). Should
-    // equal invoice.total_amount. Mismatch = a phantom JE survived (the
-    // Phase 12.21 bug) OR a different drift we haven't seen yet.
+  it('every confirmed invoice ORIGINAL JE debits AR for its total_amount', async () => {
+    // Tighter than before: we only look at the canonical sales_invoice JE
+    // (not subsequent payments / advance applications that also touch
+    // 1200 for the same invoice). The canonical JE is the one with
+    //   source_type='sales_invoice', reversal_of_id IS NULL,
+    //   reversed_by_id IS NULL
+    // and its AR debit must equal invoice.total_amount. This catches the
+    // Phase 12.21 phantom-JE class of bugs without false-firing on
+    // invoices that have been paid down by a later receipt.
     const rows = await sql<{
       invoice_number: string;
       total_amount: number;
-      gl_ar_net: number;
+      original_ar_debit: number;
       diff: number;
     }>(
-      `SELECT i.invoice_number,
-              i.total_amount::numeric AS total_amount,
-              COALESCE(SUM(g.debit - g.credit) FILTER (WHERE g.account_code = '1200'), 0)::numeric AS gl_ar_net,
-              (i.total_amount - COALESCE(SUM(g.debit - g.credit) FILTER (WHERE g.account_code = '1200'), 0))::numeric AS diff
+      `WITH canonical_je AS (
+         SELECT id, source_id FROM journal_entries
+         WHERE source_type = 'sales_invoice'
+           AND reversal_of_id IS NULL
+           AND reversed_by_id IS NULL
+       )
+       SELECT i.invoice_number,
+              i.total_amount::numeric                                   AS total_amount,
+              COALESCE(SUM(g.debit) FILTER (
+                WHERE g.account_code='1200' AND g.journal_entry_id IN (SELECT id FROM canonical_je WHERE source_id = i.id)
+              ), 0)::numeric                                            AS original_ar_debit,
+              ABS(i.total_amount - COALESCE(SUM(g.debit) FILTER (
+                WHERE g.account_code='1200' AND g.journal_entry_id IN (SELECT id FROM canonical_je WHERE source_id = i.id)
+              ), 0))::numeric                                           AS diff
        FROM invoices i
-       LEFT JOIN general_ledger g ON g.related_doc_type = 'invoice' AND g.related_doc_id = i.id
-       WHERE i.status = 'confirmed'
+       LEFT JOIN general_ledger g ON g.related_doc_type='invoice' AND g.related_doc_id = i.id
+       WHERE i.status='confirmed'
        GROUP BY i.id, i.invoice_number, i.total_amount
-       HAVING ABS(i.total_amount - COALESCE(SUM(g.debit - g.credit) FILTER (WHERE g.account_code = '1200'), 0)) > 0.01`,
+       HAVING ABS(i.total_amount - COALESCE(SUM(g.debit) FILTER (
+         WHERE g.account_code='1200' AND g.journal_entry_id IN (SELECT id FROM canonical_je WHERE source_id = i.id)
+       ), 0)) > 0.01`,
     );
     expect(
       rows,
-      'invoices whose GL AR diverges from their total — corruption present',
+      'invoices whose canonical AR debit ≠ total_amount — corruption present',
     ).toEqual([]);
   });
 

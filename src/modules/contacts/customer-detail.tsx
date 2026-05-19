@@ -162,6 +162,15 @@ export default function CustomerDetailPage() {
     enabled: !!company_id && !!id,
   });
 
+  // Phase 12.24 — unallocated advance balance from 2400 Customer Advances.
+  // Positive = customer has paid in advance / overpaid (we owe them).
+  // Surfaces an overpayment that otherwise stays invisible on this page.
+  const { data: advanceCredit = 0 } = useQuery<number>({
+    queryKey: ['advance_balance', company_id, id, '2400'],
+    queryFn: () => getAdapter().contacts.getAdvanceBalance(company_id!, id!, '2400'),
+    enabled: !!company_id && !!id,
+  });
+
   const { data: allInvoices = [] } = useQuery<InvoiceRow[]>({
     queryKey: ['invoices', company_id],
     queryFn: () => getAdapter().invoices.list(company_id!),
@@ -309,12 +318,66 @@ export default function CustomerDetailPage() {
         </div>
       )}
 
+      {/* Phase 12.24 — surface the customer's NET position. If they have
+           credit on file (advanceCredit > 0), it sits invisibly in
+           2400 GL otherwise. Standard ERP practice is to net it against
+           outstanding for the customer-facing view, even though the GL
+           keeps them separate. */}
+      {advanceCredit > 0.005 && (
+        <div className="rounded-card border border-emerald-200 bg-emerald-50 px-5 py-3 flex items-center gap-4">
+          <span className="rounded-pill bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+            CREDIT ON FILE
+          </span>
+          <p className="text-sm text-emerald-900">
+            This customer has{' '}
+            <span className="font-mono font-semibold">{contact?.currency ?? 'AED'} {fmt(advanceCredit)}</span>{' '}
+            available to apply to a future invoice. Hits 2400 Customer Advances on the GL.
+          </p>
+        </div>
+      )}
+
       {/* KPI tiles */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiTile label="Outstanding"    value={fmt(outstandingTotal)} accent={outstandingTotal > 0 ? 'warn' : 'default'} sublabel={`${openInvoices.length} open invoice${openInvoices.length === 1 ? '' : 's'}`} />
-        <KpiTile label="Overdue"        value={fmt(overdueTotal)}     accent={overdueTotal > 0 ? 'danger' : 'good'}      sublabel="past due date" />
+        <KpiTile
+          label="Outstanding"
+          value={fmt(outstandingTotal)}
+          accent={outstandingTotal > 0 ? 'warn' : 'default'}
+          sublabel={`${openInvoices.length} open invoice${openInvoices.length === 1 ? '' : 's'}`}
+        />
+        {/* Phase 12.24 — Credit Available replaces the "Overdue" tile when
+             the customer is in credit (no overdue invoices possible in
+             that case) so the user always sees the most material number. */}
+        {advanceCredit > 0.005 ? (
+          <KpiTile
+            label="Credit Available"
+            value={fmt(advanceCredit)}
+            accent="good"
+            sublabel="advance / overpayment"
+          />
+        ) : (
+          <KpiTile
+            label="Overdue"
+            value={fmt(overdueTotal)}
+            accent={overdueTotal > 0 ? 'danger' : 'good'}
+            sublabel="past due date"
+          />
+        )}
         <KpiTile label="Sales (12 mo)"  value={fmt(sales12mo)}        sublabel={`${confirmedInvoiceCount} confirmed invoice${confirmedInvoiceCount === 1 ? '' : 's'}`} />
-        <KpiTile label="Invoice count"  value={String(confirmedInvoiceCount)} sublabel="confirmed only" />
+        <KpiTile
+          label="Net Position"
+          value={fmt(Math.abs(outstandingTotal - advanceCredit))}
+          // Negative net position = customer has more credit than they owe.
+          accent={
+            outstandingTotal - advanceCredit > 0.005 ? 'warn'
+            : outstandingTotal - advanceCredit < -0.005 ? 'good'
+            : 'default'
+          }
+          sublabel={
+            outstandingTotal - advanceCredit > 0.005 ? 'customer owes us'
+            : outstandingTotal - advanceCredit < -0.005 ? 'we owe customer'
+            : 'settled'
+          }
+        />
       </div>
 
       {/* Aging breakdown */}

@@ -276,6 +276,20 @@ export interface ContactsAPI {
    * Hard-capped at 100 rows/query.
    */
   smartSearch(input: ContactSearchInput): Promise<ContactSearchRow[]>;
+  /**
+   * Net advance balance held for this contact, as of TODAY, derived from the
+   * GL. Positive = the customer has credit on file (we owe them money / they
+   * paid in advance). Pulls SUM(credit - debit) on the contact-advance
+   * account (2400 for customers, 1400 for suppliers).
+   *
+   * @param account_code '2400' for customer advances, '1400' for vendor
+   *   advances. Defaults to '2400'.
+   */
+  getAdvanceBalance(
+    company_id: string,
+    contact_id: string,
+    account_code?: '2400' | '1400',
+  ): Promise<number>;
 }
 
 export interface PriceLevelsAPI {
@@ -502,6 +516,28 @@ export interface ARAgingBucket {
   days_61_90: number;
   over_90: number;
   total: number;
+  /**
+   * Unallocated payment sitting in 2400 Customer Advances for this contact.
+   * Positive = customer has paid in advance / overpaid. Net amount the
+   * customer actually owes = total - advance_credit (can be negative if
+   * the customer has credit on file).
+   */
+  advance_credit: number;
+  /** total - advance_credit. Negative means we owe them. */
+  net_due: number;
+}
+
+/**
+ * Per-contact breakdown of a control GL account (1200, 2100, 2400, 1400, …).
+ * Used by the Trial Balance and Balance Sheet drill-downs so the user can
+ * see WHICH customers / suppliers make up the balance on a control account.
+ */
+export interface ControlAccountContactLine {
+  contact_id: string | null;
+  contact_name: string;     // 'No contact' for rows without contact_id
+  debit: number;
+  credit: number;
+  balance: number;          // debit - credit
 }
 
 export interface ARAgingReport {
@@ -618,6 +654,19 @@ export interface ReportsAPI {
   getProfitAndLoss(company_id: string, from: string, to: string): Promise<ProfitAndLoss>;
   getBalanceSheet(company_id: string, as_of_date: string): Promise<BalanceSheet>;
   getARAgingReport(company_id: string, as_of_date: string): Promise<ARAgingReport>;
+
+  /**
+   * Per-contact breakdown of any control GL account (1200 AR, 2100 AP,
+   * 2400 Customer Advances, 1400 Vendor Advances, etc.) as of a specific
+   * date. Used to drill into Trial Balance / Balance Sheet rows.
+   * Cumulative from fiscal start to `as_of_date`; returns one line per
+   * distinct contact_id with debits, credits, and net balance.
+   */
+  getControlAccountByContact(
+    company_id: string,
+    account_code: string,
+    as_of_date: string,
+  ): Promise<ControlAccountContactLine[]>;
   getCustomerStatement(company_id: string, contact_id: string, from: string, to: string): Promise<CustomerStatement>;
   getStockValuation(company_id: string, as_of_date: string): Promise<StockValuationReport>;
   getAPAgingReport(company_id: string, as_of_date: string): Promise<APAgingReport>;

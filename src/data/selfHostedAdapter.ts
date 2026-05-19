@@ -101,7 +101,8 @@ export function createSelfHostedAdapter(): DataAdapter {
       create: () => notImplemented('contacts.create'),
       update: () => notImplemented('contacts.update'),
       remove: () => notImplemented('contacts.remove'),
-      smartSearch: () => notImplemented('contacts.smartSearch'),
+      smartSearch:       () => notImplemented('contacts.smartSearch'),
+      getAdvanceBalance: () => notImplemented('contacts.getAdvanceBalance'),
     },
     priceLevels: {
       list: () => notImplemented('priceLevels.list'),
@@ -175,7 +176,8 @@ export function createSelfHostedAdapter(): DataAdapter {
     reports: {
       getProfitAndLoss:      () => notImplemented('reports.getProfitAndLoss'),
       getBalanceSheet:       () => notImplemented('reports.getBalanceSheet'),
-      getARAgingReport:      () => notImplemented('reports.getARAgingReport'),
+      getARAgingReport:            () => notImplemented('reports.getARAgingReport'),
+      getControlAccountByContact:  () => notImplemented('reports.getControlAccountByContact'),
       getCustomerStatement:  () => notImplemented('reports.getCustomerStatement'),
       getStockValuation:     () => notImplemented('reports.getStockValuation'),
       getAPAgingReport:      () => notImplemented('reports.getAPAgingReport'),

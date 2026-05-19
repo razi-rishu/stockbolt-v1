@@ -541,6 +541,30 @@ export function createSupabaseAdapter(
         assertNoError(error as Error | null, 'contacts.smartSearch');
         return (data as import('./adapter').ContactSearchRow[]) ?? [];
       },
+      async getAdvanceBalance(company_id, contact_id, account_code = '2400'): Promise<number> {
+        // Phase 12.24 — sum of (credit - debit) on the contact-advance
+        // GL account for this contact. Positive = customer has paid in
+        // advance / overpaid (we owe them); zero = no credit on file.
+        // Works for both customer (2400) and supplier (1400) sides.
+        const { data, error } = await client
+          .from('general_ledger')
+          .select('debit, credit')
+          .eq('company_id',  company_id)
+          .eq('contact_id',  contact_id)
+          .eq('account_code', account_code);
+        assertNoError(error, 'contacts.getAdvanceBalance');
+        let credit = 0, debit = 0;
+        for (const r of (data ?? []) as { debit: number; credit: number }[]) {
+          credit += Number(r.credit ?? 0);
+          debit  += Number(r.debit  ?? 0);
+        }
+        // For 2400 (liability) the natural balance is CR > DR. We return
+        // (credit - debit) so a positive number means "customer has credit".
+        // For 1400 (asset) the natural balance is DR > CR, so we flip the
+        // sign — positive still means "supplier holds OUR money".
+        if (account_code === '1400') return debit - credit;
+        return credit - debit;
+      },
     },
 
     // ── Phase 3: Accounting ────────────────────────────────────────────────
@@ -1326,6 +1350,51 @@ export function createSupabaseAdapter(
         };
       },
 
+      async getControlAccountByContact(
+        company_id: string,
+        account_code: string,
+        as_of_date: string,
+      ): Promise<import('./adapter').ControlAccountContactLine[]> {
+        // Phase 12.24 — used by TB / BS drill-downs. Returns one row per
+        // distinct contact_id (with a synthetic "(no contact)" row for
+        // any null contact_ids) showing the cumulative debits, credits
+        // and net balance from fiscal start through as_of_date.
+        const { data, error } = await client
+          .from('general_ledger')
+          .select('contact_id, debit, credit, contacts(name)')
+          .eq('company_id',   company_id)
+          .eq('account_code', account_code)
+          .lte('date',        as_of_date);
+        assertNoError(error, 'reports.getControlAccountByContact');
+
+        type Row = { contact_id: string | null; debit: number; credit: number; contacts: { name: string } | null };
+        const byContact: Record<string, { name: string; debit: number; credit: number }> = {};
+        for (const r of (data ?? []) as unknown as Row[]) {
+          const key = r.contact_id ?? '__no_contact__';
+          if (!byContact[key]) {
+            byContact[key] = {
+              name: r.contact_id ? (r.contacts?.name ?? r.contact_id) : '(no contact)',
+              debit: 0, credit: 0,
+            };
+          }
+          byContact[key].debit  += Number(r.debit  ?? 0);
+          byContact[key].credit += Number(r.credit ?? 0);
+        }
+
+        return Object.entries(byContact)
+          .map(([key, v]) => ({
+            contact_id: key === '__no_contact__' ? null : key,
+            contact_name: v.name,
+            debit: v.debit,
+            credit: v.credit,
+            balance: v.debit - v.credit,
+          }))
+          // Drop rows that net to zero — they shouldn't clutter the drill-down.
+          .filter(r => Math.abs(r.balance) > 0.005)
+          // Largest absolute balance first.
+          .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+      },
+
       async getARAgingReport(company_id, as_of_date): Promise<ARAgingReport> {
         const { data: invs, error: invErr } = await client
           .from('invoices')
@@ -1363,6 +1432,8 @@ export function createSupabaseAdapter(
               contact_id: inv.contact_id,
               contact_name: contact?.name ?? inv.contact_id,
               current: 0, days_31_60: 0, days_61_90: 0, over_90: 0, total: 0,
+              // Phase 12.24 — populated after the loop from 2400 GL.
+              advance_credit: 0, net_due: 0,
             };
           }
           const b = bucketMap[inv.contact_id];
@@ -1371,6 +1442,62 @@ export function createSupabaseAdapter(
           else if (daysPast <= 90) b.days_61_90 += outstanding;
           else b.over_90 += outstanding;
           b.total += outstanding;
+        }
+
+        // Phase 12.24 — also pull the per-customer advance balance from
+        // 2400, so the aging report shows the FULL position for each
+        // customer (open invoices minus advance credit on file). A
+        // customer with 1,000 outstanding and 200 advance owes 800 net.
+        const { data: advRows, error: advErr } = await client
+          .from('general_ledger')
+          .select('contact_id, debit, credit')
+          .eq('company_id', company_id)
+          .eq('account_code', '2400')
+          .lte('date', as_of_date);
+        assertNoError(advErr, 'reports.getARAgingReport advances');
+
+        const advanceByContact: Record<string, number> = {};
+        for (const r of (advRows ?? []) as { contact_id: string | null; debit: number; credit: number }[]) {
+          if (!r.contact_id) continue;
+          // Liability account — credit > debit means customer credit.
+          advanceByContact[r.contact_id] =
+            (advanceByContact[r.contact_id] ?? 0) + (Number(r.credit ?? 0) - Number(r.debit ?? 0));
+        }
+
+        // Surface customers who have ONLY an advance (no open invoices)
+        // so they don't disappear from the aging view.
+        for (const [contactId, advance] of Object.entries(advanceByContact)) {
+          if (Math.abs(advance) < 0.005) continue;
+          if (!bucketMap[contactId]) {
+            // Look up name lazily from the invoices fetch (won't be there
+            // for an advance-only customer); fall back to the contact_id.
+            bucketMap[contactId] = {
+              contact_id: contactId,
+              contact_name: contactId, // backfill below if we have it from another query
+              current: 0, days_31_60: 0, days_61_90: 0, over_90: 0, total: 0,
+              advance_credit: 0, net_due: 0,
+            };
+          }
+        }
+
+        // Finish populating advance_credit + net_due on every bucket.
+        for (const b of Object.values(bucketMap)) {
+          const adv = advanceByContact[b.contact_id] ?? 0;
+          (b as ARAgingBucket).advance_credit = +adv.toFixed(2);
+          (b as ARAgingBucket).net_due        = +(b.total - adv).toFixed(2);
+        }
+
+        // For any new buckets created above without a contact_name, fetch
+        // names in one extra round trip. Cheap; usually 0–1 contacts.
+        const namelessIds = Object.values(bucketMap)
+          .filter(b => b.contact_name === b.contact_id)
+          .map(b => b.contact_id);
+        if (namelessIds.length > 0) {
+          const { data: nameRows } = await client
+            .from('contacts').select('id, name').in('id', namelessIds);
+          for (const r of (nameRows ?? []) as { id: string; name: string }[]) {
+            if (bucketMap[r.id]) bucketMap[r.id].contact_name = r.name;
+          }
         }
 
         const buckets = Object.values(bucketMap);
