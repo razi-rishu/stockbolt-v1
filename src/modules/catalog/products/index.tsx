@@ -83,7 +83,17 @@ export default function ProductsListPage() {
           : (min > 0 && qty <= min)
             ? 'text-amber-700 font-semibold'
             : 'text-ink-primary font-medium';
-        return <span className={`font-mono ${cls}`}>{qty.toFixed(qty % 1 === 0 ? 0 : 2)}</span>;
+        // Phase 12.25 — click the cell to jump straight to the Stock
+        // Movement tab on the product detail (deep-link via ?tab=stock).
+        return (
+          <span
+            onClick={(e) => { e.stopPropagation(); navigate(`/products/${r.id}?tab=stock`); }}
+            className={`cursor-pointer font-mono underline-offset-2 hover:underline ${cls}`}
+            title="View this product's stock movements"
+          >
+            {qty.toFixed(qty % 1 === 0 ? 0 : 2)}
+          </span>
+        );
       },
     },
     {

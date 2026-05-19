@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
@@ -14,6 +14,7 @@ import { Select } from '@/ui/select';
 import { Badge } from '@/ui/badge';
 import { Modal } from '@/ui/modal';
 import type { ProductCompatibilityRow, ProductSupplierCodeRow, ContactRow, VehicleMakeRow, VehicleModelRow, CoaRow } from '@/data/adapter';
+import { ProductStockTab } from './_stock-tab';
 
 const schema = z.object({
   sku:                z.string().min(1, 'Required'),
@@ -48,7 +49,13 @@ export default function ProductDetailPage() {
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
   const imgRef = useRef<HTMLInputElement>(null);
-  const [activeTab, setActiveTab] = useState<'details' | 'compat' | 'suppliers' | 'images'>('details');
+  // Phase 12.25 — accept `?tab=stock` (etc.) in the URL so the products list
+  // can deep-link straight to the Stock Movement tab.
+  const [searchParams] = useSearchParams();
+  const initialTab =
+    (searchParams.get('tab') as 'details' | 'stock' | 'compat' | 'suppliers' | 'images' | null)
+    ?? 'details';
+  const [activeTab, setActiveTab] = useState<'details' | 'stock' | 'compat' | 'suppliers' | 'images'>(initialTab);
   const [compatModal, setCompatModal] = useState(false);
   const [supplierModal, setSupplierModal] = useState(false);
   const [uploadingImg, setUploadingImg] = useState(false);
@@ -163,7 +170,9 @@ export default function ProductDetailPage() {
   const modelMap = Object.fromEntries((models as VehicleModelRow[]).map((m) => [m.id, m.name]));
   const supplierMap = Object.fromEntries(suppliers.map((s) => [s.id, s.name]));
 
-  const tabs = ['details', 'compat', 'suppliers', 'images'] as const;
+  // Phase 12.25 — Stock tab lives between Details and Compatibility so users
+  // looking for "where did my stock move?" find it as the second tab.
+  const tabs = ['details', 'stock', 'compat', 'suppliers', 'images'] as const;
 
   return (
     <div className="flex flex-col gap-6">
@@ -250,6 +259,10 @@ export default function ProductDetailPage() {
             <Button type="submit" loading={isSubmitting} disabled={!isNew && !isDirty}>{t('common.save')}</Button>
           </div>
         </form>
+      )}
+
+      {activeTab === 'stock' && !isNew && id && company_id && (
+        <ProductStockTab companyId={company_id} productId={id} />
       )}
 
       {activeTab === 'compat' && !isNew && (

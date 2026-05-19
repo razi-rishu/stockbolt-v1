@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
@@ -32,7 +33,13 @@ export default function StockLedgerPage() {
   const today = new Date().toISOString().slice(0, 10);
   const firstOfMonth = today.slice(0, 7) + '-01';
 
-  const [productId, setProductId] = useState('');
+  // Phase 12.25 — accept ?product=<id> on the URL so the product detail
+  // page's "Open in Stock Ledger →" link can deep-link with the filter
+  // pre-applied AND auto-run.
+  const [searchParams] = useSearchParams();
+  const initialProductId = searchParams.get('product') ?? '';
+
+  const [productId, setProductId] = useState(initialProductId);
   const [warehouseId, setWarehouseId] = useState('');
   const [dateFrom, setDateFrom] = useState(firstOfMonth);
   const [dateTo, setDateTo] = useState(today);
@@ -40,7 +47,9 @@ export default function StockLedgerPage() {
   // both halves of any void/edit-reversal pair so the user sees a clean
   // state instead of the raw audit log. Toggle OFF for the full history.
   const [hideReversed, setHideReversed] = useState(true);
-  const [submitted, setSubmitted] = useState(false);
+  // Auto-submit when arriving from a deep-link (?product=…) so the user
+  // doesn't have to click Run on every navigation.
+  const [submitted, setSubmitted] = useState(!!initialProductId);
 
   const { data: products = [] } = useQuery<ProductRow[]>({
     queryKey: ['products', company_id],
