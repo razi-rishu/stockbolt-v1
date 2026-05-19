@@ -56,6 +56,13 @@ export default function ProductDetailPage() {
     (searchParams.get('tab') as 'details' | 'stock' | 'compat' | 'suppliers' | 'images' | null)
     ?? 'details';
   const [activeTab, setActiveTab] = useState<'details' | 'stock' | 'compat' | 'suppliers' | 'images'>(initialTab);
+
+  // Phase 12.26 — view-first, edit-by-intent. Existing products open
+  // read-only; user clicks Edit to switch to mutable mode. New products
+  // start in edit mode (nothing to read yet). Eliminates accidental
+  // changes to critical fields (SKU, name, selling price) from stray
+  // keystrokes while a user is just browsing.
+  const [editMode, setEditMode] = useState(isNew);
   const [compatModal, setCompatModal] = useState(false);
   const [supplierModal, setSupplierModal] = useState(false);
   const [uploadingImg, setUploadingImg] = useState(false);
@@ -88,7 +95,7 @@ export default function ProductDetailPage() {
   const { data: supplierCodes = [] } = useQuery<ProductSupplierCodeRow[]>({ queryKey: ['supplier_codes', id], queryFn: () => getAdapter().products.listSupplierCodes(id!), enabled: !isNew && !!id });
   const { data: images } = useQuery({ queryKey: ['product', id], queryFn: () => getAdapter().products.getById(id!), enabled: !isNew && !!id, select: (p) => p?.image_urls ?? [] });
 
-  const { register, handleSubmit, formState: { errors, isSubmitting, isDirty } } = useForm<FormValues>({
+  const { register, handleSubmit, reset, formState: { errors, isSubmitting, isDirty } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
     values: product ? {
       sku: product.sku, name: product.name, name_ar: product.name_ar ?? '',
@@ -195,7 +202,38 @@ export default function ProductDetailPage() {
       </div>
 
       {activeTab === 'details' && (
-        <form onSubmit={handleSubmit((v) => saveMutation.mutateAsync(v as FormValues))} className="flex flex-col gap-5">
+        <form
+          onSubmit={handleSubmit(async (v) => {
+            await saveMutation.mutateAsync(v as FormValues);
+            // Phase 12.26 — exit edit mode after a successful save.
+            if (!isNew) setEditMode(false);
+          })}
+          className="flex flex-col gap-5"
+        >
+          {/* Phase 12.26 — read-only mode banner + Edit button. Shown for
+               existing products when NOT in edit mode. Clicking Edit
+               unlocks the fieldset below. */}
+          {!isNew && !editMode && (
+            <div className="flex items-center justify-between rounded-card border border-border-subtle bg-surface-muted/50 px-4 py-2.5">
+              <div className="flex items-center gap-2 text-sm text-ink-secondary">
+                <span className="rounded-pill bg-surface-card px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-tertiary">
+                  Read only
+                </span>
+                <span>Fields are locked to prevent accidental changes.</span>
+              </div>
+              <Button type="button" size="sm" onClick={() => setEditMode(true)}>
+                ✎ {t('common.edit')}
+              </Button>
+            </div>
+          )}
+
+          {/* The actual fields. `<fieldset disabled>` natively disables every
+               form control inside, which is exactly what we want for the
+               view-mode UX without rewriting the layout. */}
+          <fieldset
+            disabled={!isNew && !editMode}
+            className={!isNew && !editMode ? 'flex flex-col gap-5 opacity-90' : 'flex flex-col gap-5'}
+          >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Input label={t('products.sku')} required error={errors.sku?.message} {...register('sku')} />
             <Input label={t('products.barcode')} {...register('barcode')} />
@@ -253,11 +291,33 @@ export default function ProductDetailPage() {
               </label>
             </div>
           </div>
+          </fieldset>
           {saveMutation.error && <p className="text-sm text-danger-500">{String(saveMutation.error)}</p>}
+          {/* Phase 12.26 — Save / Cancel are only meaningful while editing
+               (or creating). In read-only mode the panel above shows the
+               Edit button instead. */}
+          {(isNew || editMode) && (
           <div className="flex justify-end gap-3">
-            <Button type="button" variant="secondary" onClick={() => navigate('/products')}>{t('common.cancel')}</Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                if (isNew) {
+                  navigate('/products');
+                } else {
+                  // Cancel edit — reset the form to the latest server values
+                  // and drop back to read-only. Avoids the user discarding
+                  // changes accidentally on navigate-away.
+                  reset();
+                  setEditMode(false);
+                }
+              }}
+            >
+              {t('common.cancel')}
+            </Button>
             <Button type="submit" loading={isSubmitting} disabled={!isNew && !isDirty}>{t('common.save')}</Button>
           </div>
+          )}
         </form>
       )}
 
