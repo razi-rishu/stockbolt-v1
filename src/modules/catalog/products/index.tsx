@@ -7,6 +7,8 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Badge } from '@/ui/badge';
 import { Table, type Column } from '@/ui/table';
+import { PageHeader } from '@/ui/primitives';
+import { theme } from '@/ui/theme';
 import type { ProductRow } from '@/data/adapter';
 
 const QUALITY_VARIANT: Record<string, 'brand' | 'success' | 'warning' | 'muted'> = {
@@ -103,22 +105,55 @@ export default function ProductsListPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-ink-primary">{t('products.title')}</h1>
-        <Button size="sm" onClick={() => navigate('/products/new')}>{t('common.add')} {t('products.singular')}</Button>
-      </div>
-
-      <input
-        type="search"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder={t('products.search_placeholder')}
-        className="h-10 w-full max-w-md rounded-input border border-border-strong bg-surface-subtle px-4 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <PageHeader
+        title={t('products.title')}
+        subtitle={`${rows.length} ${rows.length === 1 ? 'item' : 'items'}`}
+        actions={
+          <Button size="sm" onClick={() => navigate('/products/new')}>
+            + {t('common.add')} {t('products.singular')}
+          </Button>
+        }
       />
 
+      <div style={{ position: 'relative', maxWidth: '420px' }}>
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t('products.search_placeholder')}
+          style={{
+            width: '100%',
+            height: '38px',
+            padding: '0 14px 0 36px',
+            fontSize: '13px',
+            border: `1px solid ${theme.border}`,
+            borderRadius: '999px',
+            background: '#fff',
+            color: theme.ink,
+            outline: 'none',
+            boxShadow: '0 1px 2px rgba(15,23,42,.04)',
+          }}
+          onFocus={(e) => {
+            e.currentTarget.style.borderColor = theme.brand;
+            e.currentTarget.style.boxShadow = `0 0 0 3px ${theme.brandRing}`;
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.borderColor = theme.border;
+            e.currentTarget.style.boxShadow = '0 1px 2px rgba(15,23,42,.04)';
+          }}
+        />
+        <svg
+          viewBox="0 0 24 24" width="14" height="14"
+          style={{ position: 'absolute', insetInlineStart: '14px', top: '50%', transform: 'translateY(-50%)', color: theme.inkFaint }}
+          fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        >
+          <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+        </svg>
+      </div>
+
       {loading
-        ? <div className="py-12 text-center text-ink-tertiary">{t('common.loading')}</div>
+        ? <div style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>{t('common.loading')}</div>
         : <Table columns={columns} rows={rows} keyFn={(r) => r.id} onRowClick={(r) => navigate(`/products/${r.id}`)} emptyMessage={search ? t('products.no_results') : t('products.empty')} />
       }
     </div>
