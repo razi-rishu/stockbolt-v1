@@ -9,6 +9,8 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
+import { PageHeader } from '@/ui/primitives';
+import { theme } from '@/ui/theme';
 import type { PrintConfig } from '@/data/adapter';
 
 const DEFAULT_CONFIG: PrintConfig = {
@@ -91,20 +93,29 @@ export default function PrintSettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-ink-primary">{t('print.settings_title')}</h1>
-          <p className="mt-1 text-sm text-ink-secondary">{t('print.settings_desc')}</p>
-        </div>
-        <Button onClick={handleSave} disabled={saving}>
-          {saving ? t('common.loading') : t('common.save')}
-        </Button>
-      </div>
+    <div style={{ maxWidth: '720px', margin: '0 auto', padding: '8px 0', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <PageHeader
+        title={t('print.settings_title')}
+        subtitle={t('print.settings_desc')}
+        actions={
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? t('common.loading') : t('common.save')}
+          </Button>
+        }
+      />
 
-      {error && <div className="rounded-input bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
-      {saved && <div className="rounded-input bg-green-50 px-4 py-2 text-sm text-green-700">{t('common.saved')}</div>}
+      {error && (
+        <div style={{
+          background: theme.dangerSoft, border: `1px solid ${theme.dangerBorder}`,
+          borderRadius: '8px', padding: '10px 16px', fontSize: '13px', color: theme.danger,
+        }}>{error}</div>
+      )}
+      {saved && (
+        <div style={{
+          background: theme.successSoft, border: `1px solid ${theme.successBorder}`,
+          borderRadius: '8px', padding: '10px 16px', fontSize: '13px', color: theme.success,
+        }}>{t('common.saved')}</div>
+      )}
 
       {/* Template selection */}
       <div className="rounded-card border border-border-subtle bg-surface-card p-5">

@@ -10,6 +10,8 @@ import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Modal } from '@/ui/modal';
 import { Table, type Column } from '@/ui/table';
+import { PageHeader } from '@/ui/primitives';
+import { theme } from '@/ui/theme';
 import { Badge } from '@/ui/badge';
 import type { PriceLevelRow } from '@/data/adapter';
 
@@ -79,15 +81,15 @@ export default function PriceLevelsPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-ink-primary">{t('settings.price_levels.title')}</h1>
-        <Button size="sm" onClick={openAdd}>{t('common.add')} {t('settings.price_levels.singular')}</Button>
-      </div>
-      <p className="text-sm text-ink-secondary">{t('settings.price_levels.description')}</p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <PageHeader
+        title={t('settings.price_levels.title')}
+        subtitle={t('settings.price_levels.description')}
+        actions={<Button size="sm" onClick={openAdd}>+ {t('common.add')} {t('settings.price_levels.singular')}</Button>}
+      />
 
       {isLoading
-        ? <div className="py-12 text-center text-ink-tertiary">{t('common.loading')}</div>
+        ? <div style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>{t('common.loading')}</div>
         : <Table columns={columns} rows={levels} keyFn={(r) => r.id} emptyMessage={t('settings.price_levels.empty')} />
       }
 

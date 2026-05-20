@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
+import { PageHeader } from '@/ui/primitives';
 import type { InvariantResult, MalformedJE, ArMismatch, StockMismatch } from '@/data/adapter';
 
 function fmt(n: number) {
@@ -73,11 +74,8 @@ export default function SystemHealthPage() {
   const failCount = results.filter(r => !r.pass).length;
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-semibold text-ink-primary">{t('settings.system_health')}</h1>
-        <p className="mt-1 text-sm text-ink-secondary">{t('settings.system_health_desc')}</p>
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <PageHeader title={t('settings.system_health')} subtitle={t('settings.system_health_desc')} />
 
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface-card p-4">
         <div>

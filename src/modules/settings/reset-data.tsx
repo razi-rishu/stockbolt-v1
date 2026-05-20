@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
+import { PageHeader } from '@/ui/primitives';
 import type { Company, ResetCompanyDataResult } from '@/data/adapter';
 
 /**
@@ -156,14 +157,12 @@ export default function ResetDataPage() {
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800">Reset Company Data</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Destructive admin operation for testing. Wipes all transactions and
-          operational data for this company.
-        </p>
-      </div>
+    <div style={{ maxWidth: '720px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <PageHeader
+        title="Reset Company Data"
+        subtitle="Destructive admin operation for testing. Wipes all transactions and operational data for this company."
+      />
+
 
       {!isAdmin && (
         <div className="rounded bg-yellow-50 border border-yellow-200 px-4 py-3 text-sm text-yellow-800">

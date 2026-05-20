@@ -10,6 +10,8 @@ import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Modal } from '@/ui/modal';
 import { Table, type Column } from '@/ui/table';
+import { PageHeader } from '@/ui/primitives';
+import { theme } from '@/ui/theme';
 import type { UnitRow } from '@/data/adapter';
 
 const schema = z.object({
@@ -70,14 +72,15 @@ export default function UnitsOfMeasurePage() {
   ];
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-ink-primary">{t('settings.units.title')}</h1>
-        <Button size="sm" onClick={openAdd}>{t('common.add')} {t('settings.units.singular')}</Button>
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <PageHeader
+        title={t('settings.units.title')}
+        subtitle={`${units.length} ${units.length === 1 ? 'unit' : 'units'}`}
+        actions={<Button size="sm" onClick={openAdd}>+ {t('common.add')} {t('settings.units.singular')}</Button>}
+      />
 
       {isLoading
-        ? <div className="py-12 text-center text-ink-tertiary">{t('common.loading')}</div>
+        ? <div style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>{t('common.loading')}</div>
         : <Table columns={columns} rows={units} keyFn={(r) => r.id} emptyMessage={t('settings.units.empty')} />
       }
 

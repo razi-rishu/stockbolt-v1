@@ -9,6 +9,7 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Card } from '@/ui/card';
+import { PageHeader } from '@/ui/primitives';
 
 // Defaults live in useForm defaultValues; schema only validates.
 const schema = z.object({
@@ -112,8 +113,10 @@ export default function CompanySettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-bold text-ink-primary">{t('settings.company.title')}</h1>
+    <div style={{ maxWidth: '720px', margin: '0 auto', padding: '8px 0' }}>
+      <div style={{ marginBottom: '20px' }}>
+        <PageHeader title={t('settings.company.title')} subtitle="Company profile, branding and tax configuration" />
+      </div>
 
       {/* Logo upload */}
       <Card className="mb-6">

@@ -4,6 +4,8 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
+import { PageHeader } from '@/ui/primitives';
+import { theme } from '@/ui/theme';
 import type { SalespersonRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -116,21 +118,18 @@ export default function SalespeoplePage() {
   });
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Salespeople</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Master list of sales staff. Tagged on invoices and quotes for performance reports.
-          </p>
-        </div>
-        {!showForm && (
-          <Button onClick={startNew}>+ Add salesperson</Button>
-        )}
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <PageHeader
+        title="Salespeople"
+        subtitle="Master list of sales staff. Tagged on invoices and quotes for performance reports."
+        actions={!showForm ? <Button onClick={startNew}>+ Add salesperson</Button> : undefined}
+      />
 
       {error && (
-        <div className="rounded border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700">
+        <div style={{
+          background: theme.dangerSoft, border: `1px solid ${theme.dangerBorder}`,
+          borderRadius: '8px', padding: '10px 16px', fontSize: '13px', color: theme.danger,
+        }}>
           {error}
         </div>
       )}
