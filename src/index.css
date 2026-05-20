@@ -18,6 +18,31 @@
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
+/*
+ * Phase 12.38 — lift legacy report headers + filter cards to sample look.
+ *
+ * 25 reports still use `<h1 class="text-xl font-semibold text-ink-primary">`
+ * or `<h1 class="text-2xl font-bold text-slate-800">`. Single rule promotes
+ * both to the PageHeader treatment (22px slate-900, tighter letter-spacing).
+ *
+ * 11 reports wrap their filter rows in `<div class="rounded-lg border
+ * border-border bg-surface-card …">`. Lifts those to 12px slate-200 border
+ * + soft 1px shadow to match the rest of the design system.
+ */
+h1.text-xl.font-semibold.text-ink-primary,
+h1.text-2xl.font-bold.text-slate-800 {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1e293b;
+  letter-spacing: -0.01em;
+}
+
+.rounded-lg.border.border-border.bg-surface-card {
+  border-radius: 12px;
+  border-color: #e2e8f0;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
 @layer base {
   html {
     font-family: 'DM Sans', system-ui, sans-serif;
