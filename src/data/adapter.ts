@@ -407,6 +407,20 @@ export interface StockLedgerAPI {
    * correct even with reversal rows.
    */
   getCurrentStockMap(company_id: string): Promise<Record<string, { qty: number; mac: number }>>;
+  /**
+   * Phase 12.28 — wizard helper. Posts a one-shot 'opening_balance' row
+   * to stock_ledger AND the balancing JE (Dr 1300 / Cr 3200). Rejects if
+   * any prior stock_ledger row exists for this product+warehouse, since
+   * opening stock is a one-time migration event — for subsequent
+   * adjustments use the Inventory Adjustment flow instead.
+   */
+  postOpeningStock(input: {
+    product_id: string;
+    warehouse_id: string;
+    quantity: number;
+    unit_cost: number;
+    date?: string;
+  }): Promise<{ stock_ledger_id: string; journal_entry_id: string; entry_number: string; total_value: number }>;
 }
 
 // ── Phase 4 row types ─────────────────────────────────────────────────────────

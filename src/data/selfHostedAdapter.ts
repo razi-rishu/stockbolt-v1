@@ -130,6 +130,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       getMAC:             () => notImplemented('stockLedger.getMAC'),
       getLedger:          () => notImplemented('stockLedger.getLedger'),
       getCurrentStockMap: () => notImplemented('stockLedger.getCurrentStockMap'),
+      postOpeningStock:   () => notImplemented('stockLedger.postOpeningStock'),
     },
     taxRates: {
       list: () => notImplemented('taxRates.list'),

@@ -2618,6 +2618,9 @@ export type Database = {
           id: string
           last_purchase_date: string | null
           last_purchase_price: number | null
+          lead_time_days: number | null
+          min_order_qty: number | null
+          payment_terms_days: number | null
           product_id: string
           supplier_id: string
           supplier_sku: string
@@ -2629,6 +2632,9 @@ export type Database = {
           id?: string
           last_purchase_date?: string | null
           last_purchase_price?: number | null
+          lead_time_days?: number | null
+          min_order_qty?: number | null
+          payment_terms_days?: number | null
           product_id: string
           supplier_id: string
           supplier_sku: string
@@ -2640,6 +2646,9 @@ export type Database = {
           id?: string
           last_purchase_date?: string | null
           last_purchase_price?: number | null
+          lead_time_days?: number | null
+          min_order_qty?: number | null
+          payment_terms_days?: number | null
           product_id?: string
           supplier_id?: string
           supplier_sku?: string
@@ -2675,12 +2684,17 @@ export type Database = {
           brand_id: string | null
           category_id: string | null
           company_id: string
+          country_of_origin: string | null
           created_at: string
+          default_aisle: string | null
+          default_bin: string | null
           description: string | null
           description_ar: string | null
+          hsn_code: string | null
           id: string
           image_urls: string[] | null
           is_active: boolean
+          is_excise: boolean
           max_stock_level: number | null
           min_stock_level: number
           name: string
@@ -2693,6 +2707,7 @@ export type Database = {
           selling_price: number
           sku: string
           tax_category: string
+          type: 'goods' | 'service'
           unit_id: string | null
           updated_at: string
           weight_kg: number | null
@@ -2702,12 +2717,17 @@ export type Database = {
           brand_id?: string | null
           category_id?: string | null
           company_id: string
+          country_of_origin?: string | null
           created_at?: string
+          default_aisle?: string | null
+          default_bin?: string | null
           description?: string | null
           description_ar?: string | null
+          hsn_code?: string | null
           id?: string
           image_urls?: string[] | null
           is_active?: boolean
+          is_excise?: boolean
           max_stock_level?: number | null
           min_stock_level?: number
           name: string
@@ -2720,6 +2740,7 @@ export type Database = {
           selling_price?: number
           sku: string
           tax_category?: string
+          type?: 'goods' | 'service'
           unit_id?: string | null
           updated_at?: string
           weight_kg?: number | null
@@ -2729,12 +2750,17 @@ export type Database = {
           brand_id?: string | null
           category_id?: string | null
           company_id?: string
+          country_of_origin?: string | null
           created_at?: string
+          default_aisle?: string | null
+          default_bin?: string | null
           description?: string | null
           description_ar?: string | null
+          hsn_code?: string | null
           id?: string
           image_urls?: string[] | null
           is_active?: boolean
+          is_excise?: boolean
           max_stock_level?: number | null
           min_stock_level?: number
           name?: string
@@ -2747,6 +2773,7 @@ export type Database = {
           selling_price?: number
           sku?: string
           tax_category?: string
+          type?: 'goods' | 'service'
           unit_id?: string | null
           updated_at?: string
           weight_kg?: number | null

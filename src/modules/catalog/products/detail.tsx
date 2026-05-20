@@ -15,6 +15,7 @@ import { Badge } from '@/ui/badge';
 import { Modal } from '@/ui/modal';
 import type { ProductCompatibilityRow, ProductSupplierCodeRow, ContactRow, VehicleMakeRow, VehicleModelRow, CoaRow } from '@/data/adapter';
 import { ProductStockTab } from './_stock-tab';
+import { ProductWizard } from './_wizard';
 
 const schema = z.object({
   sku:                z.string().min(1, 'Required'),
@@ -171,6 +172,13 @@ export default function ProductDetailPage() {
       await getAdapter().products.update(id, { image_urls: [...current, url] });
       qc.invalidateQueries({ queryKey: ['product', id] });
     } finally { setUploadingImg(false); }
+  }
+
+  // Phase 12.28 — new products use the 5-step wizard instead of the
+  // single-form edit view. Existing products keep the tabbed read-only
+  // → edit flow.
+  if (isNew) {
+    return <ProductWizard />;
   }
 
   const makeMap = Object.fromEntries(makes.map((m) => [m.id, m.name]));

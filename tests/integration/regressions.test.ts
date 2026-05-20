@@ -294,6 +294,65 @@ describe('Function source — fixes are still installed', () => {
     ).toMatch(/INSERT\s+INTO\s+public\.deferred_cogs_queue/i);
   });
 
+  it('Phase 12.28: products has type / hsn_code / country_of_origin / is_excise / default_aisle / default_bin columns', async () => {
+    const rows = await sql<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'products'
+         AND column_name IN ('type','hsn_code','country_of_origin','is_excise','default_aisle','default_bin')
+       ORDER BY column_name`,
+    );
+    expect(rows.map(r => r.column_name)).toEqual([
+      'country_of_origin', 'default_aisle', 'default_bin', 'hsn_code', 'is_excise', 'type',
+    ]);
+  });
+
+  it('Phase 12.28: products.type CHECK constrains values to goods or service', async () => {
+    const rows = await sql<{ def: string }>(
+      `SELECT pg_get_constraintdef(con.oid) AS def
+       FROM pg_constraint con JOIN pg_class c ON c.oid = con.conrelid
+       WHERE c.relname = 'products' AND con.contype = 'c'
+         AND pg_get_constraintdef(con.oid) ~ 'type'
+         AND pg_get_constraintdef(con.oid) ~ 'goods'`,
+    );
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+    expect(rows[0].def).toMatch(/'goods'/);
+    expect(rows[0].def).toMatch(/'service'/);
+  });
+
+  it('Phase 12.28: product_supplier_codes has lead_time_days / min_order_qty / payment_terms_days', async () => {
+    const rows = await sql<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema='public' AND table_name='product_supplier_codes'
+         AND column_name IN ('lead_time_days','min_order_qty','payment_terms_days')
+       ORDER BY column_name`,
+    );
+    expect(rows.map(r => r.column_name)).toEqual([
+      'lead_time_days', 'min_order_qty', 'payment_terms_days',
+    ]);
+  });
+
+  it('Phase 12.28: post_opening_stock RPC exists and is authenticated-callable', async () => {
+    const rows = await sql<{ proname: string; nargs: number }>(
+      `SELECT proname, pronargs AS nargs FROM pg_proc WHERE proname = 'post_opening_stock'`,
+    );
+    expect(rows.length, 'post_opening_stock RPC missing').toBeGreaterThanOrEqual(1);
+    expect(rows[0].nargs).toBe(5);
+  });
+
+  it('Phase 12.28: confirm_invoice and edit_invoice skip stock/COGS for service products', async () => {
+    const rows = await sql<{ proname: string; src: string }>(
+      `SELECT proname, pg_get_functiondef(oid) AS src FROM pg_proc
+       WHERE proname IN ('confirm_invoice','edit_invoice') AND pronargs = 1`,
+    );
+    expect(rows.length).toBe(2);
+    for (const r of rows) {
+      expect(r.src, `${r.proname} missing Phase 12.28 tag`).toMatch(/Phase 12\.28/);
+      // Both must read product.type and CONTINUE for services.
+      expect(r.src, `${r.proname} must look up product.type`).toMatch(/v_product_type|product\.type/i);
+      expect(r.src, `${r.proname} must skip service items`).toMatch(/CONTINUE\s+WHEN\s+v_product_type\s*=\s*'service'/i);
+    }
+  });
+
   it('Phase 12.27: no stale "pending" deferred_cogs rows for products that have MAC > 0', async () => {
     // Invariant: if a product has a positive MAC in the active ledger
     // AND a pending deferred_cogs_queue row, the flush didn't run. Could

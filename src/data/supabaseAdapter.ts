@@ -768,6 +768,19 @@ export function createSupabaseAdapter(
         assertNoError(error, 'stockLedger.getLedger');
         return data ?? [];
       },
+      async postOpeningStock(input): Promise<{ stock_ledger_id: string; journal_entry_id: string; entry_number: string; total_value: number }> {
+        // Phase 12.28 — wizard-driven one-shot opening balance.
+        const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)
+          ('post_opening_stock', {
+            p_product_id:   input.product_id,
+            p_warehouse_id: input.warehouse_id,
+            p_quantity:     input.quantity,
+            p_unit_cost:    input.unit_cost,
+            p_date:         input.date ?? null,
+          });
+        assertNoError(error as Error | null, 'stockLedger.postOpeningStock');
+        return data as { stock_ledger_id: string; journal_entry_id: string; entry_number: string; total_value: number };
+      },
       async getCurrentStockMap(company_id): Promise<Record<string, { qty: number; mac: number }>> {
         // Single query, then SUM(direction × quantity) per product across
         // all warehouses + take latest non-zero running_avg_cost as MAC.

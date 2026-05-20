@@ -90,6 +90,23 @@ WITH checks AS (
         AND pg_get_functiondef(oid) ~* 'INSERT\s+INTO\s+public\.deferred_cogs_queue'
     ) THEN '✓ pass' ELSE '✗ FAIL — apply migration 20260519000001' END, ''
 
+  UNION ALL SELECT 13, 'Phase 12.28: products has type / hsn_code / country / excise / aisle / bin',
+    CASE WHEN (
+      SELECT COUNT(*)::int FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='products'
+        AND column_name IN ('type','hsn_code','country_of_origin','is_excise','default_aisle','default_bin')
+    ) = 6 THEN '✓ pass' ELSE '✗ FAIL — apply migration 20260520000001' END, ''
+
+  UNION ALL SELECT 14, 'Phase 12.28: post_opening_stock RPC exists',
+    CASE WHEN EXISTS (SELECT 1 FROM pg_proc WHERE proname='post_opening_stock' AND pronargs=5)
+    THEN '✓ pass' ELSE '✗ FAIL — apply migration 20260520000001' END, ''
+
+  UNION ALL SELECT 15, 'Phase 12.28: confirm_invoice + edit_invoice service-type bypass',
+    CASE WHEN
+      (SELECT COUNT(*) FROM pg_proc WHERE proname IN ('confirm_invoice','edit_invoice') AND pronargs=1
+        AND pg_get_functiondef(oid) LIKE '%Phase 12.28%') = 2
+    THEN '✓ pass' ELSE '✗ FAIL — apply migration 20260520000001' END, ''
+
   UNION ALL SELECT 10, 'Phase 12.17: vendor_bills.landed_cost_total + vendor_bill_items.warehouse_id exist',
     CASE WHEN
       EXISTS (SELECT 1 FROM information_schema.columns
