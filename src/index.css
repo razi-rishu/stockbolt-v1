@@ -2,6 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Phase 12.36 — design-system uplift for legacy `.rounded-card` containers.
+ *
+ * Every list / detail / editor page still wraps its main panel in
+ * `<div class="rounded-card border border-border-subtle bg-surface-card …">`.
+ * This rule lifts those untouched containers to the sample look
+ * (12px radius, slate-200 border, soft 1px shadow) without us needing
+ * to rewrite each one inline. New screens use src/ui/primitives.tsx
+ * directly and ignore this rule.
+ */
+.rounded-card.border-border-subtle.bg-surface-card {
+  border-radius: 12px;
+  border-color: #e2e8f0;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
 @layer base {
   html {
     font-family: 'DM Sans', system-ui, sans-serif;
