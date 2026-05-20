@@ -347,14 +347,37 @@ export default function VendorBillEditorPage() {
   // (it would otherwise appear as a clickable row in the dropdown list).
   const expenseOpts = accountOpts.map(a => ({ value: a.id, label: `${a.code} ${a.name}` }));
 
+  // Status pill helper (sample look)
+  const statusPill = (status?: string) => {
+    if (!status) return null;
+    const map: Record<string, { bg: string; text: string; border: string }> = {
+      draft:     { bg: '#fffbeb', text: '#b45309', border: '#fde68a' },
+      confirmed: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' },
+      void:      { bg: '#fef2f2', text: '#dc2626', border: '#fecaca' },
+    };
+    const p = map[status] ?? { bg: '#f1f5f9', text: '#64748b', border: '#e2e8f0' };
+    return (
+      <span style={{
+        display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
+        fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
+        background: p.bg, color: p.text, border: `1px solid ${p.border}`,
+      }}>{status}</span>
+    );
+  };
+
   return (
-    <div className="space-y-6 pb-16">
-      <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/purchasing/bills')} className="text-sm text-ink-secondary hover:text-ink-primary">← {t('purchasing.bills_title')}</button>
-        <span className="text-ink-tertiary">/</span>
-        <h1 className="text-xl font-semibold text-ink-primary">{isNew ? t('purchasing.new_bill') : existing?.bill_number ?? '…'}</h1>
-        {!isNew && <span className="rounded-pill bg-gray-100 px-2.5 py-0.5 text-xs capitalize text-gray-600">{existing?.status}</span>}
-        <div className="ms-auto flex gap-2">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '64px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+        <button onClick={() => navigate('/purchasing/bills')} style={{
+          background: 'transparent', border: 'none', cursor: 'pointer',
+          fontSize: '13px', color: '#64748b',
+        }}>← {t('purchasing.bills_title')}</button>
+        <span style={{ color: '#94a3b8' }}>/</span>
+        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
+          {isNew ? t('purchasing.new_bill') : existing?.bill_number ?? '…'}
+        </h1>
+        {!isNew && statusPill(existing?.status)}
+        <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
           {!isNew && existing?.id && (
             <Button variant="ghost" size="sm" onClick={() => window.open(`/print/bill/${existing.id}`, '_blank')}>
               🖨 {t('print.print')}
@@ -374,13 +397,18 @@ export default function VendorBillEditorPage() {
         </div>
       </div>
 
-      {error && <div className="rounded-input bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
+      {error && (
+        <div style={{
+          background: '#fef2f2', border: '1px solid #fecaca',
+          borderRadius: '8px', padding: '10px 16px', fontSize: '13px', color: '#dc2626',
+        }}>{error}</div>
+      )}
 
       {/* Supplier Insight Panel — appears once a supplier is picked.
            Shows payable, overdue, last payment so the buyer has full
            context while writing the bill. */}
       {selectedSupplier && (
-        <div className="rounded-card border border-border-subtle bg-surface-card p-4">
+        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 2px rgba(15,23,42,.04)', padding: '16px' }}>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
             <div>
               <p className="text-xs uppercase tracking-wide text-ink-tertiary">Payable</p>
@@ -437,7 +465,7 @@ export default function VendorBillEditorPage() {
         </div>
       )}
 
-      <div className="rounded-card border border-border-subtle bg-surface-card p-5">
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 2px rgba(15,23,42,.04)', padding: '20px' }}>
         <h2 className="mb-4 text-sm font-semibold text-ink-primary">{t('purchasing.bill_details')}</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="col-span-2 md:col-span-1">
@@ -482,7 +510,7 @@ export default function VendorBillEditorPage() {
 
       {/* Line items + Sticky sidebar */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
-      <div className="rounded-card border border-border-subtle bg-surface-card">
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 2px rgba(15,23,42,.04)' }}>
         <div className="border-b border-border-subtle px-5 py-3">
           <h2 className="text-sm font-semibold text-ink-primary">{t('purchasing.line_items')}</h2>
         </div>
@@ -650,7 +678,7 @@ export default function VendorBillEditorPage() {
 
       {/* Sticky financial summary sidebar + accounting preview */}
       <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
-        <div className="rounded-card border border-border-subtle bg-surface-card overflow-hidden">
+        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 2px rgba(15,23,42,.04)', overflow: 'hidden' }}>
           <div className="border-b border-border-subtle px-4 py-2.5 bg-surface-muted/40">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-tertiary">Summary</h3>
           </div>

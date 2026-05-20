@@ -22,6 +22,7 @@ import { useAuthStore } from '@/store/auth';
 import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
 import { Tabs } from '@/ui/tabs';
+import { theme } from '@/ui/theme';
 import type {
   ContactRow, InvoiceRow, OpenInvoice, PaymentRow,
   SalesQuoteRow, CreditNoteRow, SalesReturnRow,
@@ -42,20 +43,29 @@ function daysBetween(from: string, to: string): number {
 
 // ── Status badge for invoices / quotes / credit notes / payments ─────────────
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    draft:              'bg-gray-100 text-gray-700',
-    sent:               'bg-blue-50 text-blue-700',
-    confirmed:          'bg-green-50 text-green-700',
-    accepted:           'bg-green-50 text-green-700',
-    rejected:           'bg-red-50 text-red-700',
-    expired:            'bg-orange-50 text-orange-700',
-    partially_invoiced: 'bg-purple-50 text-purple-700',
-    fully_invoiced:     'bg-teal-50 text-teal-700',
-    void:               'bg-red-50 text-red-500',
-    received:           'bg-green-50 text-green-700',
+  const map: Record<string, { bg: string; text: string; border: string }> = {
+    draft:              { bg: theme.muted,    text: theme.inkMuted, border: theme.border },
+    sent:               { bg: '#eff6ff',      text: '#1d4ed8',      border: '#bfdbfe' },
+    confirmed:          { bg: '#f0fdf4',      text: '#15803d',      border: '#bbf7d0' },
+    accepted:           { bg: '#f0fdf4',      text: '#15803d',      border: '#bbf7d0' },
+    rejected:           { bg: '#fef2f2',      text: '#dc2626',      border: '#fecaca' },
+    expired:            { bg: '#fff7ed',      text: '#c2410c',      border: '#fed7aa' },
+    partially_invoiced: { bg: theme.purpleSoft, text: theme.purple, border: theme.purpleBorder },
+    fully_invoiced:     { bg: '#f0fdfa',      text: '#0f766e',      border: '#99f6e4' },
+    void:               { bg: '#fef2f2',      text: '#ef4444',      border: '#fecaca' },
+    received:           { bg: '#f0fdf4',      text: '#15803d',      border: '#bbf7d0' },
   };
+  const p = map[status] ?? { bg: theme.muted, text: theme.inkMuted, border: theme.border };
   return (
-    <span className={`rounded-pill px-2 py-0.5 text-[10px] font-medium capitalize ${map[status] ?? 'bg-gray-100 text-gray-700'}`}>
+    <span style={{
+      display: 'inline-block',
+      padding: '2px 8px',
+      borderRadius: '999px',
+      fontSize: '10px', fontWeight: 600,
+      textTransform: 'capitalize',
+      background: p.bg, color: p.text,
+      border: `1px solid ${p.border}`,
+    }}>
       {status.replace(/_/g, ' ')}
     </span>
   );
@@ -68,17 +78,23 @@ function KpiTile({ label, value, sublabel, accent = 'default' }: {
   sublabel?: string;
   accent?: 'default' | 'warn' | 'danger' | 'good';
 }) {
-  const accentClass = {
-    default: 'text-ink-primary',
-    warn:    'text-amber-600',
-    danger:  'text-red-600',
-    good:    'text-green-700',
+  const valueColor = {
+    default: theme.ink,
+    warn:    '#b45309',
+    danger:  '#dc2626',
+    good:    '#15803d',
   }[accent];
   return (
-    <div className="rounded-card border border-border-subtle bg-surface-card px-5 py-4">
-      <div className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">{label}</div>
-      <div className={`mt-1 font-mono text-xl font-semibold ${accentClass}`}>{value}</div>
-      {sublabel && <div className="mt-0.5 text-xs text-ink-tertiary">{sublabel}</div>}
+    <div style={{
+      background: theme.card,
+      border: `1px solid ${theme.border}`,
+      borderRadius: '12px',
+      boxShadow: theme.shadowSm,
+      padding: '14px 18px',
+    }}>
+      <div style={{ fontSize: '11px', fontWeight: 700, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</div>
+      <div className="font-mono" style={{ marginTop: '4px', fontSize: '20px', fontWeight: 700, color: valueColor }}>{value}</div>
+      {sublabel && <div style={{ marginTop: '2px', fontSize: '11px', color: theme.inkFaint }}>{sublabel}</div>}
     </div>
   );
 }
@@ -90,34 +106,50 @@ function AgingBar({ buckets, total }: {
 }) {
   if (total <= 0.005) {
     return (
-      <div className="rounded-card border border-border-subtle bg-surface-card px-5 py-4 text-sm text-ink-tertiary">
+      <div style={{
+        background: theme.card,
+        border: `1px solid ${theme.border}`,
+        borderRadius: '12px',
+        boxShadow: theme.shadowSm,
+        padding: '14px 18px',
+        fontSize: '13px', color: theme.inkFaint,
+      }}>
         No outstanding balance.
       </div>
     );
   }
   const segs = [
-    { label: 'Current', value: buckets.current,  color: 'bg-green-500' },
-    { label: '31-60',   value: buckets.d31_60,   color: 'bg-yellow-500' },
-    { label: '61-90',   value: buckets.d61_90,   color: 'bg-orange-500' },
-    { label: '90+',     value: buckets.d90_plus, color: 'bg-red-500' },
+    { label: 'Current', value: buckets.current,  color: '#22c55e' },
+    { label: '31-60',   value: buckets.d31_60,   color: '#eab308' },
+    { label: '61-90',   value: buckets.d61_90,   color: '#f97316' },
+    { label: '90+',     value: buckets.d90_plus, color: '#ef4444' },
   ];
   return (
-    <div className="rounded-card border border-border-subtle bg-surface-card px-5 py-4">
-      <div className="flex items-center justify-between text-xs">
-        <span className="font-medium uppercase tracking-wide text-ink-tertiary">Aging</span>
-        <span className="font-mono text-ink-secondary">Total {fmt(total)}</span>
+    <div style={{
+      background: theme.card,
+      border: `1px solid ${theme.border}`,
+      borderRadius: '12px',
+      boxShadow: theme.shadowSm,
+      padding: '14px 18px',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '11px' }}>
+        <span style={{ fontWeight: 700, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.06em' }}>Aging</span>
+        <span className="font-mono" style={{ color: theme.inkMuted }}>Total {fmt(total)}</span>
       </div>
-      <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-surface-muted">
+      <div style={{
+        marginTop: '8px', display: 'flex', height: '8px',
+        overflow: 'hidden', borderRadius: '999px', background: theme.muted,
+      }}>
         {segs.map((s) => {
           const pct = (s.value / total) * 100;
-          return pct > 0 ? <div key={s.label} className={s.color} style={{ width: `${pct}%` }} title={`${s.label}: ${fmt(s.value)}`} /> : null;
+          return pct > 0 ? <div key={s.label} style={{ background: s.color, width: `${pct}%` }} title={`${s.label}: ${fmt(s.value)}`} /> : null;
         })}
       </div>
-      <div className="mt-2 grid grid-cols-4 gap-2 text-xs">
+      <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
         {segs.map((s) => (
-          <div key={s.label} className="flex flex-col">
-            <span className="text-ink-tertiary">{s.label}</span>
-            <span className="font-mono text-ink-primary">{fmt(s.value)}</span>
+          <div key={s.label} style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: '11px', color: theme.inkFaint }}>{s.label}</span>
+            <span className="font-mono" style={{ fontSize: '12px', color: theme.ink, fontWeight: 500 }}>{fmt(s.value)}</span>
           </div>
         ))}
       </div>
@@ -128,9 +160,24 @@ function AgingBar({ buckets, total }: {
 // ── Generic data section with optional "See all" link ────────────────────────
 function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="rounded-card border border-border-subtle bg-surface-card">
-      <div className="flex items-center justify-between border-b border-border-subtle px-5 py-3">
-        <h2 className="text-sm font-semibold text-ink-primary">{title}</h2>
+    <div style={{
+      background: theme.card,
+      border: `1px solid ${theme.border}`,
+      borderRadius: '12px',
+      boxShadow: theme.shadowSm,
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        background: theme.panelHead,
+        borderBottom: `1px solid ${theme.border}`,
+        padding: '10px 18px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <h2 style={{
+          margin: 0,
+          fontSize: '11px', fontWeight: 700, color: theme.inkMuted,
+          textTransform: 'uppercase', letterSpacing: '.06em',
+        }}>{title}</h2>
         {action}
       </div>
       {children}

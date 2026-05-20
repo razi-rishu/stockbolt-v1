@@ -11,6 +11,7 @@ import { ContactPicker } from '@/components/contact-picker';
 import { Modal } from '@/ui/modal';
 import { AccountingPreview, buildCustomerPaymentPreview } from '@/components/accounting-preview';
 import { ActivityLog } from '@/components/activity-log';
+import { theme } from '@/ui/theme';
 import type { PaymentRow, BankAccountRow, OpenInvoice, PaymentAllocationInsert } from '@/data/adapter';
 
 function fmt(n: number) {
@@ -345,49 +346,43 @@ export default function PaymentEditorPage() {
       .map(inv => ({ value: inv.id, label: `${inv.invoice_number} — ${inv.currency} ${fmt(Number(inv.total_amount))}` })),
   ];
 
+  // Sample-style status pill helper
+  const pill = (text: string, bg: string, color: string, border: string) => (
+    <span style={{
+      display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
+      fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
+      background: bg, color, border: `1px solid ${border}`,
+    }}>{text}</span>
+  );
+
   return (
-    <div className="space-y-6 pb-16">
-      <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/sales/payments')} className="text-sm text-ink-secondary hover:text-ink-primary">
-          ← {t('payments.title')}
-        </button>
-        <span className="text-ink-tertiary">/</span>
-        <h1 className="text-xl font-semibold text-ink-primary">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '64px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+        <button onClick={() => navigate('/sales/payments')} style={{
+          background: 'transparent', border: 'none', cursor: 'pointer',
+          fontSize: '13px', color: theme.inkMuted,
+        }}>← {t('payments.title')}</button>
+        <span style={{ color: theme.inkFaint }}>/</span>
+        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>
           {isNew ? t('payments.new_payment') : existing?.payment_number ?? '…'}
         </h1>
         {!isNew && (
           <>
-            <span className={`rounded-pill px-2.5 py-0.5 text-xs font-medium capitalize ${
-              status === 'draft' ? 'bg-yellow-50 text-yellow-700' :
-              status === 'confirmed' ? 'bg-green-50 text-green-700' :
-              'bg-red-50 text-red-600'
-            }`}>
-              {status}
-            </span>
+            {status === 'draft'     && pill(status, '#fffbeb', '#b45309', '#fde68a')}
+            {status === 'confirmed' && pill(status, '#f0fdf4', '#15803d', '#bbf7d0')}
+            {status === 'void'      && pill(status, '#fef2f2', '#dc2626', '#fecaca')}
             {(() => {
               const alloc = (existing as (PaymentRow & { allocation_status?: 'unallocated' | 'partial' | 'full' | null }) | null | undefined)?.allocation_status;
               if (status !== 'confirmed' || !alloc) return null;
-              const map: Record<string, { label: string; cls: string }> = {
-                unallocated: { label: 'Advance',       cls: 'bg-purple-50 text-purple-700' },
-                partial:     { label: 'Partial',       cls: 'bg-amber-50 text-amber-700'   },
-                full:        { label: 'Fully applied', cls: 'bg-sky-50 text-sky-700'       },
-              };
-              const cfg = map[alloc];
-              if (!cfg) return null;
-              return (
-                <span className={`rounded-pill px-2.5 py-0.5 text-xs font-medium ${cfg.cls}`}>
-                  {cfg.label}
-                </span>
-              );
+              if (alloc === 'unallocated') return pill('Advance', theme.purpleSoft, theme.purple, theme.purpleBorder);
+              if (alloc === 'partial')     return pill('Partial', '#fffbeb', '#b45309', '#fde68a');
+              if (alloc === 'full')        return pill('Fully applied', '#eff6ff', '#1d4ed8', '#bfdbfe');
+              return null;
             })()}
-            {isReconciled && status === 'confirmed' && (
-              <span className="rounded-pill bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
-                Reconciled
-              </span>
-            )}
+            {isReconciled && status === 'confirmed' && pill('Reconciled', '#ecfdf5', '#059669', '#a7f3d0')}
           </>
         )}
-        <div className="ms-auto flex gap-2">
+        <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
           {canEdit && (
             <>
               <Button variant="ghost" size="sm" onClick={() => navigate('/sales/payments')}>
@@ -412,18 +407,27 @@ export default function PaymentEditorPage() {
       </div>
 
       {error && (
-        <div className="rounded-input bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>
+        <div style={{
+          background: theme.dangerSoft, border: `1px solid ${theme.dangerBorder}`,
+          borderRadius: '8px', padding: '10px 16px', fontSize: '13px', color: theme.danger,
+        }}>{error}</div>
       )}
 
       {staleAllocations.length > 0 && (
-        <div className="rounded-input bg-amber-50 px-4 py-2 text-sm text-amber-800">
+        <div style={{
+          background: theme.warnSoft, border: `1px solid ${theme.warnBorder}`,
+          borderRadius: '8px', padding: '10px 16px', fontSize: '13px', color: theme.warn,
+        }}>
           <strong>Stale allocation{staleAllocations.length === 1 ? '' : 's'} detected.</strong>{' '}
           {staleAllocations.length} previously-allocated invoice{staleAllocations.length === 1 ? ' is' : 's are'} no
           longer in the open list (likely voided or fully paid by another payment). They will be dropped on Save.
         </div>
       )}
 
-      <div className="rounded-card border border-border-subtle bg-surface-card p-5">
+      <div style={{
+        background: theme.card, border: `1px solid ${theme.border}`,
+        borderRadius: '12px', boxShadow: theme.shadowSm, padding: '20px',
+      }}>
         <h2 className="mb-4 text-sm font-semibold text-ink-primary">{t('payments.payment_details')}</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="col-span-2 md:col-span-1">
@@ -519,25 +523,38 @@ export default function PaymentEditorPage() {
         const payAmt    = parseFloat(header.amount) || 0;
         const difference = +(payAmt - totalToApply).toFixed(2);
         return (
-          <div className="rounded-card border border-border-subtle bg-surface-card">
-            <div className="border-b border-border-subtle px-5 py-3">
-              <h2 className="text-sm font-semibold text-ink-primary">Apply to Invoices</h2>
-              <p className="mt-0.5 text-xs text-ink-tertiary">
+          <div style={{
+            background: theme.card, border: `1px solid ${theme.border}`,
+            borderRadius: '12px', boxShadow: theme.shadowSm, overflow: 'hidden',
+          }}>
+            <div style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}`, padding: '10px 20px' }}>
+              <h2 style={{
+                margin: 0,
+                fontSize: '11px', fontWeight: 700, color: theme.inkMuted,
+                textTransform: 'uppercase', letterSpacing: '.06em',
+              }}>Apply to Invoices</h2>
+              <p style={{ margin: '4px 0 0', fontSize: '11px', color: theme.inkFaint }}>
                 Distribute the payment across {openInvoices.length} open invoice{openInvoices.length === 1 ? '' : 's'}. Oldest first by default — edit any row to override.
               </p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
-                    <th className="px-4 py-2 text-start font-medium">Invoice #</th>
-                    <th className="px-4 py-2 text-start font-medium">Date</th>
-                    <th className="px-4 py-2 text-end font-medium">Total</th>
-                    <th className="px-4 py-2 text-end font-medium">Outstanding</th>
-                    <th className="px-4 py-2 text-end font-medium w-28">Apply</th>
-                    {/* Phase 12.23 — post-sale discount column. Hits 6850
-                         Discount Allowed (Indirect Expense). */}
-                    <th className="px-4 py-2 text-end font-medium w-28" title="Post-sale cash discount (hits 6850 Discount Allowed)">Discount</th>
+                  <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
+                    {[
+                      { l: 'Invoice #',   a: 'start' as const, w: undefined as string | undefined },
+                      { l: 'Date',        a: 'start' as const, w: undefined },
+                      { l: 'Total',       a: 'end'   as const, w: undefined },
+                      { l: 'Outstanding', a: 'end'   as const, w: undefined },
+                      { l: 'Apply',       a: 'end'   as const, w: '112px' },
+                      { l: 'Discount',    a: 'end'   as const, w: '112px' },
+                    ].map(c => (
+                      <th key={c.l} className="px-4 py-3" style={{
+                        fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
+                        textTransform: 'uppercase', letterSpacing: '.06em',
+                        textAlign: c.a, width: c.w, whiteSpace: 'nowrap',
+                      }}>{c.l}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
