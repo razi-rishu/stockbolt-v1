@@ -1,4 +1,4 @@
-import { forwardRef, type InputHTMLAttributes } from 'react';
+import { forwardRef, useState, type InputHTMLAttributes } from 'react';
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -6,27 +6,64 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   hint?: string;
 }
 
+/**
+ * Shared text input.
+ *
+ * Restyled in Phase 12.39 to match the inventory-wizard sample look:
+ *   - 11px uppercase tracking-wide slate-500 label
+ *   - 36px tall, 7px radius, slate-200 border, white background
+ *   - 13px text, 8/10 padding
+ *   - indigo focus ring (rgba(99,102,241,.10))
+ *
+ * Any className passed in (e.g. "w-40") is preserved for sizing/layout.
+ */
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, hint, id, className = '', ...rest }, ref) => {
+  ({ label, error, hint, id, className = '', onFocus, onBlur, ...rest }, ref) => {
     const inputId = id ?? label?.toLowerCase().replace(/\s+/g, '-');
+    const [focused, setFocused] = useState(false);
+    const borderColor = error ? '#dc2626' : focused ? '#6366f1' : '#e2e8f0';
     return (
-      <div className="flex flex-col gap-1">
+      <div className={`flex flex-col gap-1 ${className.includes('w-') ? '' : 'w-full'}`}>
         {label && (
-          <label htmlFor={inputId} className="text-sm font-medium text-ink-primary">
+          <label
+            htmlFor={inputId}
+            style={{
+              fontSize: '11px',
+              fontWeight: 600,
+              color: '#64748b',
+              textTransform: 'uppercase',
+              letterSpacing: '.05em',
+              display: 'flex',
+              gap: '3px',
+              alignItems: 'center',
+            }}
+          >
             {label}
-            {rest.required && <span className="ms-1 text-danger-500">*</span>}
+            {rest.required && <span style={{ color: '#ef4444' }}>*</span>}
           </label>
         )}
         <input
           ref={ref}
           id={inputId}
-          className={`h-10 w-full rounded-input border bg-surface-subtle px-4 text-sm text-ink-primary placeholder:text-ink-tertiary focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 ${
-            error ? 'border-danger-500' : 'border-border-strong'
-          } ${className}`}
+          className={className}
+          style={{
+            width: '100%',
+            padding: '8px 10px',
+            fontSize: '13px',
+            border: `1px solid ${borderColor}`,
+            borderRadius: '7px',
+            background: '#fff',
+            color: '#1e293b',
+            outline: 'none',
+            transition: 'border-color .15s, box-shadow .15s',
+            boxShadow: focused ? '0 0 0 3px rgba(99,102,241,.10)' : 'none',
+          }}
+          onFocus={(e) => { setFocused(true); onFocus?.(e); }}
+          onBlur={(e)  => { setFocused(false); onBlur?.(e); }}
           {...rest}
         />
-        {error && <p className="text-xs text-danger-500">{error}</p>}
-        {hint && !error && <p className="text-xs text-ink-tertiary">{hint}</p>}
+        {error && <p style={{ fontSize: '11px', color: '#dc2626', margin: 0 }}>{error}</p>}
+        {hint && !error && <p style={{ fontSize: '11px', color: '#94a3b8', margin: 0 }}>{hint}</p>}
       </div>
     );
   },

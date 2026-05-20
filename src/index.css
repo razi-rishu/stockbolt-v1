@@ -43,6 +43,44 @@ h1.text-2xl.font-bold.text-slate-800 {
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
+/*
+ * Phase 12.39 — uplift legacy in-card section headers used by editors.
+ *
+ * Every editor (invoice, payment, vendor-bill, GRN, PO, transfer,
+ * adjustment, …) labels its sub-sections with
+ *   <h2 className="text-sm font-semibold text-ink-primary">…</h2>
+ * which renders as flat dark-grey text inside the card body. The
+ * wizard sample paints these as an uppercase 11px tracking-wide
+ * slate-500 strip. We rewrite the visual without touching 25 files.
+ */
+.rounded-card.border-border-subtle.bg-surface-card > h2.text-sm.font-semibold.text-ink-primary,
+.rounded-lg.border.border-border.bg-surface-card > h2.text-sm.font-semibold.text-ink-primary,
+[style*="border-radius: 12px"] > h2.text-sm.font-semibold.text-ink-primary {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 12px;
+}
+
+/*
+ * Phase 12.39 — uplift inline `<label className="mb-1 block text-sm
+ * font-medium text-ink-primary">` field labels used directly in 8
+ * editors (invoice, vendor-bill, payment, vendor-payment, GRN, PO,
+ * quote, reset-data). Matches the wizard label style (11px uppercase
+ * tracking-wide slate-500) so labels look consistent next to the new
+ * <Input> / <Select> rendering.
+ */
+label.mb-1.block.text-sm.font-medium.text-ink-primary {
+  font-size: 11px !important;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
 @layer base {
   html {
     font-family: 'DM Sans', system-ui, sans-serif;
