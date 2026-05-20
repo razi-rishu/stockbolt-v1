@@ -1,35 +1,32 @@
 /**
- * ProductWizard — 5-step new-item flow (Phase 12.28).
+ * ProductWizard — 5-step new-item flow (Phase 12.28 / re-styled Phase 12.29).
  *
- * Triggered when a user clicks "+ Add Product" → /products/new. The
- * existing edit-mode form on the same route is only used for editing
- * existing products (Phase 12.26 view-first). For new products this
- * wizard is shown instead.
+ * Visual styling adopted from the user-provided InventoryItemForm.jsx
+ * sample (inline-CSS look, indigo accent, 220px step nav, light-grey
+ * panel headers, top gradient progress bar). Data layer wires into
+ * StockBolt's existing adapter (products / suppliers / units / coa /
+ * warehouses / opening-stock RPC).
  *
  * Steps:
- *   1. Basic info — type (goods/service), names, SKU, brand, category, unit, OE, excise
- *   2. Pricing — selling price, tax, quality tier, description, live margin/markup calculator
+ *   1. Basic info — type, names, SKU, brand, category, unit, OE, excise
+ *   2. Pricing — selling price, tax, quality tier, purchase account,
+ *                description, live margin/markup calculator
  *   3. Identifiers — barcode, serial tracking, HSN, country of origin
  *   4. Supplier — primary supplier + item code + lead time + MOQ + payment terms
- *   5. Stock & location — opening stock + rate (goods only), min/max, warehouse + aisle + bin
+ *   5. Stock & location — opening stock + rate (goods only), min/max,
+ *                          warehouse + aisle + bin, active toggle
  *
  * On Save:
  *   • INSERT product (+ supplier_code if set)
- *   • If type='goods' AND opening_stock > 0 → call post_opening_stock RPC
+ *   • If type='goods' AND opening_stock > 0 → post_opening_stock RPC
  *     (writes stock_ledger 'opening_balance' row + Dr 1300 / Cr 3200 JE)
  *   • Navigate to /products/<id> in read-only view.
  */
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Input } from '@/ui/input';
-import { Select } from '@/ui/select';
-import { Textarea } from '@/ui/textarea';
-import { Button } from '@/ui/button';
-import { Modal } from '@/ui/modal';
 import type {
   BrandRow, CategoryRow, UnitRow, CoaRow,
   ContactRow, WarehouseRow,
@@ -37,11 +34,11 @@ import type {
 
 // ── Step metadata ───────────────────────────────────────────────────────
 const STEPS = [
-  { id: 1, label: 'Basic info' },
-  { id: 2, label: 'Pricing' },
-  { id: 3, label: 'Identifiers' },
-  { id: 4, label: 'Supplier' },
-  { id: 5, label: 'Stock & location' },
+  { id: 1, label: 'Basic info',       icon: '📦' },
+  { id: 2, label: 'Pricing',          icon: '💰' },
+  { id: 3, label: 'Identifiers',      icon: '🔖' },
+  { id: 4, label: 'Supplier',         icon: '🚚' },
+  { id: 5, label: 'Stock & location', icon: '🏭' },
 ] as const;
 
 // ── Form state ──────────────────────────────────────────────────────────
@@ -101,59 +98,225 @@ const initialForm: WizardForm = {
   is_active: true,
 };
 
-// ── Sub-components ──────────────────────────────────────────────────────
+// ── Inline style primitives (matched to sample) ─────────────────────────
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '8px 10px',
+  fontSize: '13px',
+  border: '1px solid #e2e8f0',
+  borderRadius: '7px',
+  background: '#fff',
+  color: '#1e293b',
+  outline: 'none',
+  transition: 'border-color .15s',
+};
 
-function StepNav({
-  step, completed, onJump,
-}: { step: number; completed: Set<number>; onJump: (s: number) => void }) {
+const labelStyle: React.CSSProperties = {
+  fontSize: '11px',
+  fontWeight: 600,
+  color: '#64748b',
+  textTransform: 'uppercase',
+  letterSpacing: '.05em',
+  marginBottom: '4px',
+  display: 'flex',
+  gap: '3px',
+  alignItems: 'center',
+};
+
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
-    <aside className="w-56 shrink-0 rounded-card border border-border-subtle bg-surface-card p-3">
-      <div className="px-2 pb-3 mb-1 border-b border-border-subtle">
-        <div className="text-[10px] font-bold uppercase tracking-wider text-ink-tertiary">New product</div>
-        <div className="mt-1 text-xs text-ink-secondary">Step {step} of 5</div>
-        <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface-muted">
-          <div className="h-1 bg-brand-500 transition-all duration-300" style={{ width: `${(step / 5) * 100}%` }} />
-        </div>
-      </div>
-      {STEPS.map((s) => {
-        const isActive = s.id === step;
-        const isDone = completed.has(s.id);
-        const clickable = isDone || s.id <= step;
-        return (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => clickable && onJump(s.id)}
-            disabled={!clickable}
-            className={`flex w-full items-center gap-3 rounded-card px-3 py-2 text-start text-sm transition-colors ${
-              isActive ? 'bg-brand-50 text-brand-700 font-semibold' :
-              isDone ? 'text-green-700 hover:bg-surface-muted/50 cursor-pointer' :
-              clickable ? 'text-ink-secondary hover:bg-surface-muted/50 cursor-pointer' :
-              'text-ink-tertiary cursor-not-allowed'
-            }`}
-          >
-            <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-              isDone ? 'bg-green-50 text-green-700 border border-green-200' :
-              isActive ? 'bg-brand-100 text-brand-700 border border-brand-200' :
-              'bg-surface-muted text-ink-tertiary border border-border-subtle'
-            }`}>
-              {isDone ? '✓' : s.id}
-            </div>
-            <span>{s.label}</span>
-          </button>
-        );
-      })}
-    </aside>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <label style={labelStyle}>
+        {label}
+        {required && <span style={{ color: '#ef4444' }}>*</span>}
+      </label>
+      {children}
+    </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Input({
+  value, onChange, placeholder, type = 'text', dir, min, step,
+}: {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  placeholder?: string;
+  type?: string;
+  dir?: 'ltr' | 'rtl';
+  min?: string;
+  step?: string;
+}) {
+  const [focused, setFocused] = useState(false);
   return (
-    <div className="rounded-card border border-border-subtle bg-surface-card">
-      <div className="border-b border-border-subtle bg-surface-muted px-5 py-2">
-        <h3 className="text-[10px] font-bold uppercase tracking-wider text-ink-tertiary">{title}</h3>
+    <input
+      type={type}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      dir={dir}
+      min={min}
+      step={step}
+      style={{
+        ...inputStyle,
+        borderColor: focused ? '#6366f1' : '#e2e8f0',
+        boxShadow: focused ? '0 0 0 3px rgba(99,102,241,.1)' : 'none',
+      }}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+    />
+  );
+}
+
+function Select({
+  value, onChange, children,
+}: {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  children: React.ReactNode;
+}) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <select
+      value={value}
+      onChange={onChange}
+      style={{
+        ...inputStyle,
+        borderColor: focused ? '#6366f1' : '#e2e8f0',
+        boxShadow: focused ? '0 0 0 3px rgba(99,102,241,.1)' : 'none',
+        appearance: 'none',
+        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right 10px center',
+        paddingRight: '30px',
+        cursor: 'pointer',
+      }}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+    >
+      {children}
+    </select>
+  );
+}
+
+function Textarea({
+  value, onChange, placeholder, rows = 3,
+}: {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  placeholder?: string;
+  rows?: number;
+}) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <textarea
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      rows={rows}
+      style={{
+        ...inputStyle,
+        resize: 'none',
+        borderColor: focused ? '#6366f1' : '#e2e8f0',
+        boxShadow: focused ? '0 0 0 3px rgba(99,102,241,.1)' : 'none',
+        lineHeight: 1.5,
+      }}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+    />
+  );
+}
+
+function PrefixInput({
+  prefix, value, onChange, placeholder, type = 'text', min, step,
+}: {
+  prefix: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  placeholder?: string;
+  type?: string;
+  min?: string;
+  step?: string;
+}) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <div style={{ display: 'flex' }}>
+      <span style={{
+        padding: '8px 10px',
+        background: '#f8fafc',
+        border: '1px solid #e2e8f0',
+        borderRight: 'none',
+        borderRadius: '7px 0 0 7px',
+        fontSize: '12px',
+        color: '#64748b',
+        whiteSpace: 'nowrap',
+        display: 'flex',
+        alignItems: 'center',
+        fontWeight: 500,
+      }}>{prefix}</span>
+      <input
+        type={type}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        min={min}
+        step={step}
+        style={{
+          ...inputStyle,
+          borderRadius: '0 7px 7px 0',
+          borderColor: focused ? '#6366f1' : '#e2e8f0',
+          boxShadow: focused ? '0 0 0 3px rgba(99,102,241,.1)' : 'none',
+        }}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+      />
+    </div>
+  );
+}
+
+function Badge({ children, color = 'blue' }: { children: React.ReactNode; color?: 'blue' | 'green' | 'amber' | 'purple' | 'red' }) {
+  const colors = {
+    blue:   { bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' },
+    green:  { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' },
+    amber:  { bg: '#fffbeb', text: '#b45309', border: '#fde68a' },
+    purple: { bg: '#f5f3ff', text: '#6d28d9', border: '#ddd6fe' },
+    red:    { bg: '#fef2f2', text: '#dc2626', border: '#fecaca' },
+  };
+  const c = colors[color];
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: '4px',
+      fontSize: '11px', fontWeight: 600,
+      padding: '3px 8px', borderRadius: '6px',
+      background: c.bg, color: c.text, border: `1px solid ${c.border}`,
+    }}>{children}</span>
+  );
+}
+
+function Panel({ icon, title, children }: { icon: string; title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
+      <div style={{
+        background: '#f8fafc', padding: '10px 16px',
+        display: 'flex', alignItems: 'center', gap: '8px',
+        borderBottom: '1px solid #e2e8f0',
+      }}>
+        <span style={{ fontSize: '14px' }}>{icon}</span>
+        <span style={{
+          fontSize: '11px', fontWeight: 700, color: '#64748b',
+          textTransform: 'uppercase', letterSpacing: '.06em',
+        }}>{title}</span>
       </div>
-      <div className="space-y-4 p-5">{children}</div>
+      <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Grid({ cols = 2, children }: { cols?: number; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: '12px' }}>
+      {children}
     </div>
   );
 }
@@ -161,7 +324,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 // ── Main wizard ─────────────────────────────────────────────────────────
 
 export function ProductWizard() {
-  const { t } = useTranslation();
   const navigate = useNavigate();
   const { company_id } = useAuthStore();
 
@@ -171,10 +333,9 @@ export function ProductWizard() {
   const [showReview, setShowReview] = useState(false);
   const [error, setError]         = useState<string | null>(null);
 
-  // Reference data (cached across steps)
   const { data: brands     = [] } = useQuery<BrandRow[]>(    { queryKey: ['brands',     company_id], queryFn: () => getAdapter().brands.list(company_id!),     enabled: !!company_id });
   const { data: categories = [] } = useQuery<CategoryRow[]>( { queryKey: ['categories', company_id], queryFn: () => getAdapter().categories.list(company_id!), enabled: !!company_id });
-  const { data: units      = [] } = useQuery<UnitRow[]>({ queryKey: ['units',      company_id], queryFn: () => getAdapter().units.list(company_id!),      enabled: !!company_id });
+  const { data: units      = [] } = useQuery<UnitRow[]>(     { queryKey: ['units',      company_id], queryFn: () => getAdapter().units.list(company_id!),      enabled: !!company_id });
   const { data: coa        = [] } = useQuery<CoaRow[]>(      { queryKey: ['coa',        company_id], queryFn: () => getAdapter().coa.list(company_id!),        enabled: !!company_id });
   const { data: suppliers  = [] } = useQuery<ContactRow[]>(  { queryKey: ['contacts',   company_id, 'supplier'], queryFn: () => getAdapter().contacts.list(company_id!, 'supplier'), enabled: !!company_id });
   const { data: warehouses = [] } = useQuery<WarehouseRow[]>({ queryKey: ['warehouses', company_id], queryFn: () => getAdapter().warehouses.list(company_id!), enabled: !!company_id });
@@ -183,7 +344,6 @@ export function ProductWizard() {
     setForm((f) => ({ ...f, [k]: v }));
   }
 
-  // ── Validation ─────────────────────────────────────────────────────
   function validateStep(s: number): string | null {
     if (s === 1) {
       if (!form.name.trim()) return 'Name (English) is required';
@@ -195,7 +355,6 @@ export function ProductWizard() {
       if (parseFloat(form.selling_price) < 0) return 'Selling price must be ≥ 0';
     }
     if (s === 5 && form.type === 'goods') {
-      // If opening_stock > 0 then warehouse is required.
       const qty = parseFloat(form.opening_stock) || 0;
       if (qty > 0 && !form.warehouse_id) return 'Warehouse is required to record opening stock';
       if (qty > 0 && !form.opening_stock_rate) return 'Opening stock rate is required when opening stock > 0';
@@ -220,7 +379,6 @@ export function ProductWizard() {
     setStep((s) => Math.max(1, s - 1));
   }
 
-  // ── Save ────────────────────────────────────────────────────────────
   const saveMutation = useMutation({
     mutationFn: async () => {
       const sellingPrice = parseFloat(form.selling_price) || 0;
@@ -229,7 +387,6 @@ export function ProductWizard() {
       const openingQty   = parseFloat(form.opening_stock) || 0;
       const openingRate  = parseFloat(form.opening_stock_rate) || 0;
 
-      // 1) INSERT product
       const productRow = {
         company_id: company_id!,
         sku: form.sku.trim(),
@@ -253,7 +410,6 @@ export function ProductWizard() {
         barcode: form.barcode.trim() || null,
         image_urls: null,
         weight_kg: null,
-        // Phase 12.28 — new fields
         type: form.type,
         hsn_code: form.hsn_code.trim() || null,
         country_of_origin: form.country_of_origin.trim() || null,
@@ -264,7 +420,6 @@ export function ProductWizard() {
 
       const created = await getAdapter().products.create(productRow);
 
-      // 2) Primary supplier code (if specified)
       if (form.supplier_id && form.supplier_sku.trim()) {
         await getAdapter().products.upsertSupplierCode({
           company_id:         company_id!,
@@ -277,7 +432,6 @@ export function ProductWizard() {
         });
       }
 
-      // 3) Opening stock (goods only, qty > 0)
       if (form.type === 'goods' && openingQty > 0 && form.warehouse_id) {
         await getAdapter().stockLedger.postOpeningStock({
           product_id:   created.id,
@@ -289,178 +443,296 @@ export function ProductWizard() {
 
       return created.id;
     },
-    onSuccess: (newId) => {
-      setShowReview(false);
-      navigate(`/products/${newId}`);
-    },
+    onSuccess: (newId) => { setShowReview(false); navigate(`/products/${newId}`); },
     onError: (e: Error) => { setShowReview(false); setError(e.message); },
   });
 
-  // ── Render ─────────────────────────────────────────────────────────
+  const progress = (step / 5) * 100;
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/products')} className="text-sm text-ink-secondary hover:text-ink-primary">
-          ← {t('products.back')}
-        </button>
-        <h1 className="text-xl font-bold text-ink-primary">{t('products.new')}</h1>
-      </div>
-
-      <div className="flex gap-4">
-        <StepNav step={step} completed={completed} onJump={(s) => { setError(null); setStep(s); }} />
-
-        <div className="min-w-0 flex-1 flex flex-col gap-4">
-          {/* Step 1 — Basic info */}
-          {step === 1 && (
-            <Section title="Item identity">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-ink-secondary">Type</label>
-                <div className="inline-flex rounded-card border border-border-subtle bg-surface-muted p-1">
-                  {(['goods', 'service'] as const).map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => set('type', v)}
-                      className={`px-4 py-1.5 rounded-card text-sm transition-colors ${
-                        form.type === v ? 'bg-surface-card text-brand-700 font-semibold shadow-sm' : 'text-ink-secondary'
-                      }`}
-                    >
-                      {v === 'goods' ? '📦 Goods' : '🛠 Service'}
-                    </button>
-                  ))}
-                </div>
-                <p className="mt-1 text-xs text-ink-tertiary">
-                  {form.type === 'service'
-                    ? 'Services skip stock movement and COGS — useful for labour, freight, fees.'
-                    : 'Goods are stock-tracked. Sales reduce inventory, purchases add to it.'}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Input label="Name (English) *" value={form.name}    onChange={(e) => set('name', e.target.value)} />
-                <Input label="Name (Arabic)"     value={form.name_ar} onChange={(e) => set('name_ar', e.target.value)} dir="rtl" />
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <Input label="SKU *" value={form.sku} onChange={(e) => set('sku', e.target.value)} />
-                <Select
-                  label="Unit"
-                  options={[{ value: '', label: '—' }, ...units.map((u) => ({ value: u.id, label: `${u.code} — ${u.name}` }))]}
-                  value={form.unit_id}
-                  onChange={(e) => set('unit_id', e.target.value)}
-                />
-                <Select
-                  label="Brand *"
-                  options={[{ value: '', label: '—' }, ...brands.map((b) => ({ value: b.id, label: b.name }))]}
-                  value={form.brand_id}
-                  onChange={(e) => set('brand_id', e.target.value)}
-                />
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Select
-                  label="Category"
-                  options={[{ value: '', label: '—' }, ...categories.map((c) => ({ value: c.id, label: c.name }))]}
-                  value={form.category_id}
-                  onChange={(e) => set('category_id', e.target.value)}
-                />
-                <Input label="OE Number" value={form.oe_number} onChange={(e) => set('oe_number', e.target.value)} placeholder="Manufacturer part number" />
-              </div>
-              <label className="flex items-center gap-2 cursor-pointer text-sm text-ink-primary">
-                <input type="checkbox" className="h-4 w-4 rounded border-border-strong text-brand-500" checked={form.is_excise} onChange={(e) => set('is_excise', e.target.checked)} />
-                This product is subject to excise tax
-              </label>
-            </Section>
-          )}
-
-          {/* Step 2 — Pricing */}
-          {step === 2 && (
-            <Step2Pricing form={form} set={set} coa={coa} />
-          )}
-
-          {/* Step 3 — Identifiers */}
-          {step === 3 && (
-            <Section title="Barcode &amp; identifiers">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Input label="Barcode (EAN / UPC)" value={form.barcode} onChange={(e) => set('barcode', e.target.value)} placeholder="Scan or enter" />
-                <Select
-                  label="Serial / batch tracking"
-                  options={[
-                    { value: 'none',   label: 'None' },
-                    { value: 'serial', label: 'Serial number' },
-                  ]}
-                  value={form.requires_serial ? 'serial' : 'none'}
-                  onChange={(e) => set('requires_serial', e.target.value === 'serial')}
-                />
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Input label="HSN / SAC code"     value={form.hsn_code}          onChange={(e) => set('hsn_code', e.target.value)}          placeholder="India GST classification" />
-                <Input label="Country of origin"  value={form.country_of_origin} onChange={(e) => set('country_of_origin', e.target.value)} placeholder="e.g. UAE, China, India" />
-              </div>
-            </Section>
-          )}
-
-          {/* Step 4 — Supplier */}
-          {step === 4 && (
-            <Section title="Primary supplier (optional)">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Select
-                  label="Supplier"
-                  options={[{ value: '', label: '—' }, ...suppliers.map((s) => ({ value: s.id, label: s.name }))]}
-                  value={form.supplier_id}
-                  onChange={(e) => set('supplier_id', e.target.value)}
-                />
-                <Input label="Supplier item code" value={form.supplier_sku} onChange={(e) => set('supplier_sku', e.target.value)} placeholder="Supplier's own SKU" />
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <Input label="Lead time (days)"     type="number" min="0"      value={form.lead_time_days}     onChange={(e) => set('lead_time_days', e.target.value)}     placeholder="e.g. 7" />
-                <Input label="Min order qty"        type="number" min="0" step="0.001" value={form.min_order_qty}      onChange={(e) => set('min_order_qty', e.target.value)}      placeholder="e.g. 10" />
-                <Input label="Payment terms (days)" type="number" min="0"      value={form.payment_terms_days} onChange={(e) => set('payment_terms_days', e.target.value)} placeholder="e.g. 30" />
-              </div>
-              <p className="text-xs text-ink-tertiary">Optional. You can add more suppliers and edit these later from the Supplier Codes tab.</p>
-            </Section>
-          )}
-
-          {/* Step 5 — Stock & location */}
-          {step === 5 && (
-            <Step5Stock form={form} set={set} warehouses={warehouses} />
-          )}
-
-          {error && (
-            <div className="rounded-card border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
-              {error}
-            </div>
-          )}
-
-          {/* Footer nav */}
-          <div className="flex items-center justify-between rounded-card border border-border-subtle bg-surface-card p-3">
-            <Button variant="ghost" size="sm" onClick={goPrev} disabled={step === 1}>← Back</Button>
-            <div className="flex gap-2">
-              <Button variant="ghost" size="sm" onClick={() => navigate('/products')}>Cancel</Button>
-              <Button size="sm" onClick={goNext}>
-                {step === 5 ? 'Review & save →' : `Next: ${STEPS[step].label} →`}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Review modal */}
+    <div style={{ fontFamily: "'Inter', system-ui, sans-serif", background: '#f8fafc', minHeight: '100vh', margin: '-1.5rem' }}>
       {showReview && (
         <ReviewModal
           form={form}
-          warehouses={warehouses}
-          suppliers={suppliers}
           brands={brands}
+          suppliers={suppliers}
+          warehouses={warehouses}
           onClose={() => setShowReview(false)}
           onConfirm={() => saveMutation.mutate()}
           saving={saveMutation.isPending}
         />
       )}
+
+      {/* Top progress bar */}
+      <div style={{ height: '3px', background: '#e2e8f0' }}>
+        <div style={{
+          height: '3px',
+          background: 'linear-gradient(90deg, #6366f1, #8b5cf6)',
+          width: `${progress}%`,
+          transition: 'width .4s ease',
+        }} />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', minHeight: 'calc(100vh - 3px)' }}>
+        {/* Left sidebar with step nav */}
+        <aside style={{ background: '#fff', borderRight: '1px solid #e2e8f0', padding: '24px 0', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '0 20px 20px', borderBottom: '1px solid #f1f5f9', marginBottom: '8px' }}>
+            <div style={{
+              fontSize: '11px', fontWeight: 700, color: '#94a3b8',
+              textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '4px',
+            }}>New item</div>
+            <div style={{ fontSize: '13px', color: '#475569' }}>{form.name || 'Untitled item'}</div>
+          </div>
+
+          {STEPS.map((s) => {
+            const isActive = s.id === step;
+            const isDone   = completed.has(s.id);
+            const clickable = isDone || s.id <= step;
+            return (
+              <div
+                key={s.id}
+                onClick={() => clickable && setStep(s.id)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '10px',
+                  padding: '11px 20px',
+                  cursor: clickable ? 'pointer' : 'default',
+                  borderRight: isActive ? '2px solid #6366f1' : '2px solid transparent',
+                  background: isActive ? '#eef2ff' : 'transparent',
+                  transition: 'all .15s',
+                }}
+              >
+                <div style={{
+                  width: '24px', height: '24px', borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '11px', fontWeight: 700, flexShrink: 0,
+                  background: isDone ? '#f0fdf4' : isActive ? '#eef2ff' : '#f8fafc',
+                  color: isDone ? '#16a34a' : isActive ? '#4338ca' : '#94a3b8',
+                  border: `1.5px solid ${isDone ? '#bbf7d0' : isActive ? '#c7d2fe' : '#e2e8f0'}`,
+                }}>{isDone ? '✓' : s.id}</div>
+                <span style={{
+                  fontSize: '13px',
+                  color: isDone ? '#16a34a' : isActive ? '#4338ca' : '#64748b',
+                  fontWeight: isActive ? 600 : 400,
+                }}>{s.label}</span>
+              </div>
+            );
+          })}
+
+          <div style={{ marginTop: 'auto', padding: '20px', borderTop: '1px solid #f1f5f9' }}>
+            <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '8px' }}>Step {step} of 5</div>
+            <div style={{ height: '4px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
+              <div style={{ height: '4px', background: '#6366f1', width: `${progress}%`, borderRadius: '4px', transition: 'width .4s' }} />
+            </div>
+          </div>
+        </aside>
+
+        {/* Main content */}
+        <div style={{ display: 'flex', flexDirection: 'column', background: '#f8fafc' }}>
+          {/* Header */}
+          <div style={{
+            background: '#fff', borderBottom: '1px solid #e2e8f0',
+            padding: '16px 28px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <div>
+              <div style={{
+                fontSize: '11px', color: '#94a3b8',
+                display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px',
+              }}>
+                <span style={{ cursor: 'pointer' }} onClick={() => navigate('/products')}>Inventory</span>
+                <span>›</span>
+                <span style={{ cursor: 'pointer' }} onClick={() => navigate('/products')}>Items</span>
+                <span>›</span>
+                <span>New item</span>
+              </div>
+              <div style={{ fontSize: '17px', fontWeight: 700, color: '#1e293b' }}>
+                {STEPS[step - 1].icon} {STEPS[step - 1].label}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <Badge color="amber">⏱ Draft</Badge>
+              <button
+                onClick={() => setShowReview(true)}
+                style={{
+                  padding: '7px 14px',
+                  border: '1px solid #e2e8f0', borderRadius: '8px',
+                  background: '#fff', fontSize: '12px',
+                  cursor: 'pointer', color: '#475569',
+                  display: 'flex', alignItems: 'center', gap: '5px',
+                }}
+              >👁 Preview</button>
+            </div>
+          </div>
+
+          {/* Step body */}
+          <div style={{ flex: 1, padding: '24px 28px', overflowY: 'auto' }}>
+            {step === 1 && <Step1 form={form} set={set} brands={brands} categories={categories} units={units} />}
+            {step === 2 && <Step2 form={form} set={set} coa={coa} />}
+            {step === 3 && <Step3 form={form} set={set} />}
+            {step === 4 && <Step4 form={form} set={set} suppliers={suppliers} />}
+            {step === 5 && <Step5 form={form} set={set} warehouses={warehouses} />}
+
+            {error && (
+              <div style={{
+                marginTop: '14px',
+                background: '#fef2f2', border: '1px solid #fecaca',
+                borderRadius: '8px', padding: '10px 14px',
+                fontSize: '13px', color: '#dc2626',
+              }}>{error}</div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div style={{
+            background: '#fff', borderTop: '1px solid #e2e8f0',
+            padding: '14px 28px',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          }}>
+            <button
+              onClick={goPrev}
+              disabled={step === 1}
+              style={{
+                padding: '9px 18px',
+                border: '1px solid #e2e8f0', borderRadius: '8px',
+                background: '#fff', fontSize: '13px',
+                cursor: step === 1 ? 'not-allowed' : 'pointer',
+                color: step === 1 ? '#cbd5e1' : '#475569',
+                display: 'flex', alignItems: 'center', gap: '6px',
+              }}
+            >← Back</button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => navigate('/products')}
+                style={{
+                  padding: '9px 18px',
+                  border: '1px solid #e2e8f0', borderRadius: '8px',
+                  background: '#fff', fontSize: '13px',
+                  cursor: 'pointer', color: '#475569',
+                }}
+              >Cancel</button>
+              <button
+                onClick={goNext}
+                disabled={!!validateStep(step)}
+                style={{
+                  padding: '9px 22px',
+                  border: 'none', borderRadius: '8px',
+                  background: validateStep(step) ? '#c7d2fe' : '#6366f1',
+                  fontSize: '13px',
+                  cursor: validateStep(step) ? 'not-allowed' : 'pointer',
+                  color: '#fff', fontWeight: 600,
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  transition: 'background .15s',
+                }}
+              >
+                {step === 5 ? 'Review & save' : `Next: ${STEPS[step].label}`} →
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-// ── Step 2 — Pricing (with live margin calc) ────────────────────────────
-function Step2Pricing({
+// ── Step 1 ──────────────────────────────────────────────────────────────
+function Step1({
+  form, set, brands, categories, units,
+}: {
+  form: WizardForm;
+  set: <K extends keyof WizardForm>(k: K, v: WizardForm[K]) => void;
+  brands: BrandRow[];
+  categories: CategoryRow[];
+  units: UnitRow[];
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <Panel icon="🏷️" title="Item identity">
+        <div>
+          <label style={labelStyle}>Type</label>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {(['goods', 'service'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => set('type', t)}
+                style={{
+                  padding: '7px 18px', borderRadius: '7px',
+                  border: `1.5px solid ${form.type === t ? '#6366f1' : '#e2e8f0'}`,
+                  background: form.type === t ? '#eef2ff' : '#fff',
+                  color: form.type === t ? '#4338ca' : '#64748b',
+                  fontWeight: form.type === t ? 600 : 400,
+                  fontSize: '13px', cursor: 'pointer',
+                  transition: 'all .15s',
+                }}
+              >
+                {t === 'goods' ? '📦 Goods' : '🛠 Service'}
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px' }}>
+            {form.type === 'service'
+              ? 'Services skip stock movement and COGS — useful for labour, freight, fees.'
+              : 'Goods are stock-tracked. Sales reduce inventory, purchases add to it.'}
+          </div>
+        </div>
+
+        <Grid cols={2}>
+          <Field label="Name (English)" required>
+            <Input value={form.name}    onChange={(e) => set('name', e.target.value)}    placeholder="Item name in English" />
+          </Field>
+          <Field label="Name (Arabic)">
+            <Input value={form.name_ar} onChange={(e) => set('name_ar', e.target.value)} placeholder="اسم الصنف" dir="rtl" />
+          </Field>
+        </Grid>
+
+        <Grid cols={3}>
+          <Field label="SKU" required>
+            <Input value={form.sku} onChange={(e) => set('sku', e.target.value)} placeholder="e.g. ITEM-001" />
+          </Field>
+          <Field label="Unit">
+            <Select value={form.unit_id} onChange={(e) => set('unit_id', e.target.value)}>
+              <option value="">-- select --</option>
+              {units.map((u) => <option key={u.id} value={u.id}>{u.code} — {u.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="Brand" required>
+            <Select value={form.brand_id} onChange={(e) => set('brand_id', e.target.value)}>
+              <option value="">-- select --</option>
+              {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </Select>
+          </Field>
+        </Grid>
+
+        <Grid cols={2}>
+          <Field label="Category">
+            <Select value={form.category_id} onChange={(e) => set('category_id', e.target.value)}>
+              <option value="">-- select --</option>
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="OE / Replace number">
+            <Input value={form.oe_number} onChange={(e) => set('oe_number', e.target.value)} placeholder="Alternate / OEM number" />
+          </Field>
+        </Grid>
+
+        <label style={{
+          display: 'flex', alignItems: 'center', gap: '8px',
+          fontSize: '13px', color: '#475569', cursor: 'pointer',
+        }}>
+          <input
+            type="checkbox"
+            checked={form.is_excise}
+            onChange={(e) => set('is_excise', e.target.checked)}
+            style={{ accentColor: '#6366f1', width: '14px', height: '14px' }}
+          />
+          It is an excise product
+        </label>
+      </Panel>
+    </div>
+  );
+}
+
+// ── Step 2 — Pricing ────────────────────────────────────────────────────
+function Step2({
   form, set, coa,
 }: {
   form: WizardForm;
@@ -468,8 +740,7 @@ function Step2Pricing({
   coa: CoaRow[];
 }) {
   const selling = parseFloat(form.selling_price) || 0;
-  // Cost is the opening_stock_rate if entered, otherwise no calc.
-  const cost = parseFloat(form.opening_stock_rate) || 0;
+  const cost    = parseFloat(form.opening_stock_rate) || 0;
   const { margin, markup } = useMemo(() => {
     if (selling <= 0 || cost <= 0) return { margin: null as number | null, markup: null as number | null };
     return {
@@ -478,91 +749,203 @@ function Step2Pricing({
     };
   }, [selling, cost]);
 
-  const purchaseAccountOpts = [
-    { value: '', label: '(default: 1300 Inventory)' },
-    ...coa
-      .filter((a) => a.is_active && (a.type === 'asset' || a.type === 'expense'))
-      .map((a) => ({ value: a.id, label: `${a.code} — ${a.name}` })),
-  ];
-
   return (
-    <Section title="Pricing">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       {margin !== null && (
-        <div className="grid grid-cols-3 gap-3">
-          <Tile label="Selling price" value={`AED ${selling.toFixed(2)}`} color="brand" />
-          <Tile label="Gross margin"  value={`${margin}%`} color={margin > 20 ? 'green' : 'amber'} />
-          <Tile label="Markup"        value={`${markup}%`} color="blue" />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+          {[
+            { label: 'Selling price', value: `AED ${selling.toFixed(2)}`, color: '#6366f1' },
+            { label: 'Gross margin',  value: `${margin}%`, color: (margin as number) > 20 ? '#16a34a' : '#d97706' },
+            { label: 'Markup',        value: `${markup}%`, color: '#0ea5e9' },
+          ].map((s) => (
+            <div key={s.label} style={{
+              background: '#f8fafc', border: '1px solid #e2e8f0',
+              borderRadius: '10px', padding: '12px 14px',
+            }}>
+              <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 500, marginBottom: '4px' }}>{s.label}</div>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: s.color }}>{s.value}</div>
+            </div>
+          ))}
         </div>
       )}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Input
-          label="Selling price (AED) *"
-          type="number" min="0" step="0.01"
-          value={form.selling_price}
-          onChange={(e) => set('selling_price', e.target.value)}
-        />
-        <Select
-          label="Tax category"
-          options={[
-            { value: 'standard',   label: 'Standard Rate (5%)' },
-            { value: 'zero_rated', label: 'Zero Rated' },
-            { value: 'exempt',     label: 'Exempt' },
-          ]}
-          value={form.tax_category}
-          onChange={(e) => set('tax_category', e.target.value as WizardForm['tax_category'])}
-        />
-      </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Select
-          label="Quality tier"
-          options={[
-            { value: '',        label: '—' },
-            { value: 'genuine', label: 'Genuine' },
-            { value: 'oem',     label: 'OEM' },
-            { value: 'premium', label: 'Premium' },
-            { value: 'economy', label: 'Economy' },
-          ]}
-          value={form.quality_tier}
-          onChange={(e) => set('quality_tier', e.target.value as WizardForm['quality_tier'])}
-        />
-        <Select
-          label="Purchase account"
-          options={purchaseAccountOpts}
-          value={form.purchase_account_id}
-          onChange={(e) => set('purchase_account_id', e.target.value)}
-        />
-      </div>
-      <Textarea
-        label="Description"
-        rows={3}
-        value={form.description}
-        onChange={(e) => set('description', e.target.value)}
-        placeholder="Internal notes / spec / part details"
-      />
-      <p className="text-xs text-ink-tertiary">
-        Tip: enter Opening Stock Rate in Step 5 to see live margin / markup based on cost.
-      </p>
-    </Section>
+
+      <Panel icon="🏷️" title="Sales information">
+        <Grid cols={2}>
+          <Field label="Selling price" required>
+            <PrefixInput
+              prefix="AED" type="number" min="0" step="0.01"
+              value={form.selling_price}
+              onChange={(e) => set('selling_price', e.target.value)}
+              placeholder="0.00"
+            />
+          </Field>
+          <Field label="Tax">
+            <Select value={form.tax_category} onChange={(e) => set('tax_category', e.target.value as WizardForm['tax_category'])}>
+              <option value="standard">Standard Rate [5%]</option>
+              <option value="zero_rated">Zero Rated</option>
+              <option value="exempt">Exempt</option>
+            </Select>
+          </Field>
+        </Grid>
+        <Field label="Quality tier">
+          <Select value={form.quality_tier} onChange={(e) => set('quality_tier', e.target.value as WizardForm['quality_tier'])}>
+            <option value="">-- none --</option>
+            <option value="genuine">Genuine</option>
+            <option value="oem">OEM</option>
+            <option value="premium">Premium</option>
+            <option value="economy">Economy</option>
+          </Select>
+        </Field>
+        <Field label="Description">
+          <Textarea
+            value={form.description}
+            onChange={(e) => set('description', e.target.value)}
+            placeholder="Sales notes…"
+            rows={2}
+          />
+        </Field>
+      </Panel>
+
+      <Panel icon="🛒" title="Purchase information">
+        <Field label="Purchase account">
+          <Select value={form.purchase_account_id} onChange={(e) => set('purchase_account_id', e.target.value)}>
+            <option value="">(default: 1300 Inventory)</option>
+            {coa
+              .filter((a) => a.is_active && (a.type === 'asset' || a.type === 'expense'))
+              .map((a) => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+          </Select>
+        </Field>
+        <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+          When this product appears on a vendor bill, it posts to this account.
+          Cost basis is tracked dynamically via Moving Average Cost (MAC) — no static cost field.
+        </div>
+      </Panel>
+    </div>
   );
 }
 
-function Tile({ label, value, color }: { label: string; value: string; color: 'brand' | 'green' | 'amber' | 'blue' }) {
-  const colorMap = {
-    brand: 'text-brand-600',
-    green: 'text-green-700',
-    amber: 'text-amber-700',
-    blue:  'text-blue-700',
-  };
+// ── Step 3 — Identifiers ────────────────────────────────────────────────
+function Step3({
+  form, set,
+}: {
+  form: WizardForm;
+  set: <K extends keyof WizardForm>(k: K, v: WizardForm[K]) => void;
+}) {
   return (
-    <div className="rounded-card border border-border-subtle bg-surface-muted/40 px-4 py-3">
-      <div className="text-[10px] font-bold uppercase tracking-wider text-ink-tertiary">{label}</div>
-      <div className={`mt-1 font-mono text-xl font-semibold ${colorMap[color]}`}>{value}</div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <Panel icon="🔖" title="Barcode & tracking">
+        <Grid cols={2}>
+          <Field label="Barcode (EAN / UPC)">
+            <Input value={form.barcode} onChange={(e) => set('barcode', e.target.value)} placeholder="Scan or enter barcode" />
+          </Field>
+          <Field label="Serial / batch tracking">
+            <Select
+              value={form.requires_serial ? 'serial' : 'none'}
+              onChange={(e) => set('requires_serial', e.target.value === 'serial')}
+            >
+              <option value="none">None</option>
+              <option value="serial">Serial number</option>
+            </Select>
+          </Field>
+        </Grid>
+        {form.barcode && (
+          <div style={{
+            background: '#f8fafc', border: '1px solid #e2e8f0',
+            borderRadius: '10px', padding: '14px',
+            display: 'flex', alignItems: 'center', gap: '12px',
+          }}>
+            <span style={{ fontSize: '28px' }}>🔲</span>
+            <div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 500 }}>Barcode preview</div>
+              <div style={{
+                fontFamily: 'monospace', fontSize: '18px', fontWeight: 700,
+                letterSpacing: '3px', color: '#1e293b', marginTop: '2px',
+              }}>{form.barcode}</div>
+            </div>
+            <Badge color="green">Valid</Badge>
+          </div>
+        )}
+      </Panel>
+
+      <Panel icon="🏷️" title="Tax / customs identifiers">
+        <Grid cols={2}>
+          <Field label="HSN / SAC code">
+            <Input value={form.hsn_code} onChange={(e) => set('hsn_code', e.target.value)} placeholder="India GST classification" />
+          </Field>
+          <Field label="Country of origin">
+            <Input value={form.country_of_origin} onChange={(e) => set('country_of_origin', e.target.value)} placeholder="e.g. UAE, China, India" />
+          </Field>
+        </Grid>
+      </Panel>
+    </div>
+  );
+}
+
+// ── Step 4 — Supplier ───────────────────────────────────────────────────
+function Step4({
+  form, set, suppliers,
+}: {
+  form: WizardForm;
+  set: <K extends keyof WizardForm>(k: K, v: WizardForm[K]) => void;
+  suppliers: ContactRow[];
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <Panel icon="🚚" title="Primary supplier (optional)">
+        <Grid cols={2}>
+          <Field label="Supplier name">
+            <Select value={form.supplier_id} onChange={(e) => set('supplier_id', e.target.value)}>
+              <option value="">-- select supplier --</option>
+              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="Supplier item code">
+            <Input value={form.supplier_sku} onChange={(e) => set('supplier_sku', e.target.value)} placeholder="Supplier's own SKU" />
+          </Field>
+        </Grid>
+        <Grid cols={3}>
+          <Field label="Lead time (days)">
+            <Input
+              type="number" min="0"
+              value={form.lead_time_days}
+              onChange={(e) => set('lead_time_days', e.target.value)}
+              placeholder="e.g. 7"
+            />
+          </Field>
+          <Field label="Min order qty">
+            <Input
+              type="number" min="0" step="0.001"
+              value={form.min_order_qty}
+              onChange={(e) => set('min_order_qty', e.target.value)}
+              placeholder="e.g. 10"
+            />
+          </Field>
+          <Field label="Payment terms (days)">
+            <Input
+              type="number" min="0"
+              value={form.payment_terms_days}
+              onChange={(e) => set('payment_terms_days', e.target.value)}
+              placeholder="e.g. 30"
+            />
+          </Field>
+        </Grid>
+      </Panel>
+
+      <Panel icon="📋" title="More suppliers">
+        <div style={{
+          border: '1px dashed #e2e8f0', borderRadius: '10px',
+          padding: '20px', textAlign: 'center',
+          color: '#94a3b8', fontSize: '13px',
+        }}>
+          You can add more suppliers after saving — Product detail › Supplier Codes tab.
+        </div>
+      </Panel>
     </div>
   );
 }
 
 // ── Step 5 — Stock & location ───────────────────────────────────────────
-function Step5Stock({
+function Step5({
   form, set, warehouses,
 }: {
   form: WizardForm;
@@ -571,62 +954,86 @@ function Step5Stock({
 }) {
   const isService = form.type === 'service';
   return (
-    <>
-      {isService && (
-        <div className="rounded-card border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-          ℹ This is a Service item — stock fields below are not applicable. You can still set min/max thresholds for tracking purposes.
-        </div>
-      )}
-      <Section title="Inventory thresholds">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Input label="Reorder level (min stock)" type="number" min="0" step="0.001" value={form.min_stock_level} onChange={(e) => set('min_stock_level', e.target.value)} />
-          <Input label="Maximum stock (optional)"  type="number" min="0" step="0.001" value={form.max_stock_level} onChange={(e) => set('max_stock_level', e.target.value)} />
-        </div>
-      </Section>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '10px',
+        padding: '12px 16px',
+        background: '#fffbeb', border: '1px solid #fde68a',
+        borderRadius: '10px', fontSize: '13px', color: '#92400e',
+      }}>
+        <span>⚠️</span>
+        <span>Inventory tracking cannot be changed once transactions have been created for this item.</span>
+      </div>
+
+      <Panel icon="📦" title="Inventory thresholds">
+        <Grid cols={2}>
+          <Field label="Reorder level (min stock)">
+            <Input type="number" min="0" step="0.001" value={form.min_stock_level} onChange={(e) => set('min_stock_level', e.target.value)} placeholder="0" />
+          </Field>
+          <Field label="Maximum stock (optional)">
+            <Input type="number" min="0" step="0.001" value={form.max_stock_level} onChange={(e) => set('max_stock_level', e.target.value)} placeholder="—" />
+          </Field>
+        </Grid>
+      </Panel>
 
       {!isService && (
-        <Section title="Opening stock (one-time)">
-          <p className="text-xs text-ink-tertiary">
-            Lets you record stock you already have on hand without entering a fake purchase bill.
-            Posts an <span className="font-mono">opening_balance</span> row to the stock ledger and a JE:{' '}
-            <span className="font-mono">Dr 1300 Inventory / Cr 3200 Owner&apos;s Equity</span>. Leave blank if not needed.
-          </p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Input label="Opening qty"           type="number" min="0" step="0.001" value={form.opening_stock}      onChange={(e) => set('opening_stock', e.target.value)} />
-            <Input label="Unit cost (AED)"       type="number" min="0" step="0.01"  value={form.opening_stock_rate} onChange={(e) => set('opening_stock_rate', e.target.value)} placeholder="0.00" />
-            <Select
-              label="Warehouse"
-              options={[{ value: '', label: '—' }, ...warehouses.map((w) => ({ value: w.id, label: w.name }))]}
-              value={form.warehouse_id}
-              onChange={(e) => set('warehouse_id', e.target.value)}
-            />
+        <Panel icon="📥" title="Opening stock (one-time)">
+          <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+            Lets you record stock already on hand without entering a fake purchase. Posts an{' '}
+            <code style={{ background: '#f1f5f9', padding: '1px 5px', borderRadius: '3px' }}>opening_balance</code>{' '}
+            row to the stock ledger and a JE:{' '}
+            <code style={{ background: '#f1f5f9', padding: '1px 5px', borderRadius: '3px' }}>Dr 1300 Inventory / Cr 3200 Owner&apos;s Equity</code>.
+            Leave blank if not needed.
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input label="Default aisle (optional)" value={form.default_aisle} onChange={(e) => set('default_aisle', e.target.value)} placeholder="e.g. A3-R2" />
-            <Input label="Default bin (optional)"   value={form.default_bin}   onChange={(e) => set('default_bin', e.target.value)}   placeholder="e.g. Bin 12" />
-          </div>
-        </Section>
+          <Grid cols={3}>
+            <Field label="Opening qty">
+              <Input type="number" min="0" step="0.001" value={form.opening_stock}      onChange={(e) => set('opening_stock', e.target.value)} placeholder="0" />
+            </Field>
+            <Field label="Unit cost (AED)">
+              <PrefixInput prefix="AED" type="number" min="0" step="0.01" value={form.opening_stock_rate} onChange={(e) => set('opening_stock_rate', e.target.value)} placeholder="0.00" />
+            </Field>
+            <Field label="Warehouse">
+              <Select value={form.warehouse_id} onChange={(e) => set('warehouse_id', e.target.value)}>
+                <option value="">-- select --</option>
+                {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+              </Select>
+            </Field>
+          </Grid>
+          <Grid cols={2}>
+            <Field label="Default aisle / rack">
+              <Input value={form.default_aisle} onChange={(e) => set('default_aisle', e.target.value)} placeholder="e.g. A3-R2" />
+            </Field>
+            <Field label="Default bin / shelf">
+              <Input value={form.default_bin} onChange={(e) => set('default_bin', e.target.value)} placeholder="e.g. Bin 12" />
+            </Field>
+          </Grid>
+        </Panel>
       )}
 
-      <Section title="Status">
-        <label className="flex items-center gap-2 cursor-pointer text-sm text-ink-primary">
-          <input type="checkbox" className="h-4 w-4 rounded border-border-strong text-brand-500" checked={form.is_active} onChange={(e) => set('is_active', e.target.checked)} />
+      <Panel icon="✅" title="Status">
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#475569', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={form.is_active}
+            onChange={(e) => set('is_active', e.target.checked)}
+            style={{ accentColor: '#6366f1', width: '14px', height: '14px' }}
+          />
           Active (un-tick to hide from pickers)
         </label>
-      </Section>
-    </>
+      </Panel>
+    </div>
   );
 }
 
 // ── Review modal ────────────────────────────────────────────────────────
 function ReviewModal({
-  form, warehouses, suppliers, brands,
+  form, brands, suppliers, warehouses,
   onClose, onConfirm, saving,
 }: {
   form: WizardForm;
-  warehouses: WarehouseRow[];
-  suppliers: ContactRow[];
   brands: BrandRow[];
+  suppliers: ContactRow[];
+  warehouses: WarehouseRow[];
   onClose: () => void;
   onConfirm: () => void;
   saving: boolean;
@@ -639,40 +1046,98 @@ function ReviewModal({
   const openingValue = openingQty * openingRate;
 
   const rows: [string, string][] = [
-    ['Type',             form.type === 'goods' ? 'Goods (stock-tracked)' : 'Service (no stock)'],
-    ['Name',             form.name],
-    ['SKU',              form.sku],
-    ['Brand',            brandName],
-    ['Selling price',    `AED ${(parseFloat(form.selling_price) || 0).toFixed(2)}`],
-    ['Tax',              form.tax_category],
-    ['Barcode',          form.barcode || '—'],
-    ['HSN',              form.hsn_code || '—'],
-    ['Country',          form.country_of_origin || '—'],
-    ['Supplier',         supplierName],
-    ['Opening stock',    openingQty > 0 ? `${openingQty} × AED ${openingRate.toFixed(2)} = AED ${openingValue.toFixed(2)}` : '—'],
-    ['Warehouse',        warehouseName],
-    ['Active',           form.is_active ? 'Yes' : 'No'],
+    ['Type',          form.type === 'goods' ? 'Goods (stock-tracked)' : 'Service (no stock)'],
+    ['Name',          form.name],
+    ['SKU',           form.sku],
+    ['Brand',         brandName],
+    ['Selling price', `AED ${(parseFloat(form.selling_price) || 0).toFixed(2)}`],
+    ['Tax',           form.tax_category],
+    ['Barcode',       form.barcode || '—'],
+    ['HSN',           form.hsn_code || '—'],
+    ['Country',       form.country_of_origin || '—'],
+    ['Supplier',      supplierName],
+    ['Opening stock', openingQty > 0 ? `${openingQty} × AED ${openingRate.toFixed(2)} = AED ${openingValue.toFixed(2)}` : '—'],
+    ['Warehouse',     warehouseName],
+    ['Active',        form.is_active ? 'Yes' : 'No'],
   ];
 
   return (
-    <Modal open={true} onClose={onClose} title="Review and save" width="md">
-      <div className="space-y-2">
-        {rows.map(([k, v]) => (
-          <div key={k} className="flex justify-between border-b border-border-subtle py-2 text-sm last:border-0">
-            <span className="text-ink-tertiary">{k}</span>
-            <span className="font-medium text-ink-primary">{v}</span>
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(15,23,42,.45)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#fff', borderRadius: '16px',
+        width: '520px', maxHeight: '80vh', overflow: 'auto',
+        boxShadow: '0 20px 60px rgba(0,0,0,.2)',
+      }}>
+        <div style={{
+          padding: '20px 24px 16px',
+          borderBottom: '1px solid #e2e8f0',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <div>
+            <div style={{ fontSize: '17px', fontWeight: 700, color: '#1e293b' }}>Review item</div>
+            <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Confirm details before saving</div>
           </div>
-        ))}
-        {openingQty > 0 && form.type === 'goods' && (
-          <div className="mt-3 rounded-card border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            ⚠ Saving will post a JE for the opening stock: Dr 1300 Inventory AED {openingValue.toFixed(2)} / Cr 3200 Owner&apos;s Equity AED {openingValue.toFixed(2)}.
-          </div>
-        )}
+          <button
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#94a3b8' }}
+          >✕</button>
+        </div>
+        <div style={{ padding: '16px 24px' }}>
+          {rows.map(([k, v]) => (
+            <div key={k} style={{
+              display: 'flex', justifyContent: 'space-between',
+              padding: '8px 0', borderBottom: '1px solid #f1f5f9',
+              fontSize: '13px',
+            }}>
+              <span style={{ color: '#64748b' }}>{k}</span>
+              <span style={{ fontWeight: 500, color: '#1e293b' }}>{v}</span>
+            </div>
+          ))}
+          {openingQty > 0 && form.type === 'goods' && (
+            <div style={{
+              marginTop: '12px',
+              background: '#fffbeb', border: '1px solid #fde68a',
+              borderRadius: '8px', padding: '10px 12px',
+              fontSize: '12px', color: '#92400e',
+            }}>
+              ⚠ Saving will post a JE for the opening stock:
+              Dr 1300 Inventory AED {openingValue.toFixed(2)} /
+              Cr 3200 Owner&apos;s Equity AED {openingValue.toFixed(2)}.
+            </div>
+          )}
+        </div>
+        <div style={{
+          padding: '16px 24px', borderTop: '1px solid #e2e8f0',
+          display: 'flex', gap: '10px', justifyContent: 'flex-end',
+        }}>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            style={{
+              padding: '9px 18px',
+              border: '1px solid #e2e8f0', borderRadius: '8px',
+              background: '#fff', fontSize: '13px',
+              cursor: saving ? 'not-allowed' : 'pointer', color: '#64748b',
+            }}
+          >Edit</button>
+          <button
+            onClick={onConfirm}
+            disabled={saving}
+            style={{
+              padding: '9px 20px',
+              border: 'none', borderRadius: '8px',
+              background: saving ? '#c7d2fe' : '#6366f1',
+              fontSize: '13px',
+              cursor: saving ? 'not-allowed' : 'pointer',
+              color: '#fff', fontWeight: 600,
+            }}
+          >{saving ? 'Saving…' : 'Save item ✓'}</button>
+        </div>
       </div>
-      <div className="mt-4 flex justify-end gap-2">
-        <Button variant="ghost" onClick={onClose} disabled={saving}>Back to edit</Button>
-        <Button onClick={onConfirm} loading={saving}>Save product</Button>
-      </div>
-    </Modal>
+    </div>
   );
 }
