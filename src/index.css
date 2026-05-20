@@ -81,6 +81,178 @@ label.mb-1.block.text-sm.font-medium.text-ink-primary {
   margin-bottom: 4px;
 }
 
+/* ──────────────────────────────────────────────────────────────────────────
+ * Phase 12.41 — final sweep: lift every remaining off-design CSS pattern
+ * to the new look. Targets the banking module, accounting editors,
+ * chart-of-accounts, journal-entries and any other page that was built
+ * with raw `bg-white border border-slate-200 rounded-lg` + slate Tailwind
+ * status pills and never picked up the earlier global uplifts.
+ * ────────────────────────────────────────────────────────────────────── */
+
+/* List page outer cards built with raw slate-200 borders */
+.bg-white.border.border-slate-200.rounded-lg {
+  border-radius: 12px;
+  border-color: #e2e8f0;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  background: #ffffff;
+}
+
+/* Inline table header strips */
+thead.bg-slate-50.border-b.border-slate-200,
+thead.bg-slate-50 {
+  background: #f8fafc;
+}
+thead.bg-slate-50.border-b.border-slate-200 {
+  border-bottom-color: #e2e8f0;
+}
+thead.bg-slate-50.border-b.border-slate-200 th,
+thead.bg-slate-50 th {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Table row dividers */
+tbody.divide-y.divide-slate-100 > tr {
+  border-color: #f1f5f9;
+}
+tbody.divide-y.divide-slate-100 > tr:hover {
+  background-color: #f8fafc;
+}
+
+/* Legacy raw Tailwind status pills used by banking / accounting / journal pages */
+.bg-green-100.text-green-700,
+.bg-emerald-100.text-emerald-700 {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.bg-yellow-100.text-yellow-700,
+.bg-amber-100.text-amber-700 {
+  background: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fde68a;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.bg-red-100.text-red-600,
+.bg-red-100.text-red-700 {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.bg-blue-100.text-blue-700 {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.bg-purple-100.text-purple-700,
+.bg-violet-100.text-violet-700 {
+  background: #f5f3ff;
+  color: #6d28d9;
+  border: 1px solid #ddd6fe;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.bg-sky-100.text-sky-700,
+.bg-cyan-100.text-cyan-700 {
+  background: #ecfeff;
+  color: #0e7490;
+  border: 1px solid #a5f3fc;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.bg-orange-100.text-orange-700 {
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fed7aa;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.bg-gray-100.text-gray-700,
+.bg-gray-100.text-gray-600,
+.bg-gray-100.text-gray-500 {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Legacy mono document links painted blue — re-route to brand indigo */
+.font-mono.text-blue-600,
+a.text-blue-600.hover\:underline,
+.text-blue-600.hover\:underline {
+  color: #4338ca !important;
+}
+
+/* Legacy "primary" buttons created with raw class strings (btn-primary CSS class) */
+.btn-primary {
+  background: #6366f1;
+  color: #fff;
+  border: 1px solid #6366f1;
+  border-radius: 7px;
+  font-weight: 600;
+  font-size: 13px;
+  transition: background-color .15s;
+}
+.btn-primary:hover:not(:disabled) {
+  background: #4f46e5;
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Legacy input-field utility class used by a handful of older screens */
+.input-field {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  background: #fff;
+  color: #1e293b;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.input-field:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.10);
+}
+
+/* Page subheader paragraphs */
+h1.text-2xl.font-bold.text-slate-800 + p.text-sm.text-slate-500,
+h1.text-xl.font-semibold.text-ink-primary + p.text-sm.text-ink-secondary {
+  color: #64748b;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
 @layer base {
   html {
     font-family: 'DM Sans', system-ui, sans-serif;
