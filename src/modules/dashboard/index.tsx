@@ -9,8 +9,15 @@
  *     Recent Inventory (latest products added with current stock)
  *  4. Low Stock Alerts bar (red icon, dynamic state, link to reorder report)
  *  5. Floating Action Button (bottom-right) — opens a quick-action menu
+ *
+ * Restyled in Phase 12.31 to match the inventory-wizard sample look:
+ *  - cards: 1px slate-200 border, 12px radius, soft shadow
+ *  - KPI tiles: gradient icon chips, uppercase slate-500 labels, big slate-900
+ *    values, indigo/red delta pills with arrow glyphs
+ *  - Sales Trend / Recent Inventory / Low Stock rendered in shared <Panel>
+ *  - "Manage Stock" + FAB use the indigo→violet gradient
  */
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -20,6 +27,8 @@ import {
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
 import type { OwnerDashboard } from '@/data/adapter';
+import { Panel } from '@/ui/primitives';
+import { theme } from '@/ui/theme';
 
 // ── Formatters ───────────────────────────────────────────────────────────────
 function fmt(n: number, dp = 2) {
@@ -43,58 +52,90 @@ function fmtToday() {
 }
 
 // ── Inline icons (Lucide-style, hand-rolled to avoid a dep) ─────────────────
-function TrendingUpIcon()  { return <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></svg>; }
-function CartIcon()        { return <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6" /></svg>; }
-function WalletIcon()      { return <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" /></svg>; }
-function StoreIcon()       { return <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7" /><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4" /><path d="M2 7h20" /></svg>; }
-function CoinIcon()        { return <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 6v12" /><path d="M16 10a2 2 0 0 0-2-2h-3a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4H9.5" /></svg>; }
-function HandCoinIcon()    { return <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="16" cy="9" r="2.5" /><path d="M11.5 9h-7M3 13l2 2.5L7 14M14 22l-3-3 1.5-2 4.5 1c2.2.5 4-1.4 4-3.6l-1-5" /></svg>; }
-function AlertTriangleIcon(){ return <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>; }
-function PlusIcon()        { return <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>; }
-function ArrowUpRightIcon(){ return <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17 17 7" /><path d="M7 7h10v10" /></svg>; }
+function TrendingUpIcon()  { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></svg>; }
+function CartIcon()        { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6" /></svg>; }
+function WalletIcon()      { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" /></svg>; }
+function StoreIcon()       { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7" /><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4" /><path d="M2 7h20" /></svg>; }
+function CoinIcon()        { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 6v12" /><path d="M16 10a2 2 0 0 0-2-2h-3a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4H9.5" /></svg>; }
+function HandCoinIcon()    { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="16" cy="9" r="2.5" /><path d="M11.5 9h-7M3 13l2 2.5L7 14M14 22l-3-3 1.5-2 4.5 1c2.2.5 4-1.4 4-3.6l-1-5" /></svg>; }
+function AlertTriangleIcon(){ return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>; }
+function PlusIcon()        { return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>; }
+function ArrowUpRightIcon(){ return <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17 17 7" /><path d="M7 7h10v10" /></svg>; }
+function ArrowUpIcon()     { return <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></svg>; }
+function ArrowDownIcon()   { return <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" /></svg>; }
+
+// ── Card primitive (light slate-200 border, soft shadow) ────────────────────
+const cardStyle: CSSProperties = {
+  background: theme.card,
+  border: `1px solid ${theme.border}`,
+  borderRadius: theme.radiusLg,
+  boxShadow: theme.shadowSm,
+};
 
 // ── KPI tile ─────────────────────────────────────────────────────────────────
+type Tone = 'emerald' | 'violet' | 'slate' | 'orange' | 'sky';
+
+const tonePalette: Record<Tone, { bg: string; fg: string }> = {
+  emerald: { bg: 'linear-gradient(135deg, #ecfdf5, #d1fae5)', fg: '#059669' },
+  violet:  { bg: 'linear-gradient(135deg, #f5f3ff, #ede9fe)', fg: '#7c3aed' },
+  slate:   { bg: 'linear-gradient(135deg, #f8fafc, #f1f5f9)', fg: '#475569' },
+  orange:  { bg: 'linear-gradient(135deg, #fff7ed, #ffedd5)', fg: '#ea580c' },
+  sky:     { bg: 'linear-gradient(135deg, #eff6ff, #dbeafe)', fg: '#2563eb' },
+};
+
 function KpiTile({
-  label,
-  value,
-  sub,
-  delta,
-  icon,
-  iconBg,
-  iconColor,
-  href,
+  label, value, sub, delta, icon, tone, href,
 }: {
   label: string;
   value: string;
   sub: string;
   delta: number | null;
   icon: React.ReactNode;
-  iconBg: string;
-  iconColor: string;
+  tone: Tone;
   href?: string;
 }) {
   const hasDelta = delta !== null;
   const positive = (delta ?? 0) >= 0;
+  const pal = tonePalette[tone];
   const inner = (
-    <div className="rounded-2xl border border-border-subtle bg-surface-card p-5 hover:shadow-sm transition-shadow">
-      <div className={`mb-4 flex h-12 w-12 items-center justify-center rounded-full ${iconBg} ${iconColor}`}>
+    <div
+      style={{ ...cardStyle, padding: '16px' }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = theme.shadowMd; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = theme.shadowSm; }}
+    >
+      <div style={{
+        height: '40px', width: '40px',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        borderRadius: '10px', background: pal.bg, color: pal.fg,
+        marginBottom: '12px',
+      }}>
         {icon}
       </div>
-      <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-ink-primary">{value}</p>
-      <div className="mt-2 flex items-center gap-2">
-        <p className="flex-1 truncate text-xs text-ink-tertiary">{sub}</p>
+      <div style={{
+        fontSize: theme.fontXs, fontWeight: 600, color: theme.inkMuted,
+        textTransform: 'uppercase', letterSpacing: '.05em',
+      }}>{label}</div>
+      <div style={{ marginTop: '4px', fontSize: '22px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>{value}</div>
+      <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <span style={{ flex: 1, fontSize: theme.fontXs, color: theme.inkFaint, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</span>
         {hasDelta && (
-          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-            positive ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
-          }`}>
-            {positive ? '+' : ''}{delta!.toFixed(0)}%
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: '3px',
+            flexShrink: 0,
+            padding: '2px 7px', borderRadius: '999px',
+            fontSize: '10px', fontWeight: 700,
+            background: positive ? '#ecfdf5' : '#fef2f2',
+            color: positive ? '#059669' : '#dc2626',
+            border: `1px solid ${positive ? '#a7f3d0' : '#fecaca'}`,
+          }}>
+            {positive ? <ArrowUpIcon /> : <ArrowDownIcon />}
+            {Math.abs(delta!).toFixed(0)}%
           </span>
         )}
       </div>
     </div>
   );
-  return href ? <Link to={href} className="block">{inner}</Link> : inner;
+  return href ? <Link to={href} style={{ textDecoration: 'none', color: 'inherit' }}>{inner}</Link> : inner;
 }
 
 // ── Floating Action Button with quick-action popover ────────────────────────
@@ -122,22 +163,41 @@ function FloatingActionButton() {
   ];
 
   return (
-    <div ref={containerRef} className="fixed bottom-6 end-6 z-40">
+    <div ref={containerRef} style={{ position: 'fixed', bottom: '24px', insetInlineEnd: '24px', zIndex: 40 }}>
       {open && (
-        <div className="mb-3 w-56 overflow-hidden rounded-card border border-border-subtle bg-surface-card shadow-xl">
-          <p className="border-b border-border-subtle bg-surface-muted px-4 py-2 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">
-            Quick actions
-          </p>
-          <ul className="py-1">
+        <div style={{
+          marginBottom: '12px',
+          width: '224px',
+          background: theme.card,
+          border: `1px solid ${theme.border}`,
+          borderRadius: theme.radiusLg,
+          boxShadow: theme.shadowLg,
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            background: theme.panelHead,
+            borderBottom: `1px solid ${theme.border}`,
+            padding: '8px 16px',
+            fontSize: theme.fontXs, fontWeight: 700, color: theme.inkMuted,
+            textTransform: 'uppercase', letterSpacing: '.06em',
+          }}>Quick actions</div>
+          <ul style={{ listStyle: 'none', margin: 0, padding: '4px 0' }}>
             {actions.map((a) => (
               <li key={a.href}>
                 <button
                   type="button"
                   onClick={() => { setOpen(false); navigate(a.href); }}
-                  className="flex w-full items-center justify-between px-4 py-2 text-start text-sm text-ink-primary hover:bg-surface-muted"
+                  style={{
+                    display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '8px 16px', background: 'transparent', border: 'none',
+                    fontSize: theme.fontBase, color: theme.ink, cursor: 'pointer',
+                    textAlign: 'start',
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = theme.muted; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                 >
                   <span>{a.label}</span>
-                  <span className="text-ink-tertiary"><ArrowUpRightIcon /></span>
+                  <span style={{ color: theme.inkFaint }}><ArrowUpRightIcon /></span>
                 </button>
               </li>
             ))}
@@ -148,7 +208,23 @@ function FloatingActionButton() {
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label="Quick actions"
-        className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg transition-all hover:bg-brand-700 hover:shadow-xl"
+        style={{
+          height: '56px', width: '56px', border: 'none',
+          borderRadius: '999px',
+          background: theme.brandGradient,
+          color: '#fff', cursor: 'pointer',
+          boxShadow: '0 10px 25px rgba(99,102,241,.35)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'transform .15s, box-shadow .15s',
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLElement).style.boxShadow = '0 12px 30px rgba(99,102,241,.45)';
+          (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)';
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLElement).style.boxShadow = '0 10px 25px rgba(99,102,241,.35)';
+          (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
+        }}
       >
         <PlusIcon />
       </button>
@@ -166,15 +242,11 @@ function SalesTrendChart({ data }: { data: { date: string; sales: number; purcha
   const hasData = data.some((d) => d.sales > 0 || d.purchases > 0);
 
   if (!hasData) {
-    return <p className="py-10 text-center text-sm text-ink-tertiary">No transactions in the last 7 days.</p>;
+    return <p style={{ padding: '40px 0', textAlign: 'center', fontSize: theme.fontBase, color: theme.inkFaint }}>No transactions in the last 7 days.</p>;
   }
 
   return (
-    // Give ResponsiveContainer an explicit pixel height rather than 100%.
-    // With height="100%" inside a flex/grid parent, the first measurement
-    // pass returned 0 → Recharts subtracted internal padding → -1, logging
-    // "width(-1) and height(-1) of chart should be greater than 0" twice.
-    <div className="w-full">
+    <div style={{ width: '100%' }}>
       <ResponsiveContainer width="100%" height={256} minWidth={0}>
         <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
           <defs>
@@ -187,11 +259,11 @@ function SalesTrendChart({ data }: { data: { date: string; sales: number; purcha
               <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-          <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} />
+          <CartesianGrid strokeDasharray="3 3" stroke={theme.border} vertical={false} />
+          <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: theme.inkMuted }} />
           <YAxis hide />
           <Tooltip
-            contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
+            contentStyle={{ borderRadius: 8, border: `1px solid ${theme.border}`, fontSize: 12 }}
             formatter={(v, name) => [fmt(Number(v ?? 0)), name === 'sales' ? 'Sales' : 'Purchases']}
             labelFormatter={(l) => `Day: ${l}`}
           />
@@ -200,6 +272,26 @@ function SalesTrendChart({ data }: { data: { date: string; sales: number; purcha
         </AreaChart>
       </ResponsiveContainer>
     </div>
+  );
+}
+
+// ── Small "see more" link chip in panel headers ─────────────────────────────
+function LinkChip({ to, children }: { to: string; children: React.ReactNode }) {
+  return (
+    <Link
+      to={to}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: '4px',
+        padding: '4px 10px',
+        background: theme.muted,
+        color: theme.inkMuted,
+        borderRadius: '999px',
+        fontSize: theme.fontXs, fontWeight: 600,
+        textDecoration: 'none',
+      }}
+    >
+      {children} <ArrowUpRightIcon />
+    </Link>
   );
 }
 
@@ -231,13 +323,20 @@ export default function DashboardPage() {
   }, [company_id]);
 
   if (loading) return (
-    <div className="flex items-center justify-center py-24">
-      <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '96px 0' }}>
+      <div style={{
+        height: '24px', width: '24px',
+        borderRadius: '999px',
+        border: `2px solid ${theme.brand}`,
+        borderTopColor: 'transparent',
+        animation: 'spin 1s linear infinite',
+      }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 
   if (!data) return (
-    <div className="py-24 text-center text-ink-secondary">{t('common.no_data')}</div>
+    <div style={{ padding: '96px 0', textAlign: 'center', color: theme.inkMuted }}>{t('common.no_data')}</div>
   );
 
   // Pre-compute deltas
@@ -249,137 +348,109 @@ export default function DashboardPage() {
   const dAP         = deltaPct(data.outstanding_ap,         data.outstanding_ap_prev);
 
   return (
-    <div className="space-y-6 pb-24">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '96px' }}>
       {/* ── Welcome header ─────────────────────────────────────────────── */}
       <div>
-        <h1 className="text-2xl font-bold text-ink-primary">
+        <h1 style={{
+          margin: 0, fontSize: '22px', fontWeight: 700,
+          color: theme.ink, letterSpacing: '-.01em',
+        }}>
           Welcome StockBolt{firstName ? `, ${firstName}` : ''}
         </h1>
-        <p className="mt-1 text-sm font-medium text-ink-secondary">{fmtToday()}</p>
+        <p style={{
+          margin: '4px 0 0',
+          fontSize: theme.fontBase, fontWeight: 500, color: theme.inkMuted,
+        }}>{fmtToday()}</p>
       </div>
 
       {/* ── 6 KPI tiles ────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-        <KpiTile
-          label="Today Sales"
-          value={`AED ${fmt(data.today_sales_amount)}`}
-          sub="Revenue (excl. VAT)"
-          delta={dSales}
-          icon={<TrendingUpIcon />}
-          iconBg="bg-emerald-50"
-          iconColor="text-emerald-600"
-          href="/sales/invoices"
-        />
-        <KpiTile
-          label="Today Purchases"
-          value={`AED ${fmt(data.today_purchases_amount)}`}
-          sub="Inventory Received"
-          delta={dPurchases}
-          icon={<CartIcon />}
-          iconBg="bg-violet-50"
-          iconColor="text-violet-600"
-          href="/purchasing/bills"
-        />
-        <KpiTile
-          label="Inventory Value"
-          value={`AED ${fmt(data.inventory_value)}`}
-          sub="Asset Value"
-          delta={dInventory}
-          icon={<WalletIcon />}
-          iconBg="bg-slate-100"
-          iconColor="text-slate-600"
-          href="/reports/stock-valuation"
-        />
-        <KpiTile
-          label="SKU Count"
-          value={fmtInt(data.sku_count)}
-          sub="Unique Parts"
-          delta={dSku}
-          icon={<StoreIcon />}
-          iconBg="bg-violet-50"
-          iconColor="text-violet-600"
-          href="/products"
-        />
-        <KpiTile
-          label="Receivables"
-          value={`AED ${fmt(data.outstanding_ar)}`}
-          sub="Outstanding"
-          delta={dAR}
-          icon={<CoinIcon />}
-          iconBg="bg-orange-50"
-          iconColor="text-orange-600"
-          href="/reports/ar-aging"
-        />
-        <KpiTile
-          label="Payables"
-          value={`AED ${fmt(data.outstanding_ap)}`}
-          sub="Outstanding"
-          delta={dAP}
-          icon={<HandCoinIcon />}
-          iconBg="bg-violet-50"
-          iconColor="text-violet-600"
-          href="/reports/ap-aging"
-        />
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        gap: '14px',
+      }}>
+        <KpiTile label="Today Sales"      value={`AED ${fmt(data.today_sales_amount)}`}      sub="Revenue (excl. VAT)" delta={dSales}     icon={<TrendingUpIcon />} tone="emerald" href="/sales/invoices" />
+        <KpiTile label="Today Purchases"  value={`AED ${fmt(data.today_purchases_amount)}`}  sub="Inventory Received"  delta={dPurchases} icon={<CartIcon />}       tone="violet"  href="/purchasing/bills" />
+        <KpiTile label="Inventory Value"  value={`AED ${fmt(data.inventory_value)}`}         sub="Asset Value"         delta={dInventory} icon={<WalletIcon />}     tone="slate"   href="/reports/stock-valuation" />
+        <KpiTile label="SKU Count"        value={fmtInt(data.sku_count)}                     sub="Unique Parts"        delta={dSku}       icon={<StoreIcon />}      tone="sky"     href="/products" />
+        <KpiTile label="Receivables"      value={`AED ${fmt(data.outstanding_ar)}`}          sub="Outstanding"         delta={dAR}        icon={<CoinIcon />}       tone="orange"  href="/reports/ar-aging" />
+        <KpiTile label="Payables"         value={`AED ${fmt(data.outstanding_ap)}`}          sub="Outstanding"         delta={dAP}        icon={<HandCoinIcon />}   tone="violet"  href="/reports/ap-aging" />
       </div>
 
       {/* ── Sales Trend + Recent Inventory side-by-side ───────────────── */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 2fr) minmax(280px, 1fr)',
+        gap: '14px',
+      }}>
         {/* Sales Trend (2/3) */}
-        <div className="rounded-2xl border border-border-subtle bg-surface-card p-5 lg:col-span-2">
-          <div className="mb-2 flex items-start justify-between">
-            <div>
-              <h2 className="font-semibold text-ink-primary">Sales Trend</h2>
-              <p className="mt-0.5 text-xs text-ink-tertiary">Last 7 Days</p>
-            </div>
-            <Link to="/reports/profit-loss" className="flex items-center gap-1 rounded-full bg-surface-muted px-3 py-1 text-xs font-medium text-ink-secondary hover:bg-surface-page">
-              P&amp;L <ArrowUpRightIcon />
-            </Link>
-          </div>
+        <Panel
+          icon="📈"
+          title="Sales Trend — last 7 days"
+          right={<LinkChip to="/reports/profit-loss">P&amp;L</LinkChip>}
+        >
           <SalesTrendChart data={data.trend_7d} />
-        </div>
+        </Panel>
 
         {/* Recent Inventory (1/3) */}
-        <div className="rounded-2xl border border-border-subtle bg-surface-card p-5">
-          <div className="mb-3 flex items-start justify-between">
-            <div>
-              <h2 className="font-semibold text-ink-primary">Recent Inventory</h2>
-              <p className="mt-0.5 text-xs text-ink-tertiary">Latest Items Added</p>
-            </div>
-            <Link to="/products" className="flex items-center gap-1 rounded-full bg-surface-muted px-3 py-1 text-xs font-medium text-ink-secondary hover:bg-surface-page">
-              Stock <ArrowUpRightIcon />
-            </Link>
-          </div>
+        <Panel
+          icon="📦"
+          title="Recent Inventory"
+          right={<LinkChip to="/products">Stock</LinkChip>}
+        >
           {data.recent_inventory.length === 0 ? (
-            <p className="py-6 text-center text-sm text-ink-tertiary">No items yet.</p>
+            <p style={{ padding: '24px 0', textAlign: 'center', fontSize: theme.fontBase, color: theme.inkFaint }}>No items yet.</p>
           ) : (
-            <ul className="divide-y divide-border-subtle">
-              {data.recent_inventory.map((it) => (
-                <li key={it.product_id} className="flex items-center justify-between py-2.5">
-                  <Link to={`/products/${it.product_id}`} className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-ink-primary">{it.name}</p>
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+              {data.recent_inventory.map((it, idx) => (
+                <li
+                  key={it.product_id}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '10px 0',
+                    borderTop: idx === 0 ? 'none' : `1px solid ${theme.border}`,
+                  }}
+                >
+                  <Link
+                    to={`/products/${it.product_id}`}
+                    style={{ flex: 1, minWidth: 0, textDecoration: 'none', color: 'inherit' }}
+                  >
+                    <div style={{
+                      fontSize: theme.fontBase, fontWeight: 500, color: theme.ink,
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    }}>{it.name}</div>
                     {it.oe_number && (
-                      <p className="mt-0.5 text-xs text-ink-tertiary">OE: {it.oe_number}</p>
+                      <div style={{ marginTop: '2px', fontSize: theme.fontXs, color: theme.inkFaint }}>OE: {it.oe_number}</div>
                     )}
                   </Link>
-                  <span className="ms-3 shrink-0 text-sm font-semibold text-ink-primary">
+                  <span style={{
+                    marginInlineStart: '12px', flexShrink: 0,
+                    fontSize: theme.fontBase, fontWeight: 600, color: theme.ink,
+                  }}>
                     {fmtInt(it.quantity)} {it.unit_code}
                   </span>
                 </li>
               ))}
             </ul>
           )}
-        </div>
+        </Panel>
       </div>
 
       {/* ── Low Stock Alerts bar ───────────────────────────────────────── */}
-      <div className="rounded-2xl border border-border-subtle bg-surface-card p-5">
-        <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-500">
+      <div style={{ ...cardStyle, padding: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{
+            height: '48px', width: '48px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            borderRadius: '999px',
+            background: theme.dangerSoft, color: theme.danger,
+            border: `1px solid ${theme.dangerBorder}`,
+          }}>
             <AlertTriangleIcon />
           </div>
-          <div className="flex-1">
-            <h3 className="font-semibold text-ink-primary">Low Stock Alerts</h3>
-            <p className="mt-0.5 text-sm text-ink-secondary">
+          <div style={{ flex: 1 }}>
+            <h3 style={{ margin: 0, fontSize: theme.fontMd, fontWeight: 700, color: theme.ink }}>Low Stock Alerts</h3>
+            <p style={{ margin: '2px 0 0', fontSize: theme.fontBase, color: theme.inkMuted }}>
               {data.low_stock_count === 0
                 ? 'Excellent! All items are well stocked.'
                 : `${data.low_stock_count} item${data.low_stock_count === 1 ? '' : 's'} below the minimum stock level.`}
@@ -387,7 +458,16 @@ export default function DashboardPage() {
           </div>
           <Link
             to="/reports/reorder"
-            className="rounded-full bg-brand-600 px-5 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+            style={{
+              padding: '10px 20px',
+              borderRadius: '999px',
+              background: theme.brandGradient,
+              color: '#fff',
+              fontSize: theme.fontBase, fontWeight: 600,
+              textDecoration: 'none',
+              boxShadow: '0 4px 12px rgba(99,102,241,.25)',
+              whiteSpace: 'nowrap',
+            }}
           >
             Manage Stock
           </Link>
