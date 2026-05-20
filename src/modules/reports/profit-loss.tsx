@@ -5,6 +5,8 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
+import { PageHeader, Panel } from '@/ui/primitives';
+import { theme } from '@/ui/theme';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -42,21 +44,19 @@ export default function ProfitLossPage() {
   });
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-ink-primary">{t('reports.pl_title')}</h1>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <PageHeader title={t('reports.pl_title')} subtitle={`${from} — ${to}`} />
 
-      <div className="flex items-center gap-3 rounded-card border border-border-subtle bg-surface-card px-5 py-3">
-        <Input type="date" label={t('reports.from')} value={from} onChange={e => setFrom(e.target.value)} />
-        <Input type="date" label={t('reports.to')} value={to} onChange={e => setTo(e.target.value)} />
-        <div className="mt-5">
-          <Button size="sm" onClick={() => setTrigger(n => n + 1)}>
-            {t('reports.run')}
-          </Button>
+      <Panel icon="📅" title="Period">
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
+          <Input type="date" label={t('reports.from')} value={from} onChange={e => setFrom(e.target.value)} />
+          <Input type="date" label={t('reports.to')} value={to} onChange={e => setTo(e.target.value)} />
+          <Button size="sm" onClick={() => setTrigger(n => n + 1)}>{t('reports.run')}</Button>
         </div>
-      </div>
+      </Panel>
 
-      {isLoading && <p className="text-sm text-ink-secondary">{t('common.loading')}</p>}
-      {error && <p className="text-sm text-red-600">{String(error)}</p>}
+      {isLoading && <p style={{ fontSize: '13px', color: theme.inkMuted, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>}
+      {error && <p style={{ fontSize: '13px', color: theme.danger }}>{String(error)}</p>}
 
       {pl && (() => {
         // NULL sub_type defaults to 'direct' (matches adapter) so legacy
@@ -67,118 +67,122 @@ export default function ProfitLossPage() {
         const otherIncome    = pl.lines.filter(l => l.account_type === 'income'  && !isDirect(l));
         const operatingExp   = pl.lines.filter(l => l.account_type === 'expense' && !isDirect(l));
 
+        // Section row helper (light-grey strip header)
+        const sectionHeader = (label: string) => (
+          <tr>
+            <td colSpan={2} className="px-5 py-2" style={{
+              background: '#f1f5f9',
+              fontSize: '11px', fontWeight: 700, color: theme.inkMuted,
+              textTransform: 'uppercase', letterSpacing: '.08em',
+            }}>{label}</td>
+          </tr>
+        );
+
         return (
-        <div className="rounded-card border border-border-subtle bg-surface-card">
-          <div className="border-b border-border-subtle px-5 py-3 text-sm text-ink-secondary">
-            {t('reports.period')}: {from} — {to}
+        <div style={{
+          background: theme.card, border: `1px solid ${theme.border}`,
+          borderRadius: '12px', boxShadow: theme.shadowSm, overflow: 'hidden',
+        }}>
+          <div style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}`, padding: '12px 20px' }}>
+            <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>{t('reports.pl_title')}</p>
+            <p style={{ margin: '2px 0 0', fontSize: '12px', color: theme.inkMuted }}>{t('reports.period')}: {from} — {to}</p>
           </div>
           <table className="w-full text-sm">
             <tbody>
               {/* ── Direct income (Sales) ─────────────────────────── */}
-              <tr className="bg-surface-muted">
-                <td colSpan={2} className="px-5 py-2 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">
-                  Revenue (Direct Income)
-                </td>
-              </tr>
+              {sectionHeader('Revenue (Direct Income)')}
               {directIncome.map(l => {
-                // Contra-revenue (e.g. 4150 Sales Discounts) has a NEGATIVE
-                // amount because it carries a debit balance under the
-                // `credit - debit` income convention. Render with a "Less:"
-                // prefix and parenthesised number so it reads naturally.
                 const isContra = l.amount < 0;
                 return (
-                  <tr key={l.account_code} className="border-b border-border-subtle">
-                    <td className="px-5 py-2 text-ink-primary">
+                  <tr key={l.account_code} style={{ borderTop: '1px solid #f1f5f9' }}>
+                    <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>
                       {l.account_code}{' '}
-                      {isContra ? <span className="text-ink-tertiary">Less:</span> : null}{' '}
+                      {isContra ? <span style={{ color: theme.inkFaint }}>Less:</span> : null}{' '}
                       {l.account_name}
                     </td>
-                    <td className={`px-5 py-2 text-end font-mono ${isContra ? 'text-ink-tertiary' : 'text-ink-primary'}`}>
+                    <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: isContra ? theme.inkFaint : theme.ink, fontSize: '13px' }}>
                       {fmtSigned(l.amount)}
                     </td>
                   </tr>
                 );
               })}
-              <tr className="border-b border-border-subtle bg-surface-muted font-semibold">
-                <td className="px-5 py-2 text-ink-primary">{t('reports.total_revenue')}</td>
-                <td className="px-5 py-2 text-end font-mono text-ink-primary">{fmt(pl.revenue)}</td>
+              <tr style={{ background: theme.panelHead, borderTop: '1px solid #f1f5f9', fontWeight: 600 }}>
+                <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>{t('reports.total_revenue')}</td>
+                <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>{fmt(pl.revenue)}</td>
               </tr>
 
               {/* ── Direct expense (COGS) ─────────────────────────── */}
-              <tr className="bg-surface-muted">
-                <td colSpan={2} className="px-5 py-2 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">
-                  Cost of Goods Sold (Direct Expense)
-                </td>
-              </tr>
+              {sectionHeader('Cost of Goods Sold (Direct Expense)')}
               {directExpense.length === 0 ? (
-                <tr className="border-b border-border-subtle">
-                  <td className="px-5 py-2 text-ink-tertiary">No direct expenses</td>
-                  <td className="px-5 py-2 text-end font-mono text-ink-tertiary">—</td>
+                <tr style={{ borderTop: '1px solid #f1f5f9' }}>
+                  <td className="px-5 py-2" style={{ color: theme.inkFaint, fontSize: '13px' }}>No direct expenses</td>
+                  <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.inkFaint, fontSize: '13px' }}>—</td>
                 </tr>
               ) : directExpense.map(l => (
-                <tr key={l.account_code} className="border-b border-border-subtle">
-                  <td className="px-5 py-2 text-ink-primary">{l.account_code} {l.account_name}</td>
-                  <td className="px-5 py-2 text-end font-mono text-ink-primary">({fmt(l.amount)})</td>
+                <tr key={l.account_code} style={{ borderTop: '1px solid #f1f5f9' }}>
+                  <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>{l.account_code} {l.account_name}</td>
+                  <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>({fmt(l.amount)})</td>
                 </tr>
               ))}
 
               {/* ── Gross Profit ──────────────────────────────────── */}
-              <tr className="border-b-2 border-border-subtle bg-brand-50 font-semibold">
-                <td className="px-5 py-2 text-ink-primary">{t('reports.gross_profit')}</td>
-                <td className={`px-5 py-2 text-end font-mono ${pl.gross_profit < 0 ? 'text-red-600' : 'text-brand-700'}`}>
+              <tr style={{
+                background: theme.brandSoft,
+                borderTop: `2px solid ${theme.border}`,
+                borderBottom: `2px solid ${theme.border}`,
+                fontWeight: 700,
+              }}>
+                <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>{t('reports.gross_profit')}</td>
+                <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: pl.gross_profit < 0 ? '#dc2626' : theme.brandSoftText, fontSize: '13px' }}>
                   {fmt(pl.gross_profit)}
                 </td>
               </tr>
 
-              {/* ── Indirect income (Other Income) ────────────────── */}
+              {/* ── Indirect income ──────────────────────────────── */}
               {otherIncome.length > 0 && (
                 <>
-                  <tr className="bg-surface-muted">
-                    <td colSpan={2} className="px-5 py-2 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">
-                      Other Income (Indirect)
-                    </td>
-                  </tr>
+                  {sectionHeader('Other Income (Indirect)')}
                   {otherIncome.map(l => (
-                    <tr key={l.account_code} className="border-b border-border-subtle">
-                      <td className="px-5 py-2 text-ink-primary">{l.account_code} {l.account_name}</td>
-                      <td className="px-5 py-2 text-end font-mono text-ink-primary">{fmt(l.amount)}</td>
+                    <tr key={l.account_code} style={{ borderTop: '1px solid #f1f5f9' }}>
+                      <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>{l.account_code} {l.account_name}</td>
+                      <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>{fmt(l.amount)}</td>
                     </tr>
                   ))}
-                  <tr className="border-b border-border-subtle bg-surface-muted font-semibold">
-                    <td className="px-5 py-2 text-ink-primary">Total Other Income</td>
-                    <td className="px-5 py-2 text-end font-mono text-ink-primary">{fmt(pl.other_income)}</td>
+                  <tr style={{ background: theme.panelHead, borderTop: '1px solid #f1f5f9', fontWeight: 600 }}>
+                    <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>Total Other Income</td>
+                    <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>{fmt(pl.other_income)}</td>
                   </tr>
                 </>
               )}
 
-              {/* ── Operating expenses (Indirect) ─────────────────── */}
-              <tr className="bg-surface-muted">
-                <td colSpan={2} className="px-5 py-2 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">
-                  Operating Expenses (Indirect)
-                </td>
-              </tr>
+              {/* ── Operating expenses ────────────────────────────── */}
+              {sectionHeader('Operating Expenses (Indirect)')}
               {operatingExp.length === 0 ? (
-                <tr className="border-b border-border-subtle">
-                  <td className="px-5 py-2 text-ink-tertiary">No operating expenses</td>
-                  <td className="px-5 py-2 text-end font-mono text-ink-tertiary">—</td>
+                <tr style={{ borderTop: '1px solid #f1f5f9' }}>
+                  <td className="px-5 py-2" style={{ color: theme.inkFaint, fontSize: '13px' }}>No operating expenses</td>
+                  <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.inkFaint, fontSize: '13px' }}>—</td>
                 </tr>
               ) : operatingExp.map(l => (
-                <tr key={l.account_code} className="border-b border-border-subtle">
-                  <td className="px-5 py-2 text-ink-primary">{l.account_code} {l.account_name}</td>
-                  <td className="px-5 py-2 text-end font-mono text-ink-primary">({fmt(l.amount)})</td>
+                <tr key={l.account_code} style={{ borderTop: '1px solid #f1f5f9' }}>
+                  <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>{l.account_code} {l.account_name}</td>
+                  <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>({fmt(l.amount)})</td>
                 </tr>
               ))}
               {operatingExp.length > 0 && (
-                <tr className="border-b border-border-subtle bg-surface-muted font-semibold">
-                  <td className="px-5 py-2 text-ink-primary">Total Operating Expenses</td>
-                  <td className="px-5 py-2 text-end font-mono text-ink-primary">({fmt(pl.operating_expenses)})</td>
+                <tr style={{ background: theme.panelHead, borderTop: '1px solid #f1f5f9', fontWeight: 600 }}>
+                  <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>Total Operating Expenses</td>
+                  <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>({fmt(pl.operating_expenses)})</td>
                 </tr>
               )}
 
               {/* ── Net Profit ────────────────────────────────────── */}
-              <tr className="border-t-2 border-border-subtle bg-surface-muted font-bold">
-                <td className="px-5 py-3 text-ink-primary">{t('reports.net_profit')}</td>
-                <td className={`px-5 py-3 text-end font-mono text-base ${pl.net_profit < 0 ? 'text-red-600' : 'text-green-700'}`}>
+              <tr style={{
+                borderTop: `2px solid ${theme.border}`,
+                background: pl.net_profit < 0 ? '#fef2f2' : '#f0fdf4',
+                fontWeight: 700,
+              }}>
+                <td className="px-5 py-3" style={{ color: theme.ink, fontSize: '14px' }}>{t('reports.net_profit')}</td>
+                <td className="px-5 py-3 font-mono" style={{ textAlign: 'end', color: pl.net_profit < 0 ? '#dc2626' : '#15803d', fontSize: '14px' }}>
                   {fmt(pl.net_profit)}
                 </td>
               </tr>

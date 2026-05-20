@@ -5,6 +5,8 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
+import { PageHeader, Panel } from '@/ui/primitives';
+import { theme } from '@/ui/theme';
 import type { BalanceSheetLine, ControlAccountContactLine } from '@/data/adapter';
 import { CONTROL_ACCOUNTS } from './_shared/control-account-drilldown';
 
@@ -29,15 +31,15 @@ function BalanceSheetDrillDown({
 
   if (isFetching) {
     return (
-      <tr className="bg-surface-muted/30">
-        <td colSpan={2} className="px-10 py-2 text-xs text-ink-tertiary">Loading per-contact breakdown…</td>
+      <tr style={{ background: theme.panelHead }}>
+        <td colSpan={2} className="px-10 py-2" style={{ fontSize: '11px', color: theme.inkFaint }}>Loading per-contact breakdown…</td>
       </tr>
     );
   }
   if (!data || data.length === 0) {
     return (
-      <tr className="bg-surface-muted/30">
-        <td colSpan={2} className="px-10 py-2 text-xs text-ink-tertiary">
+      <tr style={{ background: theme.panelHead }}>
+        <td colSpan={2} className="px-10 py-2" style={{ fontSize: '11px', color: theme.inkFaint }}>
           No per-contact rows for this account.
         </td>
       </tr>
@@ -45,18 +47,18 @@ function BalanceSheetDrillDown({
   }
   return (
     <>
-      <tr className="bg-surface-muted/30">
-        <td colSpan={2} className="px-10 pt-2 pb-1 text-[10px] uppercase tracking-wide text-ink-tertiary">
+      <tr style={{ background: theme.panelHead }}>
+        <td colSpan={2} className="px-10 pt-2 pb-1" style={{ fontSize: '10px', color: theme.inkFaint, textTransform: 'uppercase', letterSpacing: '.06em' }}>
           Breakdown by contact ({data.length})
         </td>
       </tr>
       {data.map((line) => (
-        <tr key={`bs-drill-${accountCode}-${line.contact_id ?? 'none'}`} className="bg-surface-muted/30">
-          <td className="pl-10 pr-5 py-1.5 text-sm text-ink-secondary">
-            <span className="me-2 text-ink-tertiary">↳</span>
+        <tr key={`bs-drill-${accountCode}-${line.contact_id ?? 'none'}`} style={{ background: theme.panelHead }}>
+          <td className="py-1.5" style={{ paddingInlineStart: '40px', paddingInlineEnd: '20px', fontSize: '13px', color: theme.inkMuted }}>
+            <span style={{ marginInlineEnd: '8px', color: theme.inkFaint }}>↳</span>
             {line.contact_name}
           </td>
-          <td className="px-5 py-1.5 text-end font-mono text-xs text-ink-secondary">
+          <td className="px-5 py-1.5 font-mono" style={{ textAlign: 'end', fontSize: '12px', color: theme.inkMuted }}>
             {fmt(line.balance)}
           </td>
         </tr>
@@ -83,19 +85,26 @@ function BSRow({
   return (
     <>
       <tr
-        className={`border-b border-border-subtle ${isControl ? 'cursor-pointer hover:bg-surface-muted/50' : ''} ${expanded ? 'bg-surface-muted/30' : ''}`}
         onClick={isControl ? onToggle : undefined}
+        className={isControl ? 'cursor-pointer' : ''}
         title={isControl ? 'Click to expand per-contact breakdown' : undefined}
+        style={{
+          borderTop: '1px solid #f1f5f9',
+          background: expanded ? theme.panelHead : undefined,
+          transition: 'background-color .12s',
+        }}
+        onMouseEnter={(e) => { if (isControl && !expanded) (e.currentTarget as HTMLElement).style.background = theme.panelHead; }}
+        onMouseLeave={(e) => { if (isControl && !expanded) (e.currentTarget as HTMLElement).style.background = ''; }}
       >
-        <td className="px-5 py-2 text-ink-primary">
+        <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>
           {isControl && (
-            <span className="me-2 inline-block w-3 text-ink-tertiary">
+            <span style={{ display: 'inline-block', width: '12px', color: theme.inkFaint, marginInlineEnd: '8px' }}>
               {expanded ? '▾' : '▸'}
             </span>
           )}
           {line.account_code} {line.account_name}
         </td>
-        <td className="px-5 py-2 text-end font-mono text-ink-primary">{fmt(line.balance)}</td>
+        <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>{fmt(line.balance)}</td>
       </tr>
       {isControl && expanded && (
         <BalanceSheetDrillDown
@@ -131,13 +140,17 @@ function SubSection({
 }) {
   return (
     <>
-      <tr className="bg-surface-muted">
-        <td colSpan={2} className="px-5 py-1.5 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">{title}</td>
+      <tr>
+        <td colSpan={2} className="px-5 py-2" style={{
+          background: '#f1f5f9',
+          fontSize: '11px', fontWeight: 700, color: theme.inkMuted,
+          textTransform: 'uppercase', letterSpacing: '.08em',
+        }}>{title}</td>
       </tr>
       {lines.length === 0 ? (
-        <tr className="border-b border-border-subtle">
-          <td className="px-5 py-2 text-ink-tertiary">{emptyText}</td>
-          <td className="px-5 py-2 text-end font-mono text-ink-tertiary">—</td>
+        <tr style={{ borderTop: '1px solid #f1f5f9' }}>
+          <td className="px-5 py-2" style={{ color: theme.inkFaint, fontSize: '13px' }}>{emptyText}</td>
+          <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.inkFaint, fontSize: '13px' }}>—</td>
         </tr>
       ) : (
         lines.map(l => (
@@ -151,9 +164,9 @@ function SubSection({
           />
         ))
       )}
-      <tr className="border-b border-border-subtle bg-surface-muted font-semibold">
-        <td className="px-5 py-2 text-ink-primary">{totalLabel}</td>
-        <td className="px-5 py-2 text-end font-mono text-ink-primary">{fmt(total)}</td>
+      <tr style={{ background: theme.panelHead, borderTop: '1px solid #f1f5f9', fontWeight: 600 }}>
+        <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>{totalLabel}</td>
+        <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>{fmt(total)}</td>
       </tr>
     </>
   );
@@ -184,18 +197,18 @@ export default function BalanceSheetPage() {
   const balanced = bs ? Math.abs(bs.total_assets - bs.total_liabilities - bs.total_equity) < 0.02 : true;
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-ink-primary">{t('reports.bs_title')}</h1>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <PageHeader title={t('reports.bs_title')} subtitle={`As of ${asOf}`} />
 
-      <div className="flex items-center gap-3 rounded-card border border-border-subtle bg-surface-card px-5 py-3">
-        <Input type="date" label={t('reports.as_of_date')} value={asOf} onChange={e => setAsOf(e.target.value)} />
-        <div className="mt-5">
+      <Panel icon="📅" title="Period">
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
+          <Input type="date" label={t('reports.as_of_date')} value={asOf} onChange={e => setAsOf(e.target.value)} />
           <Button size="sm" onClick={() => { setTrigger(n => n + 1); setExpandedCodes(new Set()); }}>{t('reports.run')}</Button>
         </div>
-      </div>
+      </Panel>
 
-      {isLoading && <p className="text-sm text-ink-secondary">{t('common.loading')}</p>}
-      {error && <p className="text-sm text-red-600">{String(error)}</p>}
+      {isLoading && <p style={{ fontSize: '13px', color: theme.inkMuted, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>}
+      {error && <p style={{ fontSize: '13px', color: theme.danger }}>{String(error)}</p>}
 
       {bs && company_id && (() => {
         // NULL sub_type defaults to 'current' — matches the adapter logic.
@@ -213,23 +226,40 @@ export default function BalanceSheetPage() {
         return (
           <>
             {!balanced && (
-              <div className="rounded-input bg-red-50 px-4 py-2 text-sm text-red-700">
+              <div style={{
+                background: theme.dangerSoft,
+                border: `1px solid ${theme.dangerBorder}`,
+                borderRadius: '8px',
+                padding: '10px 16px',
+                fontSize: '13px', color: theme.danger,
+              }}>
                 {t('reports.unbalanced_warning')}
               </div>
             )}
 
-            <div className="rounded-card border border-border-subtle bg-surface-card">
-              <div className="border-b border-border-subtle px-5 py-3 text-sm text-ink-secondary">
-                {t('reports.as_of_date')}: {asOf}
-                <span className="ms-3 text-[11px] text-ink-tertiary">
-                  · Click a control account (1200, 2100, 2400, …) to see the per-contact breakdown.
-                </span>
+            <div style={{
+              background: theme.card, border: `1px solid ${theme.border}`,
+              borderRadius: '12px', boxShadow: theme.shadowSm, overflow: 'hidden',
+            }}>
+              <div style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}`, padding: '12px 20px' }}>
+                <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>{t('reports.bs_title')}</p>
+                <p style={{ margin: '2px 0 0', fontSize: '12px', color: theme.inkMuted }}>
+                  {t('reports.as_of_date')}: {asOf}
+                </p>
+                <p style={{ margin: '4px 0 0', fontSize: '11px', color: theme.inkFaint }}>
+                  Click a control account (1200, 2100, 2400, …) to see the per-contact breakdown.
+                </p>
               </div>
               <table className="w-full text-sm">
                 <tbody>
                   {/* ── ASSETS ──────────────────────────────────────────── */}
-                  <tr className="bg-brand-50">
-                    <td colSpan={2} className="px-5 py-2.5 text-sm font-bold tracking-wide text-brand-700">
+                  <tr>
+                    <td colSpan={2} className="px-5 py-3" style={{
+                      background: theme.brandSoft,
+                      fontSize: '13px', fontWeight: 800,
+                      color: theme.brandSoftText,
+                      letterSpacing: '.06em',
+                    }}>
                       ASSETS
                     </td>
                   </tr>
@@ -255,14 +285,19 @@ export default function BalanceSheetPage() {
                     expanded={expandedCodes}
                     onToggle={toggleExpand}
                   />
-                  <tr className="border-b-2 border-ink-tertiary bg-brand-50 font-bold">
-                    <td className="px-5 py-2.5 text-brand-700">{t('reports.total_assets')}</td>
-                    <td className="px-5 py-2.5 text-end font-mono text-brand-700">{fmt(bs.total_assets)}</td>
+                  <tr style={{ background: theme.brandSoft, borderTop: `2px solid ${theme.brand}`, fontWeight: 700 }}>
+                    <td className="px-5 py-3" style={{ color: theme.brandSoftText, fontSize: '14px' }}>{t('reports.total_assets')}</td>
+                    <td className="px-5 py-3 font-mono" style={{ textAlign: 'end', color: theme.brandSoftText, fontSize: '14px' }}>{fmt(bs.total_assets)}</td>
                   </tr>
 
                   {/* ── LIABILITIES ─────────────────────────────────────── */}
-                  <tr className="bg-red-50">
-                    <td colSpan={2} className="px-5 py-2.5 text-sm font-bold tracking-wide text-red-700">
+                  <tr>
+                    <td colSpan={2} className="px-5 py-3" style={{
+                      background: '#fef2f2',
+                      fontSize: '13px', fontWeight: 800,
+                      color: '#b91c1c',
+                      letterSpacing: '.06em',
+                    }}>
                       LIABILITIES
                     </td>
                   </tr>
@@ -288,21 +323,26 @@ export default function BalanceSheetPage() {
                     expanded={expandedCodes}
                     onToggle={toggleExpand}
                   />
-                  <tr className="border-b-2 border-ink-tertiary bg-red-50 font-bold">
-                    <td className="px-5 py-2.5 text-red-700">{t('reports.total_liabilities')}</td>
-                    <td className="px-5 py-2.5 text-end font-mono text-red-700">{fmt(bs.total_liabilities)}</td>
+                  <tr style={{ background: '#fef2f2', borderTop: '2px solid #fecaca', fontWeight: 700 }}>
+                    <td className="px-5 py-3" style={{ color: '#b91c1c', fontSize: '14px' }}>{t('reports.total_liabilities')}</td>
+                    <td className="px-5 py-3 font-mono" style={{ textAlign: 'end', color: '#b91c1c', fontSize: '14px' }}>{fmt(bs.total_liabilities)}</td>
                   </tr>
 
                   {/* ── EQUITY ──────────────────────────────────────────── */}
-                  <tr className="bg-purple-50">
-                    <td colSpan={2} className="px-5 py-2.5 text-sm font-bold tracking-wide text-purple-700">
+                  <tr>
+                    <td colSpan={2} className="px-5 py-3" style={{
+                      background: theme.purpleSoft,
+                      fontSize: '13px', fontWeight: 800,
+                      color: theme.purple,
+                      letterSpacing: '.06em',
+                    }}>
                       EQUITY
                     </td>
                   </tr>
                   {equityLines.length === 0 ? (
-                    <tr className="border-b border-border-subtle">
-                      <td className="px-5 py-2 text-ink-tertiary">No equity accounts</td>
-                      <td className="px-5 py-2 text-end font-mono text-ink-tertiary">—</td>
+                    <tr style={{ borderTop: '1px solid #f1f5f9' }}>
+                      <td className="px-5 py-2" style={{ color: theme.inkFaint, fontSize: '13px' }}>No equity accounts</td>
+                      <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.inkFaint, fontSize: '13px' }}>—</td>
                     </tr>
                   ) : (
                     equityLines.map(l => (
@@ -316,33 +356,37 @@ export default function BalanceSheetPage() {
                       />
                     ))
                   )}
-                  <tr className="border-b-2 border-ink-tertiary bg-purple-50 font-bold">
-                    <td className="px-5 py-2.5 text-purple-700">{t('reports.total_equity')}</td>
-                    <td className="px-5 py-2.5 text-end font-mono text-purple-700">{fmt(bs.total_equity)}</td>
+                  <tr style={{ background: theme.purpleSoft, borderTop: `2px solid ${theme.purpleBorder}`, fontWeight: 700 }}>
+                    <td className="px-5 py-3" style={{ color: theme.purple, fontSize: '14px' }}>{t('reports.total_equity')}</td>
+                    <td className="px-5 py-3 font-mono" style={{ textAlign: 'end', color: theme.purple, fontSize: '14px' }}>{fmt(bs.total_equity)}</td>
                   </tr>
 
                   {/* ── Liabilities + Equity grand total (must equal Assets) ── */}
-                  <tr className="border-t-2 border-border-subtle bg-surface-muted font-bold">
-                    <td className="px-5 py-3 text-ink-primary">Total Liabilities + Equity</td>
-                    <td className="px-5 py-3 text-end font-mono text-ink-primary">{fmt(bs.total_liabilities + bs.total_equity)}</td>
+                  <tr style={{ background: theme.panelHead, borderTop: `2px solid ${theme.border}`, fontWeight: 700 }}>
+                    <td className="px-5 py-3" style={{ color: theme.ink, fontSize: '14px' }}>Total Liabilities + Equity</td>
+                    <td className="px-5 py-3 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '14px' }}>{fmt(bs.total_liabilities + bs.total_equity)}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
             {/* ── Working Capital callout ──────────────────────────────── */}
-            <div className="rounded-card border border-border-subtle bg-surface-card px-5 py-4">
-              <div className="flex items-baseline justify-between">
+            <div style={{
+              background: theme.card, border: `1px solid ${theme.border}`,
+              borderRadius: '12px', boxShadow: theme.shadowSm,
+              padding: '16px 20px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px' }}>
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-ink-tertiary">Working Capital</div>
-                  <div className="mt-1 text-xs text-ink-secondary">Current Assets − Current Liabilities</div>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.06em' }}>Working Capital</div>
+                  <div style={{ marginTop: '4px', fontSize: '12px', color: theme.inkMuted }}>Current Assets − Current Liabilities</div>
                 </div>
-                <div className={`font-mono text-lg font-semibold ${bs.working_capital < 0 ? 'text-red-600' : 'text-green-700'}`}>
+                <div className="font-mono" style={{ fontSize: '18px', fontWeight: 700, color: bs.working_capital < 0 ? '#dc2626' : '#15803d' }}>
                   {fmt(bs.working_capital)}
                 </div>
               </div>
               {bs.working_capital < 0 && (
-                <p className="mt-2 text-xs text-red-600">
+                <p style={{ marginTop: '8px', fontSize: '11px', color: '#dc2626' }}>
                   Negative working capital means short-term liabilities exceed short-term assets — review cash position.
                 </p>
               )}

@@ -6,6 +6,8 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
+import { PageHeader, Panel } from '@/ui/primitives';
+import { theme } from '@/ui/theme';
 import type { TrialBalance, TrialBalanceLine } from '@/data/adapter';
 import { ControlAccountDrillDown, CONTROL_ACCOUNTS } from './_shared/control-account-drilldown';
 
@@ -66,48 +68,80 @@ export default function TrialBalancePage() {
   const isBalanced = data ? Math.abs(data.total_debit - data.total_credit) <= 0.01 : true;
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-ink-primary">{t('reports.trial_balance')}</h1>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <PageHeader title={t('reports.trial_balance')} subtitle={data ? `As of ${data.as_of_date}` : 'Pick a date and Run'} />
 
-      <form onSubmit={handleRun} className="flex items-end gap-3">
-        <div>
-          <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('reports.as_of_date')}</label>
-          <Input type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} className="w-40" />
-        </div>
-        <Button type="submit" size="sm">{t('reports.run')}</Button>
-      </form>
+      {/* Filter panel */}
+      <Panel icon="📅" title="Period">
+        <form onSubmit={handleRun} style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '11px', fontWeight: 600, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+              {t('reports.as_of_date')}
+            </label>
+            <Input type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} className="w-40" />
+          </div>
+          <Button type="submit" size="sm">{t('reports.run')}</Button>
+        </form>
+      </Panel>
 
-      {isFetching && <p className="text-sm text-ink-secondary">{t('common.loading')}</p>}
+      {isFetching && <p style={{ fontSize: '13px', color: theme.inkMuted, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>}
 
       {data && !isFetching && (
-        <div className="rounded-card border border-border-subtle bg-surface-card">
-          <div className="border-b border-border-subtle px-4 py-3">
-            <p className="font-medium text-ink-primary">{t('reports.trial_balance')}</p>
-            <p className="text-xs text-ink-tertiary">{t('reports.as_of')} {data.as_of_date}</p>
-            <p className="mt-1 text-[11px] text-ink-tertiary">
+        <div style={{
+          background: theme.card,
+          border: `1px solid ${theme.border}`,
+          borderRadius: '12px',
+          boxShadow: theme.shadowSm,
+          overflow: 'hidden',
+        }}>
+          <div style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}`, padding: '12px 16px' }}>
+            <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>{t('reports.trial_balance')}</p>
+            <p style={{ margin: '2px 0 0', fontSize: '12px', color: theme.inkMuted }}>{t('reports.as_of')} {data.as_of_date}</p>
+            <p style={{ margin: '6px 0 0', fontSize: '11px', color: theme.inkFaint }}>
               Tip: click a control account row (1200, 2100, 2400, …) to see the per-contact breakdown.
               Click the account code to drill into the General Ledger.
             </p>
           </div>
 
           {data.lines.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-ink-tertiary">{t('reports.tb_empty')}</p>
+            <p style={{ padding: '24px 16px', fontSize: '13px', color: theme.inkFaint }}>{t('reports.tb_empty')}</p>
           ) : (
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
-                  <th className="px-4 py-2 text-start font-medium">{t('accounting.code')}</th>
-                  <th className="px-4 py-2 text-start font-medium">{t('accounting.account_name')}</th>
-                  <th className="px-4 py-2 text-start font-medium">{t('accounting.type')}</th>
-                  <th className="px-4 py-2 text-end font-medium">{t('accounting.debit')}</th>
-                  <th className="px-4 py-2 text-end font-medium">{t('accounting.credit')}</th>
+                <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
+                  {[
+                    { l: t('accounting.code'),         a: 'start' as const },
+                    { l: t('accounting.account_name'), a: 'start' as const },
+                    { l: t('accounting.type'),         a: 'start' as const },
+                    { l: t('accounting.debit'),        a: 'end'   as const },
+                    { l: t('accounting.credit'),       a: 'end'   as const },
+                  ].map(c => (
+                    <th
+                      key={c.l}
+                      className="px-4 py-3"
+                      style={{
+                        fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
+                        textTransform: 'uppercase', letterSpacing: '.06em',
+                        textAlign: c.a, whiteSpace: 'nowrap',
+                      }}
+                    >{c.l}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {types.map((type) => (
                   <>
-                    <tr key={`hdr-${type}`} className="bg-surface-muted/60">
-                      <td colSpan={5} className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-ink-tertiary capitalize">
+                    <tr key={`hdr-${type}`}>
+                      <td
+                        colSpan={5}
+                        className="px-4 py-2"
+                        style={{
+                          background: '#f1f5f9',
+                          fontSize: '11px', fontWeight: 700,
+                          color: theme.inkMuted,
+                          textTransform: 'uppercase', letterSpacing: '.08em',
+                        }}
+                      >
                         {t(`accounting.type_${type}`)}
                       </td>
                     </tr>
@@ -119,25 +153,32 @@ export default function TrialBalancePage() {
                           <tr
                             key={line.account_code}
                             onClick={() => isControl ? toggleExpand(line.account_code) : openLedgerForAccount(line.account_code)}
-                            className={`cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50 ${isExpanded ? 'bg-surface-muted/30' : ''}`}
+                            className="cursor-pointer"
+                            style={{
+                              borderTop: '1px solid #f1f5f9',
+                              background: isExpanded ? theme.panelHead : undefined,
+                              transition: 'background-color .12s',
+                            }}
                             title={isControl ? 'Click to expand per-contact breakdown · click the code to open General Ledger' : 'Open this account in General Ledger'}
+                            onMouseEnter={(e) => { if (!isExpanded) (e.currentTarget as HTMLElement).style.background = theme.panelHead; }}
+                            onMouseLeave={(e) => { if (!isExpanded) (e.currentTarget as HTMLElement).style.background = ''; }}
                           >
                             <td
-                              className="px-4 py-2.5 font-mono text-xs text-brand-600 underline-offset-2 hover:underline"
+                              className="px-4 py-2.5 font-mono cursor-pointer"
+                              style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}
                               onClick={(e) => { e.stopPropagation(); openLedgerForAccount(line.account_code); }}
                             >
-                              {/* Phase 12.24 — chevron for expandable control accounts */}
                               {isControl && (
-                                <span className="me-1 inline-block w-3 text-ink-tertiary">
+                                <span style={{ display: 'inline-block', width: '12px', color: theme.inkFaint, marginInlineEnd: '4px' }}>
                                   {isExpanded ? '▾' : '▸'}
                                 </span>
                               )}
                               {line.account_code}
                             </td>
-                            <td className="px-4 py-2.5 text-ink-primary">{line.account_name}</td>
-                            <td className="px-4 py-2.5 text-ink-secondary capitalize">{line.account_type}</td>
-                            <td className="px-4 py-2.5 text-end font-mono">{line.debit > 0 ? fmt(line.debit) : ''}</td>
-                            <td className="px-4 py-2.5 text-end font-mono">{line.credit > 0 ? fmt(line.credit) : ''}</td>
+                            <td className="px-4 py-2.5" style={{ color: theme.ink, fontSize: '13px' }}>{line.account_name}</td>
+                            <td className="px-4 py-2.5" style={{ color: theme.inkMuted, fontSize: '13px', textTransform: 'capitalize' }}>{line.account_type}</td>
+                            <td className="px-4 py-2.5 font-mono" style={{ textAlign: 'end', color: theme.ink }}>{line.debit > 0 ? fmt(line.debit) : ''}</td>
+                            <td className="px-4 py-2.5 font-mono" style={{ textAlign: 'end', color: theme.ink }}>{line.credit > 0 ? fmt(line.credit) : ''}</td>
                           </tr>
                           {isControl && isExpanded && queryDate && company_id && (
                             <ControlAccountDrillDown
@@ -155,18 +196,18 @@ export default function TrialBalancePage() {
                 ))}
               </tbody>
               <tfoot>
-                <tr className={`border-t-2 font-bold ${isBalanced ? 'border-green-300' : 'border-red-300'}`}>
-                  <td colSpan={3} className="px-4 py-2.5 text-sm">{t('accounting.total')}</td>
-                  <td className={`px-4 py-2.5 text-end font-mono ${isBalanced ? '' : 'text-red-500'}`}>
-                    {fmt(data.total_debit)}
-                  </td>
-                  <td className={`px-4 py-2.5 text-end font-mono ${isBalanced ? '' : 'text-red-500'}`}>
-                    {fmt(data.total_credit)}
-                  </td>
+                <tr style={{
+                  borderTop: `2px solid ${isBalanced ? '#bbf7d0' : '#fecaca'}`,
+                  background: isBalanced ? '#f0fdf4' : '#fef2f2',
+                  fontWeight: 700,
+                }}>
+                  <td colSpan={3} className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px' }}>{t('accounting.total')}</td>
+                  <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: isBalanced ? '#15803d' : '#dc2626' }}>{fmt(data.total_debit)}</td>
+                  <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: isBalanced ? '#15803d' : '#dc2626' }}>{fmt(data.total_credit)}</td>
                 </tr>
                 {!isBalanced && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-1.5 text-xs text-red-500">
+                    <td colSpan={5} className="px-4 py-2" style={{ fontSize: '11px', color: '#dc2626' }}>
                       ⚠ {t('reports.tb_unbalanced')}
                     </td>
                   </tr>

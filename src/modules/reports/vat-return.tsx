@@ -2,9 +2,13 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
+import { PageHeader, Panel } from '@/ui/primitives';
+import { theme } from '@/ui/theme';
 import type { VATReturn } from '@/data/adapter';
 
-function fmt(n: number) { return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
+function fmt(n: number) {
+  return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+}
 
 export default function VATReturnPage() {
   const { t } = useTranslation();
@@ -27,98 +31,103 @@ export default function VATReturnPage() {
     finally { setLoading(false); }
   };
 
-  return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-ink-primary">{t('reports.vat_return')}</h1>
-
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface-card p-4">
-        <div>
-          <label className="block text-xs text-ink-secondary mb-1">{t('reports.period_start')}</label>
-          <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="input-field h-9 text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs text-ink-secondary mb-1">{t('reports.period_end')}</label>
-          <input type="date" value={to} onChange={e => setTo(e.target.value)} className="input-field h-9 text-sm" />
-        </div>
-        <button onClick={run} disabled={loading} className="btn-primary h-9 px-4 text-sm">
-          {loading ? t('common.loading') : t('common.run')}
-        </button>
+  const Section = ({ title, boxes, total, totalLabel }: { title: string; boxes: VATReturn['output_boxes']; total: number; totalLabel: string }) => (
+    <div style={{
+      background: theme.card, border: `1px solid ${theme.border}`,
+      borderRadius: '12px', boxShadow: theme.shadowSm, overflow: 'hidden',
+    }}>
+      <div style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}`, padding: '10px 16px' }}>
+        <span style={{ fontSize: '11px', fontWeight: 700, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.06em' }}>{title}</span>
       </div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr style={{ borderBottom: `1px solid ${theme.border}` }}>
+            {[
+              { l: t('reports.box'),            a: 'start' as const },
+              { l: t('reports.description'),    a: 'start' as const },
+              { l: t('reports.taxable_amount'), a: 'end'   as const },
+              { l: t('reports.vat_amount'),     a: 'end'   as const },
+            ].map(c => (
+              <th key={c.l} className="px-4 py-2" style={{
+                fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
+                textTransform: 'uppercase', letterSpacing: '.06em',
+                textAlign: c.a,
+              }}>{c.l}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {boxes.map((b, i) => (
+            <tr key={b.box} style={{ borderTop: i === 0 ? 'none' : '1px solid #f1f5f9' }}>
+              <td className="px-4 py-2 font-mono" style={{ color: theme.inkMuted, fontSize: '12px' }}>{b.box}</td>
+              <td className="px-4 py-2" style={{ color: theme.ink, fontSize: '13px' }}>{b.label}</td>
+              <td className="px-4 py-2 font-mono" style={{ textAlign: 'end', color: theme.inkMuted, fontSize: '13px' }}>{fmt(b.taxable_amount)}</td>
+              <td className="px-4 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px', fontWeight: 500 }}>{fmt(b.vat_amount)}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr style={{ borderTop: `2px solid ${theme.border}`, background: theme.panelHead, fontWeight: 700 }}>
+            <td colSpan={3} className="px-4 py-2.5" style={{ color: theme.ink, fontSize: '13px' }}>{totalLabel}</td>
+            <td className="px-4 py-2.5 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>{fmt(total)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <PageHeader title={t('reports.vat_return')} subtitle={data ? `${data.period_start} — ${data.period_end}` : `${from} — ${to}`} />
+
+      <Panel icon="📅" title="Period">
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '11px', fontWeight: 600, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.05em' }}>{t('reports.period_start')}</label>
+            <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+              style={{ height: '36px', padding: '0 12px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', background: '#fff', color: theme.ink, outline: 'none' }} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '11px', fontWeight: 600, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.05em' }}>{t('reports.period_end')}</label>
+            <input type="date" value={to} onChange={e => setTo(e.target.value)}
+              style={{ height: '36px', padding: '0 12px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', background: '#fff', color: theme.ink, outline: 'none' }} />
+          </div>
+          <button onClick={run} disabled={loading}
+            style={{
+              height: '36px', padding: '0 18px',
+              background: theme.brand, color: '#fff', border: 'none',
+              borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.6 : 1,
+            }}>
+            {loading ? t('common.loading') : t('common.run')}
+          </button>
+        </div>
+      </Panel>
 
       {data && (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {/* Output VAT */}
-          <div className="rounded-lg border border-border bg-surface-card p-5 shadow-sm">
-            <h2 className="mb-3 font-semibold text-ink-primary">{t('reports.vat_on_sales')}</h2>
-            <table className="w-full text-sm">
-              <thead className="text-ink-secondary">
-                <tr>
-                  <th className="py-1 text-left font-medium">{t('reports.box')}</th>
-                  <th className="py-1 text-left font-medium">{t('reports.description')}</th>
-                  <th className="py-1 text-right font-medium">{t('reports.taxable_amount')}</th>
-                  <th className="py-1 text-right font-medium">{t('reports.vat_amount')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {data.output_boxes.map(b => (
-                  <tr key={b.box}>
-                    <td className="py-1.5 text-ink-secondary font-mono">{b.box}</td>
-                    <td className="py-1.5 text-ink-primary">{b.label}</td>
-                    <td className="py-1.5 text-right text-ink-secondary">{fmt(b.taxable_amount)}</td>
-                    <td className="py-1.5 text-right text-ink-primary font-medium">{fmt(b.vat_amount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot className="border-t-2 border-border font-semibold">
-                <tr>
-                  <td colSpan={3} className="py-1.5 text-ink-primary">{t('reports.total_output_vat')}</td>
-                  <td className="py-1.5 text-right text-ink-primary">{fmt(data.total_output_vat)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-
-          {/* Input VAT */}
-          <div className="rounded-lg border border-border bg-surface-card p-5 shadow-sm">
-            <h2 className="mb-3 font-semibold text-ink-primary">{t('reports.vat_on_expenses')}</h2>
-            <table className="w-full text-sm">
-              <thead className="text-ink-secondary">
-                <tr>
-                  <th className="py-1 text-left font-medium">{t('reports.box')}</th>
-                  <th className="py-1 text-left font-medium">{t('reports.description')}</th>
-                  <th className="py-1 text-right font-medium">{t('reports.taxable_amount')}</th>
-                  <th className="py-1 text-right font-medium">{t('reports.vat_amount')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {data.input_boxes.map(b => (
-                  <tr key={b.box}>
-                    <td className="py-1.5 text-ink-secondary font-mono">{b.box}</td>
-                    <td className="py-1.5 text-ink-primary">{b.label}</td>
-                    <td className="py-1.5 text-right text-ink-secondary">{fmt(b.taxable_amount)}</td>
-                    <td className="py-1.5 text-right text-ink-primary font-medium">{fmt(b.vat_amount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot className="border-t-2 border-border font-semibold">
-                <tr>
-                  <td colSpan={3} className="py-1.5 text-ink-primary">{t('reports.total_input_vat')}</td>
-                  <td className="py-1.5 text-right text-ink-primary">{fmt(data.total_input_vat)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '16px' }}>
+          <Section title={t('reports.vat_on_sales')}    boxes={data.output_boxes} total={data.total_output_vat} totalLabel={t('reports.total_output_vat')} />
+          <Section title={t('reports.vat_on_expenses')} boxes={data.input_boxes}  total={data.total_input_vat}  totalLabel={t('reports.total_input_vat')} />
 
           {/* Net payable */}
-          <div className="md:col-span-2 rounded-lg border-2 border-brand-500 bg-brand-50 p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-lg font-semibold text-brand-800">{t('reports.net_vat_payable')}</span>
-              <span className={`text-2xl font-bold ${data.net_vat_payable >= 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+          <div style={{
+            gridColumn: '1 / -1',
+            background: theme.brandSoft,
+            border: `2px solid ${theme.brand}`,
+            borderRadius: '12px',
+            padding: '20px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '16px', fontWeight: 700, color: theme.brandSoftText }}>{t('reports.net_vat_payable')}</span>
+              <span style={{ fontSize: '24px', fontWeight: 800, color: data.net_vat_payable >= 0 ? '#dc2626' : '#15803d' }}>
                 {fmt(Math.abs(data.net_vat_payable))}
-                {data.net_vat_payable < 0 && <span className="text-sm ms-1">({t('reports.refund')})</span>}
+                {data.net_vat_payable < 0 && <span style={{ fontSize: '12px', marginInlineStart: '6px', color: '#15803d' }}>({t('reports.refund')})</span>}
               </span>
             </div>
-            <p className="mt-1 text-xs text-brand-600">{t('reports.vat_period')}: {data.period_start} — {data.period_end}</p>
+            <p style={{ margin: '6px 0 0', fontSize: '11px', color: theme.brand }}>
+              {t('reports.vat_period')}: {data.period_start} — {data.period_end}
+            </p>
           </div>
         </div>
       )}
