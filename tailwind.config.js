@@ -4,14 +4,16 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Primary indigo (extracted from login/dashboard screenshots)
+        // Primary indigo — aligned with the inventory-wizard sample palette
+        // (Phase 12.30 design-system pass). brand.500 == #6366f1 is the indigo
+        // accent reused inline across primitives.
         brand: {
           50: '#EEF2FF',
           100: '#E0E7FF',
           200: '#C7D2FE',
           300: '#A5B4FC',
           400: '#818CF8',
-          500: '#5B5BD6', // Primary — buttons, active nav, logo
+          500: '#6366F1', // Primary — buttons, active nav, logo
           600: '#4F46E5',
           700: '#4338CA',
           800: '#3730A3',

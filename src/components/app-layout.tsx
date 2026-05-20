@@ -380,7 +380,8 @@ function UserMenu({ email, onSignOut }: { email: string | null; onSignOut: () =>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white hover:bg-brand-700"
+        className="flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold text-white shadow-sm hover:opacity-90"
+        style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
         aria-label="User menu"
       >
         {initial}
@@ -508,7 +509,10 @@ function MobileDrawer({
         {/* Drawer header */}
         <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600">
+            <div
+              className="flex h-8 w-8 items-center justify-center rounded-lg shadow-sm"
+              style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
+            >
               <BoltIcon />
             </div>
             <span className="font-semibold text-ink-primary">StockBolt</span>
@@ -646,10 +650,17 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <div className="flex h-screen flex-col bg-surface-page">
+      {/* ── 3px indigo→violet gradient bar (Phase 12.30 design system) ── */}
+      <div
+        className="h-[3px] shrink-0"
+        style={{ background: 'linear-gradient(90deg, #6366f1, #8b5cf6)' }}
+        aria-hidden="true"
+      />
+
       {/* ── Top nav ───────────────────────────────────────────────────── */}
       <header
         ref={navRef}
-        className="relative z-30 flex h-16 shrink-0 items-center gap-2 border-b border-border-subtle bg-surface-card px-4 lg:px-6"
+        className="relative z-30 flex h-16 shrink-0 items-center gap-2 border-b border-border-subtle bg-surface-card px-4 shadow-sm lg:px-6"
       >
         {/* Mobile hamburger */}
         <button
@@ -663,7 +674,10 @@ export function AppLayout({ children }: AppLayoutProps) {
 
         {/* Brand */}
         <Link to="/dashboard" className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600">
+          <div
+            className="flex h-8 w-8 items-center justify-center rounded-lg shadow-sm"
+            style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
+          >
             <BoltIcon />
           </div>
           <span className="hidden text-base font-bold text-ink-primary sm:block">StockBolt</span>
