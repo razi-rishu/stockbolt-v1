@@ -19,6 +19,7 @@ const SetupWizardPage    = lazy(() => import('@/modules/onboarding/setup-wizard'
 
 // App shell pages
 const DashboardPage      = lazy(() => import('@/modules/dashboard/index'));
+const DesignSystemPage   = lazy(() => import('@/modules/design-system/index'));
 const CompanySettingsPage = lazy(() => import('@/modules/settings/company-settings'));
 const WarehousesPage     = lazy(() => import('@/modules/settings/warehouses'));
 const UnitsPage          = lazy(() => import('@/modules/settings/units-of-measure'));
@@ -178,6 +179,7 @@ function AppRoutes() {
           <Route element={<RequireOnboarded />}>
             <Route element={<WithAppLayout />}>
               <Route path="/dashboard"                element={<DashboardPage />} />
+              <Route path="/design-system"            element={<DesignSystemPage />} />
 
               {/* Settings */}
               <Route path="/settings/company"         element={<CompanySettingsPage />} />
