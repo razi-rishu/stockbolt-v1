@@ -3702,10 +3702,16 @@ export function createSupabaseAdapter(
             };
           };
         };
+        // Phase 12.53 — DO NOT select `source_type` at the top level here.
+        // That column lives on `journal_entries`, NOT on `general_ledger`,
+        // so PostgREST 400's the entire query and the user sees no rows
+        // (the "cannot find the data" symptom on the Bank Reconciliation
+        // page). The nested `journal_entries(...source_type, source_id)`
+        // is the correct source; the mapper below already prefers it.
         const { data, error } = await rawClient
           .from('general_ledger')
           .select(`
-            id, date, debit, credit, description, source_type,
+            id, date, debit, credit, description,
             related_doc_type, related_doc_id, reconciliation_id,
             journal_entries:journal_entry_id ( entry_number, source_type, source_id )
           `)
@@ -3717,7 +3723,6 @@ export function createSupabaseAdapter(
         const rows = (data ?? []) as Array<{
           id: string; date: string; debit: number; credit: number;
           description: string | null;
-          source_type: string | null;
           related_doc_type: string | null;
           related_doc_id: string | null;
           reconciliation_id: string | null;
@@ -3735,7 +3740,9 @@ export function createSupabaseAdapter(
             id:                 r.id,
             date:               r.date,
             je_number:          r.journal_entries?.entry_number ?? '',
-            source_type:        r.journal_entries?.source_type ?? r.source_type ?? '',
+            // source_type / source_id come from the nested journal_entries
+            // join only (they don't exist on general_ledger).
+            source_type:        r.journal_entries?.source_type ?? '',
             source_id:          r.journal_entries?.source_id ?? null,
             related_doc_type:   r.related_doc_type,
             related_doc_id:     r.related_doc_id,
