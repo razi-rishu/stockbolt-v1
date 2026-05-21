@@ -571,6 +571,15 @@ export interface CustomerStatementLine {
   debit: number;
   credit: number;
   balance: number;
+  /** Phase 12.52 — source_type from the underlying journal_entries row
+   *  (e.g. 'sales_invoice', 'sales_invoice_void', 'sales_payment',
+   *  'customer_advance', 'manual'). Lets the UI render a clearer
+   *  document label than the raw related_doc_type. */
+  source_type?: string;
+  /** True when the JE has been reversed by a later entry (void / edit). */
+  is_reversed?: boolean;
+  /** True when the JE itself IS a reversal of an earlier entry. */
+  is_reversal?: boolean;
 }
 
 export interface CustomerStatement {
@@ -1039,6 +1048,10 @@ export interface SupplierStatementLine {
   debit: number;
   credit: number;
   balance: number;
+  /** Phase 12.52 — mirrors CustomerStatementLine fields. */
+  source_type?: string;
+  is_reversed?: boolean;
+  is_reversal?: boolean;
 }
 
 export interface SupplierStatement {

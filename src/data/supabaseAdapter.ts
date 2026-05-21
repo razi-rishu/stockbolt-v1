@@ -1530,9 +1530,13 @@ export function createSupabaseAdapter(
           .eq('id', contact_id).single();
         assertNoError(cErr, 'reports.getCustomerStatement contact');
 
+        // Phase 12.52 — pull source_type + reversal pointers from the
+        // joined journal_entries row so the UI can render a clearer
+        // doc label (Invoice / Invoice (void) / Payment / ...) and
+        // optionally hide both halves of a reversal pair.
         const { data: glRows, error: glErr } = await client
           .from('general_ledger')
-          .select('id, date, debit, credit, description, related_doc_type, related_doc_id, journal_entries(entry_number)')
+          .select('id, date, debit, credit, description, related_doc_type, related_doc_id, journal_entries(entry_number, source_type, reversed_by_id, reversal_of_id)')
           .eq('company_id', company_id)
           .eq('contact_id', contact_id)
           .eq('account_code', '1200')
@@ -1544,7 +1548,12 @@ export function createSupabaseAdapter(
 
         let balance = 0;
         const lines: CustomerStatementLine[] = (glRows ?? []).map(row => {
-          const je = row.journal_entries as unknown as { entry_number: string } | null;
+          const je = row.journal_entries as unknown as {
+            entry_number: string;
+            source_type: string | null;
+            reversed_by_id: string | null;
+            reversal_of_id: string | null;
+          } | null;
           balance += Number(row.debit) - Number(row.credit);
           return {
             date: row.date as string,
@@ -1553,6 +1562,9 @@ export function createSupabaseAdapter(
             debit: Number(row.debit),
             credit: Number(row.credit),
             balance,
+            source_type: je?.source_type ?? undefined,
+            is_reversed: !!je?.reversed_by_id,
+            is_reversal: !!je?.reversal_of_id,
           };
         });
 
@@ -1610,9 +1622,11 @@ export function createSupabaseAdapter(
         const { data: contact, error: cErr } = await client.from('contacts').select('name').eq('id', contact_id).single();
         assertNoError(cErr, 'reports.getSupplierStatement contact');
 
+        // Phase 12.52 — mirror of getCustomerStatement, pulls source
+        // metadata for label / hide-reversed support.
         const { data: glRows, error: glErr } = await client
           .from('general_ledger')
-          .select('id, date, debit, credit, description, related_doc_type, related_doc_id, journal_entries(entry_number)')
+          .select('id, date, debit, credit, description, related_doc_type, related_doc_id, journal_entries(entry_number, source_type, reversed_by_id, reversal_of_id)')
           .eq('company_id', company_id)
           .eq('contact_id', contact_id)
           .eq('account_code', '2100')
@@ -1624,7 +1638,12 @@ export function createSupabaseAdapter(
 
         let balance = 0;
         const lines: SupplierStatementLine[] = (glRows ?? []).map(row => {
-          const je = row.journal_entries as unknown as { entry_number: string } | null;
+          const je = row.journal_entries as unknown as {
+            entry_number: string;
+            source_type: string | null;
+            reversed_by_id: string | null;
+            reversal_of_id: string | null;
+          } | null;
           balance += Number(row.credit) - Number(row.debit);
           return {
             date: row.date as string,
@@ -1633,6 +1652,9 @@ export function createSupabaseAdapter(
             debit: Number(row.debit),
             credit: Number(row.credit),
             balance,
+            source_type: je?.source_type ?? undefined,
+            is_reversed: !!je?.reversed_by_id,
+            is_reversal: !!je?.reversal_of_id,
           };
         });
 

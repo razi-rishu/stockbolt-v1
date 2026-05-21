@@ -195,6 +195,10 @@ export default function CustomerDetailPage() {
   const [stmtFrom, setStmtFrom] = useState(monthsAgoIso(3));
   const [stmtTo, setStmtTo]     = useState(todayIso);
   const [tab, setTab] = useState<'overview' | 'docs' | 'stmt'>('overview');
+  // Phase 12.52 — default ON: shows only entries that affect the
+  // current balance. Toggle OFF to see the full audit trail with
+  // voided invoices + their reversal counter-entries.
+  const [stmtHideReversed, setStmtHideReversed] = useState(true);
 
   // ── Data fetches ───────────────────────────────────────────────────────────
   const { data: contact } = useQuery<ContactRow | null>({
@@ -652,63 +656,113 @@ export default function CustomerDetailPage() {
       <>
 
       {/* ── Account Statement ────────────────────────────────────────── */}
-      <div className="rounded-card border border-border-subtle bg-surface-card">
-        <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-3">
-          <h2 className="text-sm font-semibold text-ink-primary">{t('reports.customer_statement')}</h2>
-          <div className="ms-auto flex items-center gap-2">
-            <Input type="date" value={stmtFrom} onChange={(e) => setStmtFrom(e.target.value)} className="h-8 text-xs" />
-            <span className="text-ink-tertiary">–</span>
-            <Input type="date" value={stmtTo}   onChange={(e) => setStmtTo(e.target.value)}   className="h-8 text-xs" />
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={!id}
-              onClick={() => window.open(`/print/statement/${id}?from=${stmtFrom}&to=${stmtTo}`, '_blank')}
-              title="Open a print-ready statement in a new tab (use the browser's Print → Save as PDF)"
-            >
-              🖨 Print / PDF
-            </Button>
+      {(() => {
+        // Phase 12.52 — friendly doc label derived from source_type. Falls
+        // back to related_doc_type if source_type is missing.
+        const sourceLabel = (src?: string, fallback?: string): string => {
+          switch (src) {
+            case 'sales_invoice':       return 'Invoice';
+            case 'sales_invoice_void':  return 'Invoice (void)';
+            case 'sales_invoice_edit':  return 'Invoice (edit)';
+            case 'sales_payment':       return 'Payment';
+            case 'customer_advance':    return 'Customer advance';
+            case 'pos_sale':            return 'POS sale';
+            case 'credit_note':         return 'Credit note';
+            case 'manual':              return 'Manual JE';
+            case 'reversal':            return 'Reversal';
+            case 'opening_balance':     return 'Opening balance';
+            default:                    return (fallback ?? src ?? 'JE').replace(/_/g, ' ');
+          }
+        };
+
+        // Apply the hide-reversed filter + recompute the running balance
+        // so the user sees a consistent statement without the audit pairs.
+        const allLines = statement?.lines ?? [];
+        const visibleLines = stmtHideReversed
+          ? allLines.filter(l => !l.is_reversed && !l.is_reversal)
+          : allLines;
+        let runBal = 0;
+        const lines = visibleLines.map(l => {
+          runBal += l.debit - l.credit;
+          return { ...l, balance: runBal };
+        });
+        const closing = stmtHideReversed ? runBal : (statement?.closing_balance ?? 0);
+
+        return (
+        <div className="rounded-card border border-border-subtle bg-surface-card">
+          <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-3">
+            <h2 className="text-sm font-semibold text-ink-primary">{t('reports.customer_statement')}</h2>
+            <label className="flex items-center gap-2 text-xs text-ink-secondary cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5"
+                checked={stmtHideReversed}
+                onChange={(e) => setStmtHideReversed(e.target.checked)}
+              />
+              <span>Hide reversed entries</span>
+              <span className="text-ink-tertiary">{stmtHideReversed ? '— net activity only' : '— full audit trail'}</span>
+            </label>
+            <div className="ms-auto flex items-center gap-2">
+              <Input type="date" value={stmtFrom} onChange={(e) => setStmtFrom(e.target.value)} className="h-8 text-xs" />
+              <span className="text-ink-tertiary">–</span>
+              <Input type="date" value={stmtTo}   onChange={(e) => setStmtTo(e.target.value)}   className="h-8 text-xs" />
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={!id}
+                onClick={() => window.open(`/print/statement/${id}?from=${stmtFrom}&to=${stmtTo}`, '_blank')}
+                title="Open a print-ready statement in a new tab (use the browser's Print → Save as PDF)"
+              >
+                🖨 Print / PDF
+              </Button>
+            </div>
           </div>
-        </div>
-        {stmtLoading ? (
-          <p className="px-5 py-4 text-sm text-ink-secondary">{t('common.loading')}</p>
-        ) : !statement || statement.lines.length === 0 ? (
-          <p className="px-5 py-4 text-sm text-ink-tertiary">{t('reports.no_transactions')}</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
-                <th className="px-4 py-2 text-start font-medium">Date</th>
-                <th className="px-4 py-2 text-start font-medium">Document</th>
-                <th className="px-4 py-2 text-start font-medium">Number</th>
-                <th className="px-4 py-2 text-end font-medium">Debit</th>
-                <th className="px-4 py-2 text-end font-medium">Credit</th>
-                <th className="px-4 py-2 text-end font-medium">Balance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {statement.lines.map((line, i) => (
-                <tr key={i} className="border-b border-border-subtle last:border-0">
-                  <td className="px-4 py-2 text-ink-secondary">{line.date}</td>
-                  <td className="px-4 py-2 text-ink-secondary capitalize">{line.doc_type.replace(/_/g, ' ')}</td>
-                  <td className="px-4 py-2 font-mono text-xs text-brand-600">{line.doc_number}</td>
-                  <td className="px-4 py-2 text-end font-mono text-ink-primary">{line.debit > 0 ? fmt(line.debit) : '—'}</td>
-                  <td className="px-4 py-2 text-end font-mono text-ink-primary">{line.credit > 0 ? fmt(line.credit) : '—'}</td>
-                  <td className={`px-4 py-2 text-end font-mono font-medium ${line.balance < 0 ? 'text-red-600' : 'text-ink-primary'}`}>
-                    {fmt(Math.abs(line.balance))}{line.balance < 0 ? ' CR' : line.balance > 0 ? ' DR' : ''}
+          {stmtLoading ? (
+            <p className="px-5 py-4 text-sm text-ink-secondary">{t('common.loading')}</p>
+          ) : lines.length === 0 ? (
+            <p className="px-5 py-4 text-sm text-ink-tertiary">{t('reports.no_transactions')}</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
+                  <th className="px-4 py-2 text-start font-medium">Date</th>
+                  <th className="px-4 py-2 text-start font-medium">Document</th>
+                  <th className="px-4 py-2 text-start font-medium">Number</th>
+                  <th className="px-4 py-2 text-end font-medium">Debit</th>
+                  <th className="px-4 py-2 text-end font-medium">Credit</th>
+                  <th className="px-4 py-2 text-end font-medium">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((line, i) => {
+                  // Subtle styling cues so you can tell at a glance which
+                  // rows are part of a reversal pair in audit-trail mode.
+                  const dim = !stmtHideReversed && (line.is_reversed || line.is_reversal);
+                  return (
+                    <tr key={i} className="border-b border-border-subtle last:border-0" style={dim ? { opacity: 0.55 } : undefined}>
+                      <td className="px-4 py-2 text-ink-secondary">{line.date}</td>
+                      <td className="px-4 py-2 text-ink-secondary">{sourceLabel(line.source_type, line.doc_type)}</td>
+                      <td className="px-4 py-2 font-mono text-xs text-brand-600">{line.doc_number}</td>
+                      <td className="px-4 py-2 text-end font-mono text-ink-primary">{line.debit > 0 ? fmt(line.debit) : '—'}</td>
+                      <td className="px-4 py-2 text-end font-mono text-ink-primary">{line.credit > 0 ? fmt(line.credit) : '—'}</td>
+                      <td className={`px-4 py-2 text-end font-mono font-medium ${line.balance < 0 ? 'text-red-600' : 'text-ink-primary'}`}>
+                        {fmt(Math.abs(line.balance))}{line.balance < 0 ? ' CR' : line.balance > 0 ? ' DR' : ''}
+                      </td>
+                    </tr>
+                  );
+                })}
+                <tr className="border-t-2 border-border-subtle bg-surface-muted font-semibold">
+                  <td colSpan={5} className="px-4 py-2 text-ink-primary">Closing balance</td>
+                  <td className={`px-4 py-2 text-end font-mono ${closing < 0 ? 'text-red-600' : 'text-ink-primary'}`}>
+                    {fmt(Math.abs(closing))}{closing < 0 ? ' CR' : closing > 0 ? ' DR' : ''}
                   </td>
                 </tr>
-              ))}
-              <tr className="border-t-2 border-border-subtle bg-surface-muted font-semibold">
-                <td colSpan={5} className="px-4 py-2 text-ink-primary">Closing balance</td>
-                <td className={`px-4 py-2 text-end font-mono ${statement.closing_balance < 0 ? 'text-red-600' : 'text-ink-primary'}`}>
-                  {fmt(Math.abs(statement.closing_balance))}{statement.closing_balance < 0 ? ' CR' : statement.closing_balance > 0 ? ' DR' : ''}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        )}
-      </div>
+              </tbody>
+            </table>
+          )}
+        </div>
+        );
+      })()}
 
       </>
       )}
