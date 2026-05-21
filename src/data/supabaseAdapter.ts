@@ -2723,6 +2723,88 @@ export function createSupabaseAdapter(
         assertNoError(error, 'purchaseOrders.getNextNumber');
         return data as string;
       },
+
+      // ── Phase 12.47 — convert PO to draft Vendor Bill ────────────────────
+      async convertToBill(po_id): Promise<VendorBillRow> {
+        // 1. Fetch the source PO + items.
+        const { data: po, error: poErr } = await client
+          .from('purchase_orders').select('*').eq('id', po_id).single();
+        assertNoError(poErr, 'purchaseOrders.convertToBill fetch PO');
+        if (!po) throw new Error('Purchase order not found');
+        if (po.status === 'closed' || po.status === 'void') {
+          throw new Error(`Cannot convert a ${po.status} purchase order to a bill.`);
+        }
+
+        const { data: poItems, error: piErr } = await client
+          .from('purchase_order_items').select('*')
+          .eq('po_id', po_id).order('sort_order');
+        assertNoError(piErr, 'purchaseOrders.convertToBill fetch items');
+
+        // 2. Allocate a fresh BILL- number.
+        const { data: numData, error: numErr } = await client
+          .rpc('get_next_document_number', { p_company_id: po.company_id, p_prefix: 'BILL' });
+        assertNoError(numErr, 'purchaseOrders.convertToBill number');
+
+        // 3. Insert the draft bill. Stays draft so the user can review
+        //    supplier_bill_number, due_date, warehouse before confirming
+        //    (which is when GL + stock posting happens via confirm_vendor_bill).
+        const billRow = {
+          company_id:           po.company_id,
+          bill_number:          numData as string,
+          supplier_id:          po.supplier_id,
+          supplier_bill_number: null,
+          date:                 new Date().toISOString().slice(0, 10),
+          due_date:             null,
+          reference:            po.reference ?? po.po_number,
+          currency:             po.currency,
+          exchange_rate:        po.exchange_rate,
+          subtotal:             po.subtotal,
+          discount_amount:      po.discount_amount,
+          tax_amount:           po.tax_amount,
+          total_amount:         po.total_amount,
+          status:               'draft' as const,
+          linked_grn_id:        null,
+          notes:                po.notes ?? null,
+        };
+        const { data: bill, error: billErr } = await client
+          .from('vendor_bills').insert(billRow).select().single();
+        assertNoError(billErr, 'purchaseOrders.convertToBill insert bill');
+
+        // 4. Copy line items 1:1 (preserves discount/tax math from the PO).
+        const billItems = (poItems ?? []).map((pi, i) => ({
+          bill_id:          bill!.id,
+          product_id:       pi.product_id,
+          description:      pi.description,
+          description_ar:   pi.description_ar,
+          quantity:         pi.quantity,
+          unit_id:          pi.unit_id,
+          unit_cost:        pi.unit_cost,
+          discount_percent: pi.discount_percent,
+          discount_amount:  pi.discount_amount,
+          tax_category:     pi.tax_category,
+          tax_rate:         pi.tax_rate,
+          tax_amount:       pi.tax_amount,
+          line_subtotal:    pi.line_subtotal,
+          line_total:       pi.line_total,
+          sort_order:       i,
+          coa_account_id:   null,
+          linked_grn_item_id: null,
+        }));
+        if (billItems.length > 0) {
+          const { error: biErr } = await client.from('vendor_bill_items').insert(billItems);
+          assertNoError(biErr, 'purchaseOrders.convertToBill insert items');
+        }
+
+        // 5. Close the source PO so it leaves the open list. The CHECK
+        //    constraint allows: draft / sent / partially_received /
+        //    received / closed / void — closed is the right terminal
+        //    state once the bill side is live.
+        const { error: updErr } = await client
+          .from('purchase_orders').update({ status: 'closed' }).eq('id', po_id);
+        assertNoError(updErr, 'purchaseOrders.convertToBill close PO');
+
+        return bill!;
+      },
     },
 
     // ── Goods Receipts ────────────────────────────────────────────────────────

@@ -1081,6 +1081,16 @@ export interface PurchaseOrdersAPI {
   send(id: string): Promise<void>;
   close(id: string): Promise<void>;
   getNextNumber(company_id: string): Promise<string>;
+  /**
+   * Phase 12.47 — Convert a PO into a draft vendor bill.
+   *
+   * Reads the PO + items, creates a new vendor_bills row in 'draft'
+   * status with the same supplier / currency / lines, then marks the
+   * source PO as 'closed' so it doesn't show up in the open list.
+   * The bill stays draft so the user can review supplier_bill_number,
+   * due_date and warehouse before confirming.
+   */
+  convertToBill(po_id: string): Promise<VendorBillRow>;
 }
 
 export interface GoodsReceiptsAPI {

@@ -198,7 +198,27 @@ export default function POEditorPage() {
     onError: (e: Error) => setError(e.message),
   });
 
+  // Phase 12.47 — Convert this PO into a draft vendor bill. After
+  // success the new bill takes over the screen so the user can fill
+  // supplier_bill_number, due_date and warehouse before confirming.
+  const convertToBillMutation = useMutation({
+    mutationFn: () => getAdapter().purchaseOrders.convertToBill(id!),
+    onSuccess: (bill) => {
+      qc.invalidateQueries({ queryKey: ['vendor_bills',     company_id] });
+      qc.invalidateQueries({ queryKey: ['purchase_orders',  company_id] });
+      qc.invalidateQueries({ queryKey: ['purchase_order',   id] });
+      navigate(`/purchasing/bills/${bill.id}`);
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
   const canEdit = isNew || existing?.status === 'draft';
+  // Conversion allowed on any "live" PO (not draft to avoid converting
+  // half-built drafts, not closed/void which are terminal). The user can
+  // always Send first then Convert.
+  const canConvertToBill = !isNew
+    && !!existing
+    && !['draft', 'closed', 'void'].includes(existing.status);
   const supplierOpts = suppliers.map(s => ({ value: s.id, label: s.name }));
   const warehouseOpts = [{ value: '', label: t('purchasing.select_warehouse') }, ...warehouses.map(w => ({ value: w.id, label: w.name }))];
   const productOpts = products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }));
@@ -226,6 +246,17 @@ export default function POEditorPage() {
           {!isNew && existing?.status === 'received' && (
             <Button size="sm" variant="ghost" onClick={() => navigate(`/purchasing/grns/new?po_id=${existing.id}`)}>
               {t('purchasing.create_grn')}
+            </Button>
+          )}
+          {/* Phase 12.47 — Convert PO -> draft vendor Bill. Cheaper path
+               for SME shops that don't want to GRN every order. */}
+          {canConvertToBill && (
+            <Button
+              size="sm"
+              onClick={() => { setError(null); convertToBillMutation.mutate(); }}
+              disabled={convertToBillMutation.isPending}
+            >
+              {convertToBillMutation.isPending ? 'Converting…' : 'Convert to Bill'}
             </Button>
           )}
         </div>

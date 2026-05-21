@@ -216,6 +216,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       send:          () => notImplemented('purchaseOrders.send'),
       close:         () => notImplemented('purchaseOrders.close'),
       getNextNumber: () => notImplemented('purchaseOrders.getNextNumber'),
+      convertToBill: () => notImplemented('purchaseOrders.convertToBill'),
     },
     goodsReceipts: {
       list:          () => notImplemented('goodsReceipts.list'),
