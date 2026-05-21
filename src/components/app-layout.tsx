@@ -441,11 +441,17 @@ function SettingsMenu() {
     return () => document.removeEventListener('mousedown', onClick);
   }, [open]);
 
+  // Top item links to the Settings hub (Phase 12.45) — single place that
+  // shows every configurable area with a live count. The legacy items
+  // below remain for quick-jump muscle memory.
   const settings: NavItem[] = [
+    { to: '/settings',               label: 'All settings' },
     { to: '/settings/company',       label: t('nav.company') },
     { to: '/settings/warehouses',    label: t('nav.warehouses') },
     { to: '/settings/units',         label: t('nav.units') },
     { to: '/settings/price-levels',  label: t('nav.price_levels') },
+    { to: '/settings/tax-rates',     label: 'Tax Rates' },
+    { to: '/settings/bank-accounts', label: 'Bank Accounts' },
     { to: '/settings/print',         label: t('print.settings_title') },
     { to: '/settings/system-health', label: t('settings.system_health') },
     { to: '/settings/salespeople',   label: 'Salespeople' },
