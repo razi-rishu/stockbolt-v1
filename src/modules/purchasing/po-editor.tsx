@@ -8,6 +8,7 @@ import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { SearchableSelect } from '@/ui/searchable-select';
+import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 import type { PurchaseOrderRow, PurchaseOrderItemInsert, ContactRow, ProductRow, TaxRateRow, WarehouseRow } from '@/data/adapter';
 import { calcPurchaseLine as _calc } from '@/core/purchasing/purchase-calc';
 
@@ -90,6 +91,11 @@ export default function POEditorPage() {
   });
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
   const [error, setError] = useState<string | null>(null);
+
+  // Phase 12.42 — quick-create product from inside the line picker.
+  const [productQcOpen,    setProductQcOpen]    = useState(false);
+  const [productQcSeed,    setProductQcSeed]    = useState('');
+  const [productQcLineKey, setProductQcLineKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (existing) {
@@ -289,6 +295,14 @@ export default function POEditorPage() {
                       onChange={(v) => handleProductChange(line._key, v)}
                       placeholder={'— ' + t('purchasing.select_product') + ' —'}
                       panelWidth={360}
+                      addNew={canEdit ? {
+                        label: 'Add new product',
+                        onClick: (q) => {
+                          setProductQcLineKey(line._key);
+                          setProductQcSeed(q);
+                          setProductQcOpen(true);
+                        },
+                      } : undefined}
                     />
                   </td>
                   <td className="px-3 py-1.5">
@@ -354,6 +368,18 @@ export default function POEditorPage() {
           </div>
         </div>
       </div>
+
+      {/* Phase 12.42 — quick-create product modal. */}
+      <ProductQuickCreate
+        open={productQcOpen}
+        initialQuery={productQcSeed}
+        onClose={() => setProductQcOpen(false)}
+        onCreated={(productId) => {
+          setProductQcOpen(false);
+          if (productQcLineKey) handleProductChange(productQcLineKey, productId);
+          setProductQcLineKey(null);
+        }}
+      />
     </div>
   );
 }

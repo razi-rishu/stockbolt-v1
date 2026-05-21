@@ -46,6 +46,21 @@ interface Props {
   panelWidth?: number;
   /** Minimum auto-width floor when panelWidth is omitted. Default 288 (≈18rem). */
   panelMinWidth?: number;
+  /**
+   * Optional "Add new …" affordance shown inside the dropdown.
+   *
+   * Provide an object with:
+   *   - label: short verb-noun phrase (e.g. "Add new product")
+   *   - onClick: receives the current search query so the quick-create
+   *     modal can pre-seed its first field
+   *
+   * When `options` is empty (no matches), this becomes the only item in
+   * the panel. When matches exist, it appears as a footer row below them.
+   */
+  addNew?: {
+    label: string;
+    onClick: (query: string) => void;
+  };
 }
 
 export function SearchableSelect({
@@ -57,6 +72,7 @@ export function SearchableSelect({
   className = '',
   panelWidth,
   panelMinWidth = 288,
+  addNew,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -189,7 +205,9 @@ export function SearchableSelect({
           </div>
           <ul ref={listRef} className="max-h-48 overflow-y-auto py-1">
             {filtered.length === 0 ? (
-              <li className="px-3 py-2 text-xs text-ink-tertiary">No matches</li>
+              addNew ? null /* the Add-new footer below becomes the only item */ : (
+                <li className="px-3 py-2 text-xs text-ink-tertiary">No matches</li>
+              )
             ) : (
               filtered.map((o, i) => {
                 const isSelected = o.value === value;
@@ -220,6 +238,54 @@ export function SearchableSelect({
               })
             )}
           </ul>
+
+          {/* "+ Add new …" footer — shows whenever consumer supplies the
+               addNew prop. Sits at the bottom of the panel with a subtle
+               border separating it from the option list (or replaces the
+               "No matches" copy entirely when nothing matched). */}
+          {addNew && (
+            <div className="border-t border-border-subtle">
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  const q = query;
+                  setOpen(false);
+                  setQuery('');
+                  addNew.onClick(q);
+                }}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 12px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: '#4338ca',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  textAlign: 'start',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#eef2ff'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              >
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '16px', height: '16px',
+                  borderRadius: '999px',
+                  background: '#6366f1',
+                  color: '#fff',
+                  fontSize: '11px',
+                  lineHeight: 1,
+                }}>+</span>
+                {addNew.label}{query.trim() ? ` "${query.trim()}"` : ''}
+              </button>
+            </div>
+          )}
         </div>
       </FloatingPortal>
       )}

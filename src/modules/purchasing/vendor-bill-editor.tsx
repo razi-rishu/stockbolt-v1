@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
+import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 import { ContactPicker } from '@/components/contact-picker';
 import { AccountingPreview, buildVendorBillPreview } from '@/components/accounting-preview';
 import type { VendorBillRow, VendorBillItemInsert, ContactRow, ProductRow, TaxRateRow, CoaRow } from '@/data/adapter';
@@ -141,6 +142,11 @@ export default function VendorBillEditorPage() {
   });
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
   const [error, setError] = useState<string | null>(null);
+
+  // Phase 12.42 — quick-create product from inside the line picker.
+  const [productQcOpen,    setProductQcOpen]    = useState(false);
+  const [productQcSeed,    setProductQcSeed]    = useState('');
+  const [productQcLineKey, setProductQcLineKey] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState(false);
 
   useEffect(() => {
@@ -543,6 +549,14 @@ export default function VendorBillEditorPage() {
                       onChange={(v) => handleProductChange(line._key, v)}
                       placeholder={'— ' + t('purchasing.select_product') + ' —'}
                       panelWidth={360}
+                      addNew={canEdit ? {
+                        label: 'Add new product',
+                        onClick: (q) => {
+                          setProductQcLineKey(line._key);
+                          setProductQcSeed(q);
+                          setProductQcOpen(true);
+                        },
+                      } : undefined}
                     />
                   </td>
                   <td className="px-3 py-1.5">
@@ -760,6 +774,19 @@ export default function VendorBillEditorPage() {
         })()}
       </aside>
       </div>
+
+      {/* Phase 12.42 — quick-create product modal (auto-drops new product
+           onto the line that triggered it). */}
+      <ProductQuickCreate
+        open={productQcOpen}
+        initialQuery={productQcSeed}
+        onClose={() => setProductQcOpen(false)}
+        onCreated={(productId) => {
+          setProductQcOpen(false);
+          if (productQcLineKey) handleProductChange(productQcLineKey, productId);
+          setProductQcLineKey(null);
+        }}
+      />
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { SearchableSelect } from '@/ui/searchable-select';
+import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 import type { GoodsReceiptRow, GoodsReceiptItemInsert, ContactRow, ProductRow, WarehouseRow } from '@/data/adapter';
 
 interface LineRow {
@@ -78,6 +79,11 @@ export default function GRNEditorPage() {
   });
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
   const [error, setError] = useState<string | null>(null);
+
+  // Phase 12.42 — quick-create product from inside the line picker.
+  const [productQcOpen,    setProductQcOpen]    = useState(false);
+  const [productQcSeed,    setProductQcSeed]    = useState('');
+  const [productQcLineKey, setProductQcLineKey] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState(false);
 
   useEffect(() => {
@@ -286,6 +292,14 @@ export default function GRNEditorPage() {
                       onChange={(v) => updateLine(line._key, { product_id: v })}
                       placeholder={t('purchasing.select_product')}
                       panelWidth={360}
+                      addNew={canEdit ? {
+                        label: 'Add new product',
+                        onClick: (q) => {
+                          setProductQcLineKey(line._key);
+                          setProductQcSeed(q);
+                          setProductQcOpen(true);
+                        },
+                      } : undefined}
                     />
                   </td>
                   <td className="px-3 py-1.5">
@@ -330,6 +344,18 @@ export default function GRNEditorPage() {
           </div>
         </div>
       </div>
+
+      {/* Phase 12.42 — quick-create product modal. */}
+      <ProductQuickCreate
+        open={productQcOpen}
+        initialQuery={productQcSeed}
+        onClose={() => setProductQcOpen(false)}
+        onCreated={(productId) => {
+          setProductQcOpen(false);
+          if (productQcLineKey) updateLine(productQcLineKey, { product_id: productId });
+          setProductQcLineKey(null);
+        }}
+      />
     </div>
   );
 }

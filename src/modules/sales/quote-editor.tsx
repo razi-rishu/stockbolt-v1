@@ -8,6 +8,7 @@ import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { ContactPicker } from '@/components/contact-picker';
+import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 import type { SalesQuoteRow, SalesQuoteItemInsert, ContactRow, ProductRow, TaxRateRow } from '@/data/adapter';
 import { calcLine as _calcLine } from '@/core/sales/invoice-calc';
 
@@ -86,6 +87,12 @@ export default function QuoteEditorPage() {
   const [header, setHeader] = useState({ contact_id: '', salesperson_id: '', date: todayIso(), expiry_date: '', reference: '', notes: '', currency: companyCurrency ?? 'AED' });
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
   const [error, setError] = useState<string | null>(null);
+
+  // Phase 12.42 — quick-create product from inside the line picker.
+  // Opening the modal seeds it with the in-progress search query.
+  const [productQcOpen,    setProductQcOpen]    = useState(false);
+  const [productQcSeed,    setProductQcSeed]    = useState('');
+  const [productQcLineKey, setProductQcLineKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (existing) {
@@ -315,6 +322,14 @@ export default function QuoteEditorPage() {
                       onChange={(v) => handleProductChange(line._key, v)}
                       placeholder={'— ' + t('sales.select_product') + ' —'}
                       panelWidth={360}
+                      addNew={canEdit ? {
+                        label: 'Add new product',
+                        onClick: (q) => {
+                          setProductQcLineKey(line._key);
+                          setProductQcSeed(q);
+                          setProductQcOpen(true);
+                        },
+                      } : undefined}
                     />
                   </td>
                   <td className="px-3 py-1.5"><input className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60" value={line.description} disabled={!canEdit} onChange={e => updateLine(line._key, { description: e.target.value })} /></td>
@@ -339,6 +354,19 @@ export default function QuoteEditorPage() {
           </div>
         </div>
       </div>
+
+      {/* Phase 12.42 — quick-create product modal. After save, auto-drops the
+           new product onto the line that triggered it. */}
+      <ProductQuickCreate
+        open={productQcOpen}
+        initialQuery={productQcSeed}
+        onClose={() => setProductQcOpen(false)}
+        onCreated={(productId) => {
+          setProductQcOpen(false);
+          if (productQcLineKey) handleProductChange(productQcLineKey, productId);
+          setProductQcLineKey(null);
+        }}
+      />
     </div>
   );
 }
