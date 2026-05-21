@@ -29,6 +29,7 @@ import {
   FloatingPortal,
 } from '@floating-ui/react';
 import { Z } from './z-index';
+import { AddNewButton } from './add-new-button';
 
 export interface SearchableSelectOption {
   value: string;
@@ -50,15 +51,17 @@ interface Props {
    * Optional "Add new …" affordance shown inside the dropdown.
    *
    * Provide an object with:
-   *   - label: short verb-noun phrase (e.g. "Add new product")
+   *   - noun: singular noun, e.g. "product", "customer" — rendered as
+   *     "Add new <noun>" via the shared AddNewButton component so every
+   *     dropdown across the app looks identical.
    *   - onClick: receives the current search query so the quick-create
-   *     modal can pre-seed its first field
+   *     modal can pre-seed its first field.
    *
    * When `options` is empty (no matches), this becomes the only item in
    * the panel. When matches exist, it appears as a footer row below them.
    */
   addNew?: {
-    label: string;
+    noun: string;
     onClick: (query: string) => void;
   };
 }
@@ -245,45 +248,15 @@ export function SearchableSelect({
                "No matches" copy entirely when nothing matched). */}
           {addNew && (
             <div className="border-t border-border-subtle">
-              <button
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  const q = query;
+              <AddNewButton
+                noun={addNew.noun}
+                query={query}
+                onClick={(q) => {
                   setOpen(false);
                   setQuery('');
                   addNew.onClick(q);
                 }}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '8px 12px',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color: '#4338ca',
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  textAlign: 'start',
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#eef2ff'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-              >
-                <span style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: '16px', height: '16px',
-                  borderRadius: '999px',
-                  background: '#6366f1',
-                  color: '#fff',
-                  fontSize: '11px',
-                  lineHeight: 1,
-                }}>+</span>
-                {addNew.label}{query.trim() ? ` "${query.trim()}"` : ''}
-              </button>
+              />
             </div>
           )}
         </div>

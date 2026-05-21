@@ -9,6 +9,7 @@ import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Modal } from '@/ui/modal';
 import { SearchableSelect } from '@/ui/searchable-select';
+import { AddNewButton } from '@/ui/add-new-button';
 import { SmartEntitySearch, highlightMatch } from '@/components/smart-entity-search';
 import { ContactPicker } from '@/components/contact-picker';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
@@ -741,18 +742,15 @@ export default function InvoiceEditorPage() {
                       getDisplayLabel={(row) => `${row.sku}  ${row.name}`}
                       getKey={(row) => row.id}
                       emptyState={(query) => (
-                        <button
-                          type="button"
-                          onClick={() => {
+                        <AddNewButton
+                          noun="product"
+                          query={query}
+                          onClick={(q) => {
                             setProductQcLineKey(line._key);
-                            setProductQcSeed(query);
+                            setProductQcSeed(q);
                             setProductQcOpen(true);
                           }}
-                          className="flex w-full items-center gap-2 text-xs font-medium text-brand-600 hover:text-brand-700"
-                        >
-                          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-brand-100 text-brand-700">+</span>
-                          Add new item{query ? ` "${query}"` : ''}
-                        </button>
+                        />
                       )}
                       renderRow={(row, { highlighted, query }) => {
                         const s = stockMap[row.id];

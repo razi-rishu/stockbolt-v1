@@ -323,7 +323,7 @@ export default function QuoteEditorPage() {
                       placeholder={'— ' + t('sales.select_product') + ' —'}
                       panelWidth={360}
                       addNew={canEdit ? {
-                        label: 'Add new product',
+                        noun: 'product',
                         onClick: (q) => {
                           setProductQcLineKey(line._key);
                           setProductQcSeed(q);

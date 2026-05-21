@@ -296,7 +296,7 @@ export default function POEditorPage() {
                       placeholder={'— ' + t('purchasing.select_product') + ' —'}
                       panelWidth={360}
                       addNew={canEdit ? {
-                        label: 'Add new product',
+                        noun: 'product',
                         onClick: (q) => {
                           setProductQcLineKey(line._key);
                           setProductQcSeed(q);
