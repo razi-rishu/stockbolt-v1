@@ -7,7 +7,8 @@ import { useAuthStore } from '@/store/auth';
 import { postJournalEntry, reverseJournalEntry, JournalValidationError } from '@/core/gl/posting-engine';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
-import type { JELine, JournalEntryRow, GeneralLedgerRow } from '@/data/adapter';
+import { SearchableSelect } from '@/ui/searchable-select';
+import type { JELine, JournalEntryRow, GeneralLedgerRow, CoaRow } from '@/data/adapter';
 
 interface LineRow extends JELine {
   _key: number;
@@ -46,6 +47,22 @@ export default function JournalEntryEditorPage() {
     queryFn: () => getAdapter().accounting.getGLLines(id!),
     enabled: !isNew && !!id,
   });
+
+  // Phase 12.51 — full chart of accounts for the account picker. Cached
+  // app-wide so the same query is shared with the JE list, CoA page and
+  // Settings hub. Only ACTIVE accounts are pickable on a new manual JE.
+  const { data: coa = [] } = useQuery<CoaRow[]>({
+    queryKey: ['coa', company_id],
+    queryFn: () => getAdapter().coa.list(company_id!),
+    enabled: !!company_id,
+  });
+  // Build dropdown options: "1100  Cash on Hand" — type either the code
+  // or any part of the name to find it. Sorted by code so the user sees
+  // them in the same order as the printed CoA report.
+  const accountOpts = coa
+    .filter((a) => a.is_active)
+    .sort((a, b) => a.code.localeCompare(b.code))
+    .map((a) => ({ value: a.code, label: `${a.code}  ${a.name}` }));
 
   const totalDebit  = lines.reduce((s, l) => s + (Number(l.debit)  || 0), 0);
   const totalCredit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
@@ -206,12 +223,17 @@ export default function JournalEntryEditorPage() {
               <tbody>
                 {lines.map((line) => (
                   <tr key={line._key} className="border-b border-border-subtle last:border-0">
-                    <td className="py-1.5 pr-2">
-                      <Input
+                    <td className="py-1.5 pr-2 w-64">
+                      {/* Phase 12.51 — pick the account by typing either
+                           the code (e.g. "1100") or any part of the name
+                           (e.g. "cash"). Sends the account_code to the
+                           posting RPC unchanged. */}
+                      <SearchableSelect
+                        options={accountOpts}
                         value={line.account_code}
-                        onChange={(e) => updateLine(line._key, 'account_code', e.target.value)}
-                        placeholder="1100"
-                        className="font-mono text-xs"
+                        onChange={(v) => updateLine(line._key, 'account_code', v)}
+                        placeholder={t('accounting.search_account') || 'Search account…'}
+                        panelWidth={340}
                       />
                     </td>
                     <td className="py-1.5 pr-2">
