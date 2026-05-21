@@ -2372,19 +2372,50 @@ export function createSupabaseAdapter(
           return normalDebit ? net : -net;
         };
 
+        // Phase 12.46 — sum across a list of account codes. Used for VAT
+        // working-capital changes, since the chart of accounts splits VAT
+        // input (1500/1510/1520/1530) and VAT output (2200/2210/2220/
+        // 2230) into multiple sub-codes by tax type (UAE VAT / GCC IGST /
+        // CGST / SGST etc.). All four codes per category collapse into
+        // one cash-flow line.
+        const getBalanceMulti = async (codes: string[], date: string, normalDebit: boolean) => {
+          const { data } = await client
+            .from('general_ledger')
+            .select('debit, credit')
+            .eq('company_id', company_id)
+            .in('account_code', codes)
+            .lte('date', date);
+          const net = (data ?? []).reduce((s, r) => s + (Number(r.debit) - Number(r.credit)), 0);
+          return normalDebit ? net : -net;
+        };
+
+        const VAT_INPUT_CODES  = ['1500', '1510', '1520', '1530']; // VAT receivable (asset)
+        const VAT_OUTPUT_CODES = ['2200', '2210', '2220', '2230']; // VAT payable    (liability)
+
         const prevDay = (d: string) => { const dt = new Date(d); dt.setDate(dt.getDate() - 1); return dt.toISOString().slice(0, 10); };
 
         const openingCash = await getBalance('11', prevDay(from));
         const closingCash = await getBalance('11', to);
 
-        const arOpen = await getBalanceSingle('1200', prevDay(from), true);
-        const arClose = await getBalanceSingle('1200', to, true);
-        const invOpen = await getBalanceSingle('1300', prevDay(from), true);
-        const invClose = await getBalanceSingle('1300', to, true);
-        const apOpen  = await getBalanceSingle('2100', prevDay(from), false);
-        const apClose = await getBalanceSingle('2100', to, false);
-        const advOpen = await getBalanceSingle('2400', prevDay(from), false);
-        const advClose = await getBalanceSingle('2400', to, false);
+        const arOpen  = await getBalanceSingle('1200', prevDay(from), true);
+        const arClose = await getBalanceSingle('1200', to,            true);
+        const invOpen  = await getBalanceSingle('1300', prevDay(from), true);
+        const invClose = await getBalanceSingle('1300', to,            true);
+        const apOpen   = await getBalanceSingle('2100', prevDay(from), false);
+        const apClose  = await getBalanceSingle('2100', to,            false);
+        const advOpen  = await getBalanceSingle('2400', prevDay(from), false);
+        const advClose = await getBalanceSingle('2400', to,            false);
+
+        // Phase 12.46 — VAT receivable (input) is an asset; VAT payable
+        // (output) is a liability. Without these in the working-capital
+        // section the AR/AP changes carry the VAT portion of every
+        // invoice and bill but Net Profit (revenue ex-VAT) doesn't, so
+        // the breakdown couldn't reconcile to the cash delta even
+        // though opening/closing cash were correct.
+        const vatInOpen   = await getBalanceMulti(VAT_INPUT_CODES,  prevDay(from), true);
+        const vatInClose  = await getBalanceMulti(VAT_INPUT_CODES,  to,            true);
+        const vatOutOpen  = await getBalanceMulti(VAT_OUTPUT_CODES, prevDay(from), false);
+        const vatOutClose = await getBalanceMulti(VAT_OUTPUT_CODES, to,            false);
 
         const { data: adjRows } = await client
           .from('general_ledger')
@@ -2404,10 +2435,14 @@ export function createSupabaseAdapter(
           { label: 'Less: Inventory Gain (non-cash)', amount: -invGain },
         ];
         const wcChanges: CashFlowSection[] = [
-          { label: '(Increase)/Decrease in AR',       amount: -(arClose - arOpen) },
-          { label: '(Increase)/Decrease in Inventory', amount: -(invClose - invOpen) },
-          { label: 'Increase/(Decrease) in AP',        amount: apClose - apOpen },
-          { label: 'Increase/(Decrease) in Adv',       amount: advClose - advOpen },
+          { label: '(Increase)/Decrease in AR',               amount: -(arClose  - arOpen)  },
+          { label: '(Increase)/Decrease in Inventory',        amount: -(invClose - invOpen) },
+          { label: 'Increase/(Decrease) in AP',               amount:   apClose  - apOpen   },
+          { label: 'Increase/(Decrease) in Customer Advances',amount:   advClose - advOpen  },
+          // Phase 12.46 — VAT working-capital lines (was missing → breakdown
+          // didn't reconcile even though opening/closing cash were right).
+          { label: '(Increase)/Decrease in Input VAT',        amount: -(vatInClose  - vatInOpen)  },
+          { label: 'Increase/(Decrease) in Output VAT',       amount:   vatOutClose - vatOutOpen  },
         ];
 
         const netOperating = netProfit + operatingAdj.reduce((s, i) => s + i.amount, 0) + wcChanges.reduce((s, i) => s + i.amount, 0);
