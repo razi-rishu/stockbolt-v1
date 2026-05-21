@@ -1530,16 +1530,32 @@ export function createSupabaseAdapter(
           .eq('id', contact_id).single();
         assertNoError(cErr, 'reports.getCustomerStatement contact');
 
-        // Phase 12.52 — pull source_type + reversal pointers from the
-        // joined journal_entries row so the UI can render a clearer
-        // doc label (Invoice / Invoice (void) / Payment / ...) and
-        // optionally hide both halves of a reversal pair.
+        // Phase 12.54 — query BOTH 1200 AR and 2400 Customer Advances so
+        // overpayments show up on the statement. Previously the query
+        // only hit 1200, which meant the AR-side of payments appeared
+        // but the advance portion (cash the customer is sitting in
+        // credit) didn't — closing balance overstated what they owe by
+        // exactly the advance balance.
+        //
+        // Sign convention for the running balance (debit - credit) is
+        // the same across both accounts because:
+        //   1200 (AR, debit-balance): debit = customer owes more,
+        //                              credit = paid
+        //   2400 (Customer Advances, credit-balance): seen from the
+        //                              customer's perspective, a credit
+        //                              entry means they have credit
+        //                              with us (we owe them), so it
+        //                              reduces "amount customer owes
+        //                              us". `debit - credit` produces
+        //                              a NEGATIVE contribution from
+        //                              advance-side credits, exactly
+        //                              what we want.
         const { data: glRows, error: glErr } = await client
           .from('general_ledger')
-          .select('id, date, debit, credit, description, related_doc_type, related_doc_id, journal_entries(entry_number, source_type, reversed_by_id, reversal_of_id)')
+          .select('id, date, debit, credit, description, account_code, related_doc_type, related_doc_id, journal_entries(entry_number, source_type, reversed_by_id, reversal_of_id)')
           .eq('company_id', company_id)
           .eq('contact_id', contact_id)
-          .eq('account_code', '1200')
+          .in('account_code', ['1200', '2400'])
           .gte('date', from)
           .lte('date', to)
           .order('date')
@@ -1565,6 +1581,7 @@ export function createSupabaseAdapter(
             source_type: je?.source_type ?? undefined,
             is_reversed: !!je?.reversed_by_id,
             is_reversal: !!je?.reversal_of_id,
+            account_code: row.account_code as string | undefined,
           };
         });
 
@@ -1622,14 +1639,27 @@ export function createSupabaseAdapter(
         const { data: contact, error: cErr } = await client.from('contacts').select('name').eq('id', contact_id).single();
         assertNoError(cErr, 'reports.getSupplierStatement contact');
 
-        // Phase 12.52 — mirror of getCustomerStatement, pulls source
-        // metadata for label / hide-reversed support.
+        // Phase 12.54 — query BOTH 2100 AP and 1400 Vendor Advances so
+        // overpayments to the supplier (advances we still hold against
+        // them) show up on the statement instead of leaving the closing
+        // balance overstating what we owe. Sign convention `credit -
+        // debit` works across both because:
+        //   2100 (AP, credit-balance): credit = we owe more,
+        //                              debit  = we paid
+        //   1400 (Vendor Advances, asset): debit  = we prepaid (supplier
+        //                              owes us → reduces "we owe
+        //                              supplier"), credit = applied to
+        //                              a bill (we owe more again).
+        //                              `credit - debit` yields a
+        //                              negative contribution from debit
+        //                              entries on 1400, which is the
+        //                              right effect.
         const { data: glRows, error: glErr } = await client
           .from('general_ledger')
-          .select('id, date, debit, credit, description, related_doc_type, related_doc_id, journal_entries(entry_number, source_type, reversed_by_id, reversal_of_id)')
+          .select('id, date, debit, credit, description, account_code, related_doc_type, related_doc_id, journal_entries(entry_number, source_type, reversed_by_id, reversal_of_id)')
           .eq('company_id', company_id)
           .eq('contact_id', contact_id)
-          .eq('account_code', '2100')
+          .in('account_code', ['2100', '1400'])
           .gte('date', from)
           .lte('date', to)
           .order('date')
@@ -1655,6 +1685,7 @@ export function createSupabaseAdapter(
             source_type: je?.source_type ?? undefined,
             is_reversed: !!je?.reversed_by_id,
             is_reversal: !!je?.reversal_of_id,
+            account_code: row.account_code as string | undefined,
           };
         });
 

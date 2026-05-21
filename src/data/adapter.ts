@@ -580,6 +580,10 @@ export interface CustomerStatementLine {
   is_reversed?: boolean;
   /** True when the JE itself IS a reversal of an earlier entry. */
   is_reversal?: boolean;
+  /** Phase 12.54 — GL account this line hit ('1200' AR or '2400' Customer
+   *  Advances). Statement queries both so overpayments show up as their
+   *  own row with the correct label. */
+  account_code?: string;
 }
 
 export interface CustomerStatement {
@@ -1052,6 +1056,8 @@ export interface SupplierStatementLine {
   source_type?: string;
   is_reversed?: boolean;
   is_reversal?: boolean;
+  /** Phase 12.54 — '2100' AP or '1400' Vendor Advances. */
+  account_code?: string;
 }
 
 export interface SupplierStatement {

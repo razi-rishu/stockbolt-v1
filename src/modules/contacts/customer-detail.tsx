@@ -657,9 +657,14 @@ export default function CustomerDetailPage() {
 
       {/* ── Account Statement ────────────────────────────────────────── */}
       {(() => {
-        // Phase 12.52 — friendly doc label derived from source_type. Falls
-        // back to related_doc_type if source_type is missing.
-        const sourceLabel = (src?: string, fallback?: string): string => {
+        // Phase 12.52 / 12.54 — friendly doc label derived from
+        // source_type + account_code. The account_code disambiguates
+        // payments that hit BOTH AR (1200) and Customer Advances (2400)
+        // in the same JE: AR-side renders as "Payment", advance-side
+        // renders as "Customer advance".
+        const sourceLabel = (src?: string, fallback?: string, account_code?: string): string => {
+          // 2400 always means it's the advance side, no matter the source.
+          if (account_code === '2400') return 'Customer advance';
           switch (src) {
             case 'sales_invoice':       return 'Invoice';
             case 'sales_invoice_void':  return 'Invoice (void)';
@@ -741,7 +746,7 @@ export default function CustomerDetailPage() {
                   return (
                     <tr key={i} className="border-b border-border-subtle last:border-0" style={dim ? { opacity: 0.55 } : undefined}>
                       <td className="px-4 py-2 text-ink-secondary">{line.date}</td>
-                      <td className="px-4 py-2 text-ink-secondary">{sourceLabel(line.source_type, line.doc_type)}</td>
+                      <td className="px-4 py-2 text-ink-secondary">{sourceLabel(line.source_type, line.doc_type, line.account_code)}</td>
                       <td className="px-4 py-2 font-mono text-xs text-brand-600">{line.doc_number}</td>
                       <td className="px-4 py-2 text-end font-mono text-ink-primary">{line.debit > 0 ? fmt(line.debit) : '—'}</td>
                       <td className="px-4 py-2 text-end font-mono text-ink-primary">{line.credit > 0 ? fmt(line.credit) : '—'}</td>
