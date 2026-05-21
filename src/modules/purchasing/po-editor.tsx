@@ -213,12 +213,13 @@ export default function POEditorPage() {
   });
 
   const canEdit = isNew || existing?.status === 'draft';
-  // Conversion allowed on any "live" PO (not draft to avoid converting
-  // half-built drafts, not closed/void which are terminal). The user can
-  // always Send first then Convert.
+  // Phase 12.47 → 12.48 — converting a draft PO is fine. The UI has no
+  // explicit "Send" button so POs stay in 'draft' for the entire SME
+  // workflow (write → bill arrives → convert). Only block terminal
+  // states (closed / void) and the brand-new unsaved screen.
   const canConvertToBill = !isNew
     && !!existing
-    && !['draft', 'closed', 'void'].includes(existing.status);
+    && !['closed', 'void'].includes(existing.status);
   const supplierOpts = suppliers.map(s => ({ value: s.id, label: s.name }));
   const warehouseOpts = [{ value: '', label: t('purchasing.select_warehouse') }, ...warehouses.map(w => ({ value: w.id, label: w.name }))];
   const productOpts = products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }));

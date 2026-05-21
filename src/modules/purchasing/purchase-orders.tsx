@@ -90,7 +90,10 @@ export default function PurchaseOrdersPage() {
             </thead>
             <tbody>
               {paged.map((po, idx) => {
-                const canConvert = !['draft', 'closed', 'void'].includes(po.status);
+                // Phase 12.48 — POs stay in 'draft' for the whole flow
+                // (no UI "Send" step) so converting from draft is fine.
+                // Only block terminal states.
+                const canConvert = !['closed', 'void'].includes(po.status);
                 const isThisConverting = converting === po.id && convertMutation.isPending;
                 return (
                   <tr
