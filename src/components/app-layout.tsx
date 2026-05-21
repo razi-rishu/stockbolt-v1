@@ -109,6 +109,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
           { to: '/purchasing/grns',        label: t('purchasing.grn_title') },
           { to: '/purchasing/bills',       label: t('purchasing.bills_title') },
           { to: '/purchasing/payments',    label: t('purchasing.vp_title') },
+          { to: '/purchasing/expenses',    label: 'Expenses' },
           { to: '/purchasing/debit-notes', label: t('returns.debit_notes_title') },
           { to: '/contacts/suppliers',     label: t('nav.suppliers') },
         ],

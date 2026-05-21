@@ -71,6 +71,9 @@ const VendorBillsPage        = lazy(() => import('@/modules/purchasing/vendor-bi
 const VendorBillEditorPage   = lazy(() => import('@/modules/purchasing/vendor-bill-editor'));
 const VendorPaymentsPage     = lazy(() => import('@/modules/purchasing/vendor-payments'));
 const VendorPaymentEditorPage = lazy(() => import('@/modules/purchasing/vendor-payment-editor'));
+// Phase 13.02 — multi-line expenses under Purchasing
+const PurchasingExpensesPage      = lazy(() => import('@/modules/purchasing/expenses'));
+const PurchasingExpenseEditorPage = lazy(() => import('@/modules/purchasing/expense-editor'));
 
 // Phase 5 reports
 const APAgingPage            = lazy(() => import('@/modules/reports/ap-aging'));
@@ -240,6 +243,9 @@ function AppRoutes() {
               <Route path="/purchasing/bills"                   element={<VendorBillsPage />} />
               <Route path="/purchasing/payments/:id"            element={<VendorPaymentEditorPage />} />
               <Route path="/purchasing/payments"                element={<VendorPaymentsPage />} />
+              {/* Phase 13.02 — multi-line expenses under Purchasing */}
+              <Route path="/purchasing/expenses/:id"            element={<PurchasingExpenseEditorPage />} />
+              <Route path="/purchasing/expenses"                element={<PurchasingExpensesPage />} />
 
               {/* Phase 5 reports */}
               <Route path="/reports/ap-aging"                   element={<APAgingPage />} />

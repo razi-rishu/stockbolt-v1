@@ -47,7 +47,7 @@ import type {
   POSSessionReportLine, DailySalesSummaryLine,
   // Phase 8
   BankTransferRow,
-  ExpenseRow,
+  ExpenseRow, ExpenseItemRow,
   PDCChequeRow,
   BankTransferConfirmResult, ExpenseConfirmResult,
   CreatePDCResult, PDCActionResult, PDCCreateParams,
@@ -3393,6 +3393,42 @@ export function createSupabaseAdapter(
         const { data, error } = await client.rpc('get_next_document_number', { p_company_id: company_id, p_prefix: 'EXP' });
         assertNoError(error, 'expenses.getNextNumber');
         return data as string;
+      },
+      // ── Phase 13.01 — multi-line item I/O. expense_items isn't in the
+      //   generated database types yet; bypass the typed client with a
+      //   raw any-cast (same pattern used by bankReconciliations.save). ──
+      async getItems(expense_id) {
+        const raw = client as unknown as {
+          from: (t: string) => { select: (c: string) => {
+            eq: (col: string, val: string) => {
+              order: (col: string) => Promise<{ data: unknown; error: unknown }>
+            }
+          } }
+        };
+        const { data, error } = await raw
+          .from('expense_items')
+          .select('*')
+          .eq('expense_id', expense_id)
+          .order('sort_order');
+        assertNoError(error as Error | null, 'expenses.getItems');
+        return (data ?? []) as ExpenseItemRow[];
+      },
+      async replaceItems(expense_id, items) {
+        // Delete-then-insert. Single round trip each; the inner expense
+        // total is already updated by the caller so the JE postings on
+        // confirm read the correct sum.
+        const raw = client as unknown as {
+          from: (t: string) => {
+            delete: () => { eq: (col: string, val: string) => Promise<{ error: unknown }> };
+            insert: (rows: unknown[]) => Promise<{ error: unknown }>;
+          };
+        };
+        const { error: delErr } = await raw.from('expense_items').delete().eq('expense_id', expense_id);
+        assertNoError(delErr as Error | null, 'expenses.replaceItems/delete');
+        if (items.length === 0) return;
+        const rows = items.map((i, idx) => ({ ...i, expense_id, sort_order: idx }));
+        const { error: insErr } = await raw.from('expense_items').insert(rows);
+        assertNoError(insErr as Error | null, 'expenses.replaceItems/insert');
       },
     },
 

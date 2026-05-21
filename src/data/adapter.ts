@@ -1442,6 +1442,33 @@ export type ExpenseRow = Tables['expenses']['Row'];
 export type ExpenseInsert = Omit<Tables['expenses']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type ExpenseUpdate = Tables['expenses']['Update'];
 
+// Phase 13.01 — expense_items child rows. Declared by hand (not yet in the
+// generated database types) until the next supabase gen types run.
+export interface ExpenseItemRow {
+  id: string;
+  expense_id: string;
+  sort_order: number;
+  expense_account_id: string;
+  description: string | null;
+  quantity: number;
+  unit_amount: number;
+  tax_rate: number;
+  tax_amount: number;
+  line_subtotal: number;
+  line_total: number;
+  is_billable: boolean;
+  customer_id: string | null;
+  billed_invoice_id: string | null;
+  billed_invoice_item_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ExpenseItemInsert = Omit<ExpenseItemRow,
+  'id' | 'expense_id' | 'created_at' | 'updated_at' |
+  'billed_invoice_id' | 'billed_invoice_item_id'
+>;
+
 export type PDCChequeRow = Tables['pdc_cheques']['Row'];
 export type PDCChequeInsert = Omit<Tables['pdc_cheques']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 
@@ -1564,6 +1591,13 @@ export interface ExpensesAPI {
   confirm(id: string): Promise<ExpenseConfirmResult>;
   void(id: string, reason?: string): Promise<void>;
   getNextNumber(company_id: string): Promise<string>;
+  // ── Phase 13.01 — multi-line items ─────────────────────────────────────
+  /** Load child line items for an expense, ordered by sort_order. */
+  getItems(expense_id: string): Promise<ExpenseItemRow[]>;
+  /** Replace the full set of line items for an expense in one go.
+   *  Pattern matches invoices.updateWithItems: delete-then-insert under a
+   *  single client call so the DB never sees partial state. */
+  replaceItems(expense_id: string, items: ExpenseItemInsert[]): Promise<void>;
 }
 
 export interface PDCCreateParams {
