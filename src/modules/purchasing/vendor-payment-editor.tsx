@@ -267,7 +267,15 @@ export default function VendorPaymentEditorPage() {
   // is the source of truth — it refuses anything that isn't status='draft'.
   const canEdit = isNew || existing?.status === 'draft';
   // supplierOpts removed — supplier picker uses ContactPicker (D3).
-  const bankOpts = [{ value: '', label: t('purchasing.select_bank') }, ...bankAccounts.map(b => ({ value: b.id, label: b.account_number ?? b.bank_name ?? b.id }))];
+  // Phase 12.49 — label the bank picker with `b.name` (the user-facing
+  // display name set in Settings → Bank Accounts), matching the sales
+  // payment editor. The previous label preferred `account_number` then
+  // `bank_name`, which meant an account named "Rashid" rendered as its
+  // account number — confusing for the operator.
+  const bankOpts = [
+    { value: '', label: t('purchasing.select_bank') },
+    ...bankAccounts.map(b => ({ value: b.id, label: b.name })),
+  ];
   const bankLabel = `${t('purchasing.bank_account')} *`;
   const methodOpts = [{ value: '', label: '—' }, ...paymentMethods.map(m => ({ value: m.id, label: m.name }))];
   const classOpts = [
