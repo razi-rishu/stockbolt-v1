@@ -2405,6 +2405,11 @@ export function createSupabaseAdapter(
         const apClose  = await getBalanceSingle('2100', to,            false);
         const advOpen  = await getBalanceSingle('2400', prevDay(from), false);
         const advClose = await getBalanceSingle('2400', to,            false);
+        // Phase 12.50 — Vendor Advances (1400) is an asset that grows
+        // when we prepay / overpay a supplier. Movements here use cash
+        // (or release it back) and must appear on the breakdown.
+        const vendAdvOpen   = await getBalanceSingle('1400', prevDay(from), true);
+        const vendAdvClose  = await getBalanceSingle('1400', to,            true);
 
         // Phase 12.46 — VAT receivable (input) is an asset; VAT payable
         // (output) is a liability. Without these in the working-capital
@@ -2439,6 +2444,11 @@ export function createSupabaseAdapter(
           { label: '(Increase)/Decrease in Inventory',        amount: -(invClose - invOpen) },
           { label: 'Increase/(Decrease) in AP',               amount:   apClose  - apOpen   },
           { label: 'Increase/(Decrease) in Customer Advances',amount:   advClose - advOpen  },
+          // Phase 12.50 — Vendor Advances (1400) is an asset; growth uses
+          // cash (we prepaid the supplier), shrinkage releases cash (the
+          // advance was applied to a bill). Mirror of Customer Advances
+          // on the customer side.
+          { label: '(Increase)/Decrease in Vendor Advances',  amount: -(vendAdvClose - vendAdvOpen) },
           // Phase 12.46 — VAT working-capital lines (was missing → breakdown
           // didn't reconcile even though opening/closing cash were right).
           { label: '(Increase)/Decrease in Input VAT',        amount: -(vatInClose  - vatInOpen)  },

@@ -202,6 +202,16 @@ export default function SupplierDetailPage() {
     enabled: !!company_id && !!id,
   });
 
+  // Phase 12.50 — Vendor Advance balance (1400). Positive means we paid
+  // the supplier upfront / overpaid an earlier bill — i.e. they owe us
+  // that credit which we can apply to a future bill. Without this query
+  // the supplier balance ignored overpayments entirely.
+  const { data: vendorAdvance = 0 } = useQuery<number>({
+    queryKey: ['advance_balance', company_id, id, '1400'],
+    queryFn: () => getAdapter().contacts.getAdvanceBalance(company_id!, id!, '1400'),
+    enabled: !!company_id && !!id,
+  });
+
   const { data: allBills = [] } = useQuery<VendorBillRow[]>({
     queryKey: ['vendor_bills', company_id],
     queryFn: () => getAdapter().vendorBills.list(company_id!),
@@ -326,12 +336,59 @@ export default function SupplierDetailPage() {
         </div>
       )}
 
+      {/* Phase 12.50 — Vendor Advance / overpayment banner. When we've
+           paid the supplier more than they've billed us, the excess sits
+           in 1400 Vendor Advances. Surface it explicitly so the operator
+           knows there's a credit to apply against the next bill — mirror
+           of the customer-side "Credit on file" banner. */}
+      {vendorAdvance > 0.005 && (
+        <div className="rounded-card border border-emerald-200 bg-emerald-50 px-5 py-3 flex items-center gap-4">
+          <span className="rounded-pill bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+            CREDIT WITH SUPPLIER
+          </span>
+          <p className="text-sm text-emerald-900">
+            We have{' '}
+            <span className="font-mono font-semibold">{contact?.currency ?? 'AED'} {fmt(vendorAdvance)}</span>{' '}
+            paid in advance / overpaid to this supplier. Hits 1400 Vendor Advances on the GL — apply it to a future bill.
+          </p>
+        </div>
+      )}
+
       {/* KPI tiles */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiTile label="Outstanding"      value={fmt(outstandingTotal)} accent={outstandingTotal > 0 ? 'warn' : 'default'} sublabel={`${openBills.length} open bill${openBills.length === 1 ? '' : 's'}`} />
-        <KpiTile label="Overdue"          value={fmt(overdueTotal)}     accent={overdueTotal > 0 ? 'danger' : 'good'}      sublabel="past due date" />
+        {/* Phase 12.50 — replace Overdue with Advance Paid when supplier
+             is in credit (no overdue bills possible when nothing is open
+             AND we have a credit balance). Always shows the most material
+             number first. */}
+        {vendorAdvance > 0.005 ? (
+          <KpiTile
+            label="Advance Paid"
+            value={fmt(vendorAdvance)}
+            accent="good"
+            sublabel="credit with supplier"
+          />
+        ) : (
+          <KpiTile label="Overdue" value={fmt(overdueTotal)} accent={overdueTotal > 0 ? 'danger' : 'good'} sublabel="past due date" />
+        )}
         <KpiTile label="Purchases (12 mo)" value={fmt(purchases12mo)}   sublabel={`${confirmedBillCount} confirmed bill${confirmedBillCount === 1 ? '' : 's'}`} />
-        <KpiTile label="Bill count"       value={String(confirmedBillCount)} sublabel="confirmed only" />
+        {/* Phase 12.50 — Net Position replaces raw "Bill count" so the
+             user sees one consolidated number. Negative means we have
+             more credit than we owe (typical for prepaid vendors). */}
+        <KpiTile
+          label="Net Position"
+          value={fmt(Math.abs(outstandingTotal - vendorAdvance))}
+          accent={
+            outstandingTotal - vendorAdvance > 0.005 ? 'warn'
+            : outstandingTotal - vendorAdvance < -0.005 ? 'good'
+            : 'default'
+          }
+          sublabel={
+            outstandingTotal - vendorAdvance > 0.005 ? 'we owe supplier'
+            : outstandingTotal - vendorAdvance < -0.005 ? 'supplier owes us'
+            : 'settled'
+          }
+        />
       </div>
 
       {/* Aging */}
