@@ -20,10 +20,16 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
 import { Tabs } from '@/ui/tabs';
 import { theme } from '@/ui/theme';
+// Phase 14.07 — Signature Statement experience (shared with customer side).
+import {
+  StatementShell, RelationshipHeader, HealthRow, BalanceStrip,
+  PeriodFilter, TransactionSpine, ActionShelf, ShelfButton, InsightStrip,
+  stmt as stmtTokens,
+  type PeriodPreset, type SpineLine,
+} from './statement/components';
 import type {
   ContactRow, VendorBillRow, OpenVendorBill, PaymentRow,
   DebitNoteRow, PurchaseOrderRow,
@@ -189,6 +195,23 @@ export default function SupplierDetailPage() {
   const [stmtFrom, setStmtFrom] = useState(monthsAgoIso(3));
   const [stmtTo, setStmtTo]     = useState(todayIso);
   const [tab, setTab] = useState<'overview' | 'docs' | 'stmt'>('overview');
+  // Phase 14.07 — statement period preset, search, audit-trail toggle.
+  const [stmtPreset, setStmtPreset] = useState<PeriodPreset>('last_90');
+  const [stmtSearch, setStmtSearch] = useState('');
+  const [stmtHideReversed, setStmtHideReversed] = useState(true);
+  const setPresetRange = (p: PeriodPreset) => {
+    setStmtPreset(p);
+    const today = todayIso();
+    const y = new Date(today).getFullYear();
+    switch (p) {
+      case 'last_30':   setStmtFrom(monthsAgoIso(1));  setStmtTo(today); break;
+      case 'last_90':   setStmtFrom(monthsAgoIso(3));  setStmtTo(today); break;
+      case 'this_year': setStmtFrom(`${y}-01-01`);     setStmtTo(today); break;
+      case 'last_year': setStmtFrom(`${y - 1}-01-01`); setStmtTo(`${y - 1}-12-31`); break;
+      case 'all':       setStmtFrom('1970-01-01');     setStmtTo(today); break;
+      case 'custom':    break;
+    }
+  };
 
   const { data: contact } = useQuery<ContactRow | null>({
     queryKey: ['contact', id],
@@ -569,66 +592,238 @@ export default function SupplierDetailPage() {
       </>
       )}
 
-      {tab === 'stmt' && (
-      <>
+      {tab === 'stmt' && (() => {
+        // Doc label mapping mirrors the AP-side journal source types.
+        const sourceLabel = (src?: string, fallback?: string, account_code?: string): string => {
+          if (account_code === '1400') return 'Vendor advance';
+          switch (src) {
+            case 'vendor_bill':       return 'Bill';
+            case 'vendor_bill_void':  return 'Bill (void)';
+            case 'vendor_bill_edit':  return 'Bill (edit)';
+            case 'vendor_payment':    return 'Payment';
+            case 'vendor_advance':    return 'Vendor advance';
+            case 'debit_note':        return 'Debit note';
+            case 'manual':            return 'Manual JE';
+            case 'reversal':          return 'Reversal';
+            case 'opening_balance':   return 'Opening balance';
+            default:                  return (fallback ?? src ?? 'JE').replace(/_/g, ' ');
+          }
+        };
 
-      {/* Statement */}
-      <div className="rounded-card border border-border-subtle bg-surface-card">
-        <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-5 py-3">
-          <h2 className="text-sm font-semibold text-ink-primary">{t('purchasing.supplier_statement')}</h2>
-          <div className="ms-auto flex items-center gap-2">
-            <Input type="date" value={stmtFrom} onChange={(e) => setStmtFrom(e.target.value)} className="h-8 text-xs" />
-            <span className="text-ink-tertiary">–</span>
-            <Input type="date" value={stmtTo}   onChange={(e) => setStmtTo(e.target.value)}   className="h-8 text-xs" />
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={!id}
-              onClick={() => window.open(`/print/supplier-statement/${id}?from=${stmtFrom}&to=${stmtTo}`, '_blank')}
-              title="Open a print-ready statement in a new tab (use the browser's Print → Save as PDF)"
-            >
-              🖨 Print / PDF
-            </Button>
-          </div>
-        </div>
-        {stmtLoading ? (
-          <p className="px-5 py-4 text-sm text-ink-secondary">{t('common.loading')}</p>
-        ) : !statement || statement.lines.length === 0 ? (
-          <p className="px-5 py-4 text-sm text-ink-tertiary">{t('reports.no_transactions')}</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
-                <th className="px-4 py-2 text-start font-medium">Date</th>
-                <th className="px-4 py-2 text-start font-medium">Document</th>
-                <th className="px-4 py-2 text-start font-medium">Number</th>
-                <th className="px-4 py-2 text-end font-medium">Debit</th>
-                <th className="px-4 py-2 text-end font-medium">Credit</th>
-                <th className="px-4 py-2 text-end font-medium">Balance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {statement.lines.map((line, i) => (
-                <tr key={i} className="border-b border-border-subtle last:border-0">
-                  <td className="px-4 py-2 text-ink-secondary">{line.date}</td>
-                  <td className="px-4 py-2 text-ink-secondary capitalize">{line.doc_type.replace(/_/g, ' ')}</td>
-                  <td className="px-4 py-2 font-mono text-xs text-brand-600">{line.doc_number}</td>
-                  <td className="px-4 py-2 text-end font-mono text-ink-primary">{line.debit > 0 ? fmt(line.debit) : '—'}</td>
-                  <td className="px-4 py-2 text-end font-mono text-ink-primary">{line.credit > 0 ? fmt(line.credit) : '—'}</td>
-                  <td className="px-4 py-2 text-end font-mono font-medium text-ink-primary">{fmt(line.balance)}</td>
-                </tr>
-              ))}
-              <tr className="border-t-2 border-border-subtle bg-surface-muted font-semibold">
-                <td colSpan={5} className="px-4 py-2 text-ink-primary">Closing balance</td>
-                <td className="px-4 py-2 text-end font-mono text-ink-primary">{fmt(statement.closing_balance)}</td>
-              </tr>
-            </tbody>
-          </table>
-        )}
-      </div>
+        const allLines = statement?.lines ?? [];
+        // SupplierStatementLine carries is_reversed / is_reversal too —
+        // mirrors Phase 12.52 customer side. Use safe access so this still
+        // works if the adapter hasn't been updated yet.
+        type AnyLine = typeof allLines[number] & {
+          is_reversed?: boolean; is_reversal?: boolean;
+          source_type?: string;  account_code?: string;
+        };
+        const lines0 = allLines as AnyLine[];
+        let visibleLines = stmtHideReversed
+          ? lines0.filter(l => !l.is_reversed && !l.is_reversal)
+          : lines0;
+        if (stmtSearch.trim()) {
+          const q = stmtSearch.trim().toLowerCase();
+          visibleLines = visibleLines.filter(l =>
+            (l.doc_number ?? '').toLowerCase().includes(q) ||
+            (l.doc_type   ?? '').toLowerCase().includes(q)
+          );
+        }
+        const openingBalance = statement?.opening_balance ?? 0;
+        // Supplier statement convention: positive balance = we owe supplier
+        // (i.e. credit side accumulates). Spine math follows the same rule.
+        let runBal = openingBalance;
+        const spineLines: SpineLine[] = visibleLines.map(l => {
+          runBal += l.credit - l.debit;
+          return {
+            date:       l.date,
+            doc_type:   sourceLabel(l.source_type, l.doc_type, l.account_code),
+            doc_number: l.doc_number,
+            reference:  null,
+            debit:      l.debit,
+            credit:     l.credit,
+            balance:    runBal,
+            dimmed:     !stmtHideReversed && (l.is_reversed || l.is_reversal),
+          };
+        });
+        const closing = stmtHideReversed ? runBal : (statement?.closing_balance ?? runBal);
 
-      </>
-      )}
+        const netPayable = outstandingTotal - Number(vendorAdvance ?? 0);
+
+        const avgPayDays = (() => {
+          const bills = allBills.filter(b => b.supplier_id === id && b.status === 'confirmed');
+          if (bills.length === 0) return null;
+          const pays = paymentsForSupplier.filter(p => p.status === 'confirmed');
+          if (pays.length === 0) return null;
+          const days = pays.map(p => {
+            const candidate = bills.find(b => (b.date as unknown as string) <= (p.date as unknown as string));
+            if (!candidate) return null;
+            return daysBetween(candidate.date as unknown as string, p.date as unknown as string);
+          }).filter((d): d is number => d !== null && d >= 0);
+          if (days.length === 0) return null;
+          return Math.round(days.reduce((s, x) => s + x, 0) / days.length);
+        })();
+
+        const supplierDependency = (() => {
+          if (purchases12mo <= 0) return null;
+          // Simple share: this supplier's 12M / sum of all confirmed 12M.
+          const yearAgo = monthsAgoIso(12);
+          const totalConfirmed = allBills
+            .filter(b => b.status === 'confirmed' && (b.date as unknown as string) >= yearAgo)
+            .reduce((s, b) => s + Number(b.total_amount), 0);
+          if (totalConfirmed <= 0) return null;
+          return Math.round((purchases12mo / totalConfirmed) * 100);
+        })();
+
+        return (
+          <StatementShell>
+            <div style={{
+              display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+              gap: '16px', marginBottom: '20px',
+            }}>
+              <div>
+                <div style={{
+                  fontSize: '10.5px', fontWeight: 600, color: stmtTokens.inkMuted,
+                  textTransform: 'uppercase', letterSpacing: '0.08em',
+                }}>Supplier Statement</div>
+                <div style={{ marginTop: '4px', fontSize: '12.5px', color: stmtTokens.inkSoft }}>
+                  Period {stmtFrom} — {stmtTo}
+                </div>
+              </div>
+              <ActionShelf>
+                <ShelfButton onClick={() => window.print()}>🖨 Print</ShelfButton>
+                <ShelfButton
+                  variant="primary"
+                  onClick={() => window.open(`/print/supplier-statement/${id}?from=${stmtFrom}&to=${stmtTo}`, '_blank')}
+                  disabled={!id}
+                >Download PDF</ShelfButton>
+              </ActionShelf>
+            </div>
+
+            <RelationshipHeader
+              party={{
+                name:    contact?.name ?? '—',
+                code:    null,
+                trn:     contact?.tax_id ?? null,
+                address: contact?.address_street ?? null,
+                phone:   contact?.phone ?? contact?.mobile ?? null,
+                email:   contact?.email ?? null,
+                terms:   contact?.payment_terms_days ? `Net ${contact.payment_terms_days}` : null,
+                credit_limit: null,                       // not relevant on AP side
+                since:   null,
+              }}
+              balance={netPayable}
+              currency="AED"
+              side="vendor"
+              statusLabel={contact?.is_active === false ? 'Inactive' : 'Active'}
+            />
+
+            <HealthRow tiles={[
+              {
+                label: 'Open bills',
+                value: `AED ${fmt(outstandingTotal)}`,
+                sublabel: `${openBills.length} bill${openBills.length === 1 ? '' : 's'} open`,
+                tone: 'brand',
+              },
+              {
+                label: 'Overdue payable',
+                value: `AED ${fmt(overdueTotal)}`,
+                sublabel: overdueTotal > 0 ? 'past due date' : 'all current',
+                tone: overdueTotal > 0 ? 'danger' : 'good',
+              },
+              {
+                label: '12-mo purchases',
+                value: `AED ${fmt(purchases12mo)}`,
+                sublabel: `${confirmedBillCount} bills`,
+              },
+              {
+                label: 'Last payment',
+                value: paymentsForSupplier[0]
+                  ? `${daysBetween(paymentsForSupplier[0].date as unknown as string, today)}d ago`
+                  : '—',
+                sublabel: paymentsForSupplier[0]
+                  ? `AED ${fmt(Number(paymentsForSupplier[0].amount))}`
+                  : 'no payments yet',
+              },
+              {
+                label: 'Dependency',
+                value: supplierDependency !== null ? `${supplierDependency}%` : '—',
+                sublabel: supplierDependency !== null ? 'of total purchasing' : undefined,
+                tone: supplierDependency !== null && supplierDependency > 40 ? 'warn' : 'default',
+              },
+            ]} />
+
+            <BalanceStrip
+              currency="AED"
+              total={outstandingTotal}
+              title="Payable aging"
+              buckets={[
+                { label: 'Current', value: aging.current,  color: stmtTokens.band.current },
+                { label: '31–60',   value: aging.d31_60,   color: stmtTokens.band.d60 },
+                { label: '61–90',   value: aging.d61_90,   color: stmtTokens.band.d90 },
+                { label: '90+',     value: aging.d90_plus, color: stmtTokens.band.over },
+              ]}
+            />
+
+            <PeriodFilter
+              preset={stmtPreset}
+              onPresetChange={setPresetRange}
+              from={stmtFrom}
+              to={stmtTo}
+              onFromChange={setStmtFrom}
+              onToChange={setStmtTo}
+              hideReversed={stmtHideReversed}
+              onHideReversedChange={setStmtHideReversed}
+              search={stmtSearch}
+              onSearchChange={setStmtSearch}
+            />
+
+            {stmtLoading ? (
+              <div style={{
+                marginTop: '20px',
+                padding: '24px',
+                border: `1px solid ${stmtTokens.hairline}`,
+                borderRadius: '12px',
+                textAlign: 'center',
+                color: stmtTokens.inkMuted,
+                fontSize: '13px',
+              }}>{t('common.loading')}</div>
+            ) : (
+              <TransactionSpine
+                openingBalance={openingBalance}
+                lines={spineLines}
+                closingBalance={closing}
+                currency="AED"
+              />
+            )}
+
+            <InsightStrip items={[
+              {
+                label: 'Avg payment',
+                value: avgPayDays !== null ? `${avgPayDays} days` : '—',
+                hint: avgPayDays !== null && contact?.payment_terms_days
+                  ? (avgPayDays <= Number(contact.payment_terms_days)
+                      ? 'within terms'
+                      : `${avgPayDays - Number(contact.payment_terms_days)}d over terms`)
+                  : undefined,
+              },
+              {
+                label: 'Bills in period',
+                value: String(spineLines.filter(l => l.doc_type === 'Bill').length),
+              },
+              {
+                label: 'Payments in period',
+                value: String(spineLines.filter(l => l.doc_type === 'Payment').length),
+              },
+              {
+                label: 'Net activity',
+                value: `${closing >= openingBalance ? '+' : ''}AED ${fmt(closing - openingBalance)}`,
+                hint: closing > openingBalance ? 'payable grew' : closing < openingBalance ? 'payable reduced' : 'unchanged',
+              },
+            ]} />
+          </StatementShell>
+        );
+      })()}
     </div>
   );
 }
