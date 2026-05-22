@@ -1,31 +1,58 @@
 /**
- * Expense editor — Phase 13.02.
+ * Expense editor — Phase 13.02 (redesigned Phase 13.02d).
  *
- * Multi-line expense editor under /purchasing/expenses/[new|:id].
+ * Deliberately NOT shaped like the invoice / bill editor. Those editors
+ * are wide structured grids because invoices are complex multi-product
+ * transactions with customer terms, per-line tax, warehouse, COGS, etc.
  *
- * Header:
- *   - Date  (defaults to today)
- *   - Paid From  (bank account dropdown)
- *   - Vendor / Supplier  (optional, ContactPicker)
- *   - Reference (free text — supplier's invoice number etc.)
- *   - Description (header-level note)
+ * An expense is a simpler event: "I spent X on Y, paid from Z". So this
+ * editor takes a different shape:
  *
- * Line items grid (one row per expense category):
- *   - Expense account (5xxx/6xxx CoA, searchable)
- *   - Description
- *   - Qty / Unit amount
- *   - Tax %
- *   - Billable + Customer picker (visible when billable)
- *   - Line total (computed)
+ *   ┌─────────────────────────────────────────────┐
+ *   │  ← Expenses / EXP-0042    [Draft]   [Save]  │
+ *   ├─────────────────────────────────────────────┤
+ *   │                                             │
+ *   │           AED                  100.00       │   <- single amount focal point
+ *   │           Tax 5%   =           5.00         │
+ *   │           Total                105.00       │
+ *   │                                             │
+ *   │  ──  Where the money went  ──               │
+ *   │  6200 Rent & Utilities · indirect       ⌄  │   <- prominent account picker
+ *   │                                             │
+ *   │  ──  Quick context  ──                      │
+ *   │  Date  | Paid from   | Vendor               │
+ *   │  Reference (optional)                       │
+ *   │  Description                                │
+ *   │                                             │
+ *   │  ──  Split across categories?   [ + Split ] │
+ *   │  (collapsed by default; opens grid)         │
+ *   │                                             │
+ *   │  ──  Bill back to customer?    [Billable]  │
+ *   │  Customer:  Al-Madina Auto                  │
+ *   │                                             │
+ *   └─────────────────────────────────────────────┘
  *
- * Footer:
- *   - Live subtotal / tax / total
+ * Differences from the invoice editor:
+ *   - Single column, max 720 px, centered — not full-width.
+ *   - Big AMOUNT focal point at the top (the thing that matters).
+ *   - "Where the money went" = ONE expense-account picker by default.
+ *     Multi-line is opt-in via a "Split" toggle for the rare case.
+ *   - Quick context (date / paid-from / vendor) is one tight row, not
+ *     a 4-column form card.
+ *   - "Billable" is its own collapsible section, not a per-line toggle
+ *     hidden inside a grid.
  *
- * Status flow: draft → confirmed → void. Confirm calls the multi-line-
- * aware confirm_expense RPC shipped in Phase 13.01.
+ * Differences from the Zoho reference (which the user explicitly didn't
+ * want copied):
+ *   - No left sidebar / drag-drop receipt zone.
+ *   - No place-of-supply / tax-treatment dropdowns (UAE-only for now).
+ *   - "Itemize" is renamed "Split" with inline disclosure, not a link
+ *     that mode-switches the whole form.
  *
- * The OLD single-line /banking/expense-editor stays usable for legacy
- * data; new expenses created here always write child expense_items.
+ * Confirm calls the multi-line-aware confirm_expense RPC (Phase
+ * 13.01b). Whether the editor was in single or split mode is decided
+ * by the RPC reading expense_items — if items exist, multi-line; else,
+ * legacy single-line.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -34,7 +61,6 @@ import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
-import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { ContactPicker } from '@/components/contact-picker';
 import { CoaQuickCreate } from '@/components/quick-create/coa-quick-create';
@@ -81,6 +107,24 @@ function calcLine(l: LineRow) {
   return { line_subtotal: sub, tax_amount: tax, line_total: round2(sub + tax) };
 }
 
+// ── Section divider that matches the editor's vibe ─────────────────────────
+function SectionLabel({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: '12px',
+      margin: '20px 0 10px',
+    }}>
+      <span style={{
+        fontSize: '11px', fontWeight: 700, color: theme.inkMuted,
+        textTransform: 'uppercase', letterSpacing: '.08em',
+        whiteSpace: 'nowrap',
+      }}>{children}</span>
+      <span style={{ flex: 1, height: '1px', background: theme.border }} />
+      {action}
+    </div>
+  );
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────
 export default function ExpenseEditorPage() {
   const { t } = useTranslation();
@@ -98,12 +142,14 @@ export default function ExpenseEditorPage() {
   const [reference, setReference] = useState('');
   const [description, setDescription] = useState('');
   const [voidReason, setVoidReason] = useState('');
-  const [lines, setLines]         = useState<LineRow[]>([newLine()]);
-  const [error, setError]         = useState<string | null>(null);
 
-  // Phase 13.02b — quick-create CoA from the line picker. Mirrors the
-  // product quick-create on invoice/PO/bill lines. The line that
-  // triggered it gets the new account assigned automatically on close.
+  // Lines (always at least 1 — the "primary" expense category)
+  const [lines, setLines]   = useState<LineRow[]>([newLine()]);
+  const [splitOpen, setSplitOpen] = useState(false);
+
+  const [error, setError]   = useState<string | null>(null);
+
+  // Quick-create CoA state
   const [coaQcOpen,    setCoaQcOpen]    = useState(false);
   const [coaQcSeed,    setCoaQcSeed]    = useState('');
   const [coaQcLineKey, setCoaQcLineKey] = useState<number | null>(null);
@@ -119,8 +165,6 @@ export default function ExpenseEditorPage() {
     queryFn:  () => getAdapter().coa.list(company_id!),
     enabled:  !!company_id,
   });
-  // Customers list — for the billable-line customer picker. Suppliers are
-  // resolved by the ContactPicker component on its own.
   const { data: customers = [] } = useQuery<ContactRow[]>({
     queryKey: ['contacts', company_id, 'customer'],
     queryFn:  () => getAdapter().contacts.list(company_id!, 'customer'),
@@ -156,7 +200,7 @@ export default function ExpenseEditorPage() {
 
   useEffect(() => {
     if (items.length === 0) return;
-    setLines(items.map(it => ({
+    const mapped = items.map(it => ({
       _key: ++_keySeq,
       expense_account_id: it.expense_account_id,
       description: it.description ?? '',
@@ -165,7 +209,10 @@ export default function ExpenseEditorPage() {
       tax_rate: String(it.tax_rate),
       is_billable: it.is_billable,
       customer_id: it.customer_id ?? '',
-    })));
+    }));
+    setLines(mapped);
+    // Auto-open the Split section if the record has > 1 line.
+    if (mapped.length > 1) setSplitOpen(true);
   }, [items]);
 
   // Computed totals
@@ -181,15 +228,12 @@ export default function ExpenseEditorPage() {
 
   // Reference options
   const isDraft = isNew || expense?.status === 'draft';
-  const isVoid  = expense?.status === 'void';
   const isConfirmed = expense?.status === 'confirmed';
+  const isVoid  = expense?.status === 'void';
 
   const bankOpts = bankAccounts.map(b => ({ value: b.id, label: b.name }));
-  // Phase 13.02b — filter by type='expense', not by code prefix.
-  // Phase 13.02c — group-sort direct (COGS) first, then indirect (operating),
-  //   then by code. Append "· direct" / "· indirect" to the label so the eye
-  //   can see the sub-type without leaving the dropdown. Side benefit: typing
-  //   "indirect" filters down to operating accounts for free.
+  // Group-sorted by sub_type then code (Phase 13.02c). Direct accounts first
+  // so the eye sees COGS-style entries before operating expenses.
   const subOrder = (st: string | null) =>
     st === 'direct' ? 0 : st === 'indirect' ? 1 : 2;
   const expenseAccountOpts = coa
@@ -210,7 +254,7 @@ export default function ExpenseEditorPage() {
       if (!paidFromId) throw new Error('Paid From is required');
       if (lines.length === 0) throw new Error('At least one line is required');
       for (const l of lines) {
-        if (!l.expense_account_id) throw new Error('Every line needs an expense account');
+        if (!l.expense_account_id) throw new Error('Pick an expense category');
         if (l.is_billable && !l.customer_id) throw new Error('Billable lines need a customer');
       }
 
@@ -231,8 +275,6 @@ export default function ExpenseEditorPage() {
         };
       });
 
-      // Header header header — denormalized totals stay in sync via the
-      // computed sums; we'll read them back when the confirm RPC posts GL.
       const headerCommon = {
         company_id:           company_id!,
         date,
@@ -240,9 +282,6 @@ export default function ExpenseEditorPage() {
         supplier_id:          supplierId || null,
         reference:            reference || null,
         description:          description || '(no description)',
-        // expense_account_id is required NOT NULL on the legacy parent
-        // table; populate it with the FIRST line's account so reports
-        // that still read the parent-level field show something sane.
         expense_account_id:   itemInserts[0].expense_account_id,
         amount:               totals.subtotal,
         tax_amount:           totals.tax,
@@ -273,9 +312,7 @@ export default function ExpenseEditorPage() {
   });
 
   const confirmMutation = useMutation({
-    mutationFn: async () => {
-      await getAdapter().expenses.confirm(id!);
-    },
+    mutationFn: async () => { await getAdapter().expenses.confirm(id!); },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['expenses', company_id] });
       qc.invalidateQueries({ queryKey: ['expense', id] });
@@ -284,9 +321,7 @@ export default function ExpenseEditorPage() {
   });
 
   const voidMutation = useMutation({
-    mutationFn: async () => {
-      await getAdapter().expenses.void(id!, voidReason || undefined);
-    },
+    mutationFn: async () => { await getAdapter().expenses.void(id!, voidReason || undefined); },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['expenses', company_id] });
       qc.invalidateQueries({ queryKey: ['expense', id] });
@@ -294,14 +329,19 @@ export default function ExpenseEditorPage() {
     onError: (e: Error) => setError(e.message),
   });
 
-  // ── Line helpers ─────────────────────────────────────────────────────────
+  // Line helpers
   const setLine = (k: number, patch: Partial<LineRow>) =>
     setLines(prev => prev.map(l => l._key === k ? { ...l, ...patch } : l));
   const removeLine = (k: number) =>
     setLines(prev => prev.length > 1 ? prev.filter(l => l._key !== k) : prev);
   const addLine = () => setLines(prev => [...prev, newLine()]);
 
-  // ── Status pill ──────────────────────────────────────────────────────────
+  // Primary line = first line. When split is closed, lines[0] is the only
+  // line; when split is open the user can add more.
+  const primary = lines[0];
+  const primaryCalc = calcLine(primary);
+
+  // Status pill
   const statusPill = (s?: string) => {
     if (!s) return null;
     const map: Record<string, { bg: string; text: string; border: string }> = {
@@ -320,8 +360,12 @@ export default function ExpenseEditorPage() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '64px' }}>
-      {/* Header bar */}
+    <div style={{
+      maxWidth: '720px', margin: '0 auto',
+      display: 'flex', flexDirection: 'column', gap: '14px',
+      paddingBottom: '64px',
+    }}>
+      {/* Top crumb + actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
         <button
           onClick={() => navigate('/purchasing/expenses')}
@@ -363,153 +407,196 @@ export default function ExpenseEditorPage() {
         }}>{error}</div>
       )}
 
-      {/* Header card */}
+      {/* ── Main receipt card ── */}
       <div style={{
-        background: theme.card, border: `1px solid ${theme.border}`,
-        borderRadius: '12px', boxShadow: theme.shadowSm, padding: '20px',
+        background: theme.card,
+        border: `1px solid ${theme.border}`,
+        borderRadius: '14px',
+        boxShadow: theme.shadowSm,
+        padding: '26px 28px',
       }}>
-        <h2 style={{
-          margin: '0 0 14px', fontSize: '11px', fontWeight: 700, color: theme.inkMuted,
-          textTransform: 'uppercase', letterSpacing: '.06em',
-        }}>Expense details</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
-          <Input label="Date" type="date" value={date} onChange={e => setDate(e.target.value)} disabled={!isDraft} required />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '11px', fontWeight: 600, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.05em' }}>
-              Paid From <span style={{ color: theme.danger }}>*</span>
-            </label>
+        {/* Subtle gradient strip across the top so it doesn't read as an
+            invoice card */}
+        <div style={{
+          height: '3px', margin: '-26px -28px 22px',
+          background: 'linear-gradient(90deg, #6366f1, #8b5cf6, #f59e0b)',
+          borderRadius: '14px 14px 0 0',
+        }} />
+
+        {/* Amount focal point */}
+        <div style={{
+          display: 'flex', alignItems: 'baseline',
+          gap: '14px', flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: '11px', color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 700 }}>
+            Amount
+          </span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flex: 1 }}>
+            <span style={{ fontSize: '14px', fontWeight: 600, color: theme.inkMuted }}>AED</span>
+            <input
+              type="number" min="0" step="0.01"
+              value={primary.unit_amount}
+              disabled={!isDraft}
+              onChange={e => setLine(primary._key, { unit_amount: e.target.value })}
+              style={{
+                fontFamily: theme.fontMono,
+                fontSize: '32px', fontWeight: 700,
+                color: theme.ink,
+                border: 'none', outline: 'none', background: 'transparent',
+                padding: 0,
+                flex: 1, minWidth: 0,
+              }}
+              placeholder="0.00"
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+            <span style={{ fontSize: '11px', color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 700 }}>
+              Tax
+            </span>
+            <input
+              type="number" min="0" max="100" step="0.01"
+              value={primary.tax_rate}
+              disabled={!isDraft}
+              onChange={e => setLine(primary._key, { tax_rate: e.target.value })}
+              style={{
+                fontFamily: theme.fontMono, fontSize: '16px', fontWeight: 600,
+                color: theme.ink,
+                border: 'none', outline: 'none', background: 'transparent',
+                width: '60px', textAlign: 'end',
+              }}
+              placeholder="0"
+            />
+            <span style={{ fontSize: '14px', color: theme.inkMuted }}>%</span>
+          </div>
+        </div>
+
+        {/* Computed sub-total / tax / total */}
+        <div style={{
+          marginTop: '12px',
+          padding: '10px 14px',
+          background: theme.page,
+          border: `1px dashed ${theme.border}`,
+          borderRadius: '8px',
+          display: 'flex', alignItems: 'center', gap: '16px',
+          fontSize: '12px', color: theme.inkMuted,
+        }}>
+          <span>Subtotal <span className="font-mono" style={{ color: theme.ink, fontWeight: 600, marginInlineStart: '4px' }}>{fmt(splitOpen ? totals.subtotal : primaryCalc.line_subtotal)}</span></span>
+          <span>+ Tax <span className="font-mono" style={{ color: theme.ink, fontWeight: 600, marginInlineStart: '4px' }}>{fmt(splitOpen ? totals.tax : primaryCalc.tax_amount)}</span></span>
+          <span style={{ marginInlineStart: 'auto', fontSize: '14px', color: theme.ink, fontWeight: 700 }}>
+            = AED <span className="font-mono">{fmt(splitOpen ? totals.total : primaryCalc.line_total)}</span>
+          </span>
+        </div>
+
+        {/* ── Where the money went ── */}
+        <SectionLabel>Where the money went</SectionLabel>
+
+        {!splitOpen && (
+          <>
             <SearchableSelect
-              options={bankOpts}
-              value={paidFromId}
-              onChange={setPaidFromId}
+              options={expenseAccountOpts}
+              value={primary.expense_account_id}
+              onChange={(v) => setLine(primary._key, { expense_account_id: v })}
               disabled={!isDraft}
-              placeholder="Select bank / cash"
-              panelWidth={280}
+              placeholder="Pick an expense category…"
+              panelWidth={420}
+              addNew={isDraft ? {
+                noun: 'expense account',
+                onClick: (q) => {
+                  setCoaQcLineKey(primary._key);
+                  setCoaQcSeed(q);
+                  setCoaQcOpen(true);
+                },
+              } : undefined}
             />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '11px', fontWeight: 600, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.05em' }}>
-              Vendor / Supplier
-            </label>
-            <ContactPicker
-              type="supplier"
-              value={supplierId}
-              onChange={(v) => setSupplierId(v ?? '')}
-              disabled={!isDraft}
-              placeholder="Optional"
-            />
-          </div>
-          <Input label="Reference" value={reference} onChange={e => setReference(e.target.value)} disabled={!isDraft} placeholder="Supplier invoice #" />
-        </div>
-        <div style={{ marginTop: '14px' }}>
-          <Input label="Description" value={description} onChange={e => setDescription(e.target.value)} disabled={!isDraft} placeholder="What was this expense for?" />
-        </div>
-      </div>
+            <div style={{ marginTop: '10px' }}>
+              <input
+                type="text"
+                placeholder="Memo for this expense (optional)"
+                value={primary.description}
+                disabled={!isDraft}
+                onChange={e => setLine(primary._key, { description: e.target.value })}
+                style={{
+                  width: '100%', padding: '8px 12px', fontSize: '13px',
+                  border: `1px solid ${theme.border}`, borderRadius: '8px',
+                  outline: 'none', background: !isDraft ? theme.muted : '#fff',
+                }}
+              />
+            </div>
+          </>
+        )}
 
-      {/* Lines card */}
-      <div style={{
-        background: theme.card, border: `1px solid ${theme.border}`,
-        borderRadius: '12px', boxShadow: theme.shadowSm, overflow: 'hidden',
-      }}>
-        <div style={{ padding: '14px 20px', borderBottom: `1px solid ${theme.border}`, background: theme.panelHead, display: 'flex', alignItems: 'center' }}>
-          <span style={{ fontSize: '11px', fontWeight: 700, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.06em' }}>
-            Line items
-          </span>
-          <span style={{ marginInlineStart: 'auto', fontSize: '11px', color: theme.inkFaint }}>
-            {lines.length} line{lines.length === 1 ? '' : 's'}
-          </span>
-        </div>
-
-        <table className="w-full text-sm">
-          <thead>
-            <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
-              {[
-                { l: 'Expense account', w: '260px' },
-                { l: 'Description',     w: undefined },
-                { l: 'Qty',             w: '70px',  a: 'end' as const },
-                { l: 'Unit amount',     w: '110px', a: 'end' as const },
-                { l: 'Tax %',           w: '70px',  a: 'end' as const },
-                { l: 'Total',           w: '110px', a: 'end' as const },
-                { l: 'Billable',        w: '160px' },
-                { l: '',                w: '40px' },
-              ].map((c, i) => (
-                <th key={i} className="px-3 py-2.5" style={{
-                  fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
-                  textTransform: 'uppercase', letterSpacing: '.06em',
-                  textAlign: c.a ?? 'start', width: c.w, whiteSpace: 'nowrap',
-                }}>{c.l}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((line, idx) => {
-              const calc = calcLine(line);
+        {splitOpen && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {lines.map((line) => {
+              const c = calcLine(line);
               return (
-                <tr key={line._key} style={{ borderTop: idx === 0 ? 'none' : '1px solid #f1f5f9' }}>
-                  <td className="px-3 py-2">
-                    <SearchableSelect
-                      options={expenseAccountOpts}
-                      value={line.expense_account_id}
-                      onChange={(v) => setLine(line._key, { expense_account_id: v })}
-                      disabled={!isDraft}
-                      placeholder="Pick an account…"
-                      panelWidth={340}
-                      addNew={isDraft ? {
-                        noun: 'expense account',
-                        onClick: (q) => {
-                          setCoaQcLineKey(line._key);
-                          setCoaQcSeed(q);
-                          setCoaQcOpen(true);
-                        },
-                      } : undefined}
-                    />
-                  </td>
-                  <td className="px-3 py-2">
+                <div key={line._key} style={{
+                  background: theme.page,
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: '10px',
+                  padding: '10px 12px',
+                  display: 'flex', flexDirection: 'column', gap: '8px',
+                }}>
+                  <SearchableSelect
+                    options={expenseAccountOpts}
+                    value={line.expense_account_id}
+                    onChange={(v) => setLine(line._key, { expense_account_id: v })}
+                    disabled={!isDraft}
+                    placeholder="Pick an expense category…"
+                    panelWidth={380}
+                    addNew={isDraft ? {
+                      noun: 'expense account',
+                      onClick: (q) => {
+                        setCoaQcLineKey(line._key);
+                        setCoaQcSeed(q);
+                        setCoaQcOpen(true);
+                      },
+                    } : undefined}
+                  />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 70px 110px 70px 90px 28px', gap: '6px', alignItems: 'center' }}>
                     <input
-                      type="text"
-                      value={line.description}
+                      type="text" placeholder="Memo" value={line.description}
                       disabled={!isDraft}
                       onChange={e => setLine(line._key, { description: e.target.value })}
-                      style={{ width: '100%', padding: '6px 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '6px', outline: 'none', background: !isDraft ? theme.muted : '#fff' }}
+                      style={{ padding: '6px 10px', fontSize: '12px', border: `1px solid ${theme.border}`, borderRadius: '6px', outline: 'none', background: !isDraft ? theme.muted : '#fff' }}
                     />
-                  </td>
-                  <td className="px-3 py-2">
                     <input
-                      type="number" min="0" step="0.01"
-                      value={line.quantity} disabled={!isDraft}
+                      type="number" min="0" step="0.01" placeholder="Qty" value={line.quantity}
+                      disabled={!isDraft}
                       onChange={e => setLine(line._key, { quantity: e.target.value })}
-                      style={{ width: '100%', padding: '6px 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '6px', outline: 'none', textAlign: 'end', background: !isDraft ? theme.muted : '#fff' }}
+                      style={{ padding: '6px 10px', fontSize: '12px', border: `1px solid ${theme.border}`, borderRadius: '6px', outline: 'none', textAlign: 'end', background: !isDraft ? theme.muted : '#fff' }}
                     />
-                  </td>
-                  <td className="px-3 py-2">
                     <input
-                      type="number" min="0" step="0.01"
-                      value={line.unit_amount} disabled={!isDraft}
+                      type="number" min="0" step="0.01" placeholder="Unit" value={line.unit_amount}
+                      disabled={!isDraft}
                       onChange={e => setLine(line._key, { unit_amount: e.target.value })}
-                      style={{ width: '100%', padding: '6px 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '6px', outline: 'none', textAlign: 'end', background: !isDraft ? theme.muted : '#fff' }}
+                      style={{ padding: '6px 10px', fontSize: '12px', border: `1px solid ${theme.border}`, borderRadius: '6px', outline: 'none', textAlign: 'end', background: !isDraft ? theme.muted : '#fff' }}
                     />
-                  </td>
-                  <td className="px-3 py-2">
                     <input
-                      type="number" min="0" max="100" step="0.01"
-                      value={line.tax_rate} disabled={!isDraft}
+                      type="number" min="0" max="100" step="0.01" placeholder="Tax %" value={line.tax_rate}
+                      disabled={!isDraft}
                       onChange={e => setLine(line._key, { tax_rate: e.target.value })}
-                      style={{ width: '100%', padding: '6px 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '6px', outline: 'none', textAlign: 'end', background: !isDraft ? theme.muted : '#fff' }}
+                      style={{ padding: '6px 10px', fontSize: '12px', border: `1px solid ${theme.border}`, borderRadius: '6px', outline: 'none', textAlign: 'end', background: !isDraft ? theme.muted : '#fff' }}
                     />
-                  </td>
-                  <td className="px-3 py-2 font-mono" style={{ textAlign: 'end', fontSize: '13px', color: theme.ink, fontWeight: 500 }}>
-                    {fmt(calc.line_total)}
-                  </td>
-                  <td className="px-3 py-2">
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: isDraft ? 'pointer' : 'not-allowed' }}>
-                      <input
-                        type="checkbox" checked={line.is_billable} disabled={!isDraft}
-                        onChange={e => setLine(line._key, { is_billable: e.target.checked, customer_id: e.target.checked ? line.customer_id : '' })}
-                      />
-                      <span style={{ color: theme.inkMuted }}>Billable</span>
-                    </label>
+                    <div className="font-mono" style={{ textAlign: 'end', fontSize: '13px', fontWeight: 600, color: theme.ink }}>
+                      {fmt(c.line_total)}
+                    </div>
+                    {isDraft && lines.length > 1 ? (
+                      <button
+                        onClick={() => removeLine(line._key)}
+                        style={{ background: 'transparent', border: 'none', color: theme.inkFaint, cursor: 'pointer', fontSize: '16px' }}
+                        title="Remove split"
+                      >×</button>
+                    ) : <span />}
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: theme.inkMuted }}>
+                    <input
+                      type="checkbox" checked={line.is_billable} disabled={!isDraft}
+                      onChange={e => setLine(line._key, { is_billable: e.target.checked, customer_id: e.target.checked ? line.customer_id : '' })}
+                    />
+                    <span>Bill back to customer</span>
                     {line.is_billable && (
-                      <div style={{ marginTop: '4px' }}>
+                      <span style={{ marginInlineStart: '8px', minWidth: '200px' }}>
                         <SearchableSelect
                           options={customerOpts}
                           value={line.customer_id}
@@ -518,48 +605,142 @@ export default function ExpenseEditorPage() {
                           placeholder="Customer…"
                           panelWidth={220}
                         />
-                      </div>
+                      </span>
                     )}
-                  </td>
-                  <td className="px-3 py-2" style={{ textAlign: 'center' }}>
-                    {isDraft && lines.length > 1 && (
-                      <button
-                        onClick={() => removeLine(line._key)}
-                        style={{ background: 'transparent', border: 'none', color: theme.inkFaint, cursor: 'pointer', fontSize: '16px' }}
-                        title="Remove line"
-                      >×</button>
-                    )}
-                  </td>
-                </tr>
+                  </label>
+                </div>
               );
             })}
-          </tbody>
-        </table>
-
-        {isDraft && (
-          <div style={{ padding: '8px 20px', borderTop: `1px solid ${theme.border}` }}>
-            <button
-              onClick={addLine}
-              style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: theme.brand, padding: '4px 8px' }}
-            >+ Add line</button>
+            {isDraft && (
+              <button
+                onClick={addLine}
+                style={{ alignSelf: 'flex-start', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: theme.brand, padding: '4px 8px' }}
+              >+ Add another split</button>
+            )}
           </div>
         )}
 
-        {/* Footer totals */}
+        {/* Split toggle */}
+        {isDraft && (
+          <div style={{ marginTop: '12px' }}>
+            <button
+              onClick={() => setSplitOpen((o) => !o)}
+              style={{
+                background: 'transparent',
+                border: `1px dashed ${theme.border}`,
+                borderRadius: '8px',
+                padding: '8px 14px',
+                fontSize: '12px',
+                color: theme.inkMuted,
+                cursor: 'pointer',
+                width: '100%',
+                textAlign: 'center',
+                fontWeight: 500,
+              }}
+            >
+              {splitOpen ? '— Hide split (combine back into one line)' : '+ Split across multiple categories'}
+            </button>
+          </div>
+        )}
+
+        {/* ── Quick context ── */}
+        <SectionLabel>Quick context</SectionLabel>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '10px', fontWeight: 600, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.05em' }}>Date</label>
+            <input
+              type="date" value={date} disabled={!isDraft}
+              onChange={e => setDate(e.target.value)}
+              style={{ padding: '7px 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', outline: 'none', background: !isDraft ? theme.muted : '#fff' }}
+            />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '10px', fontWeight: 600, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+              Paid from <span style={{ color: theme.danger }}>*</span>
+            </label>
+            <SearchableSelect
+              options={bankOpts}
+              value={paidFromId}
+              onChange={setPaidFromId}
+              disabled={!isDraft}
+              placeholder="Bank / cash"
+              panelWidth={240}
+            />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '10px', fontWeight: 600, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.05em' }}>Vendor</label>
+            <ContactPicker
+              type="supplier"
+              value={supplierId}
+              onChange={(v) => setSupplierId(v ?? '')}
+              disabled={!isDraft}
+              placeholder="Optional"
+            />
+          </div>
+        </div>
+
+        <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '10px' }}>
+          <input
+            type="text" value={reference} disabled={!isDraft}
+            placeholder="Reference / invoice #"
+            onChange={e => setReference(e.target.value)}
+            style={{ padding: '8px 12px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', outline: 'none', background: !isDraft ? theme.muted : '#fff' }}
+          />
+          <input
+            type="text" value={description} disabled={!isDraft}
+            placeholder="Description (e.g. June office rent)"
+            onChange={e => setDescription(e.target.value)}
+            style={{ padding: '8px 12px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', outline: 'none', background: !isDraft ? theme.muted : '#fff' }}
+          />
+        </div>
+
+        {/* Billable section — only shown in single-line mode. In split mode
+            each line carries its own billable + customer picker inline. */}
+        {!splitOpen && (
+          <>
+            <SectionLabel>Bill back to a customer?</SectionLabel>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: isDraft ? 'pointer' : 'not-allowed', userSelect: 'none' }}>
+              <input
+                type="checkbox" checked={primary.is_billable} disabled={!isDraft}
+                onChange={e => setLine(primary._key, { is_billable: e.target.checked, customer_id: e.target.checked ? primary.customer_id : '' })}
+              />
+              <span style={{ fontSize: '13px', color: theme.ink, fontWeight: 500 }}>
+                This is reimbursable from a customer
+              </span>
+            </label>
+            {primary.is_billable && (
+              <div style={{ marginTop: '8px' }}>
+                <SearchableSelect
+                  options={customerOpts}
+                  value={primary.customer_id}
+                  onChange={(v) => setLine(primary._key, { customer_id: v })}
+                  disabled={!isDraft}
+                  placeholder="Pick the customer…"
+                  panelWidth={420}
+                />
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Final total ribbon */}
         <div style={{
-          padding: '14px 20px', borderTop: `1px solid ${theme.border}`, background: theme.panelHead,
-          display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '24px',
+          marginTop: '24px',
+          padding: '14px 18px',
+          background: 'linear-gradient(135deg, #eef2ff, #f5f3ff)',
+          borderRadius: '10px',
+          border: `1px solid ${theme.brandSoft}`,
+          display: 'flex', alignItems: 'center', gap: '12px',
         }}>
-          <div style={{ display: 'flex', gap: '24px', fontSize: '12px', color: theme.inkMuted }}>
-            <span>Subtotal: <span className="font-mono" style={{ color: theme.ink, fontWeight: 600 }}>{fmt(totals.subtotal)}</span></span>
-            <span>Tax: <span className="font-mono" style={{ color: theme.ink, fontWeight: 600 }}>{fmt(totals.tax)}</span></span>
-          </div>
-          <div style={{
-            paddingInlineStart: '24px', borderInlineStart: `1px solid ${theme.border}`,
-            fontSize: '13px', fontWeight: 700, color: theme.ink,
-          }}>
-            Total: <span className="font-mono">{fmt(totals.total)}</span>
-          </div>
+          <span style={{
+            fontSize: '11px', fontWeight: 700,
+            color: theme.brandSoftText,
+            textTransform: 'uppercase', letterSpacing: '.08em',
+          }}>Total to pay</span>
+          <span style={{ marginInlineStart: 'auto', fontFamily: theme.fontMono, fontSize: '22px', fontWeight: 700, color: theme.brand }}>
+            AED {fmt(totals.total)}
+          </span>
         </div>
       </div>
 
@@ -572,10 +753,7 @@ export default function ExpenseEditorPage() {
         </div>
       )}
 
-      {/* Phase 13.02b — quick-create CoA. Defaults to 'indirect_expense'
-           (most common new account from inside the expense editor) but
-           the user can switch to any preset before saving. After save
-           the new account is auto-selected on the triggering line. */}
+      {/* Phase 13.02b — quick-create CoA modal */}
       <CoaQuickCreate
         open={coaQcOpen}
         defaultPreset="indirect_expense"
