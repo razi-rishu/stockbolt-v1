@@ -185,14 +185,23 @@ export default function ExpenseEditorPage() {
   const isConfirmed = expense?.status === 'confirmed';
 
   const bankOpts = bankAccounts.map(b => ({ value: b.id, label: b.name }));
-  // Phase 13.02b — filter by type='expense', not by code prefix. The 5xxx/6xxx
-  // convention is just StockBolt's default seed; user-added accounts can land
-  // anywhere and were getting silently filtered out before. Catches every
-  // expense account regardless of numbering scheme.
+  // Phase 13.02b — filter by type='expense', not by code prefix.
+  // Phase 13.02c — group-sort direct (COGS) first, then indirect (operating),
+  //   then by code. Append "· direct" / "· indirect" to the label so the eye
+  //   can see the sub-type without leaving the dropdown. Side benefit: typing
+  //   "indirect" filters down to operating accounts for free.
+  const subOrder = (st: string | null) =>
+    st === 'direct' ? 0 : st === 'indirect' ? 1 : 2;
   const expenseAccountOpts = coa
     .filter(a => a.is_active && a.type === 'expense')
-    .sort((a, b) => a.code.localeCompare(b.code))
-    .map(a => ({ value: a.id, label: `${a.code}  ${a.name}` }));
+    .sort((a, b) => {
+      const d = subOrder(a.sub_type) - subOrder(b.sub_type);
+      return d !== 0 ? d : a.code.localeCompare(b.code);
+    })
+    .map(a => ({
+      value: a.id,
+      label: `${a.code}  ${a.name}${a.sub_type ? `  ·  ${a.sub_type}` : ''}`,
+    }));
   const customerOpts = customers.map(c => ({ value: c.id, label: c.name }));
 
   // ── Mutations ────────────────────────────────────────────────────────────
