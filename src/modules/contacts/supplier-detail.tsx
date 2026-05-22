@@ -658,12 +658,37 @@ export default function SupplierDetailPage() {
         let visibleLines = stmtHideReversed
           ? lines0.filter(l => !l.is_reversed && !l.is_reversal)
           : lines0;
-        // Phase 14.08c — collapse the apply-advance pair (Dr 2100 + Cr 1400)
-        // into a single visible row by dropping the 1400-leg. Both legs
-        // still show in full-audit mode.
+        // Phase 14.08d — apply-advance is balance-neutral on the supplier
+        // side too: Dr 2100 AP + Cr 1400 Vendor Advances cancels at the
+        // net level. Collapse the pair into one info row so the running
+        // balance doesn't double-count what was already settled when the
+        // overpayment first hit the ledger.
+        type SupLine = AnyLine & { _balanceNeutral?: boolean };
         if (stmtHideReversed) {
-          visibleLines = visibleLines.filter(l =>
-            !(l.source_type === 'advance_application' && l.account_code === '1400')
+          const applyJEs: Record<string, { ap?: SupLine; adv?: SupLine }> = {};
+          for (const l of visibleLines) {
+            if (l.source_type !== 'advance_application') continue;
+            const slot = (applyJEs[l.doc_number] ??= {});
+            if (l.account_code === '2100') slot.ap  = l;
+            else if (l.account_code === '1400') slot.adv = l;
+          }
+          visibleLines = visibleLines.filter(l => l.source_type !== 'advance_application');
+          for (const [, legs] of Object.entries(applyJEs)) {
+            const seed = legs.ap ?? legs.adv;
+            if (!seed) continue;
+            const amount = legs.ap
+              ? Number(legs.ap.debit ?? 0)
+              : Number(legs.adv?.credit ?? 0);
+            (visibleLines as SupLine[]).push({
+              ...seed,
+              debit:  amount,
+              credit: amount,
+              account_code: undefined,
+              _balanceNeutral: true,
+            });
+          }
+          visibleLines.sort((a, b) =>
+            (a.date as string).localeCompare(b.date as string),
           );
         }
         if (stmtSearch.trim()) {
@@ -678,7 +703,14 @@ export default function SupplierDetailPage() {
         // (i.e. credit side accumulates). Spine math follows the same rule.
         let runBal = openingBalance;
         const spineLines: SpineLine[] = visibleLines.map(l => {
-          runBal += l.credit - l.debit;
+          // Phase 14.08d — synthesised apply-advance rows are balance-
+          // neutral. The amount stays visible in both debit + credit
+          // columns so the operator can see the offset, but the running
+          // balance doesn't move.
+          const neutral = (l as { _balanceNeutral?: boolean })._balanceNeutral === true;
+          if (!neutral) {
+            runBal += l.credit - l.debit;
+          }
           return {
             date:       l.date,
             doc_type:   sourceLabel(l.source_type, l.doc_type, l.account_code),

@@ -740,19 +740,56 @@ export default function CustomerDetailPage() {
         let visibleLines = stmtHideReversed
           ? allLines.filter(l => !l.is_reversed && !l.is_reversal)
           : allLines;
-        // Phase 14.08c — collapse the apply-advance JE pair into a single
-        // visible row. The RPC posts Dr 2400 + Cr 1200 with equal amounts
-        // for the same JE; both lines show up for the customer because the
-        // statement reads both 1200 (AR) and 2400 (Customer Advances).
-        // The 2400-leg is just the internal source of the credit being
-        // applied — showing both makes the apply look like a no-op pair.
-        // We keep the AR-leg ("Credit applied" — Cr 87.50 reduces the
-        // customer's outstanding) and drop the 2400-leg.
-        // When full-audit mode is on (hide-reversed OFF), both legs show
-        // so the auditor can still see the textbook double entry.
+        // Phase 14.08d — apply-advance is a BALANCE-NEUTRAL event.
+        //
+        // The apply RPC posts a textbook double entry: Dr 2400 Customer
+        // Advances + Cr 1200 AR with equal amounts. Both legs land on the
+        // customer's statement because Phase 12.54 reads both ledgers for
+        // this contact.
+        //
+        // Net position math: the original overpayment was already booked
+        // as a credit (Cr 2400 at receipt time) which lowered the running
+        // balance. The apply event just MOVES that credit from advances
+        // to AR — it doesn't reduce what the customer owes a second time.
+        //
+        // 14.08c suppressed only the 2400-leg, which made the AR-leg
+        // double-deduct the 87.50 — the bug Rashid spotted.
+        //
+        // The honest fix: collapse the pair into ONE info row that shows
+        // both sides of the offset (debit + credit both populated) and
+        // leaves the running balance unchanged. The pair is flagged below
+        // by setting `_balanceNeutral: true` on the synthesised row.
+        type StmtLine = typeof allLines[number] & { _balanceNeutral?: boolean };
         if (stmtHideReversed) {
-          visibleLines = visibleLines.filter(l =>
-            !(l.source_type === 'advance_application' && l.account_code === '2400')
+          const applyJEs: Record<string, { ar?: StmtLine; adv?: StmtLine }> = {};
+          for (const l of visibleLines) {
+            if (l.source_type !== 'advance_application') continue;
+            const slot = (applyJEs[l.doc_number] ??= {});
+            if (l.account_code === '1200') slot.ar  = l;
+            else if (l.account_code === '2400') slot.adv = l;
+          }
+          // Drop both legs from the raw list.
+          visibleLines = visibleLines.filter(l => l.source_type !== 'advance_application');
+          // Synthesise one info row per apply JE — debit + credit both
+          // = applied amount, balance unchanged.
+          for (const [, legs] of Object.entries(applyJEs)) {
+            const seed = legs.ar ?? legs.adv;
+            if (!seed) continue;
+            const amount = legs.ar
+              ? Number(legs.ar.credit ?? 0)
+              : Number(legs.adv?.debit ?? 0);
+            (visibleLines as StmtLine[]).push({
+              ...seed,
+              debit:  amount,
+              credit: amount,
+              account_code: undefined,           // suppress the 2400 relabel
+              _balanceNeutral: true,
+            });
+          }
+          // Restore chronological order so the synthesised rows land in
+          // the right place in the timeline.
+          visibleLines.sort((a, b) =>
+            (a.date as string).localeCompare(b.date as string),
           );
         }
         // Phase 14.07 — search filter (voucher # or reference token match).
@@ -766,7 +803,15 @@ export default function CustomerDetailPage() {
         const openingBalance = statement?.opening_balance ?? 0;
         let runBal = openingBalance;
         const spineLines: SpineLine[] = visibleLines.map(l => {
-          runBal += l.debit - l.credit;
+          // Phase 14.08d — balance-neutral rows (synthesised apply-advance
+          // entries) don't advance the running balance — they're a visual
+          // record of an offset that nets to zero on the customer's net
+          // position. Debit + credit columns both stay populated so the
+          // operator can see the activity happened.
+          const neutral = (l as { _balanceNeutral?: boolean })._balanceNeutral === true;
+          if (!neutral) {
+            runBal += l.debit - l.credit;
+          }
           return {
             date:       l.date,
             doc_type:   sourceLabel(l.source_type, l.doc_type, l.account_code),
