@@ -206,6 +206,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       getReversalTrail:     () => notImplemented('reports.getReversalTrail'),
       getCashFlow:          () => notImplemented('reports.getCashFlow'),
       getOwnerDashboard:    () => notImplemented('reports.getOwnerDashboard'),
+      getDashboardCards:    () => notImplemented('reports.getDashboardCards'),
     },
     purchaseOrders: {
       list:          () => notImplemented('purchaseOrders.list'),

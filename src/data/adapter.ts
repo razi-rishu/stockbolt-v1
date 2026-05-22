@@ -677,6 +677,22 @@ export interface TaxRatesAPI {
   list(company_id: string): Promise<TaxRateRow[]>;
 }
 
+// Phase 13.03 — dashboard summary cards (Income/Expense, Top Expenses,
+// Bank Balances, Watchlist). One round trip via the get_dashboard_cards RPC.
+export interface DashboardCards {
+  period_start_12mo: string;
+  period_start_fy:   string;
+  monthly_pl:        Array<{ month: string; income: number; expense: number }>;
+  top_expenses:      Array<{ account_code: string; account_name: string; amount: number }>;
+  top_expenses_others: number;
+  top_expenses_total:  number;
+  bank_balances:     Array<{
+    id: string; name: string; currency: string;
+    account_type: string; balance: number;
+  }>;
+  watchlist:         Array<{ id: string; name: string; balance: number }>;
+}
+
 export interface ReportsAPI {
   getProfitAndLoss(company_id: string, from: string, to: string): Promise<ProfitAndLoss>;
   getBalanceSheet(company_id: string, as_of_date: string): Promise<BalanceSheet>;
@@ -728,6 +744,9 @@ export interface ReportsAPI {
   getReversalTrail(company_id: string, from: string, to: string): Promise<ReversalTrailLine[]>;
   getCashFlow(company_id: string, from: string, to: string): Promise<CashFlowStatement>;
   getOwnerDashboard(company_id: string): Promise<OwnerDashboard>;
+  /** Phase 13.03 — bottom-of-dashboard cards (Income/Expense 12mo,
+   *  Top Expenses YTD, Bank Balances, Watchlist) in one round trip. */
+  getDashboardCards(company_id: string): Promise<DashboardCards>;
 }
 
 // ── Phase 10 report types ─────────────────────────────────────────────────────

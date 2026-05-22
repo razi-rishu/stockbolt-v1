@@ -2526,6 +2526,19 @@ export function createSupabaseAdapter(
         };
       },
 
+      // Phase 13.03 — dashboard cards via single RPC. Returns the four
+      // datasets the React dashboard renders below the KPI tiles. The
+      // RPC isn't in the generated Database['Functions'] union yet (next
+      // supabase gen types run will pick it up); the cast bypasses that.
+      async getDashboardCards(company_id): Promise<import('./adapter').DashboardCards> {
+        const rpc = client.rpc as unknown as (
+          fn: string, args: Record<string, unknown>
+        ) => Promise<{ data: unknown; error: unknown }>;
+        const { data, error } = await rpc('get_dashboard_cards', { p_company_id: company_id });
+        assertNoError(error as Error | null, 'reports.getDashboardCards');
+        return data as import('./adapter').DashboardCards;
+      },
+
       async getOwnerDashboard(company_id): Promise<OwnerDashboard> {
         // Date helpers
         const todayDate = new Date();

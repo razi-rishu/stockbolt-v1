@@ -28,6 +28,7 @@ import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
 import type { OwnerDashboard } from '@/data/adapter';
 import { Panel } from '@/ui/primitives';
+import DashboardSummaryCards from './_summary-cards';
 import { theme } from '@/ui/theme';
 
 // ── Formatters ───────────────────────────────────────────────────────────────
@@ -435,6 +436,11 @@ export default function DashboardPage() {
           )}
         </Panel>
       </div>
+
+      {/* ── Phase 13.03 — Summary cards row (Income/Expense, Top Expenses,
+            Bank balances, Watchlist). Single RPC fetch via the cards
+            component. */}
+      <DashboardSummaryCards />
 
       {/* ── Low Stock Alerts bar ───────────────────────────────────────── */}
       <div style={{ ...cardStyle, padding: '20px' }}>
