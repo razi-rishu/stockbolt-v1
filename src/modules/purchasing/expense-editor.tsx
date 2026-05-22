@@ -37,6 +37,7 @@ import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { ContactPicker } from '@/components/contact-picker';
+import { CoaQuickCreate } from '@/components/quick-create/coa-quick-create';
 import { theme } from '@/ui/theme';
 import type {
   BankAccountRow, CoaRow, ExpenseRow, ExpenseItemRow,
@@ -99,6 +100,13 @@ export default function ExpenseEditorPage() {
   const [voidReason, setVoidReason] = useState('');
   const [lines, setLines]         = useState<LineRow[]>([newLine()]);
   const [error, setError]         = useState<string | null>(null);
+
+  // Phase 13.02b — quick-create CoA from the line picker. Mirrors the
+  // product quick-create on invoice/PO/bill lines. The line that
+  // triggered it gets the new account assigned automatically on close.
+  const [coaQcOpen,    setCoaQcOpen]    = useState(false);
+  const [coaQcSeed,    setCoaQcSeed]    = useState('');
+  const [coaQcLineKey, setCoaQcLineKey] = useState<number | null>(null);
 
   // Reference data
   const { data: bankAccounts = [] } = useQuery<BankAccountRow[]>({
@@ -177,8 +185,12 @@ export default function ExpenseEditorPage() {
   const isConfirmed = expense?.status === 'confirmed';
 
   const bankOpts = bankAccounts.map(b => ({ value: b.id, label: b.name }));
+  // Phase 13.02b — filter by type='expense', not by code prefix. The 5xxx/6xxx
+  // convention is just StockBolt's default seed; user-added accounts can land
+  // anywhere and were getting silently filtered out before. Catches every
+  // expense account regardless of numbering scheme.
   const expenseAccountOpts = coa
-    .filter(a => a.is_active && (a.code.startsWith('5') || a.code.startsWith('6')))
+    .filter(a => a.is_active && a.type === 'expense')
     .sort((a, b) => a.code.localeCompare(b.code))
     .map(a => ({ value: a.id, label: `${a.code}  ${a.name}` }));
   const customerOpts = customers.map(c => ({ value: c.id, label: c.name }));
@@ -433,6 +445,14 @@ export default function ExpenseEditorPage() {
                       disabled={!isDraft}
                       placeholder="Pick an account…"
                       panelWidth={340}
+                      addNew={isDraft ? {
+                        noun: 'expense account',
+                        onClick: (q) => {
+                          setCoaQcLineKey(line._key);
+                          setCoaQcSeed(q);
+                          setCoaQcOpen(true);
+                        },
+                      } : undefined}
                     />
                   </td>
                   <td className="px-3 py-2">
@@ -542,6 +562,22 @@ export default function ExpenseEditorPage() {
           <strong>Void reason:</strong> {expense.void_reason}
         </div>
       )}
+
+      {/* Phase 13.02b — quick-create CoA. Defaults to 'indirect_expense'
+           (most common new account from inside the expense editor) but
+           the user can switch to any preset before saving. After save
+           the new account is auto-selected on the triggering line. */}
+      <CoaQuickCreate
+        open={coaQcOpen}
+        defaultPreset="indirect_expense"
+        initialName={coaQcSeed}
+        onClose={() => setCoaQcOpen(false)}
+        onCreated={(row) => {
+          setCoaQcOpen(false);
+          if (coaQcLineKey !== null) setLine(coaQcLineKey, { expense_account_id: row.id });
+          setCoaQcLineKey(null);
+        }}
+      />
     </div>
   );
 }
