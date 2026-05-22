@@ -626,6 +626,11 @@ export default function SupplierDetailPage() {
       {tab === 'stmt' && (() => {
         // Doc label mapping mirrors the AP-side journal source types.
         const sourceLabel = (src?: string, fallback?: string, account_code?: string): string => {
+          // Phase 14.08c — apply-advance pair on the supplier side is
+          // Dr 2100 AP + Cr 1400 Vendor Advances. Relabel as "Credit
+          // applied" before the 1400 fallback fires; same reasoning as
+          // the customer side.
+          if (src === 'advance_application') return 'Credit applied';
           if (account_code === '1400') return 'Vendor advance';
           switch (src) {
             case 'vendor_bill':       return 'Bill';
@@ -653,6 +658,14 @@ export default function SupplierDetailPage() {
         let visibleLines = stmtHideReversed
           ? lines0.filter(l => !l.is_reversed && !l.is_reversal)
           : lines0;
+        // Phase 14.08c — collapse the apply-advance pair (Dr 2100 + Cr 1400)
+        // into a single visible row by dropping the 1400-leg. Both legs
+        // still show in full-audit mode.
+        if (stmtHideReversed) {
+          visibleLines = visibleLines.filter(l =>
+            !(l.source_type === 'advance_application' && l.account_code === '1400')
+          );
+        }
         if (stmtSearch.trim()) {
           const q = stmtSearch.trim().toLowerCase();
           visibleLines = visibleLines.filter(l =>

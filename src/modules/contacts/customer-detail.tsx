@@ -711,6 +711,13 @@ export default function CustomerDetailPage() {
         // + account_code (account_code disambiguates payments that hit both
         // AR (1200) and Customer Advances (2400) in the same JE).
         const sourceLabel = (src?: string, fallback?: string, account_code?: string): string => {
+          // Phase 14.08c — relabel the apply-advance entry as "Credit applied"
+          // BEFORE the 2400 → "Customer advance" fallback fires. Otherwise
+          // the AR-side of the apply JE renders as "invoice" (via the
+          // related_doc_type fallback) and the 2400-side renders as
+          // "Customer advance", making the pair look like an unrelated
+          // duplicate when in fact it's one allocation event.
+          if (src === 'advance_application') return 'Credit applied';
           if (account_code === '2400') return 'Customer advance';
           switch (src) {
             case 'sales_invoice':       return 'Invoice';
@@ -733,6 +740,21 @@ export default function CustomerDetailPage() {
         let visibleLines = stmtHideReversed
           ? allLines.filter(l => !l.is_reversed && !l.is_reversal)
           : allLines;
+        // Phase 14.08c — collapse the apply-advance JE pair into a single
+        // visible row. The RPC posts Dr 2400 + Cr 1200 with equal amounts
+        // for the same JE; both lines show up for the customer because the
+        // statement reads both 1200 (AR) and 2400 (Customer Advances).
+        // The 2400-leg is just the internal source of the credit being
+        // applied — showing both makes the apply look like a no-op pair.
+        // We keep the AR-leg ("Credit applied" — Cr 87.50 reduces the
+        // customer's outstanding) and drop the 2400-leg.
+        // When full-audit mode is on (hide-reversed OFF), both legs show
+        // so the auditor can still see the textbook double entry.
+        if (stmtHideReversed) {
+          visibleLines = visibleLines.filter(l =>
+            !(l.source_type === 'advance_application' && l.account_code === '2400')
+          );
+        }
         // Phase 14.07 — search filter (voucher # or reference token match).
         if (stmtSearch.trim()) {
           const q = stmtSearch.trim().toLowerCase();
