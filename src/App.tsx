@@ -28,6 +28,7 @@ const UnitsPage          = lazy(() => import('@/modules/settings/units-of-measur
 const PriceLevelsPage    = lazy(() => import('@/modules/settings/price-levels'));
 const BankAccountsPage   = lazy(() => import('@/modules/settings/bank-accounts'));
 const TaxRatesPage       = lazy(() => import('@/modules/settings/tax-rates'));
+const OpeningBalancesPage = lazy(() => import('@/modules/settings/opening-balances'));
 const CategoriesPage     = lazy(() => import('@/modules/catalog/categories'));
 const BrandsPage         = lazy(() => import('@/modules/catalog/brands'));
 const VehicleMakesPage   = lazy(() => import('@/modules/catalog/vehicle-makes'));
@@ -195,8 +196,9 @@ function AppRoutes() {
               <Route path="/settings/warehouses"      element={<WarehousesPage />} />
               <Route path="/settings/units"           element={<UnitsPage />} />
               <Route path="/settings/price-levels"    element={<PriceLevelsPage />} />
-              <Route path="/settings/bank-accounts"   element={<BankAccountsPage />} />
-              <Route path="/settings/tax-rates"       element={<TaxRatesPage />} />
+              <Route path="/settings/bank-accounts"     element={<BankAccountsPage />} />
+              <Route path="/settings/tax-rates"         element={<TaxRatesPage />} />
+              <Route path="/settings/opening-balances"  element={<OpeningBalancesPage />} />
 
               {/* Catalog */}
               <Route path="/products/categories"      element={<CategoriesPage />} />

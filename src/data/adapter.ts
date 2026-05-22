@@ -1697,6 +1697,67 @@ export interface DataAdapter {
   admin: AdminAPI;
   // Phase 12.16: Salespeople master data
   salespeople: SalespeopleAPI;
+  // Phase 14.09: Opening Balances wizard
+  openingBalances: OpeningBalancesAPI;
+}
+
+// ── Phase 14.09: Opening Balances ─────────────────────────────────────────
+/** Direction of a migrated opening row.
+ *  - ar_owed         → unpaid customer invoice carried over (we expect to collect)
+ *  - ap_owed         → unpaid supplier bill carried over (we expect to pay)
+ *  - customer_credit → customer overpaid us in the old system; sits as advance
+ *  - vendor_credit   → we overpaid the supplier in the old system; sits as advance
+ */
+export type OpeningBalanceType =
+  | 'ar_owed'
+  | 'ap_owed'
+  | 'customer_credit'
+  | 'vendor_credit';
+
+export interface OpeningBalanceInput {
+  type:        OpeningBalanceType;
+  contact_id:  string;
+  /** OLD system's document number; becomes invoice/bill/payment number. */
+  doc_number:  string;
+  /** ORIGINAL document date — drives aging once posted. */
+  date:        string;
+  /** Original due date (only meaningful for ar_owed / ap_owed). */
+  due_date?:   string | null;
+  amount:      number;
+  currency?:   string;
+  notes?:      string | null;
+}
+
+export interface OpeningBalanceResult {
+  type:             OpeningBalanceType;
+  doc_id:           string;
+  doc_number:       string;
+  journal_entry_id: string;
+  entry_number:     string;
+}
+
+export interface OpeningBalancesAPI {
+  /** Posts one opening-balance row; called in a loop from the wizard so
+   *  each row gets its own JE keyed to the original document date. */
+  post(input: OpeningBalanceInput): Promise<OpeningBalanceResult>;
+  /** Lists every opening-balance document ever posted for this company,
+   *  for the wizard's "Already posted" review panel. */
+  listPosted(company_id: string): Promise<OpeningBalanceListed[]>;
+}
+
+export interface OpeningBalanceListed {
+  type:        OpeningBalanceType;
+  doc_id:      string;
+  doc_number:  string;
+  contact_id:  string;
+  contact_name: string;
+  date:        string;
+  due_date?:   string | null;
+  amount:      number;
+  currency:    string;
+  outstanding: number;             // remaining open portion
+  status:      string;             // 'confirmed' | 'void' | 'paid' ...
+  posted_at:   string;
 }
 
 // ── Phase 12.13: Admin ────────────────────────────────────────────────────

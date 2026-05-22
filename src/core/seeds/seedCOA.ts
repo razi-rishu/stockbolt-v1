@@ -31,6 +31,12 @@ const ALL_ACCOUNTS: (AccountDef & { gcc_only?: true; india_only?: true })[] = [
   { code: '2400', name: 'Customer Advances',           name_ar: 'سلف العملاء',             type: 'liability', sub_type: 'current' },
   { code: '2450', name: 'PDC Payable (Vendor)',         name_ar: 'شيكات آجلة صادرة',       type: 'liability', sub_type: 'current' },
   // ── Equity ────────────────────────────────────────────────────────────────
+  // 3010 — Phase 14.09. Contra account for the opening-balance wizard.
+  // Every opening JE (AR / AP / customer credit / vendor credit) offsets
+  // here so the trial balance stays in equilibrium during migration.
+  // Bookkeeper clears this to 3100 Retained Earnings once migration is
+  // complete and verified.
+  { code: '3010', name: 'Opening Balance Equity',       name_ar: 'حقوق الملكية الافتتاحية', type: 'equity' },
   { code: '3100', name: "Retained Earnings",            name_ar: 'الأرباح المحتجزة',        type: 'equity' },
   { code: '3200', name: "Owner's Equity",               name_ar: 'حقوق المالك',             type: 'equity' },
   { code: '3300', name: "Owner's Drawings",             name_ar: 'مسحوبات المالك',          type: 'equity' },

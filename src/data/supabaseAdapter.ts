@@ -3953,5 +3953,95 @@ export function createSupabaseAdapter(
         assertNoError(error as Error | null, 'salespeople.activate');
       },
     },
+
+    // ── Phase 14.09: Opening Balances ─────────────────────────────────────
+    openingBalances: {
+      async post(input) {
+        const { data, error } = await (
+          client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>
+        )('post_opening_balance', {
+          p_type:       input.type,
+          p_contact_id: input.contact_id,
+          p_doc_number: input.doc_number,
+          p_date:       input.date,
+          p_due_date:   input.due_date ?? null,
+          p_amount:     input.amount,
+          p_currency:   input.currency ?? 'AED',
+          p_notes:      input.notes ?? null,
+        });
+        assertNoError(error as Error | null, 'openingBalances.post');
+        return data as unknown as import('./adapter').OpeningBalanceResult;
+      },
+      async listPosted(company_id) {
+        // Union the three sources (opening invoices, opening bills, opening
+        // payments) and enrich with the contact name. Each table carries
+        // is_opening so the filter is cheap thanks to the partial indexes
+        // from the 14.09 migration.
+        const fromAny = client.from as unknown as (t: string) => {
+          select: (cols: string) => {
+            eq: (k: string, v: unknown) => {
+              eq: (k: string, v: unknown) => Promise<{ data: unknown; error: unknown }>;
+            };
+          };
+        };
+        const [invR, billR, payR] = await Promise.all([
+          fromAny('invoices')
+            .select('id, invoice_number, contact_id, contacts:contact_id (name), date, due_date, total_amount, currency, status, created_at, is_opening')
+            .eq('company_id', company_id).eq('is_opening', true),
+          fromAny('vendor_bills')
+            .select('id, bill_number, supplier_id, contacts:supplier_id (name), date, due_date, total_amount, currency, status, created_at, is_opening')
+            .eq('company_id', company_id).eq('is_opening', true),
+          fromAny('payments')
+            .select('id, payment_number, contact_id, contacts:contact_id (name), date, amount, currency, status, created_at, type, is_opening')
+            .eq('company_id', company_id).eq('is_opening', true),
+        ]);
+        assertNoError(invR.error  as Error | null, 'openingBalances.listPosted/invoices');
+        assertNoError(billR.error as Error | null, 'openingBalances.listPosted/bills');
+        assertNoError(payR.error  as Error | null, 'openingBalances.listPosted/payments');
+
+        type RawInv  = { id: string; invoice_number: string; contact_id: string;
+                         contacts?: { name: string } | null; date: string; due_date: string | null;
+                         total_amount: number; currency: string; status: string; created_at: string };
+        type RawBill = { id: string; bill_number: string; supplier_id: string;
+                         contacts?: { name: string } | null; date: string; due_date: string | null;
+                         total_amount: number; currency: string; status: string; created_at: string };
+        type RawPay  = { id: string; payment_number: string; contact_id: string;
+                         contacts?: { name: string } | null; date: string; amount: number;
+                         currency: string; status: string; created_at: string; type: 'inbound' | 'outbound' };
+        const out: import('./adapter').OpeningBalanceListed[] = [];
+        for (const r of (invR.data as RawInv[] ?? [])) {
+          out.push({
+            type: 'ar_owed', doc_id: r.id, doc_number: r.invoice_number,
+            contact_id: r.contact_id, contact_name: r.contacts?.name ?? '—',
+            date: r.date, due_date: r.due_date,
+            amount: Number(r.total_amount), currency: r.currency,
+            outstanding: Number(r.total_amount),   // TODO: subtract paid; deferred for now
+            status: r.status, posted_at: r.created_at,
+          });
+        }
+        for (const r of (billR.data as RawBill[] ?? [])) {
+          out.push({
+            type: 'ap_owed', doc_id: r.id, doc_number: r.bill_number,
+            contact_id: r.supplier_id, contact_name: r.contacts?.name ?? '—',
+            date: r.date, due_date: r.due_date,
+            amount: Number(r.total_amount), currency: r.currency,
+            outstanding: Number(r.total_amount),
+            status: r.status, posted_at: r.created_at,
+          });
+        }
+        for (const r of (payR.data as RawPay[] ?? [])) {
+          out.push({
+            type: r.type === 'outbound' ? 'vendor_credit' : 'customer_credit',
+            doc_id: r.id, doc_number: r.payment_number,
+            contact_id: r.contact_id, contact_name: r.contacts?.name ?? '—',
+            date: r.date, due_date: null,
+            amount: Number(r.amount), currency: r.currency,
+            outstanding: Number(r.amount),
+            status: r.status, posted_at: r.created_at,
+          });
+        }
+        return out.sort((a, b) => (b.posted_at ?? '').localeCompare(a.posted_at ?? ''));
+      },
+    },
   };
 }
