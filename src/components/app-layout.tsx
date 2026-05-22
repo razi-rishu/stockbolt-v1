@@ -507,8 +507,14 @@ function MobileDrawer({
   email: string | null;
   onSignOut: () => void;
 }) {
-  if (!open) return null;
+  // Phase 14.02 — hooks must run in a stable order every render. Calling
+  // useTranslation AFTER an early `return null` violated the Rules of
+  // Hooks (when `open` was false on first render, the hook was skipped;
+  // when it flipped true on next render, React tried to compare an empty
+  // slot to a useState/useContext call → "Internal React error: Expected
+  // static flag was missing". Hooks above conditional returns ALWAYS.
   const { t } = useTranslation();
+  if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 lg:hidden">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
