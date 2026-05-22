@@ -1740,17 +1740,51 @@ export interface OpeningBalancesAPI {
   /** Posts one opening-balance row; called in a loop from the wizard so
    *  each row gets its own JE keyed to the original document date. */
   post(input: OpeningBalanceInput): Promise<OpeningBalanceResult>;
+  /** Phase 14.09b — posts one direct-GL opening balance against any
+   *  CoA account (Dr/Cr the account; opposite leg lands on 3010
+   *  Opening Balance Equity). Used for fixed assets, long-term, capital,
+   *  retained earnings, cash on hand, bank openings. */
+  postGl(input: GLOpeningBalanceInput): Promise<GLOpeningBalanceResult>;
   /** Lists every opening-balance document ever posted for this company,
-   *  for the wizard's "Already posted" review panel. */
+   *  for the wizard's "Already posted" review panel. Union of subsidiary
+   *  opening rows (14.09) AND direct-GL openings (14.09b). */
   listPosted(company_id: string): Promise<OpeningBalanceListed[]>;
+  /** Phase 14.09b — current balance on 3010. Should be zero after a
+   *  complete migration; non-zero is an audit flag. */
+  get3010Balance(company_id: string): Promise<number>;
+}
+
+// ── Phase 14.09b: GL opening balances ─────────────────────────────────────
+export interface GLOpeningBalanceInput {
+  account_id: string;
+  direction:  'debit' | 'credit';
+  amount:     number;
+  date:       string;
+  notes?:     string | null;
+}
+
+export interface GLOpeningBalanceResult {
+  journal_entry_id: string;
+  entry_number:     string;
+  account_code:     string;
+  account_name:     string;
+  direction:        'debit' | 'credit';
+  amount:           number;
 }
 
 export interface OpeningBalanceListed {
-  type:        OpeningBalanceType;
+  type:        OpeningBalanceType | 'gl_debit' | 'gl_credit';
   doc_id:      string;
   doc_number:  string;
+  /** For subsidiary rows: the customer/supplier. For GL rows: empty
+   *  (no contact). */
   contact_id:  string;
   contact_name: string;
+  /** For GL rows: the CoA account code (e.g. "1500"). For subsidiary
+   *  rows: empty. */
+  account_code?: string;
+  /** For GL rows: the CoA account name. */
+  account_name?: string;
   date:        string;
   due_date?:   string | null;
   amount:      number;

@@ -38,7 +38,7 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import type {
   ContactRow, OpeningBalanceType, OpeningBalanceInput,
-  OpeningBalanceListed,
+  OpeningBalanceListed, CoaRow, GLOpeningBalanceInput,
 } from '@/data/adapter';
 
 // ── Local types ─────────────────────────────────────────────────────────────
@@ -55,6 +55,19 @@ interface DraftRow {
   error?:      string;
 }
 
+// Phase 14.09b — direct GL opening balance row (fixed assets, long-term,
+// capital, retained earnings, cash, etc.).
+interface GlDraftRow {
+  _key:       string;
+  account_id: string;
+  direction:  'debit' | 'credit';
+  amount:     string;
+  date:       string;
+  notes:      string;
+  status:     'draft' | 'posting' | 'done' | 'error';
+  error?:     string;
+}
+
 let _kSeq = 0;
 const newKey = () => `k${++_kSeq}`;
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -64,6 +77,29 @@ const emptyDraft = (): DraftRow => ({
   contact_id: '', doc_number: '', date: todayIso(), due_date: '',
   amount: '', notes: '', status: 'draft',
 });
+
+const emptyGlDraft = (): GlDraftRow => ({
+  _key: newKey(), account_id: '', direction: 'debit',
+  amount: '', date: todayIso(), notes: '', status: 'draft',
+});
+
+// Phase 14.09b — default direction based on account type. Normal balance:
+// assets + expenses = debit; liabilities + equity + income = credit.
+function defaultDirection(account: CoaRow | undefined): 'debit' | 'credit' {
+  if (!account) return 'debit';
+  return account.type === 'asset' || account.type === 'expense' ? 'debit' : 'credit';
+}
+
+// Control accounts the operator should NOT post GL openings to (they have
+// dedicated wizards / mechanisms). Soft warning, doesn't block.
+const CONTROL_ACCOUNT_CODES = new Set([
+  '1200',   // AR — use subsidiary grid above for per-customer detail
+  '2100',   // AP — use subsidiary grid above for per-supplier detail
+  '2400',   // Customer Advances — use subsidiary grid
+  '1400',   // Vendor Advances — use subsidiary grid
+  '1300',   // Inventory — use the inventory wizard so MAC + stock_ledger stay consistent
+  '3010',   // Opening Balance Equity — this IS the contra; can't open against itself
+]);
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -129,9 +165,27 @@ export default function OpeningBalancesPage() {
     queryFn:  () => getAdapter().openingBalances.listPosted(company_id!),
     enabled:  !!company_id,
   });
+  // Phase 14.09b — chart of accounts + 3010 zero-check.
+  const { data: coa = [] } = useQuery<CoaRow[]>({
+    queryKey: ['coa', company_id],
+    queryFn:  () => getAdapter().coa.list(company_id!),
+    enabled:  !!company_id,
+  });
+  const { data: live3010 = 0 } = useQuery<number>({
+    queryKey: ['ob_3010_balance', company_id],
+    queryFn:  () => getAdapter().openingBalances.get3010Balance(company_id!),
+    enabled:  !!company_id,
+  });
+
+  const coaById = useMemo(() => {
+    const m: Record<string, CoaRow> = {};
+    for (const a of coa) m[a.id] = a;
+    return m;
+  }, [coa]);
 
   // ── Drafts ────────────────────────────────────────────────────────────────
   const [rows, setRows] = useState<DraftRow[]>([emptyDraft()]);
+  const [glRows, setGlRows] = useState<GlDraftRow[]>([emptyGlDraft()]);
   const [posting, setPosting] = useState(false);
   const [topError, setTopError] = useState<string | null>(null);
 
@@ -142,6 +196,14 @@ export default function OpeningBalancesPage() {
   const removeRow = (key: string) => setRows(prev => prev.length === 1 ? prev : prev.filter(r => r._key !== key));
   const clearDone = () => setRows(prev => prev.filter(r => r.status !== 'done'));
 
+  // Phase 14.09b — GL row mutators (mirror of the subsidiary helpers).
+  const updateGlRow = (key: string, patch: Partial<GlDraftRow>) => {
+    setGlRows(prev => prev.map(r => r._key === key ? { ...r, ...patch } : r));
+  };
+  const addGlRow    = () => setGlRows(prev => [...prev, emptyGlDraft()]);
+  const removeGlRow = (key: string) => setGlRows(prev => prev.length === 1 ? prev : prev.filter(r => r._key !== key));
+  const clearGlDone = () => setGlRows(prev => prev.filter(r => r.status !== 'done'));
+
   // Totals — group by type so the operator can see what they're about to post.
   const totals = useMemo(() => {
     const t = { ar_owed: 0, ap_owed: 0, customer_credit: 0, vendor_credit: 0 };
@@ -150,10 +212,32 @@ export default function OpeningBalancesPage() {
       const amt = parseFloat(r.amount) || 0;
       t[r.type] += amt;
     }
-    // Net on us = AR + Vendor Credit (assets) − AP − Customer Credit (liabilities)
-    const netOnUs = t.ar_owed + t.vendor_credit - t.ap_owed - t.customer_credit;
-    return { ...t, netOnUs };
-  }, [rows]);
+    // Subsidiary effect on 3010 (this batch only):
+    //   ar_owed         Dr AR     Cr 3010   → -ar_owed         (Cr to 3010)
+    //   ap_owed         Cr AP     Dr 3010   → +ap_owed         (Dr to 3010)
+    //   customer_credit Cr 2400   Dr 3010   → +customer_credit (Dr to 3010)
+    //   vendor_credit   Dr 1400   Cr 3010   → -vendor_credit   (Cr to 3010)
+    const subsidiaryNet3010 = -t.ar_owed + t.ap_owed + t.customer_credit - t.vendor_credit;
+
+    // Phase 14.09b — GL openings effect on 3010:
+    //   debit  side → Dr account / Cr 3010  → -amount on 3010
+    //   credit side → Cr account / Dr 3010  → +amount on 3010
+    let glDebit = 0;
+    let glCredit = 0;
+    for (const r of glRows) {
+      if (r.status === 'done') continue;
+      const amt = parseFloat(r.amount) || 0;
+      if (r.direction === 'debit') glDebit += amt;
+      else glCredit += amt;
+    }
+    const glNet3010 = -glDebit + glCredit;
+    const batchNet3010 = subsidiaryNet3010 + glNet3010;
+
+    // After-post projection: where 3010 lands once this batch is posted.
+    const projected3010 = (live3010 ?? 0) + batchNet3010;
+
+    return { ...t, glDebit, glCredit, subsidiaryNet3010, glNet3010, batchNet3010, projected3010 };
+  }, [rows, glRows, live3010]);
 
   // Per-row validation. The Post button is only enabled when all draft rows
   // pass — partial posts get messy when one row fails halfway through.
@@ -169,7 +253,29 @@ export default function OpeningBalancesPage() {
   };
   const draftRows = rows.filter(r => r.status !== 'done');
   const validations = draftRows.map(validateRow);
-  const canPost = draftRows.length > 0 && validations.every(v => v === null) && !posting;
+
+  // Phase 14.09b — GL row validation. Stricter than subsidiary: amount
+  // must be positive, an account must be picked. Date must not be in
+  // the future. Control-account warning is non-blocking (returns null
+  // here; UI surfaces a soft warning separately).
+  const validateGlRow = (r: GlDraftRow): string | null => {
+    if (!r.account_id) return 'Pick a GL account';
+    if (!r.date) return 'Date is required';
+    const amt = parseFloat(r.amount);
+    if (!isFinite(amt) || amt <= 0) return 'Amount must be positive';
+    if (r.date > todayIso()) return 'Date cannot be in the future';
+    const acct = coaById[r.account_id];
+    if (acct?.code === '3010') return 'Cannot post against 3010 (it IS the contra account)';
+    return null;
+  };
+  const glDraftRows = glRows.filter(r => r.status !== 'done');
+  const glValidations = glDraftRows.map(validateGlRow);
+
+  const totalDraft = draftRows.length + glDraftRows.length;
+  const canPost = totalDraft > 0
+    && validations.every(v => v === null)
+    && glValidations.every(v => v === null)
+    && !posting;
 
   // ── Post-all loop ────────────────────────────────────────────────────────
   // Posts each draft row one at a time so a mid-batch failure doesn't lose
@@ -179,6 +285,7 @@ export default function OpeningBalancesPage() {
     setPosting(true);
     const adapter = getAdapter();
     try {
+      // ── 1. Subsidiary rows (AR / AP / advances) ──────────────────────────
       for (const r of [...rows]) {
         if (r.status === 'done') continue;
         setRows(prev => prev.map(x => x._key === r._key ? { ...x, status: 'posting', error: undefined } : x));
@@ -198,21 +305,50 @@ export default function OpeningBalancesPage() {
           const msg = e instanceof Error ? e.message : 'Failed';
           setRows(prev => prev.map(x => x._key === r._key ? { ...x, status: 'error', error: msg } : x));
           setTopError(`Row "${r.doc_number || '(empty)'}" failed: ${msg}. Earlier rows are saved. Fix this row and re-Post.`);
-          // Stop the loop so subsequent rows are obvious.
           setPosting(false);
           await qc.invalidateQueries({ queryKey: ['opening_balances_posted', company_id] });
+          await qc.invalidateQueries({ queryKey: ['ob_3010_balance', company_id] });
           return;
         }
       }
-      // Refresh "Already posted" panel and aging-related caches so the UI
-      // immediately reflects the new opening balances everywhere.
+
+      // ── 2. GL rows (Phase 14.09b) ────────────────────────────────────────
+      for (const r of [...glRows]) {
+        if (r.status === 'done') continue;
+        setGlRows(prev => prev.map(x => x._key === r._key ? { ...x, status: 'posting', error: undefined } : x));
+        try {
+          const input: GLOpeningBalanceInput = {
+            account_id: r.account_id,
+            direction:  r.direction,
+            amount:     parseFloat(r.amount),
+            date:       r.date,
+            notes:      r.notes.trim() || null,
+          };
+          await adapter.openingBalances.postGl(input);
+          setGlRows(prev => prev.map(x => x._key === r._key ? { ...x, status: 'done' } : x));
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Failed';
+          setGlRows(prev => prev.map(x => x._key === r._key ? { ...x, status: 'error', error: msg } : x));
+          const acct = coaById[r.account_id];
+          setTopError(`GL row "${acct?.code ?? '?'} ${acct?.name ?? ''}" failed: ${msg}. Earlier rows are saved. Fix and re-Post.`);
+          setPosting(false);
+          await qc.invalidateQueries({ queryKey: ['opening_balances_posted', company_id] });
+          await qc.invalidateQueries({ queryKey: ['ob_3010_balance', company_id] });
+          return;
+        }
+      }
+
+      // ── 3. Refresh caches so the UI reflects new balances everywhere. ─
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['opening_balances_posted', company_id] }),
+        qc.invalidateQueries({ queryKey: ['ob_3010_balance', company_id] }),
         qc.invalidateQueries({ queryKey: ['invoices', company_id] }),
         qc.invalidateQueries({ queryKey: ['vendor_bills', company_id] }),
         qc.invalidateQueries({ queryKey: ['payments', company_id] }),
         qc.invalidateQueries({ queryKey: ['open_invoices'] }),
         qc.invalidateQueries({ queryKey: ['open_bills'] }),
+        qc.invalidateQueries({ queryKey: ['trial_balance'] }),
+        qc.invalidateQueries({ queryKey: ['balance_sheet'] }),
       ]);
     } finally {
       setPosting(false);
@@ -277,14 +413,15 @@ export default function OpeningBalancesPage() {
           borderRadius: '12px', padding: '12px 14px',
         }}>
           <div style={{ fontSize: '10.5px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Net to 3010 (this batch)
+            Subsidiary net (this batch)
           </div>
           <div style={{ marginTop: '4px', fontSize: '17px', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-            {totals.netOnUs >= 0 ? '+' : '−'}AED {fmt(Math.abs(totals.netOnUs))}
+            {-totals.subsidiaryNet3010 >= 0 ? '+' : '−'}AED {fmt(Math.abs(totals.subsidiaryNet3010))}
           </div>
           <div style={{ marginTop: '2px', fontSize: '10.5px', opacity: 0.85 }}>
-            {totals.netOnUs >= 0 ? 'net debit (we expect to receive more than we owe)'
-                                 : 'net credit (we owe more than we expect to receive)'}
+            {-totals.subsidiaryNet3010 >= 0
+              ? 'net debit — customers / supplier-credits dominate'
+              : 'net credit — supplier debts / customer-credits dominate'}
           </div>
         </div>
       </div>
@@ -305,7 +442,7 @@ export default function OpeningBalancesPage() {
               <Button size="sm" variant="ghost" onClick={clearDone} disabled={posting}>Clear completed</Button>
             )}
             <Button size="sm" onClick={postAll} disabled={!canPost}>
-              {posting ? 'Posting…' : `Post ${draftRows.length} row${draftRows.length === 1 ? '' : 's'}`}
+              {posting ? 'Posting…' : `Post ${totalDraft} row${totalDraft === 1 ? '' : 's'}`}
             </Button>
           </div>
         </div>
@@ -441,6 +578,242 @@ export default function OpeningBalancesPage() {
         </div>
       </div>
 
+      {/* ── Phase 14.09b: GL opening balances grid ────────────────────────── */}
+      <div className="rounded-card border border-border-subtle bg-surface-card overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle px-5 py-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-ink-primary">General ledger balances</h2>
+            <span className="rounded-pill bg-slate-100 px-2 py-0.5 text-[10.5px] font-semibold text-slate-600 uppercase tracking-wider">
+              Fixed · Long-term · Capital
+            </span>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="ghost" onClick={addGlRow} disabled={posting}>+ Add GL row</Button>
+            {glRows.some(r => r.status === 'done') && (
+              <Button size="sm" variant="ghost" onClick={clearGlDone} disabled={posting}>Clear completed</Button>
+            )}
+          </div>
+        </div>
+
+        <div className="px-5 py-3 text-xs text-ink-tertiary border-b border-border-subtle bg-surface-muted">
+          Direct postings against any chart-of-accounts row — cash on hand, bank
+          balances, fixed assets, accumulated depreciation, long-term loans,
+          owner&apos;s capital, retained earnings. Each row posts Dr/Cr the
+          account with the opposite leg landing on 3010 Opening Balance Equity.
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
+                <th className="px-3 py-2 text-start font-medium w-[280px]">GL account</th>
+                <th className="px-3 py-2 text-start font-medium w-[130px]">Date</th>
+                <th className="px-3 py-2 text-start font-medium w-[160px]">Direction</th>
+                <th className="px-3 py-2 text-end   font-medium w-[140px]">Amount</th>
+                <th className="px-3 py-2 text-start font-medium">Notes</th>
+                <th className="px-3 py-2 text-end   font-medium w-[80px]"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {glRows.map(r => {
+                const acct = coaById[r.account_id];
+                const err = r.status === 'draft' ? glValidations[glDraftRows.indexOf(r)] : null;
+                const isControlAccount = acct && CONTROL_ACCOUNT_CODES.has(acct.code);
+                const isDone   = r.status === 'done';
+                const isPosting = r.status === 'posting';
+                const isError  = r.status === 'error';
+                return (
+                  <tr key={r._key} className="border-b border-border-subtle last:border-0"
+                      style={{ opacity: isDone ? 0.55 : 1, background: isError ? '#FEF2F2' : undefined }}>
+                    <td className="px-3 py-2">
+                      <select
+                        className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
+                        value={r.account_id}
+                        disabled={isDone || isPosting}
+                        onChange={e => {
+                          const id = e.target.value;
+                          const a = coaById[id];
+                          updateGlRow(r._key, {
+                            account_id: id,
+                            // Smart default — assets/expenses normally have Dr balance,
+                            // liabilities/equity/income have Cr.
+                            direction: defaultDirection(a),
+                          });
+                        }}
+                      >
+                        <option value="">— select GL account —</option>
+                        {(['asset','liability','equity','income','expense'] as const).map(group => {
+                          const accountsInGroup = coa.filter(a => a.type === group && a.is_active);
+                          if (accountsInGroup.length === 0) return null;
+                          return (
+                            <optgroup key={group} label={group[0].toUpperCase() + group.slice(1) + 's'}>
+                              {accountsInGroup.map(a => (
+                                <option key={a.id} value={a.id}>
+                                  {a.code} — {a.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          );
+                        })}
+                      </select>
+                      {isControlAccount && acct && (
+                        <div className="mt-1 text-[11px] text-amber-700">
+                          ⚠ {acct.code} is a control account.{' '}
+                          {acct.code === '1200' && 'Use the AR rows above for per-customer detail.'}
+                          {acct.code === '2100' && 'Use the AP rows above for per-supplier detail.'}
+                          {acct.code === '2400' && 'Use Customer-credit rows above.'}
+                          {acct.code === '1400' && 'Use Vendor-credit rows above.'}
+                          {acct.code === '1300' && 'Use the inventory wizard so MAC + stock_ledger stay consistent.'}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="date"
+                        className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
+                        value={r.date}
+                        disabled={isDone || isPosting}
+                        onChange={e => updateGlRow(r._key, { date: e.target.value })}
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex gap-3 text-sm">
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input
+                            type="radio"
+                            checked={r.direction === 'debit'}
+                            disabled={isDone || isPosting}
+                            onChange={() => updateGlRow(r._key, { direction: 'debit' })}
+                          />
+                          <span style={{ color: '#0F766E', fontWeight: r.direction === 'debit' ? 600 : 400 }}>Debit</span>
+                        </label>
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input
+                            type="radio"
+                            checked={r.direction === 'credit'}
+                            disabled={isDone || isPosting}
+                            onChange={() => updateGlRow(r._key, { direction: 'credit' })}
+                          />
+                          <span style={{ color: '#B45309', fontWeight: r.direction === 'credit' ? 600 : 400 }}>Credit</span>
+                        </label>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="number" step="0.01" min="0"
+                        className="w-full border border-slate-300 rounded px-2 py-1 text-sm text-end font-mono"
+                        value={r.amount}
+                        disabled={isDone || isPosting}
+                        onChange={e => updateGlRow(r._key, { amount: e.target.value })}
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="text"
+                        placeholder="Optional (e.g. 'Toyota Hilux purchased 2024')"
+                        className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
+                        value={r.notes}
+                        disabled={isDone || isPosting}
+                        onChange={e => updateGlRow(r._key, { notes: e.target.value })}
+                      />
+                      {err && (
+                        <div className="mt-1 text-xs text-red-600">{err}</div>
+                      )}
+                      {isError && r.error && (
+                        <div className="mt-1 text-xs text-red-700 font-medium">{r.error}</div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-end">
+                      {isDone ? (
+                        <span className="rounded-pill bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                          ✓ Posted
+                        </span>
+                      ) : isPosting ? (
+                        <span className="text-xs text-ink-tertiary">…</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => removeGlRow(r._key)}
+                          disabled={glRows.length === 1}
+                          className="text-xs text-ink-tertiary hover:text-red-600 disabled:opacity-40"
+                          title={glRows.length === 1 ? 'Keep at least one row' : 'Remove row'}
+                        >Remove</button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {/* Sum row */}
+              {glDraftRows.length > 0 && (
+                <tr className="bg-slate-50">
+                  <td className="px-3 py-2 text-xs uppercase tracking-wider text-ink-tertiary font-semibold" colSpan={2}>
+                    GL openings — this batch
+                  </td>
+                  <td className="px-3 py-2 text-xs text-ink-secondary">
+                    Dr <span className="font-mono">{fmt(totals.glDebit)}</span>
+                    <span className="mx-2 text-ink-tertiary">·</span>
+                    Cr <span className="font-mono">{fmt(totals.glCredit)}</span>
+                  </td>
+                  <td className="px-3 py-2 text-end text-xs text-ink-secondary">
+                    Net <span className="font-mono font-semibold">{fmt(Math.abs(totals.glDebit - totals.glCredit))}</span>
+                    {totals.glDebit !== totals.glCredit && (
+                      <span className="ml-1 text-amber-700">
+                        ({totals.glDebit > totals.glCredit ? 'Dr heavy' : 'Cr heavy'})
+                      </span>
+                    )}
+                  </td>
+                  <td />
+                  <td />
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Phase 14.09b: 3010 zero-check indicator ───────────────────────── */}
+      <div className="rounded-card border border-border-subtle bg-surface-card p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-[10.5px] font-semibold text-ink-tertiary uppercase tracking-wider">
+              3010 Opening Balance Equity — migration check
+            </div>
+            <div className="mt-1 flex items-baseline gap-3">
+              <span className="text-xs text-ink-secondary">Now:</span>
+              <span className="font-mono text-sm font-medium text-ink-primary">
+                AED {fmt(live3010)}
+              </span>
+              {(totals.batchNet3010 !== 0) && (
+                <>
+                  <span className="text-xs text-ink-secondary">After post:</span>
+                  <span
+                    className="font-mono text-sm font-semibold"
+                    style={{ color: Math.abs(totals.projected3010) < 0.005 ? '#047857' : '#B45309' }}
+                  >
+                    AED {fmt(totals.projected3010)}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="flex-1 max-w-md">
+            {Math.abs(live3010) < 0.005 && totals.batchNet3010 === 0 ? (
+              <div className="rounded-input bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-800">
+                ✓ 3010 is at zero — your migration is fully balanced. Bookkeeper can now clear 3010 → 3100 Retained Earnings.
+              </div>
+            ) : Math.abs(totals.projected3010) < 0.005 && totals.batchNet3010 !== 0 ? (
+              <div className="rounded-input bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-800">
+                ✓ This batch will zero out 3010 — your trial balance migration becomes complete on post.
+              </div>
+            ) : (
+              <div className="rounded-input bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+                3010 is non-zero. After all opening balances are entered, this should sit at zero (the source TB was already balanced). Common things missing: cash on hand, bank openings, fixed assets, retained earnings.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Already posted panel */}
       <div className="rounded-card border border-border-subtle bg-surface-card overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle px-5 py-3">
@@ -467,17 +840,30 @@ export default function OpeningBalancesPage() {
             </thead>
             <tbody>
               {posted.map(p => {
-                const meta = TYPE_META[p.type];
+                // Phase 14.09b — GL rows have no contact; use their CoA
+                // account name in the "Contact" column instead.
+                const isGl  = p.type === 'gl_debit' || p.type === 'gl_credit';
+                const pill  = isGl
+                  ? {
+                      short: p.type === 'gl_debit' ? 'GL Dr' : 'GL Cr',
+                      tint:   p.type === 'gl_debit' ? '#CCFBF1' : '#FED7AA',
+                      border: p.type === 'gl_debit' ? '#5EEAD4' : '#FDBA74',
+                      text:   p.type === 'gl_debit' ? '#0F766E' : '#9A3412',
+                    }
+                  : TYPE_META[p.type as OpeningBalanceType];
+                const subjectLabel = isGl
+                  ? `${p.account_code ?? ''} ${p.account_name ?? ''}`.trim()
+                  : p.contact_name;
                 return (
                   <tr key={p.doc_id} className="border-b border-border-subtle last:border-0">
                     <td className="px-3 py-2">
                       <span style={{
                         display: 'inline-block', padding: '2px 8px',
                         borderRadius: '999px', fontSize: '10.5px', fontWeight: 600,
-                        background: meta.tint, color: meta.text, border: `1px solid ${meta.border}`,
-                      }}>{meta.short}</span>
+                        background: pill.tint, color: pill.text, border: `1px solid ${pill.border}`,
+                      }}>{pill.short}</span>
                     </td>
-                    <td className="px-3 py-2 text-ink-secondary">{p.contact_name}</td>
+                    <td className="px-3 py-2 text-ink-secondary">{subjectLabel || '—'}</td>
                     <td className="px-3 py-2 font-mono text-xs text-brand-600">{p.doc_number}</td>
                     <td className="px-3 py-2 text-ink-secondary">{p.date}</td>
                     <td className="px-3 py-2 text-end font-mono text-ink-primary">

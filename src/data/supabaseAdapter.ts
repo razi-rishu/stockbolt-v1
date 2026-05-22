@@ -3954,7 +3954,7 @@ export function createSupabaseAdapter(
       },
     },
 
-    // ── Phase 14.09: Opening Balances ─────────────────────────────────────
+    // ── Phase 14.09 / 14.09b: Opening Balances ─────────────────────────────
     openingBalances: {
       async post(input) {
         const { data, error } = await (
@@ -3971,6 +3971,27 @@ export function createSupabaseAdapter(
         });
         assertNoError(error as Error | null, 'openingBalances.post');
         return data as unknown as import('./adapter').OpeningBalanceResult;
+      },
+      async postGl(input) {
+        // Phase 14.09b — direct GL opening; Dr/Cr any CoA account.
+        const { data, error } = await (
+          client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>
+        )('post_gl_opening_balance', {
+          p_account_id: input.account_id,
+          p_direction:  input.direction,
+          p_amount:     input.amount,
+          p_date:       input.date,
+          p_notes:      input.notes ?? null,
+        });
+        assertNoError(error as Error | null, 'openingBalances.postGl');
+        return data as unknown as import('./adapter').GLOpeningBalanceResult;
+      },
+      async get3010Balance(company_id) {
+        const { data, error } = await (
+          client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>
+        )('opening_balance_3010', { p_company_id: company_id });
+        assertNoError(error as Error | null, 'openingBalances.get3010Balance');
+        return Number(data ?? 0);
       },
       async listPosted(company_id) {
         // Union the three sources (opening invoices, opening bills, opening
@@ -4040,6 +4061,55 @@ export function createSupabaseAdapter(
             status: r.status, posted_at: r.created_at,
           });
         }
+
+        // Phase 14.09b — direct GL openings (source_type='opening_gl').
+        // Pull the JE header + its non-3010 line so we can show the actual
+        // target account + direction + amount in the posted-list panel.
+        const fromJe = client.from as unknown as (t: string) => {
+          select: (cols: string) => {
+            eq: (k: string, v: unknown) => {
+              eq: (k: string, v: unknown) => Promise<{ data: unknown; error: unknown }>;
+            };
+          };
+        };
+        const glJEs = await fromJe('journal_entries')
+          .select('id, entry_number, date, description, created_at, general_ledger (account_id, account_code, debit, credit), chart_of_accounts:source_id (id)')
+          .eq('company_id', company_id).eq('source_type', 'opening_gl');
+        assertNoError(glJEs.error as Error | null, 'openingBalances.listPosted/gl');
+
+        type RawGlJE = {
+          id: string; entry_number: string; date: string; description: string;
+          created_at: string;
+          general_ledger?: Array<{
+            account_id: string; account_code: string; debit: number; credit: number;
+          }>;
+        };
+        for (const je of (glJEs.data as RawGlJE[] ?? [])) {
+          const lines = je.general_ledger ?? [];
+          // The "interesting" leg is the non-3010 one. Find it.
+          const target = lines.find(l => l.account_code !== '3010');
+          if (!target) continue;
+          const isDebit = Number(target.debit ?? 0) > 0;
+          const amount  = isDebit ? Number(target.debit) : Number(target.credit);
+          // Account name lookup is best-effort; pull from CoA cache if avail.
+          out.push({
+            type: isDebit ? 'gl_debit' : 'gl_credit',
+            doc_id: je.id,
+            doc_number: je.entry_number,
+            contact_id: '',
+            contact_name: '',
+            account_code: target.account_code,
+            account_name: (je.description ?? '').replace(/^Opening balance — \d+ /, '') || target.account_code,
+            date: je.date,
+            due_date: null,
+            amount,
+            currency: 'AED',
+            outstanding: amount,
+            status: 'confirmed',
+            posted_at: je.created_at,
+          });
+        }
+
         return out.sort((a, b) => (b.posted_at ?? '').localeCompare(a.posted_at ?? ''));
       },
     },
