@@ -96,7 +96,9 @@ export default function VendorPaymentEditorPage() {
   const [applyModal, setApplyModal] = useState(false);
   const [applyBillId, setApplyBillId] = useState('');
   const [applyAmount, setApplyAmount] = useState('');
-  const [openBills, setOpenBills] = useState<VendorBillRow[]>([]);
+  // Phase 14.08b — OpenVendorBill carries `outstanding`, so the modal can
+  // show what's actually left to pay on each bill (not the gross total).
+  const [openBills, setOpenBills] = useState<OpenVendorBill[]>([]);
 
   // Phase 14.08 — auto-open the apply modal when arriving via ?apply=1.
   useEffect(() => {
@@ -180,10 +182,13 @@ export default function VendorPaymentEditorPage() {
     }
   }, [existing, existingAllocations, appliedSeed]);
 
+  // Phase 14.08b — pull only bills with positive outstanding for this
+  // supplier so the apply-to-bill picker doesn't surface anything that's
+  // already fully paid. Provides `outstanding` per row for the new UX.
   useEffect(() => {
     if (applyModal && existing) {
-      getAdapter().vendorBills.list(company_id!, 'confirmed')
-        .then(bills => setOpenBills(bills.filter(b => b.supplier_id === existing.contact_id)));
+      getAdapter().vendorBills.listOpenForSupplier(company_id!, existing.contact_id)
+        .then(setOpenBills);
     }
   }, [applyModal, existing, company_id]);
 
@@ -317,7 +322,17 @@ export default function VendorPaymentEditorPage() {
     { value: 'advance', label: t('purchasing.advance') },
     { value: 'on_account', label: t('purchasing.on_account') },
   ];
-  const billOpts = [{ value: '', label: t('purchasing.select_bill') }, ...openBills.map(b => ({ value: b.id, label: `${b.bill_number} — ${fmt(Number(b.total_amount))}` }))];
+  // Phase 14.08b — show outstanding (what's left to pay) on each bill so the
+  // operator picks based on what's actually owed, not the gross.
+  const billOpts = [
+    { value: '', label: t('purchasing.select_bill') },
+    ...openBills.map(b => ({
+      value: b.id,
+      label: `${b.bill_number} — ${fmt(b.outstanding)} outstanding`,
+    })),
+  ];
+  const selectedBill = openBills.find(b => b.id === applyBillId);
+  const suggestedVendorApply = selectedBill ? Math.min(available, selectedBill.outstanding) : 0;
 
   // Phase 14.05 — view-mode renderer (Signature template).
   // Phase 14.08 — bypass when ?apply=1 so the editor hosts the modal.
@@ -431,16 +446,137 @@ export default function VendorPaymentEditorPage() {
 
       {applyModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-96 rounded-card bg-surface-card p-6 shadow-xl space-y-4">
+          <div className="w-[26rem] rounded-card bg-surface-card p-6 shadow-xl space-y-4">
             <h3 className="text-base font-semibold text-ink-primary">{t('purchasing.apply_advance')}</h3>
-            <p className="text-sm text-ink-secondary">{t('purchasing.available_balance')}: <strong>{fmt(available)}</strong></p>
-            <Select label={t('purchasing.select_bill')} options={billOpts} value={applyBillId}
-              onChange={e => setApplyBillId(e.target.value)} />
-            <Input label={t('purchasing.amount')} type="number" min="0" step="0.01"
-              value={applyAmount} onChange={e => setApplyAmount(e.target.value)} />
+
+            {/* Phase 14.08b — available credit + selected bill outstanding,
+                 side by side so the operator can sanity-check the math
+                 without leaving the modal. */}
+            <div style={{
+              display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px',
+              padding: '12px 14px',
+              background: '#ecfdf5',
+              border: '1px solid #a7f3d0',
+              borderRadius: '10px',
+            }}>
+              <div>
+                <div style={{ fontSize: '10.5px', fontWeight: 600, color: '#047857', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Available credit
+                </div>
+                <div style={{ marginTop: '2px', fontSize: '17px', fontWeight: 700, color: '#065f46', fontVariantNumeric: 'tabular-nums' }}>
+                  {header.currency || 'AED'} {fmt(available)}
+                </div>
+                <div style={{ fontSize: '10.5px', color: '#059669' }}>
+                  {usedAmount > 0.005
+                    ? `payment ${fmt(Number(existing?.amount ?? 0))} · already applied ${fmt(usedAmount)}`
+                    : 'unallocated portion of this payment'}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: '10.5px', fontWeight: 600, color: '#047857', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Bill outstanding
+                </div>
+                <div style={{ marginTop: '2px', fontSize: '17px', fontWeight: 700, color: selectedBill ? '#065f46' : '#94a3b8', fontVariantNumeric: 'tabular-nums' }}>
+                  {selectedBill ? `${header.currency || 'AED'} ${fmt(selectedBill.outstanding)}` : '—'}
+                </div>
+                <div style={{ fontSize: '10.5px', color: '#059669' }}>
+                  {selectedBill ? selectedBill.bill_number : 'pick a bill below'}
+                </div>
+              </div>
+            </div>
+
+            <Select
+              label={t('purchasing.select_bill')}
+              options={billOpts}
+              value={applyBillId}
+              onChange={e => {
+                const next = e.target.value;
+                setApplyBillId(next);
+                const bill = openBills.find(b => b.id === next);
+                if (bill) {
+                  // Auto-fill with min(available, outstanding) — what the
+                  // operator would type 99% of the time.
+                  setApplyAmount(Math.min(available, bill.outstanding).toFixed(2));
+                } else {
+                  setApplyAmount('');
+                }
+              }}
+            />
+            <div>
+              <Input
+                label={t('purchasing.amount')}
+                type="number"
+                min="0"
+                max={Math.min(available, selectedBill?.outstanding ?? available).toFixed(2)}
+                step="0.01"
+                value={applyAmount}
+                onChange={e => setApplyAmount(e.target.value)}
+              />
+              {selectedBill && parseFloat(applyAmount || '0') > 0 && (() => {
+                const amt = parseFloat(applyAmount) || 0;
+                if (amt > available + 0.005) {
+                  return (
+                    <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#b91c1c', fontWeight: 500 }}>
+                      Cannot apply more than the available credit ({header.currency || 'AED'} {fmt(available)}).
+                    </p>
+                  );
+                }
+                if (amt > selectedBill.outstanding + 0.005) {
+                  return (
+                    <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#b91c1c', fontWeight: 500 }}>
+                      Cannot apply more than the bill outstanding ({header.currency || 'AED'} {fmt(selectedBill.outstanding)}).
+                    </p>
+                  );
+                }
+                const remaining = available - amt;
+                if (remaining > 0.005) {
+                  return (
+                    <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#475569' }}>
+                      {header.currency || 'AED'} {fmt(remaining)} will remain as credit on this payment.
+                    </p>
+                  );
+                }
+                return (
+                  <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#047857', fontWeight: 500 }}>
+                    Applying the full available credit. Payment will be fully allocated.
+                  </p>
+                );
+              })()}
+              <button
+                type="button"
+                onClick={() => setApplyAmount(suggestedVendorApply.toFixed(2))}
+                disabled={!selectedBill || suggestedVendorApply <= 0}
+                style={{
+                  marginTop: '6px',
+                  fontSize: '11.5px',
+                  fontWeight: 600,
+                  color: !selectedBill || suggestedVendorApply <= 0 ? '#94a3b8' : '#6366f1',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: !selectedBill || suggestedVendorApply <= 0 ? 'not-allowed' : 'pointer',
+                  padding: 0,
+                }}
+              >
+                {selectedBill
+                  ? `Use ${header.currency || 'AED'} ${fmt(suggestedVendorApply)} (apply the maximum)`
+                  : 'Pick a bill to enable the suggested amount'}
+              </button>
+            </div>
+
             <div className="flex gap-2 justify-end">
               <Button variant="ghost" size="sm" onClick={() => setApplyModal(false)}>{t('common.cancel')}</Button>
-              <Button size="sm" onClick={() => applyMutation.mutate()} disabled={applyMutation.isPending || !applyBillId || !applyAmount}>
+              <Button
+                size="sm"
+                onClick={() => applyMutation.mutate()}
+                disabled={
+                  applyMutation.isPending ||
+                  !applyBillId ||
+                  !applyAmount ||
+                  parseFloat(applyAmount) <= 0 ||
+                  parseFloat(applyAmount) > available + 0.005 ||
+                  (selectedBill && parseFloat(applyAmount) > selectedBill.outstanding + 0.005)
+                }
+              >
                 {applyMutation.isPending ? t('common.saving') : t('common.apply')}
               </Button>
             </div>

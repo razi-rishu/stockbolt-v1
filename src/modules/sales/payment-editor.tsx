@@ -386,12 +386,32 @@ export default function PaymentEditorPage() {
     { value: 'advance',         label: t('payments.advance') },
     { value: 'on_account',      label: t('payments.on_account') },
   ];
+  // Phase 14.08b — show OUTSTANDING (what's left to pay), not gross total,
+  // and skip invoices with nothing left to collect. The label flips to the
+  // outstanding number so the user picks based on what's actually owed.
+  const applyTargets = openInvoices
+    .filter(inv => inv.contact_id === header.contact_id)
+    .filter(inv => inv.outstanding > 0.005);
   const invoiceOpts = [
     { value: '', label: t('payments.select_invoice') },
-    ...openInvoices
-      .filter(inv => inv.contact_id === header.contact_id)
-      .map(inv => ({ value: inv.id, label: `${inv.invoice_number} — ${inv.currency} ${fmt(Number(inv.total_amount))}` })),
+    ...applyTargets.map(inv => ({
+      value: inv.id,
+      label: `${inv.invoice_number} — ${inv.currency} ${fmt(inv.outstanding)} outstanding`,
+    })),
   ];
+
+  // Phase 14.08b — available credit on THIS payment. This is the chunk the
+  // user can still allocate from the source advance: payment.amount minus
+  // everything that's already been applied to other invoices.
+  const alreadyApplied = existingAllocations.reduce(
+    (s, a) => s + Number((a as { amount_applied?: number }).amount_applied ?? 0),
+    0,
+  );
+  const availableCredit = Math.max(0, Number(existing?.amount ?? 0) - alreadyApplied);
+  const selectedInvoice = applyTargets.find(inv => inv.id === applyInvId);
+  const suggestedApply = selectedInvoice
+    ? Math.min(availableCredit, selectedInvoice.outstanding)
+    : 0;
 
   // Sample-style status pill helper
   const pill = (text: string, bg: string, color: string, border: string) => (
@@ -761,30 +781,143 @@ export default function PaymentEditorPage() {
         return <AccountingPreview lines={lines} currency={header.currency || 'AED'} />;
       })()}
 
-      {/* Apply advance modal */}
+      {/* Apply advance modal — Phase 14.08b: shows the available credit on
+           this payment, the outstanding on the chosen invoice, and pre-fills
+           the amount field with min(available, outstanding) so the operator
+           almost never has to type. */}
       <Modal open={applyModal} onClose={() => setApplyModal(false)} title={t('payments.apply_advance')}>
         <div className="space-y-4">
+          {/* Available credit panel — the missing context the user needed. */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px',
+            padding: '12px 14px',
+            background: '#ecfdf5',
+            border: '1px solid #a7f3d0',
+            borderRadius: '10px',
+          }}>
+            <div>
+              <div style={{ fontSize: '10.5px', fontWeight: 600, color: '#047857', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Available credit
+              </div>
+              <div style={{ marginTop: '2px', fontSize: '17px', fontWeight: 700, color: '#065f46', fontVariantNumeric: 'tabular-nums' }}>
+                {header.currency || 'AED'} {fmt(availableCredit)}
+              </div>
+              <div style={{ fontSize: '10.5px', color: '#059669' }}>
+                {alreadyApplied > 0.005
+                  ? `payment ${fmt(Number(existing?.amount ?? 0))} · already applied ${fmt(alreadyApplied)}`
+                  : 'unallocated portion of this payment'}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: '10.5px', fontWeight: 600, color: '#047857', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Invoice outstanding
+              </div>
+              <div style={{ marginTop: '2px', fontSize: '17px', fontWeight: 700, color: selectedInvoice ? '#065f46' : '#94a3b8', fontVariantNumeric: 'tabular-nums' }}>
+                {selectedInvoice
+                  ? `${selectedInvoice.currency} ${fmt(selectedInvoice.outstanding)}`
+                  : '—'}
+              </div>
+              <div style={{ fontSize: '10.5px', color: '#059669' }}>
+                {selectedInvoice ? selectedInvoice.invoice_number : 'pick an invoice below'}
+              </div>
+            </div>
+          </div>
+
           <Select
             label={t('payments.invoice')}
             options={invoiceOpts}
             value={applyInvId}
-            onChange={e => setApplyInvId(e.target.value)}
+            onChange={e => {
+              const next = e.target.value;
+              setApplyInvId(next);
+              // Phase 14.08b — auto-fill the amount with whichever is
+              // smaller: available credit or invoice outstanding. Saves the
+              // operator from mental arithmetic and is what they'd type 99%
+              // of the time.
+              const inv = applyTargets.find(i => i.id === next);
+              if (inv) {
+                setApplyAmt(Math.min(availableCredit, inv.outstanding).toFixed(2));
+              } else {
+                setApplyAmt('');
+              }
+            }}
           />
-          <Input
-            label={t('payments.apply_amount')}
-            type="number"
-            min="0"
-            step="0.01"
-            value={applyAmt}
-            onChange={e => setApplyAmt(e.target.value)}
-          />
+          <div>
+            <Input
+              label={t('payments.apply_amount')}
+              type="number"
+              min="0"
+              max={Math.min(availableCredit, selectedInvoice?.outstanding ?? availableCredit).toFixed(2)}
+              step="0.01"
+              value={applyAmt}
+              onChange={e => setApplyAmt(e.target.value)}
+            />
+            {selectedInvoice && parseFloat(applyAmt || '0') > 0 && (() => {
+              const amt = parseFloat(applyAmt) || 0;
+              const overCredit = amt > availableCredit + 0.005;
+              const overInvoice = amt > selectedInvoice.outstanding + 0.005;
+              if (overCredit) {
+                return (
+                  <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#b91c1c', fontWeight: 500 }}>
+                    Cannot apply more than the available credit ({header.currency || 'AED'} {fmt(availableCredit)}).
+                  </p>
+                );
+              }
+              if (overInvoice) {
+                return (
+                  <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#b91c1c', fontWeight: 500 }}>
+                    Cannot apply more than the invoice outstanding ({selectedInvoice.currency} {fmt(selectedInvoice.outstanding)}).
+                  </p>
+                );
+              }
+              const remaining = availableCredit - amt;
+              if (remaining > 0.005) {
+                return (
+                  <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#475569' }}>
+                    {header.currency || 'AED'} {fmt(remaining)} will remain as credit on this payment.
+                  </p>
+                );
+              }
+              return (
+                <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#047857', fontWeight: 500 }}>
+                  Applying the full available credit. Payment will be fully allocated.
+                </p>
+              );
+            })()}
+            <button
+              type="button"
+              onClick={() => setApplyAmt(suggestedApply.toFixed(2))}
+              disabled={!selectedInvoice || suggestedApply <= 0}
+              style={{
+                marginTop: '6px',
+                fontSize: '11.5px',
+                fontWeight: 600,
+                color: !selectedInvoice || suggestedApply <= 0 ? '#94a3b8' : '#6366f1',
+                background: 'transparent',
+                border: 'none',
+                cursor: !selectedInvoice || suggestedApply <= 0 ? 'not-allowed' : 'pointer',
+                padding: 0,
+              }}
+            >
+              {selectedInvoice
+                ? `Use ${header.currency || 'AED'} ${fmt(suggestedApply)} (apply the maximum)`
+                : 'Pick an invoice to enable the suggested amount'}
+            </button>
+          </div>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setApplyModal(false)}>
               {t('common.cancel')}
             </Button>
             <Button
               size="sm"
-              disabled={!applyInvId || !applyAmt || applyMutation.isPending}
+              disabled={
+                !applyInvId ||
+                !applyAmt ||
+                parseFloat(applyAmt) <= 0 ||
+                parseFloat(applyAmt) > availableCredit + 0.005 ||
+                (selectedInvoice && parseFloat(applyAmt) > selectedInvoice.outstanding + 0.005) ||
+                applyMutation.isPending
+              }
               onClick={() => applyMutation.mutate()}
             >
               {applyMutation.isPending ? '…' : t('payments.apply')}
