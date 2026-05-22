@@ -98,13 +98,17 @@ export default function SignatureTemplateGallery() {
             maxHeight: 'calc(100vh - 200px)',
           }}
         >
-          {/* Zoom wrapper */}
-          <div style={{
-            transform: `scale(${zoom})`,
-            transformOrigin: 'top center',
-            width: tokens.pageWidth,
-            margin: '0 auto',
-          }}>
+          {/* Zoom wrapper — class name `signature-zoom-wrap` is what
+              print.css targets to reset the transform on print. */}
+          <div
+            className="signature-zoom-wrap"
+            style={{
+              transform: `scale(${zoom})`,
+              transformOrigin: 'top center',
+              width: tokens.pageWidth,
+              margin: '0 auto',
+            }}
+          >
             {activeMeta.ready ? (
               <ActivePreview type={selected} />
             ) : (
@@ -113,11 +117,14 @@ export default function SignatureTemplateGallery() {
           </div>
         </div>
 
-        {/* ── Right-hand control rail ── */}
-        <aside style={{
-          display: 'flex', flexDirection: 'column', gap: '14px',
-          position: 'sticky', top: '20px',
-        }}>
+        {/* ── Right-hand control rail (hidden when printing) ── */}
+        <aside
+          data-no-print="true"
+          style={{
+            display: 'flex', flexDirection: 'column', gap: '14px',
+            position: 'sticky', top: '20px',
+          }}
+        >
           {/* Template switcher */}
           <div style={{
             background: '#fff', border: `1px solid ${theme.border}`,

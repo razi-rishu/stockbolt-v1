@@ -1,62 +1,105 @@
 /*
- * Signature print system — Phase 14.01.
+ * Signature print system CSS — Phase 14.01 (rewritten 14.01b).
  *
- * Print + screen styling for the new document templates. Imported by
- * the gallery page and (later) by each print route.
+ * Issues that broke the v1 file:
+ *   1. Print rules only hid elements tagged data-no-print="true", but I
+ *      never tagged the gallery PageHeader, right rail, customisation
+ *      panel, or the global top app nav. Result: every UI chrome element
+ *      printed alongside the A4 doc.
+ *   2. The screen-zoom transform (transform: scale(0.85)) was inherited
+ *      into the print render, so the doc printed at 85% size.
+ *   3. Wrappers above the signature-page kept their padding, pushing the
+ *      A4 page off the paper origin.
  *
- * Goals:
- *   - A4-perfect (210x297mm) on Save-as-PDF in Chrome/Edge/Firefox.
- *   - Strip and stamp survive print (no missing background-color tricks).
- *   - Screen preview shows the page floating on a slate canvas for the
- *     "this is a document" feel.
+ * Rewrite uses the classic "isolate to .signature-page" pattern:
+ *   - visibility:hidden everywhere by default
+ *   - visibility:visible only on the signature-page subtree
+ *   - signature-page positioned absolutely at the paper origin
+ *   - transform reset on the zoom wrapper specifically
  */
 
-/* ── Screen canvas surrounding the page ─────────────────────────────── */
+/* ────────────────────────────────────────────────────────────────────
+ * Screen — gallery canvas around the floating A4 page
+ * ──────────────────────────────────────────────────────────────────── */
+
 .signature-canvas {
   background: #F8FAFC;
   padding: 24px;
-  min-height: 100vh;
 }
 
-/* ── Page sizing (A4) ──────────────────────────────────────────────── */
 .signature-page {
-  /* Width/height set inline via tokens; nothing extra here at screen size. */
+  position: relative;
+  background: #FFFFFF;
 }
 
-/* ── Print rules ────────────────────────────────────────────────────── */
+/* Zoom wrapper used by the gallery — gives it a stable class so the
+ * print rule below can specifically reset its transform.  */
+.signature-zoom-wrap {
+  display: inline-block;
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * Print — strip everything except the document
+ * ──────────────────────────────────────────────────────────────────── */
+
 @media print {
+  /* A4 paper, no system-imposed margins (we render our own inside the page) */
   @page {
     size: A4;
     margin: 0;
   }
+
+  /* Force background-colour printing on every browser engine. */
+  html, body, * {
+    -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+  }
+
+  /* Step 1 — hide everything visually but keep the DOM intact. */
   html, body {
-    margin: 0; padding: 0;
-    background: #FFFFFF !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-  .signature-canvas {
-    background: #FFFFFF;
-    padding: 0;
-    min-height: auto;
-  }
-  .signature-page {
-    box-shadow: none !important;
     margin: 0 !important;
+    padding: 0 !important;
+    background: #FFFFFF !important;
+  }
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Step 2 — make the signature-page subtree visible again. */
+  .signature-page,
+  .signature-page * {
+    visibility: visible !important;
+  }
+
+  /* Step 3 — anchor the page to the paper origin, reset any screen-side
+   * transforms (e.g. the gallery zoom slider) and shadows. The position:
+   * absolute escapes parent layout so the page lands at paper 0,0
+   * regardless of any wrapper padding. */
+  .signature-page {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    margin: 0 !important;
+    transform: none !important;
+    box-shadow: none !important;
     width: 210mm !important;
     min-height: 297mm !important;
-    /* Each page break starts a new document if multi-doc preview is shown */
     page-break-after: always;
   }
   .signature-page:last-child {
     page-break-after: auto;
   }
-  /* Hide any in-page chrome */
-  [data-no-print="true"] { display: none !important; }
-}
 
-/* ── Force the indigo strip + dark stamp card to print ──────────────── */
-.signature-page * {
-  -webkit-print-color-adjust: exact;
-  print-color-adjust: exact;
+  /* Step 4 — kill the zoom wrapper transform specifically. (Doing this
+   * with a targeted class instead of a wildcard avoids stripping the
+   * page's own styling.) */
+  .signature-zoom-wrap {
+    transform: none !important;
+    width: auto !important;
+  }
+
+  /* Belt + braces — anything the consumer flags explicitly is hidden. */
+  [data-no-print="true"] {
+    display: none !important;
+  }
 }
