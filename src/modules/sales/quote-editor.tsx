@@ -9,7 +9,11 @@ import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { ContactPicker } from '@/components/contact-picker';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
-import type { SalesQuoteRow, SalesQuoteItemInsert, ContactRow, ProductRow, TaxRateRow } from '@/data/adapter';
+// Phase 14.04 — Signature template view mode for saved quotes.
+import { TaxInvoiceTemplate } from '@/modules/print/_signature/templates/tax-invoice';
+import { quoteToDocumentData } from '@/modules/print/_signature/adapters';
+import '@/modules/print/_signature/print.css';
+import type { SalesQuoteRow, SalesQuoteItemInsert, SalesQuoteItemRow, ContactRow, ProductRow, TaxRateRow, Company } from '@/data/adapter';
 import { calcLine as _calcLine } from '@/core/sales/invoice-calc';
 
 interface LineRow {
@@ -78,11 +82,20 @@ export default function QuoteEditorPage() {
     queryFn: () => getAdapter().salesQuotes.getById(id!),
     enabled: !isNew && !!id,
   });
-  const { data: existingItems = [] } = useQuery({
+  const { data: existingItems = [] } = useQuery<SalesQuoteItemRow[]>({
     queryKey: ['sales_quote_items', id],
     queryFn: () => getAdapter().salesQuotes.getItems(id!),
     enabled: !isNew && !!id,
   });
+  // Phase 14.04 — company row for the Signature template header.
+  const { data: companyRow } = useQuery<Company | null>({
+    queryKey: ['company', company_id],
+    queryFn: () => getAdapter().companies.getById(company_id!),
+    enabled: !!company_id,
+  });
+
+  // Phase 14.04 — view-first mode (saved quotes open in template view).
+  const [viewMode, setViewMode] = useState(!isNew);
 
   const [header, setHeader] = useState({ contact_id: '', salesperson_id: '', date: todayIso(), expiry_date: '', reference: '', notes: '', currency: companyCurrency ?? 'AED' });
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
@@ -196,6 +209,64 @@ export default function QuoteEditorPage() {
   const productOpts = products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }));
   const taxOpts = [{ value: '0', label: t('sales.no_tax') }, ...taxRates.map(r => ({ value: String(r.rate), label: `${r.name} (${r.rate}%)` }))];
 
+  // Phase 14.04 — view-mode renderer (Signature template).
+  if (viewMode && !isNew && existing) {
+    const doc = quoteToDocumentData({
+      quote: existing,
+      items: existingItems,
+      contact: contacts.find(c => c.id === existing.contact_id) ?? null,
+      company: companyRow ?? null,
+      products,
+    });
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
+        <div
+          data-no-print="true"
+          style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
+        >
+          <button onClick={() => navigate('/sales/quotes')} style={{
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            fontSize: '13px', color: '#64748b',
+          }}>← {t('sales.quotes_title')}</button>
+          <span style={{ color: '#94a3b8' }}>/</span>
+          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
+            {existing.quote_number}
+          </h1>
+          <span style={{
+            display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
+            fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
+            background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
+          }}>{existing.status}</span>
+          <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+            {canEdit && (
+              <Button size="sm" onClick={() => setViewMode(false)}>
+                ✎ {t('common.edit') || 'Edit'}
+              </Button>
+            )}
+            {existing?.id && ['draft', 'sent', 'accepted'].includes(existing.status) && (
+              <Button
+                size="sm"
+                onClick={() => { setError(null); convertMutation.mutate(); }}
+                disabled={convertMutation.isPending}
+                title="Create a draft invoice from this quote and open it"
+              >
+                {convertMutation.isPending ? '…' : `→ ${t('sales.convert_to_invoice')}`}
+              </Button>
+            )}
+            {existing?.id && (
+              <Button variant="ghost" size="sm" onClick={() => window.print()}>
+                🖨 {t('print.print') || 'Print'}
+              </Button>
+            )}
+          </div>
+        </div>
+        <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
+          <TaxInvoiceTemplate data={doc} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pb-16">
       <div className="flex items-center gap-3">
@@ -204,6 +275,11 @@ export default function QuoteEditorPage() {
         <h1 className="text-xl font-semibold text-ink-primary">{isNew ? t('sales.new_quote') : existing?.quote_number ?? '…'}</h1>
         {!isNew && <span className="rounded-pill bg-gray-100 px-2.5 py-0.5 text-xs capitalize text-gray-600">{existing?.status}</span>}
         <div className="ms-auto flex gap-2">
+          {!isNew && existing && (
+            <Button variant="ghost" size="sm" onClick={() => setViewMode(true)}>
+              {t('common.view') || 'View'}
+            </Button>
+          )}
           {!isNew && existing?.id && (
             <Button variant="ghost" size="sm" onClick={() => window.open(`/print/quote/${existing.id}`, '_blank')}>
               🖨 {t('print.print')}

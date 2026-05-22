@@ -15,6 +15,11 @@
 import type {
   InvoiceRow, InvoiceItemRow, VendorBillRow, VendorBillItemRow,
   ContactRow, ProductRow, Company,
+  SalesQuoteRow, SalesQuoteItemRow,
+  PurchaseOrderRow, PurchaseOrderItemRow,
+  CreditNoteRow, CreditNoteItemRow,
+  DebitNoteRow, DebitNoteItemRow,
+  SalesReturnRow, SalesReturnItemRow,
 } from '@/data/adapter';
 
 // Local alias so the file reads consistently with *Row naming elsewhere.
@@ -265,6 +270,450 @@ export function vendorBillToDocumentData({
     qr_payload: null,
     banking: null,                              // banking is THEIRS not ours; omit
     notes: bill.notes ?? null,
+    terms: null,
+  };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Phase 14.04 — Quote / PO / Credit Note / Debit Note / Sales Return adapters.
+//
+// All five reuse the Tax Invoice template shape; the difference between them
+// is mostly cosmetic (title, no VAT-compliance language, valid-until vs.
+// due-date, etc.). The template honours `data.title` so we can render every
+// one of these through the same component until they earn dedicated variants
+// in a later phase.
+// ────────────────────────────────────────────────────────────────────────────
+
+const QUOTE_STATUS_MAP: Record<string, DocumentStatus> = {
+  draft: 'draft', sent: 'sent', accepted: 'accepted', confirmed: 'confirmed',
+  void: 'void',
+};
+
+export interface QuoteToDocInput {
+  quote:    SalesQuoteRow;
+  items:    SalesQuoteItemRow[];
+  contact:  ContactRow | null;
+  company:  Company | null;
+  products?: ProductRow[];
+}
+
+/** Sales Quote → DocumentData. Renders with title "Quotation" and
+ *  swaps the "Due date" stamp slot for an "Expires" date. */
+export function quoteToDocumentData({
+  quote, items, contact, company, products,
+}: QuoteToDocInput): DocumentData {
+  const productById: Record<string, ProductRow> = {};
+  for (const p of products ?? []) productById[p.id] = p;
+
+  const lines: LineItem[] = items.map((it, i) => {
+    const prod = it.product_id ? productById[it.product_id] : null;
+    return {
+      index:       i + 1,
+      sku:         prod?.sku ?? null,
+      description: it.description ?? prod?.name ?? '—',
+      description_ar: prod?.name_ar ?? null,
+      quantity:    Number(it.quantity ?? 0),
+      unit_code:   null,
+      unit_price:  Number(it.unit_price ?? 0),
+      discount_percent: Number(it.discount_percent ?? 0),
+      discount_amount:  Number(it.discount_amount ?? 0),
+      tax_rate:    Number(it.tax_rate ?? 0),
+      tax_amount:  Number(it.tax_amount ?? 0),
+      line_total:  Number(it.line_total ?? 0),
+    };
+  });
+
+  const subtotal = Number(quote.subtotal ?? 0);
+  const tax      = Number(quote.tax_amount ?? 0);
+  const total    = Number(quote.total_amount ?? 0);
+
+  return {
+    type:   'quotation',
+    title:  'Quotation',
+    number: quote.quote_number,
+    status: QUOTE_STATUS_MAP[quote.status] ?? 'draft',
+    date:   quote.date as unknown as string,
+    // The stamp card reads `due_date` as the secondary date slot; for quotes
+    // we surface the expiry there so the customer sees a hard validity edge.
+    due_date:    (quote.expiry_date as unknown as string) ?? null,
+    valid_until: (quote.expiry_date as unknown as string) ?? null,
+    reference:   quote.reference ?? null,
+    currency:    quote.currency ?? 'AED',
+
+    company: companyToInfo(company),
+    bill_to: contactToParty(contact),
+    ship_to: null,
+
+    items: lines,
+
+    subtotal,
+    discount_total: Number(quote.discount_amount ?? 0),
+    tax_total:      tax,
+    shipping_total: 0,
+    grand_total:    total,
+    paid_amount:    0,
+    balance_due:    total,
+
+    vat_breakdown: buildVatBreakdown(items.map(it => ({
+      tax_rate: Number(it.tax_rate ?? 0),
+      line_subtotal: Number(it.line_subtotal ?? 0),
+      tax_amount: Number(it.tax_amount ?? 0),
+    }))),
+
+    qr_payload: null,
+    banking: null,                              // quotes don't need bank details
+    notes: quote.notes ?? null,
+    terms: quote.terms ?? null,
+  };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Purchase Order → DocumentData
+// ────────────────────────────────────────────────────────────────────────────
+
+const PO_STATUS_MAP: Record<string, DocumentStatus> = {
+  draft: 'draft', sent: 'sent', confirmed: 'confirmed',
+  partially_received: 'partially_paid', received: 'paid', void: 'void',
+};
+
+export interface POToDocInput {
+  po:       PurchaseOrderRow;
+  items:    PurchaseOrderItemRow[];
+  supplier: ContactRow | null;
+  company:  Company | null;
+  products?: ProductRow[];
+}
+
+export function purchaseOrderToDocumentData({
+  po, items, supplier, company, products,
+}: POToDocInput): DocumentData {
+  const productById: Record<string, ProductRow> = {};
+  for (const p of products ?? []) productById[p.id] = p;
+
+  const lines: LineItem[] = items.map((it, i) => {
+    const prod = it.product_id ? productById[it.product_id] : null;
+    return {
+      index:       i + 1,
+      sku:         prod?.sku ?? null,
+      description: it.description ?? prod?.name ?? '—',
+      description_ar: prod?.name_ar ?? null,
+      quantity:    Number(it.quantity ?? 0),
+      unit_code:   null,
+      unit_price:  Number(it.unit_cost ?? 0),
+      discount_percent: Number(it.discount_percent ?? 0),
+      discount_amount:  Number(it.discount_amount ?? 0),
+      tax_rate:    Number(it.tax_rate ?? 0),
+      tax_amount:  Number(it.tax_amount ?? 0),
+      line_total:  Number(it.line_total ?? 0),
+    };
+  });
+
+  const subtotal = Number(po.subtotal ?? 0);
+  const tax      = Number(po.tax_amount ?? 0);
+  const total    = Number(po.total_amount ?? 0);
+
+  return {
+    type:   'purchase_order',
+    title:  'Purchase Order',
+    number: po.po_number,
+    status: PO_STATUS_MAP[po.status] ?? 'draft',
+    date:   po.date as unknown as string,
+    // PO's secondary stamp date is expected delivery, not a due-date.
+    due_date:  (po.expected_delivery_date as unknown as string) ?? null,
+    reference: po.reference ?? null,
+    currency:  po.currency ?? 'AED',
+
+    company: companyToInfo(company),
+    bill_to: contactToParty(supplier),          // supplier — rendered as "Bill to"
+    ship_to: null,
+
+    items: lines,
+
+    subtotal,
+    discount_total: Number(po.discount_amount ?? 0),
+    tax_total:      tax,
+    shipping_total: 0,
+    grand_total:    total,
+    paid_amount:    0,
+    balance_due:    total,
+
+    vat_breakdown: buildVatBreakdown(items.map(it => ({
+      tax_rate: Number(it.tax_rate ?? 0),
+      line_subtotal: Number(it.line_subtotal ?? 0),
+      tax_amount: Number(it.tax_amount ?? 0),
+    }))),
+
+    qr_payload: null,
+    banking: null,
+    notes: po.notes ?? null,
+    terms: po.terms ?? null,
+  };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Credit Note → DocumentData
+// ────────────────────────────────────────────────────────────────────────────
+
+const CN_STATUS_MAP: Record<string, DocumentStatus> = {
+  draft: 'draft', confirmed: 'confirmed', void: 'void',
+};
+
+export interface CreditNoteToDocInput {
+  creditNote: CreditNoteRow;
+  items:      CreditNoteItemRow[];
+  contact:    ContactRow | null;
+  company:    Company | null;
+  products?:  ProductRow[];
+  /** Optional linked invoice number for the reference line. */
+  linkedInvoiceNumber?: string | null;
+}
+
+export function creditNoteToDocumentData({
+  creditNote, items, contact, company, products, linkedInvoiceNumber,
+}: CreditNoteToDocInput): DocumentData {
+  const productById: Record<string, ProductRow> = {};
+  for (const p of products ?? []) productById[p.id] = p;
+
+  const lines: LineItem[] = items.map((it, i) => {
+    const prod = it.product_id ? productById[it.product_id] : null;
+    return {
+      index:       i + 1,
+      sku:         prod?.sku ?? null,
+      description: it.description ?? prod?.name ?? '—',
+      description_ar: prod?.name_ar ?? null,
+      quantity:    Number(it.quantity ?? 0),
+      unit_code:   null,
+      unit_price:  Number(it.unit_price ?? 0),
+      discount_percent: Number(it.discount_percent ?? 0),
+      discount_amount:  Number(it.discount_amount ?? 0),
+      tax_rate:    Number(it.tax_rate ?? 0),
+      tax_amount:  Number(it.tax_amount ?? 0),
+      line_total:  Number(it.line_total ?? 0),
+    };
+  });
+
+  const subtotal = Number(creditNote.subtotal ?? 0);
+  const tax      = Number(creditNote.tax_amount ?? 0);
+  const total    = Number(creditNote.total_amount ?? 0);
+
+  // Build a single reference line that calls out the original invoice and
+  // (if present) the reason — the customer needs both to recognise the
+  // refund quickly.
+  const refBits: string[] = [];
+  if (linkedInvoiceNumber) refBits.push(`Ref invoice: ${linkedInvoiceNumber}`);
+  if (creditNote.reason)   refBits.push(`Reason: ${creditNote.reason}`);
+
+  return {
+    type:   'credit_note',
+    title:  'Credit Note',
+    number: creditNote.credit_note_number,
+    status: CN_STATUS_MAP[creditNote.status] ?? 'draft',
+    date:   creditNote.date as unknown as string,
+    due_date: null,
+    reference: refBits.join(' · ') || null,
+    reference_doc: linkedInvoiceNumber ?? null,
+    currency: creditNote.currency ?? 'AED',
+
+    company: companyToInfo(company),
+    bill_to: contactToParty(contact),
+    ship_to: null,
+
+    items: lines,
+
+    subtotal,
+    discount_total: Number(creditNote.discount_amount ?? 0),
+    tax_total:      tax,
+    shipping_total: 0,
+    grand_total:    total,
+    paid_amount:    0,
+    balance_due:    total,
+
+    vat_breakdown: buildVatBreakdown(items.map(it => ({
+      tax_rate: Number(it.tax_rate ?? 0),
+      line_subtotal: Number(it.line_subtotal ?? 0),
+      tax_amount: Number(it.tax_amount ?? 0),
+    }))),
+
+    qr_payload: null,
+    banking: null,
+    notes: creditNote.notes ?? null,
+    terms: null,
+  };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Debit Note → DocumentData
+// ────────────────────────────────────────────────────────────────────────────
+
+const DN_STATUS_MAP: Record<string, DocumentStatus> = {
+  draft: 'draft', confirmed: 'confirmed', void: 'void',
+};
+
+export interface DebitNoteToDocInput {
+  debitNote: DebitNoteRow;
+  items:     DebitNoteItemRow[];
+  supplier:  ContactRow | null;
+  company:   Company | null;
+  products?: ProductRow[];
+  /** Optional linked vendor bill number for the reference line. */
+  linkedBillNumber?: string | null;
+}
+
+export function debitNoteToDocumentData({
+  debitNote, items, supplier, company, products, linkedBillNumber,
+}: DebitNoteToDocInput): DocumentData {
+  const productById: Record<string, ProductRow> = {};
+  for (const p of products ?? []) productById[p.id] = p;
+
+  const lines: LineItem[] = items.map((it, i) => {
+    const prod = it.product_id ? productById[it.product_id] : null;
+    return {
+      index:       i + 1,
+      sku:         prod?.sku ?? null,
+      description: it.description ?? prod?.name ?? '—',
+      description_ar: prod?.name_ar ?? null,
+      quantity:    Number(it.quantity ?? 0),
+      unit_code:   null,
+      unit_price:  Number(it.unit_cost ?? 0),
+      discount_percent: Number(it.discount_percent ?? 0),
+      discount_amount:  Number(it.discount_amount ?? 0),
+      tax_rate:    Number(it.tax_rate ?? 0),
+      tax_amount:  Number(it.tax_amount ?? 0),
+      line_total:  Number(it.line_total ?? 0),
+    };
+  });
+
+  const subtotal = Number(debitNote.subtotal ?? 0);
+  const tax      = Number(debitNote.tax_amount ?? 0);
+  const total    = Number(debitNote.total_amount ?? 0);
+
+  const refBits: string[] = [];
+  if (linkedBillNumber) refBits.push(`Ref bill: ${linkedBillNumber}`);
+  if (debitNote.reason) refBits.push(`Reason: ${debitNote.reason}`);
+
+  return {
+    type:   'credit_note',                      // shape reuse
+    title:  'Debit Note',
+    number: debitNote.debit_note_number,
+    status: DN_STATUS_MAP[debitNote.status] ?? 'draft',
+    date:   debitNote.date as unknown as string,
+    due_date: null,
+    reference: refBits.join(' · ') || null,
+    reference_doc: linkedBillNumber ?? null,
+    currency: debitNote.currency ?? 'AED',
+
+    company: companyToInfo(company),
+    bill_to: contactToParty(supplier),
+    ship_to: null,
+
+    items: lines,
+
+    subtotal,
+    discount_total: Number(debitNote.discount_amount ?? 0),
+    tax_total:      tax,
+    shipping_total: 0,
+    grand_total:    total,
+    paid_amount:    0,
+    balance_due:    total,
+
+    vat_breakdown: buildVatBreakdown(items.map(it => ({
+      tax_rate: Number(it.tax_rate ?? 0),
+      line_subtotal: Number(it.line_subtotal ?? 0),
+      tax_amount: Number(it.tax_amount ?? 0),
+    }))),
+
+    qr_payload: null,
+    banking: null,
+    notes: debitNote.notes ?? null,
+    terms: null,
+  };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Sales Return → DocumentData
+//
+// Sales-return items are sparse — only qty + cost. We treat the printout
+// like a delivery note: qty-focused, no pricing. The template still renders
+// through TaxInvoiceTemplate but most amount columns will be zero.
+// ────────────────────────────────────────────────────────────────────────────
+
+const SR_STATUS_MAP: Record<string, DocumentStatus> = {
+  draft: 'draft', confirmed: 'confirmed', void: 'void',
+};
+
+export interface SalesReturnToDocInput {
+  salesReturn:    SalesReturnRow;
+  items:          SalesReturnItemRow[];
+  contact:        ContactRow | null;
+  company:        Company | null;
+  products?:      ProductRow[];
+  /** The invoice this return is against. */
+  linkedInvoiceNumber?: string | null;
+}
+
+export function salesReturnToDocumentData({
+  salesReturn, items, contact, company, products, linkedInvoiceNumber,
+}: SalesReturnToDocInput): DocumentData {
+  const productById: Record<string, ProductRow> = {};
+  for (const p of products ?? []) productById[p.id] = p;
+
+  const lines: LineItem[] = items.map((it, i) => {
+    const prod = it.product_id ? productById[it.product_id] : null;
+    const qty  = Number(it.qty_returned ?? 0);
+    const cost = Number(it.unit_cost ?? 0);
+    return {
+      index:       i + 1,
+      sku:         prod?.sku ?? null,
+      description: prod?.name ?? '—',
+      description_ar: prod?.name_ar ?? null,
+      quantity:    qty,
+      unit_code:   null,
+      unit_price:  cost,
+      discount_percent: 0,
+      discount_amount:  0,
+      tax_rate:    0,
+      tax_amount:  0,
+      line_total:  qty * cost,
+    };
+  });
+
+  // Sum line costs as the "subtotal" so the totals ladder still balances.
+  const subtotal = lines.reduce((s, l) => s + l.line_total, 0);
+
+  const refBits: string[] = [];
+  if (linkedInvoiceNumber) refBits.push(`Against invoice: ${linkedInvoiceNumber}`);
+  if (salesReturn.reason)  refBits.push(`Reason: ${salesReturn.reason}`);
+
+  return {
+    type:   'delivery_note',                    // closest semantic shape
+    title:  'Sales Return',
+    number: salesReturn.return_number,
+    status: SR_STATUS_MAP[salesReturn.status] ?? 'draft',
+    date:   salesReturn.date as unknown as string,
+    due_date: null,
+    reference: refBits.join(' · ') || null,
+    reference_doc: linkedInvoiceNumber ?? null,
+    currency: 'AED',
+
+    company: companyToInfo(company),
+    bill_to: contactToParty(contact),
+    ship_to: null,
+
+    items: lines,
+
+    subtotal,
+    discount_total: 0,
+    tax_total:      0,
+    shipping_total: 0,
+    grand_total:    subtotal,
+    paid_amount:    0,
+    balance_due:    subtotal,
+
+    vat_breakdown: [],
+
+    qr_payload: null,
+    banking: null,
+    notes: salesReturn.notes ?? null,
     terms: null,
   };
 }

@@ -6,7 +6,11 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { SearchableSelect } from '@/ui/searchable-select';
-import type { DebitNoteRow, DebitNoteItemInsert, ContactRow, VendorBillRow, VendorBillItemRow } from '@/data/adapter';
+// Phase 14.04 — Signature template view mode for saved debit notes.
+import { TaxInvoiceTemplate } from '@/modules/print/_signature/templates/tax-invoice';
+import { debitNoteToDocumentData } from '@/modules/print/_signature/adapters';
+import '@/modules/print/_signature/print.css';
+import type { DebitNoteRow, DebitNoteItemInsert, DebitNoteItemRow, ContactRow, VendorBillRow, VendorBillItemRow, Company, ProductRow } from '@/data/adapter';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt   = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -60,11 +64,25 @@ export default function DebitNoteEditorPage() {
     queryFn:  () => getAdapter().debitNotes.getById(id!),
     enabled:  !isNew && !!id,
   });
-  const { data: existingItems = [] } = useQuery({
+  const { data: existingItems = [] } = useQuery<DebitNoteItemRow[]>({
     queryKey: ['debit_note_items', id],
     queryFn:  () => getAdapter().debitNotes.getItems(id!),
     enabled:  !isNew && !!id,
   });
+  // Phase 14.04 — reference data for Signature template.
+  const { data: companyRow } = useQuery<Company | null>({
+    queryKey: ['company', company_id],
+    queryFn:  () => getAdapter().companies.getById(company_id!),
+    enabled:  !!company_id,
+  });
+  const { data: products = [] } = useQuery<ProductRow[]>({
+    queryKey: ['products', company_id],
+    queryFn:  () => getAdapter().products.list(company_id!),
+    enabled:  !!company_id,
+  });
+
+  // Phase 14.04 — view-first mode for saved debit notes.
+  const [viewMode, setViewMode] = useState(!isNew);
 
   useEffect(() => {
     if (existing) {
@@ -193,6 +211,58 @@ export default function DebitNoteEditorPage() {
   const isDraft     = !existing || existing.status === 'draft';
   const isConfirmed = existing?.status === 'confirmed';
 
+  // Phase 14.04 — view-mode renderer (Signature template).
+  if (viewMode && !isNew && existing) {
+    const linkedBill = existing.linked_bill_id
+      ? bills.find(b => b.id === existing.linked_bill_id)
+      : null;
+    const doc = debitNoteToDocumentData({
+      debitNote: existing,
+      items: existingItems,
+      supplier: suppliers.find(s => s.id === existing.supplier_id) ?? null,
+      company: companyRow ?? null,
+      products,
+      linkedBillNumber: linkedBill?.bill_number ?? null,
+    });
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
+        <div
+          data-no-print="true"
+          style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
+        >
+          <button onClick={() => navigate('/purchasing/debit-notes')} style={{
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            fontSize: '13px', color: '#64748b',
+          }}>← {t('returns.debit_notes_title') || 'Debit Notes'}</button>
+          <span style={{ color: '#94a3b8' }}>/</span>
+          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
+            {existing.debit_note_number}
+          </h1>
+          <span style={{
+            display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
+            fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
+            background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
+          }}>{existing.status}</span>
+          <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+            {isDraft && (
+              <Button variant="primary" onClick={() => setViewMode(false)}>
+                ✎ {t('common.edit') || 'Edit'}
+              </Button>
+            )}
+            {existing?.id && (
+              <Button variant="ghost" onClick={() => window.print()}>
+                🖨 {t('print.print') || 'Print'}
+              </Button>
+            )}
+          </div>
+        </div>
+        <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
+          <TaxInvoiceTemplate data={doc} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-center justify-between">
@@ -200,6 +270,11 @@ export default function DebitNoteEditorPage() {
           {isNew ? t('returns.new_debit_note') : `${t('returns.dn_number')}: ${existing?.debit_note_number}`}
         </h1>
         <div className="flex gap-2">
+          {!isNew && existing && (
+            <Button variant="ghost" onClick={() => setViewMode(true)}>
+              {t('common.view') || 'View'}
+            </Button>
+          )}
           {!isNew && existing?.id && (
             <Button variant="ghost" onClick={() => window.open(`/print/debit-note/${existing.id}`, '_blank')}>
               🖨 {t('print.print')}

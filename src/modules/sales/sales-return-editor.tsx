@@ -6,7 +6,11 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { SearchableSelect } from '@/ui/searchable-select';
-import type { SalesReturnRow, InvoiceRow, InvoiceItemRow, SalesReturnItemInsert } from '@/data/adapter';
+// Phase 14.04 — Signature template view mode for saved sales returns.
+import { TaxInvoiceTemplate } from '@/modules/print/_signature/templates/tax-invoice';
+import { salesReturnToDocumentData } from '@/modules/print/_signature/adapters';
+import '@/modules/print/_signature/print.css';
+import type { SalesReturnRow, SalesReturnItemRow, InvoiceRow, InvoiceItemRow, SalesReturnItemInsert, Company, ProductRow, ContactRow } from '@/data/adapter';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -44,11 +48,30 @@ export default function SalesReturnEditorPage() {
     enabled:  !isNew && !!id,
   });
 
-  const { data: existingItems = [] } = useQuery({
+  const { data: existingItems = [] } = useQuery<SalesReturnItemRow[]>({
     queryKey: ['sales_return_items', id],
     queryFn:  () => getAdapter().salesReturns.getItems(id!),
     enabled:  !isNew && !!id,
   });
+  // Phase 14.04 — reference data for Signature template.
+  const { data: companyRow } = useQuery<Company | null>({
+    queryKey: ['company', company_id],
+    queryFn:  () => getAdapter().companies.getById(company_id!),
+    enabled:  !!company_id,
+  });
+  const { data: products = [] } = useQuery<ProductRow[]>({
+    queryKey: ['products', company_id],
+    queryFn:  () => getAdapter().products.list(company_id!),
+    enabled:  !!company_id,
+  });
+  const { data: customers = [] } = useQuery<ContactRow[]>({
+    queryKey: ['contacts', company_id, 'customer'],
+    queryFn:  () => getAdapter().contacts.list(company_id!, 'customer'),
+    enabled:  !!company_id,
+  });
+
+  // Phase 14.04 — view-first mode for saved sales returns.
+  const [viewMode, setViewMode] = useState(!isNew);
 
   useEffect(() => {
     if (existing) {
@@ -129,17 +152,75 @@ export default function SalesReturnEditorPage() {
 
   const isDraft = !existing || existing.status === 'draft';
 
+  // Phase 14.04 — view-mode renderer (Signature template).
+  if (viewMode && !isNew && existing) {
+    const linkedInv = invoices.find(i => i.id === existing.invoice_id) ?? null;
+    const customer  = linkedInv ? customers.find(c => c.id === linkedInv.contact_id) ?? null : null;
+    const doc = salesReturnToDocumentData({
+      salesReturn: existing,
+      items: existingItems,
+      contact: customer,
+      company: companyRow ?? null,
+      products,
+      linkedInvoiceNumber: linkedInv?.invoice_number ?? null,
+    });
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
+        <div
+          data-no-print="true"
+          style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
+        >
+          <button onClick={() => navigate('/sales/returns')} style={{
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            fontSize: '13px', color: '#64748b',
+          }}>← {t('returns.sales_returns_title') || 'Sales Returns'}</button>
+          <span style={{ color: '#94a3b8' }}>/</span>
+          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
+            {existing.return_number}
+          </h1>
+          <span style={{
+            display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
+            fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
+            background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
+          }}>{existing.status}</span>
+          <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+            {isDraft && (
+              <Button variant="primary" onClick={() => setViewMode(false)}>
+                ✎ {t('common.edit') || 'Edit'}
+              </Button>
+            )}
+            {existing?.id && (
+              <Button variant="ghost" onClick={() => window.print()}>
+                🖨 {t('print.print') || 'Print'}
+              </Button>
+            )}
+          </div>
+        </div>
+        <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
+          <TaxInvoiceTemplate data={doc} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-4xl">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-800">
           {isNew ? t('returns.new_return') : `${t('returns.return_number')}: ${existing?.return_number}`}
         </h1>
-        {isDraft && (
-          <Button variant="primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !invoiceId || lines.length === 0}>
-            {t('returns.save_and_create_cn')}
-          </Button>
-        )}
+        <div className="flex gap-2">
+          {!isNew && existing && (
+            <Button variant="ghost" onClick={() => setViewMode(true)}>
+              {t('common.view') || 'View'}
+            </Button>
+          )}
+          {isDraft && (
+            <Button variant="primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !invoiceId || lines.length === 0}>
+              {t('returns.save_and_create_cn')}
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-lg p-6 grid grid-cols-2 gap-4">
