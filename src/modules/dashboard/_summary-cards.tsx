@@ -365,16 +365,46 @@ function WatchlistCard({ data }: { data: DashboardCards }) {
 // ── Public block — 2x2 grid ─────────────────────────────────────────────
 export default function DashboardSummaryCards() {
   const company_id = useAuthStore(s => s.company_id);
-  const { data, isLoading } = useQuery<DashboardCards>({
+  const { data, isLoading, isError, error, refetch } = useQuery<DashboardCards>({
     queryKey: ['dashboard_cards', company_id],
     queryFn:  () => getAdapter().reports.getDashboardCards(company_id!),
     enabled:  !!company_id,
   });
 
-  if (isLoading || !data) {
+  // Loading state — actually loading (no data + no error yet).
+  if (isLoading) {
     return (
       <div style={{ padding: '24px 0', fontSize: '13px', color: theme.inkFaint, textAlign: 'center' }}>
         Loading dashboard cards…
+      </div>
+    );
+  }
+
+  // Error state — surface what went wrong so the user / I can debug.
+  // Previously this branch fell through to the loading message and the
+  // section appeared to hang forever.
+  if (isError || !data) {
+    const msg = error instanceof Error ? error.message : 'No data returned.';
+    return (
+      <div style={{
+        background: theme.dangerSoft, border: `1px solid ${theme.dangerBorder}`,
+        borderRadius: '12px', padding: '14px 18px',
+        display: 'flex', alignItems: 'center', gap: '12px',
+      }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: '12px', fontWeight: 700, color: theme.danger, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+            Dashboard cards failed to load
+          </div>
+          <div style={{ marginTop: '2px', fontSize: '12px', color: theme.danger, opacity: .85 }}>{msg}</div>
+        </div>
+        <button
+          onClick={() => refetch()}
+          style={{
+            background: '#fff', border: `1px solid ${theme.dangerBorder}`,
+            color: theme.danger, fontSize: '12px', fontWeight: 600,
+            padding: '6px 12px', borderRadius: '6px', cursor: 'pointer',
+          }}
+        >Retry</button>
       </div>
     );
   }
