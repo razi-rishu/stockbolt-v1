@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
@@ -44,7 +44,11 @@ export default function PaymentEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
   const isNew = id === 'new';
+  // Phase 14.08 — deep-link from customer-detail "Apply credit" banner.
+  // Auto-opens the apply-advance modal and skips the view-first template.
+  const autoApply = searchParams.get('apply') === '1';
 
   // contacts list removed — customer picker uses ContactPicker (D3).
   const { data: bankAccounts = [] } = useQuery<BankAccountRow[]>({
@@ -139,6 +143,15 @@ export default function PaymentEditorPage() {
   const [applyAmt, setApplyAmt] = useState('');
   const [applyModal, setApplyModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Phase 14.08 — auto-open the apply-advance modal when the user
+  // arrives from the customer-detail "Apply credit" CTA. Only fires
+  // once after the existing payment has loaded and is confirmed.
+  useEffect(() => {
+    if (autoApply && existing?.status === 'confirmed') {
+      setApplyModal(true);
+    }
+  }, [autoApply, existing?.status]);
 
   useEffect(() => {
     if (existing) {
@@ -390,7 +403,9 @@ export default function PaymentEditorPage() {
   );
 
   // Phase 14.05 — view-mode renderer (Signature template).
-  if (viewMode && !isNew && existing) {
+  // Phase 14.08 — bypass when the user landed via ?apply=1 so the editor
+  // hosts the apply-advance modal immediately.
+  if (viewMode && !autoApply && !isNew && existing) {
     const doc = paymentToDocumentData({
       payment: existing,
       allocations: existingAllocations,

@@ -364,18 +364,49 @@ export default function SupplierDetailPage() {
            in 1400 Vendor Advances. Surface it explicitly so the operator
            knows there's a credit to apply against the next bill — mirror
            of the customer-side "Credit on file" banner. */}
-      {vendorAdvance > 0.005 && (
-        <div className="rounded-card border border-emerald-200 bg-emerald-50 px-5 py-3 flex items-center gap-4">
-          <span className="rounded-pill bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
-            CREDIT WITH SUPPLIER
-          </span>
-          <p className="text-sm text-emerald-900">
-            We have{' '}
-            <span className="font-mono font-semibold">{contact?.currency ?? 'AED'} {fmt(vendorAdvance)}</span>{' '}
-            paid in advance / overpaid to this supplier. Hits 1400 Vendor Advances on the GL — apply it to a future bill.
-          </p>
-        </div>
-      )}
+      {vendorAdvance > 0.005 && (() => {
+        // Phase 14.08 — find the most-recent unallocated/partial confirmed
+        // vendor payment so the "Apply credit" CTA can deep-link to the
+        // apply-advance modal. Mirror of the customer-side banner.
+        type AllocStatus = 'unallocated' | 'partial' | 'full' | null | undefined;
+        const candidates = paymentsForSupplier
+          .filter(p => p.status === 'confirmed')
+          .filter(p => {
+            const alloc = (p as PaymentRow & { allocation_status?: AllocStatus }).allocation_status;
+            return alloc === 'unallocated' || alloc === 'partial';
+          })
+          .sort((a, b) => (b.date as unknown as string).localeCompare(a.date as unknown as string));
+        const applyTarget = candidates[0];
+        const hasOpenBill = openBills.length > 0;
+
+        return (
+          <div className="rounded-card border border-emerald-200 bg-emerald-50 px-5 py-3 flex flex-wrap items-center gap-4">
+            <span className="rounded-pill bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+              CREDIT WITH SUPPLIER
+            </span>
+            <p className="flex-1 min-w-[260px] text-sm text-emerald-900">
+              We have{' '}
+              <span className="font-mono font-semibold">{contact?.currency ?? 'AED'} {fmt(vendorAdvance)}</span>{' '}
+              paid in advance / overpaid to this supplier.{' '}
+              <span className="text-emerald-700/80">Hits 1400 Vendor Advances on the GL.</span>
+            </p>
+            {applyTarget && hasOpenBill && (
+              <Button
+                size="sm"
+                onClick={() => navigate(`/purchasing/payments/${applyTarget.id}?apply=1`)}
+                title={`Apply credit from ${applyTarget.payment_number} against an open bill`}
+              >
+                Apply credit →
+              </Button>
+            )}
+            {applyTarget && !hasOpenBill && (
+              <span className="text-xs text-emerald-700/80">
+                No open bills — credit will apply to the next one received.
+              </span>
+            )}
+          </div>
+        );
+      })()}
 
       {/* KPI tiles */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

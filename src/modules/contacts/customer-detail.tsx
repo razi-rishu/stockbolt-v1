@@ -396,18 +396,50 @@ export default function CustomerDetailPage() {
            2400 GL otherwise. Standard ERP practice is to net it against
            outstanding for the customer-facing view, even though the GL
            keeps them separate. */}
-      {advanceCredit > 0.005 && (
-        <div className="rounded-card border border-emerald-200 bg-emerald-50 px-5 py-3 flex items-center gap-4">
-          <span className="rounded-pill bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
-            CREDIT ON FILE
-          </span>
-          <p className="text-sm text-emerald-900">
-            This customer has{' '}
-            <span className="font-mono font-semibold">{contact?.currency ?? 'AED'} {fmt(advanceCredit)}</span>{' '}
-            available to apply to a future invoice. Hits 2400 Customer Advances on the GL.
-          </p>
-        </div>
-      )}
+      {advanceCredit > 0.005 && (() => {
+        // Phase 14.08 — find the most-recent unallocated/partial confirmed
+        // payment for this customer. That payment is the source of the
+        // advance, so the "Apply credit" CTA navigates straight to it with
+        // the apply-advance modal auto-opened.
+        type AllocStatus = 'unallocated' | 'partial' | 'full' | null | undefined;
+        const candidates = paymentsForCustomer
+          .filter(p => p.status === 'confirmed')
+          .filter(p => {
+            const alloc = (p as PaymentRow & { allocation_status?: AllocStatus }).allocation_status;
+            return alloc === 'unallocated' || alloc === 'partial';
+          })
+          .sort((a, b) => (b.date as unknown as string).localeCompare(a.date as unknown as string));
+        const applyTarget = candidates[0];
+        const hasOpenInvoice = openInvoices.length > 0;
+
+        return (
+          <div className="rounded-card border border-emerald-200 bg-emerald-50 px-5 py-3 flex flex-wrap items-center gap-4">
+            <span className="rounded-pill bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+              CREDIT ON FILE
+            </span>
+            <p className="flex-1 min-w-[260px] text-sm text-emerald-900">
+              This customer has{' '}
+              <span className="font-mono font-semibold">{contact?.currency ?? 'AED'} {fmt(advanceCredit)}</span>{' '}
+              available to apply to {hasOpenInvoice ? 'an open invoice' : 'a future invoice'}.{' '}
+              <span className="text-emerald-700/80">Hits 2400 Customer Advances on the GL.</span>
+            </p>
+            {applyTarget && hasOpenInvoice && (
+              <Button
+                size="sm"
+                onClick={() => navigate(`/sales/payments/${applyTarget.id}?apply=1`)}
+                title={`Apply credit from ${applyTarget.payment_number} against an open invoice`}
+              >
+                Apply credit →
+              </Button>
+            )}
+            {applyTarget && !hasOpenInvoice && (
+              <span className="text-xs text-emerald-700/80">
+                No open invoices — credit will apply to the next one raised.
+              </span>
+            )}
+          </div>
+        );
+      })()}
 
       {/* KPI tiles */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
@@ -25,7 +25,10 @@ export default function VendorPaymentEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
   const isNew = id === 'new';
+  // Phase 14.08 — deep-link from supplier-detail "Apply credit" banner.
+  const autoApply = searchParams.get('apply') === '1';
 
   // suppliers list removed — supplier picker now uses ContactPicker (D3).
   const { data: bankAccounts = [] } = useQuery<BankAccountRow[]>({
@@ -94,6 +97,13 @@ export default function VendorPaymentEditorPage() {
   const [applyBillId, setApplyBillId] = useState('');
   const [applyAmount, setApplyAmount] = useState('');
   const [openBills, setOpenBills] = useState<VendorBillRow[]>([]);
+
+  // Phase 14.08 — auto-open the apply modal when arriving via ?apply=1.
+  useEffect(() => {
+    if (autoApply && existing?.status === 'confirmed') {
+      setApplyModal(true);
+    }
+  }, [autoApply, existing?.status]);
 
   // ── Inline "Apply to Bills" panel state ──────────────────────────────────
   // Mirrors the customer payment editor: when classification === 'against_invoice'
@@ -310,7 +320,8 @@ export default function VendorPaymentEditorPage() {
   const billOpts = [{ value: '', label: t('purchasing.select_bill') }, ...openBills.map(b => ({ value: b.id, label: `${b.bill_number} — ${fmt(Number(b.total_amount))}` }))];
 
   // Phase 14.05 — view-mode renderer (Signature template).
-  if (viewMode && !isNew && existing) {
+  // Phase 14.08 — bypass when ?apply=1 so the editor hosts the modal.
+  if (viewMode && !autoApply && !isNew && existing) {
     const doc = vendorPaymentToDocumentData({
       payment: existing,
       allocations: existingAllocations,
