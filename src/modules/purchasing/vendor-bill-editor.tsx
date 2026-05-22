@@ -10,6 +10,10 @@ import { SearchableSelect } from '@/ui/searchable-select';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 import { ContactPicker } from '@/components/contact-picker';
 import { AccountingPreview, buildVendorBillPreview } from '@/components/accounting-preview';
+// Phase 14.03 — Signature template view mode for saved bills.
+import { TaxInvoiceTemplate } from '@/modules/print/_signature/templates/tax-invoice';
+import { vendorBillToDocumentData } from '@/modules/print/_signature/adapters';
+import '@/modules/print/_signature/print.css';
 import type { VendorBillRow, VendorBillItemInsert, ContactRow, ProductRow, TaxRateRow, CoaRow } from '@/data/adapter';
 import { calcPurchaseLine as _calc } from '@/core/purchasing/purchase-calc';
 
@@ -94,6 +98,12 @@ export default function VendorBillEditorPage() {
     queryFn: () => getAdapter().vendorBills.getItems(id!),
     enabled: !isNew && !!id,
   });
+  // Phase 14.03 — company for view-mode template rendering.
+  const { data: companyRow } = useQuery({
+    queryKey: ['company', company_id],
+    queryFn:  () => getAdapter().companies.getById(company_id!),
+    enabled:  !!company_id && !isNew,
+  });
   const { data: grnItems = [] } = useQuery({
     queryKey: ['goods_receipt_items_for_bill', linkedGrnId],
     queryFn: () => getAdapter().goodsReceipts.getItems(linkedGrnId!),
@@ -142,6 +152,10 @@ export default function VendorBillEditorPage() {
   });
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
   const [error, setError] = useState<string | null>(null);
+  // Phase 14.03 — view-first for saved bills. Renders the Signature
+  // template by default; user clicks Edit to drop into the existing
+  // editor. New bills skip this entirely (you're already entering it).
+  const [viewMode, setViewMode] = useState(!isNew);
 
   // Phase 12.42 — quick-create product from inside the line picker.
   const [productQcOpen,    setProductQcOpen]    = useState(false);
@@ -371,6 +385,49 @@ export default function VendorBillEditorPage() {
     );
   };
 
+  // Phase 14.03 — view-mode renderer (Signature template). Active only
+  // on saved bills where viewMode hasn't been toggled off.
+  if (viewMode && !isNew && existing) {
+    const doc = vendorBillToDocumentData({
+      bill: existing,
+      items: existingItems as Parameters<typeof vendorBillToDocumentData>[0]['items'],
+      supplier: suppliers.find(s => s.id === existing.supplier_id) ?? null,
+      company: companyRow ?? null,
+      products,
+    });
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
+        <div
+          data-no-print="true"
+          style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
+        >
+          <button onClick={() => navigate('/purchasing/bills')} style={{
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            fontSize: '13px', color: '#64748b',
+          }}>← {t('purchasing.bills_title')}</button>
+          <span style={{ color: '#94a3b8' }}>/</span>
+          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
+            {existing.bill_number}
+          </h1>
+          {statusPill(existing.status)}
+          <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+            {canEdit && (
+              <Button size="sm" onClick={() => setViewMode(false)}>
+                ✎ {t('common.edit') || 'Edit'}
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => window.print()}>
+              🖨 {t('print.print') || 'Print'}
+            </Button>
+          </div>
+        </div>
+        <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
+          <TaxInvoiceTemplate data={doc} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '64px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
@@ -384,6 +441,12 @@ export default function VendorBillEditorPage() {
         </h1>
         {!isNew && statusPill(existing?.status)}
         <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+          {/* Phase 14.03 — flip back into template view for saved bills. */}
+          {!isNew && existing && (
+            <Button variant="ghost" size="sm" onClick={() => setViewMode(true)}>
+              {t('common.view') || 'View'}
+            </Button>
+          )}
           {!isNew && existing?.id && (
             <Button variant="ghost" size="sm" onClick={() => window.open(`/print/bill/${existing.id}`, '_blank')}>
               🖨 {t('print.print')}

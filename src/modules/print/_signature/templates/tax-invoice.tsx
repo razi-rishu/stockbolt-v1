@@ -46,7 +46,9 @@ export function TaxInvoiceTemplate({ data, qrSrc }: TaxInvoiceTemplateProps) {
       }}>
         <CompanyBlock company={data.company} />
         <StampCard
-          title="Tax Invoice"
+          // Honour data.title (e.g. "Vendor Bill") so the same template
+          // can render adjacent doc types. Defaults to Tax Invoice.
+          title={data.title ?? 'Tax Invoice'}
           number={data.number}
           status={data.status}
           date={data.date}

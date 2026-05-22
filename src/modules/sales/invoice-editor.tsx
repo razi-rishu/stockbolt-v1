@@ -14,6 +14,10 @@ import { SmartEntitySearch, highlightMatch } from '@/components/smart-entity-sea
 import { ContactPicker } from '@/components/contact-picker';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 import { AccountingPreview, buildSalesInvoicePreview } from '@/components/accounting-preview';
+// Phase 14.03 — Signature template view mode.
+import { TaxInvoiceTemplate } from '@/modules/print/_signature/templates/tax-invoice';
+import { invoiceToDocumentData } from '@/modules/print/_signature/adapters';
+import '@/modules/print/_signature/print.css';
 import type { InvoiceRow, InvoiceItemInsert, ContactRow, ProductRow, WarehouseRow, TaxRateRow, ProductSearchRow } from '@/data/adapter';
 import { calcLine as _calcLine } from '@/core/sales/invoice-calc';
 
@@ -122,6 +126,12 @@ export default function InvoiceEditorPage() {
     queryFn: () => getAdapter().invoices.getItems(id!),
     enabled: !isNew && !!id,
   });
+  // Phase 14.03 — company for view-mode template rendering.
+  const { data: companyRow } = useQuery({
+    queryKey: ['company', company_id],
+    queryFn:  () => getAdapter().companies.getById(company_id!),
+    enabled:  !!company_id && !isNew,
+  });
 
   // ── Form state ───────────────────────────────────────────────────────────
   const defaultHeader: InvHeader = {
@@ -145,6 +155,11 @@ export default function InvoiceEditorPage() {
   const [voidModal, setVoidModal] = useState(false);
   const [voidReason, setVoidReason] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  // Phase 14.03 — view-first for saved invoices. Renders the Signature
+  // template by default; user clicks Edit to drop into the existing
+  // editor. New invoices skip this entirely (you're already editing).
+  const [viewMode, setViewMode] = useState(!isNew);
 
   // Populate form when existing invoice loads
   useEffect(() => {
@@ -437,6 +452,60 @@ export default function InvoiceEditorPage() {
     );
   };
 
+  // Phase 14.03 — view-mode renderer (Signature template). Active only on
+  // saved invoices where viewMode hasn't been toggled off.
+  if (viewMode && !isNew && existing) {
+    const doc = invoiceToDocumentData({
+      invoice: existing,
+      items: (existingItems as InvoiceItemInsert[] as unknown as Parameters<typeof invoiceToDocumentData>[0]['items']),
+      contact: contacts.find(c => c.id === existing.contact_id) ?? null,
+      company: companyRow ?? null,
+      products,
+    });
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
+        {/* Top action bar (hidden when printing) */}
+        <div
+          data-no-print="true"
+          style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
+        >
+          <button onClick={() => navigate('/sales/invoices')} style={{
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            fontSize: '13px', color: '#64748b',
+          }}>← {t('sales.invoices_title')}</button>
+          <span style={{ color: '#94a3b8' }}>/</span>
+          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
+            {existing.invoice_number}
+          </h1>
+          {statusPill(status)}
+          <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+            {canEdit && (
+              <Button size="sm" onClick={() => setViewMode(false)}>
+                ✎ {t('common.edit') || 'Edit'}
+              </Button>
+            )}
+            {isConfirmed && !editMode && (
+              <Button
+                variant="ghost" size="sm"
+                onClick={() => { setEditMode(true); setViewMode(false); }}
+              >{t('sales.edit_invoice') || 'Edit invoice'}</Button>
+            )}
+            {existing?.id && (
+              <Button variant="ghost" size="sm" onClick={() => window.print()}>
+                🖨 {t('print.print') || 'Print'}
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* The A4 document, floating on a slate canvas */}
+        <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
+          <TaxInvoiceTemplate data={doc} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '64px' }}>
       {/* Header row */}
@@ -451,6 +520,13 @@ export default function InvoiceEditorPage() {
         </h1>
         {!isNew && statusPill(status)}
         <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+          {/* Phase 14.03 — flip back into the template view for saved
+               invoices. Hidden on brand-new ones (nothing saved to view). */}
+          {!isNew && existing && (
+            <Button variant="ghost" size="sm" onClick={() => setViewMode(true)}>
+              {t('common.view') || 'View'}
+            </Button>
+          )}
           {/* Draft actions — Save is ONLY shown for new invoices or drafts.
                When editing a CONFIRMED invoice (editMode=true), this button is
                hidden because saveMutation silently downgrades status to
