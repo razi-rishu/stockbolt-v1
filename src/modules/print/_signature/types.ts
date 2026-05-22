@@ -127,4 +127,18 @@ export interface DocumentData {
   show_signature?: boolean;
   signed_by?:      string | null;
   signature_date?: string | null;
+
+  // ── Phase 14.05 — Payment Receipt extras ─────────────────────────────────
+  /** Payment method label (e.g. "Bank Transfer", "Cheque #1234"). */
+  payment_method?: string | null;
+  /** Bank account this payment hit (label, masked digits). */
+  bank_account?:   string | null;
+  /** Allocations against invoices/bills. Renders as a small table. */
+  allocations?:    Array<{
+    doc_number:      string;
+    doc_date?:       string | null;
+    original_amount?:number;            // outstanding before this payment
+    applied_amount:  number;
+    discount_amount?:number;
+  }>;
 }

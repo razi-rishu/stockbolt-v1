@@ -20,6 +20,8 @@ import type {
   CreditNoteRow, CreditNoteItemRow,
   DebitNoteRow, DebitNoteItemRow,
   SalesReturnRow, SalesReturnItemRow,
+  PaymentRow, PaymentAllocationRow,
+  BankAccountRow, PaymentMethodRow,
 } from '@/data/adapter';
 
 // Local alias so the file reads consistently with *Row naming elsewhere.
@@ -716,4 +718,101 @@ export function salesReturnToDocumentData({
     notes: salesReturn.notes ?? null,
     terms: null,
   };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Phase 14.05 — Customer Payment / Vendor Payment adapters.
+//
+// Payments share a single `payments` table (sales-side and purchase-side
+// are distinguished by `type`). The PaymentReceiptTemplate uses these
+// adapters — the only render-time difference is the `paidTo` flag the
+// template takes, which we set based on which adapter ran.
+// ────────────────────────────────────────────────────────────────────────────
+
+const PAYMENT_STATUS_MAP: Record<string, DocumentStatus> = {
+  draft: 'draft', confirmed: 'confirmed', void: 'void',
+};
+
+export interface PaymentToDocInput {
+  payment:      PaymentRow;
+  allocations:  PaymentAllocationRow[];
+  contact:      ContactRow | null;
+  company:      Company | null;
+  /** Bank accounts list, used to label the bank slot. */
+  bankAccounts?: BankAccountRow[];
+  /** Payment methods list, used to label the method slot. */
+  paymentMethods?: PaymentMethodRow[];
+  /** Optional invoice/bill lookup so allocation rows show document numbers
+   *  rather than UUIDs. The caller can pass either invoice rows OR vendor
+   *  bill rows — we pick the matching one based on doc_id. */
+  invoices?:    Array<{ id: string; invoice_number?: string; bill_number?: string; date?: string; total_amount?: number }>;
+}
+
+function buildAllocationsForReceipt(
+  allocations: PaymentAllocationRow[],
+  docs: PaymentToDocInput['invoices'],
+): DocumentData['allocations'] {
+  return allocations.map(a => {
+    const ref = docs?.find(d => d.id === a.doc_id);
+    return {
+      doc_number:      ref?.invoice_number ?? ref?.bill_number ?? a.doc_id.slice(0, 8),
+      doc_date:        ref?.date ?? null,
+      original_amount: ref?.total_amount ?? undefined,
+      applied_amount:  Number(a.amount_applied ?? 0),
+      discount_amount: Number(a.discount_amount ?? 0),
+    };
+  });
+}
+
+export function paymentToDocumentData({
+  payment, allocations, contact, company,
+  bankAccounts, paymentMethods, invoices,
+}: PaymentToDocInput): DocumentData {
+  const bank   = bankAccounts?.find(b => b.id === payment.bank_account_id);
+  const method = paymentMethods?.find(m => m.id === payment.payment_method_id);
+  const amount = Number(payment.amount ?? 0);
+
+  return {
+    type:   'payment_receipt',
+    title:  'Payment Receipt',
+    number: payment.payment_number,
+    status: PAYMENT_STATUS_MAP[payment.status] ?? 'draft',
+    date:   payment.date as unknown as string,
+    due_date: null,
+    reference: payment.reference ?? null,
+    currency: payment.currency ?? 'AED',
+
+    company: companyToInfo(company),
+    bill_to: contactToParty(contact),
+    ship_to: null,
+
+    items: [],                                  // not used by this template
+
+    subtotal:    amount,
+    tax_total:   0,
+    grand_total: amount,
+    paid_amount: amount,
+    balance_due: 0,
+
+    payment_method: method?.name ?? null,
+    bank_account:   bank
+      ? `${bank.name}${bank.account_number ? ` · ${bank.account_number}` : ''}`
+      : null,
+
+    allocations: buildAllocationsForReceipt(allocations, invoices),
+
+    qr_payload: null,
+    banking: null,
+    notes: payment.notes ?? null,
+    terms: null,
+  };
+}
+
+/** Same shape as customer payment, but the template is invoked with
+ *  `paidTo: true` so the party label reads "Paid to" and the title
+ *  defaults to "Vendor Payment". */
+export function vendorPaymentToDocumentData(input: PaymentToDocInput): DocumentData {
+  const doc = paymentToDocumentData(input);
+  doc.title = 'Vendor Payment';
+  return doc;
 }

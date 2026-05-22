@@ -12,7 +12,11 @@ import { Modal } from '@/ui/modal';
 import { AccountingPreview, buildCustomerPaymentPreview } from '@/components/accounting-preview';
 import { ActivityLog } from '@/components/activity-log';
 import { theme } from '@/ui/theme';
-import type { PaymentRow, BankAccountRow, OpenInvoice, PaymentAllocationInsert } from '@/data/adapter';
+// Phase 14.05 — Signature template view mode for saved payments.
+import { PaymentReceiptTemplate } from '@/modules/print/_signature/templates/payment-receipt';
+import { paymentToDocumentData } from '@/modules/print/_signature/adapters';
+import '@/modules/print/_signature/print.css';
+import type { PaymentRow, BankAccountRow, OpenInvoice, PaymentAllocationInsert, Company, ContactRow, PaymentMethodRow, InvoiceRow } from '@/data/adapter';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -72,6 +76,36 @@ export default function PaymentEditorPage() {
     enabled: !!company_id && !isNew,
   });
   const isReconciled = !!id && reconciledIds.includes(id);
+
+  // Phase 14.05 — reference data for Signature template view.
+  const { data: companyRow } = useQuery<Company | null>({
+    queryKey: ['company', company_id],
+    queryFn:  () => getAdapter().companies.getById(company_id!),
+    enabled:  !!company_id,
+  });
+  const { data: customers = [] } = useQuery<ContactRow[]>({
+    queryKey: ['contacts', company_id, 'customer'],
+    queryFn:  () => getAdapter().contacts.list(company_id!, 'customer'),
+    enabled:  !!company_id,
+  });
+  const { data: paymentMethods = [] } = useQuery<PaymentMethodRow[]>({
+    queryKey: ['paymentMethods', company_id],
+    queryFn: async () => {
+      const { data, error } = await (await import('@/data/supabase-client')).getSupabaseClient()
+        .from('payment_methods').select('*').eq('company_id', company_id!);
+      if (error) throw error;
+      return (data ?? []) as PaymentMethodRow[];
+    },
+    enabled:  !!company_id,
+  });
+  const { data: allInvoices = [] } = useQuery<InvoiceRow[]>({
+    queryKey: ['invoices', company_id],
+    queryFn:  () => getAdapter().invoices.list(company_id!),
+    enabled:  !!company_id,
+  });
+
+  // Phase 14.05 — view-first mode for saved payments.
+  const [viewMode, setViewMode] = useState(!isNew);
 
   // Open invoices (with computed outstanding) for the allocation panel and advance modal
   const [selectedContact, setSelectedContact] = useState('');
@@ -355,6 +389,56 @@ export default function PaymentEditorPage() {
     }}>{text}</span>
   );
 
+  // Phase 14.05 — view-mode renderer (Signature template).
+  if (viewMode && !isNew && existing) {
+    const doc = paymentToDocumentData({
+      payment: existing,
+      allocations: existingAllocations,
+      contact: customers.find(c => c.id === existing.contact_id) ?? null,
+      company: companyRow ?? null,
+      bankAccounts,
+      paymentMethods,
+      invoices: allInvoices.map(i => ({ id: i.id, invoice_number: i.invoice_number, date: i.date as unknown as string, total_amount: i.total_amount })),
+    });
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
+        <div
+          data-no-print="true"
+          style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
+        >
+          <button onClick={() => navigate('/sales/payments')} style={{
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            fontSize: '13px', color: theme.inkMuted,
+          }}>← {t('payments.title')}</button>
+          <span style={{ color: theme.inkFaint }}>/</span>
+          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>
+            {existing.payment_number}
+          </h1>
+          <span style={{
+            display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
+            fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
+            background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
+          }}>{status}</span>
+          <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+            {canEdit && (
+              <Button size="sm" onClick={() => setViewMode(false)}>
+                ✎ {t('common.edit') || 'Edit'}
+              </Button>
+            )}
+            {existing?.id && (
+              <Button variant="ghost" size="sm" onClick={() => window.print()}>
+                🖨 {t('print.print') || 'Print'}
+              </Button>
+            )}
+          </div>
+        </div>
+        <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
+          <PaymentReceiptTemplate data={doc} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '64px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
@@ -383,6 +467,11 @@ export default function PaymentEditorPage() {
           </>
         )}
         <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+          {!isNew && existing && (
+            <Button variant="ghost" size="sm" onClick={() => setViewMode(true)}>
+              {t('common.view') || 'View'}
+            </Button>
+          )}
           {canEdit && (
             <>
               <Button variant="ghost" size="sm" onClick={() => navigate('/sales/payments')}>

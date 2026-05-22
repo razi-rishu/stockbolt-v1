@@ -10,7 +10,11 @@ import { Select } from '@/ui/select';
 import { ContactPicker } from '@/components/contact-picker';
 import { AccountingPreview, buildVendorPaymentPreview } from '@/components/accounting-preview';
 import { ActivityLog } from '@/components/activity-log';
-import type { PaymentRow, BankAccountRow, VendorBillRow, OpenVendorBill, PaymentAllocationInsert, PaymentMethodRow } from '@/data/adapter';
+// Phase 14.05 — Signature template view mode for saved vendor payments.
+import { PaymentReceiptTemplate } from '@/modules/print/_signature/templates/payment-receipt';
+import { vendorPaymentToDocumentData } from '@/modules/print/_signature/adapters';
+import '@/modules/print/_signature/print.css';
+import type { PaymentRow, BankAccountRow, VendorBillRow, OpenVendorBill, PaymentAllocationInsert, PaymentMethodRow, Company, ContactRow } from '@/data/adapter';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -49,6 +53,26 @@ export default function VendorPaymentEditorPage() {
     queryFn: () => getAdapter().vendorPayments.getAllocations(id!),
     enabled: !isNew && !!id,
   });
+
+  // Phase 14.05 — reference data for Signature template view.
+  const { data: companyRow } = useQuery<Company | null>({
+    queryKey: ['company', company_id],
+    queryFn:  () => getAdapter().companies.getById(company_id!),
+    enabled:  !!company_id,
+  });
+  const { data: suppliers = [] } = useQuery<ContactRow[]>({
+    queryKey: ['contacts', company_id, 'supplier'],
+    queryFn:  () => getAdapter().contacts.list(company_id!, 'supplier'),
+    enabled:  !!company_id,
+  });
+  const { data: allBills = [] } = useQuery<VendorBillRow[]>({
+    queryKey: ['vendor_bills', company_id],
+    queryFn:  () => getAdapter().vendorBills.list(company_id!),
+    enabled:  !!company_id,
+  });
+
+  // Phase 14.05 — view-first mode for saved vendor payments.
+  const [viewMode, setViewMode] = useState(!isNew);
 
   // Reconciled-payment IDs (Batch C) — shared cache across both
   // customer + vendor payment screens.
@@ -285,6 +309,56 @@ export default function VendorPaymentEditorPage() {
   ];
   const billOpts = [{ value: '', label: t('purchasing.select_bill') }, ...openBills.map(b => ({ value: b.id, label: `${b.bill_number} — ${fmt(Number(b.total_amount))}` }))];
 
+  // Phase 14.05 — view-mode renderer (Signature template).
+  if (viewMode && !isNew && existing) {
+    const doc = vendorPaymentToDocumentData({
+      payment: existing,
+      allocations: existingAllocations,
+      contact: suppliers.find(s => s.id === existing.contact_id) ?? null,
+      company: companyRow ?? null,
+      bankAccounts,
+      paymentMethods,
+      invoices: allBills.map(b => ({ id: b.id, bill_number: b.bill_number, date: b.date as unknown as string, total_amount: b.total_amount })),
+    });
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
+        <div
+          data-no-print="true"
+          style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
+        >
+          <button onClick={() => navigate('/purchasing/payments')} style={{
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            fontSize: '13px', color: '#64748b',
+          }}>← {t('purchasing.vp_title')}</button>
+          <span style={{ color: '#94a3b8' }}>/</span>
+          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
+            {existing.payment_number}
+          </h1>
+          <span style={{
+            display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
+            fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
+            background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
+          }}>{existing.status}</span>
+          <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+            {canEdit && (
+              <Button size="sm" onClick={() => setViewMode(false)}>
+                ✎ {t('common.edit') || 'Edit'}
+              </Button>
+            )}
+            {existing?.id && (
+              <Button variant="ghost" size="sm" onClick={() => window.print()}>
+                🖨 {t('print.print') || 'Print'}
+              </Button>
+            )}
+          </div>
+        </div>
+        <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
+          <PaymentReceiptTemplate data={doc} paidTo />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pb-16">
       <div className="flex items-center gap-3">
@@ -310,6 +384,11 @@ export default function VendorPaymentEditorPage() {
           </span>
         )}
         <div className="ms-auto flex gap-2">
+          {!isNew && existing && (
+            <Button variant="ghost" size="sm" onClick={() => setViewMode(true)}>
+              {t('common.view') || 'View'}
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={() => navigate('/purchasing/payments')}>{t('common.cancel')}</Button>
           {canEdit && (
             <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
