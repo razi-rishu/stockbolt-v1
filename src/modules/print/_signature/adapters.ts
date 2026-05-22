@@ -22,6 +22,8 @@ import type {
   SalesReturnRow, SalesReturnItemRow,
   PaymentRow, PaymentAllocationRow,
   BankAccountRow, PaymentMethodRow,
+  ExpenseRow, ExpenseItemRow, CoaRow,
+  GoodsReceiptRow, GoodsReceiptItemRow,
 } from '@/data/adapter';
 
 // Local alias so the file reads consistently with *Row naming elsewhere.
@@ -815,4 +817,202 @@ export function vendorPaymentToDocumentData(input: PaymentToDocInput): DocumentD
   const doc = paymentToDocumentData(input);
   doc.title = 'Vendor Payment';
   return doc;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Phase 14.06 — Expense / GRN adapters.
+//
+// Both reuse the TaxInvoiceTemplate via title override. Expense lines are
+// keyed off the expense_account_id (so the description becomes the account
+// name); GRN lines are qty + cost only (no tax, no discount). This works
+// because the template renders missing/zero columns gracefully.
+// ────────────────────────────────────────────────────────────────────────────
+
+const EXPENSE_STATUS_MAP: Record<string, DocumentStatus> = {
+  draft: 'draft', confirmed: 'confirmed', void: 'void',
+};
+
+export interface ExpenseToDocInput {
+  expense:  ExpenseRow;
+  /** Multi-line items from expense_items. Empty array means single-line
+   *  legacy mode — we fall back to the header expense_account_id. */
+  items:    ExpenseItemRow[];
+  supplier: ContactRow | null;
+  company:  Company | null;
+  /** Chart of accounts — used to resolve expense account names. */
+  coa?:     CoaRow[];
+  /** Bank accounts — used to label the "Paid from" slot. */
+  bankAccounts?: BankAccountRow[];
+}
+
+export function expenseToDocumentData({
+  expense, items, supplier, company, coa, bankAccounts,
+}: ExpenseToDocInput): DocumentData {
+  const coaById: Record<string, CoaRow> = {};
+  for (const a of coa ?? []) coaById[a.id] = a;
+
+  // Multi-line case — render each line as its own row with the expense
+  // account name as the description. Single-line case — synthesise one
+  // line from the expense header so the printout still has something to
+  // show.
+  const lines: LineItem[] = items.length > 0
+    ? items.map((it, i) => {
+        const acct = coaById[it.expense_account_id];
+        return {
+          index:       i + 1,
+          sku:         acct?.code ?? null,
+          description: it.description || acct?.name || 'Expense',
+          quantity:    Number(it.quantity ?? 1),
+          unit_code:   null,
+          unit_price:  Number(it.unit_amount ?? 0),
+          discount_percent: 0,
+          discount_amount:  0,
+          tax_rate:    Number(it.tax_rate ?? 0),
+          tax_amount:  Number(it.tax_amount ?? 0),
+          line_total:  Number(it.line_total ?? 0),
+        };
+      })
+    : (() => {
+        const acct = coaById[expense.expense_account_id];
+        const amount = Number(expense.amount ?? 0);
+        const tax    = Number(expense.tax_amount ?? 0);
+        return [{
+          index: 1,
+          sku:   acct?.code ?? null,
+          description: expense.description || acct?.name || 'Expense',
+          quantity:    1,
+          unit_code:   null,
+          unit_price:  amount,
+          discount_percent: 0,
+          discount_amount:  0,
+          tax_rate:    amount > 0 ? +(tax / amount * 100).toFixed(2) : 0,
+          tax_amount:  tax,
+          line_total:  amount + tax,
+        }];
+      })();
+
+  const subtotal = lines.reduce((s, l) => s + (l.line_total - (l.tax_amount ?? 0)), 0);
+  const taxTotal = Number(expense.tax_amount ?? 0);
+  const total    = Number(expense.total_amount ?? subtotal + taxTotal);
+
+  const paidFrom = bankAccounts?.find(b => b.id === expense.paid_from_account_id);
+
+  // Stuff the "Paid from" account into the reference line so it shows on
+  // the printout even though the TaxInvoiceTemplate doesn't have a
+  // dedicated slot for it.
+  const refBits: string[] = [];
+  if (paidFrom) refBits.push(`Paid from: ${paidFrom.name}`);
+  if (expense.reference) refBits.push(`Ref: ${expense.reference}`);
+
+  return {
+    type:   'standard_invoice',                 // template shape
+    title:  'Expense Voucher',
+    number: expense.expense_number,
+    status: EXPENSE_STATUS_MAP[expense.status] ?? 'draft',
+    date:   expense.date as unknown as string,
+    due_date: null,
+    reference: refBits.join(' · ') || null,
+    currency: 'AED',
+
+    company: companyToInfo(company),
+    bill_to: contactToParty(supplier),
+    ship_to: null,
+
+    items: lines,
+
+    subtotal,
+    discount_total: 0,
+    tax_total:      taxTotal,
+    shipping_total: 0,
+    grand_total:    total,
+    paid_amount:    total,                      // expenses are settled at confirm
+    balance_due:    0,
+
+    vat_breakdown: [],
+
+    qr_payload: null,
+    banking: null,
+    notes: null,
+    terms: null,
+  };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Goods Receipt Note → DocumentData
+// ────────────────────────────────────────────────────────────────────────────
+
+const GRN_STATUS_MAP: Record<string, DocumentStatus> = {
+  draft: 'draft', received: 'confirmed', confirmed: 'confirmed', void: 'void',
+};
+
+export interface GRNToDocInput {
+  grn:       GoodsReceiptRow;
+  items:     GoodsReceiptItemRow[];
+  supplier:  ContactRow | null;
+  company:   Company | null;
+  products?: ProductRow[];
+  /** Optional linked PO number for the reference line. */
+  linkedPoNumber?: string | null;
+}
+
+export function grnToDocumentData({
+  grn, items, supplier, company, products, linkedPoNumber,
+}: GRNToDocInput): DocumentData {
+  const productById: Record<string, ProductRow> = {};
+  for (const p of products ?? []) productById[p.id] = p;
+
+  const lines: LineItem[] = items.map((it, i) => {
+    const prod = productById[it.product_id];
+    const qty  = Number(it.qty_received ?? 0);
+    const cost = Number(it.unit_cost ?? 0);
+    return {
+      index:       i + 1,
+      sku:         prod?.sku ?? null,
+      description: prod?.name ?? '—',
+      description_ar: prod?.name_ar ?? null,
+      quantity:    qty,
+      unit_code:   null,
+      unit_price:  cost,
+      discount_percent: 0,
+      discount_amount:  0,
+      tax_rate:    0,
+      tax_amount:  0,
+      line_total:  qty * cost,
+    };
+  });
+
+  const subtotal = lines.reduce((s, l) => s + l.line_total, 0);
+
+  return {
+    type:   'delivery_note',                    // shape: qty-focused
+    title:  'Goods Receipt Note',
+    number: grn.grn_number,
+    status: GRN_STATUS_MAP[grn.status] ?? 'draft',
+    date:   grn.date as unknown as string,
+    due_date: null,
+    reference: linkedPoNumber ? `Against PO: ${linkedPoNumber}` : null,
+    reference_doc: linkedPoNumber ?? null,
+    currency: 'AED',
+
+    company: companyToInfo(company),
+    bill_to: contactToParty(supplier),
+    ship_to: null,
+
+    items: lines,
+
+    subtotal,
+    discount_total: 0,
+    tax_total:      0,
+    shipping_total: 0,
+    grand_total:    subtotal,
+    paid_amount:    0,
+    balance_due:    subtotal,
+
+    vat_breakdown: [],
+
+    qr_payload: null,
+    banking: null,
+    notes: grn.notes ?? null,
+    terms: null,
+  };
 }

@@ -9,7 +9,11 @@ import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
-import type { GoodsReceiptRow, GoodsReceiptItemInsert, ContactRow, ProductRow, WarehouseRow } from '@/data/adapter';
+// Phase 14.06 — Signature template view mode for saved GRNs.
+import { TaxInvoiceTemplate } from '@/modules/print/_signature/templates/tax-invoice';
+import { grnToDocumentData } from '@/modules/print/_signature/adapters';
+import '@/modules/print/_signature/print.css';
+import type { GoodsReceiptRow, GoodsReceiptItemRow, GoodsReceiptItemInsert, ContactRow, ProductRow, WarehouseRow, Company } from '@/data/adapter';
 
 interface LineRow {
   _key: string;
@@ -55,11 +59,20 @@ export default function GRNEditorPage() {
     queryFn: () => getAdapter().goodsReceipts.getById(id!),
     enabled: !isNew && !!id,
   });
-  const { data: existingItems = [] } = useQuery({
+  const { data: existingItems = [] } = useQuery<GoodsReceiptItemRow[]>({
     queryKey: ['goods_receipt_items', id],
     queryFn: () => getAdapter().goodsReceipts.getItems(id!),
     enabled: !isNew && !!id,
   });
+  // Phase 14.06 — company row for the Signature template header.
+  const { data: companyRow } = useQuery<Company | null>({
+    queryKey: ['company', company_id],
+    queryFn:  () => getAdapter().companies.getById(company_id!),
+    enabled:  !!company_id,
+  });
+
+  // Phase 14.06 — view-first mode for saved GRNs.
+  const [viewMode, setViewMode] = useState(!isNew);
 
   // Pre-fill from PO if creating from a PO
   const { data: poItems = [] } = useQuery({
@@ -197,6 +210,55 @@ export default function GRNEditorPage() {
   const warehouseOpts = [{ value: '', label: t('purchasing.select_warehouse') }, ...warehouses.map(w => ({ value: w.id, label: w.name }))];
   const productOpts = products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }));
 
+  // Phase 14.06 — view-mode renderer (Signature template).
+  if (viewMode && !isNew && existing) {
+    const doc = grnToDocumentData({
+      grn: existing,
+      items: existingItems,
+      supplier: suppliers.find(s => s.id === existing.supplier_id) ?? null,
+      company: companyRow ?? null,
+      products,
+      linkedPoNumber: null,                   // linked PO lookup deferred
+    });
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
+        <div
+          data-no-print="true"
+          style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
+        >
+          <button onClick={() => navigate('/purchasing/grns')} style={{
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            fontSize: '13px', color: '#64748b',
+          }}>← {t('purchasing.grn_title')}</button>
+          <span style={{ color: '#94a3b8' }}>/</span>
+          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
+            {existing.grn_number}
+          </h1>
+          <span style={{
+            display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
+            fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
+            background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
+          }}>{existing.status}</span>
+          <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+            {canEdit && (
+              <Button size="sm" onClick={() => setViewMode(false)}>
+                ✎ {t('common.edit') || 'Edit'}
+              </Button>
+            )}
+            {existing?.id && (
+              <Button variant="ghost" size="sm" onClick={() => window.print()}>
+                🖨 {t('print.print') || 'Print'}
+              </Button>
+            )}
+          </div>
+        </div>
+        <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
+          <TaxInvoiceTemplate data={doc} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pb-16">
       <div className="flex items-center gap-3">
@@ -205,6 +267,11 @@ export default function GRNEditorPage() {
         <h1 className="text-xl font-semibold text-ink-primary">{isNew ? t('purchasing.new_grn') : existing?.grn_number ?? '…'}</h1>
         {!isNew && <span className="rounded-pill bg-gray-100 px-2.5 py-0.5 text-xs capitalize text-gray-600">{existing?.status}</span>}
         <div className="ms-auto flex gap-2">
+          {!isNew && existing && (
+            <Button variant="ghost" size="sm" onClick={() => setViewMode(true)}>
+              {t('common.view') || 'View'}
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={() => navigate('/purchasing/grns')}>{t('common.cancel')}</Button>
           {canEdit && (
             <>

@@ -65,9 +65,13 @@ import { SearchableSelect } from '@/ui/searchable-select';
 import { ContactPicker } from '@/components/contact-picker';
 import { CoaQuickCreate } from '@/components/quick-create/coa-quick-create';
 import { theme } from '@/ui/theme';
+// Phase 14.06 — Signature template view mode for saved expenses.
+import { TaxInvoiceTemplate } from '@/modules/print/_signature/templates/tax-invoice';
+import { expenseToDocumentData } from '@/modules/print/_signature/adapters';
+import '@/modules/print/_signature/print.css';
 import type {
   BankAccountRow, CoaRow, ExpenseRow, ExpenseItemRow,
-  ExpenseItemInsert, ContactRow,
+  ExpenseItemInsert, ContactRow, Company,
 } from '@/data/adapter';
 
 const fmt = (n: number) =>
@@ -170,6 +174,20 @@ export default function ExpenseEditorPage() {
     queryFn:  () => getAdapter().contacts.list(company_id!, 'customer'),
     enabled:  !!company_id,
   });
+  // Phase 14.06 — reference data for Signature template.
+  const { data: suppliers = [] } = useQuery<ContactRow[]>({
+    queryKey: ['contacts', company_id, 'supplier'],
+    queryFn:  () => getAdapter().contacts.list(company_id!, 'supplier'),
+    enabled:  !!company_id,
+  });
+  const { data: companyRow } = useQuery<Company | null>({
+    queryKey: ['company', company_id],
+    queryFn:  () => getAdapter().companies.getById(company_id!),
+    enabled:  !!company_id,
+  });
+
+  // Phase 14.06 — view-first mode for saved expenses.
+  const [viewMode, setViewMode] = useState(!isNew);
 
   // Existing record (edit mode)
   const { data: expense } = useQuery<ExpenseRow>({
@@ -359,6 +377,51 @@ export default function ExpenseEditorPage() {
     );
   };
 
+  // Phase 14.06 — view-mode renderer (Signature template).
+  if (viewMode && !isNew && expense) {
+    const doc = expenseToDocumentData({
+      expense,
+      items,
+      supplier: expense.supplier_id ? suppliers.find(s => s.id === expense.supplier_id) ?? null : null,
+      company:  companyRow ?? null,
+      coa,
+      bankAccounts,
+    });
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
+        <div
+          data-no-print="true"
+          style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
+        >
+          <button onClick={() => navigate('/purchasing/expenses')} style={{
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            fontSize: '13px', color: theme.inkMuted,
+          }}>← Expenses</button>
+          <span style={{ color: theme.inkFaint }}>/</span>
+          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>
+            {expense.expense_number}
+          </h1>
+          {statusPill(expense.status)}
+          <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+            {isDraft && (
+              <Button size="sm" onClick={() => setViewMode(false)}>
+                ✎ {t('common.edit') || 'Edit'}
+              </Button>
+            )}
+            {expense?.id && (
+              <Button variant="ghost" size="sm" onClick={() => window.print()}>
+                🖨 {t('print.print') || 'Print'}
+              </Button>
+            )}
+          </div>
+        </div>
+        <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
+          <TaxInvoiceTemplate data={doc} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{
       maxWidth: '720px', margin: '0 auto',
@@ -377,6 +440,11 @@ export default function ExpenseEditorPage() {
         </h1>
         {!isNew && statusPill(expense?.status)}
         <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+          {!isNew && expense && (
+            <Button variant="ghost" size="sm" onClick={() => setViewMode(true)}>
+              {t('common.view') || 'View'}
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={() => navigate('/purchasing/expenses')}>
             {t('common.cancel')}
           </Button>
