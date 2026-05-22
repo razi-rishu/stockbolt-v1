@@ -20,6 +20,7 @@ const SetupWizardPage    = lazy(() => import('@/modules/onboarding/setup-wizard'
 // App shell pages
 const DashboardPage      = lazy(() => import('@/modules/dashboard/index'));
 const DesignSystemPage   = lazy(() => import('@/modules/design-system/index'));
+const SignatureTemplateGalleryPage = lazy(() => import('@/modules/print/_signature/gallery'));
 const SettingsHubPage    = lazy(() => import('@/modules/settings/index'));
 const CompanySettingsPage = lazy(() => import('@/modules/settings/company-settings'));
 const WarehousesPage     = lazy(() => import('@/modules/settings/warehouses'));
@@ -186,6 +187,7 @@ function AppRoutes() {
             <Route element={<WithAppLayout />}>
               <Route path="/dashboard"                element={<DashboardPage />} />
               <Route path="/design-system"            element={<DesignSystemPage />} />
+              <Route path="/print-templates"          element={<SignatureTemplateGalleryPage />} />
 
               {/* Settings */}
               <Route path="/settings"                 element={<SettingsHubPage />} />

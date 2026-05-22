@@ -1,0 +1,62 @@
+/*
+ * Signature print system — Phase 14.01.
+ *
+ * Print + screen styling for the new document templates. Imported by
+ * the gallery page and (later) by each print route.
+ *
+ * Goals:
+ *   - A4-perfect (210x297mm) on Save-as-PDF in Chrome/Edge/Firefox.
+ *   - Strip and stamp survive print (no missing background-color tricks).
+ *   - Screen preview shows the page floating on a slate canvas for the
+ *     "this is a document" feel.
+ */
+
+/* ── Screen canvas surrounding the page ─────────────────────────────── */
+.signature-canvas {
+  background: #F8FAFC;
+  padding: 24px;
+  min-height: 100vh;
+}
+
+/* ── Page sizing (A4) ──────────────────────────────────────────────── */
+.signature-page {
+  /* Width/height set inline via tokens; nothing extra here at screen size. */
+}
+
+/* ── Print rules ────────────────────────────────────────────────────── */
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  html, body {
+    margin: 0; padding: 0;
+    background: #FFFFFF !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .signature-canvas {
+    background: #FFFFFF;
+    padding: 0;
+    min-height: auto;
+  }
+  .signature-page {
+    box-shadow: none !important;
+    margin: 0 !important;
+    width: 210mm !important;
+    min-height: 297mm !important;
+    /* Each page break starts a new document if multi-doc preview is shown */
+    page-break-after: always;
+  }
+  .signature-page:last-child {
+    page-break-after: auto;
+  }
+  /* Hide any in-page chrome */
+  [data-no-print="true"] { display: none !important; }
+}
+
+/* ── Force the indigo strip + dark stamp card to print ──────────────── */
+.signature-page * {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
