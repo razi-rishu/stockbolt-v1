@@ -116,6 +116,37 @@ export default function ChartOfAccountsPage() {
   // Equity has no built-in sub_type; user can tag freely (e.g. "owner", "retained")
   const showSubTypeExtra = flatTypeMeta?.type === 'equity';
 
+  // Phase 14.13 — eligible parents for the picker. Only accounts of the
+  // SAME flat-type can be a parent (you wouldn't nest a Liability under
+  // an Asset). When editing, the row itself is excluded (no self-parent)
+  // along with anything that already has this row in its ancestry (no
+  // cycles). System accounts ARE valid parents — e.g. nesting your own
+  // bank subaccounts under "1100 Bank Account (Main)" is the whole point.
+  const eligibleParents = (() => {
+    if (!flatTypeMeta) return [];
+    const sameFlat = accounts.filter(a => {
+      if (a.id === editing?.id) return false;
+      const m = classifyAccount(a);
+      return m.value === flatTypeMeta.value;
+    });
+    // Cycle guard — when editing, exclude descendants of `editing`.
+    if (editing) {
+      const descendants = new Set<string>([editing.id]);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const a of accounts) {
+          if (a.parent_id && descendants.has(a.parent_id) && !descendants.has(a.id)) {
+            descendants.add(a.id);
+            changed = true;
+          }
+        }
+      }
+      return sameFlat.filter(a => !descendants.has(a.id));
+    }
+    return sameFlat;
+  })();
+
   const createMutation = useMutation({
     mutationFn: async (v: FormValues) => {
       const meta = FLAT_TYPES.find(t => t.value === v.flat_type)!;
@@ -166,6 +197,7 @@ export default function ChartOfAccountsPage() {
         name_ar: v.name_ar || null,
         type:    meta.type,
         sub_type,
+        parent_id: v.parent_id || null,
       });
     },
     onSuccess: () => {
@@ -220,8 +252,39 @@ export default function ChartOfAccountsPage() {
     const meta = classifyAccount(a);
     grouped[meta.value].push(a);
   }
+  // Phase 14.13 — tree-sort within each flat group: top-level rows in
+  // code order, with their children listed immediately under them
+  // (recursively). depthById lets the row renderer indent children.
+  const depthById = new Map<string, number>();
   for (const ft of FLAT_TYPES) {
-    grouped[ft.value].sort((a, b) => a.code.localeCompare(b.code));
+    const all = grouped[ft.value];
+    const byParent = new Map<string | null, CoaRow[]>();
+    for (const a of all) {
+      const key = a.parent_id ?? null;
+      const arr = byParent.get(key) ?? [];
+      arr.push(a);
+      byParent.set(key, arr);
+    }
+    for (const [, arr] of byParent) arr.sort((a, b) => a.code.localeCompare(b.code));
+    const out: CoaRow[] = [];
+    const walk = (parentId: string | null, depth: number) => {
+      const kids = byParent.get(parentId) ?? [];
+      for (const k of kids) {
+        out.push(k);
+        depthById.set(k.id, depth);
+        walk(k.id, depth + 1);
+      }
+    };
+    walk(null, 0);
+    // Orphans (parent_id points to a row outside this flat group or to a
+    // deleted row) — append at the end as top-level so they stay visible.
+    for (const a of all) {
+      if (!depthById.has(a.id)) {
+        out.push(a);
+        depthById.set(a.id, 0);
+      }
+    }
+    grouped[ft.value] = out;
   }
 
   return (
@@ -281,7 +344,22 @@ export default function ChartOfAccountsPage() {
                         <tr key={a.id}
                             className="border-b border-border-subtle last:border-0 hover:bg-surface-muted/50"
                             style={{ opacity: inactive ? 0.5 : 1 }}>
-                          <td className="px-4 py-2.5 font-mono text-xs text-ink-primary">{a.code}</td>
+                          <td className="px-4 py-2.5 font-mono text-xs text-ink-primary">
+                            {/* Phase 14.13 — indent child accounts visually so the hierarchy reads at a glance. */}
+                            {(() => {
+                              const depth = depthById.get(a.id) ?? 0;
+                              if (depth === 0) return a.code;
+                              return (
+                                <span>
+                                  <span
+                                    aria-hidden
+                                    style={{ display: 'inline-block', width: `${depth * 16}px`, color: '#94A3B8' }}
+                                  >{'└'.padStart(1, ' ')}</span>
+                                  {a.code}
+                                </span>
+                              );
+                            })()}
+                          </td>
                           <td className="px-4 py-2.5 text-ink-primary">
                             {/* Phase 14.10b — render the name in whichever
                                  language the UI is set to (i18next `dir`
@@ -401,6 +479,34 @@ export default function ChartOfAccountsPage() {
           <div>
             <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.account_name_ar')}</label>
             <Input {...register('name_ar')} dir="rtl" />
+          </div>
+          {/* Phase 14.13 — parent picker. Nest sub-accounts (e.g. specific
+               bank accounts under "1100 Bank Account (Main)", or branch
+               cash drawers under "1000 Cash in Hand"). Filtered to the
+               same flat-type so an Asset can'\''t parent a Liability;
+               descendants of the row being edited are filtered out so a
+               cycle is impossible. Empty = top-level account. */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-ink-secondary">
+              Parent account <span className="text-ink-tertiary">(optional — leave blank for a top-level account)</span>
+            </label>
+            <select
+              {...register('parent_id', { setValueAs: (v) => v === '' ? null : v })}
+              className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-surface-muted disabled:text-ink-tertiary"
+              disabled={editing?.is_system === true}
+            >
+              <option value="">— Top-level —</option>
+              {eligibleParents.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.code} — {p.name}
+                </option>
+              ))}
+            </select>
+            {eligibleParents.length === 0 && (
+              <p className="mt-1 text-xs text-ink-tertiary">
+                No eligible parents yet for {flatTypeMeta?.label}. Add a top-level account of this type first.
+              </p>
+            )}
           </div>
           {showSubTypeExtra && (
             <div>
