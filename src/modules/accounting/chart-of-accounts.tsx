@@ -281,8 +281,17 @@ export default function ChartOfAccountsPage() {
                             style={{ opacity: inactive ? 0.5 : 1 }}>
                           <td className="px-4 py-2.5 font-mono text-xs text-ink-primary">{a.code}</td>
                           <td className="px-4 py-2.5 text-ink-primary">
-                            {a.name}
-                            {a.name_ar && <span dir="rtl" className="ms-2 text-xs text-ink-tertiary">({a.name_ar})</span>}
+                            {/* Phase 14.10b — render the name in whichever
+                                 language the UI is set to (i18next `dir`
+                                 flips when the user toggles عربي). Falls
+                                 back to the English name when the Arabic
+                                 translation is missing. Previously this
+                                 cell ALWAYS appended the Arabic name in
+                                 parens after the English one, which
+                                 leaked Arabic into the English view. */}
+                            {document.documentElement.dir === 'rtl' && a.name_ar
+                              ? <span dir="rtl">{a.name_ar}</span>
+                              : a.name}
                           </td>
                           <td className="px-4 py-2.5 text-ink-secondary">{a.sub_type ?? '—'}</td>
                           <td className="px-4 py-2.5">
