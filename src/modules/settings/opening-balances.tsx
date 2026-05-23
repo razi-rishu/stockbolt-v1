@@ -293,9 +293,23 @@ export default function OpeningBalancesPage() {
     return { ...t, glDebit, glCredit, subsidiaryNet3010, glNet3010, batchNet3010, projected3010 };
   }, [rows, glRows, live3010]);
 
-  // Per-row validation. The Post button is only enabled when all draft rows
-  // pass — partial posts get messy when one row fails halfway through.
+  // Phase 14.13c — "empty / untouched" detector. An empty row is one the
+  // operator hasn't filled in yet (default first row, accidentally-added
+  // extra row). We skip these during validation AND during postAll so a
+  // half-filled wizard doesn't block the rest of the batch.
+  //   Subsidiary: no contact picked AND no doc# AND no amount typed
+  //   GL: no account/bank picked AND no amount typed
+  const isSubsidiaryRowEmpty = (r: DraftRow): boolean =>
+    !r.contact_id && !r.doc_number.trim() && !r.amount.trim();
+  const isGlRowEmpty = (r: GlDraftRow): boolean =>
+    !r.account_id && !r.bank_account_id && !r.amount.trim();
+
+  // Per-row validation. The Post button is enabled when every NON-EMPTY
+  // draft row passes — empty rows are skipped silently. Partial posts get
+  // messy when one row fails halfway through, but skipping an obviously
+  // untouched row is safe.
   const validateRow = (r: DraftRow): string | null => {
+    if (isSubsidiaryRowEmpty(r)) return null;            // skipped, not invalid
     if (!r.contact_id) return 'Pick a contact';
     if (!r.doc_number.trim()) return 'Document number is required';
     if (!r.date) return 'Date is required';
@@ -312,7 +326,9 @@ export default function OpeningBalancesPage() {
   // must be positive, an account must be picked. Date must not be in
   // the future. Control-account warning is non-blocking (returns null
   // here; UI surfaces a soft warning separately).
+  // Phase 14.13c — same empty-row skip applies here too.
   const validateGlRow = (r: GlDraftRow): string | null => {
+    if (isGlRowEmpty(r)) return null;
     if (r.target === 'bank') {
       if (!r.bank_account_id) return 'Pick a bank account';
     } else {
@@ -329,7 +345,12 @@ export default function OpeningBalancesPage() {
   const glDraftRows = glRows.filter(r => r.status !== 'done');
   const glValidations = glDraftRows.map(validateGlRow);
 
-  const totalDraft = draftRows.length + glDraftRows.length;
+  // Phase 14.13c — POSTABLE = draft & non-empty & validation OK. The
+  // button label and count come from this number; empty rows stay in
+  // the UI for the operator to fill in or remove, but don't block post.
+  const postableSubsidiary = draftRows.filter(r => !isSubsidiaryRowEmpty(r));
+  const postableGl         = glDraftRows.filter(r => !isGlRowEmpty(r));
+  const totalDraft = postableSubsidiary.length + postableGl.length;
   const canPost = totalDraft > 0
     && validations.every(v => v === null)
     && glValidations.every(v => v === null)
@@ -346,6 +367,9 @@ export default function OpeningBalancesPage() {
       // ── 1. Subsidiary rows (AR / AP / advances) ──────────────────────────
       for (const r of [...rows]) {
         if (r.status === 'done') continue;
+        // Phase 14.13c — skip untouched rows silently so a half-filled
+        // wizard still posts the rows that ARE filled in.
+        if (isSubsidiaryRowEmpty(r)) continue;
         setRows(prev => prev.map(x => x._key === r._key ? { ...x, status: 'posting', error: undefined } : x));
         try {
           const input: OpeningBalanceInput = {
@@ -373,6 +397,8 @@ export default function OpeningBalancesPage() {
       // ── 2. GL rows (Phase 14.09b + 14.09c bank variant) ──────────────────
       for (const r of [...glRows]) {
         if (r.status === 'done') continue;
+        // Phase 14.13c — same empty-row skip on the GL side.
+        if (isGlRowEmpty(r)) continue;
         setGlRows(prev => prev.map(x => x._key === r._key ? { ...x, status: 'posting', error: undefined } : x));
         try {
           if (r.target === 'bank') {
@@ -546,6 +572,9 @@ export default function OpeningBalancesPage() {
                 const meta = TYPE_META[r.type];
                 const contacts = meta.contactType === 'customer' ? customers : suppliers;
                 const err = r.status === 'draft' ? validations[draftRows.indexOf(r)] : null;
+                // Phase 14.13c — show a faint "skip" hint on empty rows so the
+                // operator understands they won't be posted.
+                const isEmpty = r.status === 'draft' && isSubsidiaryRowEmpty(r);
                 const isDone   = r.status === 'done';
                 const isPosting = r.status === 'posting';
                 const isError  = r.status === 'error';
@@ -642,13 +671,21 @@ export default function OpeningBalancesPage() {
                       ) : isPosting ? (
                         <span className="text-xs text-ink-tertiary">…</span>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => removeRow(r._key)}
-                          disabled={rows.length === 1}
-                          className="text-xs text-ink-tertiary hover:text-red-600 disabled:opacity-40"
-                          title={rows.length === 1 ? 'Keep at least one row' : 'Remove row'}
-                        >Remove</button>
+                        <div className="flex flex-col items-end gap-0.5">
+                          {isEmpty && (
+                            <span
+                              className="text-[10.5px] text-ink-tertiary italic"
+                              title="No data entered — this row will be skipped on Post"
+                            >Empty · will skip</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removeRow(r._key)}
+                            disabled={rows.length === 1}
+                            className="text-xs text-ink-tertiary hover:text-red-600 disabled:opacity-40"
+                            title={rows.length === 1 ? 'Keep at least one row' : 'Remove row'}
+                          >Remove</button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -703,6 +740,7 @@ export default function OpeningBalancesPage() {
                 const isDone   = r.status === 'done';
                 const isPosting = r.status === 'posting';
                 const isError  = r.status === 'error';
+                const isEmpty  = r.status === 'draft' && isGlRowEmpty(r);
                 return (
                   <tr key={r._key} className="border-b border-border-subtle last:border-0"
                       style={{ opacity: isDone ? 0.55 : 1, background: isError ? '#FEF2F2' : undefined }}>
@@ -862,13 +900,21 @@ export default function OpeningBalancesPage() {
                       ) : isPosting ? (
                         <span className="text-xs text-ink-tertiary">…</span>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => removeGlRow(r._key)}
-                          disabled={glRows.length === 1}
-                          className="text-xs text-ink-tertiary hover:text-red-600 disabled:opacity-40"
-                          title={glRows.length === 1 ? 'Keep at least one row' : 'Remove row'}
-                        >Remove</button>
+                        <div className="flex flex-col items-end gap-0.5">
+                          {isEmpty && (
+                            <span
+                              className="text-[10.5px] text-ink-tertiary italic"
+                              title="No data entered — this row will be skipped on Post"
+                            >Empty · will skip</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removeGlRow(r._key)}
+                            disabled={glRows.length === 1}
+                            className="text-xs text-ink-tertiary hover:text-red-600 disabled:opacity-40"
+                            title={glRows.length === 1 ? 'Keep at least one row' : 'Remove row'}
+                          >Remove</button>
+                        </div>
                       )}
                     </td>
                   </tr>
