@@ -8,6 +8,7 @@ import { postJournalEntry, reverseJournalEntry, JournalValidationError } from '@
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
+import { buildCoaTreeOptions, coaOptionLabel } from '@/core/seeds/coa-tree';
 import type { JELine, JournalEntryRow, GeneralLedgerRow, CoaRow } from '@/data/adapter';
 
 interface LineRow extends JELine {
@@ -56,13 +57,12 @@ export default function JournalEntryEditorPage() {
     queryFn: () => getAdapter().coa.list(company_id!),
     enabled: !!company_id,
   });
-  // Build dropdown options: "1100  Cash on Hand" — type either the code
-  // or any part of the name to find it. Sorted by code so the user sees
-  // them in the same order as the printed CoA report.
-  const accountOpts = coa
-    .filter((a) => a.is_active)
-    .sort((a, b) => a.code.localeCompare(b.code))
-    .map((a) => ({ value: a.code, label: `${a.code}  ${a.name}` }));
+  // Phase 14.13b — build dropdown options in TREE order so sub-accounts
+  // appear indented under their parent (e.g. "1110 Bank Account (Main)"
+  // followed by "↳ 1111 Bank — Emirates NBD" etc.). Type either the code
+  // or any part of the name to find them.
+  const accountOpts = buildCoaTreeOptions(coa.filter((a) => a.is_active))
+    .map(({ row, depth }) => ({ value: row.code, label: coaOptionLabel(row, depth) }));
 
   const totalDebit  = lines.reduce((s, l) => s + (Number(l.debit)  || 0), 0);
   const totalCredit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);

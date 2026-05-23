@@ -36,6 +36,7 @@ import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
+import { buildCoaTreeOptions, coaOptionLabel } from '@/core/seeds/coa-tree';
 import type {
   ContactRow, OpeningBalanceType, OpeningBalanceInput,
   OpeningBalanceListed, CoaRow, GLOpeningBalanceInput,
@@ -767,14 +768,17 @@ export default function OpeningBalancesPage() {
                           }}
                         >
                           <option value="">— select GL account —</option>
+                          {/* Phase 14.13b — tree-sort within each type group so
+                                sub-accounts appear indented under their parent. */}
                           {(['asset','liability','equity','income','expense'] as const).map(group => {
                             const accountsInGroup = coa.filter(a => a.type === group && a.is_active);
                             if (accountsInGroup.length === 0) return null;
+                            const tree = buildCoaTreeOptions(accountsInGroup);
                             return (
                               <optgroup key={group} label={group[0].toUpperCase() + group.slice(1) + 's'}>
-                                {accountsInGroup.map(a => (
-                                  <option key={a.id} value={a.id}>
-                                    {a.code} — {a.name}
+                                {tree.map(({ row, depth }) => (
+                                  <option key={row.id} value={row.id}>
+                                    {coaOptionLabel(row, depth)}
                                   </option>
                                 ))}
                               </optgroup>

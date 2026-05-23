@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
@@ -106,12 +106,13 @@ export default function ChartOfAccountsPage() {
     enabled: !!company_id,
   });
 
-  const { register, handleSubmit, reset, watch, formState: { errors, isSubmitting } } = useForm<FormValues>({
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
     defaultValues: { code: '', name: '', name_ar: '', flat_type: 'current_asset', sub_type_extra: '', parent_id: null },
   });
 
   const flatTypeValue = watch('flat_type');
+  const parentIdValue = watch('parent_id');
   const flatTypeMeta = FLAT_TYPES.find(t => t.value === flatTypeValue);
   // Equity has no built-in sub_type; user can tag freely (e.g. "owner", "retained")
   const showSubTypeExtra = flatTypeMeta?.type === 'equity';
@@ -146,6 +147,68 @@ export default function ChartOfAccountsPage() {
     }
     return sameFlat;
   })();
+
+  // Phase 14.13b — auto-suggest a code based on the selected parent (or,
+  // for top-level accounts, the next free code in the flat-type group).
+  //
+  // Algorithm:
+  //   - With a parent: next = max(numeric child code) + 1. If no
+  //     existing children: parent.code + 1. So 1110 → 1111, 1112, ...
+  //   - No parent (top-level): next = max code in this flat-type's
+  //     existing range, rounded UP to the next multiple of 10.
+  //     So if the highest current asset is 1500, the next is 1510.
+  //
+  // The user can still type their own code — auto-fill only kicks in
+  // when the field is empty (or when the previous suggestion is
+  // detectably still in the field).
+  const suggestedCode = (() => {
+    if (!flatTypeMeta || editing) return '';     // edit mode: don't surprise the operator
+    const sameFlat = accounts.filter(a => classifyAccount(a).value === flatTypeMeta.value);
+    const numericOf = (c: string): number => {
+      const n = parseInt(c, 10);
+      return Number.isFinite(n) ? n : 0;
+    };
+    if (parentIdValue) {
+      const parent = accounts.find(a => a.id === parentIdValue);
+      if (!parent) return '';
+      const children = accounts.filter(a => a.parent_id === parentIdValue);
+      const maxChild = children.reduce((m, c) => Math.max(m, numericOf(c.code)), numericOf(parent.code));
+      return String(maxChild + 1);
+    }
+    if (sameFlat.length === 0) {
+      // First account of this type — start from a reasonable seed.
+      const seeds: Record<string, number> = {
+        current_asset: 1000, fixed_asset: 1500,
+        current_liability: 2000, long_term_liability: 2500,
+        equity: 3000,
+        direct_income: 4000, indirect_income: 4200,
+        direct_expense: 5000, indirect_expense: 6000,
+      };
+      return String(seeds[flatTypeMeta.value] ?? 1000);
+    }
+    const maxCode = sameFlat.reduce((m, a) => Math.max(m, numericOf(a.code)), 0);
+    // Round up to next multiple of 10 so each top-level account leaves
+    // room for ~9 sub-accounts before bumping into the next slot.
+    return String(Math.ceil((maxCode + 1) / 10) * 10);
+  })();
+
+  // Re-emit the suggestion whenever parent / type changes, unless the
+  // user has typed something that doesn't match the last suggestion
+  // (i.e. they explicitly overrode the auto-value). lastSuggestedRef
+  // tracks the most recent auto-emit so we know whether the current
+  // code field value is "still auto" or "user-modified".
+  const lastSuggestedRef = useRef<string>('');
+  const currentCode = watch('code');
+  useEffect(() => {
+    if (editing) return;                                  // edit mode: never overwrite
+    if (!suggestedCode) return;
+    // Only auto-fill if the field is empty OR still holds the previous
+    // suggestion (i.e. the user hasn't typed their own value).
+    if (currentCode === '' || currentCode === lastSuggestedRef.current) {
+      setValue('code', suggestedCode);
+      lastSuggestedRef.current = suggestedCode;
+    }
+  }, [suggestedCode, currentCode, editing, setValue]);
 
   const createMutation = useMutation({
     mutationFn: async (v: FormValues) => {
