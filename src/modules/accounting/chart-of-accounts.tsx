@@ -598,6 +598,17 @@ export default function ChartOfAccountsPage() {
               still rename it in English / Arabic to match your local terminology.
             </div>
           )}
+          {/* Phase 14.13f — permanence hint. Tell the operator, BEFORE they
+               type anything, whether what they're about to add survives a
+               company-data reset. Seed (system) accounts always survive.
+               Custom accounts are cleared on reset. */}
+          {!editing && (
+            <div className="rounded-card border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+              <strong>Cleared on Reset Company Data.</strong> Custom accounts you add here are wiped
+              by Settings → Reset Company Data. The seeded system accounts (e.g. 1100, 1110, 1200)
+              always survive.
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.code')}</label>

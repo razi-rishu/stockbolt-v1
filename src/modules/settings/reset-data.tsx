@@ -203,17 +203,18 @@ export default function ResetDataPage() {
           <li>All attachments, notifications, document sequences (reset to 1000)</li>
           <li>All audit log entries (one final entry recording this reset will be kept)</li>
           <li><strong>All setup masters</strong> — bank accounts, warehouses, units, categories, brands, vehicles, price levels, tax rates, payment methods, salespeople, print templates</li>
+          <li><strong>All custom chart-of-account rows</strong> you added (e.g. 1111 ADCB, 1112 IDBI). The seed accounts (1100, 1110, 1200, 2400, 3010, etc.) are kept because RPCs reference them by code.</li>
         </ul>
         <p className="text-sm text-red-800 pt-2 border-t border-red-200">
           The following will be <strong>preserved</strong> (structurally required):
         </p>
         <ul className="text-sm text-red-800 list-disc list-inside space-y-1">
           <li>Your company record, your user profile, and onboarding state</li>
-          <li>Chart of accounts (the seed CoA — needed by every confirm_* RPC)</li>
+          <li>The seed chart of accounts (is_system=true rows only — needed by every confirm_* RPC)</li>
         </ul>
         <p className="text-xs text-red-700 pt-2 italic">
           True clean slate. After reset you'll need to recreate bank accounts,
-          tax rates, warehouses, etc. before booking new transactions.
+          tax rates, warehouses, and any custom CoA before booking new transactions.
         </p>
       </div>
 

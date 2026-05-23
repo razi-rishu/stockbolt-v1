@@ -176,6 +176,15 @@ export default function BankAccountsSettingsPage() {
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Edit bank account' : 'Add bank account'} width="lg">
         <form onSubmit={handleSubmit((v) => saveMutation.mutateAsync(v))} className="flex flex-col gap-4">
+          {/* Phase 14.13f — permanence hint. Bank accounts are wiped on
+               Reset Company Data, same as every other operational master. */}
+          {!editing && (
+            <div className="rounded-card border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+              <strong>Cleared on Reset Company Data.</strong> Bank accounts are wiped along with
+              transactions on a company reset. Only your company, profile, and seeded chart of
+              accounts survive.
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-4">
             <Input label="Display name" required error={errors.name?.message} {...register('name')} />
             <Input label="Display name (Arabic)" dir="rtl" {...register('name_ar')} />
