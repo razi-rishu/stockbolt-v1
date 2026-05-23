@@ -43,8 +43,30 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'stockbolt-ui',
-      // Only persist language preference; auth state is managed by Supabase session
-      partialize: (s) => ({ language: s.language }),
+      // Phase 14.12b — persist auth state (not just language). Previously
+      // only `language` was persisted; on every refresh the store reset
+      // to its defaults (is_onboarded=false, company_id=null, etc.) and
+      // we relied on useAuthInit's async bootstrap to restore them from
+      // the Supabase session + a profiles read. If that read returned
+      // null OR threw (RLS hiccup, network blip), the silent catch in
+      // use-auth-init left is_onboarded=false and RequireOnboarded
+      // bounced the operator to /setup — even when they were fully
+      // onboarded and just hit refresh.
+      //
+      // We now persist the same fields Supabase already keeps in
+      // localStorage (user_id, email) plus the application-side
+      // identity (company_id, role, is_onboarded). The bootstrap
+      // process is still authoritative: on a true sign-out the
+      // onAuthStateChange handler calls clear() which wipes
+      // everything from this persisted blob.
+      partialize: (s) => ({
+        language:    s.language,
+        user_id:     s.user_id,
+        email:       s.email,
+        company_id:  s.company_id,
+        role:        s.role,
+        is_onboarded: s.is_onboarded,
+      }),
     },
   ),
 );
