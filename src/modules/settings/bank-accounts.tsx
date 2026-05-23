@@ -48,11 +48,41 @@ export default function BankAccountsSettingsPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<BankAccountRow | null>(null);
 
+  // Settings page wants to see EVERY bank account (including inactive),
+  // otherwise the operator can't restore / delete a deactivated row.
+  // Pickers elsewhere still call the default list() which filters to active.
   const { data: accounts = [], isLoading } = useQuery({
-    queryKey: ['bankAccounts', company_id],
-    queryFn:  () => getAdapter().bankAccounts.list(company_id!),
+    queryKey: ['bankAccounts', company_id, 'all'],
+    queryFn:  () => getAdapter().bankAccounts.list(company_id!, { includeInactive: true }),
     enabled:  !!company_id,
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await getAdapter().bankAccounts.remove(id);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bankAccounts', company_id] });
+      qc.invalidateQueries({ queryKey: ['bankAccounts', company_id, 'all'] });
+      qc.invalidateQueries({ queryKey: ['bank_accounts', company_id] });
+    },
+  });
+
+  function onDelete(row: BankAccountRow) {
+    const ok = window.confirm(
+      `Delete bank account "${row.name}"?\n\n` +
+      `This cannot be undone. The delete will FAIL if any payment, expense, ` +
+      `bank transfer, PDC cheque, or reconciliation references it — in that ` +
+      `case use Deactivate (Edit → uncheck Active) instead.`
+    );
+    if (!ok) return;
+    deleteMutation.mutate(row.id, {
+      onError: (e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        window.alert(`Could not delete "${row.name}":\n\n${msg}`);
+      },
+    });
+  }
 
   // CoA picker — Cash / Bank accounts only (asset class)
   const { data: coa = [] } = useQuery({
@@ -158,6 +188,20 @@ export default function BankAccountsSettingsPage() {
     { key: 'opening',  header: 'Opening Balance', align: 'end', width: '130px', render: (r) => <span className="font-mono" style={{ color: theme.ink }}>{fmt(Number(r.opening_balance ?? 0))}</span> },
     { key: 'default',  header: '', width: '80px', render: (r) => r.is_default ? <Badge variant="brand">Default</Badge> : null },
     { key: 'status',   header: '', width: '80px', render: (r) => <Badge variant={r.is_active ? 'success' : 'muted'}>{r.is_active ? 'Active' : 'Inactive'}</Badge> },
+    {
+      key: 'delete', header: '', width: '70px',
+      render: (r) => (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onDelete(r); }}
+          disabled={deleteMutation.isPending}
+          style={{ background: 'transparent', border: 'none', padding: 0, fontSize: '12px', color: '#dc2626', cursor: 'pointer', textDecoration: 'underline' }}
+          title="Permanently delete this bank account (refuses if it's referenced by any transaction)"
+        >
+          Delete
+        </button>
+      ),
+    },
   ];
 
   return (

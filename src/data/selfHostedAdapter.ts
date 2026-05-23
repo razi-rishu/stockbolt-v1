@@ -143,6 +143,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       getById:  () => notImplemented('bankAccounts.getById'),
       create:   () => notImplemented('bankAccounts.create'),
       update:   () => notImplemented('bankAccounts.update'),
+      remove:   () => notImplemented('bankAccounts.remove'),
     },
     invoices: {
       list:            () => notImplemented('invoices.list'),

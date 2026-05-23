@@ -680,10 +680,13 @@ export interface PaymentsAPI {
 }
 
 export interface BankAccountsAPI {
-  list(company_id: string): Promise<BankAccountRow[]>;
+  /** Active bank accounts. Default `includeInactive=false` keeps pickers clean. */
+  list(company_id: string, opts?: { includeInactive?: boolean }): Promise<BankAccountRow[]>;
   getById(id: string): Promise<BankAccountRow | null>;
   create(row: BankAccountInsert): Promise<BankAccountRow>;
   update(id: string, row: Partial<BankAccountInsert>): Promise<void>;
+  /** Hard delete. Will fail if any payment / expense / bank_transfer / pdc / reconciliation references it. */
+  remove(id: string): Promise<void>;
 }
 
 export interface TaxRatesAPI {

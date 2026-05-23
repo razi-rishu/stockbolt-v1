@@ -896,9 +896,10 @@ export function createSupabaseAdapter(
 
     // ── Phase 4: Bank Accounts ────────────────────────────────────────────
     bankAccounts: {
-      async list(company_id): Promise<BankAccountRow[]> {
-        const { data, error } = await client.from('bank_accounts').select('*')
-          .eq('company_id', company_id).eq('is_active', true).order('name');
+      async list(company_id, opts): Promise<BankAccountRow[]> {
+        let q = client.from('bank_accounts').select('*').eq('company_id', company_id);
+        if (!opts?.includeInactive) q = q.eq('is_active', true);
+        const { data, error } = await q.order('name');
         assertNoError(error, 'bankAccounts.list');
         return data ?? [];
       },
@@ -916,6 +917,13 @@ export function createSupabaseAdapter(
       async update(id, row) {
         const { error } = await client.from('bank_accounts').update(row).eq('id', id);
         assertNoError(error, 'bankAccounts.update');
+      },
+      async remove(id) {
+        // Hard delete. Postgres will raise a foreign-key violation if any
+        // payment / expense / bank_transfer / pdc / reconciliation references
+        // this row — caller's onError surfaces the message to the operator.
+        const { error } = await client.from('bank_accounts').delete().eq('id', id);
+        assertNoError(error, 'bankAccounts.remove');
       },
     },
 
