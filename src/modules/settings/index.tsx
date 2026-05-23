@@ -189,6 +189,7 @@ export default function SettingsHubPage() {
         { to: '/accounting/period-lock',       icon: '🔒', title: 'Period Lock',       desc: 'Close accounting periods so no one back-dates entries.' },
         { to: '/settings/bank-accounts',       icon: '🏦', title: 'Bank Accounts',     desc: 'Bank / cash accounts used to receive payments and post expenses.', count: banks.length },
         { to: '/settings/opening-balances',    icon: '⤵️', title: 'Opening Balances',  desc: 'Migrate unpaid invoices / bills / credits from a prior system. Posts to 3010 Opening Balance Equity.' },
+        { to: '/settings/import-export',       icon: '📤', title: 'Import / Export',   desc: 'Bulk-load master data from CSV / Excel, or export your current data for backup / reporting.' },
       ],
     },
     {

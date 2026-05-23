@@ -110,9 +110,21 @@ export default function ProductsListPage() {
         title={t('products.title')}
         subtitle={`${rows.length} ${rows.length === 1 ? 'item' : 'items'}`}
         actions={
-          <Button size="sm" onClick={() => navigate('/products/new')}>
-            + {t('common.add')} {t('products.singular')}
-          </Button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {/* Phase 14.11a — quick export. Hub at /settings/import-export
+                  carries template + import + format toggle. */}
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => navigate('/settings/import-export')}
+              title="Bulk export to CSV / Excel, download template, or import a file"
+            >
+              ⤓ Import / Export
+            </Button>
+            <Button size="sm" onClick={() => navigate('/products/new')}>
+              + {t('common.add')} {t('products.singular')}
+            </Button>
+          </div>
         }
       />
 
