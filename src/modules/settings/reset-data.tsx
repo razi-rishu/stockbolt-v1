@@ -160,7 +160,7 @@ export default function ResetDataPage() {
     <div style={{ maxWidth: '720px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <PageHeader
         title="Reset Company Data"
-        subtitle="Destructive admin operation for testing. Wipes all transactions and operational data for this company."
+        subtitle="Destructive admin operation for testing. True clean slate — wipes ALL transactions AND ALL setup masters (bank accounts, warehouses, units, brands, etc.). Only your company, profile, and chart of accounts survive."
       />
 
 
@@ -202,16 +202,19 @@ export default function ResetDataPage() {
           <li>All customers, suppliers, products (with serials, compatibility, supplier codes)</li>
           <li>All attachments, notifications, document sequences (reset to 1000)</li>
           <li>All audit log entries (one final entry recording this reset will be kept)</li>
+          <li><strong>All setup masters</strong> — bank accounts, warehouses, units, categories, brands, vehicles, price levels, tax rates, payment methods, salespeople, print templates</li>
         </ul>
         <p className="text-sm text-red-800 pt-2 border-t border-red-200">
-          The following will be <strong>preserved</strong>:
+          The following will be <strong>preserved</strong> (structurally required):
         </p>
         <ul className="text-sm text-red-800 list-disc list-inside space-y-1">
           <li>Your company record, your user profile, and onboarding state</li>
-          <li>Chart of accounts</li>
-          <li>Warehouses, units, categories, brands, vehicles, price levels</li>
-          <li>Tax rates, payment methods, bank accounts (balances reset to zero)</li>
+          <li>Chart of accounts (the seed CoA — needed by every confirm_* RPC)</li>
         </ul>
+        <p className="text-xs text-red-700 pt-2 italic">
+          True clean slate. After reset you'll need to recreate bank accounts,
+          tax rates, warehouses, etc. before booking new transactions.
+        </p>
       </div>
 
       {error && (
