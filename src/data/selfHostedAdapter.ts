@@ -111,8 +111,11 @@ export function createSelfHostedAdapter(): DataAdapter {
       remove: () => notImplemented('priceLevels.remove'),
     },
     coa: {
-      list: () => notImplemented('coa.list'),
-      create: () => notImplemented('coa.create'),
+      list:       () => notImplemented('coa.list'),
+      create:     () => notImplemented('coa.create'),
+      update:     () => notImplemented('coa.update'),
+      deactivate: () => notImplemented('coa.deactivate'),
+      activate:   () => notImplemented('coa.activate'),
     },
     accounting: {
       postJE:            () => notImplemented('accounting.postJE'),

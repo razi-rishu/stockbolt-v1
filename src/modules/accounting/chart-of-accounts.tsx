@@ -91,6 +91,13 @@ export default function ChartOfAccountsPage() {
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  // Phase 14.10 — edit mode. When set we render the same modal with
+  // pre-filled values + update path instead of create.
+  const [editing, setEditing] = useState<CoaRow | null>(null);
+  // Phase 14.10 — show deactivated accounts toggle. Off by default so the
+  // list stays clean.
+  const [showInactive, setShowInactive] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const { data: accounts = [], isLoading } = useQuery({
     queryKey: ['coa', company_id],
@@ -134,6 +141,73 @@ export default function ChartOfAccountsPage() {
     },
   });
 
+  // Phase 14.10 — edit existing CoA. System accounts get a tighter
+  // payload (name + name_ar only) because their code/type are referenced
+  // by RPCs hard-coded to specific codes (1200, 2400, 3010, etc.) and
+  // renaming the type would break confirm_invoice and friends.
+  const editMutation = useMutation({
+    mutationFn: async (v: FormValues) => {
+      if (!editing) throw new Error('No row in edit mode');
+      const isSystem = editing.is_system;
+      if (isSystem) {
+        return getAdapter().coa.update(editing.id, {
+          name:    v.name,
+          name_ar: v.name_ar || null,
+        });
+      }
+      const meta = FLAT_TYPES.find(t => t.value === v.flat_type)!;
+      const sub_type = meta.type === 'equity'
+        ? (v.sub_type_extra.trim() || null)
+        : meta.sub_type;
+      return getAdapter().coa.update(editing.id, {
+        code:    v.code,
+        name:    v.name,
+        name_ar: v.name_ar || null,
+        type:    meta.type,
+        sub_type,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['coa', company_id] });
+      setEditing(null);
+      setOpen(false);
+      reset();
+    },
+  });
+
+  const deactivateMutation = useMutation({
+    mutationFn: (id: string) => getAdapter().coa.deactivate(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['coa', company_id] }),
+    onError:   (e: Error) => setActionError(e.message),
+  });
+  const activateMutation = useMutation({
+    mutationFn: (id: string) => getAdapter().coa.activate(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['coa', company_id] }),
+    onError:   (e: Error) => setActionError(e.message),
+  });
+
+  // Open the modal in EDIT mode with the row's current values seeded.
+  function startEdit(a: CoaRow) {
+    setActionError(null);
+    setEditing(a);
+    const meta = classifyAccount(a);
+    reset({
+      code:      a.code,
+      name:      a.name,
+      name_ar:   a.name_ar ?? '',
+      flat_type: meta.value,
+      sub_type_extra: meta.type === 'equity' ? (a.sub_type ?? '') : '',
+      parent_id: a.parent_id ?? null,
+    });
+    setOpen(true);
+  }
+
+  function closeModal() {
+    setOpen(false);
+    setEditing(null);
+    reset({ code: '', name: '', name_ar: '', flat_type: 'current_asset', sub_type_extra: '', parent_id: null });
+  }
+
   // Group accounts by flat type (each account decoded from its (type, sub_type) tuple)
   const grouped = FLAT_TYPES.reduce<Record<FlatType, CoaRow[]>>((acc, ft) => {
     acc[ft.value] = [];
@@ -141,6 +215,7 @@ export default function ChartOfAccountsPage() {
   }, {} as Record<FlatType, CoaRow[]>);
 
   for (const a of accounts) {
+    if (!showInactive && a.is_active === false) continue;
     const meta = classifyAccount(a);
     grouped[meta.value].push(a);
   }
@@ -150,10 +225,27 @@ export default function ChartOfAccountsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-ink-primary">{t('accounting.coa_title')}</h1>
-        <Button size="sm" onClick={() => { reset(); setOpen(true); }}>{t('accounting.add_account')}</Button>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-1.5 text-xs text-ink-secondary cursor-pointer select-none">
+            <input
+              type="checkbox" className="h-3.5 w-3.5"
+              checked={showInactive}
+              onChange={(e) => setShowInactive(e.target.checked)}
+            />
+            <span>Show inactive</span>
+          </label>
+          <Button size="sm" onClick={() => { setEditing(null); reset(); setActionError(null); setOpen(true); }}>
+            {t('accounting.add_account')}
+          </Button>
+        </div>
       </div>
+      {actionError && (
+        <div className="rounded-card border border-red-300 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+          {actionError}
+        </div>
+      )}
 
       {isLoading ? (
         <p className="text-sm text-ink-secondary">{t('common.loading')}</p>
@@ -173,27 +265,71 @@ export default function ChartOfAccountsPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
-                      <th className="px-4 py-2 text-start font-medium">{t('accounting.code')}</th>
+                      <th className="px-4 py-2 text-start font-medium w-[110px]">{t('accounting.code')}</th>
                       <th className="px-4 py-2 text-start font-medium">{t('accounting.account_name')}</th>
-                      <th className="px-4 py-2 text-start font-medium">{t('accounting.sub_type')}</th>
-                      <th className="px-4 py-2 text-start font-medium">{t('accounting.system')}</th>
+                      <th className="px-4 py-2 text-start font-medium w-[140px]">{t('accounting.sub_type')}</th>
+                      <th className="px-4 py-2 text-start font-medium w-[100px]">{t('accounting.system')}</th>
+                      <th className="px-4 py-2 text-end font-medium w-[160px]">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {grouped[ft.value].map((a) => (
-                      <tr key={a.id} className="border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
-                        <td className="px-4 py-2.5 font-mono text-xs text-ink-primary">{a.code}</td>
-                        <td className="px-4 py-2.5 text-ink-primary">{a.name}</td>
-                        <td className="px-4 py-2.5 text-ink-secondary">{a.sub_type ?? '—'}</td>
-                        <td className="px-4 py-2.5">
-                          {a.is_system && (
-                            <span className="rounded-pill bg-surface-muted px-1.5 py-0.5 text-xs text-ink-tertiary">
-                              {t('accounting.system')}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                    {grouped[ft.value].map((a) => {
+                      const inactive = a.is_active === false;
+                      return (
+                        <tr key={a.id}
+                            className="border-b border-border-subtle last:border-0 hover:bg-surface-muted/50"
+                            style={{ opacity: inactive ? 0.5 : 1 }}>
+                          <td className="px-4 py-2.5 font-mono text-xs text-ink-primary">{a.code}</td>
+                          <td className="px-4 py-2.5 text-ink-primary">
+                            {a.name}
+                            {a.name_ar && <span dir="rtl" className="ms-2 text-xs text-ink-tertiary">({a.name_ar})</span>}
+                          </td>
+                          <td className="px-4 py-2.5 text-ink-secondary">{a.sub_type ?? '—'}</td>
+                          <td className="px-4 py-2.5">
+                            {a.is_system && (
+                              <span className="rounded-pill bg-surface-muted px-1.5 py-0.5 text-xs text-ink-tertiary">
+                                {t('accounting.system')}
+                              </span>
+                            )}
+                            {inactive && (
+                              <span className="ms-1 rounded-pill bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">
+                                Inactive
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2.5 text-end">
+                            <div className="inline-flex gap-3 text-xs">
+                              <button
+                                type="button"
+                                onClick={() => startEdit(a)}
+                                className="text-brand-600 hover:text-brand-700 font-medium"
+                              >Edit</button>
+                              {!a.is_system && (
+                                inactive ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => { setActionError(null); activateMutation.mutate(a.id); }}
+                                    className="text-emerald-600 hover:text-emerald-700 font-medium"
+                                    disabled={activateMutation.isPending}
+                                  >Activate</button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (!window.confirm(`Deactivate ${a.code} ${a.name}?\nIt will be hidden from pickers but kept for audit history.`)) return;
+                                      setActionError(null);
+                                      deactivateMutation.mutate(a.id);
+                                    }}
+                                    className="text-red-600 hover:text-red-700 font-medium"
+                                    disabled={deactivateMutation.isPending}
+                                  >Deactivate</button>
+                                )
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
@@ -202,19 +338,43 @@ export default function ChartOfAccountsPage() {
         </div>
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title={t('accounting.add_account')}>
-        <form onSubmit={handleSubmit((v) => createMutation.mutate(v as FormValues))} className="space-y-4">
+      <Modal
+        open={open}
+        onClose={closeModal}
+        title={editing
+          ? `Edit account ${editing.code} ${editing.name}`
+          : t('accounting.add_account')}
+      >
+        <form
+          onSubmit={handleSubmit((v) => {
+            (editing ? editMutation : createMutation).mutate(v as FormValues);
+          })}
+          className="space-y-4"
+        >
+          {/* Phase 14.10 — banner explaining what's locked on system accounts. */}
+          {editing?.is_system && (
+            <div className="rounded-card border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <strong>System account.</strong> Code and type are locked because built-in
+              postings (invoices, payments, GRNs) reference this account by code. You can
+              still rename it in English / Arabic to match your local terminology.
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.code')}</label>
-              <Input {...register('code')} placeholder="e.g. 1700" />
+              <Input
+                {...register('code')}
+                placeholder="e.g. 1700"
+                disabled={editing?.is_system === true}
+              />
               {errors.code && <p className="mt-1 text-xs text-red-500">{errors.code.message}</p>}
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.type')}</label>
               <select
                 {...register('flat_type')}
-                className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500"
+                disabled={editing?.is_system === true}
+                className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-surface-muted disabled:text-ink-tertiary"
               >
                 {FLAT_TYPES.map((ft) => (
                   <option key={ft.value} value={ft.value}>{ft.label}</option>
@@ -234,16 +394,28 @@ export default function ChartOfAccountsPage() {
           {showSubTypeExtra && (
             <div>
               <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.sub_type')} <span className="text-ink-tertiary">(optional)</span></label>
-              <Input {...register('sub_type_extra')} placeholder="e.g. owner, retained, drawings" />
+              <Input {...register('sub_type_extra')} placeholder="e.g. owner, retained, drawings"
+                     disabled={editing?.is_system === true} />
               <p className="mt-1 text-xs text-ink-tertiary">Free-text tag for grouping equity accounts.</p>
             </div>
           )}
-          {createMutation.isError && (
-            <p className="text-xs text-red-500">{String((createMutation.error as Error)?.message ?? t('common.error'))}</p>
+          {(createMutation.isError || editMutation.isError) && (
+            <p className="text-xs text-red-500">
+              {String((createMutation.error as Error | undefined)?.message
+                    ?? (editMutation.error   as Error | undefined)?.message
+                    ?? t('common.error'))}
+            </p>
           )}
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="ghost" onClick={() => setOpen(false)}>{t('common.cancel')}</Button>
-            <Button type="submit" disabled={isSubmitting || createMutation.isPending}>{t('common.save')}</Button>
+            <Button type="button" variant="ghost" onClick={closeModal}>{t('common.cancel')}</Button>
+            <Button
+              type="submit"
+              disabled={isSubmitting || createMutation.isPending || editMutation.isPending}
+            >
+              {editing
+                ? (editMutation.isPending ? '…' : 'Save changes')
+                : (createMutation.isPending ? '…' : t('common.save'))}
+            </Button>
           </div>
         </form>
       </Modal>

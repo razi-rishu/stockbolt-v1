@@ -26,6 +26,7 @@ export type ProductPriceLevelRow = Tables['product_price_levels']['Row'];
 
 // ── Insert helpers (used by seed services) ───────────────────────────────────
 export type CoaInsert = Omit<Tables['chart_of_accounts']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type CoaUpdate = Tables['chart_of_accounts']['Update'];
 export type TaxRateInsert = Omit<Tables['tax_rates']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type PaymentMethodInsert = Omit<Tables['payment_methods']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type UnitInsert = Omit<Tables['units_of_measure']['Insert'], 'id' | 'created_at' | 'updated_at'>;
@@ -382,6 +383,18 @@ export interface StockMovementPayload {
 export interface CoaAPI {
   list(company_id: string): Promise<CoaRow[]>;
   create(row: CoaInsert): Promise<CoaRow>;
+  /** Phase 14.10 — edit an existing CoA row. System accounts allow name +
+   *  name_ar + parent_id changes only; code/type/sub_type/is_system are
+   *  locked client-side (the column itself is updatable so customizing
+   *  isn't impossible, just guarded). For non-system rows everything is
+   *  fair game. */
+  update(id: string, row: CoaUpdate): Promise<CoaRow>;
+  /** Phase 14.10 — soft-delete (sets is_active=false). Refuses to
+   *  deactivate system accounts. Refuses if the account has ANY GL
+   *  history (would orphan past JEs visually). */
+  deactivate(id: string): Promise<void>;
+  /** Re-activate a previously deactivated account. */
+  activate(id: string): Promise<void>;
 }
 
 export interface AccountingAPI {

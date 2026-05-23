@@ -816,6 +816,50 @@ export function createSupabaseAdapter(
         assertNoError(error, 'coa.create');
         return data!;
       },
+      // Phase 14.10 — edit CoA row. Client-side gating decides which
+      // fields to send for system accounts; the DB itself accepts any
+      // column so a future migration could harden if needed.
+      async update(id, row): Promise<CoaRow> {
+        const { data, error } = await client.from('chart_of_accounts').update(row).eq('id', id).select().single();
+        assertNoError(error, 'coa.update');
+        return data!;
+      },
+      // Phase 14.10 — soft-delete (is_active=false). Guards:
+      //   - refuse if is_system=true
+      //   - refuse if any general_ledger row references this account
+      //     (we don't want orphaned history with no visible parent)
+      async deactivate(id) {
+        // Read the row first so we can guard system accounts.
+        const { data: row, error: readErr } = await client
+          .from('chart_of_accounts').select('id, is_system, code, name')
+          .eq('id', id).single();
+        assertNoError(readErr, 'coa.deactivate/read');
+        if (row?.is_system) {
+          throw new Error(`Cannot deactivate system account ${row.code} ${row.name} — it's used by built-in RPCs.`);
+        }
+        // GL history guard. count={ exact, head: true } returns just the
+        // count, no rows; cheap.
+        const glHistory = await (client.from as unknown as (t: string) => {
+          select: (cols: string, opts: { count: 'exact'; head: true }) => {
+            eq: (k: string, v: unknown) => Promise<{ count: number | null; error: unknown }>;
+          };
+        })('general_ledger')
+          .select('id', { count: 'exact', head: true })
+          .eq('account_id', id);
+        assertNoError(glHistory.error as Error | null, 'coa.deactivate/glcount');
+        if ((glHistory.count ?? 0) > 0) {
+          throw new Error(
+            `Cannot deactivate — this account has ${glHistory.count} journal-entry line(s) in its history. ` +
+            `Deactivating would hide them. Either reverse the entries first or post offsetting JEs to zero it out.`
+          );
+        }
+        const { error } = await client.from('chart_of_accounts').update({ is_active: false }).eq('id', id);
+        assertNoError(error, 'coa.deactivate');
+      },
+      async activate(id) {
+        const { error } = await client.from('chart_of_accounts').update({ is_active: true }).eq('id', id);
+        assertNoError(error, 'coa.activate');
+      },
     },
 
     // ── Phase 2: Price Levels ──────────────────────────────────────────────
