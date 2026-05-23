@@ -437,6 +437,16 @@ export default function OpeningBalancesPage() {
         <span className="text-ink-tertiary">/</span>
         <h1 className="text-xl font-semibold text-ink-primary">Opening Balances</h1>
         <span className="rounded-pill bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">Migration</span>
+        <div className="ms-auto">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => navigate('/settings/import-export?module=openingBalances')}
+            title="Migrating 50+ rows? Use the bulk CSV / Excel importer instead."
+          >
+            ⤓ Bulk import from CSV / Excel
+          </Button>
+        </div>
       </div>
 
       {/* Explainer card */}

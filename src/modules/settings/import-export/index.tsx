@@ -30,6 +30,7 @@ import {
 } from './_adapters/simple-masters';
 import { categoriesAdapter, buildCategoryLookups, serializeCategoriesForExport } from './_adapters/categories';
 import { coaAdapter, buildCoaLookups } from './_adapters/coa';
+import { openingBalancesAdapter, buildOBLookups } from './_adapters/opening-balances';
 import type { ModuleAdapter, ImportContext, ApplyResult, DuplicatePolicy } from './_adapters/types';
 
 // Registry — each entry is the same ModuleAdapter contract. Adding a
@@ -129,6 +130,18 @@ const MODULES: Record<string, ModuleEntry> = {
     buildLookups: noLookups,
     exportSerialize: (rows) => plainExportSerialize(rows, priceLevelsAdapter),
     naturalKey: (r) => `name:${(r.name as string).toLowerCase()}`,
+  },
+  // Phase 14.11d — bulk import of opening balances. No exportable rows
+  // (openings live in invoices/bills/payments via the 14.09 wizard),
+  // so "Export current" is a no-op for this module. The point is the
+  // import path for bulk migration from a prior system.
+  openingBalances: {
+    adapter: openingBalancesAdapter,
+    buildLookups: async (cid) => buildOBLookups(cid) as unknown as Record<string, unknown>,
+    exportSerialize: async () => [],
+    // No dedup — every row is a new posting; ImportContext.existing
+    // stays empty so the duplicate banner never appears for this module.
+    naturalKey: () => '',
   },
 };
 
