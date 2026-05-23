@@ -39,6 +39,7 @@ import { Button } from '@/ui/button';
 import type {
   ContactRow, OpeningBalanceType, OpeningBalanceInput,
   OpeningBalanceListed, CoaRow, GLOpeningBalanceInput,
+  BankOpeningBalanceInput, BankAccountRow,
 } from '@/data/adapter';
 
 // ── Local types ─────────────────────────────────────────────────────────────
@@ -57,9 +58,14 @@ interface DraftRow {
 
 // Phase 14.09b — direct GL opening balance row (fixed assets, long-term,
 // capital, retained earnings, cash, etc.).
+// Phase 14.09c — when target='bank', `bank_account_id` carries the chosen
+// bank and the RPC resolves the CoA + updates bank_accounts.opening_balance.
 interface GlDraftRow {
   _key:       string;
-  account_id: string;
+  /** 'coa' = normal CoA pick (postGl). 'bank' = specific bank account (postBank). */
+  target:     'coa' | 'bank';
+  account_id: string;      // populated for target='coa'
+  bank_account_id: string; // populated for target='bank'
   direction:  'debit' | 'credit';
   amount:     string;
   date:       string;
@@ -79,7 +85,9 @@ const emptyDraft = (): DraftRow => ({
 });
 
 const emptyGlDraft = (): GlDraftRow => ({
-  _key: newKey(), account_id: '', direction: 'debit',
+  _key: newKey(),
+  target: 'coa', account_id: '', bank_account_id: '',
+  direction: 'debit',
   amount: '', date: todayIso(), notes: '', status: 'draft',
 });
 
@@ -176,6 +184,12 @@ export default function OpeningBalancesPage() {
     queryFn:  () => getAdapter().openingBalances.get3010Balance(company_id!),
     enabled:  !!company_id,
   });
+  // Phase 14.09c — bank accounts for the per-bank opening picker.
+  const { data: banks = [] } = useQuery<BankAccountRow[]>({
+    queryKey: ['bank_accounts', company_id],
+    queryFn:  () => getAdapter().bankAccounts.list(company_id!),
+    enabled:  !!company_id,
+  });
 
   const coaById = useMemo(() => {
     const m: Record<string, CoaRow> = {};
@@ -203,6 +217,45 @@ export default function OpeningBalancesPage() {
   const addGlRow    = () => setGlRows(prev => [...prev, emptyGlDraft()]);
   const removeGlRow = (key: string) => setGlRows(prev => prev.length === 1 ? prev : prev.filter(r => r._key !== key));
   const clearGlDone = () => setGlRows(prev => prev.filter(r => r.status !== 'done'));
+
+  // Phase 14.09c — void a posted opening row.
+  const [voidingId, setVoidingId] = useState<string | null>(null);
+  async function voidRow(p: OpeningBalanceListed) {
+    if (!p.void_doc_type) {
+      setTopError('Cannot void this row (no doc-type tag). Reload and retry.');
+      return;
+    }
+    const label = p.contact_name || p.account_name || p.doc_number;
+    const reason = window.prompt(
+      `Void opening row "${label}" (${p.doc_number})?\n\n` +
+      'This reverses the underlying journal entry and marks the source ' +
+      'document as void. The 3010 balance will return to where it was ' +
+      'before this row was posted.\n\n' +
+      'Optional reason for the audit log:',
+    );
+    if (reason === null) return;  // user cancelled
+    setVoidingId(p.doc_id);
+    setTopError(null);
+    try {
+      await getAdapter().openingBalances.void(p.doc_id, p.void_doc_type, reason || undefined);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['opening_balances_posted', company_id] }),
+        qc.invalidateQueries({ queryKey: ['ob_3010_balance', company_id] }),
+        qc.invalidateQueries({ queryKey: ['bank_accounts', company_id] }),
+        qc.invalidateQueries({ queryKey: ['invoices', company_id] }),
+        qc.invalidateQueries({ queryKey: ['vendor_bills', company_id] }),
+        qc.invalidateQueries({ queryKey: ['payments', company_id] }),
+        qc.invalidateQueries({ queryKey: ['open_invoices'] }),
+        qc.invalidateQueries({ queryKey: ['open_bills'] }),
+        qc.invalidateQueries({ queryKey: ['trial_balance'] }),
+        qc.invalidateQueries({ queryKey: ['balance_sheet'] }),
+      ]);
+    } catch (e) {
+      setTopError(`Void failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    } finally {
+      setVoidingId(null);
+    }
+  }
 
   // Totals — group by type so the operator can see what they're about to post.
   const totals = useMemo(() => {
@@ -259,13 +312,17 @@ export default function OpeningBalancesPage() {
   // the future. Control-account warning is non-blocking (returns null
   // here; UI surfaces a soft warning separately).
   const validateGlRow = (r: GlDraftRow): string | null => {
-    if (!r.account_id) return 'Pick a GL account';
+    if (r.target === 'bank') {
+      if (!r.bank_account_id) return 'Pick a bank account';
+    } else {
+      if (!r.account_id) return 'Pick a GL account';
+      const acct = coaById[r.account_id];
+      if (acct?.code === '3010') return 'Cannot post against 3010 (it IS the contra account)';
+    }
     if (!r.date) return 'Date is required';
     const amt = parseFloat(r.amount);
     if (!isFinite(amt) || amt <= 0) return 'Amount must be positive';
     if (r.date > todayIso()) return 'Date cannot be in the future';
-    const acct = coaById[r.account_id];
-    if (acct?.code === '3010') return 'Cannot post against 3010 (it IS the contra account)';
     return null;
   };
   const glDraftRows = glRows.filter(r => r.status !== 'done');
@@ -312,25 +369,38 @@ export default function OpeningBalancesPage() {
         }
       }
 
-      // ── 2. GL rows (Phase 14.09b) ────────────────────────────────────────
+      // ── 2. GL rows (Phase 14.09b + 14.09c bank variant) ──────────────────
       for (const r of [...glRows]) {
         if (r.status === 'done') continue;
         setGlRows(prev => prev.map(x => x._key === r._key ? { ...x, status: 'posting', error: undefined } : x));
         try {
-          const input: GLOpeningBalanceInput = {
-            account_id: r.account_id,
-            direction:  r.direction,
-            amount:     parseFloat(r.amount),
-            date:       r.date,
-            notes:      r.notes.trim() || null,
-          };
-          await adapter.openingBalances.postGl(input);
+          if (r.target === 'bank') {
+            const input: BankOpeningBalanceInput = {
+              bank_account_id: r.bank_account_id,
+              direction:       r.direction,
+              amount:          parseFloat(r.amount),
+              date:            r.date,
+              notes:           r.notes.trim() || null,
+            };
+            await adapter.openingBalances.postBank(input);
+          } else {
+            const input: GLOpeningBalanceInput = {
+              account_id: r.account_id,
+              direction:  r.direction,
+              amount:     parseFloat(r.amount),
+              date:       r.date,
+              notes:      r.notes.trim() || null,
+            };
+            await adapter.openingBalances.postGl(input);
+          }
           setGlRows(prev => prev.map(x => x._key === r._key ? { ...x, status: 'done' } : x));
         } catch (e) {
           const msg = e instanceof Error ? e.message : 'Failed';
           setGlRows(prev => prev.map(x => x._key === r._key ? { ...x, status: 'error', error: msg } : x));
-          const acct = coaById[r.account_id];
-          setTopError(`GL row "${acct?.code ?? '?'} ${acct?.name ?? ''}" failed: ${msg}. Earlier rows are saved. Fix and re-Post.`);
+          const label = r.target === 'bank'
+            ? (banks.find(b => b.id === r.bank_account_id)?.name ?? '?')
+            : (() => { const a = coaById[r.account_id]; return `${a?.code ?? '?'} ${a?.name ?? ''}`; })();
+          setTopError(`GL row "${label}" failed: ${msg}. Earlier rows are saved. Fix and re-Post.`);
           setPosting(false);
           await qc.invalidateQueries({ queryKey: ['opening_balances_posted', company_id] });
           await qc.invalidateQueries({ queryKey: ['ob_3010_balance', company_id] });
@@ -606,7 +676,7 @@ export default function OpeningBalancesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
-                <th className="px-3 py-2 text-start font-medium w-[280px]">GL account</th>
+                <th className="px-3 py-2 text-start font-medium w-[320px]">Account / Bank</th>
                 <th className="px-3 py-2 text-start font-medium w-[130px]">Date</th>
                 <th className="px-3 py-2 text-start font-medium w-[160px]">Direction</th>
                 <th className="px-3 py-2 text-end   font-medium w-[140px]">Amount</th>
@@ -618,7 +688,7 @@ export default function OpeningBalancesPage() {
               {glRows.map(r => {
                 const acct = coaById[r.account_id];
                 const err = r.status === 'draft' ? glValidations[glDraftRows.indexOf(r)] : null;
-                const isControlAccount = acct && CONTROL_ACCOUNT_CODES.has(acct.code);
+                const isControlAccount = r.target === 'coa' && acct && CONTROL_ACCOUNT_CODES.has(acct.code);
                 const isDone   = r.status === 'done';
                 const isPosting = r.status === 'posting';
                 const isError  = r.status === 'error';
@@ -626,36 +696,82 @@ export default function OpeningBalancesPage() {
                   <tr key={r._key} className="border-b border-border-subtle last:border-0"
                       style={{ opacity: isDone ? 0.55 : 1, background: isError ? '#FEF2F2' : undefined }}>
                     <td className="px-3 py-2">
-                      <select
-                        className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
-                        value={r.account_id}
-                        disabled={isDone || isPosting}
-                        onChange={e => {
-                          const id = e.target.value;
-                          const a = coaById[id];
-                          updateGlRow(r._key, {
-                            account_id: id,
-                            // Smart default — assets/expenses normally have Dr balance,
-                            // liabilities/equity/income have Cr.
-                            direction: defaultDirection(a),
-                          });
-                        }}
-                      >
-                        <option value="">— select GL account —</option>
-                        {(['asset','liability','equity','income','expense'] as const).map(group => {
-                          const accountsInGroup = coa.filter(a => a.type === group && a.is_active);
-                          if (accountsInGroup.length === 0) return null;
-                          return (
-                            <optgroup key={group} label={group[0].toUpperCase() + group.slice(1) + 's'}>
-                              {accountsInGroup.map(a => (
-                                <option key={a.id} value={a.id}>
-                                  {a.code} — {a.name}
-                                </option>
-                              ))}
-                            </optgroup>
-                          );
-                        })}
-                      </select>
+                      {/* Phase 14.09c — segmented toggle: CoA vs Bank account */}
+                      <div className="mb-1 inline-flex rounded border border-slate-300 overflow-hidden text-[11px] font-semibold">
+                        <button
+                          type="button"
+                          disabled={isDone || isPosting}
+                          onClick={() => updateGlRow(r._key, {
+                            target: 'coa', bank_account_id: '',
+                          })}
+                          style={{
+                            padding: '3px 8px',
+                            background: r.target === 'coa' ? '#EEF2FF' : '#FFF',
+                            color:      r.target === 'coa' ? '#3730A3' : '#64748B',
+                            cursor: isDone || isPosting ? 'not-allowed' : 'pointer',
+                          }}
+                        >CoA account</button>
+                        <button
+                          type="button"
+                          disabled={isDone || isPosting || banks.length === 0}
+                          onClick={() => updateGlRow(r._key, {
+                            target: 'bank', account_id: '',
+                          })}
+                          title={banks.length === 0 ? 'Add a bank account in Settings → Bank Accounts first' : 'Pick a specific bank account'}
+                          style={{
+                            padding: '3px 8px', borderLeft: '1px solid #CBD5E1',
+                            background: r.target === 'bank' ? '#ECFDF5' : '#FFF',
+                            color:      r.target === 'bank' ? '#065F46' : '#64748B',
+                            cursor: isDone || isPosting || banks.length === 0 ? 'not-allowed' : 'pointer',
+                            opacity: banks.length === 0 ? 0.5 : 1,
+                          }}
+                        >Bank account</button>
+                      </div>
+                      {r.target === 'bank' ? (
+                        <select
+                          className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
+                          value={r.bank_account_id}
+                          disabled={isDone || isPosting}
+                          onChange={e => updateGlRow(r._key, {
+                            bank_account_id: e.target.value,
+                            direction: 'debit',           // bank openings are nearly always Dr
+                          })}
+                        >
+                          <option value="">— select bank account —</option>
+                          {banks.map(b => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <select
+                          className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
+                          value={r.account_id}
+                          disabled={isDone || isPosting}
+                          onChange={e => {
+                            const id = e.target.value;
+                            const a = coaById[id];
+                            updateGlRow(r._key, {
+                              account_id: id,
+                              direction: defaultDirection(a),
+                            });
+                          }}
+                        >
+                          <option value="">— select GL account —</option>
+                          {(['asset','liability','equity','income','expense'] as const).map(group => {
+                            const accountsInGroup = coa.filter(a => a.type === group && a.is_active);
+                            if (accountsInGroup.length === 0) return null;
+                            return (
+                              <optgroup key={group} label={group[0].toUpperCase() + group.slice(1) + 's'}>
+                                {accountsInGroup.map(a => (
+                                  <option key={a.id} value={a.id}>
+                                    {a.code} — {a.name}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            );
+                          })}
+                        </select>
+                      )}
                       {isControlAccount && acct && (
                         <div className="mt-1 text-[11px] text-amber-700">
                           ⚠ {acct.code} is a control account.{' '}
@@ -664,6 +780,7 @@ export default function OpeningBalancesPage() {
                           {acct.code === '2400' && 'Use Customer-credit rows above.'}
                           {acct.code === '1400' && 'Use Vendor-credit rows above.'}
                           {acct.code === '1300' && 'Use the inventory wizard so MAC + stock_ledger stay consistent.'}
+                          {acct.code === '1100' && 'Pick the specific bank via the Bank-account toggle so the recon report stays in sync.'}
                         </div>
                       )}
                     </td>
@@ -831,31 +948,45 @@ export default function OpeningBalancesPage() {
             <thead>
               <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
                 <th className="px-3 py-2 text-start font-medium">Type</th>
-                <th className="px-3 py-2 text-start font-medium">Contact</th>
+                <th className="px-3 py-2 text-start font-medium">Contact / Account</th>
                 <th className="px-3 py-2 text-start font-medium">Doc #</th>
                 <th className="px-3 py-2 text-start font-medium">Date</th>
                 <th className="px-3 py-2 text-end   font-medium">Amount</th>
                 <th className="px-3 py-2 text-start font-medium">Status</th>
+                <th className="px-3 py-2 text-end   font-medium w-[80px]"></th>
               </tr>
             </thead>
             <tbody>
               {posted.map(p => {
-                // Phase 14.09b — GL rows have no contact; use their CoA
-                // account name in the "Contact" column instead.
-                const isGl  = p.type === 'gl_debit' || p.type === 'gl_credit';
-                const pill  = isGl
+                // Pill style per type. GL + bank rows have no contact; show
+                // the CoA account / bank name in the "Contact" column.
+                const isGl   = p.type === 'gl_debit'   || p.type === 'gl_credit';
+                const isBank = p.type === 'bank_debit' || p.type === 'bank_credit';
+                const pill = isGl
                   ? {
                       short: p.type === 'gl_debit' ? 'GL Dr' : 'GL Cr',
                       tint:   p.type === 'gl_debit' ? '#CCFBF1' : '#FED7AA',
                       border: p.type === 'gl_debit' ? '#5EEAD4' : '#FDBA74',
                       text:   p.type === 'gl_debit' ? '#0F766E' : '#9A3412',
                     }
+                  : isBank
+                  ? {
+                      short: p.type === 'bank_debit' ? 'BANK Dr' : 'BANK Cr',
+                      tint:   p.type === 'bank_debit' ? '#D1FAE5' : '#FEE2E2',
+                      border: p.type === 'bank_debit' ? '#6EE7B7' : '#FCA5A5',
+                      text:   p.type === 'bank_debit' ? '#065F46' : '#991B1B',
+                    }
                   : TYPE_META[p.type as OpeningBalanceType];
                 const subjectLabel = isGl
-                  ? `${p.account_code ?? ''} ${p.account_name ?? ''}`.trim()
+                  ? `${p.account_code ?? ''} — ${p.account_name ?? ''}`.replace(/^—\s+/, '').trim()
+                  : isBank
+                  ? (p.account_name || p.account_code || '—')
                   : p.contact_name;
+                const canVoid = !!p.void_doc_type;
+                const isVoiding = voidingId === p.doc_id;
                 return (
-                  <tr key={p.doc_id} className="border-b border-border-subtle last:border-0">
+                  <tr key={p.doc_id} className="border-b border-border-subtle last:border-0"
+                      style={{ opacity: isVoiding ? 0.5 : 1 }}>
                     <td className="px-3 py-2">
                       <span style={{
                         display: 'inline-block', padding: '2px 8px',
@@ -870,6 +1001,17 @@ export default function OpeningBalancesPage() {
                       {p.currency} {fmt(p.amount)}
                     </td>
                     <td className="px-3 py-2 text-xs text-ink-tertiary capitalize">{p.status}</td>
+                    <td className="px-3 py-2 text-end">
+                      {canVoid && (
+                        <button
+                          type="button"
+                          onClick={() => voidRow(p)}
+                          disabled={isVoiding}
+                          className="text-xs text-red-600 hover:text-red-800 font-medium disabled:opacity-40"
+                          title="Reverse this opening row + mark the underlying doc void"
+                        >{isVoiding ? '…' : 'Void'}</button>
+                      )}
+                    </td>
                   </tr>
                 );
               })}

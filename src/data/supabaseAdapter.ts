@@ -3986,6 +3986,32 @@ export function createSupabaseAdapter(
         assertNoError(error as Error | null, 'openingBalances.postGl');
         return data as unknown as import('./adapter').GLOpeningBalanceResult;
       },
+      async postBank(input) {
+        // Phase 14.09c — bank-specific opening; resolves to bank's CoA +
+        // updates bank_accounts.opening_balance for the recon report.
+        const { data, error } = await (
+          client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>
+        )('post_bank_opening_balance', {
+          p_bank_account_id: input.bank_account_id,
+          p_direction:       input.direction,
+          p_amount:          input.amount,
+          p_date:            input.date,
+          p_notes:           input.notes ?? null,
+        });
+        assertNoError(error as Error | null, 'openingBalances.postBank');
+        return data as unknown as import('./adapter').BankOpeningBalanceResult;
+      },
+      async void(doc_id, doc_type, reason) {
+        // Phase 14.09c — reverse the opening JE + mark source doc void.
+        const { error } = await (
+          client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>
+        )('void_opening_balance', {
+          p_doc_id:   doc_id,
+          p_doc_type: doc_type,
+          p_reason:   reason ?? null,
+        });
+        assertNoError(error as Error | null, 'openingBalances.void');
+      },
       async get3010Balance(company_id) {
         const { data, error } = await (
           client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>
@@ -4030,19 +4056,26 @@ export function createSupabaseAdapter(
                          contacts?: { name: string } | null; date: string; amount: number;
                          currency: string; status: string; created_at: string; type: 'inbound' | 'outbound' };
         const out: import('./adapter').OpeningBalanceListed[] = [];
+        // Phase 14.09c — listPosted now hides voided rows from the
+        // wizard by default (status === 'void' means the operator has
+        // already reversed it).
         for (const r of (invR.data as RawInv[] ?? [])) {
+          if (r.status === 'void') continue;
           out.push({
-            type: 'ar_owed', doc_id: r.id, doc_number: r.invoice_number,
+            type: 'ar_owed', doc_id: r.id, void_doc_type: 'invoice',
+            doc_number: r.invoice_number,
             contact_id: r.contact_id, contact_name: r.contacts?.name ?? '—',
             date: r.date, due_date: r.due_date,
             amount: Number(r.total_amount), currency: r.currency,
-            outstanding: Number(r.total_amount),   // TODO: subtract paid; deferred for now
+            outstanding: Number(r.total_amount),
             status: r.status, posted_at: r.created_at,
           });
         }
         for (const r of (billR.data as RawBill[] ?? [])) {
+          if (r.status === 'void') continue;
           out.push({
-            type: 'ap_owed', doc_id: r.id, doc_number: r.bill_number,
+            type: 'ap_owed', doc_id: r.id, void_doc_type: 'vendor_bill',
+            doc_number: r.bill_number,
             contact_id: r.supplier_id, contact_name: r.contacts?.name ?? '—',
             date: r.date, due_date: r.due_date,
             amount: Number(r.total_amount), currency: r.currency,
@@ -4051,9 +4084,11 @@ export function createSupabaseAdapter(
           });
         }
         for (const r of (payR.data as RawPay[] ?? [])) {
+          if (r.status === 'void') continue;
           out.push({
             type: r.type === 'outbound' ? 'vendor_credit' : 'customer_credit',
-            doc_id: r.id, doc_number: r.payment_number,
+            doc_id: r.id, void_doc_type: 'payment',
+            doc_number: r.payment_number,
             contact_id: r.contact_id, contact_name: r.contacts?.name ?? '—',
             date: r.date, due_date: null,
             amount: Number(r.amount), currency: r.currency,
@@ -4062,52 +4097,93 @@ export function createSupabaseAdapter(
           });
         }
 
-        // Phase 14.09b — direct GL openings (source_type='opening_gl').
+        // Phase 14.09b + 14.09c — pure-GL + bank-specific openings.
         // Pull the JE header + its non-3010 line so we can show the actual
-        // target account + direction + amount in the posted-list panel.
+        // target account + direction + amount. reversed_by_id IS NULL
+        // filters out JEs already voided (14.09c).
         const fromJe = client.from as unknown as (t: string) => {
           select: (cols: string) => {
             eq: (k: string, v: unknown) => {
-              eq: (k: string, v: unknown) => Promise<{ data: unknown; error: unknown }>;
+              in: (k: string, v: unknown[]) => {
+                is: (k: string, v: unknown) => Promise<{ data: unknown; error: unknown }>;
+              };
             };
           };
         };
-        const glJEs = await fromJe('journal_entries')
-          .select('id, entry_number, date, description, created_at, general_ledger (account_id, account_code, debit, credit), chart_of_accounts:source_id (id)')
-          .eq('company_id', company_id).eq('source_type', 'opening_gl');
-        assertNoError(glJEs.error as Error | null, 'openingBalances.listPosted/gl');
+        const ledgerJEs = await fromJe('journal_entries')
+          .select('id, entry_number, date, description, source_type, source_id, created_at, reversed_by_id, general_ledger (account_id, account_code, debit, credit)')
+          .eq('company_id', company_id)
+          .in('source_type', ['opening_gl', 'opening_bank'])
+          .is('reversed_by_id', null);
+        assertNoError(ledgerJEs.error as Error | null, 'openingBalances.listPosted/gl+bank');
 
-        type RawGlJE = {
+        type RawLedgerJE = {
           id: string; entry_number: string; date: string; description: string;
+          source_type: 'opening_gl' | 'opening_bank';
+          source_id: string | null;
           created_at: string;
+          reversed_by_id: string | null;
           general_ledger?: Array<{
             account_id: string; account_code: string; debit: number; credit: number;
           }>;
         };
-        for (const je of (glJEs.data as RawGlJE[] ?? [])) {
+        // For bank openings we also want the bank's name (for the
+        // posted-list display). Pull bank_accounts once and index.
+        const bankIds = (ledgerJEs.data as RawLedgerJE[] ?? [])
+          .filter(j => j.source_type === 'opening_bank' && j.source_id)
+          .map(j => j.source_id as string);
+        const bankNameById: Record<string, string> = {};
+        if (bankIds.length > 0) {
+          const bankR = await (client.from as unknown as (t: string) => {
+            select: (cols: string) => {
+              in: (k: string, v: unknown[]) => Promise<{ data: unknown; error: unknown }>;
+            };
+          })('bank_accounts').select('id, name').in('id', bankIds);
+          for (const b of ((bankR.data ?? []) as Array<{ id: string; name: string }>)) {
+            bankNameById[b.id] = b.name;
+          }
+        }
+
+        for (const je of (ledgerJEs.data as RawLedgerJE[] ?? [])) {
           const lines = je.general_ledger ?? [];
-          // The "interesting" leg is the non-3010 one. Find it.
           const target = lines.find(l => l.account_code !== '3010');
           if (!target) continue;
           const isDebit = Number(target.debit ?? 0) > 0;
           const amount  = isDebit ? Number(target.debit) : Number(target.credit);
-          // Account name lookup is best-effort; pull from CoA cache if avail.
-          out.push({
-            type: isDebit ? 'gl_debit' : 'gl_credit',
-            doc_id: je.id,
-            doc_number: je.entry_number,
-            contact_id: '',
-            contact_name: '',
-            account_code: target.account_code,
-            account_name: (je.description ?? '').replace(/^Opening balance — \d+ /, '') || target.account_code,
-            date: je.date,
-            due_date: null,
-            amount,
-            currency: 'AED',
-            outstanding: amount,
-            status: 'confirmed',
-            posted_at: je.created_at,
-          });
+
+          if (je.source_type === 'opening_bank') {
+            const bankName = je.source_id ? bankNameById[je.source_id] ?? '' : '';
+            out.push({
+              type: isDebit ? 'bank_debit' : 'bank_credit',
+              doc_id: je.id, void_doc_type: 'opening_bank',
+              doc_number: je.entry_number,
+              contact_id: '',
+              contact_name: '',
+              account_code: target.account_code,
+              account_name: bankName || target.account_code,
+              date: je.date, due_date: null,
+              amount, currency: 'AED',
+              outstanding: amount,
+              status: 'confirmed',
+              posted_at: je.created_at,
+            });
+          } else {
+            // opening_gl
+            out.push({
+              type: isDebit ? 'gl_debit' : 'gl_credit',
+              doc_id: je.id, void_doc_type: 'opening_gl',
+              doc_number: je.entry_number,
+              contact_id: '',
+              contact_name: '',
+              account_code: target.account_code,
+              account_name: (je.description ?? '').replace(/^Opening balance — \d+ /, '') || target.account_code,
+              date: je.date, due_date: null,
+              amount, currency: 'AED',
+              outstanding: amount,
+              status: 'confirmed',
+              posted_at: je.created_at,
+            });
+          }
         }
 
         return out.sort((a, b) => (b.posted_at ?? '').localeCompare(a.posted_at ?? ''));

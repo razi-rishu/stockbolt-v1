@@ -1743,16 +1743,30 @@ export interface OpeningBalancesAPI {
   /** Phase 14.09b — posts one direct-GL opening balance against any
    *  CoA account (Dr/Cr the account; opposite leg lands on 3010
    *  Opening Balance Equity). Used for fixed assets, long-term, capital,
-   *  retained earnings, cash on hand, bank openings. */
+   *  retained earnings, cash on hand. */
   postGl(input: GLOpeningBalanceInput): Promise<GLOpeningBalanceResult>;
+  /** Phase 14.09c — posts an opening balance against a specific BANK
+   *  ACCOUNT (resolves to the bank's coa_account_id, updates the bank's
+   *  opening_balance + opening_balance_date columns, and tags the JE
+   *  with source_type='opening_bank'). Preferred over postGl for cash /
+   *  bank lines because it keeps the bank reconciliation report in
+   *  sync. */
+  postBank(input: BankOpeningBalanceInput): Promise<BankOpeningBalanceResult>;
   /** Lists every opening-balance document ever posted for this company,
    *  for the wizard's "Already posted" review panel. Union of subsidiary
-   *  opening rows (14.09) AND direct-GL openings (14.09b). */
+   *  opening rows (14.09), direct-GL openings (14.09b), and bank
+   *  openings (14.09c). Voided rows are excluded by default. */
   listPosted(company_id: string): Promise<OpeningBalanceListed[]>;
   /** Phase 14.09b — current balance on 3010. Should be zero after a
    *  complete migration; non-zero is an audit flag. */
   get3010Balance(company_id: string): Promise<number>;
+  /** Phase 14.09c — voids one posted opening row. Reverses the underlying
+   *  JE and marks the source doc void (if any). Reason is shown in the
+   *  audit log + the reversal JE description. */
+  void(doc_id: string, doc_type: VoidableDocType, reason?: string): Promise<void>;
 }
+
+export type VoidableDocType = 'invoice' | 'vendor_bill' | 'payment' | 'opening_gl' | 'opening_bank';
 
 // ── Phase 14.09b: GL opening balances ─────────────────────────────────────
 export interface GLOpeningBalanceInput {
@@ -1772,9 +1786,32 @@ export interface GLOpeningBalanceResult {
   amount:           number;
 }
 
+// Phase 14.09c — bank-specific opening balance.
+export interface BankOpeningBalanceInput {
+  bank_account_id: string;
+  direction:       'debit' | 'credit';
+  amount:          number;
+  date:            string;
+  notes?:          string | null;
+}
+export interface BankOpeningBalanceResult {
+  journal_entry_id: string;
+  entry_number:     string;
+  bank_account_id:  string;
+  bank_name:        string;
+  account_code:     string;
+  direction:        'debit' | 'credit';
+  amount:           number;
+}
+
 export interface OpeningBalanceListed {
-  type:        OpeningBalanceType | 'gl_debit' | 'gl_credit';
+  type:        OpeningBalanceType | 'gl_debit' | 'gl_credit' | 'bank_debit' | 'bank_credit';
+  /** Identifier for void(): for subsidiary rows it's the invoice/bill/
+   *  payment id; for GL + bank rows it's the JE id. */
   doc_id:      string;
+  /** Type tag passed back to openingBalances.void(). Matches what the
+   *  void RPC's p_doc_type expects. */
+  void_doc_type?: VoidableDocType;
   doc_number:  string;
   /** For subsidiary rows: the customer/supplier. For GL rows: empty
    *  (no contact). */

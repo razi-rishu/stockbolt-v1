@@ -367,12 +367,14 @@ export function createSelfHostedAdapter(): DataAdapter {
       deactivate: () => notImplemented('salespeople.deactivate'),
       activate:   () => notImplemented('salespeople.activate'),
     },
-    // Phase 14.09 / 14.09b: Opening Balances
+    // Phase 14.09 / 14.09b / 14.09c: Opening Balances
     openingBalances: {
       post:           () => notImplemented('openingBalances.post'),
       postGl:         () => notImplemented('openingBalances.postGl'),
+      postBank:       () => notImplemented('openingBalances.postBank'),
       listPosted:     () => notImplemented('openingBalances.listPosted'),
       get3010Balance: () => notImplemented('openingBalances.get3010Balance'),
+      void:           () => notImplemented('openingBalances.void'),
     },
   };
 }
