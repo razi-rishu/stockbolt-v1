@@ -14,6 +14,7 @@ import { Table, type Column } from '@/ui/table';
 import { Badge } from '@/ui/badge';
 import { PageHeader, Panel } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
+import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { TaxRateRow } from '@/data/adapter';
 
 // tax_type values used by the seed migration. UI displays a friendly label
@@ -60,6 +61,7 @@ export default function TaxRatesSettingsPage() {
         title="Tax Rates"
         subtitle={`${rates.length} rate${rates.length === 1 ? '' : 's'} configured — applied to invoice / quote / bill lines and reported on the VAT return.`}
         crumb="Settings · Sales"
+        actions={<ImportExportButton moduleKey="taxRates" />}
       />
 
       <div style={{

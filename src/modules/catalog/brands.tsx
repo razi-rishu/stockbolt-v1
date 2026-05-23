@@ -10,6 +10,7 @@ import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Modal } from '@/ui/modal';
 import { Table, type Column } from '@/ui/table';
+import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { BrandRow } from '@/data/adapter';
 
 const schema = z.object({
@@ -116,7 +117,10 @@ export default function BrandsPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-ink-primary">{t('catalog.brands.title')}</h1>
-        <Button size="sm" onClick={openAdd}>{t('common.add')} {t('catalog.brands.singular')}</Button>
+        <div className="flex gap-2">
+          <ImportExportButton moduleKey="brands" />
+          <Button size="sm" onClick={openAdd}>{t('common.add')} {t('catalog.brands.singular')}</Button>
+        </div>
       </div>
 
       <input

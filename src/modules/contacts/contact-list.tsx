@@ -16,6 +16,7 @@ import { Badge } from '@/ui/badge';
 import { Pagination, paginate } from '@/ui/pagination';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
+import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { ContactRow } from '@/data/adapter';
 
 const PAGE_SIZE = 50;
@@ -191,7 +192,12 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
       <PageHeader
         title={t(titleKey)}
         subtitle={`${filtered.length} ${filtered.length === 1 ? 'contact' : 'contacts'}`}
-        actions={<Button size="sm" onClick={openAdd}>+ {t('common.add')} {t(singularKey)}</Button>}
+        actions={
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <ImportExportButton moduleKey="contacts" />
+            <Button size="sm" onClick={openAdd}>+ {t('common.add')} {t(singularKey)}</Button>
+          </div>
+        }
       />
 
       <div style={{ position: 'relative', maxWidth: '420px' }}>

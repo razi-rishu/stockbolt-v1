@@ -13,6 +13,7 @@ import { Table, type Column } from '@/ui/table';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
 import { Badge } from '@/ui/badge';
+import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { PriceLevelRow } from '@/data/adapter';
 
 const schema = z.object({
@@ -85,7 +86,12 @@ export default function PriceLevelsPage() {
       <PageHeader
         title={t('settings.price_levels.title')}
         subtitle={t('settings.price_levels.description')}
-        actions={<Button size="sm" onClick={openAdd}>+ {t('common.add')} {t('settings.price_levels.singular')}</Button>}
+        actions={
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <ImportExportButton moduleKey="priceLevels" />
+            <Button size="sm" onClick={openAdd}>+ {t('common.add')} {t('settings.price_levels.singular')}</Button>
+          </div>
+        }
       />
 
       {isLoading

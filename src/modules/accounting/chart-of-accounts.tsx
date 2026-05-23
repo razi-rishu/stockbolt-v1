@@ -9,6 +9,7 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Modal } from '@/ui/modal';
+import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { CoaRow } from '@/data/adapter';
 
 // ─── Flat 9-option Type dropdown ─────────────────────────────────────────────
@@ -236,6 +237,7 @@ export default function ChartOfAccountsPage() {
             />
             <span>Show inactive</span>
           </label>
+          <ImportExportButton moduleKey="coa" />
           <Button size="sm" onClick={() => { setEditing(null); reset(); setActionError(null); setOpen(true); }}>
             {t('accounting.add_account')}
           </Button>

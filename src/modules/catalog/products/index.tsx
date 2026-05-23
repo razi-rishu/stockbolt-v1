@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
+import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import { Badge } from '@/ui/badge';
 import { Table, type Column } from '@/ui/table';
 import { PageHeader } from '@/ui/primitives';
@@ -111,16 +112,7 @@ export default function ProductsListPage() {
         subtitle={`${rows.length} ${rows.length === 1 ? 'item' : 'items'}`}
         actions={
           <div style={{ display: 'flex', gap: '8px' }}>
-            {/* Phase 14.11a — quick export. Hub at /settings/import-export
-                  carries template + import + format toggle. */}
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => navigate('/settings/import-export')}
-              title="Bulk export to CSV / Excel, download template, or import a file"
-            >
-              ⤓ Import / Export
-            </Button>
+            <ImportExportButton moduleKey="products" />
             <Button size="sm" onClick={() => navigate('/products/new')}>
               + {t('common.add')} {t('products.singular')}
             </Button>

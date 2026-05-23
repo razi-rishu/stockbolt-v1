@@ -6,6 +6,7 @@ import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
+import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { SalespersonRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -122,7 +123,14 @@ export default function SalespeoplePage() {
       <PageHeader
         title="Salespeople"
         subtitle="Master list of sales staff. Tagged on invoices and quotes for performance reports."
-        actions={!showForm ? <Button onClick={startNew}>+ Add salesperson</Button> : undefined}
+        actions={
+          !showForm ? (
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <ImportExportButton moduleKey="salespeople" />
+              <Button onClick={startNew}>+ Add salesperson</Button>
+            </div>
+          ) : undefined
+        }
       />
 
       {error && (

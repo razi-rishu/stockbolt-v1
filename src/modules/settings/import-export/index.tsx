@@ -16,7 +16,7 @@
 
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import {
@@ -148,8 +148,17 @@ export default function ImportExportHub() {
   const { company_id } = useAuthStore();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
 
-  const [moduleKey, setModuleKey] = useState<string | null>(null);
+  // Phase 14.11c — page-level "Import / Export" buttons deep-link here
+  // via ?module=products / contacts / coa / taxRates / units / brands /
+  // categories / salespeople / warehouses / priceLevels. We pre-select
+  // that module on mount so the operator lands on the right card.
+  const initialModuleKey = (() => {
+    const fromUrl = searchParams.get('module');
+    return fromUrl && fromUrl in MODULES ? fromUrl : null;
+  })();
+  const [moduleKey, setModuleKey] = useState<string | null>(initialModuleKey);
   const [format,    setFormat]    = useState<'csv' | 'xlsx'>('csv');
   const [step,      setStep]      = useState<Step>('pick');
   const [policy,    setPolicy]    = useState<DuplicatePolicy>('skip');

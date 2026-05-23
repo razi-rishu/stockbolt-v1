@@ -13,6 +13,7 @@ import { Table, type Column } from '@/ui/table';
 import { Badge } from '@/ui/badge';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
+import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { WarehouseRow } from '@/data/adapter';
 
 const schema = z.object({
@@ -94,7 +95,12 @@ export default function WarehousesPage() {
       <PageHeader
         title={t('settings.warehouses.title')}
         subtitle={`${warehouses.length} ${warehouses.length === 1 ? 'warehouse' : 'warehouses'}`}
-        actions={<Button size="sm" onClick={openAdd}>+ {t('common.add')} {t('settings.warehouses.singular')}</Button>}
+        actions={
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <ImportExportButton moduleKey="warehouses" />
+            <Button size="sm" onClick={openAdd}>+ {t('common.add')} {t('settings.warehouses.singular')}</Button>
+          </div>
+        }
       />
 
       {isLoading

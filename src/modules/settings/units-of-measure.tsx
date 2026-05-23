@@ -12,6 +12,7 @@ import { Modal } from '@/ui/modal';
 import { Table, type Column } from '@/ui/table';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
+import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { UnitRow } from '@/data/adapter';
 
 const schema = z.object({
@@ -76,7 +77,12 @@ export default function UnitsOfMeasurePage() {
       <PageHeader
         title={t('settings.units.title')}
         subtitle={`${units.length} ${units.length === 1 ? 'unit' : 'units'}`}
-        actions={<Button size="sm" onClick={openAdd}>+ {t('common.add')} {t('settings.units.singular')}</Button>}
+        actions={
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <ImportExportButton moduleKey="units" />
+            <Button size="sm" onClick={openAdd}>+ {t('common.add')} {t('settings.units.singular')}</Button>
+          </div>
+        }
       />
 
       {isLoading
