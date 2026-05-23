@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuthInit } from '@/hooks/use-auth-init';
 import { RequireAuth } from '@/components/require-auth';
 import { RequireOnboarded } from '@/components/require-onboarded';
@@ -329,9 +329,66 @@ function AppRoutes() {
 
         {/* ── Default redirect ─────────────────────────────────────── */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        {/* Phase 14.12 — catch-all now shows a visible 404 instead of
+             silently bouncing to /dashboard. The previous redirect
+             masked routing bugs ("refresh always goes to dashboard"
+             actually meant "route didn't match"). Showing the attempted
+             URL + a manual "Go to Dashboard" button makes the failure
+             diagnosable. */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Suspense>
+  );
+}
+
+// Phase 14.12 — diagnostic 404. Shows the URL React Router couldn't
+// match instead of silently sending the operator to /dashboard. If a
+// refresh on a valid page lands here, the bug is the URL mismatch
+// (typo, wrong route order, stale build); if a refresh DOESN'T land
+// here but still bounces to /dashboard, the bug is elsewhere (a
+// component-level navigate(), error-boundary fallback, etc.).
+function NotFoundPage() {
+  const location = useLocation();
+  return (
+    <div style={{
+      minHeight: '100vh', display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', gap: '16px',
+      padding: '32px', background: '#F8FAFC', color: '#0F172A',
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+    }}>
+      <div style={{
+        width: '56px', height: '56px', borderRadius: '999px',
+        background: '#FEF3C7', color: '#92400E',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: '24px', fontWeight: 700,
+      }}>404</div>
+      <h1 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>Page not found</h1>
+      <div style={{
+        padding: '12px 16px', background: '#FFF', border: '1px solid #E2E8F0',
+        borderRadius: '8px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        fontSize: '13px', color: '#475569',
+      }}>
+        {location.pathname}{location.search}
+      </div>
+      <p style={{ fontSize: '13.5px', color: '#64748B', margin: 0, maxWidth: '420px', textAlign: 'center' }}>
+        No route is registered for this URL. If you arrived here after a refresh on a page that did exist, please share the URL above — it's a routing bug we should fix.
+      </p>
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <a href="/dashboard" style={{
+          padding: '8px 14px', background: '#6366F1', color: '#FFF',
+          borderRadius: '8px', fontSize: '13px', fontWeight: 600,
+          textDecoration: 'none',
+        }}>Go to Dashboard</a>
+        <button
+          onClick={() => window.history.back()}
+          style={{
+            padding: '8px 14px', background: '#FFF', color: '#475569',
+            border: '1px solid #E2E8F0', borderRadius: '8px',
+            fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+          }}
+        >← Back</button>
+      </div>
+    </div>
   );
 }
 
