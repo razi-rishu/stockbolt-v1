@@ -84,8 +84,11 @@ export interface ModuleAdapter<DBRow, ValidatedRow = DBRow> {
 export interface ImportContext {
   company_id: string;
   /** Existing rows of THIS module, indexed by natural key (e.g. SKU
-   *  for products, code for COA). Used for duplicate detection. */
-  existing: Map<string, { id: string }>;
+   *  for products, code for COA). Used for duplicate detection. The
+   *  value carries `id` always plus any module-specific flags the
+   *  registry attaches via enrichExisting() — e.g. CoA stashes
+   *  `is_system` so validate() can flag protected rows during preview. */
+  existing: Map<string, { id: string; [key: string]: unknown }>;
   /** Module-specific lookups; adapters cast to their shape. */
   lookups: Record<string, unknown>;
 }

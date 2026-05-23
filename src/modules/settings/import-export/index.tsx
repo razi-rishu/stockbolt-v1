@@ -23,6 +23,13 @@ import {
   downloadCSV, downloadXLSX, readPickedFile, type RawRow,
 } from './_io';
 import { productsAdapter, buildProductLookups, serializeProductsForExport } from './_adapters/products';
+import { contactsAdapter, contactNaturalKey } from './_adapters/contacts';
+import {
+  taxRatesAdapter, unitsAdapter, brandsAdapter,
+  salespeopleAdapter, warehousesAdapter, priceLevelsAdapter,
+} from './_adapters/simple-masters';
+import { categoriesAdapter, buildCategoryLookups, serializeCategoriesForExport } from './_adapters/categories';
+import { coaAdapter, buildCoaLookups } from './_adapters/coa';
 import type { ModuleAdapter, ImportContext, ApplyResult, DuplicatePolicy } from './_adapters/types';
 
 // Registry — each entry is the same ModuleAdapter contract. Adding a
@@ -39,7 +46,25 @@ interface ModuleEntry {
   // Natural-key extractor for dedup detection during validate().
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   naturalKey: (row: any) => string;
+  // Optional — attach module-specific flags to the existing-map entry
+  // (e.g. CoA stashes `is_system`). Default is just { id }.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  enrichExisting?: (row: any) => Record<string, unknown>;
 }
+
+// Default exportSerialize when the adapter's serialize() is sufficient.
+// The second type-param of ModuleAdapter varies across modules; using
+// `any` here is the variance edge-case the wizard accepts because each
+// adapter is the only thing that introspects its own validated rows.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function plainExportSerialize<R>(
+  rows: R[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  adapter: ModuleAdapter<R, any>,
+): Promise<Record<string, string>[]> {
+  return rows.map(r => adapter.serialize(r));
+}
+async function noLookups(): Promise<Record<string, unknown>> { return {}; }
 
 const MODULES: Record<string, ModuleEntry> = {
   products: {
@@ -48,8 +73,63 @@ const MODULES: Record<string, ModuleEntry> = {
     exportSerialize: (rows, cid) => serializeProductsForExport(rows, cid),
     naturalKey: (r) => r.sku.toUpperCase(),
   },
-  // 14.11b+ will add: contacts, coa, taxRates, units, brands, categories,
-  // salespeople, warehouses, priceLevels, opening-balances bulk CSV.
+  contacts: {
+    adapter: contactsAdapter,
+    buildLookups: noLookups,
+    exportSerialize: (rows) => plainExportSerialize(rows, contactsAdapter),
+    naturalKey: (r) => contactNaturalKey(r),
+  },
+  coa: {
+    adapter: coaAdapter,
+    buildLookups: buildCoaLookups,
+    exportSerialize: (rows) => plainExportSerialize(rows, coaAdapter),
+    naturalKey: (r) => `code:${(r.code as string).toLowerCase()}`,
+    // CoA stashes is_system so validate() can refuse to overwrite
+    // protected rows during the apply step.
+    enrichExisting: (r) => ({ is_system: r.is_system === true }),
+  },
+  taxRates: {
+    adapter: taxRatesAdapter,
+    buildLookups: noLookups,
+    exportSerialize: (rows) => plainExportSerialize(rows, taxRatesAdapter),
+    naturalKey: (r) => `name:${(r.name as string).toLowerCase()}`,
+  },
+  units: {
+    adapter: unitsAdapter,
+    buildLookups: noLookups,
+    exportSerialize: (rows) => plainExportSerialize(rows, unitsAdapter),
+    naturalKey: (r) => `code:${(r.code as string).toUpperCase()}`,
+  },
+  brands: {
+    adapter: brandsAdapter,
+    buildLookups: noLookups,
+    exportSerialize: (rows) => plainExportSerialize(rows, brandsAdapter),
+    naturalKey: (r) => `name:${(r.name as string).toLowerCase()}`,
+  },
+  categories: {
+    adapter: categoriesAdapter,
+    buildLookups: async (cid) => buildCategoryLookups(cid) as unknown as Record<string, unknown>,
+    exportSerialize: (rows) => serializeCategoriesForExport(rows),
+    naturalKey: (r) => `name:${(r.name as string).toLowerCase()}`,
+  },
+  salespeople: {
+    adapter: salespeopleAdapter,
+    buildLookups: noLookups,
+    exportSerialize: (rows) => plainExportSerialize(rows, salespeopleAdapter),
+    naturalKey: (r) => `name:${(r.name as string).toLowerCase()}`,
+  },
+  warehouses: {
+    adapter: warehousesAdapter,
+    buildLookups: noLookups,
+    exportSerialize: (rows) => plainExportSerialize(rows, warehousesAdapter),
+    naturalKey: (r) => `code:${(r.code as string).toLowerCase()}`,
+  },
+  priceLevels: {
+    adapter: priceLevelsAdapter,
+    buildLookups: noLookups,
+    exportSerialize: (rows) => plainExportSerialize(rows, priceLevelsAdapter),
+    naturalKey: (r) => `name:${(r.name as string).toLowerCase()}`,
+  },
 };
 
 // ── Local types for the wizard ──────────────────────────────────────────────
@@ -136,9 +216,11 @@ export default function ImportExportHub() {
 
     // Build the import context.
     const lookups = await entry.buildLookups(company_id);
-    const existingMap = new Map<string, { id: string }>();
+    const existingMap = new Map<string, { id: string; [k: string]: unknown }>();
     for (const r of existingRows) {
-      existingMap.set(entry.naturalKey(r), { id: (r as { id: string }).id });
+      const base = { id: (r as { id: string }).id };
+      const extra = entry.enrichExisting ? entry.enrichExisting(r) : {};
+      existingMap.set(entry.naturalKey(r), { ...base, ...extra });
     }
     const ctx: ImportContext = { company_id, existing: existingMap, lookups };
 
@@ -253,13 +335,6 @@ export default function ImportExportHub() {
               </button>
             );
           })}
-          {/* Placeholder for upcoming modules */}
-          <div style={{
-            border: '1px dashed #CBD5E1', background: '#F8FAFC',
-            borderRadius: '12px', padding: '14px 16px', color: '#94A3B8', fontSize: '11.5px',
-          }}>
-            More modules coming in 14.11b (contacts, chart of accounts, tax rates, units, brands, categories, …)
-          </div>
         </div>
       </div>
 
