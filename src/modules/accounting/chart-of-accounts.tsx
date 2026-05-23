@@ -84,8 +84,25 @@ const schema = z.object({
   // (e.g. "cash", "bank"); for Income/Expense and current/fixed it's owned by flat_type.
   sub_type_extra: z.string(),
   parent_id: z.string().nullable(),
+  // Phase 14.13d — when the picked parent is 1110 Bank Account (Main) or
+  // 1100 Cash in Hand, we ALSO create a row in bank_accounts so the new
+  // CoA shows up in payment / expense pickers immediately. These fields
+  // are only meaningful when `also_bank_account` is true.
+  also_bank_account: z.boolean().default(false),
+  bank_account_type: z.string(),                  // 'bank' | 'cash'
+  bank_account_number: z.string(),
+  bank_name:           z.string(),
+  bank_iban:           z.string(),
+  bank_swift:          z.string(),
+  bank_branch:         z.string(),
+  bank_currency:       z.string(),
 });
 type FormValues = z.infer<typeof schema>;
+
+// Codes that, when chosen as parent, trigger the "also a bank account?"
+// flow. 1110 = Bank Account (Main), 1100 = Cash in Hand. Both are the
+// canonical seed accounts those sub-rows nest under.
+const BANK_PARENT_CODES = new Set(['1110', '1100']);
 
 export default function ChartOfAccountsPage() {
   const { t } = useTranslation();
@@ -108,7 +125,14 @@ export default function ChartOfAccountsPage() {
 
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
-    defaultValues: { code: '', name: '', name_ar: '', flat_type: 'current_asset', sub_type_extra: '', parent_id: null },
+    defaultValues: {
+      code: '', name: '', name_ar: '', flat_type: 'current_asset',
+      sub_type_extra: '', parent_id: null,
+      also_bank_account: false,
+      bank_account_type: 'bank',
+      bank_account_number: '', bank_name: '', bank_iban: '',
+      bank_swift: '', bank_branch: '', bank_currency: 'AED',
+    },
   });
 
   const flatTypeValue = watch('flat_type');
@@ -210,6 +234,30 @@ export default function ChartOfAccountsPage() {
     }
   }, [suggestedCode, currentCode, editing, setValue]);
 
+  // Phase 14.13d — detect when the chosen parent is a bank/cash account
+  // (1110 = Bank Account Main, 1100 = Cash in Hand). When it is, surface
+  // a "Also add this as a bank/cash account" section so the new CoA row
+  // becomes immediately usable in payment / expense pickers.
+  const parentRow = parentIdValue ? accounts.find(a => a.id === parentIdValue) : undefined;
+  const parentIsBankOrCash = !!parentRow && BANK_PARENT_CODES.has(parentRow.code);
+  const inferredBankType   = parentRow?.code === '1100' ? 'cash' : 'bank';
+
+  // Auto-toggle the "also create" checkbox on whenever a bank-or-cash
+  // parent is picked, OFF otherwise. The operator can still uncheck it
+  // if they really want a CoA-only row for some reason.
+  const alsoBankPrev = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (editing) return;
+    if (parentIsBankOrCash && alsoBankPrev.current !== true) {
+      setValue('also_bank_account', true);
+      setValue('bank_account_type', inferredBankType);
+      alsoBankPrev.current = true;
+    } else if (!parentIsBankOrCash && alsoBankPrev.current !== false) {
+      setValue('also_bank_account', false);
+      alsoBankPrev.current = false;
+    }
+  }, [parentIsBankOrCash, inferredBankType, editing, setValue]);
+
   const createMutation = useMutation({
     mutationFn: async (v: FormValues) => {
       const meta = FLAT_TYPES.find(t => t.value === v.flat_type)!;
@@ -217,7 +265,7 @@ export default function ChartOfAccountsPage() {
       const sub_type = meta.type === 'equity'
         ? (v.sub_type_extra.trim() || null)
         : meta.sub_type;
-      return getAdapter().coa.create({
+      const coaRow = await getAdapter().coa.create({
         company_id: company_id!,
         code: v.code,
         name: v.name,
@@ -228,9 +276,48 @@ export default function ChartOfAccountsPage() {
         is_active: true,
         is_system: false,
       });
+
+      // Phase 14.13d — when the operator ticked "Also add as a bank/cash
+      // account", create the matching bank_accounts row pointing at the
+      // CoA we just made. Failure here doesn't undo the CoA (transaction
+      // not available client-side); we surface the error and let the
+      // operator finish in /settings/bank-accounts manually.
+      if (v.also_bank_account) {
+        try {
+          await getAdapter().bankAccounts.create({
+            company_id:     company_id!,
+            coa_account_id: coaRow.id,
+            account_type:   v.bank_account_type || 'bank',
+            name:           v.name,                   // mirror CoA name
+            name_ar:        v.name_ar || null,
+            account_number: v.bank_account_number.trim() || null,
+            bank_name:      v.bank_name.trim() || null,
+            iban:           v.bank_iban.trim() || null,
+            swift_code:     v.bank_swift.trim() || null,
+            branch:         v.bank_branch.trim() || null,
+            currency:       v.bank_currency || 'AED',
+            is_active:      true,
+            is_default:     false,
+            opening_balance: 0,
+          });
+        } catch (e) {
+          // Re-throw with a friendlier message; the CoA row stays.
+          throw new Error(
+            `CoA "${v.code} ${v.name}" was created, but adding it as a bank account failed: ` +
+            (e instanceof Error ? e.message : 'unknown error') +
+            '. Finish it in Settings → Bank Accounts.'
+          );
+        }
+      }
+
+      return coaRow;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['coa', company_id] });
+      // Bank-side caches — multiple pages (payment editor, expense
+      // editor, settings/bank-accounts) read this list.
+      qc.invalidateQueries({ queryKey: ['bankAccounts', company_id] });
+      qc.invalidateQueries({ queryKey: ['bank_accounts', company_id] });
       setOpen(false);
       reset();
     },
@@ -571,6 +658,93 @@ export default function ChartOfAccountsPage() {
               </p>
             )}
           </div>
+          {/* Phase 14.13d — Quick-create bank/cash account. When the picked
+                parent is 1110 Bank Account (Main) or 1100 Cash in Hand, also
+                create the matching bank_accounts row in one step. Without
+                this, the new sub-CoA would not show up in payment / expense
+                pickers (those read bank_accounts, not chart_of_accounts). */}
+          {parentIsBankOrCash && !editing && (
+            <div className="rounded-card border border-brand-200 bg-brand-50/40 p-3">
+              <label className="flex items-start gap-2 text-sm text-ink-primary">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  {...register('also_bank_account')}
+                />
+                <span>
+                  <span className="font-medium">
+                    Also add this as a {inferredBankType === 'cash' ? 'cash drawer' : 'bank'} account
+                  </span>
+                  <span className="mt-0.5 block text-xs text-ink-secondary">
+                    Creates a matching row in Settings → Bank Accounts so it
+                    appears in payment, expense, and bank-transfer pickers.
+                  </span>
+                </span>
+              </label>
+
+              {watch('also_bank_account') && (
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <label className="mb-1 block text-xs font-medium text-ink-secondary">Account type</label>
+                    <div className="flex items-center gap-4 text-sm">
+                      <label className="flex items-center gap-1">
+                        <input type="radio" value="bank" {...register('bank_account_type')} />
+                        Bank
+                      </label>
+                      <label className="flex items-center gap-1">
+                        <input type="radio" value="cash" {...register('bank_account_type')} />
+                        Cash
+                      </label>
+                    </div>
+                  </div>
+
+                  {watch('bank_account_type') !== 'cash' && (
+                    <>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-ink-secondary">Bank name</label>
+                        <Input {...register('bank_name')} placeholder="e.g. ADCB, IDBI" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-ink-secondary">Account number</label>
+                        <Input {...register('bank_account_number')} placeholder="e.g. 1234567890" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-ink-secondary">IBAN</label>
+                        <Input {...register('bank_iban')} placeholder="AE07 0331 2345 6789 0123 456" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-ink-secondary">SWIFT / BIC</label>
+                        <Input {...register('bank_swift')} placeholder="ADCBAEAA" />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-ink-secondary">Branch</label>
+                        <Input {...register('bank_branch')} placeholder="e.g. Main branch" />
+                      </div>
+                    </>
+                  )}
+
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-ink-secondary">Currency</label>
+                    <select
+                      {...register('bank_currency')}
+                      className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    >
+                      <option value="AED">AED — UAE Dirham</option>
+                      <option value="SAR">SAR — Saudi Riyal</option>
+                      <option value="QAR">QAR — Qatari Riyal</option>
+                      <option value="KWD">KWD — Kuwaiti Dinar</option>
+                      <option value="BHD">BHD — Bahraini Dinar</option>
+                      <option value="OMR">OMR — Omani Rial</option>
+                      <option value="INR">INR — Indian Rupee</option>
+                      <option value="USD">USD — US Dollar</option>
+                      <option value="EUR">EUR — Euro</option>
+                      <option value="GBP">GBP — Pound Sterling</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           {showSubTypeExtra && (
             <div>
               <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.sub_type')} <span className="text-ink-tertiary">(optional)</span></label>
