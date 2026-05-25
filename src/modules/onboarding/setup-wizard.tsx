@@ -108,12 +108,25 @@ export default function SetupWizardPage() {
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      country_code: 'AE',
-      currency: 'AED',
+      // Required-text fields default to '' (not undefined) so an untouched
+      // <input> still produces a valid `string` for the zod resolver.
+      // Without these, handleSubmit silently failed validation on optional
+      // Arabic / address fields the operator left blank, making the Finish
+      // button look disabled when the click actually did nothing.
+      full_name:         '',
+      company_name:      '',
+      company_name_ar:   '',
+      address:           '',
+      tax_id:            '',
+      warehouse_name:    '',
+      warehouse_name_ar: '',
+      // Sensible step defaults
+      country_code:      'AE',
+      currency:          'AED',
       fiscal_year_month: '01',
       is_tax_registered: false,
-      load_sample_data: false,
-      warehouse_code: 'MAIN',
+      load_sample_data:  false,
+      warehouse_code:    'MAIN',
     },
   });
 
@@ -144,6 +157,17 @@ export default function SetupWizardPage() {
 
   function goBack() {
     setStep((s) => Math.max(s - 1, 0));
+  }
+
+  // Phase 14.13i — surface form-level validation failures. Without an
+  // explicit onInvalid handler, handleSubmit silently swallows zod errors
+  // (e.g. an optional `z.string()` field that's `undefined` in form state).
+  // The Finish button then looks broken because nothing visible happens
+  // on click. Log + show a generic message so we never get stuck again.
+  function onInvalid(formErrors: Record<string, unknown>) {
+    console.warn('[setup-wizard] submit blocked by validation:', formErrors);
+    const first = Object.values(formErrors).find(Boolean) as { message?: string } | undefined;
+    setError(first?.message || 'Please re-check the form — one or more fields look invalid.');
   }
 
   async function onSubmit(values: FormValues) {
@@ -207,7 +231,7 @@ export default function SetupWizardPage() {
       <Card className="w-full max-w-lg" padding="lg">
         <StepIndicator current={step} total={TOTAL_STEPS} />
 
-        <form onSubmit={handleSubmit(onSubmit)}>
+        <form onSubmit={handleSubmit(onSubmit, onInvalid)}>
           {/* ── Step 1: Company basics ────────────────────────────────── */}
           {step === 0 && (
             <div className="flex flex-col gap-4">
