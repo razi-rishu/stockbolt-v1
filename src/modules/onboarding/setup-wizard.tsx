@@ -52,18 +52,17 @@ const schema = z.object({
   warehouse_name:    z.string().min(1, 'Required'),
   warehouse_name_ar: z.string(),
   warehouse_code:    z.string(),
-  // Step 5
-  bank_account_name:    z.string().min(1, 'Required'),
-  bank_account_name_ar: z.string(),
-  bank_account_type:    z.enum(['bank', 'cash']),
-  bank_name:            z.string(),
-  account_number:       z.string(),
-  // Step 6
+  // Step 5 — Sample data
+  // (Phase 14.13h: the old "first bank account" step lived between steps
+  //  4 and 5. It's been removed — bank accounts are now added from
+  //  Accounting → Chart of Accounts using the Phase 14.13d quick-create
+  //  flow. This stops the "Rashid" trap where operators typed their own
+  //  name into the bank-account-name field on a fresh form.)
   load_sample_data: z.boolean(),
 });
 type FormValues = z.infer<typeof schema>;
 
-const TOTAL_STEPS = 6;
+const TOTAL_STEPS = 5;
 
 // ── Step indicator ─────────────────────────────────────────────────────────
 function StepIndicator({ current, total }: { current: number; total: number }) {
@@ -112,7 +111,6 @@ export default function SetupWizardPage() {
       country_code: 'AE',
       currency: 'AED',
       fiscal_year_month: '01',
-      bank_account_type: 'bank',
       is_tax_registered: false,
       load_sample_data: false,
       warehouse_code: 'MAIN',
@@ -121,7 +119,6 @@ export default function SetupWizardPage() {
 
   const country_code = watch('country_code');
   const is_tax_registered = watch('is_tax_registered');
-  const bank_account_type = watch('bank_account_type');
 
   // Auto-update currency when country changes
   function onCountryChange(code: string) {
@@ -130,13 +127,13 @@ export default function SetupWizardPage() {
     if (c) setValue('currency', c.currency);
   }
 
-  // Step field validation groups
+  // Step field validation groups (5 steps after Phase 14.13h dropped the
+  // bank-account step — operators add banks via CoA later).
   const stepFields: (keyof FormValues)[][] = [
     ['full_name', 'company_name'],
     ['country_code'],
     ['currency', 'fiscal_year_month'],
     ['warehouse_name'],
-    ['bank_account_name'],
     [],
   ];
 
@@ -158,7 +155,6 @@ export default function SetupWizardPage() {
         ...values,
         fiscal_year_start: `${currentYear}-${values.fiscal_year_month}-01`,
         warehouse_name_ar: values.warehouse_name_ar ?? '',
-        bank_account_name_ar: values.bank_account_name_ar ?? '',
       };
 
       const adapter = getAdapter();
@@ -321,50 +317,11 @@ export default function SetupWizardPage() {
             </div>
           )}
 
-          {/* ── Step 5: Bank/cash account ─────────────────────────────── */}
-          {step === 4 && (
-            <div className="flex flex-col gap-4">
-              <h2 className="text-lg font-semibold text-ink-primary">{t('wizard.step5.title')}</h2>
-              <Select
-                label={t('wizard.step5.account_type')}
-                options={[
-                  { value: 'bank', label: t('wizard.step5.type_bank') },
-                  { value: 'cash', label: t('wizard.step5.type_cash') },
-                ]}
-                {...register('bank_account_type')}
-              />
-              <Input
-                label={t('wizard.step5.account_name')}
-                required
-                placeholder={bank_account_type === 'cash' ? 'Petty Cash' : 'Emirates NBD — Current'}
-                error={errors.bank_account_name?.message}
-                {...register('bank_account_name')}
-              />
-              <Input
-                label={t('wizard.step5.account_name_ar')}
-                placeholder={bank_account_type === 'cash' ? 'النقدية' : 'الإمارات دبي الوطني'}
-                dir="rtl"
-                {...register('bank_account_name_ar')}
-              />
-              {bank_account_type === 'bank' && (
-                <>
-                  <Input
-                    label={t('wizard.step5.bank_name')}
-                    placeholder="Emirates NBD"
-                    {...register('bank_name')}
-                  />
-                  <Input
-                    label={t('wizard.step5.account_number')}
-                    placeholder="1234567890"
-                    {...register('account_number')}
-                  />
-                </>
-              )}
-            </div>
-          )}
+          {/* Phase 14.13h: dropped the old "Step 5: Bank/cash account" —
+                operators now add bank accounts via Chart of Accounts. */}
 
-          {/* ── Step 6: Sample data ───────────────────────────────────── */}
-          {step === 5 && (
+          {/* ── Step 5: Sample data ───────────────────────────────────── */}
+          {step === 4 && (
             <div className="flex flex-col gap-4">
               <h2 className="text-lg font-semibold text-ink-primary">{t('wizard.step6.title')}</h2>
               <p className="text-sm text-ink-secondary">{t('wizard.step6.description')}</p>

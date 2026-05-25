@@ -600,14 +600,30 @@ export default function PaymentEditorPage() {
               }
             }}
           />
-          <Select
-            label={`${t('payments.bank_account')} *`}
-            required
-            options={bankOpts}
-            value={header.bank_account_id}
-            disabled={!canEdit || isVoid}
-            onChange={e => setHeader(h => ({ ...h, bank_account_id: e.target.value }))}
-          />
+          <div>
+            <Select
+              label={`${t('payments.bank_account')} *`}
+              required
+              options={bankOpts}
+              value={header.bank_account_id}
+              disabled={!canEdit || isVoid}
+              onChange={e => setHeader(h => ({ ...h, bank_account_id: e.target.value }))}
+            />
+            {/* Phase 14.13h — empty-state hint for brand-new tenants.
+                 Since onboarding no longer creates a first bank account,
+                 a fresh company will have an empty picker. Tell the
+                 operator exactly where to set one up. */}
+            {canEdit && !isVoid && bankAccounts.length === 0 && (
+              <p className="mt-1 text-xs text-ink-tertiary">
+                No bank or cash accounts yet. Add one in{' '}
+                <a href="/accounting/chart-of-accounts" className="text-brand-600 underline">
+                  Accounting → Chart of Accounts
+                </a>{' '}
+                under <span className="font-mono">1110 Bank Account (Main)</span> or{' '}
+                <span className="font-mono">1100 Cash in Hand</span>.
+              </p>
+            )}
+          </div>
           <Select
             label={t('payments.classification')}
             required

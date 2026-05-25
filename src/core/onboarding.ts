@@ -1,4 +1,4 @@
-import type { DataAdapter, OnboardingRpcInput, CoaMap } from '@/data/adapter';
+import type { DataAdapter, OnboardingRpcInput } from '@/data/adapter';
 import { seedCOA } from './seeds/seedCOA';
 import { seedTaxRates } from './seeds/seedTaxRates';
 import { seedPaymentMethods } from './seeds/seedPaymentMethods';
@@ -26,14 +26,12 @@ export interface WizardData {
   warehouse_name_ar: string;
   warehouse_code: string;
 
-  // Step 5 — Bank/cash account
-  bank_account_name: string;
-  bank_account_name_ar: string;
-  bank_account_type: 'bank' | 'cash';
-  bank_name: string;
-  account_number: string;
-
-  // Step 6 — Sample data
+  // Step 5 — Sample data
+  // (Phase 14.13h removed the "first bank account" step. Bank accounts
+  //  are now created from Accounting → Chart of Accounts via the
+  //  Phase 14.13d quick-create flow. This keeps onboarding lean and
+  //  stops operators from accidentally typing personal names into the
+  //  account-name field during setup — the "Rashid" trap.)
   load_sample_data: boolean;
 }
 
@@ -43,6 +41,17 @@ export interface WizardData {
  * Step A: SECURITY DEFINER RPC creates company + profile (bypasses RLS).
  * Step B: TypeScript seed services run under the anon key (profile now
  *         exists, so current_user_company_id() works for all inserts).
+ *
+ * Note (Phase 14.13h): the operator no longer picks a first bank account
+ * here. They land on the dashboard right after onboarding and add bank
+ * accounts via Chart of Accounts → Add Custom Account under 1110 / 1100,
+ * which auto-mirrors a bank_accounts row (Phase 14.13d flow). Reasons:
+ *   - The CoA shows the parent context (1110 Bank Main, 1100 Cash) so
+ *     the operator knows where the account fits in the trial balance.
+ *   - "Account name" on a fresh form is a name-guessing trap — operators
+ *     have typed their own name (the "Rashid" leak) instead of a bank
+ *     name. Removing the field removes the trap.
+ *   - Onboarding is now 5 steps instead of 6.
  */
 export async function runOnboarding(
   wizard: WizardData,
@@ -63,7 +72,7 @@ export async function runOnboarding(
   const { company_id } = await adapter.onboarding.createCompanyAndProfile(rpcInput);
 
   // B — Seed foundational data (anon key, RLS now functional)
-  const coa_map: CoaMap = await seedCOA(company_id, wizard.country_code, adapter);
+  const coa_map = await seedCOA(company_id, wizard.country_code, adapter);
   await seedTaxRates(company_id, wizard.country_code, coa_map, adapter);
   await seedPaymentMethods(company_id, adapter);
   await seedUnits(company_id, adapter);
@@ -78,25 +87,7 @@ export async function runOnboarding(
     is_active: true,
   });
 
-  // D — Create first bank/cash account linked to COA
-  const coa_code = wizard.bank_account_type === 'cash' ? '1100' : '1110';
-  const coa_account_id = coa_map[coa_code];
-  if (!coa_account_id) {
-    throw new Error(`COA account ${coa_code} not found after seeding`);
-  }
-  await adapter.onboarding.insertBankAccount({
-    company_id,
-    name: wizard.bank_account_name,
-    name_ar: wizard.bank_account_name_ar,
-    account_type: wizard.bank_account_type === 'cash' ? 'cash' : 'bank',
-    bank_name: wizard.bank_name || null,
-    account_number: wizard.account_number || null,
-    currency: wizard.currency,
-    coa_account_id,
-    is_default: true,
-    is_active: true,
-    opening_balance: 0,
-  });
+  // D — (removed in Phase 14.13h: bank-account creation moved to CoA flow)
 
   // E — Optionally seed sample auto-parts data
   if (wizard.load_sample_data) {
