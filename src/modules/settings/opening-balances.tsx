@@ -258,6 +258,150 @@ export default function OpeningBalancesPage() {
     }
   }
 
+  // ── Phase 14.14i — Edit a posted opening row ──────────────────────────────
+  // Small-business reality: opening balances get tuned 5–10 times during
+  // migration before the trial balance reconciles against the source data.
+  // Forcing "void + add new draft + Post" every time is friction.
+  //
+  // What edit really does under the hood (preserves accounting integrity):
+  //   1. Voids the original posted opening (reverses the JE — full audit
+  //      trail, void reason captured as "Edited: replaced by new row").
+  //   2. Re-posts a fresh opening with the new values (date / amount /
+  //      doc# / notes — type and account/contact stay fixed; to change
+  //      those, use void + new row).
+  //
+  // The result the operator sees: same row, new number. The result an
+  // auditor sees: void JE + replacement JE, both timestamped and linked
+  // via void reason. ACCA / CPA happy: no in-place mutation of any JE.
+  const [editingPosted, setEditingPosted] = useState<OpeningBalanceListed | null>(null);
+  const [editAmount, setEditAmount]   = useState('');
+  const [editDate, setEditDate]       = useState('');
+  const [editDueDate, setEditDueDate] = useState('');
+  const [editDocNum, setEditDocNum]   = useState('');
+  const [editNotes, setEditNotes]     = useState('');
+  const [editSaving, setEditSaving]   = useState(false);
+  const [editError, setEditError]     = useState<string | null>(null);
+
+  function openEdit(p: OpeningBalanceListed) {
+    setEditingPosted(p);
+    setEditAmount(String(p.amount));
+    setEditDate(p.date);
+    setEditDueDate(p.due_date ?? '');
+    setEditDocNum(p.doc_number);
+    setEditNotes('');
+    setEditError(null);
+  }
+
+  function closeEdit() {
+    setEditingPosted(null);
+    setEditError(null);
+  }
+
+  async function saveEdit() {
+    if (!editingPosted) return;
+    const p = editingPosted;
+    if (!p.void_doc_type) {
+      setEditError('Cannot edit this row (no void tag). Please refresh.');
+      return;
+    }
+    const newAmount = parseFloat(editAmount);
+    if (!Number.isFinite(newAmount) || newAmount <= 0) {
+      setEditError('Amount must be a positive number.');
+      return;
+    }
+    if (!editDate) {
+      setEditError('Date is required.');
+      return;
+    }
+
+    const isGl     = p.type === 'gl_debit'   || p.type === 'gl_credit';
+    const isBank   = p.type === 'bank_debit' || p.type === 'bank_credit';
+    const isAR     = p.type === 'ar_owed';
+    const isAP     = p.type === 'ap_owed';
+    const isSubsid = !isGl && !isBank;
+
+    if (isSubsid && !editDocNum.trim()) {
+      setEditError('Document number is required.');
+      return;
+    }
+
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      const adapter = getAdapter();
+
+      // 1) Void the existing row. Reason captures the audit reason.
+      await adapter.openingBalances.void(
+        p.doc_id,
+        p.void_doc_type,
+        `Edited on ${new Date().toISOString().slice(0, 10)} — replaced with new opening row`,
+      );
+
+      // 2) Re-post with the new values. Type-specific code path.
+      if (isGl) {
+        const direction: 'debit' | 'credit' = p.type === 'gl_debit' ? 'debit' : 'credit';
+        // Resolve the account_id from the listed account_code.
+        const account = coa.find(c => c.code === p.account_code);
+        if (!account) throw new Error(`Original GL account ${p.account_code} not found anymore`);
+        await adapter.openingBalances.postGl({
+          account_id: account.id,
+          direction,
+          amount:     newAmount,
+          date:       editDate,
+          notes:      editNotes.trim() || null,
+        });
+      } else if (isBank) {
+        const direction: 'debit' | 'credit' = p.type === 'bank_debit' ? 'debit' : 'credit';
+        // Resolve the bank_account_id by matching its CoA code.
+        const account = coa.find(c => c.code === p.account_code);
+        if (!account) throw new Error(`Bank's CoA account ${p.account_code} not found anymore`);
+        const bank = banks.find(b => b.coa_account_id === account.id);
+        if (!bank) throw new Error(`Bank account for ${p.account_code} not found anymore`);
+        await adapter.openingBalances.postBank({
+          bank_account_id: bank.id,
+          direction,
+          amount:          newAmount,
+          date:            editDate,
+          notes:           editNotes.trim() || null,
+        });
+      } else {
+        // Subsidiary types — contact_id stays, type stays.
+        await adapter.openingBalances.post({
+          type:        p.type as OpeningBalanceType,
+          contact_id:  p.contact_id,
+          doc_number:  editDocNum.trim(),
+          date:        editDate,
+          due_date:    (isAR || isAP) ? (editDueDate || null) : null,
+          amount:      newAmount,
+          currency:    p.currency,
+        });
+      }
+
+      // 3) Refresh everything affected.
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['opening_balances_posted', company_id] }),
+        qc.invalidateQueries({ queryKey: ['ob_3010_balance', company_id] }),
+        qc.invalidateQueries({ queryKey: ['bank_accounts', company_id] }),
+        qc.invalidateQueries({ queryKey: ['invoices', company_id] }),
+        qc.invalidateQueries({ queryKey: ['vendor_bills', company_id] }),
+        qc.invalidateQueries({ queryKey: ['payments', company_id] }),
+        qc.invalidateQueries({ queryKey: ['open_invoices'] }),
+        qc.invalidateQueries({ queryKey: ['open_bills'] }),
+        qc.invalidateQueries({ queryKey: ['trial_balance'] }),
+        qc.invalidateQueries({ queryKey: ['balance_sheet'] }),
+        qc.invalidateQueries({ queryKey: ['general_ledger'] }),
+      ]);
+      closeEdit();
+    } catch (e) {
+      setEditError(
+        e instanceof Error ? e.message : 'Edit failed for unknown reason. ' +
+        'The original row may already be voided — check the list and re-post manually if needed.'
+      );
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
   // Totals — group by type so the operator can see what they're about to post.
   const totals = useMemo(() => {
     const t = { ar_owed: 0, ap_owed: 0, customer_credit: 0, vendor_credit: 0 };
@@ -1062,15 +1206,26 @@ export default function OpeningBalancesPage() {
                     </td>
                     <td className="px-3 py-2 text-xs text-ink-tertiary capitalize">{p.status}</td>
                     <td className="px-3 py-2 text-end">
-                      {canVoid && (
-                        <button
-                          type="button"
-                          onClick={() => voidRow(p)}
-                          disabled={isVoiding}
-                          className="text-xs text-red-600 hover:text-red-800 font-medium disabled:opacity-40"
-                          title="Reverse this opening row + mark the underlying doc void"
-                        >{isVoiding ? '…' : 'Void'}</button>
-                      )}
+                      <div className="flex items-center justify-end gap-3">
+                        {canVoid && p.status !== 'void' && (
+                          <button
+                            type="button"
+                            onClick={() => openEdit(p)}
+                            disabled={isVoiding}
+                            className="text-xs text-brand-600 hover:text-brand-800 font-medium disabled:opacity-40"
+                            title="Edit amount / date — voids the original and posts a replacement (full audit trail)"
+                          >Edit</button>
+                        )}
+                        {canVoid && (
+                          <button
+                            type="button"
+                            onClick={() => voidRow(p)}
+                            disabled={isVoiding}
+                            className="text-xs text-red-600 hover:text-red-800 font-medium disabled:opacity-40"
+                            title="Reverse this opening row + mark the underlying doc void"
+                          >{isVoiding ? '…' : 'Void'}</button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -1079,6 +1234,151 @@ export default function OpeningBalancesPage() {
           </table>
         )}
       </div>
+
+      {/* ── Phase 14.14i — Edit-posted modal ──────────────────────────────
+            Edits an already-posted opening row via void + repost. Clean
+            audit trail (both JEs preserved) but the operator just sees a
+            single row that "updated" — the right balance between
+            accounting purity and small-business UX. */}
+      {editingPosted && (() => {
+        const p = editingPosted;
+        const isGl     = p.type === 'gl_debit'   || p.type === 'gl_credit';
+        const isBank   = p.type === 'bank_debit' || p.type === 'bank_credit';
+        const isAR     = p.type === 'ar_owed';
+        const isAP     = p.type === 'ap_owed';
+        const isSubsid = !isGl && !isBank;
+        const subjectLabel = isGl || isBank
+          ? `${p.account_code ?? ''} — ${p.account_name ?? ''}`.replace(/^—\s+/, '').trim()
+          : p.contact_name;
+        const direction = (p.type === 'gl_debit' || p.type === 'bank_debit')
+          ? 'Debit'
+          : (p.type === 'gl_credit' || p.type === 'bank_credit')
+          ? 'Credit'
+          : null;
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => { if (e.target === e.currentTarget && !editSaving) closeEdit(); }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          >
+            <div className="w-full max-w-md rounded-card border border-border-subtle bg-surface-card shadow-2xl">
+              <div className="flex items-center justify-between border-b border-border-subtle px-5 py-3">
+                <h3 className="text-sm font-semibold text-ink-primary">Edit opening balance</h3>
+                <button
+                  type="button"
+                  onClick={closeEdit}
+                  disabled={editSaving}
+                  className="text-ink-tertiary hover:text-ink-primary disabled:opacity-40"
+                  aria-label="Close"
+                >×</button>
+              </div>
+
+              <div className="px-5 py-4 space-y-4">
+                <div className="rounded-card bg-surface-muted/60 px-3 py-2 text-xs text-ink-secondary">
+                  <div><strong className="text-ink-primary">{subjectLabel || '—'}</strong></div>
+                  <div className="mt-0.5">
+                    Original: <span className="font-mono">{p.doc_number}</span>
+                    {direction && <> · <span>{direction}</span></>}
+                    {' · '}
+                    <span className="font-mono">{p.currency} {p.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="mt-1 text-ink-tertiary">
+                    Saving voids the original and posts a replacement. Both stay in the audit trail.
+                  </div>
+                </div>
+
+                {isSubsid && (
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-ink-secondary">Document #</label>
+                    <input
+                      type="text"
+                      value={editDocNum}
+                      onChange={(e) => setEditDocNum(e.target.value)}
+                      disabled={editSaving}
+                      placeholder="INV-OLD-441"
+                      className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-ink-secondary">Date</label>
+                    <input
+                      type="date"
+                      value={editDate}
+                      onChange={(e) => setEditDate(e.target.value)}
+                      disabled={editSaving}
+                      className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                  </div>
+                  {(isAR || isAP) && (
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-ink-secondary">Due date</label>
+                      <input
+                        type="date"
+                        value={editDueDate}
+                        onChange={(e) => setEditDueDate(e.target.value)}
+                        disabled={editSaving}
+                        className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-ink-secondary">
+                    Amount <span className="text-ink-tertiary">({p.currency})</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editAmount}
+                    onChange={(e) => setEditAmount(e.target.value)}
+                    disabled={editSaving}
+                    className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary font-mono focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                </div>
+
+                {(isGl || isBank) && (
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-ink-secondary">Notes (optional)</label>
+                    <input
+                      type="text"
+                      value={editNotes}
+                      onChange={(e) => setEditNotes(e.target.value)}
+                      disabled={editSaving}
+                      placeholder="e.g. Corrected per source TB"
+                      className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                  </div>
+                )}
+
+                {editError && (
+                  <p className="rounded-card bg-red-50 px-3 py-2 text-xs text-red-700">{editError}</p>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 border-t border-border-subtle px-5 py-3">
+                <button
+                  type="button"
+                  onClick={closeEdit}
+                  disabled={editSaving}
+                  className="rounded-pill border border-border-strong px-4 py-2 text-sm font-medium text-ink-primary hover:bg-surface-muted disabled:opacity-50"
+                >Cancel</button>
+                <button
+                  type="button"
+                  onClick={saveEdit}
+                  disabled={editSaving}
+                  className="rounded-pill bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                >{editSaving ? 'Saving…' : 'Save changes'}</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
