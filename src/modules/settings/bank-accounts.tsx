@@ -147,7 +147,12 @@ export default function BankAccountsSettingsPage() {
         branch: values.branch || null,
         currency: values.currency,
         coa_account_id: values.coa_account_id,
-        opening_balance: values.opening_balance,
+        // Phase 14.14h — never write opening_balance from this form when
+        // editing. The number is now read-only in the UI but a malicious /
+        // stale form submit could still try; preserve the existing value
+        // so accidental edits cannot quietly diverge from the GL-side
+        // posted balance.
+        opening_balance: editing ? Number(editing.opening_balance ?? 0) : values.opening_balance,
         is_default: values.is_default,
         is_active: values.is_active,
       };
@@ -185,7 +190,21 @@ export default function BankAccountsSettingsPage() {
     { key: 'currency', header: 'Currency', width: '90px',  render: (r) => <span className="font-mono" style={{ fontSize: '12px' }}>{r.currency}</span> },
     { key: 'account_number', header: 'Account #', render: (r) => r.account_number ? <span className="font-mono" style={{ fontSize: '12px', color: theme.inkMuted }}>{r.account_number}</span> : '—' },
     { key: 'coa',      header: 'GL Account', render: (r) => <span className="font-mono" style={{ fontSize: '11px', color: theme.inkMuted }}>{coaName(r.coa_account_id)}</span> },
-    { key: 'opening',  header: 'Opening Balance', align: 'end', width: '130px', render: (r) => <span className="font-mono" style={{ color: theme.ink }}>{fmt(Number(r.opening_balance ?? 0))}</span> },
+    {
+      key: 'opening',
+      header: 'Opening (posted)',
+      align: 'end',
+      width: '140px',
+      render: (r) => (
+        <span
+          className="font-mono"
+          style={{ color: theme.ink }}
+          title="Read-only mirror of the opening JE posted via Settings → Opening Balances. Edits to the bank-accounts form do NOT change this — void + re-post the opening JE instead."
+        >
+          {fmt(Number(r.opening_balance ?? 0))}
+        </span>
+      ),
+    },
     { key: 'default',  header: '', width: '80px', render: (r) => r.is_default ? <Badge variant="brand">Default</Badge> : null },
     { key: 'status',   header: '', width: '80px', render: (r) => <Badge variant={r.is_active ? 'success' : 'muted'}>{r.is_active ? 'Active' : 'Inactive'}</Badge> },
     {
@@ -262,7 +281,35 @@ export default function BankAccountsSettingsPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <Input label="SWIFT / BIC" {...register('swift_code')} />
-            <Input label="Opening balance" type="number" step="0.01" {...register('opening_balance')} />
+            {/* Phase 14.14h — opening_balance on this form was misleading:
+                  editing it only updates the bank_accounts column, NOT the
+                  general_ledger / journal_entries. The TB and BS read from
+                  GL, so the operator's number changes here would silently
+                  not affect any report. Locked the field and added a
+                  pointer to the proper workflow. Use Settings → Opening
+                  Balances to post a real opening JE (Dr Bank / Cr 3010 OBE).
+                  Void + re-post if you need to change a posted amount. */}
+            <div>
+              <Input
+                label="Opening balance (posted)"
+                type="number"
+                step="0.01"
+                readOnly
+                disabled
+                {...register('opening_balance')}
+              />
+              <p className="mt-1 text-xs text-ink-tertiary">
+                Read-only. To post or change the opening balance, use{' '}
+                <a
+                  href="/settings/opening-balances"
+                  className="font-medium text-brand-600 hover:underline"
+                  onClick={(e) => { e.preventDefault(); window.location.assign('/settings/opening-balances'); }}
+                >
+                  Settings → Opening Balances
+                </a>
+                . Edits here would not move anything on the books.
+              </p>
+            </div>
           </div>
 
           <div className="flex gap-6 pt-2">
