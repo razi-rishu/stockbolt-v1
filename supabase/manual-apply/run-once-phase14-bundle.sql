@@ -1647,6 +1647,29 @@ BEGIN
 END $$;
 
 
+-- ╔═══ 20260530000001_phase14_14g_extend_je_source_types.sql ═══╗
+-- Phase 14.14g — extend journal_entries.source_type whitelist to include
+-- 'opening_gl' and 'opening_bank', the tags used by the GL-opening and
+-- per-bank-opening RPCs above.
+
+ALTER TABLE public.journal_entries
+  DROP CONSTRAINT IF EXISTS journal_entries_source_type_check;
+
+ALTER TABLE public.journal_entries
+  ADD CONSTRAINT journal_entries_source_type_check
+  CHECK (source_type IN (
+    'sales_invoice', 'pos_cash_sale', 'pos_card_sale', 'inventory_cogs',
+    'customer_receipt', 'customer_advance', 'advance_application', 'advance_refund',
+    'sales_credit_note', 'sales_return',
+    'vendor_bill', 'goods_receipt', 'vendor_payment', 'vendor_advance', 'vendor_debit_note',
+    'stock_transfer', 'inventory_adjustment',
+    'opening_balance', 'opening_gl', 'opening_bank',
+    'bank_transfer', 'direct_receipt', 'expense',
+    'pdc_creation', 'pdc_bank_post', 'pdc_clear', 'pdc_bounce',
+    'manual', 'year_end_close'
+  ));
+
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Final step: refresh PostgREST's schema cache so the front-end immediately
 -- sees the new RPCs (post_bank_opening_balance, post_gl_opening_balance,
