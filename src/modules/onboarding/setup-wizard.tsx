@@ -39,11 +39,12 @@ const schema = z.object({
   country_code:      z.string().min(2),
   is_tax_registered: z.boolean(),
   tax_id:            z.string(),
-  // Step 3 — First warehouse (kept; minimal)
-  warehouse_name:    z.string().min(1, 'Required'),
-  warehouse_name_ar: z.string(),
-  warehouse_code:    z.string(),
-  // Step 4 — Review + sample data choice
+  // Step 3 — Review + sample data choice
+  // (Phase 14.14e: dropped the dedicated First-warehouse step. A default
+  //  "Main Warehouse" with code MAIN is created automatically; operator
+  //  renames it from Settings → Warehouses when they actually need to.
+  //  Typing "Main Warehouse" / "MAIN" into a form just to advance is busy-
+  //  work that doesn't earn the step it's in.)
   load_sample_data:  z.boolean(),
 }).superRefine((data, ctx) => {
   // Phase 14.14d — conditional required: tax_id mandatory when registered.
@@ -59,7 +60,7 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 3;
 
 // Country-driven fiscal-year-start. India uses Apr-Mar; everything else
 // (GCC) uses Jan-Dec. The operator no longer picks this — they can
@@ -118,13 +119,10 @@ export default function SetupWizardPage() {
       company_name_ar:   '',
       address:           '',
       tax_id:            '',
-      warehouse_name:    '',
-      warehouse_name_ar: '',
       // Sensible step defaults
       country_code:      'AE',
       is_tax_registered: false,
       load_sample_data:  false,
-      warehouse_code:    'MAIN',
     },
   });
 
@@ -139,14 +137,13 @@ export default function SetupWizardPage() {
     setValue('country_code', code);
   }
 
-  // Phase 14.14d — 4 steps: Company basics → Country/Tax → Warehouse → Review.
-  // We validate `tax_id` on step 1 too so the superRefine in the schema can
-  // bark when the operator ticked "Registered for VAT/GST" but left the
+  // Phase 14.14e — 3 steps: Company basics → Country/Tax → Review.
+  // Validate `tax_id` on step 1 so the superRefine in the schema can bark
+  // when the operator ticked "Registered for VAT/GST" but left the
   // number empty.
   const stepFields: (keyof FormValues)[][] = [
     ['company_name'],
     ['country_code', 'tax_id'],
-    ['warehouse_name'],
     [],
   ];
 
@@ -183,12 +180,16 @@ export default function SetupWizardPage() {
         // after onboarding.
         currency:          inferredCurrency,
         fiscal_year_start: `${currentYear}-${fyMonth}-01`,
-        // Phase 14.14d — personal name moved off the wizard. The profile
-        // row keeps an empty string for now; operators set it on the
-        // Profile settings page when ready. Drops a "why am I being asked
-        // my own name to create a COMPANY?" UX confusion.
+        // Phase 14.14d — personal name moved off the wizard. Profile row
+        // keeps an empty string for now; operators set it on the Profile
+        // settings page when ready.
         full_name:         '',
-        warehouse_name_ar: values.warehouse_name_ar ?? '',
+        // Phase 14.14e — first warehouse is auto-created with sensible
+        // defaults. Operator renames / adds more from Settings → Warehouses
+        // post-onboarding. Cuts a busy-work step from the wizard.
+        warehouse_name:    'Main Warehouse',
+        warehouse_name_ar: 'المستودع الرئيسي',
+        warehouse_code:    'MAIN',
       };
 
       const adapter = getAdapter();
@@ -307,37 +308,11 @@ export default function SetupWizardPage() {
             </div>
           )}
 
-          {/* ── Step 3: First warehouse (was step 4 — Phase 14.14d) ────── */}
-          {step === 2 && (
-            <div className="flex flex-col gap-4">
-              <h2 className="text-lg font-semibold text-ink-primary">{t('wizard.step4.title')}</h2>
-              <Input
-                label={t('wizard.step4.warehouse_name')}
-                required
-                placeholder="Main Warehouse"
-                error={errors.warehouse_name?.message}
-                {...register('warehouse_name')}
-              />
-              <Input
-                label={t('wizard.step4.warehouse_name_ar')}
-                placeholder="المستودع الرئيسي"
-                dir="rtl"
-                {...register('warehouse_name_ar')}
-              />
-              <Input
-                label={t('wizard.step4.warehouse_code')}
-                placeholder="MAIN"
-                error={errors.warehouse_code?.message}
-                {...register('warehouse_code')}
-              />
-            </div>
-          )}
-
-          {/* ── Step 4: Review & create (was step 5; renamed Phase 14.14d)
+          {/* ── Step 3: Review & create (Phase 14.14e — was step 4)
                  Shows a summary of every input so the operator deliberately
                  confirms before company creation. Removes the "I clicked
                  Finish without realising what it did" footgun. */}
-          {step === 3 && (
+          {step === 2 && (
             <div className="flex flex-col gap-4">
               <h2 className="text-lg font-semibold text-ink-primary">Review and create</h2>
               <p className="text-sm text-ink-secondary">
@@ -385,14 +360,14 @@ export default function SetupWizardPage() {
                         : 'No'}
                     </dd>
                   </div>
-                  <div className="flex justify-between gap-3">
-                    <dt className="text-ink-secondary">First warehouse</dt>
-                    <dd className="font-medium text-ink-primary text-right">
-                      {watch('warehouse_name')} <span className="text-ink-tertiary">({watch('warehouse_code') || 'MAIN'})</span>
-                    </dd>
-                  </div>
                 </dl>
               </div>
+
+              <p className="text-xs text-ink-tertiary -mt-1">
+                We'll also create a default <strong>Main Warehouse</strong> (code <span className="font-mono">MAIN</span>)
+                and seed your chart of accounts, tax rates, and units of measure. Rename or add more
+                from Settings after onboarding.
+              </p>
 
               <p className="text-sm font-medium text-ink-primary mt-2">Sample data</p>
               <div className="flex flex-col gap-3">
