@@ -65,16 +65,37 @@ add a 7th feature.
 
 ## Linking to the app
 
-The Sign in / Start free buttons currently point at:
+The Sign in / Start free buttons are wired up automatically based on where the
+landing page is being served from:
 
-- `/login`
-- `/signup`
+| Where the landing page is loaded | CTA links go to |
+|----------------------------------|-----------------|
+| `file://…/index.html` (double-clicked locally) | `http://localhost:5173/login` and `/signup` |
+| `http://localhost:8000` (Python http.server) | `http://localhost:5173/login` and `/signup` |
+| Any other domain (Netlify, Vercel, prod) | Same-domain relative `/login` and `/signup` |
 
-If the landing page lives on a different subdomain than the app
-(e.g. `stockbolt.com` for landing, `app.stockbolt.com` for the app), change the
-hrefs to the absolute URLs like `https://app.stockbolt.com/signup`. Search for
-`/signup` in the HTML — there are 3 spots (hero, auto-parts CTA, final CTA banner)
-plus one each for `/login` in the nav and footer.
+So you can double-click the file and the buttons take you straight to your
+running Vite dev server. No manual edits.
+
+### Overriding for previews
+
+Add `?app=https://...` to the landing URL to point CTAs at a specific
+environment. Examples:
+
+```
+file:///E:/stockbolt_clean/stockbolt-v1/landing/index.html?app=http://localhost:5173
+https://staging.stockbolt.com/?app=https://app-staging.stockbolt.com
+```
+
+### When you have a final production URL
+
+Open `index.html`, search for `APP_BASE_PROD`, and set it to your production
+app URL (e.g. `https://app.stockbolt.com`). Save. From then on, the production
+landing page sends visitors to the right place without any per-link edits.
+
+```js
+var APP_BASE_PROD = 'https://app.stockbolt.com';   // ← set this when ready
+```
 
 ## Brand alignment
 

@@ -769,6 +769,36 @@
   </footer>
 
   <script>
+    // ─── App-base resolution (Phase 14.14b) ────────────────────────────────
+    // The landing page is served as a separate static site, but the CTAs
+    // need to land on the StockBolt app. We resolve the base URL once at
+    // load time:
+    //   - file:// or localhost   → http://localhost:5173 (Vite dev server)
+    //   - any other domain       → assume the app lives at /app or on the
+    //                               same domain — adjust APP_BASE_PROD below
+    //                               when you have a final production URL
+    //                               (e.g. 'https://app.stockbolt.com').
+    // To override manually, append ?app=https://your-url to the landing page
+    // URL — useful for sharing previews that point at a specific environment.
+    var APP_BASE_DEV  = 'http://localhost:5173';
+    var APP_BASE_PROD = '';   // empty = same-domain relative; set to e.g. 'https://app.stockbolt.com' when ready
+
+    var appBase = (function () {
+      var qs = new URLSearchParams(window.location.search);
+      var override = qs.get('app');
+      if (override) return override.replace(/\/$/, '');
+      var h = window.location.hostname;
+      var isLocal =
+        window.location.protocol === 'file:' ||
+        h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0';
+      return isLocal ? APP_BASE_DEV : APP_BASE_PROD;
+    })();
+
+    document.querySelectorAll('a[href^="/login"], a[href^="/signup"]').forEach(function (a) {
+      var path = a.getAttribute('href');
+      a.href = appBase + path;
+    });
+
     // ─── FAQ accordion ─────────────────────────────────────────────────────
     document.querySelectorAll('.faq-q').forEach(function (btn) {
       btn.addEventListener('click', function () {
