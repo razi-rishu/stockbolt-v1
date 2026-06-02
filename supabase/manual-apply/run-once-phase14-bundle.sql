@@ -219,8 +219,8 @@ BEGIN
 
   -- Reserve a JE number.
   INSERT INTO public.document_sequences
-    (company_id, prefix, current_value, format, padding_length, allow_reset)
-  VALUES (v_company_id, 'JE', 1001, 'JE-{NUMBER}', 0, false)
+    (company_id, prefix, current_value, format)
+  VALUES (v_company_id, 'JE', 1001, 'JE-{NUMBER}')
   ON CONFLICT (company_id, prefix) DO UPDATE
     SET current_value = public.document_sequences.current_value + 1,
         updated_at    = NOW()
@@ -542,8 +542,8 @@ BEGIN
 
   -- Reserve a JE number.
   INSERT INTO public.document_sequences
-    (company_id, prefix, current_value, format, padding_length, allow_reset)
-  VALUES (v_company_id, 'JE', 1001, 'JE-{NUMBER}', 0, false)
+    (company_id, prefix, current_value, format)
+  VALUES (v_company_id, 'JE', 1001, 'JE-{NUMBER}')
   ON CONFLICT (company_id, prefix) DO UPDATE
     SET current_value = public.document_sequences.current_value + 1,
         updated_at    = NOW()
@@ -749,8 +749,8 @@ BEGIN
 
   -- JE number.
   INSERT INTO public.document_sequences
-    (company_id, prefix, current_value, format, padding_length, allow_reset)
-  VALUES (v_company_id, 'JE', 1001, 'JE-{NUMBER}', 0, false)
+    (company_id, prefix, current_value, format)
+  VALUES (v_company_id, 'JE', 1001, 'JE-{NUMBER}')
   ON CONFLICT (company_id, prefix) DO UPDATE
     SET current_value = public.document_sequences.current_value + 1,
         updated_at    = NOW()
