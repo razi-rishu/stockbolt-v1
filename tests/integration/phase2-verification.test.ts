@@ -84,11 +84,8 @@ beforeAll(async () => {
     warehouse_name:       'Main',
     warehouse_name_ar:    'رئيسي',
     warehouse_code:       'MAIN',
-    bank_account_name:    'Cash',
-    bank_account_name_ar: 'نقدية',
-    bank_account_type:    'cash',
-    bank_name:            '',
-    account_number:       '',
+    // Phase 14.13h removed the wizard bank step; WizardData no longer
+    // carries bank_account_*, account_number, or bank_name fields.
     load_sample_data:     false,
   };
   const { company_id } = await runOnboarding(wizard, adapter);

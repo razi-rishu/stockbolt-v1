@@ -92,11 +92,9 @@ beforeAll(async () => {
     warehouse_name:       'Main Warehouse',
     warehouse_name_ar:    'المستودع الرئيسي',
     warehouse_code:       'MAIN',
-    bank_account_name:    'Emirates NBD — Current',
-    bank_account_name_ar: 'الإمارات دبي الوطني',
-    bank_account_type:    'bank',
-    bank_name:            'Emirates NBD',
-    account_number:       '0012345678',
+    // Phase 14.13h removed the wizard bank step; bank accounts are added
+    // via CoA quick-create after onboarding. WizardData no longer carries
+    // bank_account_*, account_number, or bank_name fields.
     load_sample_data:     false,
   };
 

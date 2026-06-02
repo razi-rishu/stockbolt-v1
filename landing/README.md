@@ -63,6 +63,34 @@ for `<h1>` and edit. To change FAQ answers, look for `class="faq-a"`. The
 features section uses `<div class="feature">` blocks — copy one and edit to
 add a 7th feature.
 
+## Two ways the landing page lives in your project
+
+### A. In-app at `/` and `/landing` (Phase 14.14c — the default now)
+
+The landing page is also wired as a proper React route inside the Vite app:
+
+| URL | Who sees what |
+|-----|---------------|
+| `localhost:5173/` (anonymous)       | Renders the landing page |
+| `localhost:5173/` (logged in)       | Redirects to `/dashboard` |
+| `localhost:5173/landing` (anyone)   | Always renders the landing page (handy for previewing copy while logged in) |
+
+Source: `src/modules/marketing/landing-page.tsx` (+ `landing-page.css`).
+
+This is what you'll use for local development and most deployments —
+no separate hosting, no CORS, CTAs are React Router `<Link>` so they
+client-side-navigate without a page reload.
+
+### B. Standalone static page in `landing/` (this folder)
+
+The file you're reading also exists as a self-contained `index.html` you can
+deploy to a separate marketing subdomain (e.g. `stockbolt.com`) while the
+app sits at `app.stockbolt.com`. Useful for SEO, faster TTFB on the marketing
+side, and editing copy without touching the React app.
+
+Keep this file in rough sync with `src/modules/marketing/landing-page.tsx`
+when marketing copy changes.
+
 ## Linking to the app
 
 The Sign in / Start free buttons are wired up automatically based on where the
@@ -70,9 +98,9 @@ landing page is being served from:
 
 | Where the landing page is loaded | CTA links go to |
 |----------------------------------|-----------------|
-| `file://…/index.html` (double-clicked locally) | `http://localhost:5173/login` and `/signup` |
-| `http://localhost:8000` (Python http.server) | `http://localhost:5173/login` and `/signup` |
-| Any other domain (Netlify, Vercel, prod) | Same-domain relative `/login` and `/signup` |
+| `file://…/index.html` (double-clicked locally) | `http://localhost:5173/login` and `/register` |
+| `http://localhost:8000` (Python http.server) | `http://localhost:5173/login` and `/register` |
+| Any other domain (Netlify, Vercel, prod) | Same-domain relative `/login` and `/register` |
 
 So you can double-click the file and the buttons take you straight to your
 running Vite dev server. No manual edits.

@@ -435,7 +435,7 @@
       </div>
       <div class="nav-cta">
         <a href="/login" class="btn btn-ghost">Sign in</a>
-        <a href="/signup" class="btn btn-indigo">Start free <span class="arrow">→</span></a>
+        <a href="/register" class="btn btn-indigo">Start free <span class="arrow">→</span></a>
       </div>
     </div>
   </nav>
@@ -457,7 +457,7 @@
         bolted on.
       </p>
       <div class="hero-cta">
-        <a href="/signup" class="btn btn-indigo btn-lg">Start free <span class="arrow">→</span></a>
+        <a href="/register" class="btn btn-indigo btn-lg">Start free <span class="arrow">→</span></a>
         <a href="#features" class="btn btn-ghost btn-lg">See what's inside</a>
       </div>
       <div class="hero-foot">
@@ -581,7 +581,7 @@
             a bin location, and a brand — because that's how parts shops actually
             sell.
           </p>
-          <a href="/signup" class="btn btn-indigo btn-lg">Try it free <span class="arrow">→</span></a>
+          <a href="/register" class="btn btn-indigo btn-lg">Try it free <span class="arrow">→</span></a>
         </div>
 
         <ol class="autoparts-list">
@@ -720,7 +720,7 @@
     <div class="container">
       <h2>Stop fighting your ERP.</h2>
       <p>Set up your shop in 5 minutes. No card, no demo call, no waiting on a sales rep.</p>
-      <a href="/signup" class="btn btn-white btn-lg">Start free <span class="arrow">→</span></a>
+      <a href="/register" class="btn btn-white btn-lg">Start free <span class="arrow">→</span></a>
     </div>
   </section>
 
@@ -755,7 +755,7 @@
         <div class="footer-col">
           <h5>Get started</h5>
           <ul>
-            <li><a href="/signup">Create account</a></li>
+            <li><a href="/register">Create account</a></li>
             <li><a href="/login">Sign in</a></li>
           </ul>
         </div>
@@ -794,7 +794,7 @@
       return isLocal ? APP_BASE_DEV : APP_BASE_PROD;
     })();
 
-    document.querySelectorAll('a[href^="/login"], a[href^="/signup"]').forEach(function (a) {
+    document.querySelectorAll('a[href^="/login"], a[href^="/register"]').forEach(function (a) {
       var path = a.getAttribute('href');
       a.href = appBase + path;
     });

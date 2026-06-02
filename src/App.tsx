@@ -1,11 +1,15 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuthInit } from '@/hooks/use-auth-init';
+import { useAuthStore } from '@/store/auth';
 import { RequireAuth } from '@/components/require-auth';
 import { RequireOnboarded } from '@/components/require-onboarded';
 import { RequireNotOnboarded } from '@/components/require-not-onboarded';
 import { AppLayout } from '@/components/app-layout';
 import { ErrorBoundary } from '@/components/error-boundary';
+
+// Marketing — public landing page (Phase 14.14c)
+const LandingPage       = lazy(() => import('@/modules/marketing/landing-page'));
 
 // Auth routes
 const LoginPage          = lazy(() => import('@/modules/auth/login'));
@@ -157,6 +161,19 @@ function Loading() {
 
 function WithAppLayout() {
   return <AppLayout><Outlet /></AppLayout>;
+}
+
+/**
+ * Landing gateway (Phase 14.14c). Pure routing helper:
+ *   - logged-in operator at `/`  → bounce to /dashboard
+ *   - anonymous visitor at `/`   → render the marketing landing page
+ * Live preview of the marketing page while logged-in is still available
+ * at `/landing` (registered as its own route below).
+ */
+function LandingGateway() {
+  const user_id = useAuthStore((s) => s.user_id);
+  if (user_id) return <Navigate to="/dashboard" replace />;
+  return <LandingPage />;
 }
 
 function AppRoutes() {
@@ -327,8 +344,14 @@ function AppRoutes() {
           </Route>
         </Route>
 
-        {/* ── Default redirect ─────────────────────────────────────── */}
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        {/* ── Public marketing routes (Phase 14.14c) ───────────────────
+             - `/`         anonymous visitors see the landing page;
+                           logged-in users get bounced to /dashboard.
+             - `/landing`  always renders the landing page (lets logged-in
+                           operators preview marketing copy without
+                           logging out). */}
+        <Route path="/" element={<LandingGateway />} />
+        <Route path="/landing" element={<LandingPage />} />
         {/* Phase 14.12 — catch-all now shows a visible 404 instead of
              silently bouncing to /dashboard. The previous redirect
              masked routing bugs ("refresh always goes to dashboard"
