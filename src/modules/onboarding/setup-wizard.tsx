@@ -24,45 +24,49 @@ const COUNTRIES = [
   { value: 'IN', label: 'India',                       currency: 'INR' },
 ];
 
-const MONTHS = [
-  { value: '01', label: 'January' }, { value: '02', label: 'February' },
-  { value: '03', label: 'March' },   { value: '04', label: 'April' },
-  { value: '05', label: 'May' },     { value: '06', label: 'June' },
-  { value: '07', label: 'July' },    { value: '08', label: 'August' },
-  { value: '09', label: 'September' },{ value: '10', label: 'October' },
-  { value: '11', label: 'November' }, { value: '12', label: 'December' },
-];
-
-// ── Zod schema (full wizard) ──────────────────────────────────────────────
-// Defaults live in useForm defaultValues; schema only validates.
+// ── Zod schema (Phase 14.14d: tight 4-step wizard) ───────────────────────
+// Operator feedback (2026-05-30):
+//   - Personal name belongs in /register, not company setup.
+//   - Tax ID should be required when "Registered for VAT/GST" is ticked.
+//   - "Currency & fiscal year" step is unwanted — auto-derive from country.
+//   - Final submit must be deliberate; no surprise auto-create.
 const schema = z.object({
-  // Step 1
-  full_name:         z.string().min(2, 'Required'),
+  // Step 1 — Company basics (no more personal name)
   company_name:      z.string().min(2, 'Required'),
   company_name_ar:   z.string(),
   address:           z.string(),
-  // Step 2
+  // Step 2 — Country & tax
   country_code:      z.string().min(2),
   is_tax_registered: z.boolean(),
   tax_id:            z.string(),
-  // Step 3
-  currency:          z.string().min(3),
-  fiscal_year_month: z.string(),
-  // Step 4
+  // Step 3 — First warehouse (kept; minimal)
   warehouse_name:    z.string().min(1, 'Required'),
   warehouse_name_ar: z.string(),
   warehouse_code:    z.string(),
-  // Step 5 — Sample data
-  // (Phase 14.13h: the old "first bank account" step lived between steps
-  //  4 and 5. It's been removed — bank accounts are now added from
-  //  Accounting → Chart of Accounts using the Phase 14.13d quick-create
-  //  flow. This stops the "Rashid" trap where operators typed their own
-  //  name into the bank-account-name field on a fresh form.)
-  load_sample_data: z.boolean(),
+  // Step 4 — Review + sample data choice
+  load_sample_data:  z.boolean(),
+}).superRefine((data, ctx) => {
+  // Phase 14.14d — conditional required: tax_id mandatory when registered.
+  // Using superRefine (not refine) so the error attaches to the tax_id
+  // field, which means trigger('tax_id') catches it during step 2 → 3.
+  if (data.is_tax_registered && data.tax_id.trim().length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Tax registration number is required when registered for VAT/GST',
+      path: ['tax_id'],
+    });
+  }
 });
 type FormValues = z.infer<typeof schema>;
 
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 4;
+
+// Country-driven fiscal-year-start. India uses Apr-Mar; everything else
+// (GCC) uses Jan-Dec. The operator no longer picks this — they can
+// override later via Settings → Company.
+function fiscalYearMonthFor(country_code: string): string {
+  return country_code === 'IN' ? '04' : '01';
+}
 
 // ── Step indicator ─────────────────────────────────────────────────────────
 function StepIndicator({ current, total }: { current: number; total: number }) {
@@ -110,10 +114,6 @@ export default function SetupWizardPage() {
     defaultValues: {
       // Required-text fields default to '' (not undefined) so an untouched
       // <input> still produces a valid `string` for the zod resolver.
-      // Without these, handleSubmit silently failed validation on optional
-      // Arabic / address fields the operator left blank, making the Finish
-      // button look disabled when the click actually did nothing.
-      full_name:         '',
       company_name:      '',
       company_name_ar:   '',
       address:           '',
@@ -122,8 +122,6 @@ export default function SetupWizardPage() {
       warehouse_name_ar: '',
       // Sensible step defaults
       country_code:      'AE',
-      currency:          'AED',
-      fiscal_year_month: '01',
       is_tax_registered: false,
       load_sample_data:  false,
       warehouse_code:    'MAIN',
@@ -133,19 +131,21 @@ export default function SetupWizardPage() {
   const country_code = watch('country_code');
   const is_tax_registered = watch('is_tax_registered');
 
-  // Auto-update currency when country changes
+  // Derived from country (was its own wizard step before Phase 14.14d).
+  const inferredCurrency =
+    COUNTRIES.find((c) => c.value === country_code)?.currency ?? 'AED';
+
   function onCountryChange(code: string) {
     setValue('country_code', code);
-    const c = COUNTRIES.find((c) => c.value === code);
-    if (c) setValue('currency', c.currency);
   }
 
-  // Step field validation groups (5 steps after Phase 14.13h dropped the
-  // bank-account step — operators add banks via CoA later).
+  // Phase 14.14d — 4 steps: Company basics → Country/Tax → Warehouse → Review.
+  // We validate `tax_id` on step 1 too so the superRefine in the schema can
+  // bark when the operator ticked "Registered for VAT/GST" but left the
+  // number empty.
   const stepFields: (keyof FormValues)[][] = [
-    ['full_name', 'company_name'],
-    ['country_code'],
-    ['currency', 'fiscal_year_month'],
+    ['company_name'],
+    ['country_code', 'tax_id'],
     ['warehouse_name'],
     [],
   ];
@@ -175,9 +175,19 @@ export default function SetupWizardPage() {
     setError('');
     try {
       const currentYear = new Date().getFullYear();
+      const fyMonth = fiscalYearMonthFor(values.country_code);
       const wizard: WizardData = {
         ...values,
-        fiscal_year_start: `${currentYear}-${values.fiscal_year_month}-01`,
+        // Phase 14.14d — both auto-derived from country, no longer collected
+        // from the operator. They can change either via Settings → Company
+        // after onboarding.
+        currency:          inferredCurrency,
+        fiscal_year_start: `${currentYear}-${fyMonth}-01`,
+        // Phase 14.14d — personal name moved off the wizard. The profile
+        // row keeps an empty string for now; operators set it on the
+        // Profile settings page when ready. Drops a "why am I being asked
+        // my own name to create a COMPANY?" UX confusion.
+        full_name:         '',
         warehouse_name_ar: values.warehouse_name_ar ?? '',
       };
 
@@ -232,17 +242,10 @@ export default function SetupWizardPage() {
         <StepIndicator current={step} total={TOTAL_STEPS} />
 
         <form onSubmit={handleSubmit(onSubmit, onInvalid)}>
-          {/* ── Step 1: Company basics ────────────────────────────────── */}
+          {/* ── Step 1: Company basics (no personal name — Phase 14.14d) ── */}
           {step === 0 && (
             <div className="flex flex-col gap-4">
               <h2 className="text-lg font-semibold text-ink-primary">{t('wizard.step1.title')}</h2>
-              <Input
-                label={t('wizard.step1.full_name')}
-                required
-                placeholder="John Smith"
-                error={errors.full_name?.message}
-                {...register('full_name')}
-              />
               <Input
                 label={t('wizard.step1.company_name')}
                 required
@@ -270,13 +273,20 @@ export default function SetupWizardPage() {
           {step === 1 && (
             <div className="flex flex-col gap-4">
               <h2 className="text-lg font-semibold text-ink-primary">{t('wizard.step2.title')}</h2>
-              <Select
-                label={t('wizard.step2.country')}
-                required
-                options={COUNTRIES.map((c) => ({ value: c.value, label: c.label }))}
-                value={country_code}
-                onChange={(e) => onCountryChange(e.target.value)}
-              />
+              <div>
+                <Select
+                  label={t('wizard.step2.country')}
+                  required
+                  options={COUNTRIES.map((c) => ({ value: c.value, label: c.label }))}
+                  value={country_code}
+                  onChange={(e) => onCountryChange(e.target.value)}
+                />
+                <p className="mt-1.5 text-xs text-ink-tertiary">
+                  Currency <span className="font-mono">{inferredCurrency}</span> ·
+                  Fiscal year starts {country_code === 'IN' ? 'April 1' : 'January 1'} ·
+                  Change anytime in Settings → Company.
+                </p>
+              </div>
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
                   type="checkbox"
@@ -287,7 +297,8 @@ export default function SetupWizardPage() {
               </label>
               {is_tax_registered && (
                 <Input
-                  label={t('wizard.step2.tax_id')}
+                  label="Tax registration number"
+                  required
                   placeholder="TRN / GSTIN / VAT Reg No."
                   error={errors.tax_id?.message}
                   {...register('tax_id')}
@@ -296,27 +307,8 @@ export default function SetupWizardPage() {
             </div>
           )}
 
-          {/* ── Step 3: Currency & fiscal year ───────────────────────── */}
+          {/* ── Step 3: First warehouse (was step 4 — Phase 14.14d) ────── */}
           {step === 2 && (
-            <div className="flex flex-col gap-4">
-              <h2 className="text-lg font-semibold text-ink-primary">{t('wizard.step3.title')}</h2>
-              <Input
-                label={t('wizard.step3.currency')}
-                readOnly
-                value={watch('currency')}
-                hint={t('wizard.step3.currency_hint')}
-              />
-              <Select
-                label={t('wizard.step3.fiscal_year_start')}
-                options={MONTHS}
-                error={errors.fiscal_year_month?.message}
-                {...register('fiscal_year_month')}
-              />
-            </div>
-          )}
-
-          {/* ── Step 4: First warehouse ───────────────────────────────── */}
-          {step === 3 && (
             <div className="flex flex-col gap-4">
               <h2 className="text-lg font-semibold text-ink-primary">{t('wizard.step4.title')}</h2>
               <Input
@@ -341,15 +333,68 @@ export default function SetupWizardPage() {
             </div>
           )}
 
-          {/* Phase 14.13h: dropped the old "Step 5: Bank/cash account" —
-                operators now add bank accounts via Chart of Accounts. */}
-
-          {/* ── Step 5: Sample data ───────────────────────────────────── */}
-          {step === 4 && (
+          {/* ── Step 4: Review & create (was step 5; renamed Phase 14.14d)
+                 Shows a summary of every input so the operator deliberately
+                 confirms before company creation. Removes the "I clicked
+                 Finish without realising what it did" footgun. */}
+          {step === 3 && (
             <div className="flex flex-col gap-4">
-              <h2 className="text-lg font-semibold text-ink-primary">{t('wizard.step6.title')}</h2>
-              <p className="text-sm text-ink-secondary">{t('wizard.step6.description')}</p>
+              <h2 className="text-lg font-semibold text-ink-primary">Review and create</h2>
+              <p className="text-sm text-ink-secondary">
+                Double-check these details. Clicking <strong>Create company</strong> below sets up your
+                company in the system. You can change anything later from Settings → Company.
+              </p>
 
+              <div className="rounded-card border border-border-subtle bg-surface-muted/40 p-4 text-sm">
+                <dl className="space-y-2.5">
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-ink-secondary">Company name</dt>
+                    <dd className="font-medium text-ink-primary text-right">
+                      {watch('company_name') || <span className="text-ink-tertiary italic">—</span>}
+                    </dd>
+                  </div>
+                  {watch('company_name_ar') && (
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-ink-secondary">Company name (Arabic)</dt>
+                      <dd className="font-medium text-ink-primary text-right" dir="rtl">{watch('company_name_ar')}</dd>
+                    </div>
+                  )}
+                  {watch('address') && (
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-ink-secondary">Address</dt>
+                      <dd className="font-medium text-ink-primary text-right">{watch('address')}</dd>
+                    </div>
+                  )}
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-ink-secondary">Country</dt>
+                    <dd className="font-medium text-ink-primary text-right">
+                      {COUNTRIES.find((c) => c.value === country_code)?.label ?? country_code}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-ink-secondary">Currency / fiscal year</dt>
+                    <dd className="font-medium text-ink-primary text-right">
+                      {inferredCurrency} · {country_code === 'IN' ? 'Apr–Mar' : 'Jan–Dec'}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-ink-secondary">Tax registered</dt>
+                    <dd className="font-medium text-ink-primary text-right">
+                      {is_tax_registered
+                        ? (watch('tax_id') || <span className="text-ink-tertiary italic">—</span>)
+                        : 'No'}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-ink-secondary">First warehouse</dt>
+                    <dd className="font-medium text-ink-primary text-right">
+                      {watch('warehouse_name')} <span className="text-ink-tertiary">({watch('warehouse_code') || 'MAIN'})</span>
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+
+              <p className="text-sm font-medium text-ink-primary mt-2">Sample data</p>
               <div className="flex flex-col gap-3">
                 <label
                   className={`flex cursor-pointer items-start gap-3 rounded-card border-2 p-4 transition-colors ${
@@ -412,7 +457,7 @@ export default function SetupWizardPage() {
               </Button>
             ) : (
               <Button type="submit" loading={submitting}>
-                {t('wizard.finish')}
+                {submitting ? 'Creating…' : 'Create company'}
               </Button>
             )}
           </div>
