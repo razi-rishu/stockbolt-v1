@@ -3514,6 +3514,19 @@ export function createSupabaseAdapter(
         const { error: insErr } = await raw.from('expense_items').insert(rows);
         assertNoError(insErr as Error | null, 'expenses.replaceItems/insert');
       },
+      async saveWithItems({ id, header, items }) {
+        // Phase 14.14q — atomic header + items via single RPC. If the items
+        // re-insert fails, the header insert/update rolls back too.
+        const { data, error } = await (
+          client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>
+        )('save_expense_with_items', {
+          p_id:     id,
+          p_header: header as unknown as Record<string, unknown>,
+          p_items:  items as unknown as Record<string, unknown>[],
+        });
+        assertNoError(error as Error | null, 'expenses.saveWithItems');
+        return data as string;
+      },
     },
 
     // ── Phase 8: PDC Cheques ──────────────────────────────────────────────────

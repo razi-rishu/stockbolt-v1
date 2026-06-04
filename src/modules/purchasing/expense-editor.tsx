@@ -308,18 +308,22 @@ export default function ExpenseEditorPage() {
         total_amount:         totals.total,
       };
 
-      let expenseId: string;
-      if (isNew) {
-        const created = await getAdapter().expenses.create({
-          ...headerCommon,
-          expense_number: nextNumber!,
-        });
-        expenseId = created.id;
-      } else {
-        const updated = await getAdapter().expenses.update(id!, headerCommon);
-        expenseId = updated.id;
-      }
-      await getAdapter().expenses.replaceItems(expenseId, itemInserts);
+      // Phase 14.14q — atomic header + items via single RPC. Replaces the
+      // previous three-call pattern (create/update header → replaceItems)
+      // that could leave a header in the DB with stale or no items if the
+      // item-replace failed. Now both halves run in one Postgres
+      // transaction — either both commit or both roll back.
+      // The RPC accepts a partial header for the update path (header
+      // columns are merged onto the existing row), so we cast through
+      // `unknown` — the update path doesn't need expense_number.
+      const header = isNew
+        ? { ...headerCommon, expense_number: nextNumber! }
+        : (headerCommon as unknown as Parameters<ReturnType<typeof getAdapter>['expenses']['saveWithItems']>[0]['header']);
+      const expenseId = await getAdapter().expenses.saveWithItems({
+        id: isNew ? null : id!,
+        header,
+        items: itemInserts,
+      });
       return expenseId;
     },
     onSuccess: async (expenseId) => {

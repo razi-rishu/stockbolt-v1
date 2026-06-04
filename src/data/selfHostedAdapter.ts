@@ -305,6 +305,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       getNextNumber: () => notImplemented('expenses.getNextNumber'),
       getItems:      () => notImplemented('expenses.getItems'),
       replaceItems:  () => notImplemented('expenses.replaceItems'),
+      saveWithItems: () => notImplemented('expenses.saveWithItems'),
     },
     pdcCheques: {
       list:    () => notImplemented('pdcCheques.list'),

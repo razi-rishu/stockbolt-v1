@@ -1659,6 +1659,11 @@ export interface ExpensesAPI {
    *  Pattern matches invoices.updateWithItems: delete-then-insert under a
    *  single client call so the DB never sees partial state. */
   replaceItems(expense_id: string, items: ExpenseItemInsert[]): Promise<void>;
+  /** Phase 14.14q — atomic header + items save. Replaces the two-call
+   *  pattern (create/update header → replaceItems) with a single RPC so a
+   *  failed item-replace rolls the header insert/update back too. Pass
+   *  `id: null` for create, `id` for update. */
+  saveWithItems(input: { id: string | null; header: ExpenseInsert; items: ExpenseItemInsert[] }): Promise<string>;
 }
 
 export interface PDCCreateParams {
