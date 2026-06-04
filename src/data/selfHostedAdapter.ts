@@ -116,6 +116,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       update:     () => notImplemented('coa.update'),
       deactivate: () => notImplemented('coa.deactivate'),
       activate:   () => notImplemented('coa.activate'),
+      createWithOptionalBank: () => notImplemented('coa.createWithOptionalBank'),
     },
     accounting: {
       postJE:            () => notImplemented('accounting.postJE'),

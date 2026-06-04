@@ -273,52 +273,41 @@ export default function ChartOfAccountsPage() {
       const sub_type = meta.type === 'equity'
         ? (v.sub_type_extra.trim() || null)
         : meta.sub_type;
-      const coaRow = await getAdapter().coa.create({
-        company_id: company_id!,
-        code: v.code,
-        name: v.name,
-        name_ar: v.name_ar || null,
-        type: meta.type,
-        sub_type,
-        parent_id: v.parent_id || null,
-        is_active: true,
-        is_system: false,
+
+      // Phase 14.14p — atomic CoA + bank insert via single RPC. Replaces
+      // the Phase 14.13d two-call pattern that could leave an orphan CoA
+      // row if the bank insert failed. Postgres rolls back both halves
+      // on any exception inside the RPC body.
+      const result = await getAdapter().coa.createWithOptionalBank({
+        coa: {
+          company_id: company_id!,
+          code: v.code,
+          name: v.name,
+          name_ar: v.name_ar || null,
+          type: meta.type,
+          sub_type,
+          parent_id: v.parent_id || null,
+          is_active: true,
+          is_system: false,
+        },
+        bank: v.also_bank_account
+          ? {
+              account_type:    v.bank_account_type || 'bank',
+              name:            v.name,
+              name_ar:         v.name_ar || null,
+              account_number:  v.bank_account_number.trim() || null,
+              bank_name:       v.bank_name.trim() || null,
+              iban:            v.bank_iban.trim() || null,
+              swift_code:      v.bank_swift.trim() || null,
+              branch:          v.bank_branch.trim() || null,
+              currency:        v.bank_currency || companyCurrency,
+              is_active:       true,
+              is_default:      false,
+              opening_balance: 0,
+            }
+          : null,
       });
-
-      // Phase 14.13d — when the operator ticked "Also add as a bank/cash
-      // account", create the matching bank_accounts row pointing at the
-      // CoA we just made. Failure here doesn't undo the CoA (transaction
-      // not available client-side); we surface the error and let the
-      // operator finish in /settings/bank-accounts manually.
-      if (v.also_bank_account) {
-        try {
-          await getAdapter().bankAccounts.create({
-            company_id:     company_id!,
-            coa_account_id: coaRow.id,
-            account_type:   v.bank_account_type || 'bank',
-            name:           v.name,                   // mirror CoA name
-            name_ar:        v.name_ar || null,
-            account_number: v.bank_account_number.trim() || null,
-            bank_name:      v.bank_name.trim() || null,
-            iban:           v.bank_iban.trim() || null,
-            swift_code:     v.bank_swift.trim() || null,
-            branch:         v.bank_branch.trim() || null,
-            currency:       v.bank_currency || companyCurrency,
-            is_active:      true,
-            is_default:     false,
-            opening_balance: 0,
-          });
-        } catch (e) {
-          // Re-throw with a friendlier message; the CoA row stays.
-          throw new Error(
-            `CoA "${v.code} ${v.name}" was created, but adding it as a bank account failed: ` +
-            (e instanceof Error ? e.message : 'unknown error') +
-            '. Finish it in Settings → Bank Accounts.'
-          );
-        }
-      }
-
-      return coaRow;
+      return result;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['coa', company_id] });

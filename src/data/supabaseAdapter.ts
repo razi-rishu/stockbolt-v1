@@ -860,6 +860,19 @@ export function createSupabaseAdapter(
         const { error } = await client.from('chart_of_accounts').update({ is_active: true }).eq('id', id);
         assertNoError(error, 'coa.activate');
       },
+      async createWithOptionalBank(input) {
+        // Phase 14.14p — atomic CoA + bank insert. The RPC wraps both in one
+        // transaction; if the bank insert fails, the CoA insert rolls back.
+        const { data, error } = await (
+          client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>
+        )('create_coa_with_optional_bank', {
+          p_coa:  input.coa as unknown as Record<string, unknown>,
+          p_bank: input.bank as unknown as Record<string, unknown> | null,
+        });
+        assertNoError(error as Error | null, 'coa.createWithOptionalBank');
+        const out = data as { coa_id: string; bank_id: string | null };
+        return { coa_id: out.coa_id, bank_id: out.bank_id ?? null };
+      },
     },
 
     // ── Phase 2: Price Levels ──────────────────────────────────────────────

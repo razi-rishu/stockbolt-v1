@@ -395,6 +395,32 @@ export interface CoaAPI {
   deactivate(id: string): Promise<void>;
   /** Re-activate a previously deactivated account. */
   activate(id: string): Promise<void>;
+  /** Phase 14.14p — atomic CoA + (optional) bank_accounts insert. Replaces
+   *  the Phase 14.13d two-call pattern so a failed bank insert no longer
+   *  leaves an orphan CoA row. Pass `bank: null` for a CoA-only create. */
+  createWithOptionalBank(input: CreateCoaWithBankInput): Promise<CreateCoaWithBankResult>;
+}
+
+export interface CreateCoaWithBankInput {
+  coa: CoaInsert;
+  bank: {
+    account_type:    string;
+    name?:           string | null;
+    name_ar?:        string | null;
+    account_number?: string | null;
+    bank_name?:      string | null;
+    iban?:           string | null;
+    swift_code?:     string | null;
+    branch?:         string | null;
+    currency?:       string | null;
+    is_active?:      boolean;
+    is_default?:     boolean;
+    opening_balance?: number;
+  } | null;
+}
+export interface CreateCoaWithBankResult {
+  coa_id:  string;
+  bank_id: string | null;
 }
 
 export interface AccountingAPI {
