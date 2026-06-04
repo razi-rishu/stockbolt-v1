@@ -22,6 +22,8 @@ import { Badge } from '@/ui/badge';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
 import type { BankAccountRow, CoaRow } from '@/data/adapter';
+import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
+import { FormErrorBanner } from '@/ui/form-error-banner';
 
 const schema = z.object({
   name:           z.string().min(1, 'Required'),
@@ -102,6 +104,7 @@ export default function BankAccountsSettingsPage() {
     is_default: false, is_active: true,
   };
 
+  const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('bank-accounts');
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
     defaultValues: defaults,
@@ -238,7 +241,8 @@ export default function BankAccountsSettingsPage() {
       }
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Edit bank account' : 'Add bank account'} width="lg">
-        <form onSubmit={handleSubmit((v) => saveMutation.mutateAsync(v))} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v); }, onInvalid)} className="flex flex-col gap-4">
+          <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           {/* Phase 14.13f — permanence hint. Bank accounts are wiped on
                Reset Company Data, same as every other operational master. */}
           {!editing && (

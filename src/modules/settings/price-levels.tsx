@@ -15,6 +15,8 @@ import { theme } from '@/ui/theme';
 import { Badge } from '@/ui/badge';
 import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { PriceLevelRow } from '@/data/adapter';
+import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
+import { FormErrorBanner } from '@/ui/form-error-banner';
 
 const schema = z.object({
   name:           z.string().min(1, 'Required'),
@@ -38,6 +40,7 @@ export default function PriceLevelsPage() {
     enabled: !!company_id,
   });
 
+  const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('price-levels');
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
     defaultValues: { name: '', name_ar: '', markup_percent: '', is_default: false, sort_order: 0 },
@@ -100,7 +103,8 @@ export default function PriceLevelsPage() {
       }
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? t('settings.price_levels.edit') : t('settings.price_levels.add')}>
-        <form onSubmit={handleSubmit((v) => saveMutation.mutateAsync(v as FormValues))} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v as FormValues); }, onInvalid)} className="flex flex-col gap-4">
+          <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           <Input label={t('settings.price_levels.name')} required error={errors.name?.message} {...register('name')} />
           <Input label={t('settings.price_levels.name_ar')} dir="rtl" {...register('name_ar')} />
           <Input label={t('settings.price_levels.markup')} type="number" step="0.01" hint={t('settings.price_levels.markup_hint')} {...register('markup_percent')} />

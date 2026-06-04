@@ -12,6 +12,8 @@ import { Modal } from '@/ui/modal';
 import { Table, type Column } from '@/ui/table';
 import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { CategoryRow } from '@/data/adapter';
+import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
+import { FormErrorBanner } from '@/ui/form-error-banner';
 
 const schema = z.object({
   name:      z.string().min(1, 'Required'),
@@ -33,6 +35,7 @@ export default function CategoriesPage() {
     enabled: !!company_id,
   });
 
+  const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('categories');
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { name: '', name_ar: '', parent_id: null },
@@ -104,7 +107,8 @@ export default function CategoriesPage() {
       )}
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? t('catalog.categories.edit') : t('catalog.categories.add')}>
-        <form onSubmit={handleSubmit((v) => saveMutation.mutateAsync(v))} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v); }, onInvalid)} className="flex flex-col gap-4">
+          <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           <Input label={t('catalog.categories.name')} required error={errors.name?.message} {...register('name')} />
           <Input label={t('catalog.categories.name_ar')} dir="rtl" {...register('name_ar')} />
           <div className="flex flex-col gap-1">

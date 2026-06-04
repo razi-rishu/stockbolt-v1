@@ -8,6 +8,8 @@ import { getAdapter } from '@/data/index';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Card } from '@/ui/card';
+import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
+import { FormErrorBanner } from '@/ui/form-error-banner';
 
 const schema = z
   .object({
@@ -30,6 +32,7 @@ export default function ResetPasswordPage() {
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
+  const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('reset-password');
 
   async function onSubmit(values: FormValues) {
     setServerError('');
@@ -46,7 +49,8 @@ export default function ResetPasswordPage() {
       <Card className="w-full max-w-sm" padding="lg">
         <h2 className="mb-6 text-xl font-semibold text-ink-primary">{t('auth.reset.title')}</h2>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit((v) => { clearBanner(); return onSubmit(v); }, onInvalid)} className="flex flex-col gap-4">
+          <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           <Input
             label={t('auth.reset.new_password')}
             type="password"

@@ -16,6 +16,8 @@ import { Modal } from '@/ui/modal';
 import type { ProductCompatibilityRow, ProductSupplierCodeRow, ContactRow, VehicleMakeRow, VehicleModelRow, CoaRow } from '@/data/adapter';
 import { ProductStockTab } from './_stock-tab';
 import { ProductWizard } from './_wizard';
+import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
+import { FormErrorBanner } from '@/ui/form-error-banner';
 
 const schema = z.object({
   sku:                z.string().min(1, 'Required'),
@@ -96,6 +98,7 @@ export default function ProductDetailPage() {
   const { data: supplierCodes = [] } = useQuery<ProductSupplierCodeRow[]>({ queryKey: ['supplier_codes', id], queryFn: () => getAdapter().products.listSupplierCodes(id!), enabled: !isNew && !!id });
   const { data: images } = useQuery({ queryKey: ['product', id], queryFn: () => getAdapter().products.getById(id!), enabled: !isNew && !!id, select: (p) => p?.image_urls ?? [] });
 
+  const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('product-detail');
   const { register, handleSubmit, reset, formState: { errors, isSubmitting, isDirty } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
     values: product ? {
@@ -212,12 +215,14 @@ export default function ProductDetailPage() {
       {activeTab === 'details' && (
         <form
           onSubmit={handleSubmit(async (v) => {
+            clearBanner();
             await saveMutation.mutateAsync(v as FormValues);
             // Phase 12.26 — exit edit mode after a successful save.
             if (!isNew) setEditMode(false);
-          })}
+          }, onInvalid)}
           className="flex flex-col gap-5"
         >
+          <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           {/* Phase 12.26 — read-only mode banner + Edit button. Shown for
                existing products when NOT in edit mode. Clicking Edit
                unlocks the fieldset below. */}

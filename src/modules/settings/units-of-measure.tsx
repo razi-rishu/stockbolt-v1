@@ -14,6 +14,8 @@ import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
 import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { UnitRow } from '@/data/adapter';
+import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
+import { FormErrorBanner } from '@/ui/form-error-banner';
 
 const schema = z.object({
   code:    z.string().min(1, 'Required'),
@@ -35,6 +37,7 @@ export default function UnitsOfMeasurePage() {
     enabled: !!company_id,
   });
 
+  const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('units-of-measure');
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { code: '', name: '', name_ar: '' },
@@ -91,7 +94,8 @@ export default function UnitsOfMeasurePage() {
       }
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? t('settings.units.edit') : t('settings.units.add')}>
-        <form onSubmit={handleSubmit((v) => saveMutation.mutateAsync(v))} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v); }, onInvalid)} className="flex flex-col gap-4">
+          <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           <Input label={t('settings.units.code')} required error={errors.code?.message} {...register('code')} />
           <Input label={t('settings.units.name')} required error={errors.name?.message} {...register('name')} />
           <Input label={t('settings.units.name_ar')} dir="rtl" {...register('name_ar')} />

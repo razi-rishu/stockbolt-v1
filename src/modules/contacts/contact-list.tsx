@@ -18,6 +18,8 @@ import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
 import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { ContactRow } from '@/data/adapter';
+import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
+import { FormErrorBanner } from '@/ui/form-error-banner';
 
 const PAGE_SIZE = 50;
 
@@ -75,6 +77,7 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
 
   const defaultCurrency = company?.currency ?? 'AED';
 
+  const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('contact-list');
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
     defaultValues: { name: '', name_ar: '', type: defaultType, email: '', phone: '', mobile: '', currency: defaultCurrency, tax_id: '', address_street: '', address_city: '', address_country: '', contact_person_name: '', contact_person_phone: '', credit_limit: 0, payment_terms_days: 0, notes: '' },
@@ -247,7 +250,8 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
       }
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? t('contacts.edit') : `${t('common.add')} ${t(singularKey)}`} width="xl">
-        <form onSubmit={handleSubmit((v) => saveMutation.mutateAsync(v as FormValues))} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v as FormValues); }, onInvalid)} className="flex flex-col gap-4">
+          <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           <div className="grid grid-cols-2 gap-4">
             <Input label={t('contacts.name')} required error={errors.name?.message} {...register('name')} />
             <Input label={t('contacts.name_ar')} dir="rtl" {...register('name_ar')} />

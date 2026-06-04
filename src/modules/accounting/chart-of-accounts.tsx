@@ -11,6 +11,8 @@ import { Input } from '@/ui/input';
 import { Modal } from '@/ui/modal';
 import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { CoaRow } from '@/data/adapter';
+import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
+import { FormErrorBanner } from '@/ui/form-error-banner';
 
 // ─── Flat 9-option Type dropdown ─────────────────────────────────────────────
 // User-facing values map to (DB type, DB sub_type) tuples. The DB CHECK
@@ -122,6 +124,10 @@ export default function ChartOfAccountsPage() {
     queryFn: () => getAdapter().coa.list(company_id!),
     enabled: !!company_id,
   });
+
+  // Phase 14.14l — surface zod failures instead of letting handleSubmit
+  // silently no-op when an optional field is undefined / required field empty.
+  const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('chart-of-accounts');
 
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
@@ -586,10 +592,12 @@ export default function ChartOfAccountsPage() {
       >
         <form
           onSubmit={handleSubmit((v) => {
+            clearBanner();
             (editing ? editMutation : createMutation).mutate(v as FormValues);
-          })}
+          }, onInvalid)}
           className="space-y-4"
         >
+          <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           {/* Phase 14.10 — banner explaining what's locked on system accounts. */}
           {editing?.is_system && (
             <div className="rounded-card border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">

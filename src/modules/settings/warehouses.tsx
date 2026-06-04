@@ -15,6 +15,8 @@ import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
 import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { WarehouseRow } from '@/data/adapter';
+import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
+import { FormErrorBanner } from '@/ui/form-error-banner';
 
 const schema = z.object({
   code:     z.string().min(1, 'Required'),
@@ -41,6 +43,7 @@ export default function WarehousesPage() {
     enabled: !!company_id,
   });
 
+  const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('warehouses');
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { code: '', name: '', name_ar: '', address: '', city: '', phone: '', is_default: false, is_active: true },
@@ -109,7 +112,8 @@ export default function WarehousesPage() {
       }
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? t('settings.warehouses.edit') : t('settings.warehouses.add')} width="lg">
-        <form onSubmit={handleSubmit((v) => saveMutation.mutateAsync(v))} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v); }, onInvalid)} className="flex flex-col gap-4">
+          <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           <div className="grid grid-cols-2 gap-4">
             <Input label={t('settings.warehouses.code')} required error={errors.code?.message} {...register('code')} />
             <Input label={t('settings.warehouses.name')} required error={errors.name?.message} {...register('name')} />

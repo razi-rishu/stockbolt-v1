@@ -10,6 +10,8 @@ import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Card } from '@/ui/card';
 import { PageHeader } from '@/ui/primitives';
+import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
+import { FormErrorBanner } from '@/ui/form-error-banner';
 
 // Defaults live in useForm defaultValues; schema only validates.
 const schema = z.object({
@@ -43,6 +45,7 @@ export default function CompanySettingsPage() {
     handleSubmit,
     formState: { errors, isDirty, isSubmitting },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
+  const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('company-settings');
 
   useEffect(() => {
     if (company) {
@@ -154,7 +157,8 @@ export default function CompanySettingsPage() {
 
       {/* Company details form */}
       <Card>
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit((v) => { clearBanner(); return onSubmit(v); }, onInvalid)} className="flex flex-col gap-4">
+          <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           <h2 className="text-base font-semibold text-ink-primary">{t('settings.company.details')}</h2>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
