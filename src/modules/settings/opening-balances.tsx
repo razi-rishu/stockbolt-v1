@@ -330,54 +330,63 @@ export default function OpeningBalancesPage() {
     try {
       const adapter = getAdapter();
 
-      // 1) Void the existing row. Reason captures the audit reason.
-      await adapter.openingBalances.void(
-        p.doc_id,
-        p.void_doc_type,
-        `Edited on ${new Date().toISOString().slice(0, 10)} — replaced with new opening row`,
-      );
-
-      // 2) Re-post with the new values. Type-specific code path.
+      // Phase 14.14n — atomic void+repost via the new edit_opening_balance RPC.
+      // Replaces the previous two-call orchestration that could leave the
+      // operator with a voided original and no replacement if the second
+      // call failed. Now both halves run inside one Postgres transaction —
+      // either both commit or both roll back.
       if (isGl) {
         const direction: 'debit' | 'credit' = p.type === 'gl_debit' ? 'debit' : 'credit';
-        // Resolve the account_id from the listed account_code.
         const account = coa.find(c => c.code === p.account_code);
         if (!account) throw new Error(`Original GL account ${p.account_code} not found anymore`);
-        await adapter.openingBalances.postGl({
-          account_id: account.id,
-          direction,
-          amount:     newAmount,
-          date:       editDate,
-          notes:      editNotes.trim() || null,
+        await adapter.openingBalances.edit({
+          doc_id:        p.doc_id,
+          void_doc_type: p.void_doc_type,
+          payload: {
+            kind:       'gl',
+            account_id: account.id,
+            direction,
+            amount:     newAmount,
+            date:       editDate,
+            notes:      editNotes.trim() || null,
+          },
         });
       } else if (isBank) {
         const direction: 'debit' | 'credit' = p.type === 'bank_debit' ? 'debit' : 'credit';
-        // Resolve the bank_account_id by matching its CoA code.
         const account = coa.find(c => c.code === p.account_code);
         if (!account) throw new Error(`Bank's CoA account ${p.account_code} not found anymore`);
         const bank = banks.find(b => b.coa_account_id === account.id);
         if (!bank) throw new Error(`Bank account for ${p.account_code} not found anymore`);
-        await adapter.openingBalances.postBank({
-          bank_account_id: bank.id,
-          direction,
-          amount:          newAmount,
-          date:            editDate,
-          notes:           editNotes.trim() || null,
+        await adapter.openingBalances.edit({
+          doc_id:        p.doc_id,
+          void_doc_type: p.void_doc_type,
+          payload: {
+            kind:            'bank',
+            bank_account_id: bank.id,
+            direction,
+            amount:          newAmount,
+            date:            editDate,
+            notes:           editNotes.trim() || null,
+          },
         });
       } else {
-        // Subsidiary types — contact_id stays, type stays.
-        await adapter.openingBalances.post({
-          type:        p.type as OpeningBalanceType,
-          contact_id:  p.contact_id,
-          doc_number:  editDocNum.trim(),
-          date:        editDate,
-          due_date:    (isAR || isAP) ? (editDueDate || null) : null,
-          amount:      newAmount,
-          currency:    p.currency,
+        await adapter.openingBalances.edit({
+          doc_id:        p.doc_id,
+          void_doc_type: p.void_doc_type,
+          payload: {
+            kind:       'subsidiary',
+            type:       p.type as OpeningBalanceType,
+            contact_id: p.contact_id,
+            doc_number: editDocNum.trim(),
+            date:       editDate,
+            due_date:   (isAR || isAP) ? (editDueDate || null) : null,
+            amount:     newAmount,
+            currency:   p.currency,
+          },
         });
       }
 
-      // 3) Refresh everything affected.
+      // Refresh everything affected.
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['opening_balances_posted', company_id] }),
         qc.invalidateQueries({ queryKey: ['ob_3010_balance', company_id] }),
@@ -393,9 +402,13 @@ export default function OpeningBalancesPage() {
       ]);
       closeEdit();
     } catch (e) {
+      // Phase 14.14n — atomic edit. If we got here, Postgres rolled back
+      // both void and re-post; the original row is untouched. So the
+      // 14.13i "original is voided, no replacement" footgun no longer applies.
       setEditError(
-        e instanceof Error ? e.message : 'Edit failed for unknown reason. ' +
-        'The original row may already be voided — check the list and re-post manually if needed.'
+        e instanceof Error
+          ? e.message
+          : 'Edit failed. The original row was not touched — try again.'
       );
     } finally {
       setEditSaving(false);

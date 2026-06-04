@@ -1780,7 +1780,53 @@ export interface OpeningBalancesAPI {
    *  JE and marks the source doc void (if any). Reason is shown in the
    *  audit log + the reversal JE description. */
   void(doc_id: string, doc_type: VoidableDocType, reason?: string): Promise<void>;
+  /** Phase 14.14n — atomically edits a posted opening row. Voids the
+   *  original and posts a fresh row with new values, all inside a single
+   *  Postgres transaction. If the new post fails, the void is rolled back
+   *  so the original row stays intact (no half-edited state). */
+  edit(input: EditOpeningBalanceInput): Promise<EditOpeningBalanceResult>;
 }
+
+// ── Phase 14.14n: atomic edit ─────────────────────────────────────────────
+export type EditOpeningPayload =
+  | {
+      kind: 'subsidiary';
+      type:        OpeningBalanceType;
+      contact_id:  string;
+      doc_number:  string;
+      date:        string;
+      due_date?:   string | null;
+      amount:      number;
+      currency?:   string;
+      notes?:      string | null;
+    }
+  | {
+      kind: 'gl';
+      account_id: string;
+      direction:  'debit' | 'credit';
+      amount:     number;
+      date:       string;
+      notes?:     string | null;
+    }
+  | {
+      kind: 'bank';
+      bank_account_id: string;
+      direction:       'debit' | 'credit';
+      amount:          number;
+      date:            string;
+      notes?:          string | null;
+    };
+
+export interface EditOpeningBalanceInput {
+  doc_id:        string;
+  void_doc_type: VoidableDocType;
+  payload:       EditOpeningPayload;
+}
+
+export type EditOpeningBalanceResult =
+  | OpeningBalanceResult
+  | GLOpeningBalanceResult
+  | BankOpeningBalanceResult;
 
 export type VoidableDocType = 'invoice' | 'vendor_bill' | 'payment' | 'opening_gl' | 'opening_bank';
 

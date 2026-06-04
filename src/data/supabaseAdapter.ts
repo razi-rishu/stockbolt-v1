@@ -4064,6 +4064,22 @@ export function createSupabaseAdapter(
         });
         assertNoError(error as Error | null, 'openingBalances.void');
       },
+      async edit(input) {
+        // Phase 14.14n — atomic void + re-post under a single Postgres
+        // transaction. Strips `kind` from the payload (it's a discriminant
+        // for the frontend only; the RPC takes it as a separate parameter).
+        const { kind, ...rest } = input.payload;
+        const { data, error } = await (
+          client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>
+        )('edit_opening_balance', {
+          p_doc_id:        input.doc_id,
+          p_void_doc_type: input.void_doc_type,
+          p_kind:          kind,
+          p_payload:       rest,
+        });
+        assertNoError(error as Error | null, 'openingBalances.edit');
+        return data as import('./adapter').EditOpeningBalanceResult;
+      },
       async get3010Balance(company_id) {
         const { data, error } = await (
           client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>

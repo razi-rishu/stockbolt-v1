@@ -379,6 +379,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       listPosted:     () => notImplemented('openingBalances.listPosted'),
       get3010Balance: () => notImplemented('openingBalances.get3010Balance'),
       void:           () => notImplemented('openingBalances.void'),
+      edit:           () => notImplemented('openingBalances.edit'),
     },
   };
 }
