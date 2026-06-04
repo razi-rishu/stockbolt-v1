@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
@@ -84,6 +85,9 @@ export default function InvoiceEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  // Phase 14.14k — invalidate all books-downstream caches (TB, BS, GL, aging,
+  // statements, dashboard, stock ledger, etc.) after any GL-touching mutation.
+  const invalidateBooks = useInvalidateBooks();
   const isNew = id === 'new';
 
   // ── Reference data ───────────────────────────────────────────────────────
@@ -338,7 +342,8 @@ export default function InvoiceEditorPage() {
         return null;
       }
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['invoices', company_id] });
       if (isNew && data) {
         navigate(`/sales/invoices/${data.id}`);
@@ -353,7 +358,8 @@ export default function InvoiceEditorPage() {
 
   const confirmMutation = useMutation({
     mutationFn: () => getAdapter().invoices.confirm(id!),
-    onSuccess: () => {
+    onSuccess: async () => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['invoices', company_id] });
       qc.invalidateQueries({ queryKey: ['invoice', id] });
     },
@@ -362,8 +368,9 @@ export default function InvoiceEditorPage() {
 
   const voidMutation = useMutation({
     mutationFn: () => getAdapter().invoices.void(id!, voidReason || undefined),
-    onSuccess: () => {
+    onSuccess: async () => {
       setVoidModal(false);
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['invoices', company_id] });
       qc.invalidateQueries({ queryKey: ['invoice', id] });
     },
@@ -404,8 +411,9 @@ export default function InvoiceEditorPage() {
       await getAdapter().invoices.update(id!, row, buildItems());
       await getAdapter().invoices.edit(id!);
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       setEditMode(false);
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['invoices', company_id] });
       qc.invalidateQueries({ queryKey: ['invoice', id] });
       qc.invalidateQueries({ queryKey: ['invoice_items', id] });

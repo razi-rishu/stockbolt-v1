@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Button } from '@/ui/button';
 import { SearchableSelect } from '@/ui/searchable-select';
 // Phase 14.04 — Signature template view mode for saved sales returns.
@@ -28,6 +29,7 @@ export default function SalesReturnEditorPage() {
   const { t }       = useTranslation();
   const navigate    = useNavigate();
   const qc          = useQueryClient();
+  const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const { company_id } = useAuthStore();
 
   const [invoiceId,    setInvoiceId]    = useState('');
@@ -143,7 +145,8 @@ export default function SalesReturnEditorPage() {
       } as SalesReturnItemInsert));
       return getAdapter().salesReturns.create(header, items);
     },
-    onSuccess: (sr) => {
+    onSuccess: async (sr) => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['sales_returns'] });
       // Navigate to linked credit note creation if wanted
       navigate(`/sales/credit-notes/new?from_return=${sr?.id ?? ''}&invoice_id=${invoiceId}`);

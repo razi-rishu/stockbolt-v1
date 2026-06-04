@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Button } from '@/ui/button';
@@ -86,6 +87,7 @@ function CloseSessionDialog({ session, onClose, onCancel }: {
 export default function POSScreen() {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const { company_id } = useAuthStore();
 
   const searchRef = useRef<HTMLInputElement>(null);
@@ -174,12 +176,13 @@ export default function POSScreen() {
         customerId || null,
       );
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       setLastSale(result.invoice_number);
       setCart([]);
       setCustomerId('');
       setPaymentModal(null);
       setError(null);
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['pos_session'] });
     },
     onError: (e: Error) => { setError(e.message); setPaymentModal(null); },

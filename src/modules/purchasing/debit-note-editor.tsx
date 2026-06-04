@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Button } from '@/ui/button';
 import { SearchableSelect } from '@/ui/searchable-select';
 // Phase 14.04 — Signature template view mode for saved debit notes.
@@ -38,6 +39,7 @@ export default function DebitNoteEditorPage() {
   const { t }       = useTranslation();
   const navigate    = useNavigate();
   const qc          = useQueryClient();
+  const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const { company_id } = useAuthStore();
 
   const [supplierId,   setSupplierId]   = useState('');
@@ -185,7 +187,8 @@ export default function DebitNoteEditorPage() {
         return getAdapter().debitNotes.update(id!, header, buildItems());
       }
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['debit_notes'] });
       navigate('/purchasing/debit-notes');
     },
@@ -193,7 +196,8 @@ export default function DebitNoteEditorPage() {
 
   const confirmMutation = useMutation({
     mutationFn: () => getAdapter().debitNotes.confirm(id!),
-    onSuccess: () => {
+    onSuccess: async () => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['debit_notes'] });
       qc.invalidateQueries({ queryKey: ['debit_note', id] });
     },
@@ -201,7 +205,8 @@ export default function DebitNoteEditorPage() {
 
   const voidMutation = useMutation({
     mutationFn: () => getAdapter().debitNotes.void(id!, voidReason || undefined),
-    onSuccess: () => {
+    onSuccess: async () => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['debit_notes'] });
       qc.invalidateQueries({ queryKey: ['debit_note', id] });
       setShowVoidDlg(false);

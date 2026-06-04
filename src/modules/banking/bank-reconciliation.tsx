@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
 import { SearchableSelect } from '@/ui/searchable-select';
@@ -36,6 +37,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 export default function BankReconciliationPage() {
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
+  const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
 
   const [bankAccountId,   setBankAccountId]     = useState('');
   const [statementDate,   setStatementDate]     = useState(today());
@@ -109,9 +111,10 @@ export default function BankReconciliationPage() {
         lock,
       });
     },
-    onSuccess: (recon) => {
+    onSuccess: async (recon) => {
       setError(null);
       setEditingReconId(recon.id);
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['bank_recons', company_id, bankAccountId] });
       qc.invalidateQueries({ queryKey: ['bank_recon_gl_lines', company_id, bankAccountId, statementDate] });
       // Invalidate the Reconciled-badge cache used by payment lists/editors
@@ -122,11 +125,12 @@ export default function BankReconciliationPage() {
 
   const deleteMutation = useMutation({
     mutationFn: () => getAdapter().bankReconciliations.delete(editingReconId!),
-    onSuccess: () => {
+    onSuccess: async () => {
       setEditingReconId(null);
       setChecked({});
       setStatementBal('');
       setNotes('');
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['bank_recons', company_id, bankAccountId] });
       qc.invalidateQueries({ queryKey: ['bank_recon_gl_lines', company_id, bankAccountId, statementDate] });
       qc.invalidateQueries({ queryKey: ['reconciled_payment_ids', company_id] });

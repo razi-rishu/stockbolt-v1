@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Button } from '@/ui/button';
 import { SearchableSelect } from '@/ui/searchable-select';
 // Phase 14.04 — Signature template view mode for saved credit notes.
@@ -39,6 +40,7 @@ export default function CreditNoteEditorPage() {
   const { t }       = useTranslation();
   const navigate    = useNavigate();
   const qc          = useQueryClient();
+  const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const { company_id } = useAuthStore();
 
   // Header state
@@ -194,7 +196,8 @@ export default function CreditNoteEditorPage() {
         return getAdapter().creditNotes.update(id!, header, buildItems());
       }
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['credit_notes'] });
       navigate('/sales/credit-notes');
     },
@@ -202,7 +205,8 @@ export default function CreditNoteEditorPage() {
 
   const confirmMutation = useMutation({
     mutationFn: () => getAdapter().creditNotes.confirm(id!),
-    onSuccess: () => {
+    onSuccess: async () => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['credit_notes'] });
       qc.invalidateQueries({ queryKey: ['credit_note', id] });
     },
@@ -210,7 +214,8 @@ export default function CreditNoteEditorPage() {
 
   const voidMutation = useMutation({
     mutationFn: () => getAdapter().creditNotes.void(id!, voidReason || undefined),
-    onSuccess: () => {
+    onSuccess: async () => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['credit_notes'] });
       qc.invalidateQueries({ queryKey: ['credit_note', id] });
       setShowVoidDlg(false);

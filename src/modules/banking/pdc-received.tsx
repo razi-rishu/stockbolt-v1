@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Modal } from '@/ui/modal';
@@ -23,6 +24,7 @@ export default function PDCReceivedPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
+  const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
 
   // New PDC form state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -61,6 +63,8 @@ export default function PDCReceivedPage() {
   });
 
   function invalidate() {
+    // Phase 14.14k — clear / bank-deposit / bounce all touch GL.
+    invalidateBooks();
     qc.invalidateQueries({ queryKey: ['pdc_cheques', 'received'] });
   }
 

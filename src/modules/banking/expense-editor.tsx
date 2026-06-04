@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
 import { SearchableSelect } from '@/ui/searchable-select';
@@ -16,6 +17,7 @@ export default function ExpenseEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const { company_id } = useAuthStore();
   const isNew = !id || id === 'new';
 
@@ -106,7 +108,8 @@ export default function ExpenseEditorPage() {
       if (isNew) return getAdapter().expenses.create(payload);
       return getAdapter().expenses.update(id!, { expense_account_id: expenseAccountId, paid_from_account_id: paidFromId, amount: parseFloat(amount), tax_amount: parseFloat(taxAmount || '0'), total_amount: totalAmount, date, description, supplier_id: supplierId || null, reference: reference || null });
     },
-    onSuccess: (row) => {
+    onSuccess: async (row) => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['expenses'] });
       if (isNew) navigate(`/banking/expenses/${(row as ExpenseRow).id}`);
     },
@@ -115,13 +118,21 @@ export default function ExpenseEditorPage() {
 
   const confirmMutation = useMutation({
     mutationFn: () => getAdapter().expenses.confirm(id!),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['expense', id] }); qc.invalidateQueries({ queryKey: ['expenses'] }); },
+    onSuccess: async () => {
+      await invalidateBooks();
+      qc.invalidateQueries({ queryKey: ['expense', id] });
+      qc.invalidateQueries({ queryKey: ['expenses'] });
+    },
     onError: (e: Error) => setError(e.message),
   });
 
   const voidMutation = useMutation({
     mutationFn: () => getAdapter().expenses.void(id!, voidReason),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['expense', id] }); qc.invalidateQueries({ queryKey: ['expenses'] }); },
+    onSuccess: async () => {
+      await invalidateBooks();
+      qc.invalidateQueries({ queryKey: ['expense', id] });
+      qc.invalidateQueries({ queryKey: ['expenses'] });
+    },
     onError: (e: Error) => setError(e.message),
   });
 

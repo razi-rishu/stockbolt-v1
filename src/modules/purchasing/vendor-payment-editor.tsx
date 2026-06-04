@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
@@ -25,6 +26,7 @@ export default function VendorPaymentEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const [searchParams] = useSearchParams();
   const isNew = id === 'new';
   // Phase 14.08 — deep-link from supplier-detail "Apply credit" banner.
@@ -271,7 +273,8 @@ export default function VendorPaymentEditorPage() {
         notes:             header.notes || null,
       }, updateAllocations);
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['vendor_payments', company_id] });
       qc.invalidateQueries({ queryKey: ['open_bills_for_supplier', company_id, header.contact_id] });
       qc.invalidateQueries({ queryKey: ['vendor_payment', id] });
@@ -283,7 +286,8 @@ export default function VendorPaymentEditorPage() {
 
   const confirmMutation = useMutation({
     mutationFn: () => getAdapter().vendorPayments.confirm(id!),
-    onSuccess: () => {
+    onSuccess: async () => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['vendor_payments', company_id] });
       qc.invalidateQueries({ queryKey: ['vendor_payment', id] });
     },
@@ -292,8 +296,9 @@ export default function VendorPaymentEditorPage() {
 
   const applyMutation = useMutation({
     mutationFn: () => getAdapter().vendorPayments.applyAdvance(id!, applyBillId, Number(applyAmount)),
-    onSuccess: () => {
+    onSuccess: async () => {
       setApplyModal(false); setApplyBillId(''); setApplyAmount('');
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['vendor_payment_allocations', id] });
     },
     onError: (e: Error) => setError(e.message),

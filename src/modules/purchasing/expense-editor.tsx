@@ -60,6 +60,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Button } from '@/ui/button';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { ContactPicker } from '@/components/contact-picker';
@@ -135,6 +136,7 @@ export default function ExpenseEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const { company_id } = useAuthStore();
   const isNew = !id || id === 'new';
   const today = new Date().toISOString().slice(0, 10);
@@ -320,7 +322,8 @@ export default function ExpenseEditorPage() {
       await getAdapter().expenses.replaceItems(expenseId, itemInserts);
       return expenseId;
     },
-    onSuccess: (expenseId) => {
+    onSuccess: async (expenseId) => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['expenses', company_id] });
       qc.invalidateQueries({ queryKey: ['expense', expenseId] });
       qc.invalidateQueries({ queryKey: ['expense_items', expenseId] });
@@ -331,7 +334,8 @@ export default function ExpenseEditorPage() {
 
   const confirmMutation = useMutation({
     mutationFn: async () => { await getAdapter().expenses.confirm(id!); },
-    onSuccess: () => {
+    onSuccess: async () => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['expenses', company_id] });
       qc.invalidateQueries({ queryKey: ['expense', id] });
     },
@@ -340,7 +344,8 @@ export default function ExpenseEditorPage() {
 
   const voidMutation = useMutation({
     mutationFn: async () => { await getAdapter().expenses.void(id!, voidReason || undefined); },
-    onSuccess: () => {
+    onSuccess: async () => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['expenses', company_id] });
       qc.invalidateQueries({ queryKey: ['expense', id] });
     },

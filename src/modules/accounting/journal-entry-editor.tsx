@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { postJournalEntry, reverseJournalEntry, JournalValidationError } from '@/core/gl/posting-engine';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
@@ -31,6 +32,7 @@ export default function JournalEntryEditorPage() {
   const navigate = useNavigate();
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
+  const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
 
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -94,7 +96,8 @@ export default function JournalEntryEditorPage() {
       };
       return postJournalEntry(payload, getAdapter());
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['journal_entries', company_id] });
       navigate(`/accounting/journal-entries/${result.journal_entry_id}`);
     },
@@ -105,7 +108,8 @@ export default function JournalEntryEditorPage() {
 
   const reverseMutation = useMutation({
     mutationFn: async () => reverseJournalEntry(id!, getAdapter()),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['journal_entries', company_id] });
       qc.invalidateQueries({ queryKey: ['je', id] });
       navigate(`/accounting/journal-entries/${result.journal_entry_id}`);

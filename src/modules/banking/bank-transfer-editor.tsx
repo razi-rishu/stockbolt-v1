@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
 import type { BankAccountRow, BankTransferRow } from '@/data/adapter';
@@ -15,6 +16,7 @@ export default function BankTransferEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const { company_id } = useAuthStore();
   const isNew = !id || id === 'new';
 
@@ -80,7 +82,8 @@ export default function BankTransferEditorPage() {
       if (isNew) return getAdapter().bankTransfers.create(payload);
       return getAdapter().bankTransfers.update(id!, { from_account_id: fromAccountId, to_account_id: toAccountId, amount: parseFloat(amount), date, reference: reference || null, notes: notes || null });
     },
-    onSuccess: (row) => {
+    onSuccess: async (row) => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['bank_transfers'] });
       if (isNew) navigate(`/banking/transfers/${(row as BankTransferRow).id}`);
     },
@@ -89,13 +92,21 @@ export default function BankTransferEditorPage() {
 
   const confirmMutation = useMutation({
     mutationFn: () => getAdapter().bankTransfers.confirm(id!),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['bank_transfer', id] }); qc.invalidateQueries({ queryKey: ['bank_transfers'] }); },
+    onSuccess: async () => {
+      await invalidateBooks();
+      qc.invalidateQueries({ queryKey: ['bank_transfer', id] });
+      qc.invalidateQueries({ queryKey: ['bank_transfers'] });
+    },
     onError: (e: Error) => setError(e.message),
   });
 
   const voidMutation = useMutation({
     mutationFn: () => getAdapter().bankTransfers.void(id!),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['bank_transfer', id] }); qc.invalidateQueries({ queryKey: ['bank_transfers'] }); },
+    onSuccess: async () => {
+      await invalidateBooks();
+      qc.invalidateQueries({ queryKey: ['bank_transfer', id] });
+      qc.invalidateQueries({ queryKey: ['bank_transfers'] });
+    },
     onError: (e: Error) => setError(e.message),
   });
 

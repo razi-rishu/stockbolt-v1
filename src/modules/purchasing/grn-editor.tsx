@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
@@ -36,6 +37,7 @@ export default function GRNEditorPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const isNew = id === 'new';
   const linkedPoId = searchParams.get('po_id');
 
@@ -184,7 +186,8 @@ export default function GRNEditorPage() {
       await getAdapter().goodsReceipts.update(id!, row, buildItems());
       return null;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['goods_receipts', company_id] });
       if (isNew && data) navigate(`/purchasing/grns/${data.id}`);
       else {
@@ -197,8 +200,9 @@ export default function GRNEditorPage() {
 
   const confirmMutation = useMutation({
     mutationFn: () => getAdapter().goodsReceipts.confirm(id!),
-    onSuccess: () => {
+    onSuccess: async () => {
       setConfirmModal(false);
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['goods_receipts', company_id] });
       qc.invalidateQueries({ queryKey: ['goods_receipt', id] });
     },

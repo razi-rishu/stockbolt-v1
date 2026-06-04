@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Button } from '@/ui/button';
@@ -28,6 +29,7 @@ export default function TransferEditorPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const { company_id } = useAuthStore();
   const isNew = !id || id === 'new';
 
@@ -131,7 +133,8 @@ export default function TransferEditorPage() {
         return id!;
       }
     },
-    onSuccess: (newId) => {
+    onSuccess: async (newId) => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['stock_transfers'] });
       if (isNew) navigate(`/inventory/transfers/${newId}`, { replace: true });
     },
@@ -140,7 +143,8 @@ export default function TransferEditorPage() {
 
   const confirmMutation = useMutation({
     mutationFn: () => getAdapter().stockTransfers.confirm(id!),
-    onSuccess: () => {
+    onSuccess: async () => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['stock_transfers'] });
       qc.invalidateQueries({ queryKey: ['stock_transfer', id] });
       setConfirmOpen(false);

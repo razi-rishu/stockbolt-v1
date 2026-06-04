@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Button } from '@/ui/button';
@@ -35,6 +36,7 @@ export default function AdjustmentEditorPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const { company_id } = useAuthStore();
   const isNew = !id || id === 'new';
 
@@ -145,7 +147,8 @@ export default function AdjustmentEditorPage() {
         return id!;
       }
     },
-    onSuccess: (newId) => {
+    onSuccess: async (newId) => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['inventory_adjustments'] });
       if (isNew) navigate(`/inventory/adjustments/${newId}`, { replace: true });
     },
@@ -154,7 +157,8 @@ export default function AdjustmentEditorPage() {
 
   const confirmMutation = useMutation({
     mutationFn: () => getAdapter().inventoryAdjustments.confirm(id!),
-    onSuccess: () => {
+    onSuccess: async () => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['inventory_adjustments'] });
       qc.invalidateQueries({ queryKey: ['inventory_adjustment', id] });
       setConfirmOpen(false);

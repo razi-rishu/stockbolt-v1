@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
@@ -44,6 +45,7 @@ export default function PaymentEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const invalidateBooks = useInvalidateBooks();   // Phase 14.14k — TB/BS/aging/GL sweep
   const [searchParams] = useSearchParams();
   const isNew = id === 'new';
   // Phase 14.08 — deep-link from customer-detail "Apply credit" banner.
@@ -341,7 +343,8 @@ export default function PaymentEditorPage() {
         notes:             header.notes || null,
       }, updateAllocations);
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['payments', company_id] });
       qc.invalidateQueries({ queryKey: ['payment', id] });
       qc.invalidateQueries({ queryKey: ['payment_allocations', id] });
@@ -353,7 +356,8 @@ export default function PaymentEditorPage() {
 
   const confirmMutation = useMutation({
     mutationFn: () => getAdapter().payments.confirm(id!),
-    onSuccess: () => {
+    onSuccess: async () => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['payments', company_id] });
       qc.invalidateQueries({ queryKey: ['payment', id] });
     },
@@ -362,10 +366,11 @@ export default function PaymentEditorPage() {
 
   const applyMutation = useMutation({
     mutationFn: () => getAdapter().payments.applyAdvance(id!, applyInvId, parseFloat(applyAmt)),
-    onSuccess: () => {
+    onSuccess: async () => {
       setApplyModal(false);
       setApplyInvId('');
       setApplyAmt('');
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['payment', id] });
     },
     onError: (e: Error) => { setApplyModal(false); setError(e.message); },

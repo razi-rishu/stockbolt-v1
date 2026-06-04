@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
@@ -60,6 +61,7 @@ export default function VendorBillEditorPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const isNew = id === 'new';
   const linkedGrnId = searchParams.get('grn_id');
 
@@ -338,7 +340,8 @@ export default function VendorBillEditorPage() {
       await getAdapter().vendorBills.update(id!, row as unknown as Parameters<ReturnType<typeof getAdapter>['vendorBills']['update']>[1], buildItems());
       return null;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['vendor_bills', company_id] });
       if (isNew && data) navigate(`/purchasing/bills/${data.id}`);
       else {
@@ -351,8 +354,9 @@ export default function VendorBillEditorPage() {
 
   const confirmMutation = useMutation({
     mutationFn: () => getAdapter().vendorBills.confirm(id!),
-    onSuccess: () => {
+    onSuccess: async () => {
       setConfirmModal(false);
+      await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['vendor_bills', company_id] });
       qc.invalidateQueries({ queryKey: ['vendor_bill', id] });
     },
