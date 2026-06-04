@@ -72,6 +72,7 @@ DECLARE
   v_acct_name     TEXT;
   v_ob_eq_id      UUID;
   v_descr         TEXT;
+  v_currency      TEXT;   -- Phase 14.14m — pulled from companies.currency
 BEGIN
   -- Resolve and validate the target account; gives us the company_id too.
   SELECT company_id, code, name
@@ -100,6 +101,11 @@ BEGIN
     RAISE EXCEPTION '3010 Opening Balance Equity not seeded for this company';
   END IF;
 
+  -- Phase 14.14m — resolve the tenant's currency instead of hard-coding AED.
+  SELECT COALESCE(NULLIF(currency, ''), NULLIF(base_currency, ''), 'AED')
+    INTO v_currency
+  FROM public.companies WHERE id = v_company_id;
+
   -- Reserve a JE number.
   -- Phase 14.14f fix: see note in 20260522000004; padding_length/allow_reset
   -- don't exist — using defaults via column omission instead.
@@ -121,7 +127,7 @@ BEGIN
   ) VALUES (
     v_company_id, v_entry_number, p_date,
     v_descr,
-    'opening_gl', NULL, 'AED', 1.0,
+    'opening_gl', NULL, v_currency, 1.0,
     p_amount, p_amount, v_user_id
   ) RETURNING id INTO v_je_id;
 

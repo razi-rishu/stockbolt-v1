@@ -5,6 +5,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
+import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
@@ -41,7 +42,7 @@ interface PmtHeader {
 export default function PaymentEditorPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
-  const companyCurrency = 'AED';
+  const companyCurrency = useCompanyCurrency();   // Phase 14.14m
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();

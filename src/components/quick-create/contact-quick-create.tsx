@@ -6,6 +6,7 @@ import { Button } from '@/ui/button';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import type { ContactInsert } from '@/data/adapter';
+import { useCompanyCurrency } from '@/hooks/use-company-currency';
 
 /**
  * ContactQuickCreate — modal popup for creating a customer or supplier
@@ -35,6 +36,7 @@ export function ContactQuickCreate({
   open, type, initialName, onClose, onCreated,
 }: ContactQuickCreateProps) {
   const { company_id } = useAuthStore();
+  const companyCurrency = useCompanyCurrency();    // Phase 14.14m
   const qc = useQueryClient();
 
   const [name, setName]               = useState(initialName ?? '');
@@ -63,7 +65,7 @@ export function ContactQuickCreate({
         tax_id:       taxId.trim() || null,
         address:      address.trim() || null,
         credit_limit: limit,
-        currency:     'AED',           // default; can be changed on detail page
+        currency:     companyCurrency, // Phase 14.14m — company's base currency, editable on detail page
       } as unknown as ContactInsert;
 
       return getAdapter().contacts.create(row);

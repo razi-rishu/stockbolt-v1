@@ -5,6 +5,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
+import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
@@ -62,6 +63,7 @@ export default function VendorBillEditorPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
+  const companyCurrency = useCompanyCurrency();    // Phase 14.14m
   const isNew = id === 'new';
   const linkedGrnId = searchParams.get('grn_id');
 
@@ -148,7 +150,7 @@ export default function VendorBillEditorPage() {
 
   const [header, setHeader] = useState({
     supplier_id: '', date: todayIso(), due_date: '', reference: '',
-    supplier_bill_number: '', notes: '', currency: 'AED',
+    supplier_bill_number: '', notes: '', currency: companyCurrency,
     linked_grn_id: linkedGrnId ?? '',
     landed_cost_total: '0',          // Phase 12.17 — freight + duty + customs
   });

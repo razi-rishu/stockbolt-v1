@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
+import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Modal } from '@/ui/modal';
@@ -25,6 +26,7 @@ export default function PDCIssuedPage() {
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
+  const companyCurrency = useCompanyCurrency();    // Phase 14.14m
 
   // New PDC form state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -32,7 +34,7 @@ export default function PDCIssuedPage() {
   const [chequeNumber, setChequeNumber]       = useState('');
   const [bankName, setBankName]               = useState('');
   const [amount, setAmount]                   = useState('');
-  const [currency, setCurrency]               = useState('AED');
+  const [currency, setCurrency]               = useState(companyCurrency);
   const [issueDate, setIssueDate]             = useState(new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate]                 = useState('');
   const [depositAccountId, setDepositAccountId] = useState('');
@@ -94,7 +96,7 @@ export default function PDCIssuedPage() {
 
   function resetForm() {
     setContactId(''); setChequeNumber(''); setBankName(''); setAmount('');
-    setCurrency('AED'); setIssueDate(new Date().toISOString().slice(0, 10));
+    setCurrency(companyCurrency); setIssueDate(new Date().toISOString().slice(0, 10));
     setDueDate(''); setDepositAccountId(''); setNotes('');
     setCreateError(null);
   }

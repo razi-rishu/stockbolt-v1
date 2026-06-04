@@ -13,6 +13,7 @@ import ImportExportButton from '@/modules/settings/import-export/ImportExportBut
 import type { CoaRow } from '@/data/adapter';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
 import { FormErrorBanner } from '@/ui/form-error-banner';
+import { useCompanyCurrency } from '@/hooks/use-company-currency';
 
 // ─── Flat 9-option Type dropdown ─────────────────────────────────────────────
 // User-facing values map to (DB type, DB sub_type) tuples. The DB CHECK
@@ -110,6 +111,7 @@ export default function ChartOfAccountsPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
+  const companyCurrency = useCompanyCurrency();    // Phase 14.14m — default for bank quick-create
   const [open, setOpen] = useState(false);
   // Phase 14.10 — edit mode. When set we render the same modal with
   // pre-filled values + update path instead of create.
@@ -137,7 +139,7 @@ export default function ChartOfAccountsPage() {
       also_bank_account: false,
       bank_account_type: 'bank',
       bank_account_number: '', bank_name: '', bank_iban: '',
-      bank_swift: '', bank_branch: '', bank_currency: 'AED',
+      bank_swift: '', bank_branch: '', bank_currency: companyCurrency,
     },
   });
 
@@ -301,7 +303,7 @@ export default function ChartOfAccountsPage() {
             iban:           v.bank_iban.trim() || null,
             swift_code:     v.bank_swift.trim() || null,
             branch:         v.bank_branch.trim() || null,
-            currency:       v.bank_currency || 'AED',
+            currency:       v.bank_currency || companyCurrency,
             is_active:      true,
             is_default:     false,
             opening_balance: 0,

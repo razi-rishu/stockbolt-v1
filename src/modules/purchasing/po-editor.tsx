@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
@@ -53,6 +54,7 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 export default function POEditorPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
+  const companyCurrency = useCompanyCurrency();    // Phase 14.14m
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -100,7 +102,7 @@ export default function POEditorPage() {
 
   const [header, setHeader] = useState({
     supplier_id: '', warehouse_id: '', date: todayIso(),
-    expected_delivery_date: '', reference: '', notes: '', currency: 'AED',
+    expected_delivery_date: '', reference: '', notes: '', currency: companyCurrency,
   });
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
   const [error, setError] = useState<string | null>(null);

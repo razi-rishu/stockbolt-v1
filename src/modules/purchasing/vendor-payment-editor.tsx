@@ -5,6 +5,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
+import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
@@ -27,6 +28,7 @@ export default function VendorPaymentEditorPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
+  const companyCurrency = useCompanyCurrency();    // Phase 14.14m
   const [searchParams] = useSearchParams();
   const isNew = id === 'new';
   // Phase 14.08 — deep-link from supplier-detail "Apply credit" banner.
@@ -90,7 +92,7 @@ export default function VendorPaymentEditorPage() {
 
   const [header, setHeader] = useState({
     contact_id: '', bank_account_id: '', payment_method_id: '',
-    date: todayIso(), amount: '', currency: 'AED',
+    date: todayIso(), amount: '', currency: companyCurrency,
     classification: 'against_invoice' as 'against_invoice' | 'advance' | 'on_account',
     reference: '', notes: '',
   });

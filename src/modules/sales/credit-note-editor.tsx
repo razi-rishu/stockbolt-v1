@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
+import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { SearchableSelect } from '@/ui/searchable-select';
 // Phase 14.04 — Signature template view mode for saved credit notes.
@@ -41,6 +42,7 @@ export default function CreditNoteEditorPage() {
   const navigate    = useNavigate();
   const qc          = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
+  const companyCurrency = useCompanyCurrency();    // Phase 14.14m
   const { company_id } = useAuthStore();
 
   // Header state
@@ -181,7 +183,7 @@ export default function CreditNoteEditorPage() {
         date,
         reason:            reason as 'return' | 'rebate' | 'price_correction' | 'damage' | 'bad_debt',
         restock,
-        currency:          'AED',
+        currency:          companyCurrency,
         exchange_rate:     1,
         subtotal:          totals.subtotal,
         discount_amount:   totals.discount,
