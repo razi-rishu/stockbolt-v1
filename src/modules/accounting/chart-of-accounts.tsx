@@ -105,7 +105,11 @@ type FormValues = z.infer<typeof schema>;
 // Codes that, when chosen as parent, trigger the "also a bank account?"
 // flow. 1110 = Bank Account (Main), 1100 = Cash in Hand. Both are the
 // canonical seed accounts those sub-rows nest under.
-const BANK_PARENT_CODES = new Set(['1110', '1100']);
+// Phase 14.14s — codes moved to src/core/seeds/control-accounts.ts.
+import {
+  BANK_PARENT_CODE_SET as BANK_PARENT_CODES,
+  BANK_PARENT_CODES as BANK_CODE,
+} from '@/core/seeds/control-accounts';
 
 export default function ChartOfAccountsPage() {
   const { t } = useTranslation();
@@ -248,7 +252,7 @@ export default function ChartOfAccountsPage() {
   // becomes immediately usable in payment / expense pickers.
   const parentRow = parentIdValue ? accounts.find(a => a.id === parentIdValue) : undefined;
   const parentIsBankOrCash = !!parentRow && BANK_PARENT_CODES.has(parentRow.code);
-  const inferredBankType   = parentRow?.code === '1100' ? 'cash' : 'bank';
+  const inferredBankType   = parentRow?.code === BANK_CODE.CASH ? 'cash' : 'bank';
 
   // Auto-toggle the "also create" checkbox on whenever a bank-or-cash
   // parent is picked, OFF otherwise. The operator can still uncheck it

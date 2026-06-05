@@ -1,3 +1,24 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- StockBolt — Phase 14.14s hotfix
+-- Fix: reverse_journal_entry error messages were too generic.
+--
+-- Existing messages were "reverse_journal_entry: …" with raw UUIDs. The
+-- front-end couldn't distinguish "period locked" from "JE not found"
+-- from "already reversed". Operators got cryptic Postgres-style text.
+--
+-- This hotfix re-creates the function with friendlier messages and
+-- proper ERRCODEs:
+--   42501 (insufficient_privilege)  →  caller not in a company
+--   P0002 (no_data_found)           →  JE not found
+--   P0001 (raise_exception)         →  already reversed / period locked
+--
+-- HOW TO RUN
+-- ──────────
+-- Supabase Dashboard → SQL Editor → New query → paste this → Run.
+-- "Success. No rows returned." → done. Idempotent.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+
 -- Phase 3 — reverse_journal_entry RPC
 -- Creates a mirror JE: all GL lines with debit↔credit flipped.
 -- Links original JE.reversed_by_id → new JE, new JE.reversal_of_id → original.
@@ -150,3 +171,6 @@ BEGIN
   );
 END;
 $$;
+
+
+NOTIFY pgrst, 'reload schema';

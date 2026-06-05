@@ -99,16 +99,12 @@ function defaultDirection(account: CoaRow | undefined): 'debit' | 'credit' {
   return account.type === 'asset' || account.type === 'expense' ? 'debit' : 'credit';
 }
 
-// Control accounts the operator should NOT post GL openings to (they have
-// dedicated wizards / mechanisms). Soft warning, doesn't block.
-const CONTROL_ACCOUNT_CODES = new Set([
-  '1200',   // AR — use subsidiary grid above for per-customer detail
-  '2100',   // AP — use subsidiary grid above for per-supplier detail
-  '2400',   // Customer Advances — use subsidiary grid
-  '1400',   // Vendor Advances — use subsidiary grid
-  '1300',   // Inventory — use the inventory wizard so MAC + stock_ledger stay consistent
-  '3010',   // Opening Balance Equity — this IS the contra; can't open against itself
-]);
+// Phase 14.14s — codes moved to src/core/seeds/control-accounts.ts so the
+// frontend, RPCs, and any future code path can refer to one source.
+import {
+  CONTROL_ACCOUNT_CODE_SET as CONTROL_ACCOUNT_CODES,
+  CONTROL_ACCOUNT_CODES as CONTROL_CODE,
+} from '@/core/seeds/control-accounts';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -491,7 +487,7 @@ export default function OpeningBalancesPage() {
     } else {
       if (!r.account_id) return 'Pick a GL account';
       const acct = coaById[r.account_id];
-      if (acct?.code === '3010') return 'Cannot post against 3010 (it IS the contra account)';
+      if (acct?.code === CONTROL_CODE.OPENING_EQUITY) return 'Cannot post against 3010 (it IS the contra account)';
     }
     if (!r.date) return 'Date is required';
     const amt = parseFloat(r.amount);
@@ -984,11 +980,11 @@ export default function OpeningBalancesPage() {
                       {isControlAccount && acct && (
                         <div className="mt-1 text-[11px] text-amber-700">
                           ⚠ {acct.code} is a control account.{' '}
-                          {acct.code === '1200' && 'Use the AR rows above for per-customer detail.'}
-                          {acct.code === '2100' && 'Use the AP rows above for per-supplier detail.'}
-                          {acct.code === '2400' && 'Use Customer-credit rows above.'}
-                          {acct.code === '1400' && 'Use Vendor-credit rows above.'}
-                          {acct.code === '1300' && 'Use the inventory wizard so MAC + stock_ledger stay consistent.'}
+                          {acct.code === CONTROL_CODE.AR                && 'Use the AR rows above for per-customer detail.'}
+                          {acct.code === CONTROL_CODE.AP                && 'Use the AP rows above for per-supplier detail.'}
+                          {acct.code === CONTROL_CODE.CUSTOMER_ADVANCES && 'Use Customer-credit rows above.'}
+                          {acct.code === CONTROL_CODE.VENDOR_ADVANCES   && 'Use Vendor-credit rows above.'}
+                          {acct.code === CONTROL_CODE.INVENTORY         && 'Use the inventory wizard so MAC + stock_ledger stay consistent.'}
                           {acct.code === '1100' && 'Pick the specific bank via the Bank-account toggle so the recon report stays in sync.'}
                         </div>
                       )}

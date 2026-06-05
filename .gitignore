@@ -33,6 +33,9 @@ pnpm-debug.log*
 # TypeScript
 *.tsbuildinfo
 
+# Phase 14.14s — `tsc --noEmit > tsc.out` diagnostic dumps don't belong in git
+tsc.out
+
 # Build emission from `tsc -b` (vite.config.ts compiled outputs)
 vite.config.js
 vite.config.d.ts
