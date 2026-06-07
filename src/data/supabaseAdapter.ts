@@ -3975,8 +3975,8 @@ export function createSupabaseAdapter(
       async resetCompanyData(company_id, confirmation): Promise<import('./adapter').ResetCompanyDataResult> {
         const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)
           ('reset_company_data', {
-            p_company_id:   company_id,
-            p_confirmation: confirmation,
+            company_id:   company_id,
+            confirmation: confirmation,
           });
         assertNoError(error as Error | null, 'admin.resetCompanyData');
         return data as import('./adapter').ResetCompanyDataResult;
