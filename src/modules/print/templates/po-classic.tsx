@@ -3,6 +3,7 @@
  */
 import type { Company, ContactRow, PurchaseOrderRow, PurchaseOrderItemRow, PrintConfig } from '@/data/adapter';
 import { PrintHeader, PrintLineTable, PrintTotals, PrintFooter } from './_shared';
+import { getTaxLabels } from '@/lib/locale';
 
 interface Props {
   company:     Company;
@@ -75,6 +76,7 @@ export function POClassicTemplate({ company, printConfig, po, items, contact }: 
           total={po.total_amount ?? 0}
           currency={po.currency}
           accentColor={printConfig.accent_color}
+          taxLabel={getTaxLabels(company.country_code).taxName}
         />
       </div>
 

@@ -3,6 +3,7 @@
  */
 import type { Company, ContactRow, DebitNoteRow, DebitNoteItemRow, PrintConfig } from '@/data/adapter';
 import { PrintHeader, PrintLineTable, PrintTotals, PrintFooter } from './_shared';
+import { getTaxLabels } from '@/lib/locale';
 
 interface Props {
   company:     Company;
@@ -69,6 +70,7 @@ export function DebitNoteClassicTemplate({ company, printConfig, debitNote, item
           total={debitNote.total_amount ?? 0}
           currency={debitNote.currency}
           accentColor={printConfig.accent_color}
+          taxLabel={getTaxLabels(company.country_code).taxName}
         />
       </div>
 

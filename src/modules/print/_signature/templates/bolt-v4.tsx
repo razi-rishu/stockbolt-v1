@@ -25,6 +25,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { Watermark } from '../components';
 import type { DocumentData } from '../types';
 import type { PrintConfig } from '@/data/adapter';
+import { getTaxLabels } from '@/lib/locale';
 
 // ── Palette (sampled from the v4 PDFs) ─────────────────────────────────────
 const C = {
@@ -356,6 +357,7 @@ const TYPE_TITLES: Record<string, string> = {
 export function BoltDocTemplate({ data, config }: { data: DocumentData; config?: PrintConfig }) {
   const title = data.title ?? TYPE_TITLES[data.type] ?? 'Invoice';
   const cur = data.currency;
+  const reg = getTaxLabels(data.company.country).registrationName;   // Issue 5 — TRN (GCC) / GSTIN (India)
   const hasDiscount = (data.discount_total ?? 0) > 0.005;
   const taxRate = data.vat_breakdown?.[0]?.rate;
   const acc = resolveAccent('doc', config);
@@ -440,12 +442,12 @@ export function BoltDocTemplate({ data, config }: { data: DocumentData; config?:
         [`${title} Date:`, fmtDate(data.date)],
         ...(data.reference ? [['Reference:', data.reference] as [string, string]] : []),
       ]}
-      stripNote={data.company.trn ? `TRN: ${data.company.trn}` : ''}
+      stripNote={data.company.trn ? `${reg}: ${data.company.trn}` : ''}
       leftRows={[
         ['Phone',   data.bill_to.phone],
         ['Email',   data.bill_to.email],
         ['Address', [data.bill_to.address, data.bill_to.city].filter(Boolean).join(', ')],
-        ...(data.bill_to.trn ? [['TRN', data.bill_to.trn] as [string, string]] : []),
+        ...(data.bill_to.trn ? [[getTaxLabels(data.bill_to.country).registrationName, data.bill_to.trn] as [string, string]] : []),
       ]}
       payRows={showBank && data.banking ? [
         ['Account No',   data.banking.account_number ?? data.banking.iban],
@@ -581,6 +583,7 @@ export function BoltReceiptTemplate({ data, config }: { data: DocumentData; conf
 // ════════════════════════════════════════════════════════════════════════════
 export function BoltVoucherTemplate({ data, config }: { data: DocumentData; config?: PrintConfig }) {
   const cur = data.currency;
+  const reg = getTaxLabels(data.company.country).registrationName;   // Issue 5 — TRN (GCC) / GSTIN (India)
   const acc = resolveAccent('voucher', config);
   const onAcc = textOn(acc);
   const allocs = data.allocations ?? [];
@@ -669,7 +672,7 @@ export function BoltVoucherTemplate({ data, config }: { data: DocumentData; conf
         ['Payment Date:', fmtDate(data.date)],
         ...(allocs[0]?.doc_number ? [['Ref Bill:', allocs[0].doc_number] as [string, string]] : []),
       ]}
-      stripNote={data.company.trn ? `TRN: ${data.company.trn}` : ''}
+      stripNote={data.company.trn ? `${reg}: ${data.company.trn}` : ''}
       leftRows={[
         ['Mode',      data.payment_method],
         ['Reference', data.reference],

@@ -3,6 +3,7 @@
  */
 import type { Company, ContactRow, CustomerStatement, PrintConfig } from '@/data/adapter';
 import { PrintHeader, PrintFooter, fmt } from './_shared';
+import { getTaxLabels } from '@/lib/locale';
 
 interface Props {
   company:     Company;
@@ -13,6 +14,7 @@ interface Props {
 
 export function StatementClassicTemplate({ company, printConfig, statement, contact }: Props) {
   const accentStyle = { color: printConfig.accent_color };
+  const { registrationName } = getTaxLabels(company.country_code);
 
   return (
     <div className="mx-auto max-w-[210mm] bg-white p-[14mm] font-sans text-[11pt] text-gray-900 print:p-0">
@@ -31,7 +33,7 @@ export function StatementClassicTemplate({ company, printConfig, statement, cont
           <div className="text-xs font-semibold uppercase text-gray-500">Account</div>
           <div className="font-semibold">{contact?.name ?? statement.contact_name}</div>
           {contact?.name_ar && <div className="text-gray-600 text-xs">{contact.name_ar}</div>}
-          {contact?.tax_id && <div className="text-gray-600 text-xs">TRN: {contact.tax_id}</div>}
+          {contact?.tax_id && <div className="text-gray-600 text-xs">{registrationName}: {contact.tax_id}</div>}
         </div>
       </div>
 

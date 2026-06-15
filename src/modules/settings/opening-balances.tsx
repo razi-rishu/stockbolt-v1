@@ -35,6 +35,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { Tabs } from '@/ui/tabs';
 import { buildCoaTreeOptions, coaOptionLabel } from '@/core/seeds/coa-tree';
@@ -262,6 +263,7 @@ function VoidableStockRow({
 // ── Page ───────────────────────────────────────────────────────────────────
 export default function OpeningBalancesPage() {
   const { company_id } = useAuthStore();
+  const companyCurrency = useCompanyCurrency();   // Issue 1 — localize money to tenant currency
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -962,7 +964,7 @@ export default function OpeningBalancesPage() {
             <div className="mt-1 flex items-baseline gap-3">
               <span className="text-xs text-ink-secondary">Now:</span>
               <span className="font-mono text-sm font-medium text-ink-primary">
-                AED {fmt(live3010)}
+                ${companyCurrency} {fmt(live3010)}
               </span>
               {(totals.batchNet3010 !== 0) && (
                 <>
@@ -971,7 +973,7 @@ export default function OpeningBalancesPage() {
                     className="font-mono text-sm font-semibold"
                     style={{ color: Math.abs(totals.projected3010) < 0.005 ? '#047857' : '#B45309' }}
                   >
-                    AED {fmt(totals.projected3010)}
+                    ${companyCurrency} {fmt(totals.projected3010)}
                   </span>
                 </>
               )}
@@ -1044,7 +1046,7 @@ export default function OpeningBalancesPage() {
                 {meta.short}
               </div>
               <div style={{ marginTop: '4px', fontSize: '17px', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                AED {fmt(val)}
+                ${companyCurrency} {fmt(val)}
               </div>
               <div style={{ marginTop: '2px', fontSize: '10.5px', opacity: 0.85 }}>
                 {meta.label}
@@ -1060,7 +1062,7 @@ export default function OpeningBalancesPage() {
             Subsidiary net (this batch)
           </div>
           <div style={{ marginTop: '4px', fontSize: '17px', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-            {-totals.subsidiaryNet3010 >= 0 ? '+' : '−'}AED {fmt(Math.abs(totals.subsidiaryNet3010))}
+            {-totals.subsidiaryNet3010 >= 0 ? '+' : '−'}${companyCurrency} {fmt(Math.abs(totals.subsidiaryNet3010))}
           </div>
           <div style={{ marginTop: '2px', fontSize: '10.5px', opacity: 0.85 }}>
             {-totals.subsidiaryNet3010 >= 0

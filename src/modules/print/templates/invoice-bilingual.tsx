@@ -5,6 +5,7 @@ import type { Company, ContactRow, InvoiceRow, InvoiceItemRow, PrintConfig } fro
 import {
   PrintBilingualHeader, PrintLineTable, PrintBilingualTotals, PrintBilingualFooter,
 } from './_shared';
+import { getTaxLabels } from '@/lib/locale';
 
 interface Props {
   company:     Company;
@@ -74,6 +75,7 @@ export function InvoiceBilingualTemplate({ company, printConfig, invoice, items,
           total={invoice.total_amount ?? 0}
           currency={invoice.currency}
           accentColor={printConfig.accent_color}
+          taxLabel={getTaxLabels(company.country_code).taxName}
         />
       </div>
 

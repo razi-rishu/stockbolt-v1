@@ -3,6 +3,7 @@
  */
 import type { Company, ContactRow, CreditNoteRow, CreditNoteItemRow, PrintConfig } from '@/data/adapter';
 import { PrintHeader, PrintLineTable, PrintTotals, PrintFooter } from './_shared';
+import { getTaxLabels } from '@/lib/locale';
 
 interface Props {
   company:     Company;
@@ -69,6 +70,7 @@ export function CreditNoteClassicTemplate({ company, printConfig, creditNote, it
           total={creditNote.total_amount ?? 0}
           currency={creditNote.currency}
           accentColor={printConfig.accent_color}
+          taxLabel={getTaxLabels(company.country_code).taxName}
         />
       </div>
 

@@ -3,6 +3,7 @@
  */
 import type { Company, ContactRow, VendorBillRow, VendorBillItemRow, PrintConfig } from '@/data/adapter';
 import { PrintHeader, PrintLineTable, PrintTotals, PrintFooter } from './_shared';
+import { getTaxLabels } from '@/lib/locale';
 
 interface Props {
   company:     Company;
@@ -73,6 +74,7 @@ export function BillClassicTemplate({ company, printConfig, bill, items, contact
           total={bill.total_amount ?? 0}
           currency={bill.currency}
           accentColor={printConfig.accent_color}
+          taxLabel={getTaxLabels(company.country_code).taxName}
         />
       </div>
 

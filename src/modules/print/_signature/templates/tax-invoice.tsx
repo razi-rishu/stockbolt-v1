@@ -23,6 +23,7 @@ import {
 } from '../components';
 import { tokens } from '../tokens';
 import type { DocumentData } from '../types';
+import { getTaxLabels } from '@/lib/locale';
 
 export interface TaxInvoiceTemplateProps {
   data:    DocumentData;
@@ -34,6 +35,7 @@ export interface TaxInvoiceTemplateProps {
 export function TaxInvoiceTemplate({ data, qrSrc }: TaxInvoiceTemplateProps) {
   const showShipTo = !!data.ship_to && data.ship_to.address !== data.bill_to.address;
   const showWatermark = data.status === 'draft' || data.status === 'void';
+  const tax = getTaxLabels(data.company.country);   // Issue 5 — VAT/TRN (GCC) vs GST/GSTIN (India)
 
   return (
     <SignaturePage>
@@ -78,7 +80,7 @@ export function TaxInvoiceTemplate({ data, qrSrc }: TaxInvoiceTemplateProps) {
       {/* ── Line items ──────────────────────────────────────────── */}
       <div style={{ marginTop: tokens.gap6 }}>
         <SectionLabel style={{ marginBottom: tokens.gap2 }}>Line items</SectionLabel>
-        <ItemsTable items={data.items} />
+        <ItemsTable items={data.items} taxName={tax.taxName} />
       </div>
 
       {/* ── Totals — right-aligned ladder + anchor ──────────────── */}
@@ -91,7 +93,7 @@ export function TaxInvoiceTemplate({ data, qrSrc }: TaxInvoiceTemplateProps) {
           {!!data.discount_total && data.discount_total > 0 && (
             <TotalLine label="Discount"           amount={-data.discount_total} />
           )}
-          <TotalLine label={`VAT (${(data.tax_total / Math.max(data.subtotal, 1) * 100).toFixed(0)}%)`} amount={data.tax_total} />
+          <TotalLine label={`${tax.taxName} (${(data.tax_total / Math.max(data.subtotal, 1) * 100).toFixed(0)}%)`} amount={data.tax_total} />
           {!!data.shipping_total && data.shipping_total > 0 && (
             <TotalLine label="Shipping"           amount={data.shipping_total} />
           )}
@@ -104,7 +106,7 @@ export function TaxInvoiceTemplate({ data, qrSrc }: TaxInvoiceTemplateProps) {
 
       {/* ── VAT breakdown (UAE FTA requirement) ─────────────────── */}
       {data.vat_breakdown && data.vat_breakdown.length > 0 && (
-        <VATBreakdownTable rows={data.vat_breakdown} currency={data.currency} />
+        <VATBreakdownTable rows={data.vat_breakdown} currency={data.currency} taxName={tax.taxName} />
       )}
 
       {/* ── Compliance strip ─────────────────────────────────────── */}
@@ -112,7 +114,10 @@ export function TaxInvoiceTemplate({ data, qrSrc }: TaxInvoiceTemplateProps) {
         qrSrc={qrSrc}
         payload={data.qr_payload}
         trn={data.company.trn}
-        documentTypeNote="This document is a Tax Invoice as defined under UAE Federal Decree-Law No. (8) of 2017 on Value Added Tax."
+        registrationName={tax.registrationName}
+        documentTypeNote={tax.taxName === 'GST'
+          ? 'This document is a Tax Invoice as defined under the Central Goods and Services Tax Act, 2017.'
+          : 'This document is a Tax Invoice as defined under UAE Federal Decree-Law No. (8) of 2017 on Value Added Tax.'}
       />
 
       {/* ── Footer row: banking + notes ──────────────────────────── */}

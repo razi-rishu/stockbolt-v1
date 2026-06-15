@@ -139,6 +139,14 @@ export default function SetupWizardPage() {
   }
 
   async function onSubmit(values: FormValues) {
+    // Issue 3 — never create the company before the user reaches and clicks
+    // "Finish Setup" on the last step. A stray Enter keypress (or any submit
+    // event) on an earlier step otherwise satisfied the whole schema and
+    // created the company with default AE/AED, skipping country selection.
+    if (step !== TOTAL_STEPS - 1) {
+      await goNext();
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
@@ -146,6 +154,10 @@ export default function SetupWizardPage() {
       const fyMonth = fiscalYearMonthFor(values.country_code);
       const wizard: WizardData = {
         ...values,
+        // Issue 2 — production companies always start empty. Sample data is
+        // never seeded from onboarding (the underlying seeder stays in code
+        // for existing demo accounts, but the wizard never triggers it).
+        load_sample_data:  false,
         currency:          inferredCurrency,
         fiscal_year_start: `${currentYear}-${fyMonth}-01`,
         full_name:         '',
@@ -386,24 +398,7 @@ export default function SetupWizardPage() {
                   </div>
 
                   <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
-                    We'll also create a default <strong>Main Warehouse</strong> (code <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>MAIN</span>) and seed your chart of accounts, tax rates, and units of measure. Rename or add more from Settings after onboarding.
-                  </div>
-
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#111827', marginTop: '0.5rem' }}>Sample data</div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <RadioCard
-                      checked={!watch('load_sample_data')}
-                      onChange={() => setValue('load_sample_data', false)}
-                      title="Start with a clean slate"
-                      body="Begin with no products, contacts, or transactions."
-                    />
-                    <RadioCard
-                      checked={watch('load_sample_data')}
-                      onChange={() => setValue('load_sample_data', true)}
-                      title="Load sample data"
-                      body="Adds demo brands (Bosch, Mahle, Mann), categories, and sample products."
-                    />
+                    We'll also create a default <strong>Main Warehouse</strong> (code <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>MAIN</span>) and seed your chart of accounts, tax rates, and units of measure. Your company starts empty — add products, contacts and transactions from the dashboard.
                   </div>
                 </>
               )}
@@ -487,32 +482,6 @@ function SummaryRow({ label, value, mono, rtl }: { label: string; value: string;
         direction: rtl ? 'rtl' : 'ltr',
       }}>{value}</span>
     </div>
-  );
-}
-
-function RadioCard({ checked, onChange, title, body }: { checked: boolean; onChange: () => void; title: string; body: string }) {
-  return (
-    <label
-      onClick={onChange}
-      style={{
-        display: 'flex', alignItems: 'flex-start', gap: 10,
-        padding: 12, borderRadius: 10, cursor: 'pointer',
-        border: checked ? '1.5px solid #6c63ff' : '1px solid #e5e7eb',
-        background: checked ? '#f5f4ff' : '#fff',
-        transition: 'all 0.15s ease',
-      }}
-    >
-      <input
-        type="radio"
-        checked={checked}
-        onChange={onChange}
-        style={{ marginTop: 2, accentColor: '#6c63ff', cursor: 'pointer' }}
-      />
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{title}</div>
-        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{body}</div>
-      </div>
-    </label>
   );
 }
 

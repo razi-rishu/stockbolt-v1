@@ -3,6 +3,7 @@
  * Used by all templates; not exported from index.
  */
 import type { Company } from '@/data/adapter';
+import { getTaxLabels } from '@/lib/locale';
 
 // ── Number formatter ──────────────────────────────────────────────────────────
 export function fmt(n: number, currency = '') {
@@ -18,13 +19,15 @@ interface HeaderProps {
 
 export function PrintHeader({ company, accentColor }: HeaderProps) {
   const co = company as unknown as {
-    logo_url?: string;
-    name_ar?:  string;
-    tax_id?:   string;
-    address?:  string;
-    phone?:    string;
-    email?:    string;
+    logo_url?:     string;
+    name_ar?:      string;
+    tax_id?:       string;
+    address?:      string;
+    phone?:        string;
+    email?:        string;
+    country_code?: string;
   };
+  const { registrationName } = getTaxLabels(co.country_code);
 
   return (
     <div className="flex items-start justify-between border-b-2 pb-4" style={{ borderColor: accentColor }}>
@@ -38,7 +41,7 @@ export function PrintHeader({ company, accentColor }: HeaderProps) {
         </div>
       </div>
       <div className="text-right text-xs text-gray-500">
-        {co.tax_id  && <div>TRN: {co.tax_id}</div>}
+        {co.tax_id  && <div>{registrationName}: {co.tax_id}</div>}
         {co.address && <div>{co.address}</div>}
         {co.phone   && <div>{co.phone}</div>}
         {co.email   && <div>{co.email}</div>}
@@ -57,11 +60,13 @@ interface BilingualHeaderProps {
 
 export function PrintBilingualHeader({ company, accentColor, titleEn, titleAr }: BilingualHeaderProps) {
   const co = company as unknown as {
-    logo_url?: string;
-    name_ar?:  string;
-    tax_id?:   string;
-    address?:  string;
+    logo_url?:     string;
+    name_ar?:      string;
+    tax_id?:       string;
+    address?:      string;
+    country_code?: string;
   };
+  const { registrationName } = getTaxLabels(co.country_code);
 
   return (
     <div className="border-b-2 pb-4" style={{ borderColor: accentColor }}>
@@ -70,7 +75,7 @@ export function PrintBilingualHeader({ company, accentColor, titleEn, titleAr }:
         <div>
           {co.logo_url && <img src={co.logo_url} alt="logo" className="mb-1 h-12 w-auto object-contain" />}
           <div className="text-xl font-bold">{company.name}</div>
-          {co.tax_id && <div className="text-xs text-gray-500">TRN: {co.tax_id}</div>}
+          {co.tax_id && <div className="text-xs text-gray-500">{registrationName}: {co.tax_id}</div>}
           {co.address && <div className="text-xs text-gray-500">{co.address}</div>}
         </div>
         {/* RTL side */}
@@ -149,9 +154,10 @@ interface TotalsProps {
   total:       number;
   currency:    string;
   accentColor: string;
+  taxLabel?:   string;   // Issue 5 — 'VAT' (GCC) or 'GST' (India); defaults to VAT
 }
 
-export function PrintTotals({ subtotal, discount, tax, total, currency, accentColor }: TotalsProps) {
+export function PrintTotals({ subtotal, discount, tax, total, currency, accentColor, taxLabel = 'VAT' }: TotalsProps) {
   return (
     <div className="w-56 text-sm">
       <div className="flex justify-between py-1">
@@ -165,7 +171,7 @@ export function PrintTotals({ subtotal, discount, tax, total, currency, accentCo
         </div>
       )}
       <div className="flex justify-between py-1">
-        <span className="text-gray-500">VAT</span>
+        <span className="text-gray-500">{taxLabel}</span>
         <span>{fmt(tax)}</span>
       </div>
       <div
@@ -180,7 +186,7 @@ export function PrintTotals({ subtotal, discount, tax, total, currency, accentCo
 }
 
 // ── Bilingual totals ──────────────────────────────────────────────────────────
-export function PrintBilingualTotals({ subtotal, discount, tax, total, currency, accentColor }: TotalsProps) {
+export function PrintBilingualTotals({ subtotal, discount, tax, total, currency, accentColor, taxLabel = 'VAT' }: TotalsProps) {
   return (
     <div className="w-80 text-sm">
       <div className="flex justify-between py-1">
@@ -194,7 +200,7 @@ export function PrintBilingualTotals({ subtotal, discount, tax, total, currency,
         </div>
       )}
       <div className="flex justify-between py-1">
-        <span className="text-gray-500">VAT / ضريبة القيمة المضافة</span>
+        <span className="text-gray-500">{taxLabel} / ضريبة القيمة المضافة</span>
         <span>{fmt(tax)}</span>
       </div>
       <div

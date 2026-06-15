@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { Tabs } from '@/ui/tabs';
 import { theme } from '@/ui/theme';
@@ -167,6 +168,7 @@ export default function CustomerDetailPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const { id } = useParams<{ id: string }>();
+  const companyCurrency = useCompanyCurrency();   // Issue 1 — localize money to tenant currency
   const navigate = useNavigate();
 
   const [stmtFrom, setStmtFrom] = useState(monthsAgoIso(3));
@@ -395,7 +397,7 @@ export default function CustomerDetailPage() {
             </span>
             <p className="flex-1 min-w-[260px] text-sm text-emerald-900">
               This customer has{' '}
-              <span className="font-mono font-semibold">{contact?.currency ?? 'AED'} {fmt(advanceCredit)}</span>{' '}
+              <span className="font-mono font-semibold">{contact?.currency ?? companyCurrency} {fmt(advanceCredit)}</span>{' '}
               available to apply to {hasOpenInvoice ? 'an open invoice' : 'a future invoice'}.{' '}
               <span className="text-emerald-700/80">Hits 2400 Customer Advances on the GL.</span>
             </p>
@@ -834,7 +836,7 @@ export default function CustomerDetailPage() {
                 since:   null,
               }}
               balance={netBalance}
-              currency="AED"
+              currency={contact?.currency ?? companyCurrency}
               side="customer"
               statusLabel={contact?.is_active === false ? 'Inactive' : 'Active'}
             />
@@ -843,20 +845,20 @@ export default function CustomerDetailPage() {
               {
                 label: 'Available credit',
                 value: contact?.credit_limit
-                  ? `AED ${fmt(Math.max(0, Number(contact.credit_limit) - outstandingTotal))}`
+                  ? `${contact?.currency ?? companyCurrency} ${fmt(Math.max(0, Number(contact.credit_limit) - outstandingTotal))}`
                   : '—',
                 sublabel: contact?.credit_limit ? `of ${fmt(Number(contact.credit_limit))} limit` : 'no limit set',
                 tone: 'brand',
               },
               {
                 label: 'Overdue',
-                value: `AED ${fmt(overdueTotal)}`,
+                value: `${contact?.currency ?? companyCurrency} ${fmt(overdueTotal)}`,
                 sublabel: overdueTotal > 0 ? 'past due date' : 'all current',
                 tone: overdueTotal > 0 ? 'danger' : 'good',
               },
               {
                 label: '12-mo sales',
-                value: `AED ${fmt(sales12mo)}`,
+                value: `${contact?.currency ?? companyCurrency} ${fmt(sales12mo)}`,
                 sublabel: `${confirmedInvoiceCount} invoices`,
               },
               {
@@ -865,7 +867,7 @@ export default function CustomerDetailPage() {
                   ? `${daysBetween(paymentsForCustomer[0].date as unknown as string, today)}d ago`
                   : '—',
                 sublabel: paymentsForCustomer[0]
-                  ? `AED ${fmt(Number(paymentsForCustomer[0].amount))}`
+                  ? `${contact?.currency ?? companyCurrency} ${fmt(Number(paymentsForCustomer[0].amount))}`
                   : 'no payments yet',
               },
               {
@@ -876,7 +878,7 @@ export default function CustomerDetailPage() {
             ]} />
 
             <BalanceStrip
-              currency="AED"
+              currency={contact?.currency ?? companyCurrency}
               total={outstandingTotal}
               buckets={[
                 { label: 'Current', value: aging.current,  color: stmtTokens.band.current },
@@ -914,7 +916,7 @@ export default function CustomerDetailPage() {
                 openingBalance={openingBalance}
                 lines={spineLines}
                 closingBalance={closing}
-                currency="AED"
+                currency={contact?.currency ?? companyCurrency}
               />
             )}
 
@@ -938,7 +940,7 @@ export default function CustomerDetailPage() {
               },
               {
                 label: 'Net activity',
-                value: `${closing >= openingBalance ? '+' : ''}AED ${fmt(closing - openingBalance)}`,
+                value: `${closing >= openingBalance ? '+' : ''}${companyCurrency} ${fmt(closing - openingBalance)}`,
                 hint: closing > openingBalance ? 'balance grew' : closing < openingBalance ? 'balance reduced' : 'unchanged',
               },
             ]} />

@@ -3,6 +3,7 @@
  */
 import type { Company, ContactRow, SalesQuoteRow, SalesQuoteItemRow, PrintConfig } from '@/data/adapter';
 import { PrintHeader, PrintLineTable, PrintTotals, PrintFooter } from './_shared';
+import { getTaxLabels } from '@/lib/locale';
 
 interface Props {
   company:     Company;
@@ -63,6 +64,7 @@ export function QuoteClassicTemplate({ company, printConfig, quote, items, conta
           total={quote.total_amount ?? 0}
           currency={quote.currency}
           accentColor={printConfig.accent_color}
+          taxLabel={getTaxLabels(company.country_code).taxName}
         />
       </div>
 

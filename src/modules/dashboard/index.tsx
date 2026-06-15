@@ -26,6 +26,8 @@ import {
 } from 'recharts';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
+import { useCompanyCurrency } from '@/hooks/use-company-currency';
+import { formatCurrency } from '@/lib/locale';
 import type { OwnerDashboard } from '@/data/adapter';
 import { Panel } from '@/ui/primitives';
 import DashboardSummaryCards from './_summary-cards';
@@ -309,6 +311,7 @@ export default function DashboardPage() {
   const { t } = useTranslation();
   const adapter = getAdapter();
   const company_id = useAuthStore(s => s.company_id);
+  const currency = useCompanyCurrency();   // Issue 1 — localize all money to the tenant's currency
 
   // Greet with the company name (e.g. "Good afternoon, Al Noor") — reads
   // better than an email prefix and matches what the operator thinks of
@@ -408,12 +411,12 @@ export default function DashboardPage() {
         gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
         gap: '14px',
       }}>
-        <KpiTile label="Today Sales"      value={`AED ${fmt(data.today_sales_amount)}`}      sub="Revenue (excl. VAT)" delta={dSales}     icon={<TrendingUpIcon />} tone="emerald" href="/sales/invoices" />
-        <KpiTile label="Today Purchases"  value={`AED ${fmt(data.today_purchases_amount)}`}  sub="Inventory Received"  delta={dPurchases} icon={<CartIcon />}       tone="violet"  href="/purchasing/bills" />
-        <KpiTile label="Inventory Value"  value={`AED ${fmt(data.inventory_value)}`}         sub="Asset Value"         delta={dInventory} icon={<WalletIcon />}     tone="slate"   href="/reports/stock-valuation" />
+        <KpiTile label="Today Sales"      value={formatCurrency(data.today_sales_amount, currency)}      sub="Revenue (excl. VAT)" delta={dSales}     icon={<TrendingUpIcon />} tone="emerald" href="/sales/invoices" />
+        <KpiTile label="Today Purchases"  value={formatCurrency(data.today_purchases_amount, currency)}  sub="Inventory Received"  delta={dPurchases} icon={<CartIcon />}       tone="violet"  href="/purchasing/bills" />
+        <KpiTile label="Inventory Value"  value={formatCurrency(data.inventory_value, currency)}         sub="Asset Value"         delta={dInventory} icon={<WalletIcon />}     tone="slate"   href="/reports/stock-valuation" />
         <KpiTile label="SKU Count"        value={fmtInt(data.sku_count)}                     sub="Unique Parts"        delta={dSku}       icon={<StoreIcon />}      tone="sky"     href="/products" />
-        <KpiTile label="Receivables"      value={`AED ${fmt(data.outstanding_ar)}`}          sub="Outstanding"         delta={dAR}        icon={<CoinIcon />}       tone="orange"  href="/reports/ar-aging" />
-        <KpiTile label="Payables"         value={`AED ${fmt(data.outstanding_ap)}`}          sub="Outstanding"         delta={dAP}        icon={<HandCoinIcon />}   tone="violet"  href="/reports/ap-aging" />
+        <KpiTile label="Receivables"      value={formatCurrency(data.outstanding_ar, currency)}          sub="Outstanding"         delta={dAR}        icon={<CoinIcon />}       tone="orange"  href="/reports/ar-aging" />
+        <KpiTile label="Payables"         value={formatCurrency(data.outstanding_ap, currency)}          sub="Outstanding"         delta={dAP}        icon={<HandCoinIcon />}   tone="violet"  href="/reports/ap-aging" />
       </div>
 
       {/* ── Sales Trend + Recent Inventory — stack below lg ───────────── */}

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
@@ -51,7 +52,7 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 export default function QuoteEditorPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
-  const companyCurrency = 'AED';
+  const companyCurrency = useCompanyCurrency();   // Issue 1 — was hardcoded 'AED'
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const printConfig = usePrintConfig();

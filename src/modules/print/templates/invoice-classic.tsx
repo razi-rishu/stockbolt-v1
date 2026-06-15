@@ -3,6 +3,7 @@
  */
 import type { Company, ContactRow, InvoiceRow, InvoiceItemRow, PrintConfig } from '@/data/adapter';
 import { PrintHeader, PrintFooter, PrintLineTable, PrintTotals } from './_shared';
+import { getTaxLabels } from '@/lib/locale';
 
 interface Props {
   company:     Company;
@@ -83,6 +84,7 @@ export function InvoiceClassicTemplate({ company, printConfig, invoice, items, c
           total={invoice.total_amount ?? 0}
           currency={invoice.currency}
           accentColor={printConfig.accent_color}
+          taxLabel={getTaxLabels(company.country_code).taxName}
         />
       </div>
 

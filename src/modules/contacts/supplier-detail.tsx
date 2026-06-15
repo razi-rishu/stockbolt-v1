@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { Tabs } from '@/ui/tabs';
 import { theme } from '@/ui/theme';
@@ -164,6 +165,7 @@ export default function SupplierDetailPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const { id } = useParams<{ id: string }>();
+  const companyCurrency = useCompanyCurrency();   // Issue 1 — localize money to tenant currency
   const navigate = useNavigate();
 
   const [stmtFrom, setStmtFrom] = useState(monthsAgoIso(3));
@@ -365,7 +367,7 @@ export default function SupplierDetailPage() {
             </span>
             <p className="flex-1 min-w-[260px] text-sm text-emerald-900">
               We have{' '}
-              <span className="font-mono font-semibold">{contact?.currency ?? 'AED'} {fmt(vendorAdvance)}</span>{' '}
+              <span className="font-mono font-semibold">{contact?.currency ?? companyCurrency} {fmt(vendorAdvance)}</span>{' '}
               paid in advance / overpaid to this supplier.{' '}
               <span className="text-emerald-700/80">Hits 1400 Vendor Advances on the GL.</span>
             </p>
@@ -736,7 +738,7 @@ export default function SupplierDetailPage() {
                 since:   null,
               }}
               balance={netPayable}
-              currency="AED"
+              currency={contact?.currency ?? companyCurrency}
               side="vendor"
               statusLabel={contact?.is_active === false ? 'Inactive' : 'Active'}
             />
@@ -744,19 +746,19 @@ export default function SupplierDetailPage() {
             <HealthRow tiles={[
               {
                 label: 'Open bills',
-                value: `AED ${fmt(outstandingTotal)}`,
+                value: `${contact?.currency ?? companyCurrency} ${fmt(outstandingTotal)}`,
                 sublabel: `${openBills.length} bill${openBills.length === 1 ? '' : 's'} open`,
                 tone: 'brand',
               },
               {
                 label: 'Overdue payable',
-                value: `AED ${fmt(overdueTotal)}`,
+                value: `${contact?.currency ?? companyCurrency} ${fmt(overdueTotal)}`,
                 sublabel: overdueTotal > 0 ? 'past due date' : 'all current',
                 tone: overdueTotal > 0 ? 'danger' : 'good',
               },
               {
                 label: '12-mo purchases',
-                value: `AED ${fmt(purchases12mo)}`,
+                value: `${contact?.currency ?? companyCurrency} ${fmt(purchases12mo)}`,
                 sublabel: `${confirmedBillCount} bills`,
               },
               {
@@ -765,7 +767,7 @@ export default function SupplierDetailPage() {
                   ? `${daysBetween(paymentsForSupplier[0].date as unknown as string, today)}d ago`
                   : '—',
                 sublabel: paymentsForSupplier[0]
-                  ? `AED ${fmt(Number(paymentsForSupplier[0].amount))}`
+                  ? `${contact?.currency ?? companyCurrency} ${fmt(Number(paymentsForSupplier[0].amount))}`
                   : 'no payments yet',
               },
               {
@@ -777,7 +779,7 @@ export default function SupplierDetailPage() {
             ]} />
 
             <BalanceStrip
-              currency="AED"
+              currency={contact?.currency ?? companyCurrency}
               total={outstandingTotal}
               title="Payable aging"
               buckets={[
@@ -816,7 +818,7 @@ export default function SupplierDetailPage() {
                 openingBalance={openingBalance}
                 lines={spineLines}
                 closingBalance={closing}
-                currency="AED"
+                currency={contact?.currency ?? companyCurrency}
               />
             )}
 
@@ -840,7 +842,7 @@ export default function SupplierDetailPage() {
               },
               {
                 label: 'Net activity',
-                value: `${closing >= openingBalance ? '+' : ''}AED ${fmt(closing - openingBalance)}`,
+                value: `${closing >= openingBalance ? '+' : ''}${companyCurrency} ${fmt(closing - openingBalance)}`,
                 hint: closing > openingBalance ? 'payable grew' : closing < openingBalance ? 'payable reduced' : 'unchanged',
               },
             ]} />

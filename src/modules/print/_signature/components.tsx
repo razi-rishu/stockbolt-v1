@@ -12,6 +12,7 @@ import type {
   CompanyInfo, PartyInfo, LineItem, DocumentStatus,
   BankingDetails,
 } from './types';
+import { getTaxLabels } from '@/lib/locale';
 
 // ──────────────────────────────────────────────────────────────────────────
 // Page shell
@@ -81,6 +82,7 @@ export function SectionLabel({ children, style }: { children: ReactNode; style?:
 // ──────────────────────────────────────────────────────────────────────────
 
 export function CompanyBlock({ company }: { company: CompanyInfo }) {
+  const { registrationName } = getTaxLabels(company.country);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.gap2 }}>
       {company.logo_url && (
@@ -105,7 +107,7 @@ export function CompanyBlock({ company }: { company: CompanyInfo }) {
       </div>
       {company.trn && (
         <div style={{ fontSize: tokens.fsBodySmall, color: tokens.ink, marginTop: tokens.gap1 }}>
-          <span style={{ fontWeight: tokens.wSemi, letterSpacing: tokens.trkLabel, fontSize: tokens.fsBodyMicro }}>TRN&nbsp;</span>
+          <span style={{ fontWeight: tokens.wSemi, letterSpacing: tokens.trkLabel, fontSize: tokens.fsBodyMicro }}>{registrationName}&nbsp;</span>
           <span style={numericStyle}>{company.trn}</span>
         </div>
       )}
@@ -193,6 +195,7 @@ export function StampCard({
 // ──────────────────────────────────────────────────────────────────────────
 
 export function PartyCard({ label, party }: { label: string; party: PartyInfo }) {
+  const partyReg = getTaxLabels(party.country).registrationName;
   return (
     <div style={{
       flex: 1, minWidth: 0,
@@ -219,7 +222,7 @@ export function PartyCard({ label, party }: { label: string; party: PartyInfo })
       )}
       {party.trn && (
         <div style={{ fontSize: tokens.fsBodySmall, color: tokens.ink, marginTop: tokens.gap1 }}>
-          <span style={{ fontWeight: tokens.wSemi, letterSpacing: tokens.trkLabel, fontSize: tokens.fsBodyMicro }}>TRN&nbsp;</span>
+          <span style={{ fontWeight: tokens.wSemi, letterSpacing: tokens.trkLabel, fontSize: tokens.fsBodyMicro }}>{partyReg}&nbsp;</span>
           <span style={numericStyle}>{party.trn}</span>
         </div>
       )}
@@ -243,10 +246,11 @@ function fmt(n: number) {
 export type ItemColumn = 'index' | 'sku' | 'description' | 'qty' | 'unit_price' | 'tax' | 'amount';
 
 export function ItemsTable({
-  items, columns,
+  items, columns, taxName = 'VAT',
 }: {
   items: LineItem[];
   columns?: ItemColumn[];
+  taxName?: string;   // Issue 5 — 'VAT' (GCC) or 'GST' (India)
 }) {
   // Default sales-document column set. Delivery notes pass a hide-prices
   // subset; payment receipts don't use this component at all.
@@ -257,7 +261,7 @@ export function ItemsTable({
     description: 'Description',
     qty: 'Qty',
     unit_price: 'Unit price',
-    tax: 'VAT',
+    tax: taxName,
     amount: 'Amount',
   };
   const alignOf: Record<ItemColumn, 'start' | 'end'> = {
@@ -410,19 +414,20 @@ export function AnchorTotal({ amount, currency, label = 'TOTAL' }: {
 // ──────────────────────────────────────────────────────────────────────────
 
 export function VATBreakdownTable({
-  rows, currency,
+  rows, currency, taxName = 'VAT',
 }: {
   rows: Array<{ rate: number; taxable: number; tax: number }>;
   currency: string;
+  taxName?: string;   // Issue 5 — 'VAT' (GCC) or 'GST' (India)
 }) {
   if (rows.length === 0) return null;
   return (
     <div style={{ marginTop: tokens.gap4 }}>
-      <SectionLabel>VAT Summary</SectionLabel>
+      <SectionLabel>{taxName} Summary</SectionLabel>
       <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: tokens.gap2, fontSize: tokens.fsBodySmall }}>
         <thead>
           <tr>
-            {['Rate', 'Taxable', 'VAT', `Total (${currency})`].map((h, i) => (
+            {['Rate', 'Taxable', taxName, `Total (${currency})`].map((h, i) => (
               <th key={h} style={{
                 padding: '4px 8px', borderBottom: `1px solid ${tokens.hairline}`,
                 fontSize: tokens.fsBodyMicro, fontWeight: tokens.wSemi,
@@ -482,12 +487,13 @@ export function QRPanel({ qrSrc, payload }: { qrSrc?: string | null; payload?: s
 }
 
 export function ComplianceStrip({
-  qrSrc, payload, trn, documentTypeNote,
+  qrSrc, payload, trn, documentTypeNote, registrationName = 'TRN',
 }: {
   qrSrc?: string | null;
   payload?: string | null;
   trn?: string | null;
   documentTypeNote?: string;
+  registrationName?: string;   // Issue 5 — 'TRN' (GCC) or 'GSTIN' (India)
 }) {
   return (
     <div style={{
@@ -500,7 +506,7 @@ export function ComplianceStrip({
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: tokens.gap2 }}>
         {trn && (
           <div>
-            <SectionLabel>TRN</SectionLabel>
+            <SectionLabel>{registrationName}</SectionLabel>
             <div style={{ fontSize: tokens.fsBody, color: tokens.ink, marginTop: '2px', ...numericStyle }}>{trn}</div>
           </div>
         )}

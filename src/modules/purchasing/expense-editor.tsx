@@ -60,6 +60,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
@@ -138,6 +139,7 @@ export default function ExpenseEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const printConfig = usePrintConfig();
+  const companyCurrency = useCompanyCurrency();   // Issue 1 — localize money to tenant currency
   const qc = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const { company_id } = useAuthStore();
@@ -534,7 +536,7 @@ export default function ExpenseEditorPage() {
                 Expense Amount
               </span>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
-                <span style={{ fontSize: '18px', fontWeight: 700, color: 'rgba(255,255,255,.7)' }}>AED</span>
+                <span style={{ fontSize: '18px', fontWeight: 700, color: 'rgba(255,255,255,.7)' }}>{companyCurrency}</span>
                 <input
                   type="number" min="0" step="0.01"
                   value={primary.unit_amount}
@@ -585,7 +587,7 @@ export default function ExpenseEditorPage() {
             <span>Tax <span className="font-mono" style={{ color: '#fff', fontWeight: 600, marginInlineStart: '4px' }}>{fmt(splitOpen ? totals.tax : primaryCalc.tax_amount)}</span></span>
             <span style={{ marginInlineStart: 'auto', fontSize: '15px', fontWeight: 800, color: '#fff' }}>
               <span style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,.7)', marginInlineEnd: '6px' }}>Total</span>
-              AED <span className="font-mono">{fmt(splitOpen ? totals.total : primaryCalc.line_total)}</span>
+              {companyCurrency} <span className="font-mono">{fmt(splitOpen ? totals.total : primaryCalc.line_total)}</span>
             </span>
           </div>
         </div>
@@ -845,7 +847,7 @@ export default function ExpenseEditorPage() {
             textTransform: 'uppercase', letterSpacing: '.08em',
           }}>Total to pay</span>
           <span style={{ marginInlineStart: 'auto', fontFamily: theme.fontMono, fontSize: '24px', fontWeight: 800, color: theme.brand, letterSpacing: '-.01em' }}>
-            AED {fmt(totals.total)}
+            {companyCurrency} {fmt(totals.total)}
           </span>
         </div>
         </div>

@@ -4,6 +4,7 @@
  */
 import type { Company, ContactRow, InvoiceRow, InvoiceItemRow, PrintConfig } from '@/data/adapter';
 import { fmt } from './_shared';
+import { getTaxLabels } from '@/lib/locale';
 
 interface Props {
   company:     Company;
@@ -17,12 +18,13 @@ const DIV = '--------------------------------';
 
 export function InvoiceThermalTemplate({ company, invoice, items, contact }: Props) {
   const co = company as unknown as { tax_id?: string; address?: string; phone?: string };
+  const tax = getTaxLabels(company.country_code);
 
   return (
     <div className="thermal-template mx-auto">
       {/* Company */}
       <div className="text-center font-bold">{company.name}</div>
-      {co.tax_id  && <div className="text-center text-[8pt]">TRN: {co.tax_id}</div>}
+      {co.tax_id  && <div className="text-center text-[8pt]">{tax.registrationName}: {co.tax_id}</div>}
       {co.address && <div className="text-center text-[8pt]">{co.address}</div>}
       {co.phone   && <div className="text-center text-[8pt]">Tel: {co.phone}</div>}
 
@@ -73,7 +75,7 @@ export function InvoiceThermalTemplate({ company, invoice, items, contact }: Pro
           </div>
         )}
         <div className="flex justify-between">
-          <span>VAT</span><span>{fmt(invoice.tax_amount ?? 0)}</span>
+          <span>{tax.taxName}</span><span>{fmt(invoice.tax_amount ?? 0)}</span>
         </div>
         <div className="my-1">{DIV}</div>
         <div className="flex justify-between font-bold text-[10pt]">

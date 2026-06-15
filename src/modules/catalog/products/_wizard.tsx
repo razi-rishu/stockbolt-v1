@@ -27,6 +27,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import type {
   BrandRow, CategoryRow, UnitRow, CoaRow,
   ContactRow, WarehouseRow,
@@ -109,6 +110,7 @@ const initialForm: WizardForm = {
 export function ProductWizard() {
   const navigate = useNavigate();
   const { company_id } = useAuthStore();
+  const companyCurrency = useCompanyCurrency();   // Issue 1 — localize money to tenant currency
 
   const [step, setStep]           = useState(1);
   const [completed, setCompleted] = useState<Set<number>>(new Set());
@@ -280,6 +282,7 @@ export function ProductWizard() {
       {showReview && (
         <ReviewModal
           form={form}
+          currency={companyCurrency}
           brands={brands}
           suppliers={suppliers}
           warehouses={warehouses}
@@ -596,6 +599,7 @@ function Step2({
   set: <K extends keyof WizardForm>(k: K, v: WizardForm[K]) => void;
   coa: CoaRow[];
 }) {
+  const companyCurrency = useCompanyCurrency();   // Issue 1 — localize money to tenant currency
   const selling = parseFloat(form.selling_price) || 0;
   const cost    = parseFloat(form.opening_stock_rate) || 0;
   const { margin, markup } = useMemo(() => {
@@ -611,7 +615,7 @@ function Step2({
       {margin !== null && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '10px' }}>
           {[
-            { label: 'Selling price', value: `AED ${selling.toFixed(2)}`, color: '#7c3aed' },
+            { label: 'Selling price', value: `${companyCurrency} ${selling.toFixed(2)}`, color: '#7c3aed' },
             { label: 'Gross margin',  value: `${margin}%`, color: (margin as number) > 20 ? '#16a34a' : '#d97706' },
             { label: 'Markup',        value: `${markup}%`, color: '#0ea5e9' },
           ].map((s) => (
@@ -630,7 +634,7 @@ function Step2({
         <Grid cols={2}>
           <Field label="Selling price" required>
             <PrefixInput
-              prefix="AED" type="number" min="0" step="0.01"
+              prefix={companyCurrency} type="number" min="0" step="0.01"
               value={form.selling_price}
               onChange={(e) => set('selling_price', e.target.value)}
               placeholder="0.00"
@@ -816,6 +820,7 @@ function Step5({
   warehouses: WarehouseRow[];
   openWarehouseQC: () => void;
 }) {
+  const companyCurrency = useCompanyCurrency();   // Issue 1 — localize money to tenant currency
   const isService = form.type === 'service';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -853,8 +858,8 @@ function Step5({
             <Field label="Opening qty">
               <Input type="number" min="0" step="0.001" value={form.opening_stock}      onChange={(e) => set('opening_stock', e.target.value)} placeholder="0" />
             </Field>
-            <Field label="Unit cost (AED)">
-              <PrefixInput prefix="AED" type="number" min="0" step="0.01" value={form.opening_stock_rate} onChange={(e) => set('opening_stock_rate', e.target.value)} placeholder="0.00" />
+            <Field label={`Unit cost (${companyCurrency})`}>
+              <PrefixInput prefix={companyCurrency} type="number" min="0" step="0.01" value={form.opening_stock_rate} onChange={(e) => set('opening_stock_rate', e.target.value)} placeholder="0.00" />
             </Field>
             <Field label="Warehouse">
               <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
@@ -1141,10 +1146,11 @@ function WarehouseQC({
 
 // ── Review modal ────────────────────────────────────────────────────────
 function ReviewModal({
-  form, brands, suppliers, warehouses,
+  form, currency, brands, suppliers, warehouses,
   onClose, onConfirm, saving,
 }: {
   form: WizardForm;
+  currency: string;
   brands: BrandRow[];
   suppliers: ContactRow[];
   warehouses: WarehouseRow[];
@@ -1164,13 +1170,13 @@ function ReviewModal({
     ['Name',          form.name],
     ['SKU',           form.sku],
     ['Brand',         brandName],
-    ['Selling price', `AED ${(parseFloat(form.selling_price) || 0).toFixed(2)}`],
+    ['Selling price', `${currency} ${(parseFloat(form.selling_price) || 0).toFixed(2)}`],
     ['Tax',           form.tax_category],
     ['Barcode',       form.barcode || '—'],
     ['HSN',           form.hsn_code || '—'],
     ['Country',       form.country_of_origin || '—'],
     ['Supplier',      supplierName],
-    ['Opening stock', openingQty > 0 ? `${openingQty} × AED ${openingRate.toFixed(2)} = AED ${openingValue.toFixed(2)}` : '—'],
+    ['Opening stock', openingQty > 0 ? `${openingQty} × ${currency} ${openingRate.toFixed(2)} = ${currency} ${openingValue.toFixed(2)}` : '—'],
     ['Warehouse',     warehouseName],
     ['Active',        form.is_active ? 'Yes' : 'No'],
   ];
@@ -1219,8 +1225,8 @@ function ReviewModal({
               fontSize: '12px', color: '#92400e',
             }}>
               ⚠ Saving will post a JE for the opening stock:
-              Dr 1300 Inventory AED {openingValue.toFixed(2)} /
-              Cr 3200 Owner&apos;s Equity AED {openingValue.toFixed(2)}.
+              Dr 1300 Inventory {currency} {openingValue.toFixed(2)} /
+              Cr 3200 Owner&apos;s Equity {currency} {openingValue.toFixed(2)}.
             </div>
           )}
         </div>
