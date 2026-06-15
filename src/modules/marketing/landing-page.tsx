@@ -1,309 +1,516 @@
 /**
- * Landing page — Phase 14.14c.
+ * Landing page — premium marketing site for StockBolt ERP.
  *
- * Public marketing page that lives at `/` (for anonymous visitors) and
- * `/landing` (always reachable). Logged-in users hitting `/` are bounced
- * to `/dashboard` via the route layer; this component itself just
- * renders the marketing content.
+ * Public page at `/` (anonymous) and `/landing`. Apple/Linear/Stripe-inspired:
+ * minimal, lots of whitespace, soft gradients, glassmorphism, subtle
+ * Framer-Motion reveals, Lucide icons. Light mode only. Tailwind for layout,
+ * brand colours inline so they survive any Tailwind purge config.
  *
- * Source-of-truth note: the standalone static landing/index.html still
- * exists for hosting the marketing site on a different subdomain
- * (e.g. stockbolt.com vs app.stockbolt.com). Keep the two in rough sync
- * if marketing copy changes — this React version is what loads in-app.
+ * Screenshots: the showcase uses self-contained CSS mock UIs so the page is
+ * complete with zero image assets. To use real captures, drop PNGs in
+ * /public/screenshots and swap the <ModuleMock> for an <img>.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import './landing-page.css';
+import { motion, type Variants } from 'framer-motion';
+import {
+  Boxes, Calculator, ReceiptText, Users, ShieldCheck, Languages, Warehouse,
+  ScrollText, Puzzle, Check, X, ArrowRight, Sparkles, Wallet,
+  Building2, Wrench, Truck, ChevronDown, Globe, Zap,
+} from 'lucide-react';
 
-interface FeatureProps { icon: React.ReactNode; title: string; body: string; }
-function Feature({ icon, title, body }: FeatureProps) {
+// ── Brand tokens ──────────────────────────────────────────────────────────
+const C = {
+  primary:   '#6D28D9',
+  secondary: '#8B5CF6',
+  accent:    '#A855F7',
+  bg:        '#F8FAFC',
+  text:      '#0F172A',
+  muted:     '#64748B',
+  border:    'rgba(15,23,42,0.08)',
+};
+const GRAD = `linear-gradient(135deg, ${C.primary}, ${C.accent})`;
+
+// ── Motion helpers ──────────────────────────────────────────────────────────
+const fadeUp: Variants = {
+  hidden: { opacity: 0, y: 26 },
+  show:   { opacity: 1, y: 0 },
+};
+function Reveal({ children, delay = 0, className = '' }: { children: React.ReactNode; delay?: number; className?: string }) {
   return (
-    <div className="lp-feature">
-      <div className="lp-feature-icon">{icon}</div>
-      <h3>{title}</h3>
-      <p>{body}</p>
+    <motion.div
+      className={className}
+      initial="hidden"
+      whileInView="show"
+      viewport={{ once: true, margin: '-80px' }}
+      variants={fadeUp}
+      transition={{ duration: 0.6, delay, ease: [0.22, 1, 0.36, 1] }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+// ── Reusable glass mock "browser" frame ───────────────────────────────────────
+function MockFrame({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        background: 'rgba(255,255,255,0.7)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        border: `1px solid ${C.border}`,
+        borderRadius: 24,
+        boxShadow: '0 30px 60px -20px rgba(76,29,149,0.30), 0 10px 30px -10px rgba(15,23,42,0.15)',
+        overflow: 'hidden',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', borderBottom: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.55)' }}>
+        <span style={{ width: 11, height: 11, borderRadius: 99, background: '#FF5F57' }} />
+        <span style={{ width: 11, height: 11, borderRadius: 99, background: '#FEBC2E' }} />
+        <span style={{ width: 11, height: 11, borderRadius: 99, background: '#28C840' }} />
+        <span style={{ marginInlineStart: 12, fontSize: 12, fontWeight: 600, color: C.muted }}>{title}</span>
+      </div>
+      <div style={{ padding: 18 }}>{children}</div>
     </div>
   );
 }
 
-interface FaqItemProps { question: string; answer: string; }
-function FaqItem({ question, answer, isOpen, onClick }: FaqItemProps & { isOpen: boolean; onClick: () => void }) {
+const tile = (label: string, value: string, tone: string = C.primary) => (
+  <div style={{ flex: 1, minWidth: 110, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 14, padding: '12px 14px' }}>
+    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: C.muted }}>{label}</div>
+    <div style={{ fontSize: 19, fontWeight: 800, color: tone, marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+  </div>
+);
+
+// Each module gets a believable little UI so the showcase feels real without images.
+function ModuleMock({ kind }: { kind: string }) {
+  if (kind === 'dashboard') {
+    return (
+      <MockFrame title="StockBolt — Dashboard">
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+          {tile('Sales (MTD)', 'AED 412,500', C.primary)}
+          {tile('Receivables', 'AED 86,200', '#0ea5e9')}
+          {tile('Inventory', 'AED 1.24M', '#16a34a')}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 90, padding: '0 4px' }}>
+          {[40, 62, 48, 80, 56, 92, 70, 100, 64].map((h, i) => (
+            <div key={i} style={{ flex: 1, height: `${h}%`, borderRadius: 6, background: GRAD, opacity: 0.35 + h / 200 }} />
+          ))}
+        </div>
+      </MockFrame>
+    );
+  }
+  if (kind === 'sales') {
+    return (
+      <MockFrame title="StockBolt — Invoice INV-1042">
+        <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+          {tile('Total', 'AED 12,600')}
+          {tile('Paid', 'AED 8,000', '#16a34a')}
+          {tile('Due', 'AED 4,600', '#dc2626')}
+        </div>
+        {[['Shock Absorber', '4 × 1,200'], ['Brake Pad Set', '6 × 850'], ['Oil Filter', '12 × 75']].map((r, i) => (
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderTop: i ? `1px solid ${C.border}` : 'none', fontSize: 13, color: C.text }}>
+            <span>{r[0]}</span><span style={{ color: C.muted, fontFamily: 'monospace' }}>{r[1]}</span>
+          </div>
+        ))}
+      </MockFrame>
+    );
+  }
+  if (kind === 'inventory') {
+    return (
+      <MockFrame title="StockBolt — Stock Movement">
+        {[['Shock Absorber', 'WH-01', '218', '#16a34a'], ['Brake Pad Set', 'WH-02', '54', '#16a34a'], ['Oil Filter', 'WH-01', '6', '#d97706'], ['Clutch Kit', 'WH-02', '0', '#dc2626']].map((r, i) => (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 10, alignItems: 'center', padding: '10px 0', borderTop: i ? `1px solid ${C.border}` : 'none', fontSize: 13 }}>
+            <span style={{ color: C.text, fontWeight: 500 }}>{r[0]}</span>
+            <span style={{ color: C.muted, fontSize: 11 }}>{r[1]}</span>
+            <span style={{ color: r[3], fontWeight: 700, fontFamily: 'monospace' }}>{r[2]}</span>
+          </div>
+        ))}
+      </MockFrame>
+    );
+  }
+  if (kind === 'statements') {
+    return (
+      <MockFrame title="StockBolt — AR Aging">
+        <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+          {tile('Current', '52,000', '#16a34a')}
+          {tile('31–60', '18,400', '#d97706')}
+          {tile('90+', '6,100', '#dc2626')}
+        </div>
+        {[['Al Noor Garage', '38,200'], ['FastTrack Workshop', '21,500'], ['AIM Auto Spare', '17,000']].map((r, i) => (
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderTop: i ? `1px solid ${C.border}` : 'none', fontSize: 13, color: C.text }}>
+            <span>{r[0]}</span><span style={{ fontFamily: 'monospace', color: C.muted }}>AED {r[1]}</span>
+          </div>
+        ))}
+      </MockFrame>
+    );
+  }
+  // accounting
   return (
-    <div className={`lp-faq-item ${isOpen ? 'lp-open' : ''}`}>
-      <button className="lp-faq-q" onClick={onClick} aria-expanded={isOpen}>
-        <span>{question}</span>
-        <svg className="lp-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
-      <div className="lp-faq-a">{answer}</div>
-    </div>
+    <MockFrame title="StockBolt — Trial Balance">
+      {[['1100 Cash in Hand', '120,000', ''], ['1200 Accounts Receivable', '86,200', ''], ['1300 Inventory Asset', '1,240,000', ''], ['4100 Sales Revenue', '', '2,318,000'], ['2200 Output VAT', '', '115,900']].map((r, i) => (
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 14, padding: '8px 0', borderTop: i ? `1px solid ${C.border}` : 'none', fontSize: 12.5 }}>
+          <span style={{ color: C.text }}>{r[0]}</span>
+          <span style={{ width: 78, textAlign: 'right', fontFamily: 'monospace', color: C.muted }}>{r[1]}</span>
+          <span style={{ width: 78, textAlign: 'right', fontFamily: 'monospace', color: C.muted }}>{r[2]}</span>
+        </div>
+      ))}
+    </MockFrame>
   );
 }
 
-const FAQS: FaqItemProps[] = [
-  { question: 'Do you actually support Arabic, or is it Google Translate?',
-    answer:   'Full bilingual support, baked in from day one. Every screen flips to RTL with one click. Products, contacts, and account names carry both English and Arabic variants. Printed invoices and statements render correctly in either language — including Arabic numerals if you want them.' },
-  { question: 'Which countries are you really built for?',
-    answer:   'UAE, Saudi Arabia, Qatar, Kuwait, Bahrain, Oman, and India. Each country gets its own VAT/GST configuration, currency, and fiscal-year defaults. You pick your country during onboarding and the rest is wired correctly automatically.' },
-  { question: 'Can I move my data over from Tally / Excel / my old system?',
-    answer:   'Yes. There’s a built-in CSV/XLSX import for products, customers, suppliers, opening stock, tax rates, brands, categories, and even opening balances. Plus a proper opening-balance wizard that books your old AR, AP, advances, bank balances, and capital against Opening Balance Equity — the way an accountant expects.' },
-  { question: 'What about VAT or GST returns?',
-    answer:   'There’s a built-in VAT report that reconciles output VAT (from invoices) against input VAT (from bills), with the working-capital impact reflected in the cash-flow report. For India, GST input/output is captured per line so you can hand off to your CA cleanly. e-Invoice integration is on the roadmap.' },
-  { question: 'Does it run multiple warehouses?',
-    answer:   'Yes — unlimited warehouses with proper stock transfers between them. Each warehouse tracks its own stock and you can see per-warehouse availability on every invoice line. Aisle and bin locations are stored per product, so finding stock on the floor takes seconds.' },
-  { question: 'Is there a mobile app?',
-    answer:   'The web app is fully responsive and works on any phone or tablet browser. A dedicated native app is on the roadmap for offline counter sales and barcode scanning.' },
-  { question: 'Who exactly is this for?',
-    answer:   'Auto-parts retailers, wholesalers, distributors, and workshops with parts counters. Anywhere from a one-counter shop up to a small chain with three or four warehouses. If your day involves quoting parts to walk-ins, managing supplier credit, and chasing customer balances — this is for you.' },
+// ── Data ──────────────────────────────────────────────────────────────────
+const SHOWCASE = [
+  { kind: 'dashboard',  name: 'Dashboard',           caption: 'Real-time business insights at a glance.',         features: ['Sales KPIs', 'Receivables & payables', 'Inventory value', 'Cash flow visibility'] },
+  { kind: 'sales',      name: 'Sales & Invoicing',   caption: 'Create invoices and receive payments in seconds.', features: ['VAT invoices', 'Payment tracking', 'Outstanding balances', 'Customer history'] },
+  { kind: 'inventory',  name: 'Inventory',           caption: 'Track stock movement with precision.',             features: ['Multi-warehouse support', 'Stock movement', 'Moving-average costing', 'Product compatibility'] },
+  { kind: 'statements', name: 'Customer Statements', caption: 'Know exactly who owes you money.',                  features: ['AR aging', 'Credit limits', 'Receivables', 'Customer history'] },
+  { kind: 'accounting', name: 'Accounting',          caption: 'Built-in accounting without extra software.',      features: ['Chart of Accounts', 'Trial Balance', 'P&L & Balance Sheet', 'VAT reports'] },
 ];
 
+const FEATURES = [
+  { icon: Boxes,       title: 'Inventory Management',  body: 'Real-time stock across every warehouse with moving-average costing.' },
+  { icon: Calculator,  title: 'Integrated Accounting', body: 'A full general ledger, trial balance and statements — no add-ons.' },
+  { icon: ReceiptText, title: 'Sales & Invoicing',     body: 'VAT-ready invoices, payments and receipts in a few clicks.' },
+  { icon: Users,       title: 'Customer Statements',   body: 'AR aging, credit limits and a clear picture of who owes you.' },
+  { icon: ShieldCheck, title: 'VAT Compliance',        body: 'GCC VAT built in — output/input VAT and ready-to-file returns.' },
+  { icon: Languages,   title: 'Arabic Support',        body: 'Full English + Arabic, right-to-left aware throughout.' },
+  { icon: Warehouse,   title: 'Multi-Warehouse',       body: 'Move and value stock across multiple locations with ease.' },
+  { icon: ScrollText,  title: 'Audit Logs',            body: 'Every posting tracked — reversible, traceable, audit-ready.' },
+  { icon: Puzzle,      title: 'Product Compatibility', body: 'Map parts to the vehicles they fit and sell with confidence.' },
+];
+
+const COMPARE: [string, boolean | string, boolean | string][] = [
+  ['Auto Parts Focus',       true, false],
+  ['Inventory + Accounting', true, 'Limited'],
+  ['Arabic Support',         true, 'Limited'],
+  ['Affordable Pricing',     true, false],
+  ['GCC VAT Ready',          true, 'Partial'],
+];
+
+const USE_CASES = [
+  { icon: Building2, title: 'Retail Parts Shops', body: 'Manage thousands of SKUs effortlessly.' },
+  { icon: Wrench,    title: 'Workshops',          body: 'Track inventory and invoices in one place.' },
+  { icon: Truck,     title: 'Distributors',       body: 'Control stock across warehouses.' },
+];
+
+const PROOF = [
+  { icon: Zap,         label: 'Inventory + Accounting in one platform' },
+  { icon: Globe,       label: 'Built for GCC businesses' },
+  { icon: Languages,   label: 'Arabic & English ready' },
+  { icon: ShieldCheck, label: 'VAT compliant' },
+];
+
+const FAQS = [
+  { q: 'What businesses is StockBolt built for?', a: 'StockBolt is purpose-built for retail auto parts shops, workshops and distributors — typically 1–5 users — who need inventory and accounting in one affordable system.' },
+  { q: 'Does StockBolt support UAE VAT?', a: 'Yes. GCC VAT is built in — input and output VAT are tracked automatically on every invoice and bill, with VAT-return reports ready to file.' },
+  { q: 'Does StockBolt support Arabic?', a: 'Yes. The entire interface is available in both English and Arabic with full right-to-left support.' },
+  { q: 'Can I manage inventory and accounting together?', a: "Absolutely — that's the core idea. Every sale, purchase and payment posts to a real double-entry general ledger automatically. No second accounting tool needed." },
+  { q: 'Is StockBolt cloud based?', a: 'Yes. StockBolt runs in the cloud — access it from any browser, with your data securely isolated per business.' },
+];
+
+// ── Page ────────────────────────────────────────────────────────────────────
 export default function LandingPage() {
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [faqOpen, setFaqOpen] = useState<number | null>(0);
+
+  // Lightweight SEO — title + description (no react-helmet dependency).
+  useEffect(() => {
+    const prevTitle = document.title;
+    document.title = 'StockBolt ERP — Inventory & Accounting for Auto Parts Businesses';
+    const meta = document.querySelector('meta[name="description"]') ?? (() => {
+      const m = document.createElement('meta'); m.setAttribute('name', 'description'); document.head.appendChild(m); return m;
+    })();
+    const prevDesc = meta.getAttribute('content');
+    meta.setAttribute('content', 'StockBolt is the affordable, all-in-one inventory and accounting ERP built specifically for auto parts retailers. VAT-ready, Arabic support, cloud based. Free during launch.');
+    return () => { document.title = prevTitle; if (prevDesc) meta.setAttribute('content', prevDesc); };
+  }, []);
 
   return (
-    <div className="lp">
-
-      {/* ── NAV ──────────────────────────────────────────────────────── */}
-      <nav className="lp-nav">
-        <div className="lp-container lp-nav-inner">
-          <Link to="/" className="lp-logo" aria-label="StockBolt home">
-            <span className="lp-logo-mark">
-              <svg viewBox="0 0 24 24" fill="white" aria-hidden="true">
-                <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" />
-              </svg>
+    <div style={{ background: C.bg, color: C.text, fontFamily: '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif', overflowX: 'hidden' }}>
+      {/* ── Nav ─────────────────────────────────────────────────────────── */}
+      <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(248,250,252,0.72)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', borderBottom: `1px solid ${C.border}` }}>
+        <nav className="mx-auto flex items-center justify-between px-5 md:px-8" style={{ maxWidth: 1200, height: 64 }}>
+          <Link to="/" className="flex items-center gap-2" aria-label="StockBolt home">
+            <span style={{ width: 30, height: 30, borderRadius: 9, background: GRAD, display: 'grid', placeItems: 'center', boxShadow: '0 6px 16px -4px rgba(109,40,217,.5)' }}>
+              <Zap size={17} color="#fff" />
             </span>
-            StockBolt
+            <span style={{ fontWeight: 800, fontSize: 18, letterSpacing: '-.02em' }}>StockBolt</span>
           </Link>
-          <div className="lp-nav-links">
-            <a href="#features" className="lp-nav-link">Features</a>
-            <a href="#auto-parts" className="lp-nav-link">For auto parts</a>
-            <a href="#faq" className="lp-nav-link">FAQ</a>
+          <div className="hidden items-center gap-7 md:flex" style={{ fontSize: 14, fontWeight: 500, color: C.muted }}>
+            <a href="#features" className="transition-colors hover:text-slate-900">Features</a>
+            <a href="#why" className="transition-colors hover:text-slate-900">Why StockBolt</a>
+            <a href="#pricing" className="transition-colors hover:text-slate-900">Pricing</a>
+            <a href="#faq" className="transition-colors hover:text-slate-900">FAQ</a>
           </div>
-          <div className="lp-nav-cta">
-            <Link to="/login" className="lp-btn lp-btn-ghost">Sign in</Link>
-            <Link to="/register" className="lp-btn lp-btn-indigo">
-              Start free <span className="lp-arrow">→</span>
-            </Link>
+          <div className="flex items-center gap-2">
+            <Link to="/login" className="hidden rounded-full px-4 py-2 text-sm font-semibold transition-colors hover:bg-slate-100 sm:inline-block" style={{ color: C.text }}>Sign in</Link>
+            <Link to="/register" className="rounded-full px-4 py-2 text-sm font-semibold text-white transition-transform hover:-translate-y-0.5" style={{ background: GRAD, boxShadow: '0 8px 20px -6px rgba(109,40,217,.5)' }}>Start Free</Link>
           </div>
-        </div>
-      </nav>
-
-      {/* ── HERO ─────────────────────────────────────────────────────── */}
-      <header className="lp-hero">
-        <div className="lp-container lp-hero-inner">
-          <div className="lp-eyebrow">
-            <span className="lp-dot" />
-            Live beta · Built for the GCC and India
-          </div>
-          <h1>
-            The auto-parts ERP,<br />
-            <span className="lp-accent">finally built</span> for how you actually work.
-          </h1>
-          <p className="lp-hero-sub">
-            Inventory, accounting, customers, suppliers — bilingual, VAT-ready, and
-            designed from scratch for the parts trade. Not a generic ERP with auto-parts
-            bolted on.
-          </p>
-          <div className="lp-hero-cta">
-            <Link to="/register" className="lp-btn lp-btn-indigo lp-btn-lg">
-              Start free <span className="lp-arrow">→</span>
-            </Link>
-            <a href="#features" className="lp-btn lp-btn-ghost lp-btn-lg">See what's inside</a>
-          </div>
-          <div className="lp-hero-foot">
-            <span><span className="lp-check">✓</span> No credit card required</span>
-            <span><span className="lp-check">✓</span> 5-minute setup</span>
-            <span><span className="lp-check">✓</span> Bilingual EN / AR</span>
-          </div>
-        </div>
+        </nav>
       </header>
 
-      {/* ── TRUST STRIP ──────────────────────────────────────────────── */}
-      <section className="lp-trust">
-        <div className="lp-container">
-          <p className="lp-trust-label">Built for the GCC and India</p>
-          <div className="lp-trust-row">
-            <span className="lp-country"><span className="lp-flag">🇦🇪</span> UAE</span>
-            <span className="lp-country"><span className="lp-flag">🇸🇦</span> Saudi Arabia</span>
-            <span className="lp-country"><span className="lp-flag">🇶🇦</span> Qatar</span>
-            <span className="lp-country"><span className="lp-flag">🇰🇼</span> Kuwait</span>
-            <span className="lp-country"><span className="lp-flag">🇧🇭</span> Bahrain</span>
-            <span className="lp-country"><span className="lp-flag">🇴🇲</span> Oman</span>
-            <span className="lp-country"><span className="lp-flag">🇮🇳</span> India</span>
-          </div>
-          <div className="lp-badges">
-            {['UAE FTA VAT compliant', 'India GST ready', 'Arabic + RTL throughout', 'Multi-warehouse'].map((label) => (
-              <span key={label} className="lp-badge">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                {label}
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── FEATURES ─────────────────────────────────────────────────── */}
-      <section id="features" className="lp-section">
-        <div className="lp-container">
-          <div className="lp-section-head">
-            <span className="lp-section-eyebrow">Everything in one place</span>
-            <h2>The full stack of a parts business.</h2>
-            <p className="lp-section-sub">
-              One system for stock, sales, purchasing, accounting, and reporting — all
-              designed to talk to each other so you stop reconciling spreadsheets.
+      {/* ── Hero ────────────────────────────────────────────────────────── */}
+      <section style={{ position: 'relative' }}>
+        <div aria-hidden style={{ position: 'absolute', top: -120, right: -80, width: 460, height: 460, background: `radial-gradient(circle, ${C.accent}33, transparent 65%)`, filter: 'blur(20px)', pointerEvents: 'none' }} />
+        <div aria-hidden style={{ position: 'absolute', top: 120, left: -120, width: 420, height: 420, background: `radial-gradient(circle, ${C.secondary}26, transparent 65%)`, filter: 'blur(20px)', pointerEvents: 'none' }} />
+        <div className="mx-auto grid items-center gap-12 px-5 md:px-8 lg:grid-cols-2" style={{ maxWidth: 1200, paddingTop: 72, paddingBottom: 80 }}>
+          <Reveal>
+            <span className="inline-flex items-center gap-2 rounded-full px-3 py-1.5" style={{ background: '#fff', border: `1px solid ${C.border}`, fontSize: 13, fontWeight: 600, color: C.primary, boxShadow: '0 2px 8px rgba(15,23,42,.04)' }}>
+              <Sparkles size={14} /> Built for Auto Parts Businesses
+            </span>
+            <h1 style={{ fontSize: 'clamp(34px, 5vw, 56px)', lineHeight: 1.05, fontWeight: 800, letterSpacing: '-.03em', marginTop: 20 }}>
+              The affordable alternative to{' '}
+              <span style={{ background: GRAD, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>expensive ERP software.</span>
+            </h1>
+            <p style={{ fontSize: 'clamp(16px, 2vw, 19px)', lineHeight: 1.6, color: C.muted, marginTop: 22, maxWidth: 540 }}>
+              Manage inventory, sales, purchasing and accounting from one powerful platform built specifically for auto parts retailers.
             </p>
-          </div>
-
-          <div className="lp-features-grid">
-            <Feature
-              icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>}
-              title="Moving Average Costing"
-              body="Every GRN updates landed cost in real time. Always-accurate stock valuation, not a 'we'll figure it out at year-end' guess."
-            />
-            <Feature
-              icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 8l6 6"/><path d="M4 14l6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="M22 22l-5-10-5 10"/><path d="M14 18h6"/></svg>}
-              title="Bilingual English & Arabic"
-              body="Every screen, every printed invoice, every customer statement — switch with one click. Full RTL, not a fake translation overlay."
-            />
-            <Feature
-              icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>}
-              title="VAT & GST out of the box"
-              body="FTA-compliant VAT for the GCC, GST-ready for India. VAT return report, tax-inclusive pricing, input/output reconciliation."
-            />
-            <Feature
-              icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>}
-              title="Multi-warehouse with bins"
-              body="Branch warehouses, transit warehouse, and aisle/bin locations so a counter staff can find a part in seconds, not minutes."
-            />
-            <Feature
-              icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>}
-              title="Customer & supplier statements"
-              body="Real-time SOA with aging, apply-credit flow, opening balances, advances — the way Tally users expect their ledgers to behave."
-            />
-            <Feature
-              icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>}
-              title="PDC & payment workflows"
-              body="Post-dated cheques, bounced cheque handling, customer advances, vendor advances — tracked properly, not as a notes field."
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* ── AUTO PARTS DEEP DIVE ─────────────────────────────────────── */}
-      <section id="auto-parts" className="lp-section lp-autoparts">
-        <div className="lp-container">
-          <div className="lp-autoparts-grid">
-            <div>
-              <span className="lp-section-eyebrow">Built for auto parts</span>
-              <h2>Not a generic ERP. Designed for the parts trade.</h2>
-              <p className="lp-lead">
-                Auto parts is the only business StockBolt is built for. Every screen
-                knows that a product has compatible vehicles, multiple supplier codes,
-                a bin location, and a brand — because that's how parts shops actually sell.
-              </p>
-              <Link to="/register" className="lp-btn lp-btn-indigo lp-btn-lg">
-                Try it free <span className="lp-arrow">→</span>
+            <div className="flex flex-wrap items-center gap-3" style={{ marginTop: 30 }}>
+              <Link to="/register" className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-base font-semibold text-white transition-transform hover:-translate-y-0.5" style={{ background: GRAD, boxShadow: '0 14px 30px -8px rgba(109,40,217,.55)' }}>
+                Start Free <ArrowRight size={18} />
               </Link>
+              <a href="mailto:sales@stockbolt.com?subject=StockBolt%20Demo" className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-base font-semibold transition-colors hover:bg-white" style={{ border: `1px solid ${C.border}`, color: C.text, background: 'rgba(255,255,255,.6)' }}>
+                Book a Demo
+              </a>
             </div>
-
-            <ol className="lp-autoparts-list">
-              {[
-                ['01', 'Vehicle make & model compatibility',  'Tag every part with the vehicles it fits. Look up parts by Toyota Hilux 2018 or by part number — both work.'],
-                ['02', 'Multiple supplier codes per part',    'The same brake pad has three different codes from three suppliers. Track all of them on one product, scan any.'],
-                ['03', 'Aisle & bin locations',                '"Where is product P-1042?" Aisle 7, Bin B-3. Visible on the invoice line so the counter staff doesn\'t ask twice.'],
-                ['04', 'Brand catalog & pricing tiers',        'Bosch, Mahle, Mann, Denso — brand-level reporting and per-customer pricing tiers (retail, workshop, fleet).'],
-                ['05', 'Quotes, invoices, returns, credit notes', 'Walk-in quote becomes an invoice in one click. Customer returns a wrong part? Sales return + credit note, fully traced.'],
-                ['06', 'Migrate your old data without faking invoices', 'Opening balances for AR, AP, advances, bank, fixed assets, capital — all bookable as proper opening entries against Opening Balance Equity.'],
-              ].map(([num, title, body]) => (
-                <li key={num}>
-                  <span className="lp-num">{num}</span>
-                  <div>
-                    <h4>{title}</h4>
-                    <p>{body}</p>
-                  </div>
-                </li>
+            <div className="flex flex-wrap gap-x-5 gap-y-2" style={{ marginTop: 26, fontSize: 13.5, color: C.muted, fontWeight: 500 }}>
+              {['Free during launch', 'UAE VAT Ready', 'Arabic Support', 'Cloud Based'].map(t => (
+                <span key={t} className="inline-flex items-center gap-1.5"><Check size={15} color={C.primary} /> {t}</span>
               ))}
-            </ol>
-          </div>
+            </div>
+          </Reveal>
+          <Reveal delay={0.15}>
+            <motion.div initial={{ rotate: 1.5 }} animate={{ rotate: 0 }} transition={{ duration: 1, ease: 'easeOut' }}>
+              <ModuleMock kind="dashboard" />
+            </motion.div>
+          </Reveal>
         </div>
       </section>
 
-      {/* ── FAQ ──────────────────────────────────────────────────────── */}
-      <section id="faq" className="lp-section">
-        <div className="lp-container">
-          <div className="lp-section-head">
-            <span className="lp-section-eyebrow">Common questions</span>
-            <h2>Things you're probably wondering.</h2>
-          </div>
-          <div className="lp-faq-list">
-            {FAQS.map((f, i) => (
-              <FaqItem
-                key={i}
-                question={f.question}
-                answer={f.answer}
-                isOpen={openFaq === i}
-                onClick={() => setOpenFaq(openFaq === i ? null : i)}
-              />
+      {/* ── Screenshot showcase ─────────────────────────────────────────── */}
+      <section id="product" style={{ paddingTop: 40, paddingBottom: 40 }}>
+        <div className="mx-auto px-5 md:px-8" style={{ maxWidth: 1200 }}>
+          {SHOWCASE.map((m, i) => (
+            <div key={m.kind} className="grid items-center gap-10 lg:grid-cols-2" style={{ paddingTop: 56, paddingBottom: 56 }}>
+              <Reveal className={i % 2 === 1 ? 'lg:order-2' : ''}>
+                <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: C.accent }}>{m.name}</span>
+                <h3 style={{ fontSize: 'clamp(24px, 3vw, 32px)', fontWeight: 800, letterSpacing: '-.02em', marginTop: 10, lineHeight: 1.15 }}>{m.caption}</h3>
+                <ul style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {m.features.map(f => (
+                    <li key={f} className="flex items-center gap-3" style={{ fontSize: 15.5, color: C.text }}>
+                      <span style={{ width: 22, height: 22, borderRadius: 7, background: `${C.primary}14`, display: 'grid', placeItems: 'center', flexShrink: 0 }}><Check size={13} color={C.primary} /></span>
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+              </Reveal>
+              <Reveal delay={0.1} className={i % 2 === 1 ? 'lg:order-1' : ''}>
+                <ModuleMock kind={m.kind} />
+              </Reveal>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Feature grid ────────────────────────────────────────────────── */}
+      <section id="features" style={{ paddingTop: 80, paddingBottom: 80 }}>
+        <div className="mx-auto px-5 md:px-8" style={{ maxWidth: 1200 }}>
+          <Reveal>
+            <h2 style={{ textAlign: 'center', fontSize: 'clamp(28px, 4vw, 42px)', fontWeight: 800, letterSpacing: '-.025em' }}>Everything your shop runs on</h2>
+            <p style={{ textAlign: 'center', color: C.muted, fontSize: 18, marginTop: 14, maxWidth: 560, marginInline: 'auto' }}>One platform for inventory, accounting, sales and compliance — nothing bolted on.</p>
+          </Reveal>
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3" style={{ marginTop: 48 }}>
+            {FEATURES.map((f, i) => (
+              <Reveal key={f.title} delay={(i % 3) * 0.08}>
+                <motion.div
+                  whileHover={{ y: -6 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                  style={{ height: '100%', background: '#fff', border: `1px solid ${C.border}`, borderRadius: 24, padding: 26, boxShadow: '0 1px 2px rgba(15,23,42,.04)' }}
+                >
+                  <span style={{ width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg, ${C.primary}1a, ${C.accent}1a)`, display: 'grid', placeItems: 'center' }}>
+                    <f.icon size={24} color={C.primary} />
+                  </span>
+                  <h3 style={{ fontSize: 18, fontWeight: 700, marginTop: 18 }}>{f.title}</h3>
+                  <p style={{ color: C.muted, fontSize: 14.5, lineHeight: 1.6, marginTop: 8 }}>{f.body}</p>
+                </motion.div>
+              </Reveal>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── FINAL CTA ─────────────────────────────────────────────────── */}
-      <section className="lp-cta-banner">
-        <div className="lp-container">
-          <h2>Stop fighting your ERP.</h2>
-          <p>Set up your shop in 5 minutes. No card, no demo call, no waiting on a sales rep.</p>
-          <Link to="/register" className="lp-btn lp-btn-white lp-btn-lg">
-            Start free <span className="lp-arrow">→</span>
-          </Link>
+      {/* ── Why StockBolt (comparison) ──────────────────────────────────── */}
+      <section id="why" style={{ paddingTop: 40, paddingBottom: 80 }}>
+        <div className="mx-auto px-5 md:px-8" style={{ maxWidth: 920 }}>
+          <Reveal>
+            <h2 style={{ textAlign: 'center', fontSize: 'clamp(28px, 4vw, 42px)', fontWeight: 800, letterSpacing: '-.025em' }}>Why auto parts businesses choose StockBolt</h2>
+          </Reveal>
+          <Reveal delay={0.1}>
+            <div style={{ marginTop: 40, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 24, overflow: 'hidden', boxShadow: '0 20px 50px -25px rgba(15,23,42,.2)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr', background: 'rgba(248,250,252,.8)', borderBottom: `1px solid ${C.border}` }}>
+                <div style={{ padding: '16px 20px', fontWeight: 700, fontSize: 14 }}>Feature</div>
+                <div style={{ padding: '16px 12px', fontWeight: 800, fontSize: 14, textAlign: 'center', color: C.primary }}>StockBolt</div>
+                <div style={{ padding: '16px 12px', fontWeight: 700, fontSize: 14, textAlign: 'center', color: C.muted }}>Zoho</div>
+              </div>
+              {COMPARE.map((row, i) => (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr', borderTop: i ? `1px solid ${C.border}` : 'none' }}>
+                  <div style={{ padding: '15px 20px', fontSize: 14.5, color: C.text }}>{row[0]}</div>
+                  <div style={{ padding: '15px 12px', display: 'grid', placeItems: 'center' }}>
+                    {row[1] === true ? <Check size={20} color="#16a34a" /> : <span style={{ fontSize: 13, color: C.muted }}>{String(row[1])}</span>}
+                  </div>
+                  <div style={{ padding: '15px 12px', display: 'grid', placeItems: 'center' }}>
+                    {row[2] === false ? <X size={19} color="#dc2626" /> : row[2] === true ? <Check size={20} color="#16a34a" /> : <span style={{ fontSize: 13, color: C.muted }}>{String(row[2])}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p style={{ textAlign: 'center', fontSize: 12.5, color: C.muted, marginTop: 14 }}>Comparison based on publicly available information.</p>
+          </Reveal>
         </div>
       </section>
 
-      {/* ── FOOTER ────────────────────────────────────────────────────── */}
-      <footer className="lp-footer">
-        <div className="lp-container">
-          <div className="lp-footer-grid">
-            <div>
-              <Link to="/" className="lp-logo">
-                <span className="lp-logo-mark">
-                  <svg viewBox="0 0 24 24" fill="white" aria-hidden="true">
-                    <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" />
-                  </svg>
-                </span>
-                StockBolt
-              </Link>
-              <p className="lp-footer-tag">
-                The auto-parts ERP, built for the GCC and India. Bilingual, VAT-ready,
-                and designed from scratch for the parts trade.
-              </p>
+      {/* ── Use cases ───────────────────────────────────────────────────── */}
+      <section style={{ paddingTop: 20, paddingBottom: 80 }}>
+        <div className="mx-auto px-5 md:px-8" style={{ maxWidth: 1100 }}>
+          <div className="grid gap-5 md:grid-cols-3">
+            {USE_CASES.map((u, i) => (
+              <Reveal key={u.title} delay={i * 0.08}>
+                <div style={{ height: '100%', background: '#fff', border: `1px solid ${C.border}`, borderRadius: 24, padding: 28, boxShadow: '0 1px 2px rgba(15,23,42,.04)' }}>
+                  <span style={{ width: 46, height: 46, borderRadius: 13, background: GRAD, display: 'grid', placeItems: 'center', boxShadow: '0 8px 18px -6px rgba(109,40,217,.5)' }}>
+                    <u.icon size={22} color="#fff" />
+                  </span>
+                  <h3 style={{ fontSize: 19, fontWeight: 700, marginTop: 18 }}>{u.title}</h3>
+                  <p style={{ color: C.muted, fontSize: 15, marginTop: 8, lineHeight: 1.6 }}>{u.body}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Social proof strip ──────────────────────────────────────────── */}
+      <section style={{ paddingBottom: 70 }}>
+        <div className="mx-auto px-5 md:px-8" style={{ maxWidth: 1100 }}>
+          <Reveal>
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4" style={{ background: GRAD, borderRadius: 28, padding: '36px 28px', boxShadow: '0 30px 60px -25px rgba(109,40,217,.5)' }}>
+              {PROOF.map(p => (
+                <div key={p.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 10, color: '#fff' }}>
+                  <span style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(255,255,255,.18)', display: 'grid', placeItems: 'center' }}><p.icon size={22} color="#fff" /></span>
+                  <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4, opacity: .95 }}>{p.label}</span>
+                </div>
+              ))}
             </div>
-            <div className="lp-footer-col">
-              <h5>Product</h5>
-              <ul>
-                <li><a href="#features">Features</a></li>
-                <li><a href="#auto-parts">For auto parts</a></li>
-                <li><a href="#faq">FAQ</a></li>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ── Pricing ─────────────────────────────────────────────────────── */}
+      <section id="pricing" style={{ paddingTop: 40, paddingBottom: 90 }}>
+        <div className="mx-auto px-5 md:px-8" style={{ maxWidth: 720 }}>
+          <Reveal>
+            <div style={{ textAlign: 'center', background: 'rgba(255,255,255,.7)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', border: `1px solid ${C.border}`, borderRadius: 28, padding: '52px 32px', boxShadow: '0 20px 50px -25px rgba(15,23,42,.2)' }}>
+              <span className="inline-flex items-center gap-2 rounded-full px-3 py-1.5" style={{ background: `${C.primary}12`, color: C.primary, fontSize: 13, fontWeight: 700 }}><Wallet size={14} /> Pricing</span>
+              <h2 style={{ fontSize: 'clamp(28px, 4vw, 40px)', fontWeight: 800, letterSpacing: '-.025em', marginTop: 18 }}>Pricing Coming Soon</h2>
+              <p style={{ color: C.muted, fontSize: 17, lineHeight: 1.6, marginTop: 14 }}>
+                StockBolt is currently <strong style={{ color: C.text }}>free during launch</strong>.<br />Monthly and yearly plans are coming soon.
+              </p>
+              <Link to="/register" className="inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold text-white transition-transform hover:-translate-y-0.5" style={{ background: GRAD, marginTop: 28, boxShadow: '0 14px 30px -8px rgba(109,40,217,.55)' }}>
+                Get Early Access <ArrowRight size={18} />
+              </Link>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ── FAQ ─────────────────────────────────────────────────────────── */}
+      <section id="faq" style={{ paddingBottom: 90 }}>
+        <div className="mx-auto px-5 md:px-8" style={{ maxWidth: 760 }}>
+          <Reveal>
+            <h2 style={{ textAlign: 'center', fontSize: 'clamp(28px, 4vw, 40px)', fontWeight: 800, letterSpacing: '-.025em', marginBottom: 36 }}>Frequently asked questions</h2>
+          </Reveal>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {FAQS.map((f, i) => {
+              const open = faqOpen === i;
+              return (
+                <Reveal key={i} delay={i * 0.04}>
+                  <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 18, overflow: 'hidden' }}>
+                    <button onClick={() => setFaqOpen(open ? null : i)} className="flex w-full items-center justify-between gap-4 text-left" style={{ padding: '18px 22px', cursor: 'pointer', background: 'transparent', border: 'none' }}>
+                      <span style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{f.q}</span>
+                      <ChevronDown size={20} color={C.muted} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .25s', flexShrink: 0 }} />
+                    </button>
+                    <motion.div initial={false} animate={{ height: open ? 'auto' : 0, opacity: open ? 1 : 0 }} transition={{ duration: 0.28, ease: 'easeInOut' }} style={{ overflow: 'hidden' }}>
+                      <p style={{ padding: '0 22px 20px', color: C.muted, fontSize: 15, lineHeight: 1.65 }}>{f.a}</p>
+                    </motion.div>
+                  </div>
+                </Reveal>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Final CTA ───────────────────────────────────────────────────── */}
+      <section style={{ paddingBottom: 90 }}>
+        <div className="mx-auto px-5 md:px-8" style={{ maxWidth: 1100 }}>
+          <Reveal>
+            <div style={{ position: 'relative', textAlign: 'center', background: GRAD, borderRadius: 32, padding: 'clamp(48px, 7vw, 84px) 28px', overflow: 'hidden', boxShadow: '0 40px 80px -30px rgba(109,40,217,.55)' }}>
+              <div aria-hidden style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 30% 20%, rgba(255,255,255,.18), transparent 50%)' }} />
+              <h2 style={{ position: 'relative', fontSize: 'clamp(28px, 4.5vw, 46px)', fontWeight: 800, color: '#fff', letterSpacing: '-.025em', lineHeight: 1.1 }}>
+                Run your entire parts business from one system.
+              </h2>
+              <p style={{ position: 'relative', color: 'rgba(255,255,255,.9)', fontSize: 18, lineHeight: 1.6, marginTop: 18, maxWidth: 600, marginInline: 'auto' }}>
+                Inventory, accounting, customers and sales — built specifically for auto parts businesses.
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-3" style={{ position: 'relative', marginTop: 32 }}>
+                <Link to="/register" className="inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold transition-transform hover:-translate-y-0.5" style={{ background: '#fff', color: C.primary, boxShadow: '0 12px 28px -8px rgba(0,0,0,.3)' }}>
+                  Start Free <ArrowRight size={18} />
+                </Link>
+                <a href="mailto:sales@stockbolt.com?subject=StockBolt%20Demo" className="inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold text-white transition-colors" style={{ border: '1px solid rgba(255,255,255,.5)' }}>
+                  Book Demo
+                </a>
+              </div>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ── Footer ──────────────────────────────────────────────────────── */}
+      <footer style={{ borderTop: `1px solid ${C.border}`, background: '#fff' }}>
+        <div className="mx-auto grid gap-8 px-5 md:px-8 md:grid-cols-2" style={{ maxWidth: 1100, paddingTop: 48, paddingBottom: 40 }}>
+          <div>
+            <div className="flex items-center gap-2">
+              <span style={{ width: 28, height: 28, borderRadius: 8, background: GRAD, display: 'grid', placeItems: 'center' }}><Zap size={16} color="#fff" /></span>
+              <span style={{ fontWeight: 800, fontSize: 17 }}>StockBolt ERP</span>
+            </div>
+            <p style={{ color: C.text, fontSize: 15, fontWeight: 600, marginTop: 16 }}>Inventory. Accounting. Sales.</p>
+            <p style={{ color: C.muted, fontSize: 14, marginTop: 6, maxWidth: 320, lineHeight: 1.6 }}>Made for modern auto parts businesses.</p>
+          </div>
+          <div className="flex gap-16 md:justify-end" style={{ fontSize: 14 }}>
+            <div>
+              <div style={{ fontWeight: 700, marginBottom: 12 }}>Product</div>
+              <ul style={{ display: 'flex', flexDirection: 'column', gap: 9, color: C.muted }}>
+                <li><a href="#features" className="hover:text-slate-900">Features</a></li>
+                <li><a href="#pricing" className="hover:text-slate-900">Pricing</a></li>
+                <li><a href="mailto:sales@stockbolt.com" className="hover:text-slate-900">Contact</a></li>
+                <li><Link to="/privacy" className="hover:text-slate-900">Privacy Policy</Link></li>
               </ul>
             </div>
-            <div className="lp-footer-col">
-              <h5>Get started</h5>
-              <ul>
-                <li><Link to="/register">Create account</Link></li>
-                <li><Link to="/login">Sign in</Link></li>
+            <div>
+              <div style={{ fontWeight: 700, marginBottom: 12 }}>Account</div>
+              <ul style={{ display: 'flex', flexDirection: 'column', gap: 9, color: C.muted }}>
+                <li><Link to="/register" className="hover:text-slate-900">Start Free</Link></li>
+                <li><Link to="/login" className="hover:text-slate-900">Sign in</Link></li>
               </ul>
             </div>
           </div>
-          <div className="lp-footer-bottom">
-            <span>© {new Date().getFullYear()} StockBolt. All rights reserved.</span>
-            <span>Made for parts shops in the GCC and India.</span>
+        </div>
+        <div style={{ borderTop: `1px solid ${C.border}` }}>
+          <div className="mx-auto px-5 md:px-8" style={{ maxWidth: 1100, padding: '18px 0', fontSize: 13, color: C.muted, textAlign: 'center' }}>
+            © {new Date().getFullYear()} StockBolt ERP. All rights reserved.
           </div>
         </div>
       </footer>
-
     </div>
   );
 }
