@@ -338,8 +338,8 @@ export default function ImportExportHub() {
                 key={key}
                 onClick={() => { setModuleKey(key); startOver(); }}
                 style={{
-                  border: `1px solid ${isActive ? '#6366F1' : '#E2E8F0'}`,
-                  background: isActive ? '#EEF2FF' : '#FFF',
+                  border: `1px solid ${isActive ? '#7c3aed' : '#E2E8F0'}`,
+                  background: isActive ? '#f5f3ff' : '#FFF',
                   borderRadius: '12px',
                   padding: '14px 16px',
                   textAlign: 'left',
@@ -369,14 +369,14 @@ export default function ImportExportHub() {
                 {adapter.label} · {existingRows.length} record{existingRows.length === 1 ? '' : 's'} in system
               </h2>
               {/* Format toggle */}
-              <div className="inline-flex rounded border border-slate-300 overflow-hidden text-xs font-semibold">
+              <div className="inline-flex rounded border border-border-strong overflow-hidden text-xs font-semibold">
                 {(['csv','xlsx'] as const).map(f => (
                   <button
                     key={f}
                     onClick={() => setFormat(f)}
                     style={{
                       padding: '5px 12px',
-                      background: format === f ? '#EEF2FF' : '#FFF',
+                      background: format === f ? '#f5f3ff' : '#FFF',
                       color:      format === f ? '#3730A3' : '#64748B',
                       borderLeft: f === 'xlsx' ? '1px solid #CBD5E1' : undefined,
                       textTransform: 'uppercase',
@@ -449,7 +449,7 @@ export default function ImportExportHub() {
                       <select
                         value={policy}
                         onChange={(e) => setPolicy(e.target.value as DuplicatePolicy)}
-                        className="border border-slate-300 rounded px-2 py-1 text-xs"
+                        className="border border-border-strong rounded px-2 py-1 text-xs"
                       >
                         <option value="skip">Skip duplicates (default)</option>
                         <option value="update">Update existing rows</option>
@@ -569,8 +569,8 @@ function ActionCard({
   return (
     <div
       style={{
-        border: `1px solid ${accent ? '#6366F1' : '#E2E8F0'}`,
-        background: accent ? '#EEF2FF' : '#FFF',
+        border: `1px solid ${accent ? '#7c3aed' : '#E2E8F0'}`,
+        background: accent ? '#f5f3ff' : '#FFF',
         borderRadius: '12px',
         padding: '14px 16px',
         display: 'flex', flexDirection: 'column', gap: '6px',

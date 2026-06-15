@@ -80,7 +80,17 @@ class SupabaseDataError extends Error {
 }
 
 function assertNoError(error: { message: string } | null, context: string): void {
-  if (error) throw new SupabaseDataError(`${context}: ${error.message}`);
+  if (!error) return;
+  const msg = error.message || '';
+  // A browser-level fetch failure means the request never reached Supabase
+  // (no internet, or — most common on free tier — the project is paused).
+  // Translate the cryptic "TypeError: Failed to fetch" into a clear action.
+  if (/failed to fetch|networkerror|network error|load failed/i.test(msg)) {
+    throw new SupabaseDataError(
+      `${context}: Can't reach the server. Check your internet — or your Supabase project may be paused (open the Supabase dashboard and Resume it), then try again.`,
+    );
+  }
+  throw new SupabaseDataError(`${context}: ${msg}`);
 }
 
 export function createSupabaseAdapter(
@@ -651,7 +661,7 @@ export function createSupabaseAdapter(
       async getLedgerEntries(company_id, account_code, from, to): Promise<LedgerEntry[]> {
         const { data: glRows, error: e1 } = await client
           .from('general_ledger')
-          .select('id, date, debit, credit, description, journal_entry_id, related_doc_type')
+          .select('id, date, debit, credit, description, journal_entry_id, related_doc_type, related_doc_id')
           .eq('company_id', company_id)
           .eq('account_code', account_code)
           .gte('date', from)
@@ -660,26 +670,84 @@ export function createSupabaseAdapter(
           .order('created_at');
         assertNoError(e1, 'accounting.getLedgerEntries.gl');
 
-        // Fetch entry numbers for JE ids
+        // Fetch entry numbers + reversal links + JE-level source for JE ids
         const jeIds = [...new Set((glRows ?? []).map((r) => r.journal_entry_id))];
-        const jeMap: Record<string, string> = {};
+        const jeMap: Record<string, {
+          entry_number: string;
+          reversed_by_id: string | null;
+          reversal_of_id: string | null;
+          source_type: string;
+          source_id: string | null;
+        }> = {};
         if (jeIds.length > 0) {
-          const { data: jes } = await client.from('journal_entries').select('id, entry_number').in('id', jeIds);
-          for (const je of jes ?? []) jeMap[je.id] = je.entry_number;
+          const { data: jes } = await client
+            .from('journal_entries')
+            .select('id, entry_number, reversed_by_id, reversal_of_id, source_type, source_id')
+            .in('id', jeIds);
+          for (const je of jes ?? []) {
+            jeMap[je.id] = {
+              entry_number:   je.entry_number,
+              reversed_by_id: (je as any).reversed_by_id ?? null,
+              reversal_of_id: (je as any).reversal_of_id ?? null,
+              source_type:    (je as any).source_type ?? '',
+              source_id:      (je as any).source_id ?? null,
+            };
+          }
         }
+
+        // Resolve source document numbers ("INV-1002") — one batch query per
+        // document type present. Unknown types just render their type label.
+        const DOC_SOURCES: Record<string, { table: string; column: string }> = {
+          invoice:              { table: 'invoices',              column: 'invoice_number' },
+          vendor_bill:          { table: 'vendor_bills',          column: 'bill_number' },
+          payment:              { table: 'payments',              column: 'payment_number' },
+          expense:              { table: 'expenses',              column: 'expense_number' },
+          goods_receipt:        { table: 'goods_receipts',        column: 'grn_number' },
+          credit_note:          { table: 'credit_notes',          column: 'credit_note_number' },
+          debit_note:           { table: 'debit_notes',           column: 'debit_note_number' },
+          sales_return:         { table: 'sales_returns',         column: 'return_number' },
+          inventory_adjustment: { table: 'inventory_adjustments', column: 'adjustment_number' },
+          stock_transfer:       { table: 'stock_transfers',       column: 'transfer_number' },
+          bank_transfer:        { table: 'bank_transfers',        column: 'transfer_number' },
+        };
+        const idsByType: Record<string, Set<string>> = {};
+        for (const r of glRows ?? []) {
+          const je = jeMap[r.journal_entry_id];
+          const type = (r as any).related_doc_type || je?.source_type || '';
+          const id   = (r as any).related_doc_id || je?.source_id || null;
+          if (id && DOC_SOURCES[type]) (idsByType[type] ??= new Set()).add(id);
+        }
+        const numberMap: Record<string, string> = {}; // `${type}:${id}` → doc number
+        await Promise.all(Object.entries(idsByType).map(async ([type, ids]) => {
+          const src = DOC_SOURCES[type];
+          const { data } = await client
+            .from(src.table as never)
+            .select(`id, ${src.column}`)
+            .in('id', [...ids]);
+          for (const row of (data ?? []) as Array<Record<string, string>>) {
+            numberMap[`${type}:${row.id}`] = row[src.column];
+          }
+        }));
 
         let running = 0;
         return (glRows ?? []).map((r) => {
           running += r.debit - r.credit;
+          const jeInfo = jeMap[r.journal_entry_id];
+          const srcType = (r as any).related_doc_type || jeInfo?.source_type || '';
+          const srcId   = (r as any).related_doc_id || jeInfo?.source_id || null;
           return {
             id: r.id,
             date: r.date,
-            entry_number: jeMap[r.journal_entry_id] ?? '',
+            entry_number: jeInfo?.entry_number ?? '',
             description: r.description ?? '',
             debit: r.debit,
             credit: r.credit,
             running_balance: running,
-            source_type: r.related_doc_type ?? '',
+            source_type: srcType,
+            source_id: srcId,
+            source_number: srcId ? (numberMap[`${srcType}:${srcId}`] ?? null) : null,
+            reversed_by_id: jeInfo?.reversed_by_id ?? null,
+            reversal_of_id: jeInfo?.reversal_of_id ?? null,
           };
         });
       },
@@ -780,6 +848,44 @@ export function createSupabaseAdapter(
           });
         assertNoError(error as Error | null, 'stockLedger.postOpeningStock');
         return data as { stock_ledger_id: string; journal_entry_id: string; entry_number: string; total_value: number };
+      },
+      // Phase 14.15 — list all opening-stock rows for the Opening Inventory wizard.
+      async listOpeningStock(company_id) {
+        const { data, error } = await (client.from('stock_ledger') as any)
+          .select(`
+            id,
+            product_id,
+            warehouse_id,
+            quantity,
+            unit_cost,
+            total_cost,
+            date,
+            products ( sku, name ),
+            warehouses ( name )
+          `)
+          .eq('company_id', company_id)
+          .eq('type', 'opening_balance')
+          .order('date', { ascending: false });
+        assertNoError(error as Error | null, 'stockLedger.listOpeningStock');
+        return ((data ?? []) as any[]).map((r) => ({
+          stock_ledger_id: r.id as string,
+          product_id:      r.product_id as string,
+          sku:             (r.products?.sku ?? '') as string,
+          product_name:    (r.products?.name ?? '') as string,
+          warehouse_id:    r.warehouse_id as string,
+          warehouse_name:  (r.warehouses?.name ?? '') as string,
+          quantity:        Number(r.quantity),
+          unit_cost:       Number(r.unit_cost),
+          total_cost:      Number(r.total_cost),
+          date:            r.date as string,
+        }));
+      },
+      // Phase 14.16b — void an opening stock entry (reverses GL JE + removes stock_ledger row).
+      async voidOpeningStock(stock_ledger_id) {
+        const { error } = await client.rpc('void_opening_stock' as any, {
+          p_stock_ledger_id: stock_ledger_id,
+        });
+        assertNoError(error as Error | null, 'stockLedger.voidOpeningStock');
       },
       async getCurrentStockMap(company_id): Promise<Record<string, { qty: number; mac: number }>> {
         // Single query, then SUM(direction × quantity) per product across
@@ -897,13 +1003,44 @@ export function createSupabaseAdapter(
       },
     },
 
-    // ── Phase 4: Tax Rates (read-only lookup) ─────────────────────────────
+    // ── Phase 4: Tax Rates ────────────────────────────────────────────────
     taxRates: {
       async list(company_id): Promise<TaxRateRow[]> {
         const { data, error } = await client.from('tax_rates').select('*')
           .eq('company_id', company_id).eq('is_active', true).order('name');
         assertNoError(error, 'taxRates.list');
         return data ?? [];
+      },
+      async listAll(company_id): Promise<TaxRateRow[]> {
+        const { data, error } = await client.from('tax_rates').select('*')
+          .eq('company_id', company_id).order('name');
+        assertNoError(error, 'taxRates.listAll');
+        return data ?? [];
+      },
+      async create(row): Promise<TaxRateRow> {
+        const { data, error } = await client.from('tax_rates').insert(row).select().single();
+        assertNoError(error, 'taxRates.create');
+        return data!;
+      },
+      async update(id, patch): Promise<void> {
+        const { error } = await client.from('tax_rates').update(patch).eq('id', id);
+        assertNoError(error, 'taxRates.update');
+      },
+      async seedDefaults(company_id): Promise<void> {
+        const DEFAULTS = [
+          { name: 'VAT 5%',          tax_type: 'standard',  rate: 5.00,  is_active: true },
+          { name: 'Zero-rated (0%)', tax_type: 'zero_rated', rate: 0.00, is_active: true },
+          { name: 'Exempt',          tax_type: 'exempt',     rate: 0.00, is_active: true },
+        ];
+        // Check which tax_types already exist for this company
+        const { data: existing } = await client.from('tax_rates').select('tax_type')
+          .eq('company_id', company_id);
+        const existingTypes = new Set((existing ?? []).map(r => r.tax_type));
+        const toInsert = DEFAULTS.filter(d => !existingTypes.has(d.tax_type))
+          .map(d => ({ ...d, company_id }));
+        if (toInsert.length === 0) return;
+        const { error } = await client.from('tax_rates').insert(toInsert);
+        assertNoError(error, 'taxRates.seedDefaults');
       },
     },
 
@@ -1008,6 +1145,19 @@ export function createSupabaseAdapter(
       async edit(invoice_id): Promise<void> {
         const { error } = await client.rpc('edit_invoice', { p_invoice_id: invoice_id });
         assertNoError(error, 'invoices.edit');
+      },
+      async deleteDraft(invoice_id): Promise<void> {
+        // Drafts only — a draft has never posted to the GL, so a hard delete
+        // is safe. Guard on status so a confirmed invoice can never be wiped.
+        const { data: inv, error: fErr } = await client.from('invoices').select('status').eq('id', invoice_id).single();
+        assertNoError(fErr, 'invoices.deleteDraft fetch');
+        if ((inv as { status?: string } | null)?.status !== 'draft') {
+          throw new Error('Only draft invoices can be deleted. Void a confirmed invoice instead.');
+        }
+        const { error: itErr } = await client.from('invoice_items').delete().eq('invoice_id', invoice_id);
+        assertNoError(itErr, 'invoices.deleteDraft items');
+        const { error } = await client.from('invoices').delete().eq('id', invoice_id).eq('status', 'draft');
+        assertNoError(error, 'invoices.deleteDraft');
       },
       async getNextNumber(company_id): Promise<string> {
         const { data, error } = await client.rpc('get_next_document_number', {
@@ -1252,12 +1402,24 @@ export function createSupabaseAdapter(
         return data as unknown as ApplyAdvanceResult;
       },
       async void(payment_id, reason?): Promise<void> {
-        const { error } = await client.from('payments').update({
-          status: 'void',
-          void_reason: reason ?? null,
-          voided_at: new Date().toISOString(),
-        }).eq('id', payment_id);
+        // Phase 14 — proper GL-reversing void (mirrors void_invoice). Reverses
+        // the receipt's JE, reopens any invoice it paid, marks status=void.
+        const { error } = await client.rpc('void_payment' as never, {
+          p_payment_id: payment_id, p_reason: reason ?? undefined,
+        } as never);
         assertNoError(error, 'payments.void');
+      },
+      async deleteDraft(payment_id): Promise<void> {
+        // Drafts only — a draft payment has never posted to the GL, so a hard
+        // delete is safe. Guard on status so a confirmed payment is never wiped.
+        const { data: p, error: fErr } = await client.from('payments').select('status').eq('id', payment_id).single();
+        assertNoError(fErr, 'payments.deleteDraft fetch');
+        if ((p as { status?: string } | null)?.status !== 'draft') {
+          throw new Error('Only draft payments can be deleted. Void a confirmed payment instead.');
+        }
+        await client.from('payment_allocations').delete().eq('payment_id', payment_id);
+        const { error } = await client.from('payments').delete().eq('id', payment_id).eq('status', 'draft');
+        assertNoError(error, 'payments.deleteDraft');
       },
       async getNextNumber(company_id): Promise<string> {
         const { data, error } = await client.rpc('get_next_document_number', {
@@ -1266,6 +1428,21 @@ export function createSupabaseAdapter(
         });
         assertNoError(error, 'payments.getNextNumber');
         return data as string;
+      },
+      async getAppliedMap(company_id, doc_type): Promise<Record<string, number>> {
+        // Same semantics as listOpenForContact: applied = amount_applied
+        // + discount (cash-discount counts as settled).
+        const { data, error } = await client
+          .from('payment_allocations')
+          .select('doc_id, amount_applied, discount_amount')
+          .eq('company_id', company_id)
+          .eq('doc_type', doc_type);
+        assertNoError(error, 'payments.getAppliedMap');
+        const map: Record<string, number> = {};
+        for (const a of (data ?? []) as { doc_id: string; amount_applied: number; discount_amount: number }[]) {
+          map[a.doc_id] = (map[a.doc_id] ?? 0) + Number(a.amount_applied) + Number(a.discount_amount ?? 0);
+        }
+        return map;
       },
     },
 
@@ -1666,7 +1843,9 @@ export function createSupabaseAdapter(
           .from('general_ledger')
           .select('contact_id, debit, credit, date, related_doc_type, related_doc_id, contacts(name)')
           .eq('company_id', company_id)
-          .eq('account_code', '2100')
+          // Trade AP + category payables (rent 2110, utilities 2120) so the
+          // aging covers everything we owe a supplier, wherever it posts.
+          .in('account_code', ['2100', '2110', '2120'])
           .lte('date', as_of_date);
         assertNoError(error, 'reports.getAPAgingReport');
 
@@ -1724,7 +1903,7 @@ export function createSupabaseAdapter(
           .select('id, date, debit, credit, description, account_code, related_doc_type, related_doc_id, journal_entries(entry_number, source_type, reversed_by_id, reversal_of_id)')
           .eq('company_id', company_id)
           .eq('contact_id', contact_id)
-          .in('account_code', ['2100', '1400'])
+          .in('account_code', ['2100', '2110', '2120', '1400'])
           .gte('date', from)
           .lte('date', to)
           .order('date')
@@ -2464,128 +2643,116 @@ export function createSupabaseAdapter(
       },
 
       async getCashFlow(company_id, from, to): Promise<CashFlowStatement> {
-        // Net profit from P&L
+        // ── Indirect cash flow, rebuilt account-driven so it ALWAYS reconciles ──
+        // By double-entry, over any period:
+        //   Δcash = NetProfit + Σ(cash-effect of every non-cash balance-sheet account)
+        // where cash-effect = (Σcredit − Σdebit) for the account in the period
+        // (an asset increase consumes cash → negative; a liability/equity
+        // increase is a source → positive). We classify each balance-sheet
+        // account into Operating / Investing / Financing by its CoA type, so
+        // nothing (opening-balance equity, capital, payroll accruals, PDCs,
+        // accruals, fixed assets…) can be silently dropped — which is what
+        // broke the old hard-coded version.
         const pl = await this.getProfitAndLoss(company_id, from, to);
         const netProfit = pl.net_profit;
 
-        // Cash = sum of 11xx accounts
-        const getBalance = async (account_prefix: string, date: string) => {
+        const prevDay = (d: string) => { const dt = new Date(d); dt.setDate(dt.getDate() - 1); return dt.toISOString().slice(0, 10); };
+
+        // Actual cash (11xx, incl. cash/bank sub-accounts) from the GL.
+        const cashAsOf = async (date: string) => {
           const { data } = await client
             .from('general_ledger')
             .select('debit, credit')
             .eq('company_id', company_id)
-            .like('account_code', account_prefix + '%')
+            .like('account_code', '11%')
             .lte('date', date);
           return (data ?? []).reduce((s, r) => s + (Number(r.debit) - Number(r.credit)), 0);
         };
+        const openingCash = await cashAsOf(prevDay(from));
+        const closingCash = await cashAsOf(to);
 
-        const getBalanceSingle = async (code: string, date: string, normalDebit: boolean) => {
-          const { data } = await client
-            .from('general_ledger')
-            .select('debit, credit')
-            .eq('company_id', company_id)
-            .eq('account_code', code)
-            .lte('date', date);
-          const net = (data ?? []).reduce((s, r) => s + (Number(r.debit) - Number(r.credit)), 0);
-          return normalDebit ? net : -net;
-        };
-
-        // Phase 12.46 — sum across a list of account codes. Used for VAT
-        // working-capital changes, since the chart of accounts splits VAT
-        // input (1500/1510/1520/1530) and VAT output (2200/2210/2220/
-        // 2230) into multiple sub-codes by tax type (UAE VAT / GCC IGST /
-        // CGST / SGST etc.). All four codes per category collapse into
-        // one cash-flow line.
-        const getBalanceMulti = async (codes: string[], date: string, normalDebit: boolean) => {
-          const { data } = await client
-            .from('general_ledger')
-            .select('debit, credit')
-            .eq('company_id', company_id)
-            .in('account_code', codes)
-            .lte('date', date);
-          const net = (data ?? []).reduce((s, r) => s + (Number(r.debit) - Number(r.credit)), 0);
-          return normalDebit ? net : -net;
-        };
-
-        const VAT_INPUT_CODES  = ['1500', '1510', '1520', '1530']; // VAT receivable (asset)
-        const VAT_OUTPUT_CODES = ['2200', '2210', '2220', '2230']; // VAT payable    (liability)
-
-        const prevDay = (d: string) => { const dt = new Date(d); dt.setDate(dt.getDate() - 1); return dt.toISOString().slice(0, 10); };
-
-        const openingCash = await getBalance('11', prevDay(from));
-        const closingCash = await getBalance('11', to);
-
-        const arOpen  = await getBalanceSingle('1200', prevDay(from), true);
-        const arClose = await getBalanceSingle('1200', to,            true);
-        const invOpen  = await getBalanceSingle('1300', prevDay(from), true);
-        const invClose = await getBalanceSingle('1300', to,            true);
-        const apOpen   = await getBalanceSingle('2100', prevDay(from), false);
-        const apClose  = await getBalanceSingle('2100', to,            false);
-        const advOpen  = await getBalanceSingle('2400', prevDay(from), false);
-        const advClose = await getBalanceSingle('2400', to,            false);
-        // Phase 12.50 — Vendor Advances (1400) is an asset that grows
-        // when we prepay / overpay a supplier. Movements here use cash
-        // (or release it back) and must appear on the breakdown.
-        const vendAdvOpen   = await getBalanceSingle('1400', prevDay(from), true);
-        const vendAdvClose  = await getBalanceSingle('1400', to,            true);
-
-        // Phase 12.46 — VAT receivable (input) is an asset; VAT payable
-        // (output) is a liability. Without these in the working-capital
-        // section the AR/AP changes carry the VAT portion of every
-        // invoice and bill but Net Profit (revenue ex-VAT) doesn't, so
-        // the breakdown couldn't reconcile to the cash delta even
-        // though opening/closing cash were correct.
-        const vatInOpen   = await getBalanceMulti(VAT_INPUT_CODES,  prevDay(from), true);
-        const vatInClose  = await getBalanceMulti(VAT_INPUT_CODES,  to,            true);
-        const vatOutOpen  = await getBalanceMulti(VAT_OUTPUT_CODES, prevDay(from), false);
-        const vatOutClose = await getBalanceMulti(VAT_OUTPUT_CODES, to,            false);
-
-        const { data: adjRows } = await client
+        // Period movement per account code.
+        const { data: glRows } = await client
           .from('general_ledger')
-          .select('debit, credit')
+          .select('account_code, debit, credit')
           .eq('company_id', company_id)
-          .in('account_code', ['6700', '4300'])
           .gte('date', from).lte('date', to);
-
-        let invLoss = 0, invGain = 0;
-        for (const r of adjRows ?? []) {
-          invLoss += Number(r.debit);
-          invGain += Number(r.credit);
+        const move = new Map<string, { dr: number; cr: number }>();
+        for (const r of glRows ?? []) {
+          const code = (r as { account_code: string }).account_code;
+          const m = move.get(code) ?? { dr: 0, cr: 0 };
+          m.dr += Number(r.debit)  || 0;
+          m.cr += Number(r.credit) || 0;
+          move.set(code, m);
         }
 
-        const operatingAdj: CashFlowSection[] = [
-          { label: 'Add: Inventory Loss (non-cash)', amount: invLoss },
-          { label: 'Less: Inventory Gain (non-cash)', amount: -invGain },
-        ];
-        const wcChanges: CashFlowSection[] = [
-          { label: '(Increase)/Decrease in AR',               amount: -(arClose  - arOpen)  },
-          { label: '(Increase)/Decrease in Inventory',        amount: -(invClose - invOpen) },
-          { label: 'Increase/(Decrease) in AP',               amount:   apClose  - apOpen   },
-          { label: 'Increase/(Decrease) in Customer Advances',amount:   advClose - advOpen  },
-          // Phase 12.50 — Vendor Advances (1400) is an asset; growth uses
-          // cash (we prepaid the supplier), shrinkage releases cash (the
-          // advance was applied to a bill). Mirror of Customer Advances
-          // on the customer side.
-          { label: '(Increase)/Decrease in Vendor Advances',  amount: -(vendAdvClose - vendAdvOpen) },
-          // Phase 12.46 — VAT working-capital lines (was missing → breakdown
-          // didn't reconcile even though opening/closing cash were right).
-          { label: '(Increase)/Decrease in Input VAT',        amount: -(vatInClose  - vatInOpen)  },
-          { label: 'Increase/(Decrease) in Output VAT',       amount:   vatOutClose - vatOutOpen  },
-        ];
+        // Classify each account by its CoA type/sub_type (fallback to prefix).
+        // NOTE: query directly — `this` here is the `reports` sub-object, which
+        // does not expose `coa` (that lives on the adapter root).
+        const { data: coaData } = await client
+          .from('chart_of_accounts')
+          .select('code, name, type, sub_type')
+          .eq('company_id', company_id);
+        const byCode = new Map((coaData ?? []).map((a) => [(a as { code: string }).code, a]));
+        type Bucket = 'cash' | 'pl' | 'operating' | 'investing' | 'financing';
+        const classify = (code: string): Bucket => {
+          if (code.startsWith('11')) return 'cash';
+          const a = byCode.get(code) as ({ type?: string; sub_type?: string } | undefined);
+          if (a?.type) {
+            if (a.type === 'income' || a.type === 'expense') return 'pl';
+            if (a.type === 'equity')    return 'financing';
+            if (a.type === 'liability') return a.sub_type === 'long_term' ? 'financing' : 'operating';
+            if (a.type === 'asset')     return a.sub_type === 'fixed' ? 'investing' : 'operating';
+          }
+          if (/^[456]/.test(code)) return 'pl';
+          if (code.startsWith('3'))  return 'financing';
+          return 'operating';
+        };
+        const nameOf = (code: string) => (byCode.get(code) as { name?: string } | undefined)?.name ?? code;
 
-        const netOperating = netProfit + operatingAdj.reduce((s, i) => s + i.amount, 0) + wcChanges.reduce((s, i) => s + i.amount, 0);
+        const operating: CashFlowSection[] = [];
+        const investing: CashFlowSection[] = [];
+        const financing: CashFlowSection[] = [];
+
+        for (const code of Array.from(move.keys()).sort((a, b) => a.localeCompare(b))) {
+          const bucket = classify(code);
+          if (bucket === 'cash' || bucket === 'pl') continue; // cash is the result; P&L already in netProfit
+          const m = move.get(code)!;
+          const cashEffect = m.cr - m.dr;            // asset↑ → −, liability/equity↑ → +
+          if (Math.abs(cashEffect) < 0.005) continue;
+          const line: CashFlowSection = { label: nameOf(code), amount: cashEffect };
+          if (bucket === 'investing') investing.push(line);
+          else if (bucket === 'financing') financing.push(line);
+          else operating.push(line);
+        }
+
+        const sum = (arr: CashFlowSection[]) => arr.reduce((s, i) => s + i.amount, 0);
+        let netOperating = netProfit + sum(operating);
+        const netInvesting = sum(investing);
+        const netFinancing = sum(financing);
+        let netIncrease = netOperating + netInvesting + netFinancing;
+
+        // Reconciliation guard — by construction this equals the real cash
+        // delta. If a P&L quirk leaves a residual, surface it as an explicit
+        // line so the statement always ties out to the GL cash movement.
+        const residual = (closingCash - openingCash) - netIncrease;
+        if (Math.abs(residual) > 0.01) {
+          operating.push({ label: 'Unclassified / other', amount: residual });
+          netOperating += residual;
+          netIncrease = closingCash - openingCash;
+        }
 
         return {
           period_start: from, period_end: to,
           net_profit: netProfit,
-          operating_adjustments: operatingAdj,
-          working_capital_changes: wcChanges,
+          operating_adjustments: [],
+          working_capital_changes: operating,
           net_operating: netOperating,
-          investing_activities: [],
-          net_investing: 0,
-          financing_activities: [],
-          net_financing: 0,
-          net_increase: netOperating,
+          investing_activities: investing,
+          net_investing: netInvesting,
+          financing_activities: financing,
+          net_financing: netFinancing,
+          net_increase: netIncrease,
           opening_cash: openingCash,
           closing_cash: closingCash,
         };
@@ -2665,8 +2832,8 @@ export function createSupabaseAdapter(
 
           balanceAsOf('1200', today,  true),
           balanceAsOf('1200', last30, true),
-          balanceAsOf('2100', today,  false),
-          balanceAsOf('2100', last30, false),
+          (async () => (await balanceAsOf('2100', today,  false)) + (await balanceAsOf('2110', today,  false)) + (await balanceAsOf('2120', today,  false)))(),
+          (async () => (await balanceAsOf('2100', last30, false)) + (await balanceAsOf('2110', last30, false)) + (await balanceAsOf('2120', last30, false)))(),
           balanceAsOf('1300', today,  true),
           balanceAsOf('1300', last30, true),
           balanceLikeAsOf('11', today),
@@ -3048,6 +3215,22 @@ export function createSupabaseAdapter(
         const { data, error } = await client.rpc('confirm_vendor_bill', { p_bill_id: bill_id });
         assertNoError(error, 'vendorBills.confirm');
         return data as unknown as BillConfirmResult;
+      },
+      async edit(bill_id) {
+        const { error } = await client.rpc('edit_vendor_bill' as never, { p_bill_id: bill_id } as never);
+        assertNoError(error, 'vendorBills.edit');
+      },
+      async deleteDraft(bill_id) {
+        // Drafts only — a draft bill has never posted to the GL or stock, so a
+        // hard delete is safe. Guard on status so a confirmed bill is never wiped.
+        const { data: bill, error: fErr } = await client.from('vendor_bills').select('status').eq('id', bill_id).single();
+        assertNoError(fErr, 'vendorBills.deleteDraft fetch');
+        if ((bill as { status?: string } | null)?.status !== 'draft') {
+          throw new Error('Only draft bills can be deleted. Re-open a confirmed bill to a draft first.');
+        }
+        await client.from('vendor_bill_items').delete().eq('bill_id', bill_id);
+        const { error } = await client.from('vendor_bills').delete().eq('id', bill_id).eq('status', 'draft');
+        assertNoError(error, 'vendorBills.deleteDraft');
       },
       async getNextNumber(company_id) {
         const { data, error } = await client.rpc('get_next_document_number', { p_company_id: company_id, p_prefix: 'BILL' });
@@ -4113,26 +4296,67 @@ export function createSupabaseAdapter(
         assertNoError(error as Error | null, 'openingBalances.get3010Balance');
         return Number(data ?? 0);
       },
+      async getBankOpeningJE(bank_account_id) {
+        // Phase 14.14p — targeted lookup by source_id so the bank-accounts
+        // edit form can distinguish edit() vs postBank() without a full
+        // listPosted() round-trip (avoids race conditions on slow connections).
+        //
+        // Two-step query: JE header first, then GL lines separately.
+        // CRITICAL: must call client.from() as a method on `client` so `this`
+        // stays bound. Extracting to a variable (const f = client.from; f(...))
+        // detaches `this` and supabase-js throws "reading 'rest'".
+
+        // Step 1: find the active (non-voided, non-reversal) opening JE for this bank account.
+        // BOTH conditions required — matches the invariant in post_bank_opening_balance (14.14r):
+        //   reversed_by_id IS NULL  → JE has NOT been voided
+        //   reversal_of_id  IS NULL → JE IS NOT itself a void/reversal entry
+        // reverse_journal_entry() copies source_type + source_id onto the void JE, so without
+        // the second filter .maybeSingle() can see both the void entry and the active repost
+        // and throw "multiple rows returned" → TanStack catches → existingBankOb=undefined → "Post" shown.
+        const { data: jeData, error: jeError } = await (client.from('journal_entries') as any)
+          .select('id, entry_number, date')
+          .eq('source_type', 'opening_bank')
+          .eq('source_id', bank_account_id)
+          .is('reversed_by_id', null)
+          .is('reversal_of_id', null)
+          .maybeSingle();
+        assertNoError(jeError as Error | null, 'openingBalances.getBankOpeningJE/je');
+        if (!jeData) return null;
+
+        const je = jeData as { id: string; entry_number: string; date: string };
+
+        // Step 2: fetch the GL lines for that JE separately
+        const { data: glData, error: glError } = await (client.from('general_ledger') as any)
+          .select('account_code, debit, credit')
+          .eq('journal_entry_id', je.id);
+        assertNoError(glError as Error | null, 'openingBalances.getBankOpeningJE/lines');
+
+        const lines = (glData ?? []) as Array<{ account_code: string; debit: number; credit: number }>;
+        // The non-3010 line is the bank-account side (debit for positive OB).
+        const target = lines.find((l) => l.account_code !== '3010');
+        if (!target) return null;
+        const isDebit = Number(target.debit ?? 0) > 0;
+        const amount  = isDebit ? Number(target.debit) : Number(target.credit);
+        return { doc_id: je.id, doc_number: je.entry_number, date: je.date, amount };
+      },
+
       async listPosted(company_id) {
         // Union the three sources (opening invoices, opening bills, opening
         // payments) and enrich with the contact name. Each table carries
         // is_opening so the filter is cheap thanks to the partial indexes
         // from the 14.09 migration.
-        const fromAny = client.from as unknown as (t: string) => {
-          select: (cols: string) => {
-            eq: (k: string, v: unknown) => {
-              eq: (k: string, v: unknown) => Promise<{ data: unknown; error: unknown }>;
-            };
-          };
-        };
+        // CRITICAL: call client.from() as a method (not detached to a variable)
+        // so `this` stays bound inside supabase-js. Extracting to a local
+        // const loses the binding and causes "Cannot read properties of undefined
+        // (reading 'rest')" — see getDashboardCards comment for full explanation.
         const [invR, billR, payR] = await Promise.all([
-          fromAny('invoices')
+          (client.from('invoices') as any)
             .select('id, invoice_number, contact_id, contacts:contact_id (name), date, due_date, total_amount, currency, status, created_at, is_opening')
             .eq('company_id', company_id).eq('is_opening', true),
-          fromAny('vendor_bills')
+          (client.from('vendor_bills') as any)
             .select('id, bill_number, supplier_id, contacts:supplier_id (name), date, due_date, total_amount, currency, status, created_at, is_opening')
             .eq('company_id', company_id).eq('is_opening', true),
-          fromAny('payments')
+          (client.from('payments') as any)
             .select('id, payment_number, contact_id, contacts:contact_id (name), date, amount, currency, status, created_at, type, is_opening')
             .eq('company_id', company_id).eq('is_opening', true),
         ]);
@@ -4192,95 +4416,256 @@ export function createSupabaseAdapter(
         }
 
         // Phase 14.09b + 14.09c — pure-GL + bank-specific openings.
-        // Pull the JE header + its non-3010 line so we can show the actual
-        // target account + direction + amount. reversed_by_id IS NULL
-        // filters out JEs already voided (14.09c).
-        const fromJe = client.from as unknown as (t: string) => {
-          select: (cols: string) => {
-            eq: (k: string, v: unknown) => {
-              in: (k: string, v: unknown[]) => {
-                is: (k: string, v: unknown) => Promise<{ data: unknown; error: unknown }>;
-              };
-            };
-          };
-        };
-        const ledgerJEs = await fromJe('journal_entries')
-          .select('id, entry_number, date, description, source_type, source_id, created_at, reversed_by_id, general_ledger (account_id, account_code, debit, credit)')
+        // Two-step query: JE headers first, then GL lines separately.
+        // Avoids the PostgREST embedded-join syntax `table (cols)` which
+        // silently returns null lines. reversed_by_id IS NULL filters voided JEs.
+        // CRITICAL: client.from() called as a method (not extracted to a variable)
+        // so `this` remains bound — see getDashboardCards comment.
+        const jeQR = await (client.from('journal_entries') as any)
+          .select('id, entry_number, date, description, source_type, source_id, created_at')
           .eq('company_id', company_id)
           .in('source_type', ['opening_gl', 'opening_bank'])
-          .is('reversed_by_id', null);
-        assertNoError(ledgerJEs.error as Error | null, 'openingBalances.listPosted/gl+bank');
+          .is('reversed_by_id', null)
+          .is('reversal_of_id', null);  // exclude void/reversal JEs (they copy source_type+source_id)
+        assertNoError(jeQR.error as Error | null, 'openingBalances.listPosted/gl+bank/je');
 
-        type RawLedgerJE = {
+        type RawOpenJE = {
           id: string; entry_number: string; date: string; description: string;
           source_type: 'opening_gl' | 'opening_bank';
-          source_id: string | null;
-          created_at: string;
-          reversed_by_id: string | null;
-          general_ledger?: Array<{
-            account_id: string; account_code: string; debit: number; credit: number;
-          }>;
+          source_id: string | null; created_at: string;
         };
-        // For bank openings we also want the bank's name (for the
-        // posted-list display). Pull bank_accounts once and index.
-        const bankIds = (ledgerJEs.data as RawLedgerJE[] ?? [])
-          .filter(j => j.source_type === 'opening_bank' && j.source_id)
-          .map(j => j.source_id as string);
-        const bankNameById: Record<string, string> = {};
-        if (bankIds.length > 0) {
-          const bankR = await (client.from as unknown as (t: string) => {
-            select: (cols: string) => {
-              in: (k: string, v: unknown[]) => Promise<{ data: unknown; error: unknown }>;
-            };
-          })('bank_accounts').select('id, name').in('id', bankIds);
-          for (const b of ((bankR.data ?? []) as Array<{ id: string; name: string }>)) {
-            bankNameById[b.id] = b.name;
+        const openingJEs: RawOpenJE[] = jeQR.data ?? [];
+
+        if (openingJEs.length > 0) {
+          const jeIds = openingJEs.map((j: RawOpenJE) => j.id);
+
+          // Fetch GL lines for those JE IDs separately (avoids embedded join)
+          const glQR = await (client.from('general_ledger') as any)
+            .select('journal_entry_id, account_id, account_code, debit, credit')
+            .in('journal_entry_id', jeIds);
+          assertNoError(glQR.error as Error | null, 'openingBalances.listPosted/gl+bank/lines');
+
+          type RawGLLine = {
+            journal_entry_id: string; account_id: string;
+            account_code: string; debit: number; credit: number;
+          };
+          const glByJeId: Record<string, RawGLLine[]> = {};
+          for (const gl of (glQR.data ?? []) as RawGLLine[]) {
+            if (!glByJeId[gl.journal_entry_id]) glByJeId[gl.journal_entry_id] = [];
+            glByJeId[gl.journal_entry_id].push(gl);
           }
-        }
 
-        for (const je of (ledgerJEs.data as RawLedgerJE[] ?? [])) {
-          const lines = je.general_ledger ?? [];
-          const target = lines.find(l => l.account_code !== '3010');
-          if (!target) continue;
-          const isDebit = Number(target.debit ?? 0) > 0;
-          const amount  = isDebit ? Number(target.debit) : Number(target.credit);
+          // Bank names for bank-type openings
+          const bankIds = openingJEs
+            .filter((j: RawOpenJE) => j.source_type === 'opening_bank' && j.source_id)
+            .map((j: RawOpenJE) => j.source_id as string);
+          const bankNameById: Record<string, string> = {};
+          if (bankIds.length > 0) {
+            const bankR = await (client.from('bank_accounts') as any).select('id, name').in('id', bankIds);
+            for (const b of (bankR.data ?? []) as Array<{ id: string; name: string }>) {
+              bankNameById[b.id] = b.name;
+            }
+          }
 
-          if (je.source_type === 'opening_bank') {
-            const bankName = je.source_id ? bankNameById[je.source_id] ?? '' : '';
-            out.push({
-              type: isDebit ? 'bank_debit' : 'bank_credit',
-              doc_id: je.id, void_doc_type: 'opening_bank',
-              doc_number: je.entry_number,
-              contact_id: '',
-              contact_name: '',
-              account_code: target.account_code,
-              account_name: bankName || target.account_code,
-              date: je.date, due_date: null,
-              amount, currency: 'AED',
-              outstanding: amount,
-              status: 'confirmed',
-              posted_at: je.created_at,
-            });
-          } else {
-            // opening_gl
-            out.push({
-              type: isDebit ? 'gl_debit' : 'gl_credit',
-              doc_id: je.id, void_doc_type: 'opening_gl',
-              doc_number: je.entry_number,
-              contact_id: '',
-              contact_name: '',
-              account_code: target.account_code,
-              account_name: (je.description ?? '').replace(/^Opening balance — \d+ /, '') || target.account_code,
-              date: je.date, due_date: null,
-              amount, currency: 'AED',
-              outstanding: amount,
-              status: 'confirmed',
-              posted_at: je.created_at,
-            });
+          for (const je of openingJEs) {
+            const lines = glByJeId[je.id] ?? [];
+            const target = lines.find((l: RawGLLine) => l.account_code !== '3010');
+            if (!target) continue;
+            const isDebit = Number(target.debit ?? 0) > 0;
+            const amount  = isDebit ? Number(target.debit) : Number(target.credit);
+
+            if (je.source_type === 'opening_bank') {
+              const bankName = je.source_id ? bankNameById[je.source_id] ?? '' : '';
+              out.push({
+                type: isDebit ? 'bank_debit' : 'bank_credit',
+                doc_id: je.id, void_doc_type: 'opening_bank',
+                doc_number: je.entry_number,
+                contact_id: '', contact_name: '',
+                account_code: target.account_code,
+                account_name: bankName || target.account_code,
+                date: je.date, due_date: null,
+                amount, currency: 'AED',
+                outstanding: amount,
+                status: 'confirmed',
+                posted_at: je.created_at,
+              });
+            } else {
+              // opening_gl
+              out.push({
+                type: isDebit ? 'gl_debit' : 'gl_credit',
+                doc_id: je.id, void_doc_type: 'opening_gl',
+                doc_number: je.entry_number,
+                contact_id: '', contact_name: '',
+                account_code: target.account_code,
+                account_name: (je.description ?? '').replace(/^Opening balance — \d+ /, '') || target.account_code,
+                date: je.date, due_date: null,
+                amount, currency: 'AED',
+                outstanding: amount,
+                status: 'confirmed',
+                posted_at: je.created_at,
+              });
+            }
           }
         }
 
         return out.sort((a, b) => (b.posted_at ?? '').localeCompare(a.posted_at ?? ''));
+      },
+    },
+
+    // ── Payroll P1 (owner override 2026-06-13) ───────────────────────────
+    employees: {
+      async list(company_id, opts) {
+        let q = client.from('employees').select('*')
+          .eq('company_id', company_id)
+          .order('code', { ascending: true });
+        if (!opts?.includeInactive) q = q.eq('is_active', true);
+        const { data, error } = await q;
+        assertNoError(error, 'employees.list');
+        return data ?? [];
+      },
+      async create(row) {
+        const { data, error } = await client.from('employees').insert(row).select().single();
+        assertNoError(error, 'employees.create');
+        return data!;
+      },
+      async update(id, row) {
+        const { error } = await client.from('employees')
+          .update({ ...row, updated_at: new Date().toISOString() })
+          .eq('id', id);
+        assertNoError(error, 'employees.update');
+      },
+      async getNextCode(company_id) {
+        const { data, error } = await client.from('employees')
+          .select('code').eq('company_id', company_id)
+          .order('code', { ascending: false }).limit(1);
+        assertNoError(error, 'employees.getNextCode');
+        const last = data?.[0]?.code ?? 'EMP-0000';
+        const n = parseInt(String(last).replace(/\D/g, ''), 10) || 0;
+        return `EMP-${String(n + 1).padStart(4, '0')}`;
+      },
+    },
+    payroll: {
+      async listRuns(company_id) {
+        const { data, error } = await client.from('payroll_runs').select('*')
+          .eq('company_id', company_id)
+          .order('period_year', { ascending: false })
+          .order('period_month', { ascending: false });
+        assertNoError(error, 'payroll.listRuns');
+        return data ?? [];
+      },
+      async getRun(id) {
+        const { data, error } = await client.from('payroll_runs').select('*').eq('id', id).single();
+        if (error?.code === 'PGRST116') return null;
+        assertNoError(error, 'payroll.getRun');
+        return data;
+      },
+      async getItems(run_id) {
+        const { data, error } = await client.from('payroll_run_items').select('*')
+          .eq('run_id', run_id).order('created_at');
+        assertNoError(error, 'payroll.getItems');
+        return data ?? [];
+      },
+      async createRun(run, items) {
+        const { data, error } = await client.from('payroll_runs').insert(run).select().single();
+        assertNoError(error, 'payroll.createRun');
+        if (items.length > 0) {
+          const withRun = items.map(i => ({ ...i, run_id: data!.id }));
+          const { error: e2 } = await client.from('payroll_run_items').insert(withRun);
+          assertNoError(e2, 'payroll.createRun.items');
+        }
+        return data!;
+      },
+      async updateRun(id, items, notes) {
+        // Guard client-side; the RPCs guard server-side too.
+        const { data: run } = await client.from('payroll_runs').select('status, company_id').eq('id', id).single();
+        if (run?.status !== 'draft') throw new Error('Only draft payroll runs can be edited');
+        const { error: eDel } = await client.from('payroll_run_items').delete().eq('run_id', id);
+        assertNoError(eDel, 'payroll.updateRun.clear');
+        if (items.length > 0) {
+          const withRun = items.map(i => ({ ...i, run_id: id }));
+          const { error: eIns } = await client.from('payroll_run_items').insert(withRun);
+          assertNoError(eIns, 'payroll.updateRun.items');
+        }
+        const { error: eUpd } = await client.from('payroll_runs')
+          .update({ notes: notes ?? null, updated_at: new Date().toISOString() })
+          .eq('id', id);
+        assertNoError(eUpd, 'payroll.updateRun');
+      },
+      async removeRun(id) {
+        const { data: run } = await client.from('payroll_runs').select('status').eq('id', id).single();
+        if (run?.status !== 'draft') throw new Error('Only draft payroll runs can be deleted');
+        const { error } = await client.from('payroll_runs').delete().eq('id', id);
+        assertNoError(error, 'payroll.removeRun');
+      },
+      async confirmRun(run_id) {
+        const { data, error } = await client.rpc('confirm_payroll_run' as never, { p_run_id: run_id } as never);
+        assertNoError(error, 'payroll.confirmRun');
+        return data as unknown as import('./adapter').PayrollConfirmResult;
+      },
+      async payRun(run_id, bank_account_id, date) {
+        const { data, error } = await client.rpc('pay_payroll_run' as never, {
+          p_run_id: run_id, p_bank_account_id: bank_account_id, p_date: date ?? null,
+        } as never);
+        assertNoError(error, 'payroll.payRun');
+        return data as unknown as import('./adapter').PayrollPayResult;
+      },
+      async getNextRunNumber(company_id) {
+        const { data, error } = await client.rpc('get_next_document_number', {
+          p_company_id: company_id, p_prefix: 'PAY',
+        });
+        assertNoError(error, 'payroll.getNextRunNumber');
+        return data as string;
+      },
+      async settleGratuity(employee_id, amount, bank_account_id, opts) {
+        const { data, error } = await client.rpc('settle_gratuity' as never, {
+          p_employee_id: employee_id, p_amount: amount, p_bank_account_id: bank_account_id,
+          p_date: opts?.date ?? null, p_deactivate: opts?.deactivate ?? true,
+        } as never);
+        assertNoError(error, 'payroll.settleGratuity');
+        return data as unknown as { je_id: string; entry_number: string };
+      },
+      async listLeaveSalary(company_id) {
+        const { data, error } = await client.from('leave_salary_payments').select('*')
+          .eq('company_id', company_id).order('date', { ascending: false });
+        assertNoError(error, 'payroll.listLeaveSalary');
+        return data ?? [];
+      },
+      async createLeaveSalary(row) {
+        const { data, error } = await client.from('leave_salary_payments').insert(row).select().single();
+        assertNoError(error, 'payroll.createLeaveSalary');
+        return data!;
+      },
+      async payLeaveSalary(id) {
+        const { data, error } = await client.rpc('pay_leave_salary' as never, { p_id: id } as never);
+        assertNoError(error, 'payroll.payLeaveSalary');
+        return data as unknown as { je_id: string; entry_number: string };
+      },
+      async removeLeaveSalary(id) {
+        const { data: row } = await client.from('leave_salary_payments').select('status').eq('id', id).single();
+        if (row?.status === 'paid') throw new Error('Paid leave salary cannot be deleted');
+        const { error } = await client.from('leave_salary_payments').delete().eq('id', id);
+        assertNoError(error, 'payroll.removeLeaveSalary');
+      },
+    },
+
+    // ── Document numbering settings (2026-06-13) ─────────────────────────
+    documentSequences: {
+      async list(company_id) {
+        const { data, error } = await client.from('document_sequences').select('*')
+          .eq('company_id', company_id).order('prefix');
+        assertNoError(error, 'documentSequences.list');
+        return data ?? [];
+      },
+      async save(company_id, prefix, patch) {
+        const { error } = await client.from('document_sequences').upsert({
+          company_id, prefix,
+          format: patch.format,
+          pad_zeros: patch.pad_zeros,
+          reset_yearly: patch.reset_yearly,
+          current_value: patch.current_value,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'company_id,prefix' });
+        assertNoError(error, 'documentSequences.save');
       },
     },
   };

@@ -18,7 +18,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
   ({ label, error, options, id, className = '', onFocus, onBlur, ...rest }, ref) => {
     const selectId = id ?? label?.toLowerCase().replace(/\s+/g, '-');
     const [focused, setFocused] = useState(false);
-    const borderColor = error ? '#dc2626' : focused ? '#6366f1' : '#e2e8f0';
+    const borderColor = error ? '#dc2626' : focused ? '#7c3aed' : '#e2e8f0';
     return (
       <div className={`flex flex-col gap-1 ${className.includes('w-') ? '' : 'w-full'}`}>
         {label && (
@@ -53,7 +53,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
             color: '#1e293b',
             outline: 'none',
             transition: 'border-color .15s, box-shadow .15s',
-            boxShadow: focused ? '0 0 0 3px rgba(99,102,241,.10)' : 'none',
+            boxShadow: focused ? '0 0 0 3px rgba(124,58,237,.10)' : 'none',
             appearance: 'none',
             backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
             backgroundRepeat: 'no-repeat',

@@ -209,7 +209,10 @@ export default function ChartOfAccountsPage() {
       if (!parent) return '';
       const children = accounts.filter(a => a.parent_id === parentIdValue);
       const maxChild = children.reduce((m, c) => Math.max(m, numericOf(c.code)), numericOf(parent.code));
-      return String(maxChild + 1);
+      const existingCodes = new Set(accounts.map(a => a.code));
+      let candidate = maxChild + 1;
+      while (existingCodes.has(String(candidate))) candidate += 1;
+      return String(candidate);
     }
     if (sameFlat.length === 0) {
       // First account of this type — start from a reasonable seed.
@@ -225,7 +228,11 @@ export default function ChartOfAccountsPage() {
     const maxCode = sameFlat.reduce((m, a) => Math.max(m, numericOf(a.code)), 0);
     // Round up to next multiple of 10 so each top-level account leaves
     // room for ~9 sub-accounts before bumping into the next slot.
-    return String(Math.ceil((maxCode + 1) / 10) * 10);
+    // Then skip forward until we find a code not already taken.
+    const existingCodes = new Set(accounts.map(a => a.code));
+    let candidate = Math.ceil((maxCode + 1) / 10) * 10;
+    while (existingCodes.has(String(candidate))) candidate += 10;
+    return String(candidate);
   })();
 
   // Re-emit the suggestion whenever parent / type changes, unless the
@@ -606,7 +613,7 @@ export default function ChartOfAccountsPage() {
                company-data reset. Seed (system) accounts always survive.
                Custom accounts are cleared on reset. */}
           {!editing && (
-            <div className="rounded-card border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+            <div className="rounded-card border border-border-subtle bg-surface-muted px-3 py-2 text-xs text-ink-secondary">
               <strong>Cleared on Reset Company Data.</strong> Custom accounts you add here are wiped
               by Settings → Reset Company Data. The seeded system accounts (e.g. 1100, 1110, 1200)
               always survive.

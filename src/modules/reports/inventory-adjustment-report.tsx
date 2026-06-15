@@ -5,6 +5,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
+import type { WarehouseRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -18,6 +19,13 @@ export default function InventoryAdjustmentReportPage() {
   const [dateFrom, setDateFrom] = useState(firstOfMonth);
   const [dateTo, setDateTo] = useState(today);
   const [submitted, setSubmitted] = useState(false);
+
+  const { data: warehouses = [] } = useQuery<WarehouseRow[]>({
+    queryKey: ['warehouses', company_id],
+    queryFn: () => getAdapter().warehouses.list(company_id!),
+    enabled: !!company_id,
+  });
+  const warehouseMap = Object.fromEntries(warehouses.map(w => [w.id, w.name]));
 
   const { data: rows = [], isFetching } = useQuery({
     queryKey: ['report_inv_adjustment', company_id, dateFrom, dateTo, submitted],
@@ -93,7 +101,7 @@ export default function InventoryAdjustmentReportPage() {
                     <tr key={i} className="border-b border-border-subtle last:border-0">
                       <td className="px-4 py-3 text-ink-secondary">{row.date as string}</td>
                       <td className="px-4 py-3 font-mono text-xs text-brand-700">{row.adjustment_number}</td>
-                      <td className="px-4 py-3 text-ink-secondary text-xs">{row.warehouse_id}</td>
+                      <td className="px-4 py-3 text-ink-secondary text-sm">{warehouseMap[row.warehouse_id] ?? row.warehouse_id}</td>
                       <td className="px-4 py-3 text-ink-secondary capitalize">{row.reason}</td>
                       <td className="px-4 py-3 text-end font-mono text-green-700">{fmt(row.total_gain ?? 0)}</td>
                       <td className="px-4 py-3 text-end font-mono text-red-700">{fmt(row.total_loss ?? 0)}</td>

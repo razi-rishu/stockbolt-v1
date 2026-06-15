@@ -68,8 +68,11 @@ export default function SlowMovingReportPage() {
               <tbody>
                 {rows.map((row, i) => (
                   <tr key={i} className="border-b border-border-subtle last:border-0">
-                    <td className="px-4 py-2 text-ink-primary text-xs font-medium">{row.product_id}</td>
-                    <td className="px-4 py-2 text-ink-secondary text-xs">{row.warehouse_id}</td>
+                    <td className="px-4 py-2 text-ink-primary">
+                      <span className="font-medium text-sm">{row.product_name}</span>
+                      {row.sku && <span className="ml-1.5 text-xs text-ink-tertiary">({row.sku})</span>}
+                    </td>
+                    <td className="px-4 py-2 text-ink-secondary text-sm">{row.warehouse_name}</td>
                     <td className="px-4 py-2 text-end font-mono">{fmt(row.qty_on_hand)}</td>
                     <td className="px-4 py-2 text-end font-mono text-ink-secondary">
                       {row.unit_cost != null ? fmt(row.unit_cost) : '—'}

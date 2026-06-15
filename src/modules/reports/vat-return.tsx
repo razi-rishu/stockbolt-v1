@@ -80,33 +80,25 @@ export default function VATReturnPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <PageHeader title={t('reports.vat_return')} subtitle={data ? `${data.period_start} — ${data.period_end}` : `${from} — ${to}`} />
 
-      <Panel icon="📅" title="Period">
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '11px', fontWeight: 600, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.05em' }}>{t('reports.period_start')}</label>
-            <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-              style={{ height: '36px', padding: '0 12px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', background: '#fff', color: theme.ink, outline: 'none' }} />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '11px', fontWeight: 600, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.05em' }}>{t('reports.period_end')}</label>
-            <input type="date" value={to} onChange={e => setTo(e.target.value)}
-              style={{ height: '36px', padding: '0 12px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', background: '#fff', color: theme.ink, outline: 'none' }} />
-          </div>
-          <button onClick={run} disabled={loading}
-            style={{
-              height: '36px', padding: '0 18px',
-              background: theme.brand, color: '#fff', border: 'none',
-              borderRadius: '7px', fontSize: '13px', fontWeight: 600,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.6 : 1,
-            }}>
-            {loading ? t('common.loading') : t('common.run')}
-          </button>
-        </div>
+      <Panel icon="📅" title="Period" compact>
+        <span style={{ fontSize: '12px', color: theme.inkMuted, fontWeight: 500 }}>{t('reports.period_start')}</span>
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+          style={{ height: '32px', padding: '0 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', background: '#fff', color: theme.ink, outline: 'none' }} />
+        <span style={{ fontSize: '12px', color: theme.inkMuted, fontWeight: 500 }}>{t('reports.period_end')}</span>
+        <input type="date" value={to} onChange={e => setTo(e.target.value)}
+          style={{ height: '32px', padding: '0 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', background: '#fff', color: theme.ink, outline: 'none' }} />
+        <button onClick={run} disabled={loading} style={{
+          height: '32px', padding: '0 16px',
+          background: theme.brand, color: '#fff', border: 'none',
+          borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+          cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1,
+        }}>
+          {loading ? t('common.loading') : t('common.run')}
+        </button>
       </Panel>
 
       {data && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: '16px' }}>
           <Section title={t('reports.vat_on_sales')}    boxes={data.output_boxes} total={data.total_output_vat} totalLabel={t('reports.total_output_vat')} />
           <Section title={t('reports.vat_on_expenses')} boxes={data.input_boxes}  total={data.total_input_vat}  totalLabel={t('reports.total_input_vat')} />
 

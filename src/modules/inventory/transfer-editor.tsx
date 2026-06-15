@@ -133,10 +133,10 @@ export default function TransferEditorPage() {
         return id!;
       }
     },
-    onSuccess: async (newId) => {
+    onSuccess: async () => {
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['stock_transfers'] });
-      if (isNew) navigate(`/inventory/transfers/${newId}`, { replace: true });
+      navigate('/inventory/transfers');
     },
     onError: (e: Error) => setError(e.message),
   });

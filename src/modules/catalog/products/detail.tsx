@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -11,7 +11,6 @@ import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Textarea } from '@/ui/textarea';
 import { Select } from '@/ui/select';
-import { Badge } from '@/ui/badge';
 import { Modal } from '@/ui/modal';
 import type { ProductCompatibilityRow, ProductSupplierCodeRow, ContactRow, VehicleMakeRow, VehicleModelRow, CoaRow } from '@/data/adapter';
 import { ProductStockTab } from './_stock-tab';
@@ -44,6 +43,39 @@ type FormValues = z.infer<typeof schema>;
 const QUALITY_OPTIONS = ['', 'genuine', 'oem', 'premium', 'economy'];
 const TAX_OPTIONS = ['standard', 'zero_rated', 'exempt'];
 
+// ── Design tokens (inline) ──────────────────────────────────────────
+const S = {
+  card: {
+    background: '#fff',
+    border: '1px solid #e4e4e7',
+    borderRadius: '12px',
+    overflow: 'hidden',
+    boxShadow: '0 1px 3px rgba(9,9,11,.05)',
+  } as React.CSSProperties,
+  head: {
+    padding: '10px 18px',
+    background: '#f8fafc',
+    borderBottom: '1px solid #e4e4e7',
+    fontSize: '10px',
+    fontWeight: 700,
+    color: '#64748b',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '.07em',
+  } as React.CSSProperties,
+  body: {
+    padding: '18px',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '14px',
+  } as React.CSSProperties,
+  row2: {
+    display: 'grid',
+    // min(100%, 280px) lets the pair stack to one column on narrow screens
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))',
+    gap: '12px',
+  } as React.CSSProperties,
+};
+
 export default function ProductDetailPage() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
@@ -52,32 +84,22 @@ export default function ProductDetailPage() {
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
   const imgRef = useRef<HTMLInputElement>(null);
-  // Phase 12.25 — accept `?tab=stock` (etc.) in the URL so the products list
-  // can deep-link straight to the Stock Movement tab.
+
   const [searchParams] = useSearchParams();
   const initialTab =
     (searchParams.get('tab') as 'details' | 'stock' | 'compat' | 'suppliers' | 'images' | null)
     ?? 'details';
   const [activeTab, setActiveTab] = useState<'details' | 'stock' | 'compat' | 'suppliers' | 'images'>(initialTab);
-
-  // Phase 12.26 — view-first, edit-by-intent. Existing products open
-  // read-only; user clicks Edit to switch to mutable mode. New products
-  // start in edit mode (nothing to read yet). Eliminates accidental
-  // changes to critical fields (SKU, name, selling price) from stray
-  // keystrokes while a user is just browsing.
   const [editMode, setEditMode] = useState(isNew);
   const [compatModal, setCompatModal] = useState(false);
   const [supplierModal, setSupplierModal] = useState(false);
   const [uploadingImg, setUploadingImg] = useState(false);
 
-  // Compatibility form state
   const [compatMakeId, setCompatMakeId] = useState('');
   const [compatModelId, setCompatModelId] = useState('');
   const [compatYearFrom, setCompatYearFrom] = useState('');
   const [compatYearTo, setCompatYearTo] = useState('');
   const [compatEngine, setCompatEngine] = useState('');
-
-  // Supplier code form state
   const [supplierId, setSupplierId] = useState('');
   const [supplierSku, setSupplierSku] = useState('');
 
@@ -99,7 +121,7 @@ export default function ProductDetailPage() {
   const { data: images } = useQuery({ queryKey: ['product', id], queryFn: () => getAdapter().products.getById(id!), enabled: !isNew && !!id, select: (p) => p?.image_urls ?? [] });
 
   const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('product-detail');
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting, isDirty } } = useForm<FormValues>({
+  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
     values: product ? {
       sku: product.sku, name: product.name, name_ar: product.name_ar ?? '',
@@ -177,9 +199,6 @@ export default function ProductDetailPage() {
     } finally { setUploadingImg(false); }
   }
 
-  // Phase 12.28 — new products use the 5-step wizard instead of the
-  // single-form edit view. Existing products keep the tabbed read-only
-  // → edit flow.
   if (isNew) {
     return <ProductWizard />;
   }
@@ -188,156 +207,228 @@ export default function ProductDetailPage() {
   const modelMap = Object.fromEntries((models as VehicleModelRow[]).map((m) => [m.id, m.name]));
   const supplierMap = Object.fromEntries(suppliers.map((s) => [s.id, s.name]));
 
-  // Phase 12.25 — Stock tab lives between Details and Compatibility so users
-  // looking for "where did my stock move?" find it as the second tab.
   const tabs = ['details', 'stock', 'compat', 'suppliers', 'images'] as const;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/products')} className="text-sm text-ink-secondary hover:text-ink-primary">← {t('products.back')}</button>
-        <h1 className="text-xl font-bold text-ink-primary">{isNew ? t('products.new') : (product?.name ?? t('common.loading'))}</h1>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '1000px' }}>
+
+      {/* ── Page header ─────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <button
+            onClick={() => navigate('/products')}
+            style={{ fontSize: '12px', color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left', display: 'flex', alignItems: 'center', gap: '4px' }}
+          >
+            ← {t('products.back')}
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', lineHeight: 1.2 }}>
+              {product?.name ?? t('common.loading')}
+            </h1>
+            {product && (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                padding: '3px 9px', borderRadius: '999px', fontSize: '11px', fontWeight: 600,
+                background: product.is_active ? '#f0fdf4' : '#f4f4f5',
+                color: product.is_active ? '#15803d' : '#71717a',
+                border: `1px solid ${product.is_active ? '#bbf7d0' : '#d4d4d8'}`,
+              }}>
+                <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: product.is_active ? '#16a34a' : '#a1a1aa', flexShrink: 0 }} />
+                {product.is_active ? t('common.active') : t('common.inactive')}
+              </span>
+            )}
+            {product?.sku && (
+              <span style={{ fontSize: '12px', fontFamily: 'ui-monospace, monospace', color: '#64748b', background: '#f1f5f9', padding: '2px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                {product.sku}
+              </span>
+            )}
+          </div>
+        </div>
+        {!editMode && (
+          <Button type="button" size="sm" onClick={() => setEditMode(true)} style={{ flexShrink: 0, marginTop: '24px' }}>
+            ✎ {t('common.edit')}
+          </Button>
+        )}
       </div>
 
-      {/* Tab nav */}
-      <div className="flex gap-1 border-b border-border-subtle">
+      {/* ── Tab nav ──────────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', gap: '2px', borderBottom: '1px solid #e4e4e7', marginBottom: '2px' }}>
         {tabs.map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === tab ? 'border-brand-500 text-brand-600' : 'border-transparent text-ink-secondary hover:text-ink-primary'}`}
+            style={{
+              padding: '8px 16px',
+              fontSize: '13px',
+              fontWeight: 500,
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === tab ? '2px solid #7c3aed' : '2px solid transparent',
+              marginBottom: '-1px',
+              color: activeTab === tab ? '#7c3aed' : '#64748b',
+              cursor: 'pointer',
+              transition: 'color .12s',
+            }}
           >
             {t(`products.tab_${tab}`)}
           </button>
         ))}
       </div>
 
+      {/* ── Details tab ──────────────────────────────────────────────────── */}
       {activeTab === 'details' && (
         <form
           onSubmit={handleSubmit(async (v) => {
             clearBanner();
             await saveMutation.mutateAsync(v as FormValues);
-            // Phase 12.26 — exit edit mode after a successful save.
             if (!isNew) setEditMode(false);
           }, onInvalid)}
-          className="flex flex-col gap-5"
+          style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
         >
           <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
-          {/* Phase 12.26 — read-only mode banner + Edit button. Shown for
-               existing products when NOT in edit mode. Clicking Edit
-               unlocks the fieldset below. */}
-          {!isNew && !editMode && (
-            <div className="flex items-center justify-between rounded-card border border-border-subtle bg-surface-muted/50 px-4 py-2.5">
-              <div className="flex items-center gap-2 text-sm text-ink-secondary">
-                <span className="rounded-pill bg-surface-card px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-tertiary">
-                  Read only
-                </span>
-                <span>Fields are locked to prevent accidental changes.</span>
-              </div>
-              <Button type="button" size="sm" onClick={() => setEditMode(true)}>
-                ✎ {t('common.edit')}
-              </Button>
-            </div>
-          )}
 
-          {/* The actual fields. `<fieldset disabled>` natively disables every
-               form control inside, which is exactly what we want for the
-               view-mode UX without rewriting the layout. */}
           <fieldset
-            disabled={!isNew && !editMode}
-            className={!isNew && !editMode ? 'flex flex-col gap-5 opacity-90' : 'flex flex-col gap-5'}
+            disabled={!editMode}
+            style={{ border: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '14px', opacity: editMode ? 1 : 0.82 }}
           >
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input label={t('products.sku')} required error={errors.sku?.message} {...register('sku')} />
-            <Input label={t('products.barcode')} {...register('barcode')} />
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input label={t('products.name')} required error={errors.name?.message} {...register('name')} />
-            <Input label={t('products.name_ar')} dir="rtl" {...register('name_ar')} />
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Textarea label={t('products.description')} {...register('description')} />
-            <Textarea label={t('products.description_ar')} dir="rtl" {...register('description_ar')} />
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input label={t('products.oe_number')} {...register('oe_number')} />
-            <Input label={t('products.replacement_numbers')} hint={t('products.replacement_hint')} {...register('replacement_numbers')} />
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Select label={t('products.brand')} options={[{ value: '', label: t('common.none') }, ...brands.map((b) => ({ value: b.id, label: b.name }))]} {...register('brand_id')} />
-            <Select label={t('products.category')} options={[{ value: '', label: t('common.none') }, ...categories.map((c) => ({ value: c.id, label: c.name }))]} {...register('category_id')} />
-            <Select label={t('products.unit')} options={[{ value: '', label: t('common.none') }, ...units.map((u) => ({ value: u.id, label: u.code }))]} {...register('unit_id')} />
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Select label={t('products.quality_tier')} options={QUALITY_OPTIONS.map((q) => ({ value: q, label: q ? t(`products.quality_${q}`) : t('common.none') }))} {...register('quality_tier')} />
-            <Input label={t('products.selling_price')} type="number" step="0.01" required error={errors.selling_price?.message} {...register('selling_price')} />
-            <Select label={t('products.tax_category')} options={TAX_OPTIONS.map((q) => ({ value: q, label: t(`products.tax_${q}`) }))} {...register('tax_category')} />
-          </div>
-          <div className="grid grid-cols-1 gap-4">
-            <div>
-              <Select
-                label="Purchase Account"
-                options={[
-                  { value: '', label: '(default: 1300 Inventory)' },
-                  ...coaAccounts
-                    .filter((a) => a.is_active && (a.type === 'asset' || a.type === 'cogs' || a.type === 'expense'))
-                    .map((a) => ({ value: a.id, label: `${a.code} — ${a.name}` })),
-                ]}
-                {...register('purchase_account_id')}
-              />
-              <p className="mt-1 text-xs text-ink-tertiary">
-                When this product appears on a vendor bill, it will post to this account.
-                Asset accounts (1xxx) also move stock; expense accounts (5xxx/6xxx) post as a pure cost.
-              </p>
+
+          {/* ── Section 1: Item Information ─────────────────────────── */}
+          <div style={S.card}>
+            <div style={S.head}>Item Information</div>
+            <div style={S.body}>
+              <div style={S.row2}>
+                <Input label={t('products.name')} required error={errors.name?.message} {...register('name')} />
+                <Input label={t('products.name_ar')} dir="rtl" {...register('name_ar')} />
+              </div>
+              <div style={S.row2}>
+                <Textarea label={t('products.description')} {...register('description')} />
+                <Textarea label={t('products.description_ar')} dir="rtl" {...register('description_ar')} />
+              </div>
             </div>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input label={t('products.min_stock')} type="number" step="0.001" {...register('min_stock_level')} />
-            <div className="flex flex-col gap-3 pt-6">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" className="h-4 w-4 rounded border-border-strong text-brand-500" {...register('requires_serial')} />
-                <span className="text-sm text-ink-primary">{t('products.requires_serial')}</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" className="h-4 w-4 rounded border-border-strong text-brand-500" {...register('is_active')} />
-                <span className="text-sm text-ink-primary">{t('common.active')}</span>
-              </label>
+
+          {/* ── Section 2: Identifiers + Classification (2-col) ──────── */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: '14px' }}>
+
+            <div style={S.card}>
+              <div style={S.head}>Identifiers</div>
+              <div style={S.body}>
+                <Input label={t('products.sku')} required error={errors.sku?.message} {...register('sku')} />
+                <Input label={t('products.barcode')} {...register('barcode')} />
+                <Input label={t('products.oe_number')} {...register('oe_number')} />
+                <Input label={t('products.replacement_numbers')} hint={t('products.replacement_hint')} {...register('replacement_numbers')} />
+              </div>
             </div>
+
+            <div style={S.card}>
+              <div style={S.head}>Classification</div>
+              <div style={S.body}>
+                <Select label={t('products.brand')} options={[{ value: '', label: t('common.none') }, ...brands.map((b) => ({ value: b.id, label: b.name }))]} {...register('brand_id')} />
+                <Select label={t('products.category')} options={[{ value: '', label: t('common.none') }, ...categories.map((c) => ({ value: c.id, label: c.name }))]} {...register('category_id')} />
+                <Select label={t('products.unit')} options={[{ value: '', label: t('common.none') }, ...units.map((u) => ({ value: u.id, label: u.code }))]} {...register('unit_id')} />
+                <Select label={t('products.quality_tier')} options={QUALITY_OPTIONS.map((q) => ({ value: q, label: q ? t(`products.quality_${q}`) : t('common.none') }))} {...register('quality_tier')} />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Section 3: Sales Information + Purchase Information ──── */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: '14px' }}>
+
+            {/* Sales */}
+            <div style={S.card}>
+              <div style={{ ...S.head, background: '#faf5ff', borderBottom: '1px solid #ede9fe', color: '#5b21b6' }}>
+                Sales Information
+              </div>
+              <div style={S.body}>
+                <Input
+                  label={t('products.selling_price')}
+                  type="number"
+                  step="0.01"
+                  required
+                  error={errors.selling_price?.message}
+                  {...register('selling_price')}
+                />
+                <Select
+                  label={t('products.tax_category')}
+                  options={TAX_OPTIONS.map((q) => ({ value: q, label: t(`products.tax_${q}`) }))}
+                  {...register('tax_category')}
+                />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingTop: '2px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#1e293b', userSelect: 'none' }}>
+                    <input
+                      type="checkbox"
+                      style={{ width: '15px', height: '15px', accentColor: '#7c3aed', cursor: 'pointer' }}
+                      {...register('requires_serial')}
+                    />
+                    {t('products.requires_serial')}
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#1e293b', userSelect: 'none' }}>
+                    <input
+                      type="checkbox"
+                      style={{ width: '15px', height: '15px', accentColor: '#7c3aed', cursor: 'pointer' }}
+                      {...register('is_active')}
+                    />
+                    {t('common.active')}
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Purchase */}
+            <div style={S.card}>
+              <div style={{ ...S.head, background: '#f0fdf4', borderBottom: '1px solid #bbf7d0', color: '#15803d' }}>
+                Purchase Information
+              </div>
+              <div style={S.body}>
+                <div>
+                  <Select
+                    label="Purchase Account"
+                    options={[
+                      { value: '', label: '(default: 1300 Inventory)' },
+                      ...coaAccounts
+                        .filter((a) => a.is_active && (a.type === 'asset' || a.type === 'cogs' || a.type === 'expense'))
+                        .map((a) => ({ value: a.id, label: `${a.code} — ${a.name}` })),
+                    ]}
+                    {...register('purchase_account_id')}
+                  />
+                  <p style={{ marginTop: '4px', fontSize: '11px', color: '#94a3b8', lineHeight: '1.5' }}>
+                    Asset accounts (1xxx) also move stock; expense accounts (5xxx/6xxx) post as a pure cost.
+                  </p>
+                </div>
+                <Input label={t('products.min_stock')} type="number" step="0.001" {...register('min_stock_level')} />
+              </div>
+            </div>
+
           </div>
           </fieldset>
-          {saveMutation.error && <p className="text-sm text-danger-500">{String(saveMutation.error)}</p>}
-          {/* Phase 12.26 — Save / Cancel are only meaningful while editing
-               (or creating). In read-only mode the panel above shows the
-               Edit button instead. */}
-          {(isNew || editMode) && (
-          <div className="flex justify-end gap-3">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                if (isNew) {
-                  navigate('/products');
-                } else {
-                  // Cancel edit — reset the form to the latest server values
-                  // and drop back to read-only. Avoids the user discarding
-                  // changes accidentally on navigate-away.
-                  reset();
-                  setEditMode(false);
-                }
-              }}
-            >
-              {t('common.cancel')}
-            </Button>
-            <Button type="submit" loading={isSubmitting} disabled={!isNew && !isDirty}>{t('common.save')}</Button>
-          </div>
+
+          {saveMutation.error && (
+            <p style={{ fontSize: '12px', color: '#dc2626', padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px' }}>
+              {String(saveMutation.error)}
+            </p>
+          )}
+
+          {editMode && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', paddingTop: '4px' }}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => { reset(); setEditMode(false); }}
+              >
+                {t('common.cancel')}
+              </Button>
+              <Button type="submit" loading={isSubmitting} disabled={isSubmitting}>{t('common.save')}</Button>
+            </div>
           )}
         </form>
       )}
 
+      {/* ── Stock tab ────────────────────────────────────────────────────── */}
       {activeTab === 'stock' && !isNew && id && company_id && (
         <ProductStockTab companyId={company_id} productId={id} />
       )}
 
+      {/* ── Compatibility tab ────────────────────────────────────────────── */}
       {activeTab === 'compat' && !isNew && (
         <div className="flex flex-col gap-4">
           <div className="flex justify-end">
@@ -362,6 +453,7 @@ export default function ProductDetailPage() {
         </div>
       )}
 
+      {/* ── Suppliers tab ────────────────────────────────────────────────── */}
       {activeTab === 'suppliers' && !isNew && (
         <div className="flex flex-col gap-4">
           <div className="flex justify-end">
@@ -385,6 +477,7 @@ export default function ProductDetailPage() {
         </div>
       )}
 
+      {/* ── Images tab ──────────────────────────────────────────────────── */}
       {activeTab === 'images' && !isNew && (
         <div className="flex flex-col gap-4">
           <div className="flex justify-end">
@@ -408,7 +501,7 @@ export default function ProductDetailPage() {
         <p className="py-8 text-center text-sm text-ink-tertiary">{t('products.save_first')}</p>
       )}
 
-      {/* Compatibility modal */}
+      {/* ── Compatibility modal ─────────────────────────────────────────── */}
       <Modal open={compatModal} onClose={() => setCompatModal(false)} title={t('products.add_compat')}>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
@@ -439,7 +532,7 @@ export default function ProductDetailPage() {
         </div>
       </Modal>
 
-      {/* Supplier code modal */}
+      {/* ── Supplier code modal ─────────────────────────────────────────── */}
       <Modal open={supplierModal} onClose={() => setSupplierModal(false)} title={t('products.add_supplier_code')}>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
@@ -457,8 +550,6 @@ export default function ProductDetailPage() {
         </div>
       </Modal>
 
-      {/* Status badge on header */}
-      {product && <div className="fixed bottom-4 end-6"><Badge variant={product.is_active ? 'success' : 'muted'}>{product.is_active ? t('common.active') : t('common.inactive')}</Badge></div>}
     </div>
   );
 }

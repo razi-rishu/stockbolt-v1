@@ -39,6 +39,7 @@ const schema = z.object({
   contact_person_phone: z.string(),
   credit_limit:         z.coerce.number().min(0),
   payment_terms_days:   z.coerce.number().min(0),
+  payable_account_code: z.string(),   // supplier bills post here (2100 trade / 2110 rent / 2120 utilities)
   notes:                z.string(),
 });
 type FormValues = z.infer<typeof schema>;
@@ -78,14 +79,15 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
   const defaultCurrency = company?.currency ?? 'AED';
 
   const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('contact-list');
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
+  const { register, handleSubmit, reset, watch, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
-    defaultValues: { name: '', name_ar: '', type: defaultType, email: '', phone: '', mobile: '', currency: defaultCurrency, tax_id: '', address_street: '', address_city: '', address_country: '', contact_person_name: '', contact_person_phone: '', credit_limit: 0, payment_terms_days: 0, notes: '' },
+    defaultValues: { name: '', name_ar: '', type: defaultType, email: '', phone: '', mobile: '', currency: defaultCurrency, tax_id: '', address_street: '', address_city: '', address_country: '', contact_person_name: '', contact_person_phone: '', credit_limit: 0, payment_terms_days: 0, payable_account_code: '2100', notes: '' },
   });
+  const watchedType = watch('type');
 
   function openAdd() {
     setEditing(null);
-    reset({ name: '', name_ar: '', type: defaultType, email: '', phone: '', mobile: '', currency: defaultCurrency, tax_id: '', address_street: '', address_city: '', address_country: '', contact_person_name: '', contact_person_phone: '', credit_limit: 0, payment_terms_days: 0, notes: '' });
+    reset({ name: '', name_ar: '', type: defaultType, email: '', phone: '', mobile: '', currency: defaultCurrency, tax_id: '', address_street: '', address_city: '', address_country: '', contact_person_name: '', contact_person_phone: '', credit_limit: 0, payment_terms_days: 0, payable_account_code: '2100', notes: '' });
     setOpen(true);
   }
 
@@ -97,7 +99,8 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
       currency: row.currency, tax_id: row.tax_id ?? '',
       address_street: row.address_street ?? '', address_city: row.address_city ?? '', address_country: row.address_country ?? '',
       contact_person_name: row.contact_person_name ?? '', contact_person_phone: row.contact_person_phone ?? '',
-      credit_limit: row.credit_limit, payment_terms_days: row.payment_terms_days, notes: row.notes ?? '',
+      credit_limit: row.credit_limit, payment_terms_days: row.payment_terms_days,
+      payable_account_code: row.payable_account_code ?? '2100', notes: row.notes ?? '',
     });
     setOpen(true);
   }
@@ -130,6 +133,8 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
         contact_person_name: values.contact_person_name || null, contact_person_phone: values.contact_person_phone || null,
         contact_person_email: null,
         credit_limit: values.credit_limit, payment_terms_days: values.payment_terms_days,
+        payable_account_code: (values.type === 'supplier' || values.type === 'both')
+          ? (values.payable_account_code || '2100') : '2100',
         notes: values.notes || null, is_active: true,
         address_state: null, address_postal: null, default_price_level_id: null,
       };
@@ -275,6 +280,26 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
             <Input label={t('contacts.currency')} required {...register('currency')} />
           </div>
           <Input label={t('contacts.tax_id')} {...register('tax_id')} />
+
+          {/* Payable category — supplier-only. Bills for this supplier post
+              to the chosen liability account (keeps rent / utilities out of
+              trade AP on the Balance Sheet). */}
+          {(watchedType === 'supplier' || watchedType === 'both') && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-ink-secondary">Payable category (where bills post)</label>
+              <select
+                className="h-10 w-full rounded-input border border-border-strong bg-surface-subtle px-4 text-sm focus:border-brand-500 focus:outline-none"
+                {...register('payable_account_code')}
+              >
+                <option value="2100">Trade — Accounts Payable (2100)</option>
+                <option value="2110">Rent &amp; Lease Payable (2110)</option>
+                <option value="2120">Utilities Payable (2120)</option>
+              </select>
+              <p className="mt-1 text-xs text-ink-tertiary">
+                Landlords → Rent &amp; Lease · DEWA/Etisalat → Utilities. Trade suppliers stay on 2100.
+              </p>
+            </div>
+          )}
 
           <div className="border-t border-border-subtle pt-3">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-tertiary">{t('contacts.address')}</p>

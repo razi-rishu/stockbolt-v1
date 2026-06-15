@@ -42,6 +42,11 @@ export function ContactQuickCreate({
   const [name, setName]               = useState(initialName ?? '');
   const [phone, setPhone]             = useState('');
   const [email, setEmail]             = useState('');
+  // VAT/GST registered toggle — UI affordance only. The contacts table has
+  // no boolean for this; "registered" is implied by tax_id being present
+  // (same convention as statements + print templates). Unchecked → tax_id
+  // saved as null.
+  const [taxRegistered, setTaxRegistered] = useState(false);
   const [taxId, setTaxId]             = useState('');
   const [address, setAddress]         = useState('');
   const [creditLimit, setCreditLimit] = useState('0');
@@ -62,8 +67,11 @@ export function ContactQuickCreate({
         name:         name.trim(),
         phone:        phone.trim() || null,
         email:        email.trim() || null,
-        tax_id:       taxId.trim() || null,
-        address:      address.trim() || null,
+        tax_id:       taxRegistered ? (taxId.trim() || null) : null,
+        // contacts has no single `address` column — the quick-create's
+        // one-line address goes into address_street; city/country can be
+        // filled in later from the contact detail page.
+        address_street: address.trim() || null,
         credit_limit: limit,
         currency:     companyCurrency, // Phase 14.14m — company's base currency, editable on detail page
       } as unknown as ContactInsert;
@@ -75,7 +83,7 @@ export function ContactQuickCreate({
       onCreated(row.id);
       // Reset for the next open
       setName(''); setPhone(''); setEmail('');
-      setTaxId(''); setAddress(''); setCreditLimit('0');
+      setTaxRegistered(false); setTaxId(''); setAddress(''); setCreditLimit('0');
       setError(null);
     },
     onError: (e: Error) => setError(e.message),
@@ -117,11 +125,6 @@ export function ContactQuickCreate({
             onChange={e => setEmail(e.target.value)}
           />
           <Input
-            label="TRN / Tax ID"
-            value={taxId}
-            onChange={e => setTaxId(e.target.value)}
-          />
-          <Input
             label="Credit limit"
             type="number"
             min="0"
@@ -129,6 +132,28 @@ export function ContactQuickCreate({
             value={creditLimit}
             onChange={e => setCreditLimit(e.target.value)}
           />
+          <div className="md:col-span-2 flex flex-wrap items-end gap-3">
+            <label className="flex items-center gap-2.5 cursor-pointer pb-2">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-border-strong text-brand-500"
+                checked={taxRegistered}
+                onChange={e => setTaxRegistered(e.target.checked)}
+              />
+              <span className="text-sm text-ink-primary whitespace-nowrap">Registered for VAT / GST</span>
+            </label>
+            {taxRegistered && (
+              <div className="flex-1 min-w-[200px]">
+                <Input
+                  label="TRN / Tax ID"
+                  value={taxId}
+                  onChange={e => setTaxId(e.target.value)}
+                  placeholder="e.g. 100123456700003"
+                  autoFocus
+                />
+              </div>
+            )}
+          </div>
           <div className="md:col-span-2">
             <Input
               label="Address"

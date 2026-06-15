@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
@@ -17,7 +18,8 @@ import { ContactPicker } from '@/components/contact-picker';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 import { AccountingPreview, buildSalesInvoicePreview } from '@/components/accounting-preview';
 // Phase 14.03 — Signature template view mode.
-import { TaxInvoiceTemplate } from '@/modules/print/_signature/templates/tax-invoice';
+import { BoltDocTemplate } from '@/modules/print/_signature/templates/bolt-v4';
+import { usePrintConfig } from '@/hooks/use-print-config';
 import { invoiceToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type { InvoiceRow, InvoiceItemInsert, ContactRow, ProductRow, WarehouseRow, TaxRateRow, ProductSearchRow } from '@/data/adapter';
@@ -56,12 +58,13 @@ interface InvHeader {
 let _keyCounter = 0;
 function newKey() { return `k${++_keyCounter}`; }
 
-function calcLine(l: LineRow) {
+function calcLine(l: LineRow, inclusive = false) {
   return _calcLine({
     quantity:         parseFloat(l.quantity) || 0,
     unit_price:       parseFloat(l.unit_price) || 0,
     discount_percent: parseFloat(l.discount_percent) || 0,
     tax_rate:         parseFloat(l.tax_rate) || 0,
+    inclusive,
   });
 }
 
@@ -85,6 +88,8 @@ export default function InvoiceEditorPage() {
   const companyCurrency = useCompanyCurrency();   // Phase 14.14m — reads companies.currency, falls back to AED
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const printConfig = usePrintConfig();
   const qc = useQueryClient();
   // Phase 14.14k — invalidate all books-downstream caches (TB, BS, GL, aging,
   // statements, dashboard, stock ledger, etc.) after any GL-touching mutation.
@@ -159,12 +164,43 @@ export default function InvoiceEditorPage() {
   const [editMode, setEditMode] = useState(false);
   const [voidModal, setVoidModal] = useState(false);
   const [voidReason, setVoidReason] = useState('');
+  const [deleteModal, setDeleteModal] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const confirmLeave = useUnsavedChangesGuard(dirty);
   const [error, setError] = useState<string | null>(null);
+  // Phase 14.17 — tax-inclusive/exclusive toggle.
+  // true = unit_price already includes tax (common in retail / GCC B2C).
+  // false (default) = tax is added on top of the listed price.
+  const [pricesInclusive, setPricesInclusive] = useState(false);
 
   // Phase 14.03 — view-first for saved invoices. Renders the Signature
   // template by default; user clicks Edit to drop into the existing
   // editor. New invoices skip this entirely (you're already editing).
   const [viewMode, setViewMode] = useState(!isNew);
+
+  // Clone seed — a Duplicate action navigates to /sales/invoices/new with the
+  // source invoice's header + lines in router state. Seed once per navigation,
+  // resetting dates to today and dropping into the editor (not view mode). The
+  // new invoice saves as a fresh draft with its own number.
+  const clonedKey = useRef<string | null>(null);
+  useEffect(() => {
+    const seed = (location.state as { cloneFrom?: { header: Partial<InvHeader>; prices_inclusive?: boolean; lines: Omit<LineRow, '_key' | 'line_subtotal' | 'discount_amount' | 'tax_amount' | 'line_total'>[] } } | null)?.cloneFrom;
+    if (!seed || !isNew || clonedKey.current === location.key) return;
+    clonedKey.current = location.key;
+    setHeader(h => ({ ...h, ...seed.header, date: todayIso(), due_date: '' }));
+    setPricesInclusive(seed.prices_inclusive ?? false);
+    setLines(
+      seed.lines.length
+        ? seed.lines.map(l => {
+            const base: LineRow = { _key: newKey(), ...l, line_subtotal: 0, discount_amount: 0, tax_amount: 0, line_total: 0 };
+            return { ...base, ...calcLine(base, seed.prices_inclusive ?? false) };
+          })
+        : [emptyLine()],
+    );
+    setViewMode(false);
+    setEditMode(false);
+    setDirty(true);   // a clone is unsaved data — warn if the user backs out
+  }, [location.key, location.state, isNew]);
 
   // Populate form when existing invoice loads
   useEffect(() => {
@@ -179,8 +215,22 @@ export default function InvoiceEditorPage() {
         notes:          existing.notes ?? '',
         currency:       existing.currency,
       });
+      setPricesInclusive(existing.prices_inclusive ?? false);
     }
   }, [existing]);
+
+  // Auto-select the first warehouse when none is chosen yet and warehouses have loaded.
+  // Covers both new invoices and existing drafts saved without a warehouse.
+  useEffect(() => {
+    if (!header.warehouse_id && warehouses.length > 0) {
+      setHeader(h => ({ ...h, warehouse_id: warehouses[0].id }));
+    }
+  }, [warehouses, header.warehouse_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Recalculate all line totals when inclusive toggle changes
+  useEffect(() => {
+    setLines(prev => prev.map(l => ({ ...l, ...calcLine(l, pricesInclusive) })));
+  }, [pricesInclusive]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (existingItems.length > 0) {
@@ -195,7 +245,7 @@ export default function InvoiceEditorPage() {
           tax_rate:         String(item.tax_rate ?? 0),
           line_subtotal: 0, discount_amount: 0, tax_amount: 0, line_total: 0,
         };
-        return { ...base, ...calcLine(base) };
+        return { ...base, ...calcLine(base, pricesInclusive) };
       }));
     }
   }, [existingItems]);
@@ -257,20 +307,24 @@ export default function InvoiceEditorPage() {
     setLines(prev => prev.map(l => {
       if (l._key !== key) return l;
       const updated = { ...l, ...patch };
-      return { ...updated, ...calcLine(updated) };
+      return { ...updated, ...calcLine(updated, pricesInclusive) };
     }));
-  }, []);
+    setDirty(true);
+  }, [pricesInclusive]);
 
-  const addLine = () => setLines(prev => [...prev, emptyLine()]);
-  const removeLine = (key: string) => setLines(prev => prev.filter(l => l._key !== key));
+  const addLine = () => { setLines(prev => [...prev, emptyLine()]); setDirty(true); };
+  const removeLine = (key: string) => { setLines(prev => prev.filter(l => l._key !== key)); setDirty(true); };
 
   const handleProductChange = (key: string, productId: string) => {
     const product = products.find(p => p.id === productId);
     if (product) {
+      // Auto-fill tax rate from product's tax_category → matching tax rate.
+      const matchedRate = taxRates.find(r => r.is_active && r.tax_type === product.tax_category);
       updateLine(key, {
         product_id:  productId,
         description: product.name,
         unit_price:  String(product.selling_price ?? 0),
+        tax_rate:    String(matchedRate?.rate ?? 0),
       });
     } else {
       updateLine(key, { product_id: null, description: '' });
@@ -306,20 +360,24 @@ export default function InvoiceEditorPage() {
       if (!header.contact_id) throw new Error(t('sales.error_contact_required'));
       if (!header.salesperson_id) throw new Error('Salesperson is required');
       if (lines.length === 0) throw new Error(t('sales.error_no_lines'));
+      // Auto-resolve warehouse: use the one in header, fall back to first available.
+      const resolvedWarehouseId = header.warehouse_id || (warehouses[0]?.id ?? null);
+      if (lines.some(l => l.product_id) && !resolvedWarehouseId)
+        throw new Error('No warehouse found. Please create a warehouse in Settings first.');
 
       const row = {
         company_id:      company_id!,
         invoice_number:  isNew ? await getAdapter().invoices.getNextNumber(company_id!) : existing!.invoice_number,
         contact_id:      header.contact_id,
         salesperson_id:  header.salesperson_id,
-        warehouse_id:    header.warehouse_id || null,
+        warehouse_id:    resolvedWarehouseId,
         date:            header.date,
         due_date:        header.due_date || null,
         reference:       header.reference || null,
         price_level_id:  null,
         currency:        header.currency,
         exchange_rate:   1,
-        prices_inclusive: false,
+        prices_inclusive: pricesInclusive,
         subtotal:        +subtotal.toFixed(2),
         discount_amount: +discountTotal.toFixed(2),
         tax_amount:      +taxTotal.toFixed(2),
@@ -344,25 +402,32 @@ export default function InvoiceEditorPage() {
       }
     },
     onSuccess: async (data) => {
+      setDirty(false);
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['invoices', company_id] });
       if (isNew && data) {
-        navigate(`/sales/invoices/${data.id}`);
+        navigate('/sales/invoices');
       } else {
         qc.invalidateQueries({ queryKey: ['invoice', id] });
         qc.invalidateQueries({ queryKey: ['invoice_items', id] });
-        setEditMode(false);
+        setEditMode(false); navigate('/sales/invoices');
       }
     },
     onError: (e: Error) => setError(e.message),
   });
 
-  const confirmMutation = useMutation({
-    mutationFn: () => getAdapter().invoices.confirm(id!),
+  // Save the draft (with current header + lines) then immediately confirm it.
+  // Used when the user is in edit mode on a draft and wants one-click confirm.
+  const saveAndConfirmMutation = useMutation({
+    mutationFn: async () => {
+      await saveMutation.mutateAsync();          // reuse existing save logic (validates warehouse)
+      await getAdapter().invoices.confirm(id!);  // then confirm
+    },
     onSuccess: async () => {
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['invoices', company_id] });
       qc.invalidateQueries({ queryKey: ['invoice', id] });
+      setEditMode(false);
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -378,22 +443,33 @@ export default function InvoiceEditorPage() {
     onError: (e: Error) => { setVoidModal(false); setError(e.message); },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => getAdapter().invoices.deleteDraft(id!),
+    onSuccess: async () => {
+      setDeleteModal(false);
+      qc.invalidateQueries({ queryKey: ['invoices', company_id] });
+      navigate('/sales/invoices');
+    },
+    onError: (e: Error) => { setDeleteModal(false); setError(e.message); },
+  });
+
   const editRepostMutation = useMutation({
     mutationFn: async () => {
       if (!header.salesperson_id) throw new Error('Salesperson is required');
+      const resolvedWarehouseId = header.warehouse_id || (warehouses[0]?.id ?? null);
       const row = {
         company_id:      company_id!,
         invoice_number:  existing!.invoice_number,
         contact_id:      header.contact_id,
         salesperson_id:  header.salesperson_id,
-        warehouse_id:    header.warehouse_id || null,
+        warehouse_id:    resolvedWarehouseId,
         date:            header.date,
         due_date:        header.due_date || null,
         reference:       header.reference || null,
         price_level_id:  null,
         currency:        header.currency,
         exchange_rate:   1,
-        prices_inclusive: false,
+        prices_inclusive: pricesInclusive,
         subtotal:        +subtotal.toFixed(2),
         discount_amount: +discountTotal.toFixed(2),
         tax_amount:      +taxTotal.toFixed(2),
@@ -414,6 +490,7 @@ export default function InvoiceEditorPage() {
     },
     onSuccess: async () => {
       setEditMode(false);
+      setDirty(false);
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['invoices', company_id] });
       qc.invalidateQueries({ queryKey: ['invoice', id] });
@@ -438,9 +515,12 @@ export default function InvoiceEditorPage() {
   ];
   // productOpts removed — product picker now uses SmartEntitySearch (D2).
   // Keeping the products list for resolveById fallback in the picker.
-  const taxOpts = [
-    { value: '0', label: t('sales.no_tax') },
-    ...taxRates.map(r => ({ value: String(r.rate), label: `${r.name} (${r.rate}%)` })),
+  // Use r.id as React key (UUID, always unique) so duplicate rates like
+  // Zero-rated 0% and Exempt 0% don't cause "duplicate key" console warnings.
+  // "No tax" uses value='' (empty) to avoid colliding with a 0% rate option.
+  const taxOpts: { key: string; value: string; label: string }[] = [
+    { key: '__none__', value: '', label: t('sales.no_tax') },
+    ...taxRates.map(r => ({ key: r.id, value: String(r.rate), label: `${r.name} (${r.rate}%)` })),
   ];
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -461,6 +541,37 @@ export default function InvoiceEditorPage() {
     );
   };
 
+  // Void + Delete confirmation modals — rendered in BOTH the view template
+  // and the editor form, so the user can remove a wrong invoice from either
+  // place (not only after entering edit mode).
+  const dangerModals = (
+    <>
+      <Modal open={voidModal} onClose={() => setVoidModal(false)} title={t('sales.void_invoice')}>
+        <div className="space-y-4">
+          <p className="text-sm text-ink-secondary">{t('sales.void_confirm_text')}</p>
+          <Input label={t('sales.void_reason')} value={voidReason} onChange={e => setVoidReason(e.target.value)} />
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setVoidModal(false)}>{t('common.cancel')}</Button>
+            <Button variant="danger" size="sm" onClick={() => voidMutation.mutate()} disabled={voidMutation.isPending}>
+              {voidMutation.isPending ? '…' : t('sales.void_invoice')}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+      <Modal open={deleteModal} onClose={() => setDeleteModal(false)} title={t('sales.delete_invoice')}>
+        <div className="space-y-4">
+          <p className="text-sm text-ink-secondary">{t('sales.delete_confirm_text')}</p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setDeleteModal(false)}>{t('common.cancel')}</Button>
+            <Button variant="danger" size="sm" onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? '…' : t('common.delete')}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </>
+  );
+
   // Phase 14.03 — view-mode renderer (Signature template). Active only on
   // saved invoices where viewMode hasn't been toggled off.
   if (viewMode && !isNew && existing) {
@@ -478,7 +589,7 @@ export default function InvoiceEditorPage() {
           data-no-print="true"
           style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
         >
-          <button onClick={() => navigate('/sales/invoices')} style={{
+          <button onClick={() => { if (confirmLeave()) navigate('/sales/invoices'); }} style={{
             background: 'transparent', border: 'none', cursor: 'pointer',
             fontSize: '13px', color: '#64748b',
           }}>← {t('sales.invoices_title')}</button>
@@ -499,9 +610,53 @@ export default function InvoiceEditorPage() {
                 onClick={() => { setEditMode(true); setViewMode(false); }}
               >{t('sales.edit_invoice') || 'Edit invoice'}</Button>
             )}
+            <Button
+              variant="ghost" size="sm"
+              onClick={() => {
+                const cloneLines = (existingItems as InvoiceItemInsert[]).map((it) => ({
+                  product_id:       it.product_id ?? null,
+                  description:      it.description ?? '',
+                  quantity:         String(it.quantity ?? 0),
+                  unit_price:       String(it.unit_price ?? 0),
+                  discount_percent: String(it.discount_percent ?? 0),
+                  tax_rate:         String(it.tax_rate ?? 0),
+                }));
+                navigate('/sales/invoices/new', {
+                  state: { cloneFrom: {
+                    header: {
+                      contact_id:     existing.contact_id,
+                      salesperson_id: existing.salesperson_id ?? '',
+                      warehouse_id:   existing.warehouse_id ?? '',
+                      reference:      existing.reference ?? '',
+                      notes:          existing.notes ?? '',
+                      currency:       existing.currency,
+                    },
+                    prices_inclusive: existing.prices_inclusive ?? false,
+                    lines: cloneLines,
+                  } },
+                });
+              }}
+            >⧉ {t('common.duplicate')}</Button>
+            {isConfirmed && (
+              <Button size="sm" onClick={() => navigate(`/sales/payments/new?contact=${existing.contact_id}`)}>
+                💰 {t('sales.receive_payment') || 'Receive Payment'}
+              </Button>
+            )}
             {existing?.id && (
               <Button variant="ghost" size="sm" onClick={() => window.print()}>
                 🖨 {t('print.print') || 'Print'}
+              </Button>
+            )}
+            {/* Remove a wrong invoice straight from the view page:
+                 draft → Delete (hard), confirmed → Void (reverses GL). */}
+            {status === 'draft' && (
+              <Button variant="danger" size="sm" onClick={() => setDeleteModal(true)}>
+                {t('common.delete')}
+              </Button>
+            )}
+            {isConfirmed && (
+              <Button variant="danger" size="sm" onClick={() => setVoidModal(true)}>
+                {t('sales.void_invoice')}
               </Button>
             )}
           </div>
@@ -509,8 +664,9 @@ export default function InvoiceEditorPage() {
 
         {/* The A4 document, floating on a slate canvas */}
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
-          <TaxInvoiceTemplate data={doc} />
+          <BoltDocTemplate data={doc} config={printConfig} />
         </div>
+        {dangerModals}
       </div>
     );
   }
@@ -519,7 +675,7 @@ export default function InvoiceEditorPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '64px' }}>
       {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-        <button onClick={() => navigate('/sales/invoices')} style={{
+        <button onClick={() => { if (confirmLeave()) navigate('/sales/invoices'); }} style={{
           background: 'transparent', border: 'none', cursor: 'pointer',
           fontSize: '13px', color: '#64748b',
         }}>← {t('sales.invoices_title')}</button>
@@ -536,17 +692,10 @@ export default function InvoiceEditorPage() {
               {t('common.view') || 'View'}
             </Button>
           )}
-          {/* Draft actions — Save is ONLY shown for new invoices or drafts.
-               When editing a CONFIRMED invoice (editMode=true), this button is
-               hidden because saveMutation silently downgrades status to
-               'draft' and replaces items WITHOUT reversing the GL — which
-               leads to duplicate journal entries when the user re-confirms.
-               The "Save & Repost" button (rendered further below for the
-               edit-confirmed case) is the only safe save path; it calls
-               edit_invoice RPC which atomically reverses old JE + reposts new. */}
-          {canEdit && !editMode && (
+          {/* ── New invoice (never saved yet) ── */}
+          {isNew && (
             <>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/sales/invoices')}>
+              <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/sales/invoices'); }}>
                 {t('common.cancel')}
               </Button>
               <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
@@ -554,11 +703,46 @@ export default function InvoiceEditorPage() {
               </Button>
             </>
           )}
-          {/* Confirm (draft only, not edit mode) */}
+          {/* ── Existing DRAFT, view mode (editMode=false) ── */}
           {!isNew && status === 'draft' && !editMode && (
-            <Button size="sm" onClick={() => { setError(null); confirmMutation.mutate(); }} disabled={confirmMutation.isPending}>
-              {confirmMutation.isPending ? '…' : t('sales.confirm_invoice')}
-            </Button>
+            <>
+              <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/sales/invoices'); }}>
+                {t('common.cancel')}
+              </Button>
+              <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
+                {saveMutation.isPending ? t('common.saving') : t('common.save')}
+              </Button>
+              {/* Always save-then-confirm so the DB has the latest warehouse_id
+                   before confirm_invoice RPC reads it. */}
+              <Button
+                size="sm"
+                disabled={saveAndConfirmMutation.isPending}
+                onClick={() => { setError(null); saveAndConfirmMutation.mutate(); }}
+              >
+                {saveAndConfirmMutation.isPending ? '…' : t('sales.confirm_invoice')}
+              </Button>
+              <Button variant="danger" size="sm" onClick={() => setDeleteModal(true)}>
+                {t('common.delete')}
+              </Button>
+            </>
+          )}
+          {/* ── Existing DRAFT, edit mode (editMode=true) ── e.g. after auto-opening to fix warehouse */}
+          {!isNew && status === 'draft' && editMode && (
+            <>
+              <Button variant="ghost" size="sm" onClick={() => { setEditMode(false); setError(null); }}>
+                {t('common.cancel')}
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
+                {saveMutation.isPending ? t('common.saving') : t('common.save')}
+              </Button>
+              <Button
+                size="sm"
+                disabled={saveAndConfirmMutation.isPending}
+                onClick={() => { setError(null); saveAndConfirmMutation.mutate(); }}
+              >
+                {saveAndConfirmMutation.isPending ? '…' : 'Save & Confirm'}
+              </Button>
+            </>
           )}
           {/* Print (any non-new invoice) */}
           {!isNew && existing?.id && (
@@ -606,7 +790,7 @@ export default function InvoiceEditorPage() {
            compact horizontal card so the salesperson has full context
            while writing the invoice. */}
       {selectedCustomer && (
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 2px rgba(15,23,42,.04)', padding: '16px' }}>
+        <div className="glass-card" style={{ padding: '16px' }}>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <div>
               <p className="text-xs uppercase tracking-wide text-ink-tertiary">Outstanding</p>
@@ -682,7 +866,7 @@ export default function InvoiceEditorPage() {
       )}
 
       {/* Invoice Header */}
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 2px rgba(15,23,42,.04)', padding: '20px' }}>
+      <div className="glass-card" style={{ padding: '20px' }}>
         <h2 className="mb-4 text-sm font-semibold text-ink-primary">{t('sales.invoice_details')}</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="col-span-2 md:col-span-1">
@@ -693,7 +877,7 @@ export default function InvoiceEditorPage() {
               type="customer"
               value={header.contact_id}
               disabled={!canEdit || isVoid}
-              onChange={(id) => setHeader(h => ({ ...h, contact_id: id ?? '' }))}
+              onChange={(id) => { setHeader(h => ({ ...h, contact_id: id ?? '' })); setDirty(true); }}
               placeholder={t('sales.select_contact')}
               panelWidth={380}
             />
@@ -732,6 +916,7 @@ export default function InvoiceEditorPage() {
             value={header.warehouse_id}
             disabled={!canEdit || isVoid}
             onChange={e => setHeader(h => ({ ...h, warehouse_id: e.target.value }))}
+            error={canEdit && lines.some(l => l.product_id) && !header.warehouse_id ? 'Required for stock items' : undefined}
           />
           <Input
             label={t('sales.reference')}
@@ -758,30 +943,52 @@ export default function InvoiceEditorPage() {
 
       {/* Line Items + Sticky Sidebar */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 2px rgba(15,23,42,.04)' }}>
-        <div className="border-b border-border-subtle px-5 py-3">
+      <div className="glass-card">
+        <div className="border-b border-border-subtle px-5 py-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-ink-primary">{t('sales.line_items')}</h2>
+          {canEdit && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
+              <span style={{ fontSize: '12px', color: pricesInclusive ? '#7c3aed' : '#64748b', fontWeight: 500 }}>
+                {pricesInclusive ? 'Tax-inclusive prices' : 'Tax-exclusive prices'}
+              </span>
+              <div
+                onClick={() => { setPricesInclusive(v => !v); setDirty(true); }}
+                style={{
+                  width: '36px', height: '20px', borderRadius: '999px', cursor: 'pointer',
+                  background: pricesInclusive ? '#7c3aed' : '#cbd5e1',
+                  position: 'relative', transition: 'background 0.2s',
+                }}
+              >
+                <div style={{
+                  position: 'absolute', top: '2px',
+                  left: pricesInclusive ? '18px' : '2px',
+                  width: '16px', height: '16px', borderRadius: '50%',
+                  background: '#fff', transition: 'left 0.2s',
+                  boxShadow: '0 1px 3px rgba(0,0,0,.2)',
+                }} />
+              </div>
+            </label>
+          )}
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
+          <table className="w-full table-fixed text-xs" style={{ minWidth: '900px' }}>
             <thead>
               <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary">
-                <th className="px-3 py-2 text-start font-medium w-48">{t('sales.product')}</th>
-                <th className="px-3 py-2 text-start font-medium w-40">{t('sales.description')}</th>
-                <th className="px-3 py-2 text-end font-medium w-20">{t('sales.qty')}</th>
-                <th className="px-3 py-2 text-end font-medium w-24">{t('sales.unit_price')}</th>
-                <th className="px-3 py-2 text-end font-medium w-20">{t('sales.disc_pct')}</th>
-                <th className="px-3 py-2 text-end font-medium w-24">{t('sales.tax')}</th>
-                <th className="px-3 py-2 text-end font-medium w-20" title="Available stock (sum across warehouses)">Stock</th>
-                <th className="px-3 py-2 text-end font-medium w-20" title="Margin % vs MAC. Negative = selling at a loss.">Margin</th>
-                <th className="px-3 py-2 text-end font-medium w-24">{t('sales.line_total')}</th>
-                {canEdit && !isVoid && <th className="w-10" />}
+                <th className="px-3 py-2 text-start font-medium" style={{ minWidth: '200px' }}>{t('sales.product')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '72px' }}>{t('sales.qty')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('sales.unit_price')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '84px' }}>{t('sales.disc_pct')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('sales.tax')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '76px' }} title="Available stock (sum across warehouses)">Stock</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '76px' }} title="Margin % vs MAC. Negative = selling at a loss.">Margin</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('sales.line_total')}</th>
+                {canEdit && !isVoid && <th style={{ width: '36px' }} />}
               </tr>
             </thead>
             <tbody>
               {lines.map(line => (
                 <tr key={line._key} className="border-b border-border-subtle last:border-0">
-                  <td className="px-3 py-1.5">
+                  <td className="px-3 py-1.5 align-top">
                     {/* SmartEntitySearch — Phase 12.18.
                          Server-side trigram search + rich-list dropdown.
                          Falls back to the cached `products` list to resolve
@@ -881,16 +1088,15 @@ export default function InvoiceEditorPage() {
                         );
                       }}
                     />
-                  </td>
-                  <td className="px-3 py-1.5">
                     <input
-                      className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-ink-primary disabled:opacity-60"
+                      className="mt-1 w-full rounded border border-transparent bg-transparent px-2 py-0.5 text-[11px] text-ink-tertiary placeholder:text-ink-tertiary hover:border-border-subtle focus:border-border-strong focus:bg-surface-subtle focus:text-ink-secondary disabled:opacity-60"
                       value={line.description}
                       disabled={!canEdit || isVoid}
+                      placeholder={t('sales.description') + ' (optional)'}
                       onChange={e => updateLine(line._key, { description: e.target.value })}
                     />
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-3 py-1.5 align-top">
                     <input
                       type="number" min="0" step="1"
                       className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end text-ink-primary disabled:opacity-60"
@@ -899,7 +1105,7 @@ export default function InvoiceEditorPage() {
                       onChange={e => updateLine(line._key, { quantity: e.target.value })}
                     />
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-3 py-1.5 align-top">
                     <input
                       type="number" min="0" step="0.01"
                       className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end text-ink-primary disabled:opacity-60"
@@ -908,7 +1114,7 @@ export default function InvoiceEditorPage() {
                       onChange={e => updateLine(line._key, { unit_price: e.target.value })}
                     />
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-3 py-1.5 align-top">
                     <input
                       type="number" min="0" max="100" step="0.01"
                       className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end text-ink-primary disabled:opacity-60"
@@ -917,14 +1123,14 @@ export default function InvoiceEditorPage() {
                       onChange={e => updateLine(line._key, { discount_percent: e.target.value })}
                     />
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-3 py-1.5 align-top">
                     <select
                       className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-ink-primary disabled:opacity-60"
                       value={line.tax_rate}
                       disabled={!canEdit || isVoid}
                       onChange={e => updateLine(line._key, { tax_rate: e.target.value })}
                     >
-                      {taxOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      {taxOpts.map(o => <option key={o.key} value={o.value}>{o.label}</option>)}
                     </select>
                   </td>
                   {(() => {
@@ -955,20 +1161,20 @@ export default function InvoiceEditorPage() {
                           : 'text-emerald-700';
                     return (
                       <>
-                        <td className={`px-3 py-1.5 text-end font-mono ${stockCls}`} title={pid ? `On-hand: ${fmt(stock)} · After this line: ${fmt(projectedStock)}` : ''}>
+                        <td className={`px-3 py-1.5 align-top text-end font-mono ${stockCls}`} title={pid ? `On-hand: ${fmt(stock)} · After this line: ${fmt(projectedStock)}` : ''}>
                           {!pid ? '—' : projectedStock < 0 ? `${fmt(projectedStock)} ⚠` : fmt(stock)}
                         </td>
-                        <td className={`px-3 py-1.5 text-end font-mono ${marginCls}`} title={pid && mac > 0 ? `MAC: ${fmt(mac)} · Net price: ${fmt(netPrice)}` : 'No cost basis yet'}>
+                        <td className={`px-3 py-1.5 align-top text-end font-mono ${marginCls}`} title={pid && mac > 0 ? `MAC: ${fmt(mac)} · Net price: ${fmt(netPrice)}` : 'No cost basis yet'}>
                           {!pid || mac <= 0 ? '—' : `${margin.toFixed(1)}%`}
                         </td>
                       </>
                     );
                   })()}
-                  <td className="px-3 py-1.5 text-end font-mono text-ink-primary">
+                  <td className="px-3 py-1.5 align-top text-end font-mono text-ink-primary">
                     {fmt(line.line_total)}
                   </td>
                   {canEdit && !isVoid && (
-                    <td className="px-3 py-1.5">
+                    <td className="px-3 py-1.5 align-top">
                       <button
                         className="text-red-400 hover:text-red-600 disabled:opacity-30"
                         disabled={lines.length === 1}
@@ -1002,7 +1208,7 @@ export default function InvoiceEditorPage() {
            user scrolls long line lists. Highlights Grand Total and (for
            confirmed invoices) Balance Due. */}
       <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 2px rgba(15,23,42,.04)', overflow: 'hidden' }}>
+        <div className="glass-card" style={{ overflow: 'hidden' }}>
           <div className="border-b border-border-subtle px-4 py-2.5 bg-surface-muted/40">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-tertiary">Summary</h3>
           </div>
@@ -1034,16 +1240,21 @@ export default function InvoiceEditorPage() {
               const thisInv = openCustomerInvoices.find(inv => inv.id === id);
               if (!thisInv) return null;
               const outstanding = Number(thisInv.outstanding ?? 0);
-              const paid = grandTotal - outstanding;
+              // paid = what has already been received (DB total minus DB outstanding).
+              // Use DB total_amount so unsaved edits don't create a phantom paid amount.
+              const paid       = Number(thisInv.total_amount ?? 0) - outstanding;
+              // balanceDue = live grand total minus what's already paid.
+              // This stays correct even when line items are edited before saving.
+              const balanceDue = grandTotal - paid;
               return (
                 <>
                   <div className="flex justify-between text-ink-secondary border-t border-border-subtle pt-2.5">
                     <span>Paid</span>
                     <span className="font-mono text-emerald-700">{fmt(paid)}</span>
                   </div>
-                  <div className={`flex justify-between font-semibold ${outstanding > 0.005 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                  <div className={`flex justify-between font-semibold ${balanceDue > 0.005 ? 'text-amber-700' : 'text-emerald-700'}`}>
                     <span>Balance Due</span>
-                    <span className="font-mono">{header.currency} {fmt(outstanding)}</span>
+                    <span className="font-mono">{header.currency} {fmt(balanceDue)}</span>
                   </div>
                 </>
               );
@@ -1083,29 +1294,7 @@ export default function InvoiceEditorPage() {
         }}
       />
 
-      {/* Void modal */}
-      <Modal
-        open={voidModal}
-        onClose={() => setVoidModal(false)}
-        title={t('sales.void_invoice')}
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-ink-secondary">{t('sales.void_confirm_text')}</p>
-          <Input
-            label={t('sales.void_reason')}
-            value={voidReason}
-            onChange={e => setVoidReason(e.target.value)}
-          />
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setVoidModal(false)}>
-              {t('common.cancel')}
-            </Button>
-            <Button variant="danger" size="sm" onClick={() => voidMutation.mutate()} disabled={voidMutation.isPending}>
-              {voidMutation.isPending ? '…' : t('sales.void_invoice')}
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      {dangerModals}
     </div>
   );
 }

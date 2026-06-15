@@ -8,7 +8,8 @@ import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Button } from '@/ui/button';
 import { SearchableSelect } from '@/ui/searchable-select';
 // Phase 14.04 — Signature template view mode for saved sales returns.
-import { TaxInvoiceTemplate } from '@/modules/print/_signature/templates/tax-invoice';
+import { BoltDocTemplate } from '@/modules/print/_signature/templates/bolt-v4';
+import { usePrintConfig } from '@/hooks/use-print-config';
 import { salesReturnToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type { SalesReturnRow, SalesReturnItemRow, InvoiceRow, InvoiceItemRow, SalesReturnItemInsert, Company, ProductRow, ContactRow } from '@/data/adapter';
@@ -28,6 +29,7 @@ export default function SalesReturnEditorPage() {
   const isNew       = !id || id === 'new';
   const { t }       = useTranslation();
   const navigate    = useNavigate();
+  const printConfig = usePrintConfig();
   const qc          = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const { company_id } = useAuthStore();
@@ -200,7 +202,7 @@ export default function SalesReturnEditorPage() {
           </div>
         </div>
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
-          <TaxInvoiceTemplate data={doc} />
+          <BoltDocTemplate data={doc} config={printConfig} />
         </div>
       </div>
     );
@@ -209,7 +211,7 @@ export default function SalesReturnEditorPage() {
   return (
     <div className="space-y-6 max-w-4xl">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">
+        <h1 className="text-2xl font-bold text-ink-primary">
           {isNew ? t('returns.new_return') : `${t('returns.return_number')}: ${existing?.return_number}`}
         </h1>
         <div className="flex gap-2">
@@ -226,9 +228,9 @@ export default function SalesReturnEditorPage() {
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg p-6 grid grid-cols-2 gap-4">
+      <div className="bg-white border border-border-subtle rounded-lg p-6 grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">{t('returns.linked_invoice')} *</label>
+          <label className="block text-sm font-medium text-ink-secondary mb-1">{t('returns.linked_invoice')} *</label>
           <div className="flex gap-2">
             <div className="flex-1">
               <SearchableSelect
@@ -247,15 +249,15 @@ export default function SalesReturnEditorPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">{t('common.date')} *</label>
+          <label className="block text-sm font-medium text-ink-secondary mb-1">{t('common.date')} *</label>
           <input type="date" value={date} onChange={e => setDate(e.target.value)} disabled={!isDraft}
-            className="w-full border border-slate-300 rounded px-3 py-2 text-sm" />
+            className="w-full border border-border-strong rounded px-3 py-2 text-sm" />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">{t('returns.return_reason')}</label>
+          <label className="block text-sm font-medium text-ink-secondary mb-1">{t('returns.return_reason')}</label>
           <select value={reason} onChange={e => setReason(e.target.value)} disabled={!isDraft}
-            className="w-full border border-slate-300 rounded px-3 py-2 text-sm">
+            className="w-full border border-border-strong rounded px-3 py-2 text-sm">
             <option value="wrong_part">{t('returns.wrong_part')}</option>
             <option value="defective">{t('returns.defective')}</option>
             <option value="customer_changed_mind">{t('returns.customer_changed_mind')}</option>
@@ -264,45 +266,45 @@ export default function SalesReturnEditorPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">{t('common.notes')}</label>
+          <label className="block text-sm font-medium text-ink-secondary mb-1">{t('common.notes')}</label>
           <input type="text" value={notes} onChange={e => setNotes(e.target.value)} disabled={!isDraft}
-            className="w-full border border-slate-300 rounded px-3 py-2 text-sm" />
+            className="w-full border border-border-strong rounded px-3 py-2 text-sm" />
         </div>
       </div>
 
       {/* Line items */}
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-          <h2 className="font-semibold text-slate-700">{t('returns.returned_items')}</h2>
+      <div className="bg-white border border-border-subtle rounded-lg overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
+          <h2 className="font-semibold text-ink-secondary">{t('returns.returned_items')}</h2>
           {isDraft && <Button variant="secondary" onClick={addLine}>{t('returns.add_line')}</Button>}
         </div>
         <table className="w-full text-sm">
-          <thead className="bg-slate-50">
+          <thead className="bg-surface-muted">
             <tr>
-              <th className="px-3 py-2 text-left text-xs font-medium text-slate-500">{t('common.description')}</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-slate-500">{t('returns.qty_returned')}</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-slate-500">{t('returns.condition')}</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-slate-500">{t('returns.cost_at_sale')}</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-ink-tertiary">{t('common.description')}</th>
+              <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('returns.qty_returned')}</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-ink-tertiary">{t('returns.condition')}</th>
+              <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('returns.cost_at_sale')}</th>
               {isDraft && <th className="px-3 py-2" />}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-border-subtle">
             {lines.map((l, i) => (
               <tr key={i}>
                 <td className="px-3 py-2">
                   <input value={l.description} onChange={e => updateLine(i, 'description', e.target.value)}
                     disabled={!isDraft} placeholder={t('common.description')}
-                    className="w-full border border-slate-300 rounded px-2 py-1 text-sm" />
+                    className="w-full border border-border-strong rounded px-2 py-1 text-sm" />
                 </td>
                 <td className="px-3 py-2">
                   <input type="number" min="1" step="1" value={l.qty_returned}
                     onChange={e => updateLine(i, 'qty_returned', Number(e.target.value))}
-                    disabled={!isDraft} className="w-24 border border-slate-300 rounded px-2 py-1 text-sm text-right" />
+                    disabled={!isDraft} className="w-24 border border-border-strong rounded px-2 py-1 text-sm text-right" />
                 </td>
                 <td className="px-3 py-2">
                   <select value={l.condition}
                     onChange={e => updateLine(i, 'condition', e.target.value as 'resellable' | 'damaged')}
-                    disabled={!isDraft} className="border border-slate-300 rounded px-2 py-1 text-sm">
+                    disabled={!isDraft} className="border border-border-strong rounded px-2 py-1 text-sm">
                     <option value="resellable">{t('returns.resellable')}</option>
                     <option value="damaged">{t('returns.damaged')}</option>
                   </select>
@@ -311,7 +313,7 @@ export default function SalesReturnEditorPage() {
                   <input type="number" min="0" step="0.01" value={l.unit_cost ?? ''}
                     placeholder={t('returns.from_invoice')}
                     onChange={e => updateLine(i, 'unit_cost', e.target.value ? Number(e.target.value) : null)}
-                    disabled={!isDraft} className="w-28 border border-slate-300 rounded px-2 py-1 text-sm text-right" />
+                    disabled={!isDraft} className="w-28 border border-border-strong rounded px-2 py-1 text-sm text-right" />
                 </td>
                 {isDraft && (
                   <td className="px-3 py-2">
@@ -323,7 +325,7 @@ export default function SalesReturnEditorPage() {
           </tbody>
         </table>
         {lines.length === 0 && (
-          <p className="text-center text-slate-400 py-6 text-sm">{t('returns.no_lines_yet')}</p>
+          <p className="text-center text-ink-tertiary py-6 text-sm">{t('returns.no_lines_yet')}</p>
         )}
       </div>
 

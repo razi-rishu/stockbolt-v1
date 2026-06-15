@@ -41,7 +41,7 @@ const SOURCE_LABEL: Record<string, string> = {
 // ── Pill helper (sample look) ────────────────────────────────────────────
 function Pill({ label, tone }: { label: string; tone: 'brand' | 'success' | 'danger' | 'slate' }) {
   const t = {
-    brand:   { bg: theme.brandSoft,   text: theme.brandSoftText, border: '#c7d2fe' },
+    brand:   { bg: theme.brandSoft,   text: theme.brandSoftText, border: '#ddd6fe' },
     success: { bg: '#f0fdf4',         text: '#15803d',           border: '#bbf7d0' },
     danger:  { bg: '#fef2f2',         text: '#dc2626',           border: '#fecaca' },
     slate:   { bg: theme.muted,       text: theme.inkMuted,      border: theme.border },

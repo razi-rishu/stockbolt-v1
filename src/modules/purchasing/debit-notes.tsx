@@ -6,25 +6,10 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
+import { StatusBadge } from '@/ui/status-badge';
 import type { DebitNoteRow, ContactRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; text: string; border: string; label: string }> = {
-    draft:     { bg: '#fffbeb', text: '#b45309', border: '#fde68a', label: 'Draft' },
-    confirmed: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0', label: 'Confirmed' },
-    void:      { bg: '#fef2f2', text: '#dc2626', border: '#fecaca', label: 'Void' },
-  };
-  const p = map[status] ?? map.draft;
-  return (
-    <span style={{
-      display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
-      fontSize: '11px', fontWeight: 600,
-      background: p.bg, color: p.text, border: `1px solid ${p.border}`,
-    }}>{p.label}</span>
-  );
-}
 
 export default function DebitNotesPage() {
   const { t } = useTranslation();

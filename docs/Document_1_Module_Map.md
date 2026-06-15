@@ -22,7 +22,7 @@ These decisions shape every module below. They are final for v1.
 | POS | Walk-in cash + walk-in credit sales |
 | Templates | 3–5 fixed templates per doc type, user picks default |
 | Costing method | MAC only in v1; FIFO architected for v2; LIFO permanently excluded |
-| Payroll | Pushed to v2 |
+| Payroll | ~~Pushed to v2~~ AMENDED 2026-06-13 (owner override): in v1, phased — P1 employees + runs + GL ✅, P2 WPS + gratuity, P3 loans, P4 leave |
 
 ---
 

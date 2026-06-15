@@ -18,7 +18,7 @@ const STATUS_COLORS: Record<string, string> = {
   deposited: 'bg-blue-100 text-blue-700',
   cleared:   'bg-green-100 text-green-700',
   bounced:   'bg-red-100 text-red-600',
-  cancelled: 'bg-slate-100 text-slate-500',
+  cancelled: 'bg-surface-muted text-ink-tertiary',
 };
 
 export default function PDCReceivedPage() {
@@ -119,8 +119,8 @@ export default function PDCReceivedPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">{t('banking.pdc_received_title')}</h1>
-          <p className="text-sm text-slate-500 mt-1">{t('banking.pdc_received_desc')}</p>
+          <h1 className="text-2xl font-bold text-ink-primary">{t('banking.pdc_received_title')}</h1>
+          <p className="text-sm text-ink-tertiary mt-1">{t('banking.pdc_received_desc')}</p>
         </div>
         <Button variant="primary" onClick={() => setShowCreateModal(true)}>
           {t('banking.new_pdc')}
@@ -129,37 +129,37 @@ export default function PDCReceivedPage() {
 
       {error && <p className="text-sm text-red-600 bg-red-50 rounded p-3">{error}</p>}
 
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+      <div className="bg-white border border-border-subtle rounded-lg overflow-hidden">
         {isLoading ? (
-          <p className="p-8 text-center text-sm text-slate-400">{t('common.loading')}</p>
+          <p className="p-8 text-center text-sm text-ink-tertiary">{t('common.loading')}</p>
         ) : pdcs.length === 0 ? (
-          <p className="p-8 text-center text-slate-500">{t('banking.no_pdc')}</p>
+          <p className="p-8 text-center text-ink-tertiary">{t('banking.no_pdc')}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className="bg-surface-muted border-b border-border-subtle">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium text-slate-600">{t('banking.pdc_number')}</th>
-                  <th className="px-4 py-3 text-left font-medium text-slate-600">{t('banking.customer')}</th>
-                  <th className="px-4 py-3 text-left font-medium text-slate-600">{t('banking.cheque_number')}</th>
-                  <th className="px-4 py-3 text-left font-medium text-slate-600">{t('banking.bank_name')}</th>
-                  <th className="px-4 py-3 text-left font-medium text-slate-600">{t('banking.due_date')}</th>
-                  <th className="px-4 py-3 text-right font-medium text-slate-600">{t('banking.amount')}</th>
-                  <th className="px-4 py-3 text-left font-medium text-slate-600">{t('common.status')}</th>
-                  <th className="px-4 py-3 text-right font-medium text-slate-600">{t('banking.actions')}</th>
+                  <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('banking.pdc_number')}</th>
+                  <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('banking.customer')}</th>
+                  <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('banking.cheque_number')}</th>
+                  <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('banking.bank_name')}</th>
+                  <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('banking.due_date')}</th>
+                  <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('banking.amount')}</th>
+                  <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('common.status')}</th>
+                  <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('banking.actions')}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-border-subtle">
                 {pdcs.map(pdc => (
-                  <tr key={pdc.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 font-mono text-blue-600">{pdc.pdc_number}</td>
-                    <td className="px-4 py-3 text-slate-700">{contactName(pdc.contact_id)}</td>
-                    <td className="px-4 py-3 font-mono text-slate-600">{pdc.cheque_number}</td>
-                    <td className="px-4 py-3 text-slate-600">{pdc.bank_name ?? '—'}</td>
-                    <td className="px-4 py-3 text-slate-600">{pdc.due_date}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-slate-800">{pdc.currency} {fmt(pdc.amount)}</td>
+                  <tr key={pdc.id} className="hover:bg-surface-muted transition-colors">
+                    <td className="px-4 py-3 font-mono text-brand-600">{pdc.pdc_number}</td>
+                    <td className="px-4 py-3 text-ink-secondary">{contactName(pdc.contact_id)}</td>
+                    <td className="px-4 py-3 font-mono text-ink-secondary">{pdc.cheque_number}</td>
+                    <td className="px-4 py-3 text-ink-secondary">{pdc.bank_name ?? '—'}</td>
+                    <td className="px-4 py-3 text-ink-secondary">{pdc.due_date}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-ink-primary">{pdc.currency} {fmt(pdc.amount)}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${STATUS_COLORS[pdc.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${STATUS_COLORS[pdc.status] ?? 'bg-surface-muted text-ink-secondary'}`}>
                         {pdc.status}
                       </span>
                     </td>
@@ -167,11 +167,11 @@ export default function PDCReceivedPage() {
                       {pdc.status === 'pending' && (
                         <>
                           <button onClick={() => depositMutation.mutate(pdc.id)}
-                            className="text-xs text-blue-600 hover:underline px-1">{t('banking.deposit')}</button>
+                            className="text-xs text-brand-600 hover:underline px-1">{t('banking.deposit')}</button>
                           <button onClick={() => { setClearPdcId(pdc.id); setClearAccountId(pdc.deposit_account_id ?? ''); }}
                             className="text-xs text-green-600 hover:underline px-1">{t('banking.clear')}</button>
                           <button onClick={() => { if (confirm(t('banking.cancel_confirm'))) cancelMutation.mutate(pdc.id); }}
-                            className="text-xs text-slate-500 hover:underline px-1">{t('banking.cancel_pdc')}</button>
+                            className="text-xs text-ink-tertiary hover:underline px-1">{t('banking.cancel_pdc')}</button>
                         </>
                       )}
                       {pdc.status === 'deposited' && (
@@ -197,7 +197,7 @@ export default function PDCReceivedPage() {
         <div className="space-y-3 mb-4">
           {createError && <p className="text-sm text-red-600 bg-red-50 rounded p-2">{createError}</p>}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">{t('banking.customer')}</label>
+            <label className="block text-xs font-medium text-ink-secondary mb-1">{t('banking.customer')}</label>
             <SearchableSelect
               options={customers.map((c) => ({ value: c.id, label: c.name }))}
               value={contactId}
@@ -219,14 +219,14 @@ export default function PDCReceivedPage() {
             <Input label={t('banking.due_date')} type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">{t('banking.deposit_account')}</label>
+            <label className="block text-xs font-medium text-ink-secondary mb-1">{t('banking.deposit_account')}</label>
             <select value={depositAccountId} onChange={e => setDepositAccountId(e.target.value)}
-              className="w-full h-9 rounded-md border border-slate-300 px-2 text-sm">
+              className="w-full h-9 rounded-md border border-border-strong px-2 text-sm">
               <option value="">— {t('banking.none')} —</option>
               {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </div>
-          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+          <label className="flex items-center gap-2 text-sm text-ink-secondary cursor-pointer">
             <input type="checkbox" checked={isAdvance} onChange={e => setIsAdvance(e.target.checked)} />
             {t('banking.is_advance')}
           </label>
@@ -244,11 +244,11 @@ export default function PDCReceivedPage() {
       {/* Clear PDC Modal */}
       <Modal open={!!clearPdcId} onClose={() => setClearPdcId(null)} title={t('banking.clear_pdc')}>
         <div className="space-y-3 mb-4">
-          <p className="text-sm text-slate-600">{t('banking.clear_pdc_desc')}</p>
+          <p className="text-sm text-ink-secondary">{t('banking.clear_pdc_desc')}</p>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">{t('banking.deposit_account')}</label>
+            <label className="block text-xs font-medium text-ink-secondary mb-1">{t('banking.deposit_account')}</label>
             <select value={clearAccountId} onChange={e => setClearAccountId(e.target.value)}
-              className="w-full h-9 rounded-md border border-slate-300 px-2 text-sm">
+              className="w-full h-9 rounded-md border border-border-strong px-2 text-sm">
               <option value="">— {t('banking.select_account')} —</option>
               {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>

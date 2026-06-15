@@ -5,7 +5,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Badge } from '@/ui/badge';
-import type { StockTransferRow } from '@/data/adapter';
+import type { StockTransferRow, WarehouseRow } from '@/data/adapter';
 
 const statusColor: Record<string, string> = {
   draft: 'muted', confirmed: 'success', void: 'danger',
@@ -21,6 +21,13 @@ export default function StockTransfersPage() {
     queryFn: () => getAdapter().stockTransfers.list(company_id!),
     enabled: !!company_id,
   });
+
+  const { data: warehouses = [] } = useQuery<WarehouseRow[]>({
+    queryKey: ['warehouses', company_id],
+    queryFn: () => getAdapter().warehouses.list(company_id!),
+    enabled: !!company_id,
+  });
+  const warehouseMap = Object.fromEntries(warehouses.map(w => [w.id, w.name]));
 
   return (
     <div className="space-y-4">
@@ -49,8 +56,8 @@ export default function StockTransfersPage() {
                 <tr key={tr.id} className="border-b border-border-subtle last:border-0 hover:bg-surface-muted cursor-pointer"
                   onClick={() => navigate(`/inventory/transfers/${tr.id}`)}>
                   <td className="px-4 py-3 font-mono text-xs text-brand-700">{tr.transfer_number}</td>
-                  <td className="px-4 py-3 text-ink-secondary font-mono text-xs">{tr.from_warehouse_id}</td>
-                  <td className="px-4 py-3 text-ink-secondary font-mono text-xs">{tr.to_warehouse_id}</td>
+                  <td className="px-4 py-3 text-ink-secondary text-sm">{warehouseMap[tr.from_warehouse_id] ?? tr.from_warehouse_id}</td>
+                  <td className="px-4 py-3 text-ink-secondary text-sm">{warehouseMap[tr.to_warehouse_id] ?? tr.to_warehouse_id}</td>
                   <td className="px-4 py-3 text-ink-secondary">{tr.date as string}</td>
                   <td className="px-4 py-3 text-center">
                     <Badge variant={statusColor[tr.status] as 'muted' | 'success' | 'danger'}>{tr.status}</Badge>

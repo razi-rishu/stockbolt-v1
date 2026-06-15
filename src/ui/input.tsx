@@ -13,7 +13,7 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
  *   - 11px uppercase tracking-wide slate-500 label
  *   - 36px tall, 7px radius, slate-200 border, white background
  *   - 13px text, 8/10 padding
- *   - indigo focus ring (rgba(99,102,241,.10))
+ *   - indigo focus ring (rgba(124,58,237,.10))
  *
  * Any className passed in (e.g. "w-40") is preserved for sizing/layout.
  */
@@ -21,7 +21,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ label, error, hint, id, className = '', onFocus, onBlur, ...rest }, ref) => {
     const inputId = id ?? label?.toLowerCase().replace(/\s+/g, '-');
     const [focused, setFocused] = useState(false);
-    const borderColor = error ? '#dc2626' : focused ? '#6366f1' : '#e2e8f0';
+    const borderColor = error ? '#dc2626' : focused ? '#7c3aed' : '#e2e8f0';
     return (
       <div className={`flex flex-col gap-1 ${className.includes('w-') ? '' : 'w-full'}`}>
         {label && (
@@ -56,7 +56,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             color: '#1e293b',
             outline: 'none',
             transition: 'border-color .15s, box-shadow .15s',
-            boxShadow: focused ? '0 0 0 3px rgba(99,102,241,.10)' : 'none',
+            boxShadow: focused ? '0 0 0 3px rgba(124,58,237,.10)' : 'none',
           }}
           onFocus={(e) => { setFocused(true); onFocus?.(e); }}
           onBlur={(e)  => { setFocused(false); onBlur?.(e); }}

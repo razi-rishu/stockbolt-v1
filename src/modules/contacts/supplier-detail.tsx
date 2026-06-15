@@ -23,6 +23,7 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Tabs } from '@/ui/tabs';
 import { theme } from '@/ui/theme';
+import { StatusBadge } from '@/ui/status-badge';
 // Phase 14.07 — Signature Statement experience (shared with customer side).
 import {
   StatementShell, RelationshipHeader, HealthRow, BalanceStrip,
@@ -46,33 +47,6 @@ function monthsAgoIso(n: number) {
 }
 function daysBetween(from: string, to: string): number {
   return Math.floor((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000);
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; text: string; border: string }> = {
-    draft:              { bg: theme.muted,     text: theme.inkMuted, border: theme.border },
-    sent:               { bg: '#eff6ff',       text: '#1d4ed8',      border: '#bfdbfe' },
-    confirmed:          { bg: '#f0fdf4',       text: '#15803d',      border: '#bbf7d0' },
-    received:           { bg: '#f0fdf4',       text: '#15803d',      border: '#bbf7d0' },
-    partially_received: { bg: theme.purpleSoft,text: theme.purple,   border: theme.purpleBorder },
-    billed:             { bg: '#f0fdfa',       text: '#0f766e',      border: '#99f6e4' },
-    closed:             { bg: theme.muted,     text: theme.inkFaint, border: theme.border },
-    void:               { bg: '#fef2f2',       text: '#ef4444',      border: '#fecaca' },
-  };
-  const p = map[status] ?? { bg: theme.muted, text: theme.inkMuted, border: theme.border };
-  return (
-    <span style={{
-      display: 'inline-block',
-      padding: '2px 8px',
-      borderRadius: '999px',
-      fontSize: '10px', fontWeight: 600,
-      textTransform: 'capitalize',
-      background: p.bg, color: p.text,
-      border: `1px solid ${p.border}`,
-    }}>
-      {status.replace(/_/g, ' ')}
-    </span>
-  );
 }
 
 function KpiTile({ label, value, sublabel, accent = 'default' }: {
@@ -147,7 +121,7 @@ function AgingBar({ buckets, total }: {
           return pct > 0 ? <div key={s.label} style={{ background: s.color, width: `${pct}%` }} title={`${s.label}: ${fmt(s.value)}`} /> : null;
         })}
       </div>
-      <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+      <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 110px), 1fr))', gap: '8px' }}>
         {segs.map((s) => (
           <div key={s.label} style={{ display: 'flex', flexDirection: 'column' }}>
             <span style={{ fontSize: '11px', color: theme.inkFaint }}>{s.label}</span>
@@ -345,6 +319,11 @@ export default function SupplierDetailPage() {
         </div>
       </div>
 
+      {/* Page-level summary blocks. Hidden on the Statement tab — the
+          statement document carries its own header, payable, health row
+          and aging composition, so showing these too duplicates every
+          number on screen. */}
+      {tab !== 'stmt' && (<>
       {/* Contact info */}
       {contact && (
         <div className="rounded-card border border-border-subtle bg-surface-card p-5">
@@ -447,6 +426,7 @@ export default function SupplierDetailPage() {
 
       {/* Aging */}
       <AgingBar buckets={aging} total={outstandingTotal} />
+      </>)}
 
       {/* ── Tabs ──────────────────────────────────────────────────────── */}
       <Tabs

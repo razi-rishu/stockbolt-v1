@@ -6,35 +6,11 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
-import type { SalesQuoteRow } from '@/data/adapter';
+import { StatusBadge } from '@/ui/status-badge';
+import type { SalesQuoteRow, ContactRow } from '@/data/adapter';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; text: string; border: string }> = {
-    draft:              { bg: theme.muted,  text: theme.inkMuted, border: theme.border },
-    sent:               { bg: '#eff6ff',    text: '#1d4ed8',      border: '#bfdbfe' },
-    accepted:           { bg: '#f0fdf4',    text: '#15803d',      border: '#bbf7d0' },
-    rejected:           { bg: '#fef2f2',    text: '#dc2626',      border: '#fecaca' },
-    expired:            { bg: '#fff7ed',    text: '#c2410c',      border: '#fed7aa' },
-    partially_invoiced: { bg: '#f5f3ff',    text: '#6d28d9',      border: '#ddd6fe' },
-    fully_invoiced:     { bg: '#f0fdfa',    text: '#0f766e',      border: '#99f6e4' },
-    void:               { bg: '#fef2f2',    text: '#ef4444',      border: '#fecaca' },
-  };
-  const p = map[status] ?? { bg: theme.muted, text: theme.inkMuted, border: theme.border };
-  return (
-    <span style={{
-      display: 'inline-block',
-      padding: '3px 9px',
-      borderRadius: '999px',
-      fontSize: '11px', fontWeight: 600,
-      textTransform: 'capitalize',
-      background: p.bg, color: p.text,
-      border: `1px solid ${p.border}`,
-    }}>{status.replace(/_/g, ' ')}</span>
-  );
 }
 
 export default function QuotesPage() {
@@ -48,6 +24,13 @@ export default function QuotesPage() {
     queryFn: () => getAdapter().salesQuotes.list(company_id!),
     enabled: !!company_id,
   });
+
+  const { data: customers = [] } = useQuery<ContactRow[]>({
+    queryKey: ['contacts', company_id, 'customer'],
+    queryFn: () => getAdapter().contacts.list(company_id!, 'customer'),
+    enabled: !!company_id,
+  });
+  const customerMap = Object.fromEntries(customers.map(c => [c.id, c.name]));
 
   const convertMutation = useMutation({
     mutationFn: (quote_id: string) => getAdapter().salesQuotes.convertToInvoice(quote_id),
@@ -84,6 +67,7 @@ export default function QuotesPage() {
               <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
                 {[
                   { l: t('sales.quote_number'),  a: 'start' as const },
+                  { l: t('sales.customer'),      a: 'start' as const },
                   { l: t('sales.date'),          a: 'start' as const },
                   { l: t('sales.expiry_date'),   a: 'start' as const },
                   { l: t('sales.total_amount'),  a: 'end'   as const },
@@ -120,6 +104,7 @@ export default function QuotesPage() {
                   >
                     {q.quote_number}
                   </td>
+                  <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px', fontWeight: 500 }}>{customerMap[q.contact_id] ?? '—'}</td>
                   <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{q.date}</td>
                   <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{q.expiry_date ?? '—'}</td>
                   <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>

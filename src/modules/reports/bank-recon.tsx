@@ -35,85 +35,85 @@ export default function BankReconPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800">{t('reports.bank_recon_title')}</h1>
-        <p className="text-sm text-slate-500 mt-1">{t('reports.bank_recon_desc')}</p>
+        <h1 className="text-2xl font-bold text-ink-primary">{t('reports.bank_recon_title')}</h1>
+        <p className="text-sm text-ink-tertiary mt-1">{t('reports.bank_recon_desc')}</p>
       </div>
 
       {/* Filters */}
-      <div className="bg-white border border-slate-200 rounded-lg p-4">
+      <div className="bg-white border border-border-subtle rounded-lg p-4">
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">{t('banking.bank_account')}</label>
+            <label className="block text-xs font-medium text-ink-secondary mb-1">{t('banking.bank_account')}</label>
             <select value={accountId} onChange={e => setAccountId(e.target.value)}
-              className="w-full h-9 rounded-md border border-slate-300 px-2 text-sm">
+              className="w-full h-9 rounded-md border border-border-strong px-2 text-sm">
               <option value="">{t('banking.select_account')}</option>
               {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">{t('reports.date_from')}</label>
+            <label className="block text-xs font-medium text-ink-secondary mb-1">{t('reports.date_from')}</label>
             <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-              className="w-full h-9 rounded-md border border-slate-300 px-3 text-sm" />
+              className="w-full h-9 rounded-md border border-border-strong px-3 text-sm" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">{t('reports.date_to')}</label>
+            <label className="block text-xs font-medium text-ink-secondary mb-1">{t('reports.date_to')}</label>
             <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-              className="w-full h-9 rounded-md border border-slate-300 px-3 text-sm" />
+              className="w-full h-9 rounded-md border border-border-strong px-3 text-sm" />
           </div>
         </div>
       </div>
 
       {!accountId ? (
-        <p className="text-center text-sm text-slate-400 py-8">{t('reports.select_account_prompt')}</p>
+        <p className="text-center text-sm text-ink-tertiary py-8">{t('reports.select_account_prompt')}</p>
       ) : (
         <>
           {/* Closing balance summary */}
           {lines.length > 0 && (
-            <div className="bg-white border border-slate-200 rounded-lg p-4 flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-600">{t('reports.closing_balance_as_of')} {dateTo}</span>
-              <span className={`text-xl font-bold ${closingBalance >= 0 ? 'text-slate-800' : 'text-red-600'}`}>
+            <div className="bg-white border border-border-subtle rounded-lg p-4 flex items-center justify-between">
+              <span className="text-sm font-medium text-ink-secondary">{t('reports.closing_balance_as_of')} {dateTo}</span>
+              <span className={`text-xl font-bold ${closingBalance >= 0 ? 'text-ink-primary' : 'text-red-600'}`}>
                 {fmt(closingBalance)}
               </span>
             </div>
           )}
 
-          <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+          <div className="bg-white border border-border-subtle rounded-lg overflow-hidden">
             {isLoading || isFetching ? (
-              <p className="p-8 text-center text-sm text-slate-400">{t('common.loading')}</p>
+              <p className="p-8 text-center text-sm text-ink-tertiary">{t('common.loading')}</p>
             ) : lines.length === 0 ? (
-              <p className="p-8 text-center text-slate-500">{t('reports.no_data')}</p>
+              <p className="p-8 text-center text-ink-tertiary">{t('reports.no_data')}</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200">
+                  <thead className="bg-surface-muted border-b border-border-subtle">
                     <tr>
-                      <th className="px-4 py-3 text-left font-medium text-slate-600">{t('common.date')}</th>
-                      <th className="px-4 py-3 text-left font-medium text-slate-600">{t('reports.je_number')}</th>
-                      <th className="px-4 py-3 text-left font-medium text-slate-600">{t('reports.source_type')}</th>
-                      <th className="px-4 py-3 text-left font-medium text-slate-600">{t('reports.description')}</th>
-                      <th className="px-4 py-3 text-right font-medium text-slate-600">{t('reports.debit')}</th>
-                      <th className="px-4 py-3 text-right font-medium text-slate-600">{t('reports.credit')}</th>
-                      <th className="px-4 py-3 text-right font-medium text-slate-600">{t('reports.running_balance')}</th>
+                      <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('common.date')}</th>
+                      <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('reports.je_number')}</th>
+                      <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('reports.source_type')}</th>
+                      <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('reports.description')}</th>
+                      <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('reports.debit')}</th>
+                      <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('reports.credit')}</th>
+                      <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('reports.running_balance')}</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-border-subtle">
                     {lines.map((line, i) => (
-                      <tr key={i} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3 text-slate-600">{line.date}</td>
-                        <td className="px-4 py-3 font-mono text-blue-600">{line.je_number}</td>
+                      <tr key={i} className="hover:bg-surface-muted transition-colors">
+                        <td className="px-4 py-3 text-ink-secondary">{line.date}</td>
+                        <td className="px-4 py-3 font-mono text-brand-600">{line.je_number}</td>
                         <td className="px-4 py-3">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-surface-muted text-ink-secondary">
                             {line.source_type.replace(/_/g, ' ')}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-slate-700 max-w-xs truncate">{line.description}</td>
+                        <td className="px-4 py-3 text-ink-secondary max-w-xs truncate">{line.description}</td>
                         <td className="px-4 py-3 text-right text-green-600">
                           {line.debit > 0 ? fmt(line.debit) : '—'}
                         </td>
                         <td className="px-4 py-3 text-right text-red-600">
                           {line.credit > 0 ? fmt(line.credit) : '—'}
                         </td>
-                        <td className={`px-4 py-3 text-right font-semibold ${line.running_balance < 0 ? 'text-red-600' : 'text-slate-800'}`}>
+                        <td className={`px-4 py-3 text-right font-semibold ${line.running_balance < 0 ? 'text-red-600' : 'text-ink-primary'}`}>
                           {fmt(line.running_balance)}
                         </td>
                       </tr>

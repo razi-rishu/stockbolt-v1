@@ -125,8 +125,11 @@ export default function StockMovementReportPage() {
                   return (
                     <tr key={i} className="border-b border-border-subtle last:border-0">
                       <td className="px-4 py-2 text-ink-secondary">{row.date as string}</td>
-                      <td className="px-4 py-2 text-ink-primary text-xs font-medium">{row.product_id}</td>
-                      <td className="px-4 py-2 text-ink-secondary text-xs">{row.warehouse_id}</td>
+                      <td className="px-4 py-2 text-ink-primary">
+                        <span className="font-medium text-sm">{row.product_name}</span>
+                        {row.sku && <span className="ml-1.5 text-xs text-ink-tertiary">({row.sku})</span>}
+                      </td>
+                      <td className="px-4 py-2 text-ink-secondary text-sm">{row.warehouse_name}</td>
                       <td className="px-4 py-2 text-ink-secondary">{TYPE_LABELS[row.movement_type] ?? row.movement_type}</td>
                       <td className="px-4 py-2 text-end text-green-700 font-mono">{isIn ? fmt(row.quantity) : '—'}</td>
                       <td className="px-4 py-2 text-end text-red-700 font-mono">{isOut ? fmt(row.quantity) : '—'}</td>

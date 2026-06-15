@@ -120,8 +120,8 @@ export default function ResetDataPage() {
     return (
       <div className="max-w-2xl space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Reset complete</h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <h1 className="text-2xl font-bold text-ink-primary">Reset complete</h1>
+          <p className="text-sm text-ink-tertiary mt-1">
             Deleted {total} rows across {Object.keys(result.counts ?? {}).length} tables at{' '}
             {new Date(result.reset_at).toLocaleString()}.
           </p>
@@ -254,7 +254,7 @@ export default function ResetDataPage() {
               onChange={e => setTyped(e.target.value)}
               placeholder={expected}
               disabled={!isAdmin || resetMutation.isPending}
-              className="w-full h-10 rounded-md border border-slate-300 px-3 text-sm font-mono disabled:bg-slate-50"
+              className="w-full h-10 rounded-md border border-border-strong px-3 text-sm font-mono disabled:bg-surface-muted"
               autoComplete="off"
               autoCorrect="off"
               autoCapitalize="off"

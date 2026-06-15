@@ -8,16 +8,16 @@ export default {
         // (Phase 12.30 design-system pass). brand.500 == #6366f1 is the indigo
         // accent reused inline across primitives.
         brand: {
-          50: '#EEF2FF',
-          100: '#E0E7FF',
-          200: '#C7D2FE',
-          300: '#A5B4FC',
-          400: '#818CF8',
-          500: '#6366F1', // Primary — buttons, active nav, logo
-          600: '#4F46E5',
-          700: '#4338CA',
-          800: '#3730A3',
-          900: '#312E81',
+          50: '#F5F3FF',
+          100: '#EDE9FE',
+          200: '#DDD6FE',
+          300: '#C4B5FD',
+          400: '#A78BFA',
+          500: '#7C3AED', // Primary — buttons, active nav, logo (violet-600)
+          600: '#6D28D9',
+          700: '#5B21B6',
+          800: '#4C1D95',
+          900: '#3B0764',
         },
         // Surfaces
         // surface.page is a very subtle off-white so cards (#FFFFFF) lift off
@@ -67,7 +67,7 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['"DM Sans"', 'system-ui', 'sans-serif'],
+        sans: ['"Inter"', 'system-ui', 'sans-serif'],
         arabic: ['Tajawal', 'system-ui', 'sans-serif'],
       },
       borderRadius: {

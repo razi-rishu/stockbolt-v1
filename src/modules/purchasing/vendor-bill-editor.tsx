@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
@@ -13,7 +14,8 @@ import { ProductQuickCreate } from '@/components/quick-create/product-quick-crea
 import { ContactPicker } from '@/components/contact-picker';
 import { AccountingPreview, buildVendorBillPreview } from '@/components/accounting-preview';
 // Phase 14.03 — Signature template view mode for saved bills.
-import { TaxInvoiceTemplate } from '@/modules/print/_signature/templates/tax-invoice';
+import { BoltDocTemplate } from '@/modules/print/_signature/templates/bolt-v4';
+import { usePrintConfig } from '@/hooks/use-print-config';
 import { vendorBillToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type { VendorBillRow, VendorBillItemInsert, ContactRow, ProductRow, TaxRateRow, CoaRow } from '@/data/adapter';
@@ -38,12 +40,13 @@ interface LineRow {
 let _k = 0;
 const newKey = () => `k${++_k}`;
 
-function calcLine(l: LineRow) {
+function calcLine(l: LineRow, inclusive = false) {
   return _calc({
     quantity: parseFloat(l.quantity) || 0,
     unit_cost: parseFloat(l.unit_cost) || 0,
     discount_percent: parseFloat(l.discount_percent) || 0,
     tax_rate: parseFloat(l.tax_rate) || 0,
+    inclusive,
   });
 }
 
@@ -61,6 +64,8 @@ export default function VendorBillEditorPage() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const printConfig = usePrintConfig();
   const qc = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const companyCurrency = useCompanyCurrency();    // Phase 14.14m
@@ -166,6 +171,11 @@ export default function VendorBillEditorPage() {
   const [productQcSeed,    setProductQcSeed]    = useState('');
   const [productQcLineKey, setProductQcLineKey] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState(false);
+  const [deleteModal, setDeleteModal] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const confirmLeave = useUnsavedChangesGuard(dirty);
+  // Phase 14.17 — tax-inclusive/exclusive toggle
+  const [pricesInclusive, setPricesInclusive] = useState(false);
 
   useEffect(() => {
     if (existing) {
@@ -180,8 +190,38 @@ export default function VendorBillEditorPage() {
         linked_grn_id: existing.linked_grn_id ?? '',
         landed_cost_total: String((existing as { landed_cost_total?: number }).landed_cost_total ?? 0),
       });
+      setPricesInclusive((existing as { prices_inclusive?: boolean }).prices_inclusive ?? false);
     }
   }, [existing]);
+
+  // Clone seed — a Duplicate action navigates to /purchasing/bills/new with the
+  // source bill's header + lines in router state. Seed once per navigation,
+  // resetting date to today and dropping into the editor. The clone is a fresh
+  // draft (no GRN link, no landed cost, new bill number on save).
+  type CloneLine = Omit<LineRow, '_key' | 'line_subtotal' | 'discount_amount' | 'tax_amount' | 'line_total'>;
+  const clonedKey = useRef<string | null>(null);
+  useEffect(() => {
+    const seed = (location.state as { cloneFrom?: { header: Record<string, string>; prices_inclusive?: boolean; lines: CloneLine[] } } | null)?.cloneFrom;
+    if (!seed || !isNew || clonedKey.current === location.key) return;
+    clonedKey.current = location.key;
+    setHeader(h => ({ ...h, ...seed.header, date: todayIso(), due_date: '', linked_grn_id: '', landed_cost_total: '0' }));
+    setPricesInclusive(seed.prices_inclusive ?? false);
+    setLines(
+      seed.lines.length
+        ? seed.lines.map(l => {
+            const base: LineRow = { _key: newKey(), ...l, line_subtotal: 0, discount_amount: 0, tax_amount: 0, line_total: 0 };
+            return { ...base, ...calcLine(base, seed.prices_inclusive ?? false) };
+          })
+        : [emptyLine()],
+    );
+    setViewMode(false);
+    setDirty(true);   // a clone is unsaved data — warn if the user backs out
+  }, [location.key, location.state, isNew]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Recalculate all line totals when inclusive toggle changes
+  useEffect(() => {
+    setLines(prev => prev.map(l => ({ ...l, ...calcLine(l, pricesInclusive) })));
+  }, [pricesInclusive]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (existingItems.length > 0) {
@@ -196,10 +236,10 @@ export default function VendorBillEditorPage() {
           tax_rate: String(item.tax_rate ?? 0),
           line_subtotal: 0, discount_amount: 0, tax_amount: 0, line_total: 0,
         };
-        return { ...base, ...calcLine(base) };
+        return { ...base, ...calcLine(base, pricesInclusive) };
       }));
     }
-  }, [existingItems]);
+  }, [existingItems]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pre-fill from GRN
   useEffect(() => {
@@ -267,14 +307,24 @@ export default function VendorBillEditorPage() {
     setLines(prev => prev.map(l => {
       if (l._key !== key) return l;
       const u = { ...l, ...patch };
-      return { ...u, ...calcLine(u) };
+      return { ...u, ...calcLine(u, pricesInclusive) };
     }));
-  }, []);
+    setDirty(true);
+  }, [pricesInclusive]);
 
   const handleProductChange = (key: string, productId: string) => {
     const product = products.find(p => p.id === productId);
-    if (product) updateLine(key, { product_id: productId, description: product.name, coa_account_id: null });
-    else updateLine(key, { product_id: null, description: '' });
+    if (product) {
+      const matchedRate = taxRates.find(r => r.is_active && r.tax_type === product.tax_category);
+      updateLine(key, {
+        product_id:    productId,
+        description:   product.name,
+        coa_account_id: null,
+        tax_rate:      String(matchedRate?.rate ?? 0),
+      });
+    } else {
+      updateLine(key, { product_id: null, description: '' });
+    }
   };
 
   function buildItems(): VendorBillItemInsert[] {
@@ -304,71 +354,111 @@ export default function VendorBillEditorPage() {
 
   const landedCost = parseFloat(header.landed_cost_total) || 0;
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (!header.supplier_id) throw new Error(t('purchasing.error_supplier_required'));
-      if (landedCost < 0) throw new Error('Landed cost cannot be negative');
-      if (landedCost > 0 && header.linked_grn_id) {
-        throw new Error('Landed cost is not allowed on GRN-linked bills. Post freight separately.');
-      }
-      // Per-product warehouse is required on standalone bills (the RPC
-      // falls back to default if NULL, but explicit is better).
-      const productLinesWithoutWh = lines.filter(l => l.product_id && !l.warehouse_id);
-      if (!header.linked_grn_id && productLinesWithoutWh.length > 0) {
-        throw new Error(`Pick a warehouse for ${productLinesWithoutWh.length} product line${productLinesWithoutWh.length === 1 ? '' : 's'}`);
-      }
+  // Persist the current header + grid lines as a DRAFT. Shared by both
+  // "Save" and "Confirm" so confirming never posts stale DB items —
+  // whatever is on screen is written first. Returns the bill id.
+  async function persistDraft(): Promise<string> {
+    if (!header.supplier_id) throw new Error(t('purchasing.error_supplier_required'));
+    if (landedCost < 0) throw new Error('Landed cost cannot be negative');
+    if (landedCost > 0 && header.linked_grn_id) {
+      throw new Error('Landed cost is not allowed on GRN-linked bills. Post freight separately.');
+    }
+    const productLinesWithoutWh = lines.filter(l => l.product_id && !l.warehouse_id);
+    if (!header.linked_grn_id && productLinesWithoutWh.length > 0) {
+      throw new Error(`Pick a warehouse for ${productLinesWithoutWh.length} product line${productLinesWithoutWh.length === 1 ? '' : 's'}`);
+    }
 
-      const billNum = isNew ? await getAdapter().vendorBills.getNextNumber(company_id!) : existing!.bill_number;
-      // total_amount includes landed cost so CR AP captures the full
-      // commitment to the supplier.
-      const totalWithLanded = +(grandTotal + landedCost).toFixed(2);
-      const row = {
-        company_id: company_id!, bill_number: billNum,
-        supplier_bill_number: header.supplier_bill_number || null,
-        supplier_id: header.supplier_id, date: header.date,
-        due_date: header.due_date || null, reference: header.reference || null,
-        currency: header.currency, exchange_rate: 1,
-        subtotal: +subtotal.toFixed(2), discount_amount: +discountTotal.toFixed(2),
-        tax_amount: +taxTotal.toFixed(2), total_amount: totalWithLanded,
-        landed_cost_total: +landedCost.toFixed(2),    // Phase 12.17
-        status: 'draft' as const,
-        linked_grn_id: header.linked_grn_id || null,
-        void_reason: null, voided_at: null, voided_by: null,
-        notes: header.notes || null,
-      };
-      // Type cast: landed_cost_total isn't in the generated VendorBillInsert
-      // yet (Supabase types regenerate post-migration).
-      if (isNew) return getAdapter().vendorBills.create(row as unknown as Parameters<ReturnType<typeof getAdapter>['vendorBills']['create']>[0], buildItems());
-      await getAdapter().vendorBills.update(id!, row as unknown as Parameters<ReturnType<typeof getAdapter>['vendorBills']['update']>[1], buildItems());
-      return null;
-    },
-    onSuccess: async (data) => {
+    const billNum = isNew ? await getAdapter().vendorBills.getNextNumber(company_id!) : existing!.bill_number;
+    const totalWithLanded = +(grandTotal + landedCost).toFixed(2);
+    const row = {
+      company_id: company_id!, bill_number: billNum,
+      supplier_bill_number: header.supplier_bill_number || null,
+      supplier_id: header.supplier_id, date: header.date,
+      due_date: header.due_date || null, reference: header.reference || null,
+      currency: header.currency, exchange_rate: 1,
+      prices_inclusive: pricesInclusive,
+      subtotal: +subtotal.toFixed(2), discount_amount: +discountTotal.toFixed(2),
+      tax_amount: +taxTotal.toFixed(2), total_amount: totalWithLanded,
+      landed_cost_total: +landedCost.toFixed(2),
+      status: 'draft' as const,
+      linked_grn_id: header.linked_grn_id || null,
+      void_reason: null, voided_at: null, voided_by: null,
+      notes: header.notes || null,
+    };
+    if (isNew) {
+      const created = await getAdapter().vendorBills.create(row as unknown as Parameters<ReturnType<typeof getAdapter>['vendorBills']['create']>[0], buildItems());
+      return created.id;
+    }
+    await getAdapter().vendorBills.update(id!, row as unknown as Parameters<ReturnType<typeof getAdapter>['vendorBills']['update']>[1], buildItems());
+    return id!;
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: persistDraft,
+    onSuccess: async (savedId) => {
+      setDirty(false);
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['vendor_bills', company_id] });
-      if (isNew && data) navigate(`/purchasing/bills/${data.id}`);
+      if (isNew) navigate('/purchasing/bills');
       else {
-        qc.invalidateQueries({ queryKey: ['vendor_bill', id] });
-        qc.invalidateQueries({ queryKey: ['vendor_bill_items', id] });
+        qc.invalidateQueries({ queryKey: ['vendor_bill', savedId] });
+        qc.invalidateQueries({ queryKey: ['vendor_bill_items', savedId] });
       }
     },
     onError: (e: Error) => setError(e.message),
   });
 
+  // Confirm = save the current grid first, THEN post. This guarantees the
+  // posted GL/stock matches exactly what the user sees on screen (the bug:
+  // confirm used to post whatever was last in the DB, dropping edits).
   const confirmMutation = useMutation({
-    mutationFn: () => getAdapter().vendorBills.confirm(id!),
+    mutationFn: async () => {
+      const savedId = await persistDraft();
+      return getAdapter().vendorBills.confirm(savedId);
+    },
     onSuccess: async () => {
       setConfirmModal(false);
+      setDirty(false);
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['vendor_bills', company_id] });
       qc.invalidateQueries({ queryKey: ['vendor_bill', id] });
+      qc.invalidateQueries({ queryKey: ['vendor_bill_items', id] });
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => { setConfirmModal(false); setError(e.message); },
+  });
+
+  // Re-open a CONFIRMED bill: edit_vendor_bill RPC reverses the JE + stock
+  // rows and flips status to draft, so the normal editor unlocks and
+  // re-confirming reposts at the corrected values. The RPC refuses when
+  // payments are applied or the bill triggered a deferred-COGS flush.
+  const reopenMutation = useMutation({
+    mutationFn: () => getAdapter().vendorBills.edit(id!),
+    onSuccess: async () => {
+      await invalidateBooks();
+      qc.invalidateQueries({ queryKey: ['vendor_bills', company_id] });
+      qc.invalidateQueries({ queryKey: ['vendor_bill', id] });
+      setViewMode(false);
+    },
+    onError: (e: Error) => { setError(e.message); setViewMode(false); },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => getAdapter().vendorBills.deleteDraft(id!),
+    onSuccess: async () => {
+      setDeleteModal(false);
+      qc.invalidateQueries({ queryKey: ['vendor_bills', company_id] });
+      navigate('/purchasing/bills');
+    },
+    onError: (e: Error) => { setDeleteModal(false); setError(e.message); },
   });
 
   const canEdit = isNew || existing?.status === 'draft';
   // supplierOpts removed — supplier picker uses ContactPicker (D3).
   const productOpts = products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }));
-  const taxOpts = [{ value: '0', label: t('sales.no_tax') }, ...taxRates.map(r => ({ value: String(r.rate), label: `${r.name} (${r.rate}%)` }))];
+  const taxOpts = [
+    { key: '__none__', value: '', label: t('sales.no_tax') },
+    ...taxRates.map(r => ({ key: r.id, value: String(r.rate), label: `${r.name} (${r.rate}%)` })),
+  ];
   // SearchableSelect handles its own placeholder — don't inject an empty option
   // (it would otherwise appear as a clickable row in the dropdown list).
   const expenseOpts = accountOpts.map(a => ({ value: a.id, label: `${a.code} ${a.name}` }));
@@ -391,6 +481,23 @@ export default function VendorBillEditorPage() {
     );
   };
 
+  // Delete-draft confirmation — rendered in BOTH the view template and the
+  // editor form, so a wrong draft can be removed from either place.
+  const deleteModalEl = deleteModal && (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="w-80 rounded-card bg-surface-card p-6 shadow-xl">
+        <h3 className="mb-3 text-base font-semibold text-ink-primary">{t('purchasing.delete_bill')}</h3>
+        <p className="mb-5 text-sm text-ink-secondary">{t('purchasing.delete_bill_desc')}</p>
+        <div className="flex gap-2 justify-end">
+          <Button variant="ghost" size="sm" onClick={() => setDeleteModal(false)}>{t('common.cancel')}</Button>
+          <Button variant="danger" size="sm" onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending}>
+            {deleteMutation.isPending ? '…' : t('common.delete')}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+
   // Phase 14.03 — view-mode renderer (Signature template). Active only
   // on saved bills where viewMode hasn't been toggled off.
   if (viewMode && !isNew && existing) {
@@ -407,7 +514,7 @@ export default function VendorBillEditorPage() {
           data-no-print="true"
           style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
         >
-          <button onClick={() => navigate('/purchasing/bills')} style={{
+          <button onClick={() => { if (confirmLeave()) navigate('/purchasing/bills'); }} style={{
             background: 'transparent', border: 'none', cursor: 'pointer',
             fontSize: '13px', color: '#64748b',
           }}>← {t('purchasing.bills_title')}</button>
@@ -422,14 +529,61 @@ export default function VendorBillEditorPage() {
                 ✎ {t('common.edit') || 'Edit'}
               </Button>
             )}
+            {existing.status === 'confirmed' && (
+              <Button size="sm" onClick={() => reopenMutation.mutate()} disabled={reopenMutation.isPending}
+                title="Reverses the posted entries and re-opens the bill as a draft for correction">
+                ✎ {reopenMutation.isPending ? 'Re-opening…' : 'Edit bill'}
+              </Button>
+            )}
+            <Button
+              variant="ghost" size="sm"
+              onClick={() => {
+                const cloneLines = (existingItems as VendorBillItemInsert[]).map((it) => ({
+                  product_id:       it.product_id ?? null,
+                  coa_account_id:   (it as { coa_account_id?: string | null }).coa_account_id ?? null,
+                  warehouse_id:     (it as { warehouse_id?: string | null }).warehouse_id ?? null,
+                  description:      it.description ?? '',
+                  quantity:         String(it.quantity ?? 0),
+                  unit_cost:        String(it.unit_cost ?? 0),
+                  discount_percent: String(it.discount_percent ?? 0),
+                  tax_rate:         String(it.tax_rate ?? 0),
+                }));
+                navigate('/purchasing/bills/new', {
+                  state: { cloneFrom: {
+                    header: {
+                      supplier_id:          existing.supplier_id,
+                      reference:            existing.reference ?? '',
+                      supplier_bill_number: '',
+                      notes:                existing.notes ?? '',
+                      currency:             existing.currency,
+                    },
+                    prices_inclusive: (existing as { prices_inclusive?: boolean }).prices_inclusive ?? false,
+                    lines: cloneLines,
+                  } },
+                });
+              }}
+            >⧉ {t('common.duplicate')}</Button>
+            {existing.status === 'confirmed' && (
+              <Button size="sm" onClick={() => navigate(`/purchasing/payments/new?contact=${existing.supplier_id}`)}>
+                💰 {t('purchasing.make_payment') || 'Make Payment'}
+              </Button>
+            )}
             <Button variant="ghost" size="sm" onClick={() => window.print()}>
               🖨 {t('print.print') || 'Print'}
             </Button>
+            {/* Draft → Delete straight from the view page (confirmed bills use
+                 'Edit bill' to reopen; full Void is a later migration). */}
+            {existing.status === 'draft' && (
+              <Button variant="danger" size="sm" onClick={() => setDeleteModal(true)}>
+                {t('common.delete')}
+              </Button>
+            )}
           </div>
         </div>
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
-          <TaxInvoiceTemplate data={doc} />
+          <BoltDocTemplate data={doc} config={printConfig} />
         </div>
+        {deleteModalEl}
       </div>
     );
   }
@@ -437,7 +591,7 @@ export default function VendorBillEditorPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '64px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-        <button onClick={() => navigate('/purchasing/bills')} style={{
+        <button onClick={() => { if (confirmLeave()) navigate('/purchasing/bills'); }} style={{
           background: 'transparent', border: 'none', cursor: 'pointer',
           fontSize: '13px', color: '#64748b',
         }}>← {t('purchasing.bills_title')}</button>
@@ -458,7 +612,13 @@ export default function VendorBillEditorPage() {
               🖨 {t('print.print')}
             </Button>
           )}
-          <Button variant="ghost" size="sm" onClick={() => navigate('/purchasing/bills')}>{t('common.cancel')}</Button>
+          <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/purchasing/bills'); }}>{t('common.cancel')}</Button>
+          {!isNew && existing?.status === 'confirmed' && (
+            <Button size="sm" onClick={() => { setError(null); reopenMutation.mutate(); }} disabled={reopenMutation.isPending}
+              title="Reverses the posted entries and re-opens the bill as a draft for correction">
+              ✎ {reopenMutation.isPending ? 'Re-opening…' : 'Edit bill'}
+            </Button>
+          )}
           {canEdit && (
             <>
               <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
@@ -466,6 +626,9 @@ export default function VendorBillEditorPage() {
               </Button>
               {!isNew && (
                 <Button size="sm" onClick={() => setConfirmModal(true)}>{t('purchasing.confirm_bill')}</Button>
+              )}
+              {!isNew && (
+                <Button variant="danger" size="sm" onClick={() => setDeleteModal(true)}>{t('common.delete')}</Button>
               )}
             </>
           )}
@@ -540,6 +703,8 @@ export default function VendorBillEditorPage() {
         </div>
       )}
 
+      {deleteModalEl}
+
       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 2px rgba(15,23,42,.04)', padding: '20px' }}>
         <h2 className="mb-4 text-sm font-semibold text-ink-primary">{t('purchasing.bill_details')}</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
@@ -551,7 +716,7 @@ export default function VendorBillEditorPage() {
               type="supplier"
               value={header.supplier_id}
               disabled={!canEdit}
-              onChange={(id) => setHeader(h => ({ ...h, supplier_id: id ?? '' }))}
+              onChange={(id) => { setHeader(h => ({ ...h, supplier_id: id ?? '' })); setDirty(true); }}
               placeholder={t('purchasing.select_supplier')}
               panelWidth={380}
             />
@@ -586,31 +751,53 @@ export default function VendorBillEditorPage() {
       {/* Line items + Sticky sidebar */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 2px rgba(15,23,42,.04)' }}>
-        <div className="border-b border-border-subtle px-5 py-3">
+        <div className="border-b border-border-subtle px-5 py-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-ink-primary">{t('purchasing.line_items')}</h2>
+          {canEdit && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
+              <span style={{ fontSize: '12px', color: pricesInclusive ? '#7c3aed' : '#64748b', fontWeight: 500 }}>
+                {pricesInclusive ? 'Tax-inclusive prices' : 'Tax-exclusive prices'}
+              </span>
+              <div
+                onClick={() => { setPricesInclusive(v => !v); setDirty(true); }}
+                style={{
+                  width: '36px', height: '20px', borderRadius: '999px', cursor: 'pointer',
+                  background: pricesInclusive ? '#7c3aed' : '#cbd5e1',
+                  position: 'relative', transition: 'background 0.2s',
+                }}
+              >
+                <div style={{
+                  position: 'absolute', top: '2px',
+                  left: pricesInclusive ? '18px' : '2px',
+                  width: '16px', height: '16px', borderRadius: '50%',
+                  background: '#fff', transition: 'left 0.2s',
+                  boxShadow: '0 1px 2px rgba(0,0,0,.2)',
+                }} />
+              </div>
+            </label>
+          )}
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
+          <table className="w-full table-fixed text-xs" style={{ minWidth: '1180px' }}>
             <thead>
               <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary">
-                <th className="px-3 py-2 text-start font-medium w-36">{t('purchasing.product')}</th>
-                <th className="px-3 py-2 text-start font-medium w-36">{t('purchasing.account')}</th>
-                <th className="px-3 py-2 text-start font-medium w-32">{t('purchasing.description')}</th>
-                <th className="px-3 py-2 text-end font-medium w-20">{t('purchasing.qty')}</th>
-                <th className="px-3 py-2 text-end font-medium w-24">{t('purchasing.unit_cost')}</th>
-                <th className="px-3 py-2 text-end font-medium w-20">{t('purchasing.disc_pct')}</th>
-                <th className="px-3 py-2 text-end font-medium w-24">{t('purchasing.tax')}</th>
-                <th className="px-3 py-2 text-start font-medium w-32" title="Destination warehouse for this line">Warehouse</th>
-                <th className="px-3 py-2 text-end font-medium w-20" title="On-hand stock">Stock</th>
-                <th className="px-3 py-2 text-end font-medium w-24" title="Projected MAC after this purchase">MAC →</th>
-                <th className="px-3 py-2 text-end font-medium w-24">{t('purchasing.line_total')}</th>
-                {canEdit && <th className="w-10" />}
+                <th className="px-3 py-2 text-start font-medium" style={{ minWidth: '200px' }}>{t('purchasing.product')}</th>
+                <th className="px-3 py-2 text-start font-medium" style={{ width: '168px' }}>{t('purchasing.account')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '72px' }}>{t('purchasing.qty')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('purchasing.unit_cost')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '84px' }}>{t('purchasing.disc_pct')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('purchasing.tax')}</th>
+                <th className="px-3 py-2 text-start font-medium" style={{ width: '128px' }} title="Destination warehouse for this line">Warehouse</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '76px' }} title="On-hand stock">Stock</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '96px' }} title="Projected MAC after this purchase">MAC →</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('purchasing.line_total')}</th>
+                {canEdit && <th style={{ width: '36px' }} />}
               </tr>
             </thead>
             <tbody>
               {lines.map(line => (
                 <tr key={line._key} className="border-b border-border-subtle last:border-0">
-                  <td className="px-3 py-1.5">
+                  <td className="px-3 py-1.5 align-top">
                     <SearchableSelect
                       options={productOpts}
                       value={line.product_id ?? ''}
@@ -627,8 +814,13 @@ export default function VendorBillEditorPage() {
                         },
                       } : undefined}
                     />
+                    <input
+                      className="mt-1 w-full rounded border border-transparent bg-transparent px-2 py-0.5 text-[11px] text-ink-tertiary placeholder:text-ink-tertiary hover:border-border-subtle focus:border-border-strong focus:bg-surface-subtle focus:text-ink-secondary disabled:opacity-60"
+                      value={line.description} disabled={!canEdit}
+                      placeholder={t('purchasing.description') + ' (optional)'}
+                      onChange={e => updateLine(line._key, { description: e.target.value })} />
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-3 py-1.5 align-top">
                     {line.product_id ? (
                       // Resolved from the product's Purchase Account (read-only display)
                       (() => {
@@ -650,40 +842,35 @@ export default function VendorBillEditorPage() {
                       />
                     )}
                   </td>
-                  <td className="px-3 py-1.5">
-                    <input className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60"
-                      value={line.description} disabled={!canEdit}
-                      onChange={e => updateLine(line._key, { description: e.target.value })} />
-                  </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-3 py-1.5 align-top">
                     <input type="number" min="0" step="1"
                       className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60"
                       value={line.quantity} disabled={!canEdit}
                       onChange={e => updateLine(line._key, { quantity: e.target.value })} />
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-3 py-1.5 align-top">
                     <input type="number" min="0" step="0.01"
                       className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60"
                       value={line.unit_cost} disabled={!canEdit}
                       onChange={e => updateLine(line._key, { unit_cost: e.target.value })} />
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-3 py-1.5 align-top">
                     <input type="number" min="0" max="100" step="0.01"
                       className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60"
                       value={line.discount_percent} disabled={!canEdit}
                       onChange={e => updateLine(line._key, { discount_percent: e.target.value })} />
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-3 py-1.5 align-top">
                     <select className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60"
                       value={line.tax_rate} disabled={!canEdit}
                       onChange={e => updateLine(line._key, { tax_rate: e.target.value })}>
-                      {taxOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      {taxOpts.map(o => <option key={o.key} value={o.value}>{o.label}</option>)}
                     </select>
                   </td>
                   {/* Warehouse picker — only meaningful for product lines on
                        standalone bills (no GRN). For GRN-linked bills the
                        GRN's warehouse already governs; leave disabled. */}
-                  <td className="px-3 py-1.5">
+                  <td className="px-3 py-1.5 align-top">
                     {line.product_id && !header.linked_grn_id ? (
                       <select
                         className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60"
@@ -704,8 +891,8 @@ export default function VendorBillEditorPage() {
                     if (!pid) {
                       return (
                         <>
-                          <td className="px-3 py-1.5 text-end font-mono text-ink-tertiary">—</td>
-                          <td className="px-3 py-1.5 text-end font-mono text-ink-tertiary">—</td>
+                          <td className="px-3 py-1.5 align-top text-end font-mono text-ink-tertiary">—</td>
+                          <td className="px-3 py-1.5 align-top text-end font-mono text-ink-tertiary">—</td>
                         </>
                       );
                     }
@@ -727,21 +914,21 @@ export default function VendorBillEditorPage() {
                       : 'text-ink-secondary';
                     return (
                       <>
-                        <td className="px-3 py-1.5 text-end font-mono text-ink-secondary" title={`On-hand: ${fmt(curQty)}, after: ${fmt(totalQty)}`}>
+                        <td className="px-3 py-1.5 align-top text-end font-mono text-ink-secondary" title={`On-hand: ${fmt(curQty)}, after: ${fmt(totalQty)}`}>
                           {fmt(curQty)}
                         </td>
-                        <td className={`px-3 py-1.5 text-end font-mono ${macCls}`} title={curMac > 0 ? `Current MAC: ${fmt(curMac)} → after: ${fmt(newMac)}` : `New MAC will be ${fmt(newMac)}`}>
+                        <td className={`px-3 py-1.5 align-top text-end font-mono ${macCls}`} title={curMac > 0 ? `Current MAC: ${fmt(curMac)} → after: ${fmt(newMac)}` : `New MAC will be ${fmt(newMac)}`}>
                           {addQty > 0 ? fmt(newMac) : (curMac > 0 ? fmt(curMac) : '—')}
                         </td>
                       </>
                     );
                   })()}
-                  <td className="px-3 py-1.5 text-end font-mono text-ink-primary">{fmt(line.line_total)}</td>
+                  <td className="px-3 py-1.5 align-top text-end font-mono text-ink-primary">{fmt(line.line_total)}</td>
                   {canEdit && (
-                    <td className="px-3 py-1.5">
+                    <td className="px-3 py-1.5 align-top">
                       <button className="text-red-400 hover:text-red-600 disabled:opacity-30"
                         disabled={lines.length === 1}
-                        onClick={() => setLines(prev => prev.filter(l => l._key !== line._key))}>×</button>
+                        onClick={() => { setLines(prev => prev.filter(l => l._key !== line._key)); setDirty(true); }}>×</button>
                     </td>
                   )}
                 </tr>
@@ -752,7 +939,7 @@ export default function VendorBillEditorPage() {
         {canEdit && (
           <div className="border-t border-border-subtle px-5 py-2">
             <button className="text-xs text-brand-600 hover:text-brand-700"
-              onClick={() => setLines(prev => [...prev, emptyLine()])}>
+              onClick={() => { setLines(prev => [...prev, emptyLine()]); setDirty(true); }}>
               + {t('purchasing.add_line')}
             </button>
           </div>
@@ -798,16 +985,19 @@ export default function VendorBillEditorPage() {
               const thisBill = openSupplierBills.find(b => b.id === id);
               if (!thisBill) return null;
               const outstanding = Number(thisBill.outstanding ?? 0);
-              const paid = (grandTotal + landedCost) - outstanding;
+              // paid = what has already been paid (DB total minus DB outstanding).
+              const paid       = Number(thisBill.total_amount ?? 0) - outstanding;
+              // balanceDue = live grand total minus what's already paid.
+              const balanceDue = (grandTotal + landedCost) - paid;
               return (
                 <>
                   <div className="flex justify-between text-ink-secondary border-t border-border-subtle pt-2.5">
                     <span>Paid</span>
                     <span className="font-mono text-emerald-700">{fmt(paid)}</span>
                   </div>
-                  <div className={`flex justify-between font-semibold ${outstanding > 0.005 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                  <div className={`flex justify-between font-semibold ${balanceDue > 0.005 ? 'text-amber-700' : 'text-emerald-700'}`}>
                     <span>Balance Due</span>
-                    <span className="font-mono">{header.currency} {fmt(outstanding)}</span>
+                    <span className="font-mono">{header.currency} {fmt(balanceDue)}</span>
                   </div>
                 </>
               );

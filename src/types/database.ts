@@ -463,7 +463,9 @@ export type Database = {
           logo_url: string | null
           name: string
           name_ar: string | null
+          mol_establishment_id: string | null
           period_lock_date: string | null
+          wps_routing_code: string | null
           phone: string | null
           prices_inclusive_of_tax: boolean
           print_config: Json
@@ -489,7 +491,9 @@ export type Database = {
           logo_url?: string | null
           name: string
           name_ar?: string | null
+          mol_establishment_id?: string | null
           period_lock_date?: string | null
+          wps_routing_code?: string | null
           phone?: string | null
           prices_inclusive_of_tax?: boolean
           print_config?: Json
@@ -515,7 +519,9 @@ export type Database = {
           logo_url?: string | null
           name?: string
           name_ar?: string | null
+          mol_establishment_id?: string | null
           period_lock_date?: string | null
+          wps_routing_code?: string | null
           phone?: string | null
           prices_inclusive_of_tax?: boolean
           print_config?: Json
@@ -549,6 +555,7 @@ export type Database = {
           name: string
           name_ar: string | null
           notes: string | null
+          payable_account_code: string | null
           payment_terms_days: number
           phone: string | null
           tax_id: string | null
@@ -607,6 +614,7 @@ export type Database = {
           name?: string
           name_ar?: string | null
           notes?: string | null
+          payable_account_code?: string | null
           payment_terms_days?: number
           phone?: string | null
           tax_id?: string | null
@@ -1131,6 +1139,84 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      employees: {
+        Row: {
+          basic_salary: number
+          bank_name: string | null
+          code: string | null
+          company_id: string
+          created_at: string
+          designation: string | null
+          email: string | null
+          emirates_id: string | null
+          housing_allowance: number
+          iban: string | null
+          id: string
+          is_active: boolean
+          joining_date: string | null
+          bank_routing_code: string | null
+          mol_id: string | null
+          name: string
+          name_ar: string | null
+          notes: string | null
+          other_allowance: number
+          passport_no: string | null
+          phone: string | null
+          transport_allowance: number
+          updated_at: string
+        }
+        Insert: {
+          basic_salary?: number
+          bank_name?: string | null
+          code?: string | null
+          company_id: string
+          created_at?: string
+          designation?: string | null
+          email?: string | null
+          emirates_id?: string | null
+          housing_allowance?: number
+          iban?: string | null
+          id?: string
+          is_active?: boolean
+          joining_date?: string | null
+          bank_routing_code?: string | null
+          mol_id?: string | null
+          name: string
+          name_ar?: string | null
+          notes?: string | null
+          other_allowance?: number
+          passport_no?: string | null
+          phone?: string | null
+          transport_allowance?: number
+          updated_at?: string
+        }
+        Update: {
+          basic_salary?: number
+          bank_name?: string | null
+          code?: string | null
+          company_id?: string
+          created_at?: string
+          designation?: string | null
+          email?: string | null
+          emirates_id?: string | null
+          housing_allowance?: number
+          iban?: string | null
+          id?: string
+          is_active?: boolean
+          joining_date?: string | null
+          bank_routing_code?: string | null
+          mol_id?: string | null
+          name?: string
+          name_ar?: string | null
+          notes?: string | null
+          other_allowance?: number
+          passport_no?: string | null
+          phone?: string | null
+          transport_allowance?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       expenses: {
         Row: {
@@ -1946,6 +2032,171 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      leave_salary_payments: {
+        Row: {
+          amount: number
+          bank_account_id: string | null
+          company_id: string
+          created_at: string
+          date: string
+          days: number
+          employee_id: string
+          id: string
+          journal_entry_id: string | null
+          leave_from: string | null
+          leave_to: string | null
+          notes: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          bank_account_id?: string | null
+          company_id: string
+          created_at?: string
+          date: string
+          days?: number
+          employee_id: string
+          id?: string
+          journal_entry_id?: string | null
+          leave_from?: string | null
+          leave_to?: string | null
+          notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          bank_account_id?: string | null
+          company_id?: string
+          created_at?: string
+          date?: string
+          days?: number
+          employee_id?: string
+          id?: string
+          journal_entry_id?: string | null
+          leave_from?: string | null
+          leave_to?: string | null
+          notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      payroll_run_items: {
+        Row: {
+          basic_salary: number
+          bonus: number
+          company_id: string
+          created_at: string
+          deductions: number
+          employee_id: string
+          housing_allowance: number
+          id: string
+          loan_repayment: number
+          notes: string | null
+          other_allowance: number
+          overtime: number
+          run_id: string
+          transport_allowance: number
+        }
+        Insert: {
+          basic_salary?: number
+          bonus?: number
+          company_id: string
+          created_at?: string
+          deductions?: number
+          employee_id: string
+          housing_allowance?: number
+          id?: string
+          loan_repayment?: number
+          notes?: string | null
+          other_allowance?: number
+          overtime?: number
+          run_id: string
+          transport_allowance?: number
+        }
+        Update: {
+          basic_salary?: number
+          bonus?: number
+          company_id?: string
+          created_at?: string
+          deductions?: number
+          employee_id?: string
+          housing_allowance?: number
+          id?: string
+          loan_repayment?: number
+          notes?: string | null
+          other_allowance?: number
+          overtime?: number
+          run_id?: string
+          transport_allowance?: number
+        }
+        Relationships: []
+      }
+      payroll_runs: {
+        Row: {
+          bank_account_id: string | null
+          company_id: string
+          created_at: string
+          date: string
+          id: string
+          journal_entry_id: string | null
+          notes: string | null
+          payment_journal_entry_id: string | null
+          period_month: number
+          period_year: number
+          run_number: string
+          status: string
+          total_deductions: number
+          total_gratuity: number
+          total_gross: number
+          total_loan_repayment: number
+          total_net: number
+          updated_at: string
+        }
+        Insert: {
+          bank_account_id?: string | null
+          company_id: string
+          created_at?: string
+          date: string
+          id?: string
+          journal_entry_id?: string | null
+          notes?: string | null
+          payment_journal_entry_id?: string | null
+          period_month: number
+          period_year: number
+          run_number: string
+          status?: string
+          total_deductions?: number
+          total_gratuity?: number
+          total_gross?: number
+          total_loan_repayment?: number
+          total_net?: number
+          updated_at?: string
+        }
+        Update: {
+          bank_account_id?: string | null
+          company_id?: string
+          created_at?: string
+          date?: string
+          id?: string
+          journal_entry_id?: string | null
+          notes?: string | null
+          payment_journal_entry_id?: string | null
+          period_month?: number
+          period_year?: number
+          run_number?: string
+          status?: string
+          total_deductions?: number
+          total_gratuity?: number
+          total_gross?: number
+          total_loan_repayment?: number
+          total_net?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       payment_allocations: {
         Row: {
@@ -2968,6 +3219,7 @@ export type Database = {
           id: string
           notes: string | null
           po_number: string
+          prices_inclusive: boolean
           reference: string | null
           status: string
           subtotal: number
@@ -2991,6 +3243,7 @@ export type Database = {
           id?: string
           notes?: string | null
           po_number: string
+          prices_inclusive?: boolean
           reference?: string | null
           status?: string
           subtotal?: number
@@ -3014,6 +3267,7 @@ export type Database = {
           id?: string
           notes?: string | null
           po_number?: string
+          prices_inclusive?: boolean
           reference?: string | null
           status?: string
           subtotal?: number
@@ -4060,6 +4314,7 @@ export type Database = {
           id: string
           linked_grn_id: string | null
           notes: string | null
+          prices_inclusive: boolean
           reference: string | null
           status: string
           subtotal: number
@@ -4084,6 +4339,7 @@ export type Database = {
           id?: string
           linked_grn_id?: string | null
           notes?: string | null
+          prices_inclusive?: boolean
           reference?: string | null
           status?: string
           subtotal?: number
@@ -4108,6 +4364,7 @@ export type Database = {
           id?: string
           linked_grn_id?: string | null
           notes?: string | null
+          prices_inclusive?: boolean
           reference?: string | null
           status?: string
           subtotal?: number

@@ -156,7 +156,6 @@ function useNavSections(t: (k: string) => string): NavSection[] {
           label: t('nav.banking'),
           items: [
             { to: '/banking/transfers',    label: t('banking.transfers_title') },
-            { to: '/banking/expenses',     label: t('banking.expenses_title') },
             { to: '/banking/pdc-received', label: t('banking.pdc_received_title') },
             { to: '/banking/pdc-issued',   label: t('banking.pdc_issued_title') },
             { to: '/banking/reconciliation', label: 'Bank Reconciliation' },
@@ -165,10 +164,16 @@ function useNavSections(t: (k: string) => string): NavSection[] {
       ],
     },
 
+    // Payroll P1 (owner override 2026-06-13) — was disabled "Coming in v2"
     {
       label: 'Payroll',
-      disabled: true,
-      disabledHint: 'Coming in v2',
+      groups: [{
+        items: [
+          { to: '/payroll/runs',         label: 'Payroll Runs' },
+          { to: '/payroll/employees',    label: 'Employees' },
+          { to: '/payroll/leave-salary', label: 'Leave Salary' },
+        ],
+      }],
     },
 
     {
@@ -266,7 +271,7 @@ function NavButton({
           `flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
             isActive
               ? 'bg-brand-600 text-white'
-              : 'text-ink-secondary hover:bg-surface-muted hover:text-ink-primary'
+              : 'text-white/65 hover:bg-white/10 hover:text-white'
           }`
         }
       >
@@ -281,7 +286,7 @@ function NavButton({
         type="button"
         disabled
         title={section.disabledHint}
-        className="flex cursor-not-allowed items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium text-ink-tertiary/60"
+        className="flex cursor-not-allowed items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium text-white/30"
       >
         {section.label}
         <ChevronDownIcon />
@@ -295,10 +300,10 @@ function NavButton({
       onClick={onToggle}
       className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
         isActive
-          ? 'bg-brand-50 text-brand-700'
+          ? 'bg-brand-600 text-white'
           : isOpen
-          ? 'bg-surface-muted text-ink-primary'
-          : 'text-ink-secondary hover:bg-surface-muted hover:text-ink-primary'
+          ? 'bg-white/15 text-white'
+          : 'text-white/65 hover:bg-white/10 hover:text-white'
       }`}
       onKeyDown={(e) => {
         if (e.key === 'ArrowDown' && !isOpen) onToggle();
@@ -381,8 +386,8 @@ function UserMenu({ email, onSignOut }: { email: string | null; onSignOut: () =>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold text-white shadow-sm hover:opacity-90"
-        style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
+        className="flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold text-white shadow-sm ring-2 ring-white/25 hover:opacity-90"
+        style={{ background: 'linear-gradient(135deg, #7c3aed, #8b5cf6)' }}
         aria-label="User menu"
       >
         {initial}
@@ -464,7 +469,7 @@ function SettingsMenu() {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex h-9 w-9 items-center justify-center rounded-full text-ink-secondary hover:bg-surface-muted hover:text-ink-primary"
+        className="flex h-9 w-9 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-white"
         aria-label="Settings"
       >
         <CogIcon />
@@ -524,7 +529,7 @@ function MobileDrawer({
           <div className="flex items-center gap-2.5">
             <div
               className="flex h-8 w-8 items-center justify-center rounded-lg shadow-sm"
-              style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
+              style={{ background: 'linear-gradient(135deg, #7c3aed, #8b5cf6)' }}
             >
               <BoltIcon />
             </div>
@@ -663,22 +668,17 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <div className="flex h-screen flex-col bg-surface-page">
-      {/* ── 3px indigo→violet gradient bar (Phase 12.30 design system) ── */}
-      <div
-        className="h-[3px] shrink-0"
-        style={{ background: 'linear-gradient(90deg, #6366f1, #8b5cf6)' }}
-        aria-hidden="true"
-      />
-
       {/* ── Top nav ───────────────────────────────────────────────────── */}
+      {/* Dark violet-ink bar — dropdown panels stay white. */}
       <header
         ref={navRef}
-        className="relative z-30 flex h-16 shrink-0 items-center gap-2 border-b border-border-subtle bg-surface-card px-4 shadow-sm lg:px-6"
+        className="relative z-30 flex h-16 shrink-0 items-center gap-2 px-4 lg:px-6"
+        style={{ background: '#1e1838', borderBottom: '1px solid rgba(255,255,255,.08)' }}
       >
         {/* Mobile hamburger */}
         <button
           type="button"
-          className="flex h-9 w-9 items-center justify-center rounded-full text-ink-secondary hover:bg-surface-muted hover:text-ink-primary lg:hidden"
+          className="flex h-9 w-9 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-white lg:hidden"
           onClick={() => setDrawerOpen(true)}
           aria-label="Open menu"
         >
@@ -689,11 +689,11 @@ export function AppLayout({ children }: AppLayoutProps) {
         <Link to="/dashboard" className="flex items-center gap-2.5">
           <div
             className="flex h-8 w-8 items-center justify-center rounded-lg shadow-sm"
-            style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}
+            style={{ background: 'linear-gradient(135deg, #7c3aed, #8b5cf6)' }}
           >
             <BoltIcon />
           </div>
-          <span className="hidden text-base font-bold text-ink-primary sm:block">StockBolt</span>
+          <span className="hidden text-base font-bold text-white sm:block">StockBolt</span>
         </Link>
 
         {/* Desktop nav — sections */}
@@ -720,7 +720,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
         {/* Right tools */}
         <div className="ms-auto flex items-center gap-1">
-          <LanguageToggle />
+          <LanguageToggle variant="dark" />
           <NotificationsBell />
           <SettingsMenu />
           <UserMenu email={email} onSignOut={handleSignOut} />
@@ -737,8 +737,13 @@ export function AppLayout({ children }: AppLayoutProps) {
       />
 
       {/* ── Main content ──────────────────────────────────────────────── */}
-      <main className="flex-1 overflow-y-auto p-4 md:p-6">
-        {children}
+      {/* Inner wrapper caps page width so forms don't stretch edge-to-edge
+          on large monitors. 1536px (not 1280) because line-item editors
+          (invoice/bill/PO) have 10+ columns that get crushed any narrower. */}
+      <main className="flex-1 overflow-y-auto p-4 md:p-3">
+        <div style={{ maxWidth: '1536px', margin: '0 auto', width: '100%' }}>
+          {children}
+        </div>
       </main>
     </div>
   );

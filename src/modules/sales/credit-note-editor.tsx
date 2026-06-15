@@ -9,7 +9,8 @@ import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { SearchableSelect } from '@/ui/searchable-select';
 // Phase 14.04 — Signature template view mode for saved credit notes.
-import { TaxInvoiceTemplate } from '@/modules/print/_signature/templates/tax-invoice';
+import { BoltDocTemplate } from '@/modules/print/_signature/templates/bolt-v4';
+import { usePrintConfig } from '@/hooks/use-print-config';
 import { creditNoteToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type { CreditNoteRow, CreditNoteItemInsert, CreditNoteItemRow, ContactRow, InvoiceRow, InvoiceItemRow, Company, ProductRow } from '@/data/adapter';
@@ -40,6 +41,7 @@ export default function CreditNoteEditorPage() {
   const isNew       = !id || id === 'new';
   const { t }       = useTranslation();
   const navigate    = useNavigate();
+  const printConfig = usePrintConfig();
   const qc          = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const companyCurrency = useCompanyCurrency();    // Phase 14.14m
@@ -273,7 +275,7 @@ export default function CreditNoteEditorPage() {
           </div>
         </div>
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
-          <TaxInvoiceTemplate data={doc} />
+          <BoltDocTemplate data={doc} config={printConfig} />
         </div>
       </div>
     );
@@ -282,7 +284,7 @@ export default function CreditNoteEditorPage() {
   return (
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">
+        <h1 className="text-2xl font-bold text-ink-primary">
           {isNew ? t('returns.new_credit_note') : `${t('returns.cn_number')}: ${existing?.credit_note_number}`}
         </h1>
         <div className="flex gap-2">
@@ -313,9 +315,9 @@ export default function CreditNoteEditorPage() {
       </div>
 
       {/* Header fields */}
-      <div className="bg-white border border-slate-200 rounded-lg p-6 grid grid-cols-2 gap-4">
+      <div className="bg-white border border-border-subtle rounded-lg p-6 grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">{t('common.customer')} *</label>
+          <label className="block text-sm font-medium text-ink-secondary mb-1">{t('common.customer')} *</label>
           <SearchableSelect
             options={contacts.map((c) => ({ value: c.id, label: c.name }))}
             value={contactId}
@@ -327,13 +329,13 @@ export default function CreditNoteEditorPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">{t('returns.linked_invoice')}</label>
+          <label className="block text-sm font-medium text-ink-secondary mb-1">{t('returns.linked_invoice')}</label>
           <div className="flex gap-2">
             <select
               value={linkedInvId}
               onChange={e => setLinkedInvId(e.target.value)}
               disabled={!isDraft}
-              className="flex-1 border border-slate-300 rounded px-3 py-2 text-sm"
+              className="flex-1 border border-border-strong rounded px-3 py-2 text-sm"
             >
               <option value="">— {t('returns.no_linked_invoice')} —</option>
               {invoices.filter(inv => !contactId || inv.contact_id === contactId).map(inv => (
@@ -347,15 +349,15 @@ export default function CreditNoteEditorPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">{t('common.date')} *</label>
+          <label className="block text-sm font-medium text-ink-secondary mb-1">{t('common.date')} *</label>
           <input type="date" value={date} onChange={e => setDate(e.target.value)} disabled={!isDraft}
-            className="w-full border border-slate-300 rounded px-3 py-2 text-sm" />
+            className="w-full border border-border-strong rounded px-3 py-2 text-sm" />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">{t('returns.reason')}</label>
+          <label className="block text-sm font-medium text-ink-secondary mb-1">{t('returns.reason')}</label>
           <select value={reason} onChange={e => setReason(e.target.value)} disabled={!isDraft}
-            className="w-full border border-slate-300 rounded px-3 py-2 text-sm">
+            className="w-full border border-border-strong rounded px-3 py-2 text-sm">
             <option value="return">{t('returns.reason_return')}</option>
             <option value="rebate">{t('returns.reason_rebate')}</option>
             <option value="price_correction">{t('returns.reason_price_correction')}</option>
@@ -365,77 +367,77 @@ export default function CreditNoteEditorPage() {
 
         <div className="flex items-center gap-3">
           <input type="checkbox" id="restock" checked={restock} onChange={e => setRestock(e.target.checked)} disabled={!isDraft}
-            className="h-4 w-4 rounded border-slate-300 text-blue-600" />
-          <label htmlFor="restock" className="text-sm font-medium text-slate-700">
+            className="h-4 w-4 rounded border-border-strong text-brand-600" />
+          <label htmlFor="restock" className="text-sm font-medium text-ink-secondary">
             {t('returns.restock_inventory')}
           </label>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">{t('common.notes')}</label>
+          <label className="block text-sm font-medium text-ink-secondary mb-1">{t('common.notes')}</label>
           <input type="text" value={notes} onChange={e => setNotes(e.target.value)} disabled={!isDraft}
-            className="w-full border border-slate-300 rounded px-3 py-2 text-sm" />
+            className="w-full border border-border-strong rounded px-3 py-2 text-sm" />
         </div>
       </div>
 
       {/* Line items */}
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-          <h2 className="font-semibold text-slate-700">{t('returns.line_items')}</h2>
+      <div className="bg-white border border-border-subtle rounded-lg overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
+          <h2 className="font-semibold text-ink-secondary">{t('returns.line_items')}</h2>
           {isDraft && <Button variant="secondary" onClick={addLine}>{t('returns.add_line')}</Button>}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50">
+            <thead className="bg-surface-muted">
               <tr>
-                <th className="px-3 py-2 text-left text-xs font-medium text-slate-500">{t('common.description')}</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-slate-500">{t('common.qty')}</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-slate-500">{t('common.unit_price')}</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-slate-500">{t('common.discount')} %</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-slate-500">{t('common.tax')} %</th>
-                {restock && <th className="px-3 py-2 text-right text-xs font-medium text-slate-500">{t('returns.cost_at_sale')}</th>}
-                <th className="px-3 py-2 text-right text-xs font-medium text-slate-500">{t('common.total')}</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-ink-tertiary">{t('common.description')}</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.qty')}</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.unit_price')}</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.discount')} %</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.tax')} %</th>
+                {restock && <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('returns.cost_at_sale')}</th>}
+                <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.total')}</th>
                 {isDraft && <th className="px-3 py-2" />}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-border-subtle">
               {lines.map((l, i) => {
                 const c = calcLine(l);
                 return (
                   <tr key={i}>
                     <td className="px-3 py-2">
                       <input value={l.description} onChange={e => updateLine(i, 'description', e.target.value)}
-                        disabled={!isDraft} className="w-full border border-slate-300 rounded px-2 py-1 text-sm" />
+                        disabled={!isDraft} className="w-full border border-border-strong rounded px-2 py-1 text-sm" />
                     </td>
                     <td className="px-3 py-2">
                       <input type="number" min="1" step="1" value={l.quantity}
                         onChange={e => updateLine(i, 'quantity', Number(e.target.value))}
-                        disabled={!isDraft} className="w-24 border border-slate-300 rounded px-2 py-1 text-sm text-right" />
+                        disabled={!isDraft} className="w-24 border border-border-strong rounded px-2 py-1 text-sm text-right" />
                     </td>
                     <td className="px-3 py-2">
                       <input type="number" min="0" step="0.01" value={l.unit_price}
                         onChange={e => updateLine(i, 'unit_price', Number(e.target.value))}
-                        disabled={!isDraft} className="w-28 border border-slate-300 rounded px-2 py-1 text-sm text-right" />
+                        disabled={!isDraft} className="w-28 border border-border-strong rounded px-2 py-1 text-sm text-right" />
                     </td>
                     <td className="px-3 py-2">
                       <input type="number" min="0" max="100" step="0.1" value={l.discount_percent}
                         onChange={e => updateLine(i, 'discount_percent', Number(e.target.value))}
-                        disabled={!isDraft} className="w-20 border border-slate-300 rounded px-2 py-1 text-sm text-right" />
+                        disabled={!isDraft} className="w-20 border border-border-strong rounded px-2 py-1 text-sm text-right" />
                     </td>
                     <td className="px-3 py-2">
                       <input type="number" min="0" max="100" step="0.1" value={l.tax_rate}
                         onChange={e => updateLine(i, 'tax_rate', Number(e.target.value))}
-                        disabled={!isDraft} className="w-20 border border-slate-300 rounded px-2 py-1 text-sm text-right" />
+                        disabled={!isDraft} className="w-20 border border-border-strong rounded px-2 py-1 text-sm text-right" />
                     </td>
                     {restock && (
                       <td className="px-3 py-2">
                         <input type="number" min="0" step="0.01" value={l.cost_at_sale ?? ''}
                           placeholder={t('returns.cost_at_sale_hint')}
                           onChange={e => updateLine(i, 'cost_at_sale', e.target.value ? Number(e.target.value) : null)}
-                          disabled={!isDraft} className="w-28 border border-slate-300 rounded px-2 py-1 text-sm text-right" />
+                          disabled={!isDraft} className="w-28 border border-border-strong rounded px-2 py-1 text-sm text-right" />
                       </td>
                     )}
-                    <td className="px-3 py-2 text-right font-semibold text-slate-700">{fmt(c.line_total)}</td>
+                    <td className="px-3 py-2 text-right font-semibold text-ink-secondary">{fmt(c.line_total)}</td>
                     {isDraft && (
                       <td className="px-3 py-2">
                         <button onClick={() => removeLine(i)} className="text-red-400 hover:text-red-600 text-xs">✕</button>
@@ -447,10 +449,10 @@ export default function CreditNoteEditorPage() {
             </tbody>
           </table>
         </div>
-        <div className="flex justify-end px-4 py-3 border-t border-slate-200 gap-6 text-sm">
-          <span className="text-slate-500">{t('common.subtotal')}: <strong>{fmt(totals.subtotal - totals.discount)}</strong></span>
-          <span className="text-slate-500">{t('common.tax')}: <strong>{fmt(totals.tax)}</strong></span>
-          <span className="text-slate-800 font-bold">{t('common.total')}: {fmt(totals.total)}</span>
+        <div className="flex justify-end px-4 py-3 border-t border-border-subtle gap-6 text-sm">
+          <span className="text-ink-tertiary">{t('common.subtotal')}: <strong>{fmt(totals.subtotal - totals.discount)}</strong></span>
+          <span className="text-ink-tertiary">{t('common.tax')}: <strong>{fmt(totals.tax)}</strong></span>
+          <span className="text-ink-primary font-bold">{t('common.total')}: {fmt(totals.total)}</span>
         </div>
       </div>
 
@@ -465,12 +467,12 @@ export default function CreditNoteEditorPage() {
       {showVoidDlg && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 shadow-xl w-96 space-y-4">
-            <h3 className="font-semibold text-slate-800">{t('common.void_confirm')}</h3>
+            <h3 className="font-semibold text-ink-primary">{t('common.void_confirm')}</h3>
             <input
               value={voidReason}
               onChange={e => setVoidReason(e.target.value)}
               placeholder={t('common.void_reason')}
-              className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+              className="w-full border border-border-strong rounded px-3 py-2 text-sm"
             />
             <div className="flex justify-end gap-2">
               <Button variant="secondary" onClick={() => setShowVoidDlg(false)}>{t('common.cancel')}</Button>

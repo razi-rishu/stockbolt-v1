@@ -6,25 +6,10 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
-import type { CreditNoteRow } from '@/data/adapter';
+import { StatusBadge } from '@/ui/status-badge';
+import type { CreditNoteRow, ContactRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; text: string; border: string; label: string }> = {
-    draft:     { bg: '#fffbeb', text: '#b45309', border: '#fde68a', label: 'Draft' },
-    confirmed: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0', label: 'Confirmed' },
-    void:      { bg: '#fef2f2', text: '#dc2626', border: '#fecaca', label: 'Void' },
-  };
-  const p = map[status] ?? map.draft;
-  return (
-    <span style={{
-      display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
-      fontSize: '11px', fontWeight: 600,
-      background: p.bg, color: p.text, border: `1px solid ${p.border}`,
-    }}>{p.label}</span>
-  );
-}
 
 export default function CreditNotesPage() {
   const { t } = useTranslation();
@@ -36,6 +21,13 @@ export default function CreditNotesPage() {
     queryFn:  () => getAdapter().creditNotes.list(company_id!),
     enabled:  !!company_id,
   });
+
+  const { data: customers = [] } = useQuery<ContactRow[]>({
+    queryKey: ['contacts', company_id, 'customer'],
+    queryFn: () => getAdapter().contacts.list(company_id!, 'customer'),
+    enabled: !!company_id,
+  });
+  const customerMap = Object.fromEntries(customers.map(c => [c.id, c.name]));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -61,6 +53,7 @@ export default function CreditNotesPage() {
               <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
                 {[
                   { l: t('returns.cn_number'),     a: 'start' as const },
+                  { l: t('sales.customer'),        a: 'start' as const },
                   { l: t('common.date'),           a: 'start' as const },
                   { l: t('returns.reason'),        a: 'start' as const },
                   { l: t('returns.restock'),       a: 'start' as const },
@@ -90,6 +83,7 @@ export default function CreditNotesPage() {
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
                 >
                   <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>{cn.credit_note_number}</td>
+                  <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px', fontWeight: 500 }}>{customerMap[cn.contact_id] ?? '—'}</td>
                   <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{cn.date}</td>
                   <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px', textTransform: 'capitalize' }}>{cn.reason ?? '—'}</td>
                   <td className="px-4 py-3">

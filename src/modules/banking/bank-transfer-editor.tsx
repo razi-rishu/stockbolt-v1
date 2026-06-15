@@ -82,10 +82,10 @@ export default function BankTransferEditorPage() {
       if (isNew) return getAdapter().bankTransfers.create(payload);
       return getAdapter().bankTransfers.update(id!, { from_account_id: fromAccountId, to_account_id: toAccountId, amount: parseFloat(amount), date, reference: reference || null, notes: notes || null });
     },
-    onSuccess: async (row) => {
+    onSuccess: async () => {
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['bank_transfers'] });
-      if (isNew) navigate(`/banking/transfers/${(row as BankTransferRow).id}`);
+      navigate('/banking/transfers');
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -117,7 +117,7 @@ export default function BankTransferEditorPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-800">
+        <h1 className="text-2xl font-bold text-ink-primary">
           {isNew ? t('banking.new_transfer') : (transfer?.transfer_number ?? t('banking.new_transfer'))}
         </h1>
         {transfer && (
@@ -131,22 +131,22 @@ export default function BankTransferEditorPage() {
 
       {error && <p className="text-sm text-red-600 bg-red-50 rounded p-3">{error}</p>}
 
-      <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-4">
+      <div className="bg-white border border-border-subtle rounded-lg p-6 space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">{t('banking.from_account')}</label>
+            <label className="block text-xs font-medium text-ink-secondary mb-1">{t('banking.from_account')}</label>
             <select disabled={!isDraft}
               value={fromAccountId} onChange={e => setFromAccountId(e.target.value)}
-              className="w-full h-9 rounded-md border border-slate-300 px-2 text-sm disabled:bg-slate-50">
+              className="w-full h-9 rounded-md border border-border-strong px-2 text-sm disabled:bg-surface-muted">
               <option value="">{t('banking.select_account')}</option>
               {accountOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">{t('banking.to_account')}</label>
+            <label className="block text-xs font-medium text-ink-secondary mb-1">{t('banking.to_account')}</label>
             <select disabled={!isDraft}
               value={toAccountId} onChange={e => setToAccountId(e.target.value)}
-              className="w-full h-9 rounded-md border border-slate-300 px-2 text-sm disabled:bg-slate-50">
+              className="w-full h-9 rounded-md border border-border-strong px-2 text-sm disabled:bg-surface-muted">
               <option value="">{t('banking.select_account')}</option>
               {accountOpts.filter(o => o.value !== fromAccountId).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>

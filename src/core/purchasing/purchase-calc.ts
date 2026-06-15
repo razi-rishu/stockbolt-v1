@@ -3,6 +3,7 @@ export interface PurchaseLineInput {
   unit_cost: number;
   discount_percent: number;
   tax_rate: number;
+  inclusive?: boolean; // true = unit_cost already includes tax
 }
 
 export interface PurchaseLineResult {
@@ -21,16 +22,26 @@ export interface PurchaseHeaderTotals {
 
 export type APAgingBucket = 'current' | '31_60' | '61_90' | 'over_90';
 
+function round2(n: number) { return Math.round(n * 100) / 100; }
+
 export function calcPurchaseLine(input: PurchaseLineInput): PurchaseLineResult {
-  const line_subtotal = input.quantity * input.unit_cost;
-  const discount_amount = line_subtotal * (input.discount_percent / 100);
-  const net = line_subtotal - discount_amount;
-  const tax_amount = net * (input.tax_rate / 100);
+  const line_subtotal   = round2(input.quantity * input.unit_cost);
+  const discount_amount = round2(line_subtotal * (input.discount_percent / 100));
+  const net             = round2(line_subtotal - discount_amount);
+
+  if (input.inclusive) {
+    const tax_amount = input.tax_rate > 0
+      ? round2(net * input.tax_rate / (100 + input.tax_rate))
+      : 0;
+    return { line_subtotal, discount_amount, tax_amount, line_total: net };
+  }
+
+  const tax_amount = round2(net * (input.tax_rate / 100));
   return {
     line_subtotal,
     discount_amount,
     tax_amount,
-    line_total: net + tax_amount,
+    line_total: round2(net + tax_amount),
   };
 }
 

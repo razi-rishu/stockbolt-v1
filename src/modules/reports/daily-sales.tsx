@@ -44,18 +44,18 @@ export default function DailySalesReportPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800">{t('reports.daily_sales_summary')}</h1>
-        <p className="text-sm text-slate-500 mt-1">{t('reports.daily_sales_summary_desc')}</p>
+        <h1 className="text-2xl font-bold text-ink-primary">{t('reports.daily_sales_summary')}</h1>
+        <p className="text-sm text-ink-tertiary mt-1">{t('reports.daily_sales_summary_desc')}</p>
       </div>
 
       {/* Filters */}
-      <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-lg p-4 flex flex-wrap gap-4 items-end">
+      <form onSubmit={handleSubmit} className="bg-white border border-border-subtle rounded-lg p-4 flex flex-wrap gap-4 items-end">
         <div className="flex flex-col gap-1 min-w-[140px]">
-          <label className="text-xs font-medium text-slate-600">{t('common.date_from')}</label>
+          <label className="text-xs font-medium text-ink-secondary">{t('common.date_from')}</label>
           <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setSubmitted(false); }} />
         </div>
         <div className="flex flex-col gap-1 min-w-[140px]">
-          <label className="text-xs font-medium text-slate-600">{t('common.date_to')}</label>
+          <label className="text-xs font-medium text-ink-secondary">{t('common.date_to')}</label>
           <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setSubmitted(false); }} />
         </div>
         <Button type="submit" disabled={isFetching}>
@@ -66,24 +66,24 @@ export default function DailySalesReportPage() {
       {/* Summary Cards */}
       {submitted && rows.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-          <div className="bg-white border border-slate-200 rounded-lg p-4">
-            <p className="text-xs text-slate-500">{t('pos.payment_cash')}</p>
-            <p className="text-xl font-bold text-slate-800 mt-1">{fmt(totalCash)}</p>
+          <div className="bg-white border border-border-subtle rounded-lg p-4">
+            <p className="text-xs text-ink-tertiary">{t('pos.payment_cash')}</p>
+            <p className="text-xl font-bold text-ink-primary mt-1">{fmt(totalCash)}</p>
           </div>
-          <div className="bg-white border border-slate-200 rounded-lg p-4">
-            <p className="text-xs text-slate-500">{t('pos.payment_card')}</p>
-            <p className="text-xl font-bold text-slate-800 mt-1">{fmt(totalCard)}</p>
+          <div className="bg-white border border-border-subtle rounded-lg p-4">
+            <p className="text-xs text-ink-tertiary">{t('pos.payment_card')}</p>
+            <p className="text-xl font-bold text-ink-primary mt-1">{fmt(totalCard)}</p>
           </div>
-          <div className="bg-white border border-slate-200 rounded-lg p-4">
-            <p className="text-xs text-slate-500">{t('pos.payment_credit')}</p>
-            <p className="text-xl font-bold text-slate-800 mt-1">{fmt(totalCredit)}</p>
+          <div className="bg-white border border-border-subtle rounded-lg p-4">
+            <p className="text-xs text-ink-tertiary">{t('pos.payment_credit')}</p>
+            <p className="text-xl font-bold text-ink-primary mt-1">{fmt(totalCredit)}</p>
           </div>
-          <div className="bg-white border border-slate-200 rounded-lg p-4">
-            <p className="text-xs text-slate-500">{t('reports.total_invoices')}</p>
-            <p className="text-xl font-bold text-slate-800 mt-1">{totalInv}</p>
+          <div className="bg-white border border-border-subtle rounded-lg p-4">
+            <p className="text-xs text-ink-tertiary">{t('reports.total_invoices')}</p>
+            <p className="text-xl font-bold text-ink-primary mt-1">{totalInv}</p>
           </div>
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-xs text-blue-600">{t('reports.grand_total')}</p>
+            <p className="text-xs text-brand-600">{t('reports.grand_total')}</p>
             <p className="text-xl font-bold text-blue-700 mt-1">{fmt(grandTotal)}</p>
           </div>
         </div>
@@ -91,42 +91,42 @@ export default function DailySalesReportPage() {
 
       {/* Table */}
       {submitted && (
-        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <div className="bg-white border border-border-subtle rounded-lg overflow-hidden">
           {rows.length === 0 && !isFetching ? (
-            <p className="p-8 text-center text-slate-500">{t('pos.no_sales')}</p>
+            <p className="p-8 text-center text-ink-tertiary">{t('pos.no_sales')}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200">
+                <thead className="bg-surface-muted border-b border-border-subtle">
                   <tr>
-                    <th className="px-4 py-3 text-left font-medium text-slate-600">{t('common.date')}</th>
-                    <th className="px-4 py-3 text-right font-medium text-slate-600">{t('pos.payment_cash')}</th>
-                    <th className="px-4 py-3 text-right font-medium text-slate-600">{t('pos.payment_card')}</th>
-                    <th className="px-4 py-3 text-right font-medium text-slate-600">{t('pos.payment_credit')}</th>
-                    <th className="px-4 py-3 text-right font-medium text-slate-600">{t('reports.invoices')}</th>
-                    <th className="px-4 py-3 text-right font-medium text-slate-600">{t('reports.grand_total')}</th>
+                    <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('common.date')}</th>
+                    <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('pos.payment_cash')}</th>
+                    <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('pos.payment_card')}</th>
+                    <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('pos.payment_credit')}</th>
+                    <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('reports.invoices')}</th>
+                    <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('reports.grand_total')}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-border-subtle">
                   {rows.map(row => (
-                    <tr key={row.date} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-3 font-medium text-slate-800">{row.date}</td>
-                      <td className="px-4 py-3 text-right text-slate-700">{fmt(row.cash_total)}</td>
-                      <td className="px-4 py-3 text-right text-slate-700">{fmt(row.card_total)}</td>
-                      <td className="px-4 py-3 text-right text-slate-700">{fmt(row.credit_total)}</td>
-                      <td className="px-4 py-3 text-right text-slate-700">{row.invoice_count}</td>
-                      <td className="px-4 py-3 text-right font-bold text-slate-800">{fmt(row.grand_total)}</td>
+                    <tr key={row.date} className="hover:bg-surface-muted transition-colors">
+                      <td className="px-4 py-3 font-medium text-ink-primary">{row.date}</td>
+                      <td className="px-4 py-3 text-right text-ink-secondary">{fmt(row.cash_total)}</td>
+                      <td className="px-4 py-3 text-right text-ink-secondary">{fmt(row.card_total)}</td>
+                      <td className="px-4 py-3 text-right text-ink-secondary">{fmt(row.credit_total)}</td>
+                      <td className="px-4 py-3 text-right text-ink-secondary">{row.invoice_count}</td>
+                      <td className="px-4 py-3 text-right font-bold text-ink-primary">{fmt(row.grand_total)}</td>
                     </tr>
                   ))}
                 </tbody>
                 {rows.length > 1 && (
-                  <tfoot className="bg-slate-50 border-t-2 border-slate-300">
+                  <tfoot className="bg-surface-muted border-t-2 border-border-strong">
                     <tr>
-                      <td className="px-4 py-3 font-semibold text-slate-700">{t('common.total')}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-slate-800">{fmt(totalCash)}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-slate-800">{fmt(totalCard)}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-slate-800">{fmt(totalCredit)}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-slate-800">{totalInv}</td>
+                      <td className="px-4 py-3 font-semibold text-ink-secondary">{t('common.total')}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-ink-primary">{fmt(totalCash)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-ink-primary">{fmt(totalCard)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-ink-primary">{fmt(totalCredit)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-ink-primary">{totalInv}</td>
                       <td className="px-4 py-3 text-right font-bold text-blue-700">{fmt(grandTotal)}</td>
                     </tr>
                   </tfoot>

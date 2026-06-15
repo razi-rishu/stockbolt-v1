@@ -13,7 +13,20 @@
 - All 6 planning docs approved before starting
 - Costing method locked to MAC for v1
 - LIFO permanently excluded
-- Payroll deferred to v2
+- Payroll: moved into v1 by owner override 2026-06-13 (was v2-deferred).
+  P1 shipped: employees master, monthly payroll runs, GL accrual
+  (Dr 6100 / Cr 1450 / Cr 2350) + bank payment via RPCs.
+  New CoA accounts: 6100, 2350, 2360, 1450.
+  P2 shipped 2026-06-13: WPS SIF export (client-side generator,
+  employer IDs stored on companies) + gratuity accrual in
+  confirm_payroll_run (21/30-day EOSB, Dr 6100 / Cr 2360).
+  P3a shipped 2026-06-13: gratuity Final Settlement (settle_gratuity
+  Dr 2360/Cr bank + deactivate) with per-employee EOSB estimate column;
+  Leave Salary (standalone, Dr 6100/Cr bank via pay_leave_salary).
+  P3b: leave accrual — 30 days/yr pro-rated from joining; per-employee
+  Earned/Paid/Balance; payout values days × daily wage (GCC full÷30 /
+  India basic÷26); only paid records reduce balance.
+  Remaining: P3 loans UI, P4 leave-taken (unpaid) tracking.
 
 ---
 

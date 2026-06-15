@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>StockBolt — Pick Your Design Direction</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:#ECEEF2;padding:32px;min-height:100vh}
+h1{font-size:22px;font-weight:700;color:#111;margin-bottom:6px;text-align:center}
+.subtitle{font-size:13px;color:#666;text-align:center;margin-bottom:28px}
+.options{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;max-width:1280px;margin:0 auto}
+.option{background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);cursor:pointer;transition:transform .2s,box-shadow .2s;border:2px solid transparent}
+.option:hover{transform:translateY(-3px);box-shadow:0 8px 24px rgba(0,0,0,.12)}
+.option.selected{border-color:#6366F1}
+.option-label{padding:14px 18px;border-top:1px solid #eee;display:flex;align-items:center;justify-content:space-between}
+.option-name{font-size:14px;font-weight:700;color:#111}
+.option-desc{font-size:12px;color:#888;margin-top:2px}
+.pick-btn{font-size:11px;font-weight:600;padding:5px 14px;border-radius:99px;border:none;cursor:pointer;background:#F4F4F8;color:#555}
+
+/* ══ THEME A: EMERALD ══════════════════════════════════════════ */
+.theme-a{--bg:#F7FAF8;--sidebar:#FFFFFF;--accent:#059669;--accent-light:#ECFDF5;--accent-border:#A7F3D0;--text:#0F1A14;--sub:#4B7A65;--muted:#9BB3A8;--border:#E2EDE8;--card:#FFFFFF;--shadow:0 1px 3px rgba(5,150,105,.08)}
+
+/* ══ THEME B: VIOLET ═══════════════════════════════════════════ */
+.theme-b{--bg:#F8F7FC;--sidebar:#FFFFFF;--accent:#7C3AED;--accent-light:#F5F3FF;--accent-border:#DDD6FE;--text:#1A1033;--sub:#5B4B8A;--muted:#9B91B8;--border:#E8E4F4;--card:#FFFFFF;--shadow:0 1px 3px rgba(124,58,237,.08)}
+
+/* ══ THEME C: CHARCOAL MONO ════════════════════════════════════ */
+.theme-c{--bg:#F5F5F4;--sidebar:#FFFFFF;--accent:#18181B;--accent-light:#F4F4F5;--accent-border:#D4D4D8;--text:#18181B;--sub:#52525B;--muted:#A1A1AA;--border:#E4E4E7;--card:#FFFFFF;--shadow:0 1px 3px rgba(0,0,0,.07)}
+
+.preview{height:420px;overflow:hidden;display:flex;user-select:none}
+
+/* Shared preview styles */
+.p-sidebar{width:190px;flex-shrink:0;background:var(--sidebar);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:0}
+.p-logo{height:50px;display:flex;align-items:center;gap:9px;padding:0 14px;border-bottom:1px solid var(--border)}
+.p-logomark{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;flex-shrink:0}
+.theme-a .p-logomark{background:linear-gradient(135deg,#059669,#10B981)}
+.theme-b .p-logomark{background:linear-gradient(135deg,#7C3AED,#A78BFA)}
+.theme-c .p-logomark{background:#18181B}
+.p-logotext{font-size:13px;font-weight:800;color:var(--text);letter-spacing:-.3px}
+.p-nav{padding:10px 8px;flex:1}
+.p-section{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;padding:8px 8px 4px}
+.p-navitem{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:7px;font-size:12px;font-weight:500;color:var(--sub);margin-bottom:1px;cursor:pointer}
+.p-navitem.active{background:var(--accent-light);color:var(--accent);font-weight:600}
+.theme-c .p-navitem.active{background:#F4F4F5;color:#18181B}
+.p-navdot{width:14px;height:14px;border-radius:3px;flex-shrink:0;opacity:.5}
+.p-navitem.active .p-navdot{opacity:1}
+.theme-a .p-navdot{background:#059669}
+.theme-b .p-navdot{background:#7C3AED}
+.theme-c .p-navdot{background:#18181B}
+
+.p-main{flex:1;background:var(--bg);display:flex;flex-direction:column;overflow:hidden}
+.p-topbar{height:50px;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 18px;gap:10px;flex-shrink:0}
+.p-title{font-size:15px;font-weight:700;color:var(--text);letter-spacing:-.3px}
+.p-actions{margin-left:auto;display:flex;gap:6px}
+.p-btn{padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;border:none;cursor:pointer}
+.p-btn-primary{color:#fff}
+.theme-a .p-btn-primary{background:#059669}
+.theme-b .p-btn-primary{background:#7C3AED}
+.theme-c .p-btn-primary{background:#18181B}
+.p-btn-secondary{background:#F4F4F5;color:#555;border:1px solid var(--border)}
+.p-content{flex:1;padding:14px;overflow:hidden;display:flex;flex-direction:column;gap:10px}
+
+.p-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.p-stat{background:var(--card);border:1px solid var(--border);border-radius:9px;padding:10px 12px;box-shadow:var(--shadow)}
+.p-stat-label{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.p-stat-value{font-size:18px;font-weight:800;color:var(--text);margin-top:3px;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+.p-stat-sub{font-size:9px;color:var(--sub);margin-top:2px}
+.p-stat-accent .p-stat-value{color:var(--accent)}
+
+.p-card{background:var(--card);border:1px solid var(--border);border-radius:9px;overflow:hidden;box-shadow:var(--shadow);flex:1}
+.p-card-top{padding:9px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.p-card-title{font-size:10px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.05em}
+
+/* THEME A accent: left-border on rows */
+.theme-a tbody tr:hover td{background:#F0FDF4}
+/* THEME B accent: pill badges purple */
+/* THEME C accent: monochrome everything */
+
+table{width:100%;border-collapse:collapse}
+.p-th{padding:6px 10px;font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;background:#FAFAFA;border-bottom:1px solid var(--border);text-align:left}
+.p-th.r{text-align:right}
+.p-td{padding:8px 10px;font-size:11px;color:var(--sub);border-bottom:1px solid #F8F8F8}
+.p-td.r{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:var(--text)}
+.p-doc{font-weight:700;font-size:11px;color:var(--accent)}
+.p-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:99px;font-size:9px;font-weight:700;border:1px solid}
+.p-badge-ok{background:var(--accent-light);color:var(--accent);border-color:var(--accent-border)}
+.p-badge-draft{background:#F4F4F5;color:#71717A;border-color:#D4D4D8}
+.p-badge-warn{background:#FFFBEB;color:#B45309;border-color:#FDE68A}
+.p-dot{width:4px;height:4px;border-radius:50%;background:currentColor}
+
+.p-avatar{width:22px;height:22px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#fff;margin-right:6px;flex-shrink:0}
+.theme-a .p-avatar{background:linear-gradient(135deg,#059669,#34D399)}
+.theme-b .p-avatar{background:linear-gradient(135deg,#7C3AED,#A78BFA)}
+.theme-c .p-avatar{background:#3F3F46}
+
+/* Theme-specific unique touches */
+/* Theme A: green left-border on card top */
+.theme-a .p-card{border-top:3px solid #059669}
+/* Theme B: gradient card top */
+.theme-b .p-card{border-top:3px solid #7C3AED}
+/* Theme C: bold black left rule on active nav */
+.theme-c .p-navitem.active{border-left:3px solid #18181B;border-radius:0 7px 7px 0;padding-left:6px}
+
+.label-pill{display:inline-block;padding:3px 10px;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.02em}
+.theme-a .label-pill{background:#ECFDF5;color:#059669;border:1px solid #A7F3D0}
+.theme-b .label-pill{background:#F5F3FF;color:#7C3AED;border:1px solid #DDD6FE}
+.theme-c .label-pill{background:#F4F4F5;color:#18181B;border:1px solid #D4D4D8}
+</style>
+</head>
+<body>
+<h1>Pick Your StockBolt Design Direction</h1>
+<p class="subtitle">All three are white-based. They differ in accent color, personality, and detail style. Click the one you want to go with.</p>
+
+<div class="options">
+
+  <!-- ══ OPTION A: EMERALD GREEN ════════════════════════════════ -->
+  <div class="option" onclick="pick('A')">
+    <div class="preview theme-a">
+      <div class="p-sidebar">
+        <div class="p-logo">
+          <div class="p-logomark">SB</div>
+          <span class="p-logotext">StockBolt</span>
+        </div>
+        <div class="p-nav">
+          <div class="p-section">Sales</div>
+          <div class="p-navitem active"><div class="p-navdot"></div>Invoices</div>
+          <div class="p-navitem"><div class="p-navdot"></div>Quotes</div>
+          <div class="p-section">Purchasing</div>
+          <div class="p-navitem"><div class="p-navdot"></div>Purchase Orders</div>
+          <div class="p-navitem"><div class="p-navdot"></div>Vendor Bills</div>
+          <div class="p-section">Accounting</div>
+          <div class="p-navitem"><div class="p-navdot"></div>P&amp;L Report</div>
+          <div class="p-navitem"><div class="p-navdot"></div>Trial Balance</div>
+        </div>
+      </div>
+      <div class="p-main">
+        <div class="p-topbar">
+          <span class="p-title">Invoices</span>
+          <div class="p-actions">
+            <button class="p-btn p-btn-secondary">Export</button>
+            <button class="p-btn p-btn-primary">+ New Invoice</button>
+          </div>
+        </div>
+        <div class="p-content">
+          <div class="p-stats">
+            <div class="p-stat p-stat-accent">
+              <div class="p-stat-label">Outstanding</div>
+              <div class="p-stat-value">84,250</div>
+              <div class="p-stat-sub">6 unpaid</div>
+            </div>
+            <div class="p-stat">
+              <div class="p-stat-label">Overdue</div>
+              <div class="p-stat-value" style="color:#DC2626">12,400</div>
+              <div class="p-stat-sub">2 invoices</div>
+            </div>
+            <div class="p-stat">
+              <div class="p-stat-label">Paid</div>
+              <div class="p-stat-value">56,800</div>
+              <div class="p-stat-sub">This month</div>
+            </div>
+          </div>
+          <div class="p-card">
+            <div class="p-card-top">
+              <span class="p-card-title">All Invoices</span>
+              <span style="margin-left:auto;font-size:9px;color:var(--muted)">24 records</span>
+            </div>
+            <table>
+              <thead><tr>
+                <th class="p-th">Invoice</th>
+                <th class="p-th">Customer</th>
+                <th class="p-th r">Amount</th>
+                <th class="p-th">Status</th>
+              </tr></thead>
+              <tbody>
+                <tr>
+                  <td class="p-td p-doc">INV-1008</td>
+                  <td class="p-td"><span class="p-avatar">Al</span>Al Futtaim</td>
+                  <td class="p-td r">AED 12,400</td>
+                  <td class="p-td"><span class="p-badge" style="background:#FFF1F2;color:#BE123C;border-color:#FECDD3"><span class="p-dot"></span>Overdue</span></td>
+                </tr>
+                <tr>
+                  <td class="p-td p-doc">INV-1007</td>
+                  <td class="p-td"><span class="p-avatar">Na</span>Nasser Auto</td>
+                  <td class="p-td r">AED 28,750</td>
+                  <td class="p-td"><span class="p-badge p-badge-warn"><span class="p-dot"></span>Partial</span></td>
+                </tr>
+                <tr>
+                  <td class="p-td p-doc">INV-1006</td>
+                  <td class="p-td"><span class="p-avatar">Sa</span>Saif Al Arab</td>
+                  <td class="p-td r">AED 43,100</td>
+                  <td class="p-td"><span class="p-badge p-badge-ok"><span class="p-dot"></span>Confirmed</span></td>
+                </tr>
+                <tr>
+                  <td class="p-td p-doc">INV-1005</td>
+                  <td class="p-td"><span class="p-avatar">Du</span>Dubai Parts</td>
+                  <td class="p-td r">AED 9,100</td>
+                  <td class="p-td"><span class="p-badge p-badge-draft"><span class="p-dot"></span>Draft</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="option-label">
+      <div>
+        <div class="option-name">A — Emerald Green <span class="label-pill theme-a">Unique</span></div>
+        <div class="option-desc">White + deep forest green · rare in ERP · feels premium GCC</div>
+      </div>
+      <button class="pick-btn" onclick="pick('A')">Pick this →</button>
+    </div>
+  </div>
+
+  <!-- ══ OPTION B: DEEP VIOLET ══════════════════════════════════ -->
+  <div class="option" onclick="pick('B')">
+    <div class="preview theme-b">
+      <div class="p-sidebar">
+        <div class="p-logo">
+          <div class="p-logomark">SB</div>
+          <span class="p-logotext">StockBolt</span>
+        </div>
+        <div class="p-nav">
+          <div class="p-section">Sales</div>
+          <div class="p-navitem active"><div class="p-navdot"></div>Invoices</div>
+          <div class="p-navitem"><div class="p-navdot"></div>Quotes</div>
+          <div class="p-section">Purchasing</div>
+          <div class="p-navitem"><div class="p-navdot"></div>Purchase Orders</div>
+          <div class="p-navitem"><div class="p-navdot"></div>Vendor Bills</div>
+          <div class="p-section">Accounting</div>
+          <div class="p-navitem"><div class="p-navdot"></div>P&amp;L Report</div>
+          <div class="p-navitem"><div class="p-navdot"></div>Trial Balance</div>
+        </div>
+      </div>
+      <div class="p-main">
+        <div class="p-topbar">
+          <span class="p-title">Invoices</span>
+          <div class="p-actions">
+            <button class="p-btn p-btn-secondary">Export</button>
+            <button class="p-btn p-btn-primary">+ New Invoice</button>
+          </div>
+        </div>
+        <div class="p-content">
+          <div class="p-stats">
+            <div class="p-stat p-stat-accent">
+              <div class="p-stat-label">Outstanding</div>
+              <div class="p-stat-value">84,250</div>
+              <div class="p-stat-sub">6 unpaid</div>
+            </div>
+            <div class="p-stat">
+              <div class="p-stat-label">Overdue</div>
+              <div class="p-stat-value" style="color:#DC2626">12,400</div>
+              <div class="p-stat-sub">2 invoices</div>
+            </div>
+            <div class="p-stat">
+              <div class="p-stat-label">Paid</div>
+              <div class="p-stat-value">56,800</div>
+              <div class="p-stat-sub">This month</div>
+            </div>
+          </div>
+          <div class="p-card">
+            <div class="p-card-top">
+              <span class="p-card-title">All Invoices</span>
+              <span style="margin-left:auto;font-size:9px;color:var(--muted)">24 records</span>
+            </div>
+            <table>
+              <thead><tr>
+                <th class="p-th">Invoice</th>
+                <th class="p-th">Customer</th>
+                <th class="p-th r">Amount</th>
+                <th class="p-th">Status</th>
+              </tr></thead>
+              <tbody>
+                <tr>
+                  <td class="p-td p-doc">INV-1008</td>
+                  <td class="p-td"><span class="p-avatar">Al</span>Al Futtaim</td>
+                  <td class="p-td r">AED 12,400</td>
+                  <td class="p-td"><span class="p-badge" style="background:#FFF1F2;color:#BE123C;border-color:#FECDD3"><span class="p-dot"></span>Overdue</span></td>
+                </tr>
+                <tr>
+                  <td class="p-td p-doc">INV-1007</td>
+                  <td class="p-td"><span class="p-avatar">Na</span>Nasser Auto</td>
+                  <td class="p-td r">AED 28,750</td>
+                  <td class="p-td"><span class="p-badge p-badge-warn"><span class="p-dot"></span>Partial</span></td>
+                </tr>
+                <tr>
+                  <td class="p-td p-doc">INV-1006</td>
+                  <td class="p-td"><span class="p-avatar">Sa</span>Saif Al Arab</td>
+                  <td class="p-td r">AED 43,100</td>
+                  <td class="p-td"><span class="p-badge p-badge-ok"><span class="p-dot"></span>Confirmed</span></td>
+                </tr>
+                <tr>
+                  <td class="p-td p-doc">INV-1005</td>
+                  <td class="p-td"><span class="p-avatar">Du</span>Dubai Parts</td>
+                  <td class="p-td r">AED 9,100</td>
+                  <td class="p-td"><span class="p-badge p-badge-draft"><span class="p-dot"></span>Draft</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="option-label">
+      <div>
+        <div class="option-name">B — Deep Violet <span class="label-pill theme-b">Bold</span></div>
+        <div class="option-desc">White + rich purple · confident · premium SaaS personality</div>
+      </div>
+      <button class="pick-btn" onclick="pick('B')">Pick this →</button>
+    </div>
+  </div>
+
+  <!-- ══ OPTION C: CHARCOAL MONO ════════════════════════════════ -->
+  <div class="option" onclick="pick('C')">
+    <div class="preview theme-c">
+      <div class="p-sidebar">
+        <div class="p-logo">
+          <div class="p-logomark">SB</div>
+          <span class="p-logotext">StockBolt</span>
+        </div>
+        <div class="p-nav">
+          <div class="p-section">Sales</div>
+          <div class="p-navitem active"><div class="p-navdot"></div>Invoices</div>
+          <div class="p-navitem"><div class="p-navdot"></div>Quotes</div>
+          <div class="p-section">Purchasing</div>
+          <div class="p-navitem"><div class="p-navdot"></div>Purchase Orders</div>
+          <div class="p-navitem"><div class="p-navdot"></div>Vendor Bills</div>
+          <div class="p-section">Accounting</div>
+          <div class="p-navitem"><div class="p-navdot"></div>P&amp;L Report</div>
+          <div class="p-navitem"><div class="p-navdot"></div>Trial Balance</div>
+        </div>
+      </div>
+      <div class="p-main">
+        <div class="p-topbar">
+          <span class="p-title">Invoices</span>
+          <div class="p-actions">
+            <button class="p-btn p-btn-secondary">Export</button>
+            <button class="p-btn p-btn-primary">+ New Invoice</button>
+          </div>
+        </div>
+        <div class="p-content">
+          <div class="p-stats">
+            <div class="p-stat p-stat-accent">
+              <div class="p-stat-label">Outstanding</div>
+              <div class="p-stat-value">84,250</div>
+              <div class="p-stat-sub">6 unpaid</div>
+            </div>
+            <div class="p-stat">
+              <div class="p-stat-label">Overdue</div>
+              <div class="p-stat-value" style="color:#DC2626">12,400</div>
+              <div class="p-stat-sub">2 invoices</div>
+            </div>
+            <div class="p-stat">
+              <div class="p-stat-label">Paid</div>
+              <div class="p-stat-value">56,800</div>
+              <div class="p-stat-sub">This month</div>
+            </div>
+          </div>
+          <div class="p-card">
+            <div class="p-card-top">
+              <span class="p-card-title">All Invoices</span>
+              <span style="margin-left:auto;font-size:9px;color:var(--muted)">24 records</span>
+            </div>
+            <table>
+              <thead><tr>
+                <th class="p-th">Invoice</th>
+                <th class="p-th">Customer</th>
+                <th class="p-th r">Amount</th>
+                <th class="p-th">Status</th>
+              </tr></thead>
+              <tbody>
+                <tr>
+                  <td class="p-td p-doc">INV-1008</td>
+                  <td class="p-td"><span class="p-avatar">Al</span>Al Futtaim</td>
+                  <td class="p-td r">AED 12,400</td>
+                  <td class="p-td"><span class="p-badge" style="background:#FFF1F2;color:#BE123C;border-color:#FECDD3"><span class="p-dot"></span>Overdue</span></td>
+                </tr>
+                <tr>
+                  <td class="p-td p-doc">INV-1007</td>
+                  <td class="p-td"><span class="p-avatar">Na</span>Nasser Auto</td>
+                  <td class="p-td r">AED 28,750</td>
+                  <td class="p-td"><span class="p-badge p-badge-warn"><span class="p-dot"></span>Partial</span></td>
+                </tr>
+                <tr>
+                  <td class="p-td p-doc">INV-1006</td>
+                  <td class="p-td"><span class="p-avatar">Sa</span>Saif Al Arab</td>
+                  <td class="p-td r">AED 43,100</td>
+                  <td class="p-td"><span class="p-badge p-badge-ok"><span class="p-dot"></span>Confirmed</span></td>
+                </tr>
+                <tr>
+                  <td class="p-td p-doc">INV-1005</td>
+                  <td class="p-td"><span class="p-avatar">Du</span>Dubai Parts</td>
+                  <td class="p-td r">AED 9,100</td>
+                  <td class="p-td"><span class="p-badge p-badge-draft"><span class="p-dot"></span>Draft</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="option-label">
+      <div>
+        <div class="option-name">C — Charcoal Mono <span class="label-pill theme-c">Timeless</span></div>
+        <div class="option-desc">White + near-black · no color distractions · serious &amp; sharp</div>
+      </div>
+      <button class="pick-btn" onclick="pick('C')">Pick this →</button>
+    </div>
+  </div>
+
+</div>
+
+<div style="text-align:center;margin-top:24px;font-size:12px;color:#999">
+  Open <strong>design-sample.html</strong> to see the full screen previews (List, Editor, P&amp;L, Trial Balance)
+</div>
+
+<script>
+function pick(x){
+  document.querySelectorAll('.option').forEach(o=>o.classList.remove('selected'))
+  event.currentTarget.closest('.option').classList.add('selected')
+  alert('You picked Option '+x+' — tell Claude which one and the full redesign starts!')
+}
+</script>
+</body>
+</html>

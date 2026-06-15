@@ -147,10 +147,10 @@ export default function AdjustmentEditorPage() {
         return id!;
       }
     },
-    onSuccess: async (newId) => {
+    onSuccess: async () => {
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['inventory_adjustments'] });
-      if (isNew) navigate(`/inventory/adjustments/${newId}`, { replace: true });
+      navigate('/inventory/adjustments');
     },
     onError: (e: Error) => setError(e.message),
   });

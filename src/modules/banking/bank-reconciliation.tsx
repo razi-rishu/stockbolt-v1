@@ -163,8 +163,8 @@ export default function BankReconciliationPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800">Bank Reconciliation</h1>
-        <p className="text-sm text-slate-500 mt-1">
+        <h1 className="text-2xl font-bold text-ink-primary">Bank Reconciliation</h1>
+        <p className="text-sm text-ink-tertiary mt-1">
           Match general ledger entries against your bank statement. Locked reconciliations cannot be edited.
         </p>
       </div>
@@ -172,10 +172,10 @@ export default function BankReconciliationPage() {
       {error && <div className="rounded bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
 
       {/* Bank picker + header */}
-      <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
+      <div className="bg-white border border-border-subtle rounded-lg p-5 space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Bank Account</label>
+            <label className="block text-xs font-medium text-ink-secondary mb-1">Bank Account</label>
             <SearchableSelect
               options={accountOpts}
               value={bankAccountId}
@@ -195,27 +195,27 @@ export default function BankReconciliationPage() {
 
       {/* Past reconciliations */}
       {bankAccountId && pastRecons.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-          <div className="border-b border-slate-200 px-4 py-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-700">Past reconciliations for this account</h2>
+        <div className="bg-white border border-border-subtle rounded-lg overflow-hidden">
+          <div className="border-b border-border-subtle px-4 py-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-ink-secondary">Past reconciliations for this account</h2>
             <Button variant="ghost" size="sm" onClick={startNew}>+ New reconciliation</Button>
           </div>
           <table className="w-full text-sm">
-            <thead className="bg-slate-50">
+            <thead className="bg-surface-muted">
               <tr>
-                <th className="px-4 py-2 text-left text-xs font-medium text-slate-600">Statement Date</th>
-                <th className="px-4 py-2 text-right text-xs font-medium text-slate-600">Closing Balance</th>
-                <th className="px-4 py-2 text-right text-xs font-medium text-slate-600">Book Balance</th>
-                <th className="px-4 py-2 text-right text-xs font-medium text-slate-600">Outstanding</th>
-                <th className="px-4 py-2 text-right text-xs font-medium text-slate-600">Lines</th>
-                <th className="px-4 py-2 text-center text-xs font-medium text-slate-600">Status</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-ink-secondary">Statement Date</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-ink-secondary">Closing Balance</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-ink-secondary">Book Balance</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-ink-secondary">Outstanding</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-ink-secondary">Lines</th>
+                <th className="px-4 py-2 text-center text-xs font-medium text-ink-secondary">Status</th>
                 <th className="px-4 py-2"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-border-subtle">
               {pastRecons.map(r => (
                 <tr key={r.id} className={editingReconId === r.id ? 'bg-amber-50' : ''}>
-                  <td className="px-4 py-2 text-slate-700">{r.statement_end_date}</td>
+                  <td className="px-4 py-2 text-ink-secondary">{r.statement_end_date}</td>
                   <td className="px-4 py-2 text-right font-mono">{fmt(Number(r.statement_closing_balance))}</td>
                   <td className="px-4 py-2 text-right font-mono">{fmt(Number(r.reconciled_book_balance))}</td>
                   <td className={`px-4 py-2 text-right font-mono ${Math.abs(Number(r.outstanding_amount)) > 0.005 ? 'text-amber-700' : 'text-green-700'}`}>
@@ -224,7 +224,7 @@ export default function BankReconciliationPage() {
                   <td className="px-4 py-2 text-right">{r.line_count}</td>
                   <td className="px-4 py-2 text-center">
                     <span className={`rounded-pill px-2 py-0.5 text-xs font-medium ${
-                      r.status === 'locked' ? 'bg-slate-100 text-slate-700' : 'bg-amber-50 text-amber-700'
+                      r.status === 'locked' ? 'bg-surface-muted text-ink-secondary' : 'bg-amber-50 text-amber-700'
                     }`}>{r.status}</span>
                   </td>
                   <td className="px-4 py-2 text-right">
@@ -241,50 +241,50 @@ export default function BankReconciliationPage() {
 
       {/* GL lines table */}
       {bankAccountId && (
-        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-          <div className="border-b border-slate-200 px-4 py-3">
-            <h2 className="text-sm font-semibold text-slate-700">
+        <div className="bg-white border border-border-subtle rounded-lg overflow-hidden">
+          <div className="border-b border-border-subtle px-4 py-3">
+            <h2 className="text-sm font-semibold text-ink-secondary">
               Bank ledger lines through {statementDate}
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-ink-tertiary mt-0.5">
               Tick each line that appears on the bank statement. Lines already reconciled in another
               period are not shown.
             </p>
           </div>
           {linesLoading ? (
-            <p className="p-8 text-center text-sm text-slate-400">Loading…</p>
+            <p className="p-8 text-center text-sm text-ink-tertiary">Loading…</p>
           ) : glLines.length === 0 ? (
-            <p className="p-8 text-center text-sm text-slate-500">No unreconciled lines for this period.</p>
+            <p className="p-8 text-center text-sm text-ink-tertiary">No unreconciled lines for this period.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-slate-50">
+                <thead className="bg-surface-muted">
                   <tr>
                     <th className="px-4 py-2 w-10"></th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-slate-600">Date</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-slate-600">JE #</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-slate-600">Source</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-slate-600">Description</th>
-                    <th className="px-4 py-2 text-right text-xs font-medium text-slate-600">Debit</th>
-                    <th className="px-4 py-2 text-right text-xs font-medium text-slate-600">Credit</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-ink-secondary">Date</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-ink-secondary">JE #</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-ink-secondary">Source</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-ink-secondary">Description</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-ink-secondary">Debit</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-ink-secondary">Credit</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-border-subtle">
                   {glLines.map(line => (
-                    <tr key={line.id} className={checked[line.id] ? 'bg-sky-50' : 'hover:bg-slate-50'}>
+                    <tr key={line.id} className={checked[line.id] ? 'bg-sky-50' : 'hover:bg-surface-muted'}>
                       <td className="px-4 py-2">
                         <input type="checkbox" disabled={isLocked}
                           checked={!!checked[line.id]}
                           onChange={e => setChecked(prev => ({ ...prev, [line.id]: e.target.checked }))} />
                       </td>
-                      <td className="px-4 py-2 text-slate-700">{line.date}</td>
-                      <td className="px-4 py-2 font-mono text-blue-600">{line.je_number}</td>
+                      <td className="px-4 py-2 text-ink-secondary">{line.date}</td>
+                      <td className="px-4 py-2 font-mono text-brand-600">{line.je_number}</td>
                       <td className="px-4 py-2">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-600">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-surface-muted text-ink-secondary">
                           {line.source_type.replace(/_/g, ' ')}
                         </span>
                       </td>
-                      <td className="px-4 py-2 text-slate-700 max-w-xs truncate">{line.description}</td>
+                      <td className="px-4 py-2 text-ink-secondary max-w-xs truncate">{line.description}</td>
                       <td className="px-4 py-2 text-right text-green-700 font-mono">
                         {line.debit > 0 ? fmt(line.debit) : '—'}
                       </td>
@@ -302,22 +302,22 @@ export default function BankReconciliationPage() {
 
       {/* Footer summary + actions */}
       {bankAccountId && (
-        <div className="bg-white border border-slate-200 rounded-lg p-5">
+        <div className="bg-white border border-border-subtle rounded-lg p-5">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
             <div>
-              <p className="text-xs text-slate-500">Checked lines</p>
+              <p className="text-xs text-ink-tertiary">Checked lines</p>
               <p className="text-lg font-semibold">{checkedSummary.count}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-500">Book balance (checked)</p>
+              <p className="text-xs text-ink-tertiary">Book balance (checked)</p>
               <p className="text-lg font-mono font-semibold">{fmt(checkedSummary.bookBal)}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-500">Statement closing</p>
+              <p className="text-xs text-ink-tertiary">Statement closing</p>
               <p className="text-lg font-mono font-semibold">{fmt(stmtBalNum)}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-500">Difference (outstanding)</p>
+              <p className="text-xs text-ink-tertiary">Difference (outstanding)</p>
               <p className={`text-lg font-mono font-semibold ${
                 Math.abs(checkedSummary.diff) < 0.005 ? 'text-green-700' : 'text-amber-700'
               }`}>{fmt(checkedSummary.diff)}</p>
@@ -346,7 +346,7 @@ export default function BankReconciliationPage() {
               </Button>
             )}
             {isLocked && (
-              <span className="text-xs text-slate-500 self-center ms-2">
+              <span className="text-xs text-ink-tertiary self-center ms-2">
                 Reconciliation is locked — read only.
               </span>
             )}

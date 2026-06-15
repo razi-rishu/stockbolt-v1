@@ -8,7 +8,8 @@ import { Button } from '@/ui/button';
 import { Pagination, paginate } from '@/ui/pagination';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
-import type { PaymentRow } from '@/data/adapter';
+import { StatusBadge } from '@/ui/status-badge';
+import type { PaymentRow, ContactRow } from '@/data/adapter';
 
 const PAGE_SIZE = 50;
 
@@ -34,15 +35,6 @@ function Pill({ label, tone }: { label: string; tone: Tone }) {
       border: `1px solid ${tone.border}`,
     }}>{label}</span>
   );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, Tone> = {
-    draft:     { bg: '#fffbeb', text: '#b45309', border: '#fde68a' },
-    confirmed: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' },
-    void:      { bg: '#fef2f2', text: '#dc2626', border: '#fecaca' },
-  };
-  return <Pill label={status} tone={map[status] ?? { bg: theme.muted, text: theme.inkMuted, border: theme.border }} />;
 }
 
 function AllocationBadge({ status, alloc }: { status: string; alloc: AllocStatus }) {
@@ -85,6 +77,13 @@ export default function PaymentsPage() {
   });
   const reconciledSet = new Set(reconciledIds);
 
+  const { data: customers = [] } = useQuery<ContactRow[]>({
+    queryKey: ['contacts', company_id, 'customer'],
+    queryFn: () => getAdapter().contacts.list(company_id!, 'customer'),
+    enabled: !!company_id,
+  });
+  const customerMap = Object.fromEntries(customers.map(c => [c.id, c.name]));
+
   const paged = paginate(allPayments as PaymentWithAlloc[], page, PAGE_SIZE);
 
   return (
@@ -113,6 +112,7 @@ export default function PaymentsPage() {
               <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
                 {[
                   { l: t('payments.payment_number'), a: 'start' as const },
+                  { l: t('sales.customer'),          a: 'start' as const },
                   { l: t('payments.date'),           a: 'start' as const },
                   { l: t('payments.classification'), a: 'start' as const },
                   { l: t('payments.amount'),         a: 'end'   as const },
@@ -144,6 +144,7 @@ export default function PaymentsPage() {
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
                 >
                   <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>{pmt.payment_number}</td>
+                  <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px', fontWeight: 500 }}>{customerMap[pmt.contact_id] ?? '—'}</td>
                   <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{pmt.date}</td>
                   <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px', textTransform: 'capitalize' }}>{pmt.classification.replace('_', ' ')}</td>
                   <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>

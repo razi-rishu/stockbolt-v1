@@ -174,7 +174,7 @@ export default function SalespeoplePage() {
       )}
 
       {/* Show-inactive toggle */}
-      <label className="flex items-center gap-2 text-sm text-slate-600">
+      <label className="flex items-center gap-2 text-sm text-ink-secondary">
         <input type="checkbox" checked={showInactive}
           onChange={e => setShowInactive(e.target.checked)} />
         Show inactive
@@ -183,9 +183,9 @@ export default function SalespeoplePage() {
       {/* List */}
       <div className="rounded-card border border-border-subtle bg-surface-card overflow-hidden">
         {isLoading ? (
-          <p className="p-8 text-center text-sm text-slate-400">Loading…</p>
+          <p className="p-8 text-center text-sm text-ink-tertiary">Loading…</p>
         ) : rows.length === 0 ? (
-          <p className="p-8 text-center text-sm text-slate-500">
+          <p className="p-8 text-center text-sm text-ink-tertiary">
             No salespeople yet. Click <strong>Add salesperson</strong> above to create your first one.
           </p>
         ) : (

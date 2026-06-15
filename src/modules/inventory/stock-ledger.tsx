@@ -166,8 +166,11 @@ export default function StockLedgerPage() {
                   return (
                     <tr key={i} style={{ borderTop: i === 0 ? 'none' : '1px solid #f1f5f9' }}>
                       <td className="px-4 py-2" style={{ color: theme.inkMuted, fontSize: '13px' }}>{row.date as string}</td>
-                      <td className="px-4 py-2 font-mono" style={{ color: theme.ink, fontSize: '11px', fontWeight: 500 }}>{row.product_id}</td>
-                      <td className="px-4 py-2 font-mono" style={{ color: theme.inkMuted, fontSize: '11px' }}>{row.warehouse_id}</td>
+                      <td className="px-4 py-2" style={{ color: theme.ink, fontSize: '13px' }}>
+                        <span style={{ fontWeight: 600 }}>{row.product_name}</span>
+                        {row.sku && <span style={{ marginInlineStart: '6px', fontSize: '11px', color: theme.inkMuted }}>({row.sku})</span>}
+                      </td>
+                      <td className="px-4 py-2" style={{ color: theme.inkMuted, fontSize: '13px' }}>{row.warehouse_name}</td>
                       <td className="px-4 py-2" style={{ color: theme.inkMuted, fontSize: '13px' }}>{TYPE_LABELS[row.movement_type] ?? row.movement_type}</td>
                       <td className="px-4 py-2 font-mono" style={{ textAlign: 'end', color: '#059669' }}>
                         {isIn ? fmt(row.quantity) : '—'}

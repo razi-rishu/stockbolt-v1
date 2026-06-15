@@ -52,6 +52,12 @@ function fmtToday() {
   });
 }
 
+/** Time-aware greeting for the hero band. */
+function greeting() {
+  const h = new Date().getHours();
+  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+}
+
 // ── Inline icons (Lucide-style, hand-rolled to avoid a dep) ─────────────────
 function TrendingUpIcon()  { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></svg>; }
 function CartIcon()        { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6" /></svg>; }
@@ -100,39 +106,41 @@ function KpiTile({
   const pal = tonePalette[tone];
   const inner = (
     <div
-      style={{ ...cardStyle, padding: '16px' }}
+      style={{ ...cardStyle, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}
       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = theme.shadowMd; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = theme.shadowSm; }}
     >
       <div style={{
-        height: '40px', width: '40px',
+        height: '42px', width: '42px', flexShrink: 0,
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        borderRadius: '10px', background: pal.bg, color: pal.fg,
-        marginBottom: '12px',
+        borderRadius: '12px', background: pal.bg, color: pal.fg,
       }}>
         {icon}
       </div>
-      <div style={{
-        fontSize: theme.fontXs, fontWeight: 600, color: theme.inkMuted,
-        textTransform: 'uppercase', letterSpacing: '.05em',
-      }}>{label}</div>
-      <div style={{ marginTop: '4px', fontSize: '22px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>{value}</div>
-      <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <span style={{ flex: 1, fontSize: theme.fontXs, color: theme.inkFaint, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</span>
-        {hasDelta && (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: '3px',
-            flexShrink: 0,
-            padding: '2px 7px', borderRadius: '999px',
-            fontSize: '10px', fontWeight: 700,
-            background: positive ? '#ecfdf5' : '#fef2f2',
-            color: positive ? '#059669' : '#dc2626',
-            border: `1px solid ${positive ? '#a7f3d0' : '#fecaca'}`,
-          }}>
-            {positive ? <ArrowUpIcon /> : <ArrowDownIcon />}
-            {Math.abs(delta!).toFixed(0)}%
-          </span>
-        )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: '10px', fontWeight: 700, color: theme.inkMuted,
+          textTransform: 'uppercase', letterSpacing: '.06em',
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>{label}</div>
+        <div style={{ marginTop: '2px', fontSize: '19px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em', whiteSpace: 'nowrap' }}>{value}</div>
+        <div style={{ marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ flex: 1, fontSize: '11px', color: theme.inkFaint, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</span>
+          {hasDelta && (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: '3px',
+              flexShrink: 0,
+              padding: '1px 6px', borderRadius: '999px',
+              fontSize: '10px', fontWeight: 700,
+              background: positive ? '#ecfdf5' : '#fef2f2',
+              color: positive ? '#059669' : '#dc2626',
+              border: `1px solid ${positive ? '#a7f3d0' : '#fecaca'}`,
+            }}>
+              {positive ? <ArrowUpIcon /> : <ArrowDownIcon />}
+              {Math.abs(delta!).toFixed(0)}%
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -214,16 +222,16 @@ function FloatingActionButton() {
           borderRadius: '999px',
           background: theme.brandGradient,
           color: '#fff', cursor: 'pointer',
-          boxShadow: '0 10px 25px rgba(99,102,241,.35)',
+          boxShadow: '0 10px 25px rgba(124,58,237,.35)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           transition: 'transform .15s, box-shadow .15s',
         }}
         onMouseEnter={(e) => {
-          (e.currentTarget as HTMLElement).style.boxShadow = '0 12px 30px rgba(99,102,241,.45)';
+          (e.currentTarget as HTMLElement).style.boxShadow = '0 12px 30px rgba(124,58,237,.45)';
           (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)';
         }}
         onMouseLeave={(e) => {
-          (e.currentTarget as HTMLElement).style.boxShadow = '0 10px 25px rgba(99,102,241,.35)';
+          (e.currentTarget as HTMLElement).style.boxShadow = '0 10px 25px rgba(124,58,237,.35)';
           (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
         }}
       >
@@ -252,8 +260,8 @@ function SalesTrendChart({ data }: { data: { date: string; sales: number; purcha
         <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id="gradSales" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#6366f1" stopOpacity={0.25} />
-              <stop offset="100%" stopColor="#6366f1" stopOpacity={0} />
+              <stop offset="0%" stopColor="#7c3aed" stopOpacity={0.25} />
+              <stop offset="100%" stopColor="#7c3aed" stopOpacity={0} />
             </linearGradient>
             <linearGradient id="gradPurchases" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#10b981" stopOpacity={0.25} />
@@ -268,7 +276,7 @@ function SalesTrendChart({ data }: { data: { date: string; sales: number; purcha
             formatter={(v, name) => [fmt(Number(v ?? 0)), name === 'sales' ? 'Sales' : 'Purchases']}
             labelFormatter={(l) => `Day: ${l}`}
           />
-          <Area type="monotone" dataKey="sales"     stroke="#6366f1" strokeWidth={2.5} fill="url(#gradSales)" />
+          <Area type="monotone" dataKey="sales"     stroke="#7c3aed" strokeWidth={2.5} fill="url(#gradSales)" />
           <Area type="monotone" dataKey="purchases" stroke="#10b981" strokeWidth={2.5} fill="url(#gradPurchases)" />
         </AreaChart>
       </ResponsiveContainer>
@@ -302,14 +310,15 @@ export default function DashboardPage() {
   const adapter = getAdapter();
   const company_id = useAuthStore(s => s.company_id);
 
-  // User's first name for "Welcome, X" — best-effort; falls back to email prefix.
-  const { data: profile } = useQuery({
-    queryKey: ['profile_current'],
-    queryFn: () => adapter.profiles.getCurrent(),
+  // Greet with the company name (e.g. "Good afternoon, Al Noor") — reads
+  // better than an email prefix and matches what the operator thinks of
+  // as "their" StockBolt.
+  const { data: company } = useQuery({
+    queryKey: ['company', company_id],
+    queryFn: () => adapter.companies.getById(company_id!),
+    enabled: !!company_id,
   });
-  const email = useAuthStore(s => s.email);
-  const fullName = profile?.full_name ?? '';
-  const firstName = fullName.split(/\s+/)[0] || (email ? email.split('@')[0] : '');
+  const greetName = company?.name ?? '';
 
   const [data, setData] = useState<OwnerDashboard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -350,24 +359,53 @@ export default function DashboardPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '96px' }}>
-      {/* ── Welcome header ─────────────────────────────────────────────── */}
-      <div>
-        <h1 style={{
-          margin: 0, fontSize: '22px', fontWeight: 700,
-          color: theme.ink, letterSpacing: '-.01em',
-        }}>
-          Welcome StockBolt{firstName ? `, ${firstName}` : ''}
-        </h1>
-        <p style={{
-          margin: '4px 0 0',
-          fontSize: theme.fontBase, fontWeight: 500, color: theme.inkMuted,
-        }}>{fmtToday()}</p>
+      {/* ── Hero band — greeting + quick actions ───────────────────────── */}
+      <div style={{
+        background: 'linear-gradient(135deg, #2e1065 0%, #5b21b6 55%, #7c3aed 100%)',
+        borderRadius: '16px',
+        padding: '26px 28px',
+        color: '#fff',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: '16px', flexWrap: 'wrap',
+        boxShadow: '0 8px 24px rgba(124,58,237,.22)',
+      }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 700, letterSpacing: '-.02em' }}>
+            {greeting()}{greetName ? `, ${greetName}` : ''}
+          </h1>
+          <p style={{ margin: '6px 0 0', fontSize: '13px', color: 'rgba(255,255,255,.75)', fontWeight: 500 }}>
+            {fmtToday()}
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <Link to="/sales/invoices/new" style={{
+            padding: '9px 18px', borderRadius: '999px',
+            background: '#fff', color: '#5b21b6',
+            fontSize: '13px', fontWeight: 700, textDecoration: 'none',
+            boxShadow: '0 2px 8px rgba(0,0,0,.15)',
+            whiteSpace: 'nowrap',
+          }}>+ New Invoice</Link>
+          <Link to="/sales/payments/new" style={{
+            padding: '9px 18px', borderRadius: '999px',
+            background: 'rgba(255,255,255,.12)', color: '#fff',
+            border: '1px solid rgba(255,255,255,.3)',
+            fontSize: '13px', fontWeight: 600, textDecoration: 'none',
+            whiteSpace: 'nowrap',
+          }}>Receive Payment</Link>
+          <Link to="/purchasing/bills/new" style={{
+            padding: '9px 18px', borderRadius: '999px',
+            background: 'rgba(255,255,255,.12)', color: '#fff',
+            border: '1px solid rgba(255,255,255,.3)',
+            fontSize: '13px', fontWeight: 600, textDecoration: 'none',
+            whiteSpace: 'nowrap',
+          }}>New Bill</Link>
+        </div>
       </div>
 
-      {/* ── 6 KPI tiles ────────────────────────────────────────────────── */}
+      {/* ── 6 KPI tiles (3×2 on desktop, horizontal compact layout) ────── */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
         gap: '14px',
       }}>
         <KpiTile label="Today Sales"      value={`AED ${fmt(data.today_sales_amount)}`}      sub="Revenue (excl. VAT)" delta={dSales}     icon={<TrendingUpIcon />} tone="emerald" href="/sales/invoices" />
@@ -378,12 +416,8 @@ export default function DashboardPage() {
         <KpiTile label="Payables"         value={`AED ${fmt(data.outstanding_ap)}`}          sub="Outstanding"         delta={dAP}        icon={<HandCoinIcon />}   tone="violet"  href="/reports/ap-aging" />
       </div>
 
-      {/* ── Sales Trend + Recent Inventory side-by-side ───────────────── */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'minmax(0, 2fr) minmax(280px, 1fr)',
-        gap: '14px',
-      }}>
+      {/* ── Sales Trend + Recent Inventory — stack below lg ───────────── */}
+      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
         {/* Sales Trend (2/3) */}
         <Panel
           icon="📈"
@@ -471,7 +505,7 @@ export default function DashboardPage() {
               color: '#fff',
               fontSize: theme.fontBase, fontWeight: 600,
               textDecoration: 'none',
-              boxShadow: '0 4px 12px rgba(99,102,241,.25)',
+              boxShadow: '0 4px 12px rgba(124,58,237,.25)',
               whiteSpace: 'nowrap',
             }}
           >

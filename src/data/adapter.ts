@@ -353,7 +353,16 @@ export interface LedgerEntry {
   debit: number;
   credit: number;
   running_balance: number;
+  /** Line-level related_doc_type (falls back to the JE's source_type). */
   source_type: string;
+  /** Id of the source document (invoice / bill / payment / …), if any. */
+  source_id: string | null;
+  /** Human document number ("INV-1002", "BILL-1003") resolved from source_id. */
+  source_number: string | null;
+  /** Non-null when this JE was subsequently voided by another JE. */
+  reversed_by_id: string | null;
+  /** Non-null when this JE IS the reversal of another JE. */
+  reversal_of_id: string | null;
 }
 
 export interface StockBalance {
@@ -460,6 +469,28 @@ export interface StockLedgerAPI {
     unit_cost: number;
     date?: string;
   }): Promise<{ stock_ledger_id: string; journal_entry_id: string; entry_number: string; total_value: number }>;
+  /**
+   * Phase 14.15 — list all opening-stock rows posted via post_opening_stock.
+   * Used by the Opening Inventory wizard to show "already posted" items.
+   */
+  listOpeningStock(company_id: string): Promise<Array<{
+    stock_ledger_id: string;
+    product_id:      string;
+    sku:             string;
+    product_name:    string;
+    warehouse_id:    string;
+    warehouse_name:  string;
+    quantity:        number;
+    unit_cost:       number;
+    total_cost:      number;
+    date:            string;
+  }>>;
+  /**
+   * Phase 14.16b — void an opening stock entry.
+   * Reverses the GL JE and hard-deletes the stock_ledger row,
+   * clearing the one-shot guard so the product can be re-posted.
+   */
+  voidOpeningStock(stock_ledger_id: string): Promise<void>;
 }
 
 // ── Phase 4 row types ─────────────────────────────────────────────────────────
@@ -668,6 +699,9 @@ export interface InvoicesAPI {
   confirm(invoice_id: string): Promise<InvoiceConfirmResult>;
   void(invoice_id: string, reason?: string): Promise<void>;
   edit(invoice_id: string): Promise<void>;
+  /** Hard-delete a DRAFT invoice (and its items). Refuses if not draft —
+   *  confirmed invoices must be voided, never deleted. */
+  deleteDraft(invoice_id: string): Promise<void>;
   getNextNumber(company_id: string): Promise<string>;
   /**
    * Returns confirmed invoices for a customer that still have a positive
@@ -702,7 +736,16 @@ export interface PaymentsAPI {
   confirm(payment_id: string): Promise<PaymentConfirmResult>;
   applyAdvance(payment_id: string, invoice_id: string, amount: number): Promise<ApplyAdvanceResult>;
   void(payment_id: string, reason?: string): Promise<void>;
+  /** Hard-delete a DRAFT payment (and its allocations). Refuses if not draft —
+   *  confirmed payments must be voided, never deleted. */
+  deleteDraft(payment_id: string): Promise<void>;
   getNextNumber(company_id: string): Promise<string>;
+  /**
+   * Sum of allocations (amount_applied + discount) per doc id for the whole
+   * company, filtered by doc_type. Used by list pages to show payment
+   * status (Paid / Partial / Unpaid) without N round-trips.
+   */
+  getAppliedMap(company_id: string, doc_type: 'invoice' | 'vendor_bill'): Promise<Record<string, number>>;
 }
 
 export interface BankAccountsAPI {
@@ -716,7 +759,14 @@ export interface BankAccountsAPI {
 }
 
 export interface TaxRatesAPI {
+  /** Returns only is_active=true rates (used by invoice/bill dropdowns). */
   list(company_id: string): Promise<TaxRateRow[]>;
+  /** Returns ALL rates including inactive (used by settings page). */
+  listAll(company_id: string): Promise<TaxRateRow[]>;
+  create(row: TaxRateInsert): Promise<TaxRateRow>;
+  update(id: string, patch: Partial<TaxRateInsert>): Promise<void>;
+  /** Insert Standard 5%, Zero-rated 0%, Exempt for the company (idempotent per tax_type). */
+  seedDefaults(company_id: string): Promise<void>;
 }
 
 // Phase 13.03 — dashboard summary cards (Income/Expense, Top Expenses,
@@ -1195,6 +1245,15 @@ export interface VendorBillsAPI {
   create(row: VendorBillInsert, items: VendorBillItemInsert[]): Promise<VendorBillRow>;
   update(id: string, row: VendorBillUpdate, items: VendorBillItemInsert[]): Promise<void>;
   confirm(bill_id: string): Promise<BillConfirmResult>;
+  /**
+   * Re-open a CONFIRMED bill for editing: reverses its JE + stock rows and
+   * sets status back to draft. Refuses if payments are applied or the bill
+   * triggered a deferred-COGS flush. Re-confirm reposts everything.
+   */
+  edit(bill_id: string): Promise<void>;
+  /** Hard-delete a DRAFT bill (and its items). Refuses if not draft —
+   *  confirmed bills must be voided/reopened, never deleted. */
+  deleteDraft(bill_id: string): Promise<void>;
   getNextNumber(company_id: string): Promise<string>;
   /**
    * Confirmed vendor bills for a supplier that still have a positive
@@ -1746,6 +1805,80 @@ export interface DataAdapter {
   salespeople: SalespeopleAPI;
   // Phase 14.09: Opening Balances wizard
   openingBalances: OpeningBalancesAPI;
+  // Payroll P1 (owner override 2026-06-13)
+  employees: EmployeesAPI;
+  payroll: PayrollAPI;
+  // Document numbering settings (2026-06-13)
+  documentSequences: DocumentSequencesAPI;
+}
+
+// ── Document numbering ──────────────────────────────────────────────────────
+export type DocumentSequenceRow = Tables['document_sequences']['Row'];
+
+export interface DocumentSequencesAPI {
+  list(company_id: string): Promise<DocumentSequenceRow[]>;
+  /**
+   * Upsert one prefix's settings. `current_value` is the LAST issued
+   * number — the next document gets current_value + 1.
+   */
+  save(company_id: string, prefix: string, patch: {
+    format: string; pad_zeros: number; reset_yearly: boolean; current_value: number;
+  }): Promise<void>;
+}
+
+// ── Payroll P1 — row types + APIs ───────────────────────────────────────────
+export type EmployeeRow       = Tables['employees']['Row'];
+export type EmployeeInsert    = Omit<Tables['employees']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type PayrollRunRow     = Tables['payroll_runs']['Row'];
+export type PayrollRunInsert  = Omit<Tables['payroll_runs']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type PayrollRunItemRow    = Tables['payroll_run_items']['Row'];
+export type PayrollRunItemInsert = Omit<Tables['payroll_run_items']['Insert'], 'id' | 'created_at'>;
+
+export interface PayrollConfirmResult {
+  run_id: string; je_id: string; entry_number: string;
+  total_gross: number; total_net: number;
+}
+export interface PayrollPayResult {
+  run_id: string; je_id: string; entry_number: string;
+}
+
+// Payroll P3a — gratuity settlement + leave salary
+export type LeaveSalaryRow    = Tables['leave_salary_payments']['Row'];
+export type LeaveSalaryInsert = Omit<Tables['leave_salary_payments']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+
+export interface EmployeesAPI {
+  list(company_id: string, opts?: { includeInactive?: boolean }): Promise<EmployeeRow[]>;
+  create(row: EmployeeInsert): Promise<EmployeeRow>;
+  update(id: string, row: Partial<EmployeeInsert>): Promise<void>;
+  getNextCode(company_id: string): Promise<string>;
+}
+
+export interface PayrollAPI {
+  listRuns(company_id: string): Promise<PayrollRunRow[]>;
+  getRun(id: string): Promise<PayrollRunRow | null>;
+  getItems(run_id: string): Promise<PayrollRunItemRow[]>;
+  /** Insert run header + items. Caller pre-fills items from active employees. */
+  createRun(run: PayrollRunInsert, items: PayrollRunItemInsert[]): Promise<PayrollRunRow>;
+  /** Replace items + notes on a DRAFT run. */
+  updateRun(id: string, items: PayrollRunItemInsert[], notes?: string | null): Promise<void>;
+  /** Hard-delete a DRAFT run (items cascade). */
+  removeRun(id: string): Promise<void>;
+  /** Posts the accrual JE: Dr 6100 / Cr 1450 (loans) / Cr 2350 (net). */
+  confirmRun(run_id: string): Promise<PayrollConfirmResult>;
+  /** Posts the payment JE: Dr 2350 / Cr bank. */
+  payRun(run_id: string, bank_account_id: string, date?: string): Promise<PayrollPayResult>;
+  getNextRunNumber(company_id: string): Promise<string>;
+
+  // ── P3a: gratuity settlement ──
+  /** End-of-service payout: Dr 2360 / Cr bank, optionally deactivate. */
+  settleGratuity(employee_id: string, amount: number, bank_account_id: string, opts?: { date?: string; deactivate?: boolean }): Promise<{ je_id: string; entry_number: string }>;
+
+  // ── P3a: leave salary (standalone) ──
+  listLeaveSalary(company_id: string): Promise<LeaveSalaryRow[]>;
+  createLeaveSalary(row: LeaveSalaryInsert): Promise<LeaveSalaryRow>;
+  /** Posts Dr 6100 / Cr bank and marks the record paid. */
+  payLeaveSalary(id: string): Promise<{ je_id: string; entry_number: string }>;
+  removeLeaveSalary(id: string): Promise<void>;
 }
 
 // ── Phase 14.09: Opening Balances ─────────────────────────────────────────
@@ -1816,6 +1949,12 @@ export interface OpeningBalancesAPI {
    *  Postgres transaction. If the new post fails, the void is rolled back
    *  so the original row stays intact (no half-edited state). */
   edit(input: EditOpeningBalanceInput): Promise<EditOpeningBalanceResult>;
+  /** Phase 14.14p — returns the non-voided opening-bank JE for a specific
+   *  bank account (by source_id), or null if none has been posted yet.
+   *  Used by the bank-accounts edit form to correctly call edit() vs postBank(). */
+  getBankOpeningJE(bank_account_id: string): Promise<{
+    doc_id: string; doc_number: string; date: string; amount: number;
+  } | null>;
 }
 
 // ── Phase 14.14n: atomic edit ─────────────────────────────────────────────

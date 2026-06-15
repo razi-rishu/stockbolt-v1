@@ -31,8 +31,8 @@ import { type ReactNode } from 'react';
 // ── Design tokens (mirror of _signature/tokens.ts, narrowed to what
 //    statements actually need) ──────────────────────────────────────────────
 export const stmt = {
-  brand:        '#6366F1',
-  brandSoft:    '#EEF2FF',
+  brand:        '#7c3aed',
+  brandSoft:    '#f5f3ff',
   ink:          '#0F172A',
   inkBody:      '#334155',
   inkMuted:     '#475569',
@@ -201,7 +201,7 @@ export function HealthRow({ tiles }: { tiles: HealthTile[] }) {
   return (
     <div style={{
       marginTop: '24px',
-      display: 'grid', gridTemplateColumns: `repeat(${tiles.length}, 1fr)`, gap: 0,
+      display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, 140px), 1fr))`, gap: 0,
       border: `1px solid ${stmt.hairline}`,
       borderRadius: '12px',
       overflow: 'hidden',
@@ -289,7 +289,7 @@ export function BalanceStrip({
       {/* Labels under the bar */}
       <div style={{
         marginTop: '12px',
-        display: 'grid', gridTemplateColumns: `repeat(${buckets.length}, 1fr)`, gap: '12px',
+        display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, 110px), 1fr))`, gap: '12px',
       }}>
         {buckets.map((b, i) => {
           const pct = totalPositive > 0 ? Math.round((b.value / totalPositive) * 100) : 0;
@@ -676,7 +676,7 @@ export function InsightStrip({ items }: { items: Insight[] }) {
   return (
     <div style={{
       marginTop: '20px',
-      display: 'grid', gridTemplateColumns: `repeat(${items.length}, 1fr)`, gap: 0,
+      display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, 150px), 1fr))`, gap: 0,
       border: `1px dashed ${stmt.hairline}`,
       borderRadius: '12px',
       overflow: 'hidden',

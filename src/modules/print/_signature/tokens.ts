@@ -14,10 +14,10 @@
 
 export const tokens = {
   // ── Colours ────────────────────────────────────────────────────────────
-  brand:        '#6366F1',  // accent strip · anchor border · link
-  brandDeep:    '#4338CA',  // hover · pressed
-  brandSoft:    '#EEF2FF',  // subtle fills
-  brandSoftText:'#4338CA',
+  brand:        '#7c3aed',  // accent strip · anchor border · link
+  brandDeep:    '#5b21b6',  // hover · pressed
+  brandSoft:    '#f5f3ff',  // subtle fills
+  brandSoftText:'#5b21b6',
 
   ink:          '#0F172A',  // primary text · stamp card bg
   inkMuted:     '#475569',  // labels · captions

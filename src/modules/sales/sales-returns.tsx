@@ -6,24 +6,8 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
-import type { SalesReturnRow } from '@/data/adapter';
-
-// ── Sample-style tinted status pill ──────────────────────────────────────
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; text: string; border: string; label: string }> = {
-    draft:     { bg: '#fffbeb', text: '#b45309', border: '#fde68a', label: 'Draft' },
-    confirmed: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0', label: 'Confirmed' },
-    void:      { bg: '#fef2f2', text: '#dc2626', border: '#fecaca', label: 'Void' },
-  };
-  const p = map[status] ?? map.draft;
-  return (
-    <span style={{
-      display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
-      fontSize: '11px', fontWeight: 600,
-      background: p.bg, color: p.text, border: `1px solid ${p.border}`,
-    }}>{p.label}</span>
-  );
-}
+import { StatusBadge } from '@/ui/status-badge';
+import type { SalesReturnRow, InvoiceRow, ContactRow } from '@/data/adapter';
 
 export default function SalesReturnsPage() {
   const { t } = useTranslation();
@@ -35,6 +19,21 @@ export default function SalesReturnsPage() {
     queryFn:  () => getAdapter().salesReturns.list(company_id!),
     enabled:  !!company_id,
   });
+
+  // sales_returns has no contact FK — the customer comes via the linked
+  // invoice. Resolve invoice_id → invoice number + customer name.
+  const { data: invoices = [] } = useQuery<InvoiceRow[]>({
+    queryKey: ['invoices', company_id],
+    queryFn: () => getAdapter().invoices.list(company_id!),
+    enabled: !!company_id,
+  });
+  const { data: customers = [] } = useQuery<ContactRow[]>({
+    queryKey: ['contacts', company_id, 'customer'],
+    queryFn: () => getAdapter().contacts.list(company_id!, 'customer'),
+    enabled: !!company_id,
+  });
+  const invoiceMap  = Object.fromEntries(invoices.map(i => [i.id, i]));
+  const customerMap = Object.fromEntries(customers.map(c => [c.id, c.name]));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -60,6 +59,7 @@ export default function SalesReturnsPage() {
               <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
                 {[
                   { l: t('returns.return_number'), a: 'start' as const },
+                  { l: t('sales.customer'),        a: 'start' as const },
                   { l: t('common.date'),           a: 'start' as const },
                   { l: t('returns.linked_invoice'),a: 'start' as const },
                   { l: t('returns.reason'),        a: 'start' as const },
@@ -88,8 +88,13 @@ export default function SalesReturnsPage() {
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
                 >
                   <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>{sr.return_number}</td>
+                  <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px', fontWeight: 500 }}>
+                    {customerMap[invoiceMap[sr.invoice_id]?.contact_id ?? ''] ?? '—'}
+                  </td>
                   <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{sr.date}</td>
-                  <td className="px-4 py-3 font-mono" style={{ fontSize: '11px', color: theme.inkMuted }}>{sr.invoice_id.slice(0, 8)}…</td>
+                  <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.inkMuted }}>
+                    {invoiceMap[sr.invoice_id]?.invoice_number ?? `${sr.invoice_id.slice(0, 8)}…`}
+                  </td>
                   <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px', textTransform: 'capitalize' }}>{sr.reason ?? '—'}</td>
                   <td className="px-4 py-3"><StatusBadge status={sr.status} /></td>
                   <td className="px-4 py-3" style={{ textAlign: 'end' }}>

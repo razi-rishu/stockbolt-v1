@@ -16,18 +16,27 @@ const ALL_ACCOUNTS: (AccountDef & { gcc_only?: true; india_only?: true })[] = [
   { code: '1260', name: 'Bounced Cheques',            name_ar: 'شيكات مرتجعة',            type: 'asset', sub_type: 'current' },
   { code: '1300', name: 'Inventory Asset',            name_ar: 'أصول المخزون',            type: 'asset', sub_type: 'current' },
   { code: '1400', name: 'Vendor Advances / Prepaid',  name_ar: 'سلف الموردين',            type: 'asset', sub_type: 'current' },
+  // Payroll P1 (owner override 2026-06-13) — staff loan/advance recoveries
+  { code: '1450', name: 'Employee Advances',          name_ar: 'سلف الموظفين',            type: 'asset', sub_type: 'current' },
   { code: '1500', name: 'Input VAT (Claimable)',       name_ar: 'ضريبة القيمة المضافة المدخلات', type: 'asset', sub_type: 'current', gcc_only: true },
   { code: '1510', name: 'Input CGST',                 name_ar: 'ضريبة CGST المدخلات',     type: 'asset', sub_type: 'current', india_only: true },
   { code: '1520', name: 'Input SGST',                 name_ar: 'ضريبة SGST المدخلات',     type: 'asset', sub_type: 'current', india_only: true },
   { code: '1530', name: 'Input IGST',                 name_ar: 'ضريبة IGST المدخلات',     type: 'asset', sub_type: 'current', india_only: true },
   // ── Liabilities — 'current' = due within 12 months; 'long_term' = beyond ─
   { code: '2100', name: 'Accounts Payable',            name_ar: 'حسابات الدفع',            type: 'liability', sub_type: 'current' },
+  // Supplier payable categories (Lite, 2026-06-14) — rent/utility vendors
+  // post here instead of 2100 via their payable_account_code mapping.
+  { code: '2110', name: 'Rent & Lease Payable',        name_ar: 'إيجارات مستحقة الدفع',    type: 'liability', sub_type: 'current' },
+  { code: '2120', name: 'Utilities Payable',           name_ar: 'مرافق مستحقة الدفع',      type: 'liability', sub_type: 'current' },
   { code: '2150', name: 'GRN Accrual',                 name_ar: 'استحقاق إيصالات البضاعة', type: 'liability', sub_type: 'current' },
   { code: '2200', name: 'Output VAT Payable',          name_ar: 'ضريبة القيمة المضافة المخرجات', type: 'liability', sub_type: 'current', gcc_only: true },
   { code: '2210', name: 'Output CGST',                 name_ar: 'ضريبة CGST المخرجات',    type: 'liability', sub_type: 'current', india_only: true },
   { code: '2220', name: 'Output SGST',                 name_ar: 'ضريبة SGST المخرجات',    type: 'liability', sub_type: 'current', india_only: true },
   { code: '2230', name: 'Output IGST',                 name_ar: 'ضريبة IGST المخرجات',    type: 'liability', sub_type: 'current', india_only: true },
   { code: '2300', name: 'Accrued Expenses',            name_ar: 'مصروفات مستحقة',         type: 'liability', sub_type: 'current' },
+  // Payroll P1 (owner override 2026-06-13)
+  { code: '2350', name: 'Salaries Payable',            name_ar: 'رواتب مستحقة الدفع',     type: 'liability', sub_type: 'current' },
+  { code: '2360', name: 'Gratuity Accrual',            name_ar: 'مخصص مكافأة نهاية الخدمة', type: 'liability', sub_type: 'current' },
   { code: '2400', name: 'Customer Advances',           name_ar: 'سلف العملاء',             type: 'liability', sub_type: 'current' },
   { code: '2450', name: 'PDC Payable (Vendor)',         name_ar: 'شيكات آجلة صادرة',       type: 'liability', sub_type: 'current' },
   // ── Equity ────────────────────────────────────────────────────────────────
@@ -52,7 +61,8 @@ const ALL_ACCOUNTS: (AccountDef & { gcc_only?: true; india_only?: true })[] = [
   { code: '5100', name: 'Cost of Goods Sold',          name_ar: 'تكلفة البضاعة المباعة',   type: 'expense', sub_type: 'direct' },
   { code: '5200', name: 'Purchase Discounts Received', name_ar: 'خصومات المشتريات المكتسبة', type: 'expense', sub_type: 'direct' },
   // ── Indirect expense / Operating expenses (sits below Gross Profit) ───────
-  // 6100 Salaries intentionally excluded — payroll deferred to v2 (Doc 5)
+  // 6100 — Payroll P1 (owner override 2026-06-13; was v2-deferred per Doc 5)
+  { code: '6100', name: 'Salaries & Benefits',         name_ar: 'الرواتب والمزايا',        type: 'expense', sub_type: 'indirect' },
   { code: '6200', name: 'Rent & Utilities',            name_ar: 'إيجار ومرافق',            type: 'expense', sub_type: 'indirect' },
   { code: '6300', name: 'Marketing & Advertising',     name_ar: 'تسويق وإعلان',            type: 'expense', sub_type: 'indirect' },
   { code: '6400', name: 'Logistics & Shipping',        name_ar: 'لوجستيات وشحن',           type: 'expense', sub_type: 'indirect' },

@@ -54,7 +54,7 @@ function defaultPrintConfig(): PrintConfig {
     show_salesperson:   true,
     show_due_date:      true,
     show_bank_details:  true,
-    accent_color:       '#4f46e5',
+    accent_color:       '#6d28d9',
   };
 }
 

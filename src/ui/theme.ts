@@ -8,13 +8,13 @@
  */
 
 export const theme = {
-  // Brand & accent
-  brand: '#6366f1',          // indigo-500
-  brandDeep: '#4f46e5',      // indigo-600 (hover / active)
-  brandSoft: '#eef2ff',      // indigo-50 (chip fill / hover bg)
-  brandSoftText: '#4338ca',  // indigo-700 (chip text)
-  brandRing: 'rgba(99,102,241,.10)', // focus ring
-  brandGradient: 'linear-gradient(90deg, #6366f1, #8b5cf6)', // top progress bar
+  // Brand & accent — violet
+  brand: '#7c3aed',          // violet-600
+  brandDeep: '#6d28d9',      // violet-700 (hover / active)
+  brandSoft: '#f5f3ff',      // violet-50 (chip fill / hover bg)
+  brandSoftText: '#5b21b6',  // violet-800 (chip text)
+  brandRing: 'rgba(124,58,237,.10)', // focus ring
+  brandGradient: 'linear-gradient(90deg, #7c3aed, #a78bfa)', // top progress bar
 
   // Surfaces
   page:       '#f8fafc',     // slate-50  — page bg
@@ -60,7 +60,7 @@ export const theme = {
   shadowLg:   '0 10px 30px rgba(15,23,42,.10)',
 
   // Typography
-  font:       'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  font:       '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
   fontMono:   '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
   fontXs:     '11px',
   fontSm:     '12px',

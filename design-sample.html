@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>StockBolt — Option B Design</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* ── Brand: Deep Violet ── */
+  --brand:        #7C3AED;
+  --brand-deep:   #6D28D9;
+  --brand-light:  #F5F3FF;
+  --brand-border: #DDD6FE;
+  --brand-text:   #5B21B6;
+
+  /* ── Surfaces ── */
+  --page:    #F7F7F8;
+  --card:    #FFFFFF;
+  --border:  #E4E4E7;
+  --border2: #D1D1D6;
+
+  /* ── Text ── */
+  --tx1: #09090B;   /* headings */
+  --tx2: #3F3F46;   /* body */
+  --tx3: #71717A;   /* secondary */
+  --tx4: #A1A1AA;   /* muted/placeholder */
+
+  /* ── Semantic: each status has its OWN color ── */
+  --c-red-bg:    #FFF1F2; --c-red-tx:  #BE123C; --c-red-bd:  #FECDD3;
+  --c-grn-bg:    #F0FDF4; --c-grn-tx:  #15803D; --c-grn-bd:  #BBF7D0;
+  --c-amb-bg:    #FFFBEB; --c-amb-tx:  #B45309; --c-amb-bd:  #FDE68A;
+  --c-blu-bg:    #EFF6FF; --c-blu-tx:  #1D4ED8; --c-blu-bd:  #BFDBFE;
+  --c-gry-bg:    #F4F4F5; --c-gry-tx:  #71717A; --c-gry-bd:  #D4D4D8;
+  --c-vio-bg:    #F5F3FF; --c-vio-tx:  #6D28D9; --c-vio-bd:  #DDD6FE;
+
+  /* ── Shadows ── */
+  --shadow-sm: 0 1px 2px rgba(9,9,11,.05);
+  --shadow-md: 0 2px 8px rgba(9,9,11,.07);
+
+  /* ── Radius ── */
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px; --r-pill: 9999px;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--tx2);
+  background: var(--page);
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ══ DEMO TAB BAR ══════════════════════════════════════════════ */
+.demo-bar {
+  position: fixed; top: 0; left: 220px; right: 0; z-index: 999;
+  background: #18181B;
+  display: flex; align-items: center; gap: 3px; padding: 7px 14px;
+  border-bottom: 1px solid #27272A;
+}
+.demo-tab {
+  padding: 4px 13px; border-radius: var(--r-pill);
+  font-size: 11px; font-weight: 500; cursor: pointer;
+  color: #A1A1AA; border: 1px solid transparent; background: transparent;
+  transition: all .12s;
+}
+.demo-tab.active { background: var(--brand); color: #fff; border-color: var(--brand); }
+.demo-tab:hover:not(.active) { background: #27272A; color: #E4E4E7; }
+.demo-bar-label { margin-left: auto; font-size: 11px; color: #52525B; }
+
+/* ══ SIDEBAR ═══════════════════════════════════════════════════ */
+.sidebar {
+  width: 220px; flex-shrink: 0;
+  background: var(--card);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  height: 100vh; overflow-y: auto;
+  position: fixed; left: 0; top: 0;
+  z-index: 100;
+}
+.sb-logo {
+  height: 54px; display: flex; align-items: center; gap: 9px;
+  padding: 0 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.sb-mark {
+  width: 28px; height: 28px; border-radius: 7px; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--brand), #A78BFA);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 800; color: #fff;
+}
+.sb-name { font-size: 14px; font-weight: 800; color: var(--tx1); letter-spacing: -.4px; }
+.sb-ver { margin-left: auto; font-size: 10px; font-weight: 600; color: var(--brand); background: var(--brand-light); border: 1px solid var(--brand-border); padding: 2px 6px; border-radius: var(--r-pill); }
+
+.sb-body { padding: 12px 8px; flex: 1; }
+.sb-group { font-size: 9px; font-weight: 700; color: var(--tx4); text-transform: uppercase; letter-spacing: .09em; padding: 8px 9px 3px; }
+.sb-item {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 9px; border-radius: var(--r-md);
+  font-size: 12px; font-weight: 500; color: var(--tx3);
+  cursor: pointer; transition: all .1s; margin-bottom: 1px;
+  position: relative;
+}
+.sb-item:hover { background: var(--page); color: var(--tx2); }
+.sb-item.active { background: var(--brand-light); color: var(--brand); font-weight: 600; }
+.sb-item.active::before { content:''; position:absolute; left:0; top:5px; bottom:5px; width:3px; border-radius:0 3px 3px 0; background:var(--brand); }
+.sb-ico { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; opacity: .7; }
+.sb-item.active .sb-ico { opacity: 1; }
+.sb-badge { margin-left: auto; font-size: 10px; font-weight: 700; background: var(--brand-light); color: var(--brand); padding: 1px 6px; border-radius: var(--r-pill); min-width: 18px; text-align: center; }
+
+.sb-foot { padding: 10px 8px; border-top: 1px solid var(--border); }
+.sb-company {
+  display: flex; align-items: center; gap: 9px;
+  padding: 9px 10px; border-radius: var(--r-md);
+  background: var(--page); cursor: pointer;
+}
+.sb-co-av { width: 28px; height: 28px; border-radius: 6px; background: linear-gradient(135deg,var(--brand),#A78BFA); display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff;flex-shrink:0; }
+.sb-co-name { font-size: 12px; font-weight: 600; color: var(--tx1); }
+.sb-co-sub { font-size: 10px; color: var(--tx4); margin-top: 1px; }
+
+/* ══ MAIN ══════════════════════════════════════════════════════ */
+.main { margin-left: 220px; flex: 1; display: flex; flex-direction: column; min-height: 100vh; padding-top: 37px; }
+.topbar {
+  height: 54px; background: var(--card); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 22px; gap: 10px; flex-shrink: 0;
+}
+.tb-title { font-size: 15px; font-weight: 700; color: var(--tx1); letter-spacing: -.3px; }
+.tb-crumb { font-size: 12px; color: var(--tx4); display: flex; align-items: center; gap: 4px; }
+.tb-actions { margin-left: auto; display: flex; gap: 7px; }
+
+/* Buttons */
+.btn { display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:var(--r-md);font-size:12px;font-weight:600;cursor:pointer;border:none;transition:all .12s;white-space:nowrap;font-family:inherit; }
+.btn-primary { background:var(--brand);color:#fff; }
+.btn-primary:hover { background:var(--brand-deep); }
+.btn-outline { background:#fff;color:var(--tx2);border:1px solid var(--border);box-shadow:var(--shadow-sm); }
+.btn-outline:hover { background:var(--page);border-color:var(--border2); }
+.btn-ghost { background:transparent;color:var(--tx3);border:1px solid transparent; }
+.btn-ghost:hover { background:var(--page);color:var(--tx2); }
+
+.content { flex:1;overflow-y:auto;padding:18px 22px;display:flex;flex-direction:column;gap:14px; }
+
+/* ══ SCREENS ═══════════════════════════════════════════════════ */
+.screen { display: none; flex-direction: column; gap: 14px; }
+.screen.active { display: flex; }
+
+/* ══ STAT CARDS — each has its own semantic color ═════════════ */
+.stat-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; }
+.stat-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 14px 16px; box-shadow: var(--shadow-sm);
+}
+.stat-label { font-size: 10px; font-weight: 700; color: var(--tx4); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 6px; }
+.stat-value { font-size: 20px; font-weight: 800; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
+.stat-sub { font-size: 11px; color: var(--tx4); margin-top: 4px; display: flex; align-items: center; gap: 5px; }
+.stat-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+/* Color variants for stat values */
+.sv-default { color: var(--tx1); }
+.sv-danger  { color: #DC2626; }
+.sv-success { color: #16A34A; }
+.sv-warning { color: #D97706; }
+.sv-brand   { color: var(--brand); }
+
+/* ══ FILTER BAR ════════════════════════════════════════════════ */
+.filter-bar {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 10px 14px;
+  display: flex; align-items: center; gap: 8px; box-shadow: var(--shadow-sm);
+}
+.search-box {
+  display: flex; align-items: center; gap: 7px;
+  background: var(--page); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: 6px 11px;
+  font-size: 12px; color: var(--tx4); min-width: 220px;
+}
+.filter-chip {
+  padding: 5px 11px; border-radius: var(--r-md);
+  font-size: 11px; font-weight: 500; cursor: pointer;
+  background: var(--page); border: 1px solid var(--border); color: var(--tx3);
+  transition: all .1s;
+}
+.filter-chip:hover { border-color: var(--border2); color: var(--tx2); }
+.filter-chip.on { background: var(--brand-light); color: var(--brand); border-color: var(--brand-border); font-weight: 600; }
+
+/* ══ TABLE CARD ════════════════════════════════════════════════ */
+.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
+.card-head { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+.card-title { font-size: 13px; font-weight: 700; color: var(--tx1); }
+.card-count { font-size: 11px; font-weight: 600; background: var(--page); color: var(--tx3); padding: 2px 8px; border-radius: var(--r-pill); border: 1px solid var(--border); }
+
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  padding: 8px 14px; text-align: left;
+  font-size: 10px; font-weight: 700; color: var(--tx4);
+  text-transform: uppercase; letter-spacing: .07em;
+  background: #FAFAFA; border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+th.r, td.r { text-align: right; }
+tbody tr { border-bottom: 1px solid #F4F4F5; transition: background .08s; cursor: pointer; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: #FAFAFA; }
+td { padding: 12px 14px; font-size: 12px; color: var(--tx2); vertical-align: middle; }
+td.num { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 12px; }
+
+/* ══ BADGES ════════════════════════════════════════════════════ */
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: var(--r-pill);
+  font-size: 11px; font-weight: 600; border: 1px solid;
+}
+.bdot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+/* Each status badge is its own color */
+.b-confirmed { background:var(--c-grn-bg); color:var(--c-grn-tx); border-color:var(--c-grn-bd); }
+.b-paid      { background:var(--c-grn-bg); color:var(--c-grn-tx); border-color:var(--c-grn-bd); }
+.b-draft     { background:var(--c-gry-bg); color:var(--c-gry-tx); border-color:var(--c-gry-bd); }
+.b-overdue   { background:var(--c-red-bg); color:var(--c-red-tx); border-color:var(--c-red-bd); }
+.b-partial   { background:var(--c-amb-bg); color:var(--c-amb-tx); border-color:var(--c-amb-bd); }
+.b-void      { background:var(--c-gry-bg); color:var(--c-gry-tx); border-color:var(--c-gry-bd); }
+.b-brand     { background:var(--c-vio-bg); color:var(--c-vio-tx); border-color:var(--c-vio-bd); }
+
+/* ══ AVATAR ════════════════════════════════════════════════════ */
+.av { width: 28px; height: 28px; border-radius: 6px; display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff;flex-shrink:0; }
+.av-v { background: linear-gradient(135deg,#7C3AED,#A78BFA); }
+.av-g { background: linear-gradient(135deg,#059669,#34D399); }
+.av-a { background: linear-gradient(135deg,#D97706,#FBBF24); }
+.av-r { background: linear-gradient(135deg,#DC2626,#F87171); }
+.av-b { background: linear-gradient(135deg,#0EA5E9,#38BDF8); }
+.av-p { background: linear-gradient(135deg,#7C3AED,#C084FC); }
+.cell-cust { display:flex;align-items:center;gap:9px; }
+.cust-name { font-size:12px;font-weight:600;color:var(--tx1); }
+.cust-sub  { font-size:11px;color:var(--tx4);margin-top:1px; }
+
+/* doc number link color = brand violet */
+.doc { font-size:12px;font-weight:700;color:var(--brand); }
+
+/* amount colors by context */
+.am-default { color: var(--tx1); }
+.am-danger  { color: #DC2626; }
+.am-success { color: #16A34A; }
+.am-warning { color: #D97706; }
+.am-brand   { color: var(--brand); }
+.am-muted   { color: var(--tx3); }
+
+/* ══ PAGINATION ════════════════════════════════════════════════ */
+.pager { padding: 10px 14px; border-top: 1px solid var(--border); display:flex;align-items:center;gap:6px; }
+.pager-info { font-size:11px;color:var(--tx4); }
+.page-btns { margin-left:auto;display:flex;gap:3px; }
+.pbtn { padding:4px 9px;border-radius:var(--r-sm);font-size:11px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:#fff;color:var(--tx3); }
+.pbtn.active { background:var(--brand);color:#fff;border-color:var(--brand); }
+
+/* ══ EDITOR LAYOUT ═════════════════════════════════════════════ */
+.ed-grid { display:grid;grid-template-columns:1fr 300px;gap:14px;align-items:start; }
+.ed-left { display:flex;flex-direction:column;gap:12px; }
+.ed-right { display:flex;flex-direction:column;gap:12px; }
+
+.form-card { background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);overflow:hidden; }
+.form-head { padding:11px 16px;border-bottom:1px solid var(--border);background:#FAFAFA;display:flex;align-items:center;gap:7px; }
+.form-head-title { font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.06em; }
+.form-body { padding:16px; }
+.grid2 { display:grid;grid-template-columns:1fr 1fr;gap:12px; }
+.grid3 { display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px; }
+.fl { display:flex;flex-direction:column;gap:4px; }
+.lbl { font-size:10px;font-weight:700;color:var(--tx4);text-transform:uppercase;letter-spacing:.05em; }
+.inp { width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--r-md);font-size:12px;color:var(--tx1);background:#fff;outline:none;font-family:inherit; }
+.inp:focus { border-color:var(--brand);box-shadow:0 0 0 3px rgba(124,58,237,.1); }
+.inp.filled { background:#FAFAFA;font-weight:500; }
+
+/* Line items */
+.line-table { width:100%;border-collapse:collapse; }
+.line-table thead th { padding:7px 9px;font-size:9px;font-weight:700;color:var(--tx4);text-transform:uppercase;letter-spacing:.07em;background:#FAFAFA;border-bottom:1px solid var(--border);text-align:left; }
+.line-table th.r { text-align:right; }
+.line-table tbody td { padding:5px 8px;border-bottom:1px solid #F4F4F5;vertical-align:middle; }
+.line-inp { width:100%;padding:5px 8px;border:1px solid transparent;border-radius:var(--r-sm);font-size:12px;color:var(--tx1);background:transparent;outline:none;font-family:inherit; }
+.line-inp:focus { border-color:var(--brand);background:#fff;box-shadow:0 0 0 2px rgba(124,58,237,.1); }
+.add-line { display:inline-flex;align-items:center;gap:5px;margin:9px 12px;font-size:11px;font-weight:500;color:var(--brand);cursor:pointer;padding:5px 9px;border-radius:var(--r-md);border:1px dashed var(--brand-border);background:var(--brand-light);transition:all .12s; }
+.add-line:hover { background:#EDE9FE; }
+
+.totals-wrap { border-top:1px solid var(--border);padding:3px 0; }
+.totals-table { width:100%;border-collapse:collapse; }
+.totals-table td { padding:6px 16px;font-size:12px; }
+.totals-table td:last-child { text-align:right;font-variant-numeric:tabular-nums;font-weight:500;min-width:110px; }
+.totals-table tr.grand td { font-size:14px;font-weight:800;color:var(--tx1);border-top:2px solid var(--border);padding-top:10px;padding-bottom:10px; }
+.totals-table tr.grand td:last-child { color:var(--brand); }
+
+/* Summary side panel */
+.sum-card { background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);padding:14px 16px;box-shadow:var(--shadow-sm); }
+.sum-status { display:flex;align-items:center;gap:7px;padding:8px 12px;border-radius:var(--r-md);font-size:12px;font-weight:600;background:var(--c-grn-bg);color:var(--c-grn-tx);border:1px solid var(--c-grn-bd);margin-bottom:12px; }
+.sum-row { display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:12px; }
+.sum-row-total { font-weight:700;color:var(--tx1);font-size:14px;border-top:1px solid var(--border);margin-top:5px;padding-top:9px; }
+.sum-row-due { margin-top:4px;padding-top:9px; }
+.sum-due-label { font-weight:700;font-size:13px;color:var(--tx1); }
+.sum-due-val { font-size:18px;font-weight:800;color:var(--brand);font-variant-numeric:tabular-nums; }
+
+/* ══ REPORT STYLES ═════════════════════════════════════════════ */
+.rpt-toolbar { background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);padding:11px 16px;display:flex;align-items:center;gap:10px;box-shadow:var(--shadow-sm); }
+.rpt-period { display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--tx1); }
+.rpt-chip { background:var(--brand-light);color:var(--brand);padding:3px 10px;border-radius:var(--r-pill);font-size:11px;font-weight:600;border:1px solid var(--brand-border); }
+
+.rpt-card { background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);overflow:hidden; }
+.rpt-head { padding:20px 24px 14px;border-bottom:1px solid var(--border);text-align:center; }
+.rpt-co { font-size:16px;font-weight:800;color:var(--tx1);letter-spacing:-.3px; }
+.rpt-name { font-size:13px;font-weight:600;color:var(--tx3);margin-top:3px; }
+.rpt-period-lbl { font-size:11px;color:var(--tx4);margin-top:2px; }
+
+.rpt-tbl { width:100%;border-collapse:collapse; }
+.rpt-tbl td { padding:7px 24px;font-size:12px; }
+.rpt-tbl td.num { text-align:right;width:150px;font-variant-numeric:tabular-nums;font-weight:500;color:var(--tx1); }
+.rpt-sec th { padding:11px 24px 5px;font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.08em;border-top:1px solid #F4F4F5;text-align:left; }
+.rpt-sec:first-child th { border-top:none; }
+.rpt-row td { color:var(--tx2); }
+.rpt-row:hover td { background:#FAFAFA;cursor:pointer; }
+.rpt-row td:first-child { padding-left:36px; }
+.rpt-sub td { font-weight:700;color:var(--tx1);background:#FAFAFA;border-top:1px solid var(--border);padding-top:8px;padding-bottom:8px; }
+.rpt-total td { font-weight:800;color:var(--tx1);font-size:13px;background:#F4F4F5;border-top:2px solid var(--border2); }
+.rpt-net td { font-weight:800;font-size:14px;color:var(--c-grn-tx);background:var(--c-grn-bg);border-top:2px solid var(--c-grn-bd);padding-top:12px;padding-bottom:12px; }
+.rpt-net td.num { color:var(--c-grn-tx); }
+.rpt-foot { padding:11px 24px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px; }
+.rpt-balanced { display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;background:var(--c-grn-bg);color:var(--c-grn-tx);padding:4px 10px;border-radius:var(--r-pill);border:1px solid var(--c-grn-bd); }
+
+/* ══ TRIAL BALANCE ═════════════════════════════════════════════ */
+.tb-grp th { padding:10px 24px 5px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--brand);background:var(--brand-light);border-top:1px solid var(--brand-border);border-bottom:1px solid var(--brand-border);text-align:left; }
+.tb-row td { padding:8px 24px;font-size:12px;color:var(--tx2);border-bottom:1px solid #F8F8F8; }
+.tb-row td:first-child { padding-left:40px; }
+.tb-row:hover td { background:#FAFAFA;cursor:pointer; }
+.tb-sub td { padding:9px 24px;font-size:12px;font-weight:700;color:var(--tx1);background:#FAFAFA;border-top:1px solid var(--border); }
+.tb-grand td { padding:11px 24px;font-size:13px;font-weight:800;color:var(--tx1);background:#F4F4F5;border-top:3px double var(--border2); }
+.tb-num { text-align:right;font-variant-numeric:tabular-nums;font-weight:500;width:140px; }
+
+/* SVG icon helper */
+.ico { width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;display:inline-block;vertical-align:middle;flex-shrink:0; }
+</style>
+</head>
+<body>
+
+<!-- ══ SIDEBAR ════════════════════════════════════════════════ -->
+<aside class="sidebar">
+  <div class="sb-logo">
+    <div class="sb-mark">SB</div>
+    <span class="sb-name">StockBolt</span>
+    <span class="sb-ver">v2</span>
+  </div>
+  <div class="sb-body">
+    <div class="sb-group">Sales</div>
+    <div class="sb-item active" onclick="go('inv')">
+      <svg class="sb-ico ico" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Invoices <span class="sb-badge">4</span>
+    </div>
+    <div class="sb-item" onclick="go('ed')">
+      <svg class="sb-ico ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      Quotes
+    </div>
+    <div class="sb-item">
+      <svg class="sb-ico ico" viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>
+      Sales Returns
+    </div>
+    <div class="sb-item">
+      <svg class="sb-ico ico" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+      Customers
+    </div>
+    <div class="sb-group">Purchasing</div>
+    <div class="sb-item">
+      <svg class="sb-ico ico" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>
+      Purchase Orders
+    </div>
+    <div class="sb-item">
+      <svg class="sb-ico ico" viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/></svg>
+      Vendor Bills
+    </div>
+    <div class="sb-item">
+      <svg class="sb-ico ico" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/></svg>
+      Expenses
+    </div>
+    <div class="sb-group">Inventory</div>
+    <div class="sb-item">
+      <svg class="sb-ico ico" viewBox="0 0 24 24"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/></svg>
+      Products
+    </div>
+    <div class="sb-item">
+      <svg class="sb-ico ico" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/></svg>
+      Stock Ledger
+    </div>
+    <div class="sb-group">Accounting</div>
+    <div class="sb-item" onclick="go('pl')">
+      <svg class="sb-ico ico" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      P&amp;L Report
+    </div>
+    <div class="sb-item" onclick="go('tb')">
+      <svg class="sb-ico ico" viewBox="0 0 24 24"><path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18"/></svg>
+      Trial Balance
+    </div>
+    <div class="sb-item">
+      <svg class="sb-ico ico" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>
+      Balance Sheet
+    </div>
+    <div class="sb-item">
+      <svg class="sb-ico ico" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      Chart of Accounts
+    </div>
+  </div>
+  <div class="sb-foot">
+    <div class="sb-company">
+      <div class="sb-co-av">GT</div>
+      <div>
+        <div class="sb-co-name">Gulf Trading LLC</div>
+        <div class="sb-co-sub">Dubai, UAE · VAT Registered</div>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- ══ DEMO TABS ════════════════════════════════════════════════ -->
+<div class="demo-bar">
+  <button class="demo-tab active" onclick="go('inv')">📄 Invoice List</button>
+  <button class="demo-tab" onclick="go('ed')">✏️ Invoice Editor</button>
+  <button class="demo-tab" onclick="go('pl')">📊 P&amp;L Report</button>
+  <button class="demo-tab" onclick="go('tb')">⚖️ Trial Balance</button>
+  <span class="demo-bar-label">StockBolt v2 · Option B · Deep Violet</span>
+</div>
+
+<!-- ══ MAIN ════════════════════════════════════════════════════ -->
+<div class="main">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <div>
+      <div class="tb-title" id="tb-title">Invoices</div>
+    </div>
+    <div class="tb-actions" id="tb-actions">
+      <button class="btn btn-outline">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export
+      </button>
+      <button class="btn btn-outline">
+        <svg class="ico" viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+        Filter
+      </button>
+      <button class="btn btn-primary">
+        <svg class="ico" style="stroke:#fff" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Invoice
+      </button>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- ════ SCREEN: INVOICE LIST ═════════════════════════════ -->
+    <div class="screen active" id="s-inv">
+
+      <!-- KPI stat cards — every card has its own semantic value color -->
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-label">Total Outstanding</div>
+          <div class="stat-value sv-default">AED 84,250</div>
+          <div class="stat-sub"><span class="stat-dot" style="background:var(--brand)"></span>6 invoices unpaid</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Overdue</div>
+          <div class="stat-value sv-danger">AED 12,400</div>
+          <div class="stat-sub"><span class="stat-dot" style="background:#DC2626"></span>2 invoices past due</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Paid This Month</div>
+          <div class="stat-value sv-success">AED 56,800</div>
+          <div class="stat-sub"><span class="stat-dot" style="background:#16A34A"></span>8 payments received</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Draft</div>
+          <div class="stat-value sv-warning">AED 9,100</div>
+          <div class="stat-sub"><span class="stat-dot" style="background:#D97706"></span>3 pending confirmation</div>
+        </div>
+      </div>
+
+      <!-- Filter bar -->
+      <div class="filter-bar">
+        <div class="search-box">
+          <svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Search invoices, customers…
+        </div>
+        <div class="filter-chip on">All</div>
+        <div class="filter-chip">Draft</div>
+        <div class="filter-chip">Confirmed</div>
+        <div class="filter-chip">Overdue</div>
+        <div class="filter-chip">Paid</div>
+        <div style="margin-left:auto">
+          <div class="filter-chip" style="display:flex;align-items:center;gap:6px">
+            <svg class="ico" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            Jun 2026
+          </div>
+        </div>
+      </div>
+
+      <!-- Invoice table -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">All Invoices</span>
+          <span class="card-count">24 invoices</span>
+          <div style="margin-left:auto"></div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:36px"><input type="checkbox" style="accent-color:var(--brand);width:13px;height:13px"/></th>
+              <th>Invoice</th>
+              <th>Customer</th>
+              <th>Date</th>
+              <th>Due Date</th>
+              <th class="r">Amount</th>
+              <th class="r">Balance Due</th>
+              <th>Status</th>
+              <th style="width:32px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Overdue: red amounts + red badge -->
+            <tr>
+              <td><input type="checkbox" style="accent-color:var(--brand);width:13px;height:13px"/></td>
+              <td><span class="doc">INV-1008</span></td>
+              <td><div class="cell-cust"><div class="av av-r">Al</div><div><div class="cust-name">Al Futtaim Trading</div><div class="cust-sub">alft@example.com</div></div></div></td>
+              <td class="am-muted">10 Jun 2026</td>
+              <td class="am-danger" style="font-weight:600">25 May 2026</td>
+              <td class="num r am-default">AED 12,400</td>
+              <td class="num r am-danger">AED 12,400</td>
+              <td><span class="badge b-overdue"><span class="bdot" style="background:#BE123C"></span>Overdue</span></td>
+              <td><button class="btn btn-ghost" style="padding:3px 5px;font-size:14px">⋯</button></td>
+            </tr>
+            <!-- Partial: amber balance due + amber badge -->
+            <tr>
+              <td><input type="checkbox" style="accent-color:var(--brand);width:13px;height:13px"/></td>
+              <td><span class="doc">INV-1007</span></td>
+              <td><div class="cell-cust"><div class="av av-g">Na</div><div><div class="cust-name">Nasser Auto Parts</div><div class="cust-sub">info@nasser.ae</div></div></div></td>
+              <td class="am-muted">5 Jun 2026</td>
+              <td class="am-muted">5 Jul 2026</td>
+              <td class="num r am-default">AED 28,750</td>
+              <td class="num r am-warning">AED 14,375</td>
+              <td><span class="badge b-partial"><span class="bdot" style="background:#D97706"></span>Partial</span></td>
+              <td><button class="btn btn-ghost" style="padding:3px 5px;font-size:14px">⋯</button></td>
+            </tr>
+            <!-- Confirmed: brand violet balance due + green badge -->
+            <tr>
+              <td><input type="checkbox" style="accent-color:var(--brand);width:13px;height:13px"/></td>
+              <td><span class="doc">INV-1006</span></td>
+              <td><div class="cell-cust"><div class="av av-a">Sa</div><div><div class="cust-name">Saif Al Arab Motors</div><div class="cust-sub">purchase@saarab.com</div></div></div></td>
+              <td class="am-muted">1 Jun 2026</td>
+              <td class="am-muted">1 Jul 2026</td>
+              <td class="num r am-default">AED 43,100</td>
+              <td class="num r am-brand">AED 43,100</td>
+              <td><span class="badge b-confirmed"><span class="bdot" style="background:#16A34A"></span>Confirmed</span></td>
+              <td><button class="btn btn-ghost" style="padding:3px 5px;font-size:14px">⋯</button></td>
+            </tr>
+            <!-- Draft: muted amounts + gray badge -->
+            <tr>
+              <td><input type="checkbox" style="accent-color:var(--brand);width:13px;height:13px"/></td>
+              <td><span class="doc">INV-1005</span></td>
+              <td><div class="cell-cust"><div class="av av-b">Du</div><div><div class="cust-name">Dubai Parts Centre</div><div class="cust-sub">ops@dpc.ae</div></div></div></td>
+              <td class="am-muted">28 May 2026</td>
+              <td class="am-muted">28 Jun 2026</td>
+              <td class="num r am-default">AED 9,100</td>
+              <td class="num r am-muted">AED 9,100</td>
+              <td><span class="badge b-draft"><span class="bdot" style="background:#A1A1AA"></span>Draft</span></td>
+              <td><button class="btn btn-ghost" style="padding:3px 5px;font-size:14px">⋯</button></td>
+            </tr>
+            <!-- Paid: green zero balance + green badge -->
+            <tr>
+              <td><input type="checkbox" style="accent-color:var(--brand);width:13px;height:13px"/></td>
+              <td><span class="doc">INV-1004</span></td>
+              <td><div class="cell-cust"><div class="av av-p">Mu</div><div><div class="cust-name">Mubarak &amp; Sons</div><div class="cust-sub">mubarak@sons.ae</div></div></div></td>
+              <td class="am-muted">20 May 2026</td>
+              <td class="am-muted">—</td>
+              <td class="num r am-default">AED 18,600</td>
+              <td class="num r am-success">AED 0</td>
+              <td><span class="badge b-paid"><span class="bdot" style="background:#16A34A"></span>Paid</span></td>
+              <td><button class="btn btn-ghost" style="padding:3px 5px;font-size:14px">⋯</button></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="pager">
+          <span class="pager-info">Showing 5 of 24 invoices</span>
+          <div class="page-btns">
+            <button class="pbtn">←</button>
+            <button class="pbtn active">1</button>
+            <button class="pbtn">2</button>
+            <button class="pbtn">3</button>
+            <button class="pbtn">→</button>
+          </div>
+        </div>
+      </div>
+    </div><!-- /s-inv -->
+
+    <!-- ════ SCREEN: INVOICE EDITOR ══════════════════════════ -->
+    <div class="screen" id="s-ed">
+      <div class="ed-grid">
+        <div class="ed-left">
+          <!-- Details -->
+          <div class="form-card">
+            <div class="form-head">
+              <svg class="ico" style="color:var(--brand)" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span class="form-head-title">Invoice Details</span>
+              <span class="badge b-confirmed" style="margin-left:auto"><span class="bdot" style="background:#16A34A"></span>Confirmed</span>
+            </div>
+            <div class="form-body">
+              <div class="grid3">
+                <div class="fl"><div class="lbl">Customer</div><input class="inp filled" value="Al Futtaim Trading" readonly/></div>
+                <div class="fl"><div class="lbl">Invoice No.</div><input class="inp filled" value="INV-1008" readonly/></div>
+                <div class="fl"><div class="lbl">Invoice Date</div><input class="inp filled" type="date" value="2026-06-10" readonly/></div>
+                <div class="fl"><div class="lbl">Due Date</div><input class="inp filled" type="date" value="2026-07-10" readonly/></div>
+                <div class="fl"><div class="lbl">Warehouse</div><input class="inp filled" value="Dubai Main Warehouse" readonly/></div>
+                <div class="fl"><div class="lbl">Currency</div><input class="inp filled" value="AED — UAE Dirham" readonly/></div>
+              </div>
+            </div>
+          </div>
+          <!-- Lines -->
+          <div class="form-card">
+            <div class="form-head">
+              <svg class="ico" style="color:var(--brand)" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/></svg>
+              <span class="form-head-title">Line Items</span>
+            </div>
+            <table class="line-table">
+              <thead><tr>
+                <th>#</th><th style="min-width:180px">Product</th><th class="r">Qty</th><th class="r">Unit Price</th><th>Tax</th><th class="r">Discount</th><th class="r">Total</th><th style="width:32px"></th>
+              </tr></thead>
+              <tbody>
+                <tr>
+                  <td style="color:var(--tx4);font-size:11px">1</td>
+                  <td><input class="line-inp" value="Engine Oil Filter — Toyota Corolla 2020"/></td>
+                  <td><input class="line-inp" value="10" style="text-align:right;width:48px"/></td>
+                  <td><input class="line-inp" value="125.00" style="text-align:right;width:80px"/></td>
+                  <td><select class="line-inp" style="width:90px;font-size:11px"><option>VAT 5%</option></select></td>
+                  <td><input class="line-inp" value="0.00" style="text-align:right;width:64px"/></td>
+                  <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;font-size:12px;color:var(--tx1)">1,250.00</td>
+                  <td><button class="btn btn-ghost" style="padding:2px 4px;color:#EF4444;font-size:13px">✕</button></td>
+                </tr>
+                <tr>
+                  <td style="color:var(--tx4);font-size:11px">2</td>
+                  <td><input class="line-inp" value="Brake Pad Set — Toyota Camry 2019"/></td>
+                  <td><input class="line-inp" value="4" style="text-align:right;width:48px"/></td>
+                  <td><input class="line-inp" value="380.00" style="text-align:right;width:80px"/></td>
+                  <td><select class="line-inp" style="width:90px;font-size:11px"><option>VAT 5%</option></select></td>
+                  <td><input class="line-inp" value="0.00" style="text-align:right;width:64px"/></td>
+                  <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;font-size:12px;color:var(--tx1)">1,520.00</td>
+                  <td><button class="btn btn-ghost" style="padding:2px 4px;color:#EF4444;font-size:13px">✕</button></td>
+                </tr>
+                <tr>
+                  <td style="color:var(--tx4);font-size:11px">3</td>
+                  <td><input class="line-inp" value="Air Filter — Honda Civic 2021"/></td>
+                  <td><input class="line-inp" value="6" style="text-align:right;width:48px"/></td>
+                  <td><input class="line-inp" value="95.00" style="text-align:right;width:80px"/></td>
+                  <td><select class="line-inp" style="width:90px;font-size:11px"><option>VAT 5%</option></select></td>
+                  <td><input class="line-inp" value="5%" style="text-align:right;width:64px"/></td>
+                  <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;font-size:12px;color:var(--tx1)">541.50</td>
+                  <td><button class="btn btn-ghost" style="padding:2px 4px;color:#EF4444;font-size:13px">✕</button></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="add-line">
+              <svg class="ico" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add line item
+            </div>
+            <div class="totals-wrap">
+              <table class="totals-table">
+                <tr><td style="color:var(--tx3)">Subtotal</td><td>AED 3,311.50</td></tr>
+                <tr><td style="color:var(--tx3)">VAT (5%)</td><td>AED 165.58</td></tr>
+                <tr><td style="color:var(--tx3)">Discount</td><td style="color:#16A34A">− AED 28.50</td></tr>
+                <tr class="grand"><td>Grand Total</td><td>AED 3,448.58</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+        <!-- Right panel -->
+        <div class="ed-right">
+          <div class="sum-card">
+            <div class="sum-status">
+              <span style="width:7px;height:7px;border-radius:50%;background:#16A34A;flex-shrink:0"></span>
+              Confirmed Invoice
+            </div>
+            <div class="sum-row"><span style="color:var(--tx3)">Subtotal</span><span style="font-variant-numeric:tabular-nums">AED 3,311.50</span></div>
+            <div class="sum-row"><span style="color:var(--tx3)">VAT (5%)</span><span style="font-variant-numeric:tabular-nums">AED 165.58</span></div>
+            <div class="sum-row"><span style="color:var(--tx3)">Discount</span><span style="color:#16A34A;font-variant-numeric:tabular-nums">− AED 28.50</span></div>
+            <div class="sum-row sum-row-total"><span>Grand Total</span><span style="font-variant-numeric:tabular-nums">AED 3,448.58</span></div>
+            <div class="sum-row sum-row-due">
+              <span class="sum-due-label">Balance Due</span>
+              <span class="sum-due-val">AED 3,448.58</span>
+            </div>
+            <div style="height:14px"></div>
+            <button class="btn btn-outline" style="width:100%;justify-content:center;margin-bottom:7px">Record Payment</button>
+            <button class="btn btn-primary" style="width:100%;justify-content:center">Print / Send Invoice</button>
+          </div>
+          <div class="sum-card">
+            <div style="font-size:10px;font-weight:700;color:var(--tx4);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Activity</div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <div style="display:flex;gap:9px;font-size:11px">
+                <div style="width:26px;height:26px;border-radius:50%;background:var(--brand-light);color:var(--brand);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;flex-shrink:0">R</div>
+                <div><span style="color:var(--tx1);font-weight:600">Rashid</span> <span style="color:var(--tx3)">confirmed this invoice</span><div style="color:var(--tx4);margin-top:2px">Today · 10:24 AM</div></div>
+              </div>
+              <div style="display:flex;gap:9px;font-size:11px">
+                <div style="width:26px;height:26px;border-radius:50%;background:var(--brand-light);color:var(--brand);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;flex-shrink:0">R</div>
+                <div><span style="color:var(--tx1);font-weight:600">Rashid</span> <span style="color:var(--tx3)">created draft</span><div style="color:var(--tx4);margin-top:2px">Today · 9:51 AM</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /s-ed -->
+
+    <!-- ════ SCREEN: P&L ══════════════════════════════════════ -->
+    <div class="screen" id="s-pl">
+      <div class="rpt-toolbar">
+        <div class="rpt-period">
+          <svg class="ico" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Period: <span class="rpt-chip">Jan – Jun 2026</span>
+        </div>
+        <button class="btn btn-outline btn-sm" style="font-size:11px;padding:5px 10px">Change Period</button>
+        <div style="margin-left:auto;display:flex;gap:7px">
+          <button class="btn btn-outline" style="font-size:11px;padding:5px 10px">Export PDF</button>
+          <button class="btn btn-outline" style="font-size:11px;padding:5px 10px">Export Excel</button>
+        </div>
+      </div>
+      <div class="rpt-card">
+        <div class="rpt-head">
+          <div class="rpt-co">Gulf Trading LLC</div>
+          <div class="rpt-name">Profit &amp; Loss Statement</div>
+          <div class="rpt-period-lbl">For the period 1 January 2026 to 30 June 2026</div>
+        </div>
+        <table class="rpt-tbl">
+          <tbody>
+            <tr class="rpt-sec"><th colspan="2">Revenue</th></tr>
+            <tr class="rpt-row"><td>Sales — Auto Parts (UAE)</td><td class="num">AED 284,500.00</td></tr>
+            <tr class="rpt-row"><td>Sales — Auto Parts (Export)</td><td class="num">AED 48,200.00</td></tr>
+            <tr class="rpt-row"><td>Service Revenue</td><td class="num">AED 12,800.00</td></tr>
+            <tr class="rpt-row"><td>Other Income</td><td class="num">AED 1,500.00</td></tr>
+            <tr class="rpt-sub"><td>Total Revenue</td><td class="num">AED 347,000.00</td></tr>
+
+            <tr class="rpt-sec"><th colspan="2">Cost of Goods Sold</th></tr>
+            <tr class="rpt-row"><td>Cost of Sales — Auto Parts</td><td class="num">AED 198,400.00</td></tr>
+            <tr class="rpt-row"><td>Freight &amp; Logistics</td><td class="num">AED 8,200.00</td></tr>
+            <tr class="rpt-row"><td>Customs &amp; Duties</td><td class="num">AED 4,100.00</td></tr>
+            <tr class="rpt-sub"><td>Total COGS</td><td class="num">AED 210,700.00</td></tr>
+
+            <tr class="rpt-total"><td>Gross Profit</td><td class="num">AED 136,300.00</td></tr>
+
+            <tr class="rpt-sec"><th colspan="2">Operating Expenses</th></tr>
+            <tr class="rpt-row"><td>Salaries &amp; Benefits</td><td class="num">AED 52,000.00</td></tr>
+            <tr class="rpt-row"><td>Rent — Dubai Warehouse</td><td class="num">AED 18,000.00</td></tr>
+            <tr class="rpt-row"><td>Utilities</td><td class="num">AED 4,200.00</td></tr>
+            <tr class="rpt-row"><td>Marketing &amp; Advertising</td><td class="num">AED 6,800.00</td></tr>
+            <tr class="rpt-row"><td>Bank Charges</td><td class="num">AED 1,240.00</td></tr>
+            <tr class="rpt-row"><td>Depreciation</td><td class="num">AED 3,600.00</td></tr>
+            <tr class="rpt-sub"><td>Total Operating Expenses</td><td class="num">AED 85,840.00</td></tr>
+
+            <tr class="rpt-net"><td>Net Profit</td><td class="num">AED 50,460.00</td></tr>
+          </tbody>
+        </table>
+        <div class="rpt-foot">
+          <span class="rpt-balanced">✓ Net margin: 14.5%</span>
+          <span style="font-size:11px;color:var(--tx4);margin-left:8px">All figures in AED · Accrual basis</span>
+        </div>
+      </div>
+    </div><!-- /s-pl -->
+
+    <!-- ════ SCREEN: TRIAL BALANCE ════════════════════════════ -->
+    <div class="screen" id="s-tb">
+      <div class="rpt-toolbar">
+        <div class="rpt-period">
+          <svg class="ico" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          As at: <span class="rpt-chip">30 Jun 2026</span>
+        </div>
+        <button class="btn btn-outline" style="font-size:11px;padding:5px 10px">Change Date</button>
+        <div style="margin-left:auto;display:flex;gap:7px">
+          <button class="btn btn-outline" style="font-size:11px;padding:5px 10px">Export PDF</button>
+          <button class="btn btn-outline" style="font-size:11px;padding:5px 10px">Export Excel</button>
+        </div>
+      </div>
+      <div class="rpt-card">
+        <div class="rpt-head">
+          <div class="rpt-co">Gulf Trading LLC</div>
+          <div class="rpt-name">Trial Balance</div>
+          <div class="rpt-period-lbl">As at 30 June 2026</div>
+        </div>
+        <table class="rpt-tbl">
+          <thead><tr style="background:#FAFAFA;border-bottom:1px solid var(--border)">
+            <td style="padding:9px 24px;font-size:10px;font-weight:700;color:var(--tx4);text-transform:uppercase;letter-spacing:.07em">Account</td>
+            <td class="num" style="padding:9px 24px;font-size:10px;font-weight:700;color:var(--tx4);text-transform:uppercase;letter-spacing:.07em;width:140px">Debit</td>
+            <td class="num" style="padding:9px 24px;font-size:10px;font-weight:700;color:var(--tx4);text-transform:uppercase;letter-spacing:.07em;width:140px">Credit</td>
+          </tr></thead>
+          <tbody>
+            <tr class="tb-grp"><th colspan="3">Assets</th></tr>
+            <tr class="tb-row"><td>1001 — Cash in Hand</td><td class="tb-num">AED 12,400</td><td class="tb-num">—</td></tr>
+            <tr class="tb-row"><td>1010 — Emirates NBD Current Account</td><td class="tb-num">AED 284,720</td><td class="tb-num">—</td></tr>
+            <tr class="tb-row"><td>1100 — Accounts Receivable</td><td class="tb-num">AED 84,250</td><td class="tb-num">—</td></tr>
+            <tr class="tb-row"><td>1200 — Inventory — Auto Parts</td><td class="tb-num">AED 142,800</td><td class="tb-num">—</td></tr>
+            <tr class="tb-sub"><td>Total Assets</td><td class="tb-num">AED 524,170</td><td class="tb-num">—</td></tr>
+
+            <tr class="tb-grp"><th colspan="3">Liabilities</th></tr>
+            <tr class="tb-row"><td>2001 — Accounts Payable</td><td class="tb-num">—</td><td class="tb-num">AED 68,400</td></tr>
+            <tr class="tb-row"><td>2010 — VAT Payable</td><td class="tb-num">—</td><td class="tb-num">AED 14,250</td></tr>
+            <tr class="tb-row"><td>2020 — Customer Advances</td><td class="tb-num">—</td><td class="tb-num">AED 9,800</td></tr>
+            <tr class="tb-sub"><td>Total Liabilities</td><td class="tb-num">—</td><td class="tb-num">AED 92,450</td></tr>
+
+            <tr class="tb-grp"><th colspan="3">Equity</th></tr>
+            <tr class="tb-row"><td>3001 — Owner's Capital</td><td class="tb-num">—</td><td class="tb-num">AED 381,260</td></tr>
+            <tr class="tb-row"><td>3010 — Retained Earnings</td><td class="tb-num">—</td><td class="tb-num">AED 50,460</td></tr>
+            <tr class="tb-sub"><td>Total Equity</td><td class="tb-num">—</td><td class="tb-num">AED 431,720</td></tr>
+
+            <tr class="tb-grand"><td>Grand Total</td><td class="tb-num">AED 524,170</td><td class="tb-num">AED 524,170</td></tr>
+          </tbody>
+        </table>
+        <div class="rpt-foot">
+          <span class="rpt-balanced">✓ Balanced — Debit = Credit</span>
+          <span style="font-size:11px;color:var(--tx4);margin-left:8px">Click any row to drill down</span>
+        </div>
+      </div>
+    </div><!-- /s-tb -->
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<script>
+const screens = { inv:'s-inv', ed:'s-ed', pl:'s-pl', tb:'s-tb' };
+const topbars = {
+  inv: { title:'Invoices', btn:'+ New Invoice', show:true },
+  ed:  { title:'INV-1008 — Al Futtaim Trading', show:false },
+  pl:  { title:'Profit & Loss', show:false },
+  tb:  { title:'Trial Balance', show:false },
+};
+function go(key) {
+  Object.values(screens).forEach(id => document.getElementById(id).classList.remove('active'));
+  document.getElementById(screens[key]).classList.add('active');
+  document.querySelectorAll('.demo-tab').forEach((t,i) => {
+    t.classList.toggle('active', ['inv','ed','pl','tb'][i] === key);
+  });
+  const tb = topbars[key];
+  document.getElementById('tb-title').textContent = tb.title;
+  document.getElementById('tb-actions').innerHTML = tb.show
+    ? `<button class="btn btn-outline"><svg class="ico" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Export</button>
+       <button class="btn btn-outline"><svg class="ico" viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>Filter</button>
+       <button class="btn btn-primary"><svg class="ico" style="stroke:#fff" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>${tb.btn}</button>`
+    : `<button class="btn btn-outline"><svg class="ico" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Export PDF</button>
+       <button class="btn btn-outline">Export Excel</button>`;
+}
+</script>
+</body>
+</html>

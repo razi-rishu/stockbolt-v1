@@ -22,9 +22,9 @@
  *     (writes stock_ledger 'opening_balance' row + Dr 1300 / Cr 3200 JE)
  *   • Navigate to /products/<id> in read-only view.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import type {
@@ -35,6 +35,7 @@ import {
   Field, Input, Select, Textarea, PrefixInput, Badge, Panel, Grid,
 } from '@/ui/primitives';
 import { labelStyle } from '@/ui/theme';
+import { ContactQuickCreate } from '@/components/quick-create/contact-quick-create';
 
 // ── Step metadata ───────────────────────────────────────────────────────
 const STEPS = [
@@ -114,6 +115,10 @@ export function ProductWizard() {
   const [form, setForm]           = useState<WizardForm>(initialForm);
   const [showReview, setShowReview] = useState(false);
   const [error, setError]         = useState<string | null>(null);
+
+  // Quick-create overlay state: which master to create, or '' for none
+  const [openQcFor, setOpenQcFor] = useState<'' | 'brand' | 'unit' | 'category' | 'supplier' | 'warehouse'>('');
+  const closeQC = () => setOpenQcFor('');
 
   const { data: brands     = [] } = useQuery<BrandRow[]>(    { queryKey: ['brands',     company_id], queryFn: () => getAdapter().brands.list(company_id!),     enabled: !!company_id });
   const { data: categories = [] } = useQuery<CategoryRow[]>( { queryKey: ['categories', company_id], queryFn: () => getAdapter().categories.list(company_id!), enabled: !!company_id });
@@ -233,6 +238,45 @@ export function ProductWizard() {
 
   return (
     <div style={{ fontFamily: "'Inter', system-ui, sans-serif", background: '#f8fafc', minHeight: '100vh', margin: '-1.5rem' }}>
+      {/* ── Quick-create modals ── */}
+      {openQcFor === 'brand' && (
+        <BrandQC
+          companyId={company_id!}
+          onClose={closeQC}
+          onCreated={(id) => { set('brand_id',    id); closeQC(); }}
+        />
+      )}
+      {openQcFor === 'unit' && (
+        <UnitQC
+          companyId={company_id!}
+          onClose={closeQC}
+          onCreated={(id) => { set('unit_id',     id); closeQC(); }}
+        />
+      )}
+      {openQcFor === 'category' && (
+        <CategoryQC
+          companyId={company_id!}
+          categories={categories}
+          onClose={closeQC}
+          onCreated={(id) => { set('category_id', id); closeQC(); }}
+        />
+      )}
+      {openQcFor === 'supplier' && (
+        <ContactQuickCreate
+          open
+          type="supplier"
+          onClose={closeQC}
+          onCreated={(id) => { set('supplier_id', id); closeQC(); }}
+        />
+      )}
+      {openQcFor === 'warehouse' && (
+        <WarehouseQC
+          companyId={company_id!}
+          onClose={closeQC}
+          onCreated={(id) => { set('warehouse_id', id); closeQC(); }}
+        />
+      )}
+
       {showReview && (
         <ReviewModal
           form={form}
@@ -249,13 +293,13 @@ export function ProductWizard() {
       <div style={{ height: '3px', background: '#e2e8f0' }}>
         <div style={{
           height: '3px',
-          background: 'linear-gradient(90deg, #6366f1, #8b5cf6)',
+          background: 'linear-gradient(90deg, #7c3aed, #8b5cf6)',
           width: `${progress}%`,
           transition: 'width .4s ease',
         }} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', minHeight: 'calc(100vh - 3px)' }}>
+      <div className="grid grid-cols-1 md:grid-cols-[220px_1fr]" style={{ minHeight: 'calc(100vh - 3px)' }}>
         {/* Left sidebar with step nav */}
         <aside style={{ background: '#fff', borderRight: '1px solid #e2e8f0', padding: '24px 0', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '0 20px 20px', borderBottom: '1px solid #f1f5f9', marginBottom: '8px' }}>
@@ -278,8 +322,8 @@ export function ProductWizard() {
                   display: 'flex', alignItems: 'center', gap: '10px',
                   padding: '11px 20px',
                   cursor: clickable ? 'pointer' : 'default',
-                  borderRight: isActive ? '2px solid #6366f1' : '2px solid transparent',
-                  background: isActive ? '#eef2ff' : 'transparent',
+                  borderRight: isActive ? '2px solid #7c3aed' : '2px solid transparent',
+                  background: isActive ? '#f5f3ff' : 'transparent',
                   transition: 'all .15s',
                 }}
               >
@@ -287,13 +331,13 @@ export function ProductWizard() {
                   width: '24px', height: '24px', borderRadius: '50%',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '11px', fontWeight: 700, flexShrink: 0,
-                  background: isDone ? '#f0fdf4' : isActive ? '#eef2ff' : '#f8fafc',
-                  color: isDone ? '#16a34a' : isActive ? '#4338ca' : '#94a3b8',
-                  border: `1.5px solid ${isDone ? '#bbf7d0' : isActive ? '#c7d2fe' : '#e2e8f0'}`,
+                  background: isDone ? '#f0fdf4' : isActive ? '#f5f3ff' : '#f8fafc',
+                  color: isDone ? '#16a34a' : isActive ? '#5b21b6' : '#94a3b8',
+                  border: `1.5px solid ${isDone ? '#bbf7d0' : isActive ? '#ddd6fe' : '#e2e8f0'}`,
                 }}>{isDone ? '✓' : s.id}</div>
                 <span style={{
                   fontSize: '13px',
-                  color: isDone ? '#16a34a' : isActive ? '#4338ca' : '#64748b',
+                  color: isDone ? '#16a34a' : isActive ? '#5b21b6' : '#64748b',
                   fontWeight: isActive ? 600 : 400,
                 }}>{s.label}</span>
               </div>
@@ -303,7 +347,7 @@ export function ProductWizard() {
           <div style={{ marginTop: 'auto', padding: '20px', borderTop: '1px solid #f1f5f9' }}>
             <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '8px' }}>Step {step} of 5</div>
             <div style={{ height: '4px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
-              <div style={{ height: '4px', background: '#6366f1', width: `${progress}%`, borderRadius: '4px', transition: 'width .4s' }} />
+              <div style={{ height: '4px', background: '#7c3aed', width: `${progress}%`, borderRadius: '4px', transition: 'width .4s' }} />
             </div>
           </div>
         </aside>
@@ -348,11 +392,23 @@ export function ProductWizard() {
 
           {/* Step body */}
           <div style={{ flex: 1, padding: '24px 28px', overflowY: 'auto' }}>
-            {step === 1 && <Step1 form={form} set={set} brands={brands} categories={categories} units={units} />}
+            {step === 1 && <Step1
+              form={form} set={set}
+              brands={brands} categories={categories} units={units}
+              openBrandQC={() => setOpenQcFor('brand')}
+              openUnitQC={() => setOpenQcFor('unit')}
+              openCategoryQC={() => setOpenQcFor('category')}
+            />}
             {step === 2 && <Step2 form={form} set={set} coa={coa} />}
             {step === 3 && <Step3 form={form} set={set} />}
-            {step === 4 && <Step4 form={form} set={set} suppliers={suppliers} />}
-            {step === 5 && <Step5 form={form} set={set} warehouses={warehouses} />}
+            {step === 4 && <Step4
+              form={form} set={set} suppliers={suppliers}
+              openSupplierQC={() => setOpenQcFor('supplier')}
+            />}
+            {step === 5 && <Step5
+              form={form} set={set} warehouses={warehouses}
+              openWarehouseQC={() => setOpenQcFor('warehouse')}
+            />}
 
             {error && (
               <div style={{
@@ -398,7 +454,7 @@ export function ProductWizard() {
                 style={{
                   padding: '9px 22px',
                   border: 'none', borderRadius: '8px',
-                  background: validateStep(step) ? '#c7d2fe' : '#6366f1',
+                  background: validateStep(step) ? '#ddd6fe' : '#7c3aed',
                   fontSize: '13px',
                   cursor: validateStep(step) ? 'not-allowed' : 'pointer',
                   color: '#fff', fontWeight: 600,
@@ -419,12 +475,16 @@ export function ProductWizard() {
 // ── Step 1 ──────────────────────────────────────────────────────────────
 function Step1({
   form, set, brands, categories, units,
+  openBrandQC, openUnitQC, openCategoryQC,
 }: {
   form: WizardForm;
   set: <K extends keyof WizardForm>(k: K, v: WizardForm[K]) => void;
   brands: BrandRow[];
   categories: CategoryRow[];
   units: UnitRow[];
+  openBrandQC: () => void;
+  openUnitQC: () => void;
+  openCategoryQC: () => void;
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -438,9 +498,9 @@ function Step1({
                 onClick={() => set('type', t)}
                 style={{
                   padding: '7px 18px', borderRadius: '7px',
-                  border: `1.5px solid ${form.type === t ? '#6366f1' : '#e2e8f0'}`,
-                  background: form.type === t ? '#eef2ff' : '#fff',
-                  color: form.type === t ? '#4338ca' : '#64748b',
+                  border: `1.5px solid ${form.type === t ? '#7c3aed' : '#e2e8f0'}`,
+                  background: form.type === t ? '#f5f3ff' : '#fff',
+                  color: form.type === t ? '#5b21b6' : '#64748b',
                   fontWeight: form.type === t ? 600 : 400,
                   fontSize: '13px', cursor: 'pointer',
                   transition: 'all .15s',
@@ -471,25 +531,40 @@ function Step1({
             <Input value={form.sku} onChange={(e) => set('sku', e.target.value)} placeholder="e.g. ITEM-001" />
           </Field>
           <Field label="Unit">
-            <Select value={form.unit_id} onChange={(e) => set('unit_id', e.target.value)}>
-              <option value="">-- select --</option>
-              {units.map((u) => <option key={u.id} value={u.id}>{u.code} — {u.name}</option>)}
-            </Select>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Select value={form.unit_id} onChange={(e) => set('unit_id', e.target.value)}>
+                  <option value="">-- select --</option>
+                  {units.map((u) => <option key={u.id} value={u.id}>{u.code} — {u.name}</option>)}
+                </Select>
+              </div>
+              <QcBtn onClick={openUnitQC} label="Add new unit" />
+            </div>
           </Field>
           <Field label="Brand" required>
-            <Select value={form.brand_id} onChange={(e) => set('brand_id', e.target.value)}>
-              <option value="">-- select --</option>
-              {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </Select>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Select value={form.brand_id} onChange={(e) => set('brand_id', e.target.value)}>
+                  <option value="">-- select --</option>
+                  {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </Select>
+              </div>
+              <QcBtn onClick={openBrandQC} label="Add new brand" />
+            </div>
           </Field>
         </Grid>
 
         <Grid cols={2}>
           <Field label="Category">
-            <Select value={form.category_id} onChange={(e) => set('category_id', e.target.value)}>
-              <option value="">-- select --</option>
-              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Select value={form.category_id} onChange={(e) => set('category_id', e.target.value)}>
+                  <option value="">-- select --</option>
+                  {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </Select>
+              </div>
+              <QcBtn onClick={openCategoryQC} label="Add new category" />
+            </div>
           </Field>
           <Field label="OE / Replace number">
             <Input value={form.oe_number} onChange={(e) => set('oe_number', e.target.value)} placeholder="Alternate / OEM number" />
@@ -504,7 +579,7 @@ function Step1({
             type="checkbox"
             checked={form.is_excise}
             onChange={(e) => set('is_excise', e.target.checked)}
-            style={{ accentColor: '#6366f1', width: '14px', height: '14px' }}
+            style={{ accentColor: '#7c3aed', width: '14px', height: '14px' }}
           />
           It is an excise product
         </label>
@@ -534,9 +609,9 @@ function Step2({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       {margin !== null && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '10px' }}>
           {[
-            { label: 'Selling price', value: `AED ${selling.toFixed(2)}`, color: '#6366f1' },
+            { label: 'Selling price', value: `AED ${selling.toFixed(2)}`, color: '#7c3aed' },
             { label: 'Gross margin',  value: `${margin}%`, color: (margin as number) > 20 ? '#16a34a' : '#d97706' },
             { label: 'Markup',        value: `${markup}%`, color: '#0ea5e9' },
           ].map((s) => (
@@ -665,21 +740,27 @@ function Step3({
 
 // ── Step 4 — Supplier ───────────────────────────────────────────────────
 function Step4({
-  form, set, suppliers,
+  form, set, suppliers, openSupplierQC,
 }: {
   form: WizardForm;
   set: <K extends keyof WizardForm>(k: K, v: WizardForm[K]) => void;
   suppliers: ContactRow[];
+  openSupplierQC: () => void;
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <Panel icon="🚚" title="Primary supplier (optional)">
         <Grid cols={2}>
           <Field label="Supplier name">
-            <Select value={form.supplier_id} onChange={(e) => set('supplier_id', e.target.value)}>
-              <option value="">-- select supplier --</option>
-              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </Select>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Select value={form.supplier_id} onChange={(e) => set('supplier_id', e.target.value)}>
+                  <option value="">-- select supplier --</option>
+                  {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </Select>
+              </div>
+              <QcBtn onClick={openSupplierQC} label="Add new supplier" />
+            </div>
           </Field>
           <Field label="Supplier item code">
             <Input value={form.supplier_sku} onChange={(e) => set('supplier_sku', e.target.value)} placeholder="Supplier's own SKU" />
@@ -728,11 +809,12 @@ function Step4({
 
 // ── Step 5 — Stock & location ───────────────────────────────────────────
 function Step5({
-  form, set, warehouses,
+  form, set, warehouses, openWarehouseQC,
 }: {
   form: WizardForm;
   set: <K extends keyof WizardForm>(k: K, v: WizardForm[K]) => void;
   warehouses: WarehouseRow[];
+  openWarehouseQC: () => void;
 }) {
   const isService = form.type === 'service';
   return (
@@ -775,10 +857,15 @@ function Step5({
               <PrefixInput prefix="AED" type="number" min="0" step="0.01" value={form.opening_stock_rate} onChange={(e) => set('opening_stock_rate', e.target.value)} placeholder="0.00" />
             </Field>
             <Field label="Warehouse">
-              <Select value={form.warehouse_id} onChange={(e) => set('warehouse_id', e.target.value)}>
-                <option value="">-- select --</option>
-                {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-              </Select>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Select value={form.warehouse_id} onChange={(e) => set('warehouse_id', e.target.value)}>
+                    <option value="">-- select --</option>
+                    {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                  </Select>
+                </div>
+                <QcBtn onClick={openWarehouseQC} label="Add new warehouse" />
+              </div>
             </Field>
           </Grid>
           <Grid cols={2}>
@@ -798,12 +885,257 @@ function Step5({
             type="checkbox"
             checked={form.is_active}
             onChange={(e) => set('is_active', e.target.checked)}
-            style={{ accentColor: '#6366f1', width: '14px', height: '14px' }}
+            style={{ accentColor: '#7c3aed', width: '14px', height: '14px' }}
           />
           Active (un-tick to hide from pickers)
         </label>
       </Panel>
     </div>
+  );
+}
+
+// ── Quick-create shared helpers ─────────────────────────────────────────
+
+/** Small indigo "+" button that sits flush next to a Select. */
+function QcBtn({ onClick, label = 'Quick add' }: { onClick: () => void; label?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      style={{
+        width: '34px', height: '34px', flexShrink: 0,
+        border: '1px solid #7c3aed', borderRadius: '7px',
+        background: '#f5f3ff', color: '#5b21b6',
+        fontSize: '18px', fontWeight: 600,
+        cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'background .15s',
+      }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#ddd6fe'; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#f5f3ff'; }}
+    >+</button>
+  );
+}
+
+/** Lightweight inline modal shell — no Tailwind, pure inline styles. */
+function WizardQcModal({
+  title, onClose, children,
+}: { title: string; onClose: () => void; children: ReactNode }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 1200,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(15,23,42,.45)', padding: '16px',
+    }}>
+      <div style={{
+        background: '#fff', borderRadius: '12px',
+        boxShadow: '0 20px 60px rgba(0,0,0,.25)',
+        width: '100%', maxWidth: '420px',
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '16px 20px', borderBottom: '1px solid #e2e8f0',
+        }}>
+          <span style={{ fontSize: '15px', fontWeight: 700, color: '#1e293b' }}>{title}</span>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '20px', color: '#94a3b8', lineHeight: 1 }}
+          >✕</button>
+        </div>
+        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Shared error banner inside QC modals. */
+function QcError({ msg }: { msg: string | null }) {
+  if (!msg) return null;
+  return (
+    <div style={{
+      background: '#fef2f2', border: '1px solid #fecaca',
+      borderRadius: '7px', padding: '9px 12px',
+      fontSize: '12px', color: '#dc2626',
+    }}>{msg}</div>
+  );
+}
+
+/** Shared Save / Cancel row inside QC modals. */
+function QcActions({ onClose, onSave, saving, disabled }: {
+  onClose: () => void; onSave: () => void; saving: boolean; disabled: boolean;
+}) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
+      <button
+        type="button"
+        onClick={onClose}
+        disabled={saving}
+        style={{
+          padding: '8px 16px', borderRadius: '7px',
+          border: '1px solid #e2e8f0', background: '#fff',
+          fontSize: '13px', cursor: saving ? 'not-allowed' : 'pointer', color: '#475569',
+        }}
+      >Cancel</button>
+      <button
+        type="button"
+        onClick={onSave}
+        disabled={saving || disabled}
+        style={{
+          padding: '8px 18px', borderRadius: '7px',
+          border: 'none', background: saving || disabled ? '#ddd6fe' : '#7c3aed',
+          fontSize: '13px', fontWeight: 600,
+          cursor: saving || disabled ? 'not-allowed' : 'pointer', color: '#fff',
+        }}
+      >{saving ? 'Saving…' : 'Create & select'}</button>
+    </div>
+  );
+}
+
+// ── Brand quick-create ───────────────────────────────────────────────────
+function BrandQC({
+  companyId, onClose, onCreated,
+}: { companyId: string; onClose: () => void; onCreated: (id: string) => void }) {
+  const [name, setName]   = useState('');
+  const [err, setErr]     = useState<string | null>(null);
+  const qc                = useQueryClient();
+  const mut = useMutation({
+    mutationFn: async () => {
+      if (!name.trim()) throw new Error('Brand name is required');
+      return getAdapter().brands.create({ company_id: companyId, name: name.trim(), is_active: true });
+    },
+    onSuccess: (row) => { qc.invalidateQueries({ queryKey: ['brands'] }); onCreated(row.id); },
+    onError: (e: Error) => setErr(e.message),
+  });
+  return (
+    <WizardQcModal title="Quick add brand" onClose={onClose}>
+      <QcError msg={err} />
+      <Field label="Brand name" required>
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Toyota, Bosch" autoFocus />
+      </Field>
+      <QcActions onClose={onClose} onSave={() => { setErr(null); mut.mutate(); }} saving={mut.isPending} disabled={!name.trim()} />
+    </WizardQcModal>
+  );
+}
+
+// ── Unit quick-create ────────────────────────────────────────────────────
+function UnitQC({
+  companyId, onClose, onCreated,
+}: { companyId: string; onClose: () => void; onCreated: (id: string) => void }) {
+  const [code, setCode]   = useState('');
+  const [name, setName]   = useState('');
+  const [err, setErr]     = useState<string | null>(null);
+  const qc                = useQueryClient();
+  const mut = useMutation({
+    mutationFn: async () => {
+      if (!code.trim()) throw new Error('Code is required (e.g. PCS, BOX)');
+      if (!name.trim()) throw new Error('Name is required');
+      return getAdapter().units.create({
+        company_id: companyId,
+        code: code.trim().toUpperCase(),
+        name: name.trim(),
+      });
+    },
+    onSuccess: (row) => { qc.invalidateQueries({ queryKey: ['units'] }); onCreated(row.id); },
+    onError: (e: Error) => setErr(e.message),
+  });
+  return (
+    <WizardQcModal title="Quick add unit" onClose={onClose}>
+      <QcError msg={err} />
+      <Grid cols={2}>
+        <Field label="Code" required>
+          <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. PCS" autoFocus />
+        </Field>
+        <Field label="Name" required>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Pieces" />
+        </Field>
+      </Grid>
+      <QcActions onClose={onClose} onSave={() => { setErr(null); mut.mutate(); }} saving={mut.isPending} disabled={!code.trim() || !name.trim()} />
+    </WizardQcModal>
+  );
+}
+
+// ── Category quick-create ────────────────────────────────────────────────
+function CategoryQC({
+  companyId, categories, onClose, onCreated,
+}: {
+  companyId: string;
+  categories: CategoryRow[];
+  onClose: () => void;
+  onCreated: (id: string) => void;
+}) {
+  const [name, setName]         = useState('');
+  const [parentId, setParentId] = useState('');
+  const [err, setErr]           = useState<string | null>(null);
+  const qc                      = useQueryClient();
+  const mut = useMutation({
+    mutationFn: async () => {
+      if (!name.trim()) throw new Error('Category name is required');
+      return getAdapter().categories.create({
+        company_id: companyId,
+        name: name.trim(),
+        parent_id: parentId || null,
+        is_active: true,
+        sort_order: 0,
+      });
+    },
+    onSuccess: (row) => { qc.invalidateQueries({ queryKey: ['categories'] }); onCreated(row.id); },
+    onError: (e: Error) => setErr(e.message),
+  });
+  return (
+    <WizardQcModal title="Quick add category" onClose={onClose}>
+      <QcError msg={err} />
+      <Field label="Category name" required>
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Filters, Brakes" autoFocus />
+      </Field>
+      <Field label="Parent category (optional)">
+        <Select value={parentId} onChange={(e) => setParentId(e.target.value)}>
+          <option value="">-- top level --</option>
+          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </Select>
+      </Field>
+      <QcActions onClose={onClose} onSave={() => { setErr(null); mut.mutate(); }} saving={mut.isPending} disabled={!name.trim()} />
+    </WizardQcModal>
+  );
+}
+
+// ── Warehouse quick-create ───────────────────────────────────────────────
+function WarehouseQC({
+  companyId, onClose, onCreated,
+}: { companyId: string; onClose: () => void; onCreated: (id: string) => void }) {
+  const [name, setName]   = useState('');
+  const [code, setCode]   = useState('');
+  const [err, setErr]     = useState<string | null>(null);
+  const qc                = useQueryClient();
+  const mut = useMutation({
+    mutationFn: async () => {
+      if (!name.trim()) throw new Error('Warehouse name is required');
+      if (!code.trim()) throw new Error('Code is required (e.g. WH-01)');
+      return getAdapter().warehouses.create({
+        company_id: companyId,
+        name: name.trim(),
+        code: code.trim().toUpperCase(),
+        is_active: true,
+        is_default: false,
+      });
+    },
+    onSuccess: (row) => { qc.invalidateQueries({ queryKey: ['warehouses'] }); onCreated(row.id); },
+    onError: (e: Error) => setErr(e.message),
+  });
+  return (
+    <WizardQcModal title="Quick add warehouse" onClose={onClose}>
+      <QcError msg={err} />
+      <Field label="Warehouse name" required>
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Main Store" autoFocus />
+      </Field>
+      <Field label="Code" required>
+        <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. WH-01" />
+      </Field>
+      <QcActions onClose={onClose} onSave={() => { setErr(null); mut.mutate(); }} saving={mut.isPending} disabled={!name.trim() || !code.trim()} />
+    </WizardQcModal>
   );
 }
 
@@ -912,7 +1244,7 @@ function ReviewModal({
             style={{
               padding: '9px 20px',
               border: 'none', borderRadius: '8px',
-              background: saving ? '#c7d2fe' : '#6366f1',
+              background: saving ? '#ddd6fe' : '#7c3aed',
               fontSize: '13px',
               cursor: saving ? 'not-allowed' : 'pointer',
               color: '#fff', fontWeight: 600,

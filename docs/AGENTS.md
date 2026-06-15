@@ -315,7 +315,8 @@ These are scenarios where you MUST NOT silently make a decision. Stop and ask th
 
 1. **Doc 3 doesn't cover the transaction type.** Ask before inventing one.
 2. **Doc 2 doesn't have a column you need.** Don't add it silently — ask whether to update Doc 2.
-3. **A user request mentions LIFO, payroll (in v1), or any v2-only feature.** Decline and reference the appropriate doc.
+3. **A user request mentions LIFO or any v2-only feature.** Decline and reference the appropriate doc.
+   *(AMENDED 2026-06-13: Payroll was moved INTO v1 by explicit owner decision after the decline rule was surfaced and confirmed. It is built in phases: P1 employees + monthly runs + GL posting [done], P2 WPS SIF export + gratuity accrual, P3 employee loans UI, P4 leave tracking. LIFO remains permanently excluded.)*
 4. **A user request would break an invariant.** Stop. Explain.
 5. **You can't decide between two interpretations of a Doc 3 rule.** Don't pick — ask.
 6. **A test in your phase's verification scenario is failing and you can't immediately see why.** Don't patch around it — escalate.

@@ -61,13 +61,15 @@ import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { ContactPicker } from '@/components/contact-picker';
 import { CoaQuickCreate } from '@/components/quick-create/coa-quick-create';
 import { theme } from '@/ui/theme';
 // Phase 14.06 — Signature template view mode for saved expenses.
-import { TaxInvoiceTemplate } from '@/modules/print/_signature/templates/tax-invoice';
+import { BoltDocTemplate } from '@/modules/print/_signature/templates/bolt-v4';
+import { usePrintConfig } from '@/hooks/use-print-config';
 import { expenseToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type {
@@ -135,6 +137,7 @@ export default function ExpenseEditorPage() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const printConfig = usePrintConfig();
   const qc = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const { company_id } = useAuthStore();
@@ -154,6 +157,8 @@ export default function ExpenseEditorPage() {
   const [splitOpen, setSplitOpen] = useState(false);
 
   const [error, setError]   = useState<string | null>(null);
+  const [dirty, setDirty]   = useState(false);
+  const confirmLeave = useUnsavedChangesGuard(dirty);
 
   // Quick-create CoA state
   const [coaQcOpen,    setCoaQcOpen]    = useState(false);
@@ -219,21 +224,41 @@ export default function ExpenseEditorPage() {
   }, [expense]);
 
   useEffect(() => {
-    if (items.length === 0) return;
-    const mapped = items.map(it => ({
-      _key: ++_keySeq,
-      expense_account_id: it.expense_account_id,
-      description: it.description ?? '',
-      quantity: String(it.quantity),
-      unit_amount: String(it.unit_amount),
-      tax_rate: String(it.tax_rate),
-      is_billable: it.is_billable,
-      customer_id: it.customer_id ?? '',
-    }));
-    setLines(mapped);
-    // Auto-open the Split section if the record has > 1 line.
-    if (mapped.length > 1) setSplitOpen(true);
-  }, [items]);
+    if (items.length > 0) {
+      const mapped = items.map(it => ({
+        _key: ++_keySeq,
+        expense_account_id: it.expense_account_id,
+        description: it.description ?? '',
+        quantity: String(it.quantity),
+        unit_amount: String(it.unit_amount),
+        tax_rate: String(it.tax_rate),
+        is_billable: it.is_billable,
+        customer_id: it.customer_id ?? '',
+      }));
+      setLines(mapped);
+      // Auto-open the Split section if the record has > 1 line.
+      if (mapped.length > 1) setSplitOpen(true);
+      return;
+    }
+    // No line items → legacy single-line expense (e.g. one created in the
+    // old Banking → Expenses screen before the merge). Seed one line from
+    // the expense header so it opens correctly here.
+    if (expense?.expense_account_id) {
+      const amt = Number(expense.amount) || 0;
+      const taxAmt = Number(expense.tax_amount) || 0;
+      const rate = amt > 0 ? Math.round((taxAmt / amt) * 10000) / 100 : 0;
+      setLines([{
+        _key: ++_keySeq,
+        expense_account_id: expense.expense_account_id,
+        description: expense.description ?? '',
+        quantity: '1',
+        unit_amount: String(amt),
+        tax_rate: String(rate),
+        is_billable: false,
+        customer_id: '',
+      }]);
+    }
+  }, [items, expense]);
 
   // Computed totals
   const totals = useMemo(() => {
@@ -251,7 +276,7 @@ export default function ExpenseEditorPage() {
   const isConfirmed = expense?.status === 'confirmed';
   const isVoid  = expense?.status === 'void';
 
-  const bankOpts = bankAccounts.map(b => ({ value: b.id, label: b.name }));
+  const bankOpts = bankAccounts.map(b => ({ value: b.id, label: `${b.name} · ${b.account_type === 'cash' ? 'Cash' : 'Bank'}` }));
   // Group-sorted by sub_type then code (Phase 13.02c). Direct accounts first
   // so the eye sees COGS-style entries before operating expenses.
   const subOrder = (st: string | null) =>
@@ -327,11 +352,12 @@ export default function ExpenseEditorPage() {
       return expenseId;
     },
     onSuccess: async (expenseId) => {
+      setDirty(false);
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['expenses', company_id] });
       qc.invalidateQueries({ queryKey: ['expense', expenseId] });
       qc.invalidateQueries({ queryKey: ['expense_items', expenseId] });
-      if (isNew) navigate(`/purchasing/expenses/${expenseId}`);
+      if (isNew) navigate('/purchasing/expenses');
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -357,11 +383,15 @@ export default function ExpenseEditorPage() {
   });
 
   // Line helpers
-  const setLine = (k: number, patch: Partial<LineRow>) =>
+  const setLine = (k: number, patch: Partial<LineRow>) => {
     setLines(prev => prev.map(l => l._key === k ? { ...l, ...patch } : l));
-  const removeLine = (k: number) =>
+    setDirty(true);
+  };
+  const removeLine = (k: number) => {
     setLines(prev => prev.length > 1 ? prev.filter(l => l._key !== k) : prev);
-  const addLine = () => setLines(prev => [...prev, newLine()]);
+    setDirty(true);
+  };
+  const addLine = () => { setLines(prev => [...prev, newLine()]); setDirty(true); };
 
   // Primary line = first line. When split is closed, lines[0] is the only
   // line; when split is open the user can add more.
@@ -402,7 +432,7 @@ export default function ExpenseEditorPage() {
           data-no-print="true"
           style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
         >
-          <button onClick={() => navigate('/purchasing/expenses')} style={{
+          <button onClick={() => { if (confirmLeave()) navigate('/purchasing/expenses'); }} style={{
             background: 'transparent', border: 'none', cursor: 'pointer',
             fontSize: '13px', color: theme.inkMuted,
           }}>← Expenses</button>
@@ -425,7 +455,7 @@ export default function ExpenseEditorPage() {
           </div>
         </div>
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
-          <TaxInvoiceTemplate data={doc} />
+          <BoltDocTemplate data={doc} config={printConfig} />
         </div>
       </div>
     );
@@ -440,7 +470,7 @@ export default function ExpenseEditorPage() {
       {/* Top crumb + actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
         <button
-          onClick={() => navigate('/purchasing/expenses')}
+          onClick={() => { if (confirmLeave()) navigate('/purchasing/expenses'); }}
           style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '13px', color: theme.inkMuted }}
         >← Expenses</button>
         <span style={{ color: theme.inkFaint }}>/</span>
@@ -454,7 +484,7 @@ export default function ExpenseEditorPage() {
               {t('common.view') || 'View'}
             </Button>
           )}
-          <Button variant="ghost" size="sm" onClick={() => navigate('/purchasing/expenses')}>
+          <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/purchasing/expenses'); }}>
             {t('common.cancel')}
           </Button>
           {isDraft && (
@@ -488,81 +518,80 @@ export default function ExpenseEditorPage() {
       <div style={{
         background: theme.card,
         border: `1px solid ${theme.border}`,
-        borderRadius: '14px',
-        boxShadow: theme.shadowSm,
-        padding: '26px 28px',
+        borderRadius: '16px',
+        boxShadow: '0 1px 3px rgba(9,9,11,.05), 0 10px 30px -12px rgba(124,58,237,.18)',
+        overflow: 'hidden',
       }}>
-        {/* Subtle gradient strip across the top so it doesn't read as an
-            invoice card */}
+        {/* ── Hero: deep-violet amount band ── */}
         <div style={{
-          height: '3px', margin: '-26px -28px 22px',
-          background: 'linear-gradient(90deg, #6366f1, #8b5cf6, #f59e0b)',
-          borderRadius: '14px 14px 0 0',
-        }} />
-
-        {/* Amount focal point */}
-        <div style={{
-          display: 'flex', alignItems: 'baseline',
-          gap: '14px', flexWrap: 'wrap',
+          background: 'linear-gradient(135deg, #2e1065 0%, #5b21b6 55%, #7c3aed 100%)',
+          padding: '24px 28px 22px',
+          color: '#fff',
         }}>
-          <span style={{ fontSize: '11px', color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 700 }}>
-            Amount
-          </span>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flex: 1 }}>
-            <span style={{ fontSize: '14px', fontWeight: 600, color: theme.inkMuted }}>AED</span>
-            <input
-              type="number" min="0" step="0.01"
-              value={primary.unit_amount}
-              disabled={!isDraft}
-              onChange={e => setLine(primary._key, { unit_amount: e.target.value })}
-              style={{
-                fontFamily: theme.fontMono,
-                fontSize: '32px', fontWeight: 700,
-                color: theme.ink,
-                border: 'none', outline: 'none', background: 'transparent',
-                padding: 0,
-                flex: 1, minWidth: 0,
-              }}
-              placeholder="0.00"
-            />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 0 }}>
+              <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,.6)' }}>
+                Expense Amount
+              </span>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+                <span style={{ fontSize: '18px', fontWeight: 700, color: 'rgba(255,255,255,.7)' }}>AED</span>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={primary.unit_amount}
+                  disabled={!isDraft}
+                  onChange={e => setLine(primary._key, { unit_amount: e.target.value })}
+                  style={{
+                    fontFamily: theme.fontMono,
+                    fontSize: '40px', fontWeight: 800, letterSpacing: '-.02em',
+                    color: '#fff',
+                    border: 'none', outline: 'none', background: 'transparent',
+                    padding: 0, width: '260px', maxWidth: '52vw',
+                  }}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+            {/* Tax-rate pill */}
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '7px 12px', borderRadius: '999px',
+              background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.22)',
+            }}>
+              <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,.7)' }}>Tax</span>
+              <input
+                type="number" min="0" max="100" step="0.01"
+                value={primary.tax_rate}
+                disabled={!isDraft}
+                onChange={e => setLine(primary._key, { tax_rate: e.target.value })}
+                style={{
+                  fontFamily: theme.fontMono, fontSize: '15px', fontWeight: 700,
+                  color: '#fff', border: 'none', outline: 'none', background: 'transparent',
+                  width: '44px', textAlign: 'end',
+                }}
+                placeholder="0"
+              />
+              <span style={{ fontSize: '13px', color: 'rgba(255,255,255,.7)' }}>%</span>
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-            <span style={{ fontSize: '11px', color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 700 }}>
-              Tax
+
+          {/* computed summary chips */}
+          <div style={{
+            marginTop: '16px', paddingTop: '14px',
+            borderTop: '1px solid rgba(255,255,255,.15)',
+            display: 'flex', alignItems: 'baseline', gap: '24px', flexWrap: 'wrap',
+            fontSize: '12px', color: 'rgba(255,255,255,.7)',
+          }}>
+            <span>Subtotal <span className="font-mono" style={{ color: '#fff', fontWeight: 600, marginInlineStart: '4px' }}>{fmt(splitOpen ? totals.subtotal : primaryCalc.line_subtotal)}</span></span>
+            <span>Tax <span className="font-mono" style={{ color: '#fff', fontWeight: 600, marginInlineStart: '4px' }}>{fmt(splitOpen ? totals.tax : primaryCalc.tax_amount)}</span></span>
+            <span style={{ marginInlineStart: 'auto', fontSize: '15px', fontWeight: 800, color: '#fff' }}>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,.7)', marginInlineEnd: '6px' }}>Total</span>
+              AED <span className="font-mono">{fmt(splitOpen ? totals.total : primaryCalc.line_total)}</span>
             </span>
-            <input
-              type="number" min="0" max="100" step="0.01"
-              value={primary.tax_rate}
-              disabled={!isDraft}
-              onChange={e => setLine(primary._key, { tax_rate: e.target.value })}
-              style={{
-                fontFamily: theme.fontMono, fontSize: '16px', fontWeight: 600,
-                color: theme.ink,
-                border: 'none', outline: 'none', background: 'transparent',
-                width: '60px', textAlign: 'end',
-              }}
-              placeholder="0"
-            />
-            <span style={{ fontSize: '14px', color: theme.inkMuted }}>%</span>
           </div>
         </div>
 
-        {/* Computed sub-total / tax / total */}
-        <div style={{
-          marginTop: '12px',
-          padding: '10px 14px',
-          background: theme.page,
-          border: `1px dashed ${theme.border}`,
-          borderRadius: '8px',
-          display: 'flex', alignItems: 'center', gap: '16px',
-          fontSize: '12px', color: theme.inkMuted,
-        }}>
-          <span>Subtotal <span className="font-mono" style={{ color: theme.ink, fontWeight: 600, marginInlineStart: '4px' }}>{fmt(splitOpen ? totals.subtotal : primaryCalc.line_subtotal)}</span></span>
-          <span>+ Tax <span className="font-mono" style={{ color: theme.ink, fontWeight: 600, marginInlineStart: '4px' }}>{fmt(splitOpen ? totals.tax : primaryCalc.tax_amount)}</span></span>
-          <span style={{ marginInlineStart: 'auto', fontSize: '14px', color: theme.ink, fontWeight: 700 }}>
-            = AED <span className="font-mono">{fmt(splitOpen ? totals.total : primaryCalc.line_total)}</span>
-          </span>
-        </div>
+        {/* ── Body ── */}
+        <div style={{ padding: '22px 28px 26px' }}>
 
         {/* ── Where the money went ── */}
         <SectionLabel>Where the money went</SectionLabel>
@@ -630,7 +659,7 @@ export default function ExpenseEditorPage() {
                       },
                     } : undefined}
                   />
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 70px 110px 70px 90px 28px', gap: '6px', alignItems: 'center' }}>
+                  <div className="grid grid-cols-2 items-center gap-1.5 md:grid-cols-[1.4fr_70px_110px_70px_90px_28px]">
                     <input
                       type="text" placeholder="Memo" value={line.description}
                       disabled={!isDraft}
@@ -723,7 +752,7 @@ export default function ExpenseEditorPage() {
         {/* ── Quick context ── */}
         <SectionLabel>Quick context</SectionLabel>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '10px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <label style={{ fontSize: '10px', fontWeight: 600, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.05em' }}>Date</label>
             <input
@@ -757,7 +786,7 @@ export default function ExpenseEditorPage() {
           </div>
         </div>
 
-        <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '10px' }}>
+        <div className="mt-2.5 grid grid-cols-1 gap-2.5 md:grid-cols-[1fr_2fr]">
           <input
             type="text" value={reference} disabled={!isDraft}
             placeholder="Reference / invoice #"
@@ -804,10 +833,10 @@ export default function ExpenseEditorPage() {
         {/* Final total ribbon */}
         <div style={{
           marginTop: '24px',
-          padding: '14px 18px',
-          background: 'linear-gradient(135deg, #eef2ff, #f5f3ff)',
-          borderRadius: '10px',
-          border: `1px solid ${theme.brandSoft}`,
+          padding: '16px 20px',
+          background: theme.brandSoft,
+          borderRadius: '12px',
+          border: '1px solid #ddd6fe',
           display: 'flex', alignItems: 'center', gap: '12px',
         }}>
           <span style={{
@@ -815,9 +844,10 @@ export default function ExpenseEditorPage() {
             color: theme.brandSoftText,
             textTransform: 'uppercase', letterSpacing: '.08em',
           }}>Total to pay</span>
-          <span style={{ marginInlineStart: 'auto', fontFamily: theme.fontMono, fontSize: '22px', fontWeight: 700, color: theme.brand }}>
+          <span style={{ marginInlineStart: 'auto', fontFamily: theme.fontMono, fontSize: '24px', fontWeight: 800, color: theme.brand, letterSpacing: '-.01em' }}>
             AED {fmt(totals.total)}
           </span>
+        </div>
         </div>
       </div>
 

@@ -33,6 +33,7 @@ const PriceLevelsPage    = lazy(() => import('@/modules/settings/price-levels'))
 const BankAccountsPage   = lazy(() => import('@/modules/settings/bank-accounts'));
 const TaxRatesPage       = lazy(() => import('@/modules/settings/tax-rates'));
 const OpeningBalancesPage = lazy(() => import('@/modules/settings/opening-balances'));
+const DocumentNumberingPage = lazy(() => import('@/modules/settings/document-numbering'));
 const ImportExportPage    = lazy(() => import('@/modules/settings/import-export'));
 const CategoriesPage     = lazy(() => import('@/modules/catalog/categories'));
 const BrandsPage         = lazy(() => import('@/modules/catalog/brands'));
@@ -82,6 +83,12 @@ const VendorPaymentEditorPage = lazy(() => import('@/modules/purchasing/vendor-p
 const PurchasingExpensesPage      = lazy(() => import('@/modules/purchasing/expenses'));
 const PurchasingExpenseEditorPage = lazy(() => import('@/modules/purchasing/expense-editor'));
 
+// Payroll P1 (owner override 2026-06-13)
+const EmployeesPage        = lazy(() => import('@/modules/payroll/employees'));
+const PayrollRunsPage      = lazy(() => import('@/modules/payroll/payroll-runs'));
+const PayrollRunEditorPage = lazy(() => import('@/modules/payroll/payroll-run-editor'));
+const LeaveSalaryPage      = lazy(() => import('@/modules/payroll/leave-salary'));
+
 // Phase 5 reports
 const APAgingPage            = lazy(() => import('@/modules/reports/ap-aging'));
 const SupplierStatementPage  = lazy(() => import('@/modules/reports/supplier-statement'));
@@ -111,8 +118,6 @@ const DailySalesReportPage            = lazy(() => import('@/modules/reports/dai
 // Phase 8 — Banking & PDC
 const BankTransfersPage               = lazy(() => import('@/modules/banking/bank-transfers'));
 const BankTransferEditorPage          = lazy(() => import('@/modules/banking/bank-transfer-editor'));
-const ExpensesPage                    = lazy(() => import('@/modules/banking/expenses'));
-const ExpenseEditorPage               = lazy(() => import('@/modules/banking/expense-editor'));
 const PDCReceivedPage                 = lazy(() => import('@/modules/banking/pdc-received'));
 const PDCIssuedPage                   = lazy(() => import('@/modules/banking/pdc-issued'));
 const BankReconciliationPage          = lazy(() => import('@/modules/banking/bank-reconciliation'));
@@ -217,6 +222,7 @@ function AppRoutes() {
               <Route path="/settings/bank-accounts"     element={<BankAccountsPage />} />
               <Route path="/settings/tax-rates"         element={<TaxRatesPage />} />
               <Route path="/settings/opening-balances"  element={<OpeningBalancesPage />} />
+              <Route path="/settings/numbering"         element={<DocumentNumberingPage />} />
               <Route path="/settings/import-export"     element={<ImportExportPage />} />
 
               {/* Catalog */}
@@ -270,6 +276,12 @@ function AppRoutes() {
               <Route path="/purchasing/expenses/:id"            element={<PurchasingExpenseEditorPage />} />
               <Route path="/purchasing/expenses"                element={<PurchasingExpensesPage />} />
 
+              {/* Payroll P1 (owner override 2026-06-13) */}
+              <Route path="/payroll/employees"                  element={<EmployeesPage />} />
+              <Route path="/payroll/runs/:id"                   element={<PayrollRunEditorPage />} />
+              <Route path="/payroll/runs"                       element={<PayrollRunsPage />} />
+              <Route path="/payroll/leave-salary"               element={<LeaveSalaryPage />} />
+
               {/* Phase 5 reports */}
               <Route path="/reports/ap-aging"                   element={<APAgingPage />} />
               <Route path="/reports/supplier-statement"         element={<SupplierStatementPage />} />
@@ -299,8 +311,10 @@ function AppRoutes() {
               {/* Phase 8 — Banking & PDC */}
               <Route path="/banking/transfers/:id"              element={<BankTransferEditorPage />} />
               <Route path="/banking/transfers"                  element={<BankTransfersPage />} />
-              <Route path="/banking/expenses/:id"               element={<ExpenseEditorPage />} />
-              <Route path="/banking/expenses"                   element={<ExpensesPage />} />
+              {/* Expenses merged into Purchasing (2026-06-14). Old Banking
+                  paths redirect — same underlying expenses table. */}
+              <Route path="/banking/expenses/:id"               element={<Navigate to="/purchasing/expenses" replace />} />
+              <Route path="/banking/expenses"                   element={<Navigate to="/purchasing/expenses" replace />} />
               <Route path="/banking/pdc-received"               element={<PDCReceivedPage />} />
               <Route path="/banking/pdc-issued"                 element={<PDCIssuedPage />} />
               <Route path="/banking/reconciliation"             element={<BankReconciliationPage />} />
@@ -398,7 +412,7 @@ function NotFoundPage() {
       </p>
       <div style={{ display: 'flex', gap: '8px' }}>
         <a href="/dashboard" style={{
-          padding: '8px 14px', background: '#6366F1', color: '#FFF',
+          padding: '8px 14px', background: '#7c3aed', color: '#FFF',
           borderRadius: '8px', fontSize: '13px', fontWeight: 600,
           textDecoration: 'none',
         }}>Go to Dashboard</a>

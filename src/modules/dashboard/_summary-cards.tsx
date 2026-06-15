@@ -159,7 +159,7 @@ function IncomeExpenseCard({ data }: { data: DashboardCards }) {
 }
 
 // ── 2. Top Expenses (donut) ─────────────────────────────────────────────
-const DONUT_PALETTE = ['#6366f1', '#8b5cf6', '#f59e0b', '#ef4444', '#0ea5e9', '#cbd5e1'];
+const DONUT_PALETTE = ['#7c3aed', '#8b5cf6', '#f59e0b', '#ef4444', '#0ea5e9', '#cbd5e1'];
 
 function TopExpensesCard({ data }: { data: DashboardCards }) {
   const slices = [
@@ -412,7 +412,7 @@ export default function DashboardSummaryCards() {
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 330px), 1fr))',
       gap: '16px',
     }}>
       <IncomeExpenseCard data={data} />

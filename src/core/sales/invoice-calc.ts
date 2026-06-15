@@ -1,26 +1,43 @@
 // Pure arithmetic for invoice/quote line items and header totals.
-// Uses exclusive tax (tax applied on net-after-discount).
+// Supports both exclusive (default) and inclusive tax modes.
 
 export interface LineInput {
   quantity:         number;
   unit_price:       number;
   discount_percent: number; // 0–100
   tax_rate:         number; // percentage, e.g. 5 for 5%
+  inclusive?:       boolean; // true = unit_price already includes tax
 }
 
 export interface LineResult {
-  line_subtotal:    number; // qty * unit_price
-  discount_amount:  number; // subtotal * disc% / 100
-  tax_amount:       number; // (subtotal - discount) * tax% / 100
-  line_total:       number; // subtotal - discount + tax
+  line_subtotal:    number; // qty * unit_price (gross before discount)
+  discount_amount:  number; // gross * disc% / 100
+  tax_amount:       number; // extracted or added tax
+  line_total:       number; // amount customer pays
 }
 
 export function calcLine(input: LineInput): LineResult {
-  const subtotal   = round2(input.quantity * input.unit_price);
-  const discAmt    = round2(subtotal * input.discount_percent / 100);
-  const net        = subtotal - discAmt;
-  const taxAmt     = round2(net * input.tax_rate / 100);
-  const lineTotal  = round2(net + taxAmt);
+  const subtotal = round2(input.quantity * input.unit_price);
+  const discAmt  = round2(subtotal * input.discount_percent / 100);
+  const net      = round2(subtotal - discAmt);   // after-discount amount
+
+  if (input.inclusive) {
+    // Price already includes tax — extract it from the net amount.
+    // taxAmt = net * rate / (100 + rate)
+    const taxAmt = input.tax_rate > 0
+      ? round2(net * input.tax_rate / (100 + input.tax_rate))
+      : 0;
+    return {
+      line_subtotal:   subtotal,
+      discount_amount: discAmt,
+      tax_amount:      taxAmt,
+      line_total:      net,   // customer pays `net`; tax is already inside
+    };
+  }
+
+  // Exclusive (default): tax added on top of net-after-discount.
+  const taxAmt   = round2(net * input.tax_rate / 100);
+  const lineTotal = round2(net + taxAmt);
   return {
     line_subtotal:   subtotal,
     discount_amount: discAmt,

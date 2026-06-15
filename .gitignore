@@ -53,3 +53,7 @@ supabase/.temp
 
 # Ignore corrupt ghost files from bad shell copy commands
 supabase/migrations/*&&*
+
+# Design reference files (user-provided PDFs)
+files.zip
+_template_refs/

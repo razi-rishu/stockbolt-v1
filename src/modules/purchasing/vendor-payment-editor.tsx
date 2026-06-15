@@ -5,6 +5,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
@@ -13,7 +14,8 @@ import { ContactPicker } from '@/components/contact-picker';
 import { AccountingPreview, buildVendorPaymentPreview } from '@/components/accounting-preview';
 import { ActivityLog } from '@/components/activity-log';
 // Phase 14.05 — Signature template view mode for saved vendor payments.
-import { PaymentReceiptTemplate } from '@/modules/print/_signature/templates/payment-receipt';
+import { BoltVoucherTemplate } from '@/modules/print/_signature/templates/bolt-v4';
+import { usePrintConfig } from '@/hooks/use-print-config';
 import { vendorPaymentToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type { PaymentRow, BankAccountRow, VendorBillRow, OpenVendorBill, PaymentAllocationInsert, PaymentMethodRow, Company, ContactRow } from '@/data/adapter';
@@ -26,11 +28,14 @@ export default function VendorPaymentEditorPage() {
   const { company_id } = useAuthStore();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const printConfig = usePrintConfig();
   const qc = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const companyCurrency = useCompanyCurrency();    // Phase 14.14m
   const [searchParams] = useSearchParams();
   const isNew = id === 'new';
+  // Deep-link from a saved bill's "Make Payment" CTA — pre-selects the supplier.
+  const seedContact = searchParams.get('contact');
   // Phase 14.08 — deep-link from supplier-detail "Apply credit" banner.
   const autoApply = searchParams.get('apply') === '1';
 
@@ -97,6 +102,8 @@ export default function VendorPaymentEditorPage() {
     reference: '', notes: '',
   });
   const [error, setError] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const confirmLeave = useUnsavedChangesGuard(dirty);
   const [applyModal, setApplyModal] = useState(false);
   const [applyBillId, setApplyBillId] = useState('');
   const [applyAmount, setApplyAmount] = useState('');
@@ -168,6 +175,13 @@ export default function VendorPaymentEditorPage() {
       });
     }
   }, [existing]);
+
+  // New payment opened from a saved bill — pre-select that supplier.
+  useEffect(() => {
+    if (isNew && seedContact) {
+      setHeader(h => ({ ...h, contact_id: seedContact }));
+    }
+  }, [isNew, seedContact]);
 
   // Pre-fill applyAmounts from existing allocations on a draft load. Only
   // seeds once per draft so the user's edits during the session aren't
@@ -276,12 +290,13 @@ export default function VendorPaymentEditorPage() {
       }, updateAllocations);
     },
     onSuccess: async (data) => {
+      setDirty(false);
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['vendor_payments', company_id] });
       qc.invalidateQueries({ queryKey: ['open_bills_for_supplier', company_id, header.contact_id] });
       qc.invalidateQueries({ queryKey: ['vendor_payment', id] });
       qc.invalidateQueries({ queryKey: ['vendor_payment_allocations', id] });
-      if (isNew && data) navigate(`/purchasing/payments/${data.id}`);
+      if (isNew && data) navigate('/purchasing/payments');
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -320,7 +335,10 @@ export default function VendorPaymentEditorPage() {
   // account number — confusing for the operator.
   const bankOpts = [
     { value: '', label: t('purchasing.select_bank') },
-    ...bankAccounts.map(b => ({ value: b.id, label: b.name })),
+    ...bankAccounts.map(b => ({
+      value: b.id,
+      label: `${b.name} · ${b.account_type === 'cash' ? 'Cash' : 'Bank'}`,
+    })),
   ];
   const bankLabel = `${t('purchasing.bank_account')} *`;
   const methodOpts = [{ value: '', label: '—' }, ...paymentMethods.map(m => ({ value: m.id, label: m.name }))];
@@ -359,7 +377,7 @@ export default function VendorPaymentEditorPage() {
           data-no-print="true"
           style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
         >
-          <button onClick={() => navigate('/purchasing/payments')} style={{
+          <button onClick={() => { if (confirmLeave()) navigate('/purchasing/payments'); }} style={{
             background: 'transparent', border: 'none', cursor: 'pointer',
             fontSize: '13px', color: '#64748b',
           }}>← {t('purchasing.vp_title')}</button>
@@ -386,7 +404,7 @@ export default function VendorPaymentEditorPage() {
           </div>
         </div>
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
-          <PaymentReceiptTemplate data={doc} paidTo />
+          <BoltVoucherTemplate data={doc} config={printConfig} />
         </div>
       </div>
     );
@@ -395,7 +413,7 @@ export default function VendorPaymentEditorPage() {
   return (
     <div className="space-y-6 pb-16">
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/purchasing/payments')} className="text-sm text-ink-secondary hover:text-ink-primary">← {t('purchasing.vp_title')}</button>
+        <button onClick={() => { if (confirmLeave()) navigate('/purchasing/payments'); }} className="text-sm text-ink-secondary hover:text-ink-primary">← {t('purchasing.vp_title')}</button>
         <span className="text-ink-tertiary">/</span>
         <h1 className="text-xl font-semibold text-ink-primary">{isNew ? t('purchasing.new_vp') : existing?.payment_number ?? '…'}</h1>
         {!isNew && <span className="rounded-pill bg-gray-100 px-2.5 py-0.5 text-xs capitalize text-gray-600">{existing?.status}</span>}
@@ -422,7 +440,7 @@ export default function VendorPaymentEditorPage() {
               {t('common.view') || 'View'}
             </Button>
           )}
-          <Button variant="ghost" size="sm" onClick={() => navigate('/purchasing/payments')}>{t('common.cancel')}</Button>
+          <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/purchasing/payments'); }}>{t('common.cancel')}</Button>
           {canEdit && (
             <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
               {saveMutation.isPending ? t('common.saving') : t('common.save')}
@@ -460,7 +478,7 @@ export default function VendorPaymentEditorPage() {
                  side by side so the operator can sanity-check the math
                  without leaving the modal. */}
             <div style={{
-              display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px',
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '12px',
               padding: '12px 14px',
               background: '#ecfdf5',
               border: '1px solid #a7f3d0',
@@ -557,7 +575,7 @@ export default function VendorPaymentEditorPage() {
                   marginTop: '6px',
                   fontSize: '11.5px',
                   fontWeight: 600,
-                  color: !selectedBill || suggestedVendorApply <= 0 ? '#94a3b8' : '#6366f1',
+                  color: !selectedBill || suggestedVendorApply <= 0 ? '#94a3b8' : '#7c3aed',
                   background: 'transparent',
                   border: 'none',
                   cursor: !selectedBill || suggestedVendorApply <= 0 ? 'not-allowed' : 'pointer',
@@ -605,6 +623,7 @@ export default function VendorPaymentEditorPage() {
               onChange={(id) => {
                 setHeader(h => ({ ...h, contact_id: id ?? '' }));
                 setApplyAmounts({});
+                setDirty(true);
               }}
               placeholder={t('purchasing.select_supplier')}
               panelWidth={380}
@@ -620,6 +639,7 @@ export default function VendorPaymentEditorPage() {
             disabled={!canEdit} onChange={e => {
               const v = e.target.value;
               setHeader(h => ({ ...h, amount: v }));
+              setDirty(true);
               if (isNew && header.classification === 'against_invoice' && header.contact_id) {
                 autoFillFIFO(v, openBillsForPanel);
               }

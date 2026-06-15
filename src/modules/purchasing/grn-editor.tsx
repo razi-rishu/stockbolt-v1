@@ -5,13 +5,15 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 // Phase 14.06 — Signature template view mode for saved GRNs.
-import { TaxInvoiceTemplate } from '@/modules/print/_signature/templates/tax-invoice';
+import { BoltDocTemplate } from '@/modules/print/_signature/templates/bolt-v4';
+import { usePrintConfig } from '@/hooks/use-print-config';
 import { grnToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type { GoodsReceiptRow, GoodsReceiptItemRow, GoodsReceiptItemInsert, ContactRow, ProductRow, WarehouseRow, Company } from '@/data/adapter';
@@ -36,6 +38,7 @@ export default function GRNEditorPage() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const printConfig = usePrintConfig();
   const qc = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const isNew = id === 'new';
@@ -94,6 +97,8 @@ export default function GRNEditorPage() {
   });
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
   const [error, setError] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const confirmLeave = useUnsavedChangesGuard(dirty);
 
   // Phase 12.42 — quick-create product from inside the line picker.
   const [productQcOpen,    setProductQcOpen]    = useState(false);
@@ -153,6 +158,7 @@ export default function GRNEditorPage() {
       const cost = parseFloat(u.unit_cost) || 0;
       return { ...u, total_cost: qty * cost };
     }));
+    setDirty(true);
   };
 
   const grandTotal = lines.reduce((s, l) => s + l.total_cost, 0);
@@ -169,44 +175,57 @@ export default function GRNEditorPage() {
     }));
   }
 
+  // Persist current header + lines as a draft. Shared by Save and Confirm
+  // so confirming always posts what's on screen, never stale DB rows.
+  async function persistDraft(): Promise<string> {
+    if (!header.supplier_id) throw new Error(t('purchasing.error_supplier_required'));
+    const grnNum = isNew ? await getAdapter().goodsReceipts.getNextNumber(company_id!) : existing!.grn_number;
+    const row = {
+      company_id: company_id!, grn_number: grnNum,
+      purchase_order_id: header.purchase_order_id || null,
+      supplier_id: header.supplier_id,
+      warehouse_id: header.warehouse_id || null,
+      date: header.date,
+      status: 'draft' as const,
+      notes: header.notes || null,
+    };
+    if (isNew) {
+      const created = await getAdapter().goodsReceipts.create(row, buildItems());
+      return created.id;
+    }
+    await getAdapter().goodsReceipts.update(id!, row, buildItems());
+    return id!;
+  }
+
   const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (!header.supplier_id) throw new Error(t('purchasing.error_supplier_required'));
-      const grnNum = isNew ? await getAdapter().goodsReceipts.getNextNumber(company_id!) : existing!.grn_number;
-      const row = {
-        company_id: company_id!, grn_number: grnNum,
-        purchase_order_id: header.purchase_order_id || null,
-        supplier_id: header.supplier_id,
-        warehouse_id: header.warehouse_id || null,
-        date: header.date,
-        status: 'draft' as const,
-        notes: header.notes || null,
-      };
-      if (isNew) return getAdapter().goodsReceipts.create(row, buildItems());
-      await getAdapter().goodsReceipts.update(id!, row, buildItems());
-      return null;
-    },
-    onSuccess: async (data) => {
+    mutationFn: persistDraft,
+    onSuccess: async (savedId) => {
+      setDirty(false);
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['goods_receipts', company_id] });
-      if (isNew && data) navigate(`/purchasing/grns/${data.id}`);
+      if (isNew) navigate('/purchasing/grns');
       else {
-        qc.invalidateQueries({ queryKey: ['goods_receipt', id] });
-        qc.invalidateQueries({ queryKey: ['goods_receipt_items', id] });
+        qc.invalidateQueries({ queryKey: ['goods_receipt', savedId] });
+        qc.invalidateQueries({ queryKey: ['goods_receipt_items', savedId] });
       }
     },
     onError: (e: Error) => setError(e.message),
   });
 
   const confirmMutation = useMutation({
-    mutationFn: () => getAdapter().goodsReceipts.confirm(id!),
+    mutationFn: async () => {
+      const savedId = await persistDraft();   // save the grid first
+      return getAdapter().goodsReceipts.confirm(savedId);
+    },
     onSuccess: async () => {
       setConfirmModal(false);
+      setDirty(false);
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['goods_receipts', company_id] });
       qc.invalidateQueries({ queryKey: ['goods_receipt', id] });
+      qc.invalidateQueries({ queryKey: ['goods_receipt_items', id] });
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => { setConfirmModal(false); setError(e.message); },
   });
 
   const canEdit = isNew || existing?.status === 'draft';
@@ -230,7 +249,7 @@ export default function GRNEditorPage() {
           data-no-print="true"
           style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
         >
-          <button onClick={() => navigate('/purchasing/grns')} style={{
+          <button onClick={() => { if (confirmLeave()) navigate('/purchasing/grns'); }} style={{
             background: 'transparent', border: 'none', cursor: 'pointer',
             fontSize: '13px', color: '#64748b',
           }}>← {t('purchasing.grn_title')}</button>
@@ -257,7 +276,7 @@ export default function GRNEditorPage() {
           </div>
         </div>
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
-          <TaxInvoiceTemplate data={doc} />
+          <BoltDocTemplate data={doc} config={printConfig} />
         </div>
       </div>
     );
@@ -266,7 +285,7 @@ export default function GRNEditorPage() {
   return (
     <div className="space-y-6 pb-16">
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/purchasing/grns')} className="text-sm text-ink-secondary hover:text-ink-primary">← {t('purchasing.grn_title')}</button>
+        <button onClick={() => { if (confirmLeave()) navigate('/purchasing/grns'); }} className="text-sm text-ink-secondary hover:text-ink-primary">← {t('purchasing.grn_title')}</button>
         <span className="text-ink-tertiary">/</span>
         <h1 className="text-xl font-semibold text-ink-primary">{isNew ? t('purchasing.new_grn') : existing?.grn_number ?? '…'}</h1>
         {!isNew && <span className="rounded-pill bg-gray-100 px-2.5 py-0.5 text-xs capitalize text-gray-600">{existing?.status}</span>}
@@ -276,7 +295,7 @@ export default function GRNEditorPage() {
               {t('common.view') || 'View'}
             </Button>
           )}
-          <Button variant="ghost" size="sm" onClick={() => navigate('/purchasing/grns')}>{t('common.cancel')}</Button>
+          <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/purchasing/grns'); }}>{t('common.cancel')}</Button>
           {canEdit && (
             <>
               <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
@@ -323,17 +342,17 @@ export default function GRNEditorPage() {
               options={supplierOpts}
               value={header.supplier_id}
               disabled={!canEdit}
-              onChange={(v) => setHeader(h => ({ ...h, supplier_id: v }))}
+              onChange={(v) => { setHeader(h => ({ ...h, supplier_id: v })); setDirty(true); }}
               placeholder={t('purchasing.select_supplier')}
               panelWidth={320}
             />
           </div>
           <Select label={t('purchasing.warehouse')} options={warehouseOpts} value={header.warehouse_id}
-            disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, warehouse_id: e.target.value }))} />
+            disabled={!canEdit} onChange={e => { setHeader(h => ({ ...h, warehouse_id: e.target.value })); setDirty(true); }} />
           <Input label={t('purchasing.date')} type="date" required value={header.date}
-            disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, date: e.target.value }))} />
+            disabled={!canEdit} onChange={e => { setHeader(h => ({ ...h, date: e.target.value })); setDirty(true); }} />
           <Input label={t('purchasing.notes')} value={header.notes}
-            disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, notes: e.target.value }))} />
+            disabled={!canEdit} onChange={e => { setHeader(h => ({ ...h, notes: e.target.value })); setDirty(true); }} />
         </div>
       </div>
 
@@ -390,7 +409,7 @@ export default function GRNEditorPage() {
                     <td className="px-3 py-1.5">
                       <button className="text-red-400 hover:text-red-600 disabled:opacity-30"
                         disabled={lines.length === 1}
-                        onClick={() => setLines(prev => prev.filter(l => l._key !== line._key))}>×</button>
+                        onClick={() => { setLines(prev => prev.filter(l => l._key !== line._key)); setDirty(true); }}>×</button>
                     </td>
                   )}
                 </tr>
@@ -401,7 +420,7 @@ export default function GRNEditorPage() {
         {canEdit && (
           <div className="border-t border-border-subtle px-5 py-2">
             <button className="text-xs text-brand-600 hover:text-brand-700"
-              onClick={() => setLines(prev => [...prev, emptyLine()])}>
+              onClick={() => { setLines(prev => [...prev, emptyLine()]); setDirty(true); }}>
               + {t('purchasing.add_line')}
             </button>
           </div>

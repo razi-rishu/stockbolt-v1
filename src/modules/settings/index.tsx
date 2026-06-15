@@ -72,8 +72,8 @@ function Tile({ tile }: { tile: TileSpec }) {
       {/* Icon tile */}
       <div style={{
         height: '40px', width: '40px',
-        background: 'linear-gradient(135deg, #eef2ff, #ede9fe)',
-        color: '#6366f1',
+        background: 'linear-gradient(135deg, #f5f3ff, #ede9fe)',
+        color: '#7c3aed',
         borderRadius: '10px',
         display: 'flex',
         alignItems: 'center',
@@ -179,7 +179,7 @@ export default function SettingsHubPage() {
       tiles: [
         { to: '/settings/salespeople', icon: '👤', title: 'Salespeople',      desc: 'Master list tagged on invoices/quotes for commission reports.', count: salespeople.length },
         { to: '/settings/tax-rates',   icon: '📊', title: 'Tax Rates',         desc: 'VAT % rates (UAE 5%, zero-rated, exempt) used on lines.',      count: taxRates.length },
-        { to: '/settings/numbering',   icon: '🔢', title: 'Document Numbering', desc: 'Prefix and next-number for invoices, quotes, POs, GRNs.', comingSoon: true },
+        { to: '/settings/numbering',   icon: '🔢', title: 'Document Numbering', desc: 'Format, padding and next-number for every document type.' },
       ],
     },
     {

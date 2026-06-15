@@ -5,6 +5,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
@@ -15,7 +16,8 @@ import { AccountingPreview, buildCustomerPaymentPreview } from '@/components/acc
 import { ActivityLog } from '@/components/activity-log';
 import { theme } from '@/ui/theme';
 // Phase 14.05 — Signature template view mode for saved payments.
-import { PaymentReceiptTemplate } from '@/modules/print/_signature/templates/payment-receipt';
+import { BoltReceiptTemplate } from '@/modules/print/_signature/templates/bolt-v4';
+import { usePrintConfig } from '@/hooks/use-print-config';
 import { paymentToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type { PaymentRow, BankAccountRow, OpenInvoice, PaymentAllocationInsert, Company, ContactRow, PaymentMethodRow, InvoiceRow } from '@/data/adapter';
@@ -45,6 +47,7 @@ export default function PaymentEditorPage() {
   const companyCurrency = useCompanyCurrency();   // Phase 14.14m
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const printConfig = usePrintConfig();
   const qc = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k — TB/BS/aging/GL sweep
   const [searchParams] = useSearchParams();
@@ -52,6 +55,9 @@ export default function PaymentEditorPage() {
   // Phase 14.08 — deep-link from customer-detail "Apply credit" banner.
   // Auto-opens the apply-advance modal and skips the view-first template.
   const autoApply = searchParams.get('apply') === '1';
+  // Deep-link from a saved invoice's "Receive Payment" CTA — pre-selects the
+  // customer so the user lands ready to allocate against their open invoices.
+  const seedContact = searchParams.get('contact');
 
   // contacts list removed — customer picker uses ContactPicker (D3).
   const { data: bankAccounts = [] } = useQuery<BankAccountRow[]>({
@@ -146,6 +152,11 @@ export default function PaymentEditorPage() {
   const [applyAmt, setApplyAmt] = useState('');
   const [applyModal, setApplyModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [deleteModal, setDeleteModal] = useState(false);
+  const [voidModal, setVoidModal] = useState(false);
+  const [voidReason, setVoidReason] = useState('');
+  const confirmLeave = useUnsavedChangesGuard(dirty);
 
   // Phase 14.08 — auto-open the apply-advance modal when the user
   // arrives from the customer-detail "Apply credit" CTA. Only fires
@@ -155,6 +166,14 @@ export default function PaymentEditorPage() {
       setApplyModal(true);
     }
   }, [autoApply, existing?.status]);
+
+  // New payment opened from a saved invoice — pre-select that customer.
+  useEffect(() => {
+    if (isNew && seedContact) {
+      setHeader(h => ({ ...h, contact_id: seedContact }));
+      setSelectedContact(seedContact);
+    }
+  }, [isNew, seedContact]);
 
   useEffect(() => {
     if (existing) {
@@ -345,12 +364,13 @@ export default function PaymentEditorPage() {
       }, updateAllocations);
     },
     onSuccess: async (data) => {
+      setDirty(false);
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['payments', company_id] });
       qc.invalidateQueries({ queryKey: ['payment', id] });
       qc.invalidateQueries({ queryKey: ['payment_allocations', id] });
       qc.invalidateQueries({ queryKey: ['open_invoices', company_id, selectedContact] });
-      if (isNew && data) navigate(`/sales/payments/${data.id}`);
+      if (isNew && data) navigate('/sales/payments');
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -363,6 +383,27 @@ export default function PaymentEditorPage() {
       qc.invalidateQueries({ queryKey: ['payment', id] });
     },
     onError: (e: Error) => setError(e.message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => getAdapter().payments.deleteDraft(id!),
+    onSuccess: async () => {
+      setDeleteModal(false);
+      qc.invalidateQueries({ queryKey: ['payments', company_id] });
+      navigate('/sales/payments');
+    },
+    onError: (e: Error) => { setDeleteModal(false); setError(e.message); },
+  });
+
+  const voidMutation = useMutation({
+    mutationFn: () => getAdapter().payments.void(id!, voidReason || undefined),
+    onSuccess: async () => {
+      setVoidModal(false);
+      await invalidateBooks();
+      qc.invalidateQueries({ queryKey: ['payments', company_id] });
+      qc.invalidateQueries({ queryKey: ['payment', id] });
+    },
+    onError: (e: Error) => { setVoidModal(false); setError(e.message); },
   });
 
   const applyMutation = useMutation({
@@ -382,10 +423,43 @@ export default function PaymentEditorPage() {
   const isVoid = status === 'void';
   const canEdit = isNew || status === 'draft';
 
+  // Delete-draft + Void confirmations — shared between the view template and
+  // the editor form so a receipt can be removed/reversed from either place.
+  const dangerModalsEl = (
+    <>
+      <Modal open={deleteModal} onClose={() => setDeleteModal(false)} title={t('payments.delete_payment')}>
+        <div className="space-y-4">
+          <p className="text-sm text-ink-secondary">{t('payments.delete_confirm_text')}</p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setDeleteModal(false)}>{t('common.cancel')}</Button>
+            <Button variant="danger" size="sm" onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? '…' : t('common.delete')}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+      <Modal open={voidModal} onClose={() => setVoidModal(false)} title={t('payments.void_payment')}>
+        <div className="space-y-4">
+          <p className="text-sm text-ink-secondary">{t('payments.void_confirm_text')}</p>
+          <Input label={t('payments.void_reason')} value={voidReason} onChange={e => setVoidReason(e.target.value)} />
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setVoidModal(false)}>{t('common.cancel')}</Button>
+            <Button variant="danger" size="sm" onClick={() => voidMutation.mutate()} disabled={voidMutation.isPending}>
+              {voidMutation.isPending ? '…' : t('payments.void_payment')}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </>
+  );
+
   // contactOpts removed — customer picker uses ContactPicker (D3).
   const bankOpts = [
     { value: '', label: t('payments.select_bank') },
-    ...bankAccounts.map(b => ({ value: b.id, label: b.name })),
+    ...bankAccounts.map(b => ({
+      value: b.id,
+      label: `${b.name} · ${b.account_type === 'cash' ? 'Cash' : 'Bank'}`,
+    })),
   ];
   const classOpts = [
     { value: 'against_invoice', label: t('payments.against_invoice') },
@@ -447,7 +521,7 @@ export default function PaymentEditorPage() {
           data-no-print="true"
           style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
         >
-          <button onClick={() => navigate('/sales/payments')} style={{
+          <button onClick={() => { if (confirmLeave()) navigate('/sales/payments'); }} style={{
             background: 'transparent', border: 'none', cursor: 'pointer',
             fontSize: '13px', color: theme.inkMuted,
           }}>← {t('payments.title')}</button>
@@ -462,8 +536,19 @@ export default function PaymentEditorPage() {
           }}>{status}</span>
           <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
             {canEdit && (
-              <Button size="sm" onClick={() => setViewMode(false)}>
+              <Button variant="ghost" size="sm" onClick={() => setViewMode(false)}>
                 ✎ {t('common.edit') || 'Edit'}
+              </Button>
+            )}
+            {/* Draft → Confirm posts it to the books; Delete removes the unposted draft. */}
+            {status === 'draft' && (
+              <Button size="sm" onClick={() => { setError(null); confirmMutation.mutate(); }} disabled={confirmMutation.isPending}>
+                {confirmMutation.isPending ? '…' : t('payments.confirm_payment')}
+              </Button>
+            )}
+            {isConfirmed && (
+              <Button size="sm" onClick={() => setApplyModal(true)}>
+                {t('payments.apply_advance')}
               </Button>
             )}
             {existing?.id && (
@@ -471,11 +556,28 @@ export default function PaymentEditorPage() {
                 🖨 {t('print.print') || 'Print'}
               </Button>
             )}
+            {isConfirmed && !isReconciled && (
+              <Button variant="danger" size="sm" onClick={() => setVoidModal(true)}>
+                {t('payments.void_payment')}
+              </Button>
+            )}
+            {status === 'draft' && (
+              <Button variant="danger" size="sm" onClick={() => setDeleteModal(true)}>
+                {t('common.delete')}
+              </Button>
+            )}
           </div>
         </div>
+        {error && (
+          <div style={{
+            background: theme.dangerSoft, border: `1px solid ${theme.dangerBorder}`,
+            borderRadius: '8px', padding: '10px 16px', fontSize: '13px', color: theme.danger,
+          }}>{error}</div>
+        )}
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
-          <PaymentReceiptTemplate data={doc} />
+          <BoltReceiptTemplate data={doc} config={printConfig} />
         </div>
+        {dangerModalsEl}
       </div>
     );
   }
@@ -483,7 +585,7 @@ export default function PaymentEditorPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '64px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-        <button onClick={() => navigate('/sales/payments')} style={{
+        <button onClick={() => { if (confirmLeave()) navigate('/sales/payments'); }} style={{
           background: 'transparent', border: 'none', cursor: 'pointer',
           fontSize: '13px', color: theme.inkMuted,
         }}>← {t('payments.title')}</button>
@@ -515,7 +617,7 @@ export default function PaymentEditorPage() {
           )}
           {canEdit && (
             <>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/sales/payments')}>
+              <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/sales/payments'); }}>
                 {t('common.cancel')}
               </Button>
               <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
@@ -528,9 +630,19 @@ export default function PaymentEditorPage() {
               {confirmMutation.isPending ? '…' : t('payments.confirm_payment')}
             </Button>
           )}
+          {!isNew && status === 'draft' && (
+            <Button variant="danger" size="sm" onClick={() => setDeleteModal(true)}>
+              {t('common.delete')}
+            </Button>
+          )}
           {isConfirmed && (
             <Button variant="ghost" size="sm" onClick={() => setApplyModal(true)}>
               {t('payments.apply_advance')}
+            </Button>
+          )}
+          {isConfirmed && !isReconciled && (
+            <Button variant="danger" size="sm" onClick={() => setVoidModal(true)}>
+              {t('payments.void_payment')}
             </Button>
           )}
         </div>
@@ -574,6 +686,7 @@ export default function PaymentEditorPage() {
                 setSelectedContact(v);
                 setApplyAmounts({});
                 setDiscountAmounts({});
+                setDirty(true);
               }}
               placeholder={t('payments.select_contact')}
               panelWidth={380}
@@ -598,6 +711,7 @@ export default function PaymentEditorPage() {
             onChange={e => {
               const v = e.target.value;
               setHeader(h => ({ ...h, amount: v }));
+              setDirty(true);
               // FIFO auto-fill — only when allocation panel is shown.
               // We re-read showAllocationPanel based on the OUTGOING state
               // (classification + contact + open invoices length already known).
@@ -608,7 +722,7 @@ export default function PaymentEditorPage() {
           />
           <div>
             <Select
-              label={`${t('payments.bank_account')} *`}
+              label={t('payments.bank_account')}
               required
               options={bankOpts}
               value={header.bank_account_id}
@@ -622,11 +736,10 @@ export default function PaymentEditorPage() {
             {canEdit && !isVoid && bankAccounts.length === 0 && (
               <p className="mt-1 text-xs text-ink-tertiary">
                 No bank or cash accounts yet. Add one in{' '}
-                <a href="/accounting/chart-of-accounts" className="text-brand-600 underline">
-                  Accounting → Chart of Accounts
+                <a href="/settings/bank-accounts" className="text-brand-600 underline">
+                  Settings → Bank Accounts
                 </a>{' '}
-                under <span className="font-mono">1110 Bank Account (Main)</span> or{' '}
-                <span className="font-mono">1100 Cash in Hand</span>.
+                — set <span className="font-medium">Type = Cash</span> for cash transactions.
               </p>
             )}
           </div>
@@ -803,6 +916,8 @@ export default function PaymentEditorPage() {
         return <AccountingPreview lines={lines} currency={header.currency || 'AED'} />;
       })()}
 
+      {dangerModalsEl}
+
       {/* Apply advance modal — Phase 14.08b: shows the available credit on
            this payment, the outstanding on the chosen invoice, and pre-fills
            the amount field with min(available, outstanding) so the operator
@@ -811,7 +926,7 @@ export default function PaymentEditorPage() {
         <div className="space-y-4">
           {/* Available credit panel — the missing context the user needed. */}
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px',
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '12px',
             padding: '12px 14px',
             background: '#ecfdf5',
             border: '1px solid #a7f3d0',
@@ -914,7 +1029,7 @@ export default function PaymentEditorPage() {
                 marginTop: '6px',
                 fontSize: '11.5px',
                 fontWeight: 600,
-                color: !selectedInvoice || suggestedApply <= 0 ? '#94a3b8' : '#6366f1',
+                color: !selectedInvoice || suggestedApply <= 0 ? '#94a3b8' : '#7c3aed',
                 background: 'transparent',
                 border: 'none',
                 cursor: !selectedInvoice || suggestedApply <= 0 ? 'not-allowed' : 'pointer',

@@ -204,9 +204,54 @@ export function Badge({
 }
 
 // ── Panel ──────────────────────────────────────────────────────────────────
+// compact={true} → single slim filter-bar row (no separate header band).
+// Use compact for Period / filter panels on report pages.
+// Default (compact=false) → classic titled card with header band + body.
 export function Panel({
-  icon, title, right, children,
-}: { icon?: ReactNode; title: string; right?: ReactNode; children: ReactNode }) {
+  icon, title, right, children, compact,
+}: { icon?: ReactNode; title: string; right?: ReactNode; children: ReactNode; compact?: boolean }) {
+  if (compact) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        border: `1px solid ${theme.border}`,
+        borderRadius: '10px',
+        overflow: 'hidden',
+        background: '#fff',
+        minHeight: '50px',
+      }}>
+        {/* Label chip — left side */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '6px',
+          padding: '0 14px',
+          borderInlineEnd: `1px solid ${theme.border}`,
+          alignSelf: 'stretch',
+          background: theme.panelHead,
+          flexShrink: 0,
+        }}>
+          {icon && <span style={{ fontSize: '15px', lineHeight: 1 }}>{icon}</span>}
+          <span style={{
+            fontSize: '10px', fontWeight: 700, color: theme.inkMuted,
+            textTransform: 'uppercase', letterSpacing: '.07em',
+            whiteSpace: 'nowrap',
+          }}>{title}</span>
+        </div>
+        {/* Filter controls — right side */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '10px',
+          padding: '9px 14px',
+          flex: 1,
+          flexWrap: 'wrap',
+        }}>
+          {children}
+        </div>
+        {right && (
+          <div style={{ paddingInlineEnd: '14px', flexShrink: 0 }}>{right}</div>
+        )}
+      </div>
+    );
+  }
   return (
     <div style={{
       border: `1px solid ${theme.border}`,

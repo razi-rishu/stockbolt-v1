@@ -5,7 +5,6 @@ import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
-import { Input } from '@/ui/input';
 import { PageHeader, Panel } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
 import type { TrialBalance, TrialBalanceLine } from '@/data/adapter';
@@ -72,14 +71,11 @@ export default function TrialBalancePage() {
       <PageHeader title={t('reports.trial_balance')} subtitle={data ? `As of ${data.as_of_date}` : 'Pick a date and Run'} />
 
       {/* Filter panel */}
-      <Panel icon="📅" title="Period">
-        <form onSubmit={handleRun} style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '11px', fontWeight: 600, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.05em' }}>
-              {t('reports.as_of_date')}
-            </label>
-            <Input type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} className="w-40" />
-          </div>
+      <Panel icon="📅" title="Period" compact>
+        <form onSubmit={handleRun} style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '12px', color: theme.inkMuted, fontWeight: 500 }}>{t('reports.as_of_date')}</span>
+          <input type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)}
+            style={{ height: '32px', padding: '0 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', background: '#fff', color: theme.ink, outline: 'none' }} />
           <Button type="submit" size="sm">{t('reports.run')}</Button>
         </form>
       </Panel>

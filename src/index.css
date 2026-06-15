@@ -2,6 +2,48 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Inter font — Option B design system ──────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+/*
+ * ── Glassmorphism container boxes ─────────────────────────────────────────
+ * Scope: the CONTAINER PANELS only (form sections, summary boxes, line-item
+ * wrappers). Nav, tables, buttons and data styling are intentionally left
+ * unchanged. Centralised here via CSS variables + a `.glass-card` class so
+ * panels can opt in with one className.
+ *
+ * Opacity is kept fairly high (~0.62) on purpose: this is an accounting app,
+ * so panels must stay readable over their content. The soft light gradient
+ * below sits behind the content area (the dark top nav paints over it and is
+ * unaffected) so the frosted effect actually reads.
+ */
+:root {
+  --glass-bg:           rgba(255, 255, 255, 0.62);
+  --glass-border:       rgba(255, 255, 255, 0.55);
+  --glass-blur:         16px;
+  --glass-shadow:       0 8px 32px rgba(31, 38, 135, 0.10);
+  --glass-shadow-hover: 0 12px 40px rgba(31, 38, 135, 0.16);
+}
+
+/* Soft backdrop for the content area so glass panels read as glass. */
+.bg-surface-page {
+  background: linear-gradient(135deg, #eef2ff 0%, #f8fafc 50%, #e0f2fe 100%);
+}
+
+/* Reusable frosted container. */
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 16px;
+  transition: box-shadow 0.25s ease;
+}
+.glass-card:hover {
+  box-shadow: var(--glass-shadow-hover);
+}
+
 /*
  * Phase 12.36 — design-system uplift for legacy `.rounded-card` containers.
  *
@@ -79,6 +121,34 @@ label.mb-1.block.text-sm.font-medium.text-ink-primary {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 4px;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Option B — Multi-color status badge system (global override).
+ *
+ * Every module that renders status pills via Tailwind utility combos gets
+ * lifted to the new dot-badge look. Rules are ordered specific → generic.
+ * The colored dot is injected as ::before on span elements that carry a
+ * data-status attribute; for legacy raw-Tailwind pills we override the
+ * background/border/text so the dot can't be injected but colors match.
+ * ────────────────────────────────────────────────────────────────────── */
+
+/* Global stat card row used by list pages */
+.sb-stat-grid {
+  display: flex;
+  gap: 10px;
+}
+
+/* ── Vendor-bill / PO / GRN / expense status pills (Tailwind combos) ─── */
+.bg-blue-100.text-blue-700,
+.bg-blue-100.text-blue-800 {
+  background: #f5f3ff !important;
+  color: #6d28d9 !important;
+  border: 1px solid #ddd6fe !important;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -207,21 +277,21 @@ tbody.divide-y.divide-slate-100 > tr:hover {
 .font-mono.text-blue-600,
 a.text-blue-600.hover\:underline,
 .text-blue-600.hover\:underline {
-  color: #4338ca !important;
+  color: #5b21b6 !important;
 }
 
 /* Legacy "primary" buttons created with raw class strings (btn-primary CSS class) */
 .btn-primary {
-  background: #6366f1;
+  background: #7c3aed;
   color: #fff;
-  border: 1px solid #6366f1;
+  border: 1px solid #7c3aed;
   border-radius: 7px;
   font-weight: 600;
   font-size: 13px;
   transition: background-color .15s;
 }
 .btn-primary:hover:not(:disabled) {
-  background: #4f46e5;
+  background: #6d28d9;
 }
 .btn-primary:disabled {
   opacity: 0.5;
@@ -241,8 +311,8 @@ a.text-blue-600.hover\:underline,
   transition: border-color .15s, box-shadow .15s;
 }
 .input-field:focus {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.10);
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.10);
 }
 
 /* Page subheader paragraphs */
@@ -255,7 +325,7 @@ h1.text-xl.font-semibold.text-ink-primary + p.text-sm.text-ink-secondary {
 
 @layer base {
   html {
-    font-family: 'DM Sans', system-ui, sans-serif;
+    font-family: 'Inter', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -326,5 +396,17 @@ h1.text-xl.font-semibold.text-ink-primary + p.text-sm.text-ink-secondary {
 @media print {
   .thermal-template {
     @page { size: 80mm auto; margin: 3mm; }
+  }
+}
+
+/* ── Mobile responsiveness (June 2026) ─────────────────────────────────────
+   Data tables: on narrow screens, make the table's immediate wrapper
+   horizontally scrollable so wide grids (invoices, TB, ledgers) never
+   squash or break the page layout. Uses :has() — fine for the modern
+   Chromium/Firefox/Safari targets of this app. */
+@media (max-width: 900px) {
+  div:has(> table) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }

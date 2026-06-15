@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
 import { PageHeader, Panel } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
@@ -68,33 +68,35 @@ function BalanceSheetDrillDown({
 }
 
 /**
- * Drill-down-aware Balance Sheet row. If the account is a control account
- * (1200, 2400, etc.), the row gets a chevron and toggles a per-contact
- * breakdown when clicked.
+ * Drill-down-aware Balance Sheet row.
+ * - Control accounts (1200, 2400, …): row click toggles per-contact breakdown;
+ *   clicking the code badge navigates to GL ledger.
+ * - Leaf accounts: whole row click navigates to GL ledger.
  */
 function BSRow({
-  line, companyId, asOfDate, expanded, onToggle,
+  line, companyId, asOfDate, expanded, onToggle, onNavigate,
 }: {
   line: BalanceSheetLine;
   companyId: string;
   asOfDate: string;
   expanded: boolean;
   onToggle: () => void;
+  onNavigate?: (code: string) => void;
 }) {
   const isControl = CONTROL_ACCOUNTS.has(line.account_code);
   return (
     <>
       <tr
-        onClick={isControl ? onToggle : undefined}
-        className={isControl ? 'cursor-pointer' : ''}
-        title={isControl ? 'Click to expand per-contact breakdown' : undefined}
+        onClick={isControl ? onToggle : () => onNavigate?.(line.account_code)}
+        className="cursor-pointer"
+        title={isControl ? 'Click to expand per-contact breakdown' : `Open ${line.account_code} in General Ledger`}
         style={{
           borderTop: '1px solid #f1f5f9',
           background: expanded ? theme.panelHead : undefined,
           transition: 'background-color .12s',
         }}
-        onMouseEnter={(e) => { if (isControl && !expanded) (e.currentTarget as HTMLElement).style.background = theme.panelHead; }}
-        onMouseLeave={(e) => { if (isControl && !expanded) (e.currentTarget as HTMLElement).style.background = ''; }}
+        onMouseEnter={(e) => { if (!expanded) (e.currentTarget as HTMLElement).style.background = theme.panelHead; }}
+        onMouseLeave={(e) => { if (!expanded) (e.currentTarget as HTMLElement).style.background = ''; }}
       >
         <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>
           {isControl && (
@@ -102,7 +104,19 @@ function BSRow({
               {expanded ? '▾' : '▸'}
             </span>
           )}
-          {line.account_code} {line.account_name}
+          {/* For control accounts, the code is a separate GL link so as not to
+              conflict with the row-click toggle. For leaf accounts, code is styled
+              but the whole row is already the click target. */}
+          {isControl ? (
+            <span
+              onClick={(e) => { e.stopPropagation(); onNavigate?.(line.account_code); }}
+              title={`Open ${line.account_code} in General Ledger`}
+              style={{ color: theme.brandSoftText, fontWeight: 600, marginInlineEnd: '6px', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
+            >{line.account_code}</span>
+          ) : (
+            <span style={{ color: theme.brandSoftText, fontWeight: 600, marginInlineEnd: '6px' }}>{line.account_code}</span>
+          )}
+          {line.account_name}
         </td>
         <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>{fmt(line.balance)}</td>
       </tr>
@@ -127,6 +141,7 @@ function SubSection({
   asOfDate,
   expanded,
   onToggle,
+  onNavigate,
 }: {
   title: string;
   lines: BalanceSheetLine[];
@@ -137,37 +152,70 @@ function SubSection({
   asOfDate: string;
   expanded: Set<string>;
   onToggle: (code: string) => void;
+  onNavigate?: (code: string) => void;
 }) {
+  const [open, setOpen] = useState(true);
   return (
     <>
-      <tr>
+      {/* ── Collapsible section header ── */}
+      <tr
+        onClick={() => setOpen(o => !o)}
+        title={open ? 'Click to collapse' : 'Click to expand'}
+        style={{ cursor: 'pointer', userSelect: 'none' }}
+      >
         <td colSpan={2} className="px-5 py-2" style={{
           background: '#f1f5f9',
           fontSize: '11px', fontWeight: 700, color: theme.inkMuted,
           textTransform: 'uppercase', letterSpacing: '.08em',
-        }}>{title}</td>
+        }}>
+          <span style={{ marginInlineEnd: '6px', fontSize: '9px', opacity: 0.6 }}>
+            {open ? '▾' : '▸'}
+          </span>
+          {title}
+          {/* Show total inline when collapsed */}
+          {!open && (
+            <span style={{
+              float: 'right',
+              fontVariantNumeric: 'tabular-nums',
+              fontWeight: 700,
+              color: theme.ink,
+              fontSize: '12px',
+              textTransform: 'none',
+              letterSpacing: 0,
+            }}>
+              {fmt(total)}
+            </span>
+          )}
+        </td>
       </tr>
-      {lines.length === 0 ? (
-        <tr style={{ borderTop: '1px solid #f1f5f9' }}>
-          <td className="px-5 py-2" style={{ color: theme.inkFaint, fontSize: '13px' }}>{emptyText}</td>
-          <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.inkFaint, fontSize: '13px' }}>—</td>
-        </tr>
-      ) : (
-        lines.map(l => (
-          <BSRow
-            key={l.account_code}
-            line={l}
-            companyId={companyId}
-            asOfDate={asOfDate}
-            expanded={expanded.has(l.account_code)}
-            onToggle={() => onToggle(l.account_code)}
-          />
-        ))
+
+      {/* ── Collapsible body ── */}
+      {open && (
+        <>
+          {lines.length === 0 ? (
+            <tr style={{ borderTop: '1px solid #f1f5f9' }}>
+              <td className="px-5 py-2" style={{ color: theme.inkFaint, fontSize: '13px' }}>{emptyText}</td>
+              <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.inkFaint, fontSize: '13px' }}>—</td>
+            </tr>
+          ) : (
+            lines.map(l => (
+              <BSRow
+                key={l.account_code}
+                line={l}
+                companyId={companyId}
+                asOfDate={asOfDate}
+                expanded={expanded.has(l.account_code)}
+                onToggle={() => onToggle(l.account_code)}
+                onNavigate={onNavigate}
+              />
+            ))
+          )}
+          <tr style={{ background: theme.panelHead, borderTop: '1px solid #f1f5f9', fontWeight: 600 }}>
+            <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>{totalLabel}</td>
+            <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>{fmt(total)}</td>
+          </tr>
+        </>
       )}
-      <tr style={{ background: theme.panelHead, borderTop: '1px solid #f1f5f9', fontWeight: 600 }}>
-        <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>{totalLabel}</td>
-        <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>{fmt(total)}</td>
-      </tr>
     </>
   );
 }
@@ -175,6 +223,7 @@ function SubSection({
 export default function BalanceSheetPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
+  const navigate = useNavigate();
   const [asOf, setAsOf] = useState(todayIso);
   const [trigger, setTrigger] = useState(0);
   // Phase 12.24 — same per-contact drill-down pattern as TB.
@@ -186,6 +235,11 @@ export default function BalanceSheetPage() {
       if (next.has(code)) next.delete(code); else next.add(code);
       return next;
     });
+  }
+
+  function openLedger(code: string) {
+    const yearStart = asOf.slice(0, 4) + '-01-01';
+    navigate(`/accounting/general-ledger?code=${encodeURIComponent(code)}&from=${yearStart}&to=${asOf}`);
   }
 
   const { data: bs, isLoading, error } = useQuery({
@@ -200,11 +254,13 @@ export default function BalanceSheetPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <PageHeader title={t('reports.bs_title')} subtitle={`As of ${asOf}`} />
 
-      <Panel icon="📅" title="Period">
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
-          <Input type="date" label={t('reports.as_of_date')} value={asOf} onChange={e => setAsOf(e.target.value)} />
-          <Button size="sm" onClick={() => { setTrigger(n => n + 1); setExpandedCodes(new Set()); }}>{t('reports.run')}</Button>
-        </div>
+      <Panel icon="📅" title="Period" compact>
+        <span style={{ fontSize: '12px', color: theme.inkMuted, fontWeight: 500 }}>{t('reports.as_of_date')}</span>
+        <input
+          type="date" value={asOf} onChange={e => setAsOf(e.target.value)}
+          style={{ height: '32px', padding: '0 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', background: '#fff', color: theme.ink, outline: 'none' }}
+        />
+        <Button size="sm" onClick={() => { setTrigger(n => n + 1); setExpandedCodes(new Set()); }}>{t('reports.run')}</Button>
       </Panel>
 
       {isLoading && <p style={{ fontSize: '13px', color: theme.inkMuted, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>}
@@ -247,7 +303,7 @@ export default function BalanceSheetPage() {
                   {t('reports.as_of_date')}: {asOf}
                 </p>
                 <p style={{ margin: '4px 0 0', fontSize: '11px', color: theme.inkFaint }}>
-                  Click a control account (1200, 2100, 2400, …) to see the per-contact breakdown.
+                  Click any account row to open its General Ledger. Control accounts (1200, 2400, …): click the code to open GL, click the row to expand the per-contact breakdown.
                 </p>
               </div>
               <table className="w-full text-sm">
@@ -273,6 +329,7 @@ export default function BalanceSheetPage() {
                     asOfDate={asOf}
                     expanded={expandedCodes}
                     onToggle={toggleExpand}
+                    onNavigate={openLedger}
                   />
                   <SubSection
                     title="Fixed Assets"
@@ -284,6 +341,7 @@ export default function BalanceSheetPage() {
                     asOfDate={asOf}
                     expanded={expandedCodes}
                     onToggle={toggleExpand}
+                    onNavigate={openLedger}
                   />
                   <tr style={{ background: theme.brandSoft, borderTop: `2px solid ${theme.brand}`, fontWeight: 700 }}>
                     <td className="px-5 py-3" style={{ color: theme.brandSoftText, fontSize: '14px' }}>{t('reports.total_assets')}</td>
@@ -311,6 +369,7 @@ export default function BalanceSheetPage() {
                     asOfDate={asOf}
                     expanded={expandedCodes}
                     onToggle={toggleExpand}
+                    onNavigate={openLedger}
                   />
                   <SubSection
                     title="Long-term Liabilities"
@@ -322,6 +381,7 @@ export default function BalanceSheetPage() {
                     asOfDate={asOf}
                     expanded={expandedCodes}
                     onToggle={toggleExpand}
+                    onNavigate={openLedger}
                   />
                   <tr style={{ background: '#fef2f2', borderTop: '2px solid #fecaca', fontWeight: 700 }}>
                     <td className="px-5 py-3" style={{ color: '#b91c1c', fontSize: '14px' }}>{t('reports.total_liabilities')}</td>
@@ -353,6 +413,7 @@ export default function BalanceSheetPage() {
                         asOfDate={asOf}
                         expanded={expandedCodes.has(l.account_code)}
                         onToggle={() => toggleExpand(l.account_code)}
+                        onNavigate={openLedger}
                       />
                     ))
                   )}

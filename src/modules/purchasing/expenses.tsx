@@ -21,26 +21,11 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
+import { StatusBadge } from '@/ui/status-badge';
 import type { ExpenseRow } from '@/data/adapter';
 
 const fmt = (n: number) =>
   n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; text: string; border: string }> = {
-    draft:     { bg: '#fffbeb', text: '#b45309', border: '#fde68a' },
-    confirmed: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' },
-    void:      { bg: '#fef2f2', text: '#dc2626', border: '#fecaca' },
-  };
-  const p = map[status] ?? { bg: theme.muted, text: theme.inkMuted, border: theme.border };
-  return (
-    <span style={{
-      display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
-      fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
-      background: p.bg, color: p.text, border: `1px solid ${p.border}`,
-    }}>{status}</span>
-  );
-}
 
 function FilterPill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (

@@ -30,17 +30,19 @@
  * After all rows are entered, the bookkeeper journal-entries 3010 into
  * 3100 Retained Earnings to close out the migration.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
+import { Tabs } from '@/ui/tabs';
 import { buildCoaTreeOptions, coaOptionLabel } from '@/core/seeds/coa-tree';
 import type {
   ContactRow, OpeningBalanceType, OpeningBalanceInput,
   OpeningBalanceListed, CoaRow, GLOpeningBalanceInput,
   BankOpeningBalanceInput, BankAccountRow,
+  ProductRow, WarehouseRow,
 } from '@/data/adapter';
 
 // ── Local types ─────────────────────────────────────────────────────────────
@@ -92,10 +94,49 @@ const emptyGlDraft = (): GlDraftRow => ({
   amount: '', date: todayIso(), notes: '', status: 'draft',
 });
 
+// Phase 14.15 — one row in the Opening Inventory grid.
+interface InvDraftRow {
+  _key:         string;
+  product_id:   string;
+  warehouse_id: string;
+  date:         string;
+  quantity:     string;   // raw input
+  unit_cost:    string;   // raw input
+  status:       'draft' | 'posting' | 'done' | 'error';
+  error?:       string;
+}
+
+const emptyInvDraft = (): InvDraftRow => ({
+  _key: newKey(), product_id: '', warehouse_id: '',
+  date: todayIso(), quantity: '', unit_cost: '', status: 'draft',
+});
+
+// Phase 14.15b — CSV template columns for bulk inventory upload.
+const INV_CSV_HEADERS = ['SKU', 'Warehouse', 'Date (YYYY-MM-DD)', 'Quantity', 'Unit Cost'];
+
+function downloadInvTemplate() {
+  const rows = [INV_CSV_HEADERS.join(','), 'BRK-001,Main Warehouse,2026-01-01,1500,100.00'];
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'opening_inventory_template.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 // Phase 14.09b — default direction based on account type. Normal balance:
 // assets + expenses = debit; liabilities + equity + income = credit.
+//
+// Phase 14.17 — contra-equity exception: Owner's Drawings (and similar
+// withdrawal / drawings accounts) have a DEBIT normal balance even though
+// they are classified as equity type. They reduce equity on the Balance
+// Sheet. Detect by name pattern so the direction toggle pre-selects Debit.
+const CONTRA_EQUITY_PATTERN = /drawing|drawings|withdrawal|withdrawals|owner.*draw|draw.*owner/i;
+
 function defaultDirection(account: CoaRow | undefined): 'debit' | 'credit' {
   if (!account) return 'debit';
+  // Contra-equity accounts (Drawings, Withdrawals) have debit normal balance.
+  if (account.type === 'equity' && CONTRA_EQUITY_PATTERN.test(account.name)) return 'debit';
   return account.type === 'asset' || account.type === 'expense' ? 'debit' : 'credit';
 }
 
@@ -149,6 +190,75 @@ const TYPE_META: Record<OpeningBalanceType, {
   },
 };
 
+// ── Phase 14.16b: VoidableStockRow — inventory "already posted" row with Void ──
+function VoidableStockRow({
+  row,
+  onVoided,
+}: {
+  row: {
+    stock_ledger_id: string;
+    sku: string;
+    product_name: string;
+    warehouse_name: string;
+    date: string;
+    quantity: number;
+    unit_cost: number;
+    total_cost: number;
+  };
+  onVoided: () => void;
+}) {
+  const [voiding, setVoiding] = useState(false);
+  const [error,   setError]   = useState<string | null>(null);
+
+  async function handleVoid() {
+    if (!window.confirm(
+      `Void opening stock for ${row.product_name}?\n\n` +
+      `This will reverse the GL journal entry and clear the stock record so ` +
+      `you can re-post it with the correct equity account (3010).`
+    )) return;
+    setError(null);
+    setVoiding(true);
+    try {
+      await getAdapter().stockLedger.voidOpeningStock(row.stock_ledger_id);
+      onVoided();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Void failed');
+    } finally {
+      setVoiding(false);
+    }
+  }
+
+  return (
+    <tr className="border-b border-border-subtle last:border-0">
+      <td className="px-5 py-2 font-mono text-brand-600">{row.sku}</td>
+      <td className="px-5 py-2 text-ink-primary">{row.product_name}</td>
+      <td className="px-5 py-2 text-ink-secondary">{row.warehouse_name}</td>
+      <td className="px-5 py-2 text-ink-secondary">{row.date}</td>
+      <td className="px-5 py-2 text-end font-mono">{row.quantity.toLocaleString()}</td>
+      <td className="px-5 py-2 text-end font-mono">
+        {row.unit_cost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      </td>
+      <td className="px-5 py-2 text-end font-mono font-semibold text-ink-primary">
+        {row.total_cost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      </td>
+      <td className="px-5 py-2 text-end">
+        {error ? (
+          <span className="text-[10px] text-red-600" title={error}>Error</span>
+        ) : (
+          <button
+            type="button"
+            onClick={handleVoid}
+            disabled={voiding}
+            className="text-xs text-red-500 hover:text-red-700 hover:underline disabled:opacity-40"
+          >
+            {voiding ? '…' : 'Void'}
+          </button>
+        )}
+      </td>
+    </tr>
+  );
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────
 export default function OpeningBalancesPage() {
   const { company_id } = useAuthStore();
@@ -165,7 +275,7 @@ export default function OpeningBalancesPage() {
     queryFn:  () => getAdapter().contacts.list(company_id!, 'supplier'),
     enabled:  !!company_id,
   });
-  const { data: posted = [], isLoading: postedLoading } = useQuery<OpeningBalanceListed[]>({
+  const { data: posted = [], isLoading: postedLoading, isError: postedError, error: postedErrorObj } = useQuery<OpeningBalanceListed[]>({
     queryKey: ['opening_balances_posted', company_id],
     queryFn:  () => getAdapter().openingBalances.listPosted(company_id!),
     enabled:  !!company_id,
@@ -188,6 +298,33 @@ export default function OpeningBalancesPage() {
     enabled:  !!company_id,
   });
 
+  // Phase 14.15 — products + warehouses for the Opening Inventory grid.
+  const { data: allProducts = [] } = useQuery<ProductRow[]>({
+    queryKey: ['products', company_id],
+    queryFn:  () => getAdapter().products.list(company_id!),
+    enabled:  !!company_id,
+  });
+  // Only goods-type products can hold stock.
+  const goodsProducts = useMemo(
+    () => allProducts.filter(p => p.type === 'goods' && p.is_active),
+    [allProducts],
+  );
+  const { data: warehouses = [] } = useQuery<WarehouseRow[]>({
+    queryKey: ['warehouses', company_id],
+    queryFn:  () => getAdapter().warehouses.list(company_id!),
+    enabled:  !!company_id,
+  });
+  const {
+    data: postedStock = [],
+    isLoading: postedStockLoading,
+    isError: postedStockError,
+    refetch: refetchPostedStock,
+  } = useQuery({
+    queryKey: ['opening_stock_posted', company_id],
+    queryFn:  () => getAdapter().stockLedger.listOpeningStock(company_id!),
+    enabled:  !!company_id,
+  });
+
   const coaById = useMemo(() => {
     const m: Record<string, CoaRow> = {};
     for (const a of coa) m[a.id] = a;
@@ -199,6 +336,9 @@ export default function OpeningBalancesPage() {
   const [glRows, setGlRows] = useState<GlDraftRow[]>([emptyGlDraft()]);
   const [posting, setPosting] = useState(false);
   const [topError, setTopError] = useState<string | null>(null);
+  // Section tabs — the three migration grids are heavy; one at a time
+  // keeps the page scannable instead of a 4-screen scroll.
+  const [section, setSection] = useState<'arap' | 'gl' | 'inv'>('arap');
 
   const updateRow = (key: string, patch: Partial<DraftRow>) => {
     setRows(prev => prev.map(r => r._key === key ? { ...r, ...patch } : r));
@@ -214,6 +354,183 @@ export default function OpeningBalancesPage() {
   const addGlRow    = () => setGlRows(prev => [...prev, emptyGlDraft()]);
   const removeGlRow = (key: string) => setGlRows(prev => prev.length === 1 ? prev : prev.filter(r => r._key !== key));
   const clearGlDone = () => setGlRows(prev => prev.filter(r => r.status !== 'done'));
+
+  // Phase 14.15 — Inventory opening stock row state + mutators.
+  const [invRows, setInvRows] = useState<InvDraftRow[]>([emptyInvDraft()]);
+  const [invPosting, setInvPosting] = useState(false);
+  const [invError, setInvError] = useState<string | null>(null);
+
+  const updateInvRow = (key: string, patch: Partial<InvDraftRow>) =>
+    setInvRows(prev => prev.map(r => r._key === key ? { ...r, ...patch } : r));
+  const addInvRow    = () => setInvRows(prev => [...prev, emptyInvDraft()]);
+  const removeInvRow = (key: string) =>
+    setInvRows(prev => prev.length === 1 ? prev : prev.filter(r => r._key !== key));
+  const clearInvDone = () => setInvRows(prev => prev.filter(r => r.status !== 'done'));
+
+  const isInvRowEmpty = (r: InvDraftRow) =>
+    !r.product_id && !r.warehouse_id && !r.quantity.trim() && !r.unit_cost.trim();
+
+  const validateInvRow = (r: InvDraftRow): string | null => {
+    if (isInvRowEmpty(r)) return null;
+    if (!r.product_id)   return 'Select a product';
+    if (!r.warehouse_id) return 'Select a warehouse';
+    const qty  = parseFloat(r.quantity);
+    const cost = parseFloat(r.unit_cost);
+    if (!isFinite(qty)  || qty  <= 0) return 'Quantity must be > 0';
+    if (!isFinite(cost) || cost < 0)  return 'Unit cost cannot be negative';
+    if (!r.date) return 'Date required';
+    return null;
+  };
+
+  const invDraftRows   = invRows.filter(r => r.status !== 'done');
+  const invValidations = invDraftRows.map(validateInvRow);
+  const postableInv    = invDraftRows.filter(r => !isInvRowEmpty(r));
+  const canPostInv     = postableInv.length > 0
+    && invValidations.every(v => v === null)
+    && !invPosting;
+
+  const invTotal = useMemo(() =>
+    invRows.reduce((s, r) => {
+      if (r.status === 'done') return s;
+      const qty  = parseFloat(r.quantity)   || 0;
+      const cost = parseFloat(r.unit_cost)  || 0;
+      return s + qty * cost;
+    }, 0),
+    [invRows],
+  );
+
+  async function postInvAll() {
+    setInvError(null);
+    setInvPosting(true);
+    try {
+      for (const r of [...invRows]) {
+        if (r.status === 'done') continue;
+        if (isInvRowEmpty(r))   continue;
+        updateInvRow(r._key, { status: 'posting', error: undefined });
+        try {
+          await getAdapter().stockLedger.postOpeningStock({
+            product_id:   r.product_id,
+            warehouse_id: r.warehouse_id,
+            quantity:     parseFloat(r.quantity),
+            unit_cost:    parseFloat(r.unit_cost),
+            date:         r.date,
+          });
+          updateInvRow(r._key, { status: 'done' });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Failed';
+          updateInvRow(r._key, { status: 'error', error: msg });
+          setInvError(`Row failed: ${msg}. Earlier rows are saved. Fix and retry.`);
+          setInvPosting(false);
+          await refetchPostedStock();
+          return;
+        }
+      }
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['opening_stock_posted', company_id] }),
+        qc.invalidateQueries({ queryKey: ['trial_balance'] }),
+        qc.invalidateQueries({ queryKey: ['balance_sheet'] }),
+        qc.invalidateQueries({ queryKey: ['dashboard_cards', company_id] }),
+        qc.invalidateQueries({ queryKey: ['ob_3010_balance', company_id] }),
+      ]);
+    } finally {
+      setInvPosting(false);
+    }
+  }
+
+  // Phase 14.15b — CSV bulk import for Opening Inventory.
+  const [csvImportError, setCsvImportError] = useState<string | null>(null);
+  const csvInputRef = useRef<HTMLInputElement>(null);
+
+  function handleInvCsvUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    setCsvImportError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Reset so the same file can be re-uploaded after a fix.
+    e.target.value = '';
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const lines = text.trim().split(/\r?\n/);
+      if (lines.length < 2) {
+        setCsvImportError('CSV is empty or has no data rows.');
+        return;
+      }
+
+      // Detect delimiter (comma or semicolon)
+      const header = lines[0];
+      const delim  = header.includes(';') ? ';' : ',';
+
+      // Build SKU → product lookup (case-insensitive)
+      const skuMap = new Map<string, string>(); // sku.lower → product_id
+      for (const p of goodsProducts) skuMap.set(p.sku.trim().toLowerCase(), p.id);
+
+      // Build warehouse name → id lookup (case-insensitive)
+      const whMap = new Map<string, string>(); // name.lower → warehouse_id
+      for (const w of warehouses) whMap.set(w.name.trim().toLowerCase(), w.id);
+
+      const newRows: InvDraftRow[] = [];
+      const errors: string[] = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        // Handle quoted fields with commas inside (simple CSV parse)
+        const cols: string[] = [];
+        let cur = '', inQ = false;
+        for (let c = 0; c < line.length; c++) {
+          const ch = line[c];
+          if (ch === '"')       { inQ = !inQ; }
+          else if (ch === delim && !inQ) { cols.push(cur.trim()); cur = ''; }
+          else                  { cur += ch; }
+        }
+        cols.push(cur.trim());
+
+        const [rawSku, rawWh, rawDate, rawQty, rawCost] = cols;
+
+        const skuKey  = (rawSku  ?? '').trim().toLowerCase();
+        const whKey   = (rawWh   ?? '').trim().toLowerCase();
+        const dateVal = (rawDate ?? '').trim();
+        const qty     = parseFloat(rawQty  ?? '');
+        const cost    = parseFloat(rawCost ?? '');
+
+        const rowLabel = `Row ${i + 1}`;
+        const product_id   = skuMap.get(skuKey)  ?? '';
+        const warehouse_id = whMap.get(whKey)    ?? '';
+
+        if (!product_id)   errors.push(`${rowLabel}: SKU "${rawSku ?? ''}" not found in products.`);
+        if (!warehouse_id) errors.push(`${rowLabel}: Warehouse "${rawWh ?? ''}" not found.`);
+        if (!isFinite(qty)  || qty  <= 0) errors.push(`${rowLabel}: Quantity must be > 0.`);
+        if (!isFinite(cost) || cost <  0) errors.push(`${rowLabel}: Unit cost cannot be negative.`);
+        if (dateVal && !/^\d{4}-\d{2}-\d{2}$/.test(dateVal)) errors.push(`${rowLabel}: Date must be YYYY-MM-DD.`);
+
+        newRows.push({
+          _key:        newKey(),
+          product_id:  product_id  || '',
+          warehouse_id: warehouse_id || '',
+          date:        dateVal || todayIso(),
+          quantity:    isFinite(qty)  ? String(qty)  : (rawQty  ?? ''),
+          unit_cost:   isFinite(cost) ? String(cost) : (rawCost ?? ''),
+          status:      'draft',
+          error:       (!product_id || !warehouse_id) ? 'Lookup failed — fix above' : undefined,
+        });
+      }
+
+      if (errors.length > 0) {
+        setCsvImportError(errors.join(' • '));
+      }
+
+      if (newRows.length > 0) {
+        // Replace any single blank starter row; otherwise append
+        setInvRows(prev => {
+          const hasOnlyBlank = prev.length === 1 && isInvRowEmpty(prev[0]) && prev[0].status === 'draft';
+          return hasOnlyBlank ? newRows : [...prev, ...newRows];
+        });
+      }
+    };
+    reader.readAsText(file);
+  }
 
   // Phase 14.09c — void a posted opening row.
   const [voidingId, setVoidingId] = useState<string | null>(null);
@@ -617,7 +934,7 @@ export default function OpeningBalancesPage() {
         <span className="text-ink-tertiary">/</span>
         <h1 className="text-xl font-semibold text-ink-primary">Opening Balances</h1>
         <span className="rounded-pill bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">Migration</span>
-        <div className="ms-auto">
+        <div className="ms-auto flex flex-wrap items-center gap-2">
           <Button
             size="sm"
             variant="ghost"
@@ -626,9 +943,76 @@ export default function OpeningBalancesPage() {
           >
             ⤓ Bulk import from CSV / Excel
           </Button>
+          {/* Posts AR/AP + GL draft rows together (inventory has its own
+              Post button inside its tab). Lives in the header so it stays
+              reachable from any tab. */}
+          <Button size="sm" onClick={postAll} disabled={!canPost}>
+            {posting ? 'Posting…' : `Post ${totalDraft} draft row${totalDraft === 1 ? '' : 's'}`}
+          </Button>
         </div>
       </div>
 
+      {/* ── 3010 migration check — the page's "am I done?" indicator ─────── */}
+      <div className="rounded-card border border-border-subtle bg-surface-card px-5 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-[10.5px] font-semibold text-ink-tertiary uppercase tracking-wider">
+              3010 Opening Balance Equity — migration check
+            </div>
+            <div className="mt-1 flex items-baseline gap-3">
+              <span className="text-xs text-ink-secondary">Now:</span>
+              <span className="font-mono text-sm font-medium text-ink-primary">
+                AED {fmt(live3010)}
+              </span>
+              {(totals.batchNet3010 !== 0) && (
+                <>
+                  <span className="text-xs text-ink-secondary">After post:</span>
+                  <span
+                    className="font-mono text-sm font-semibold"
+                    style={{ color: Math.abs(totals.projected3010) < 0.005 ? '#047857' : '#B45309' }}
+                  >
+                    AED {fmt(totals.projected3010)}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="flex-1 max-w-md">
+            {Math.abs(live3010) < 0.005 && totals.batchNet3010 === 0 ? (
+              <div className="rounded-input bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-800">
+                ✓ 3010 is at zero — your migration is fully balanced. Bookkeeper can now clear 3010 → 3100 Retained Earnings.
+              </div>
+            ) : Math.abs(totals.projected3010) < 0.005 && totals.batchNet3010 !== 0 ? (
+              <div className="rounded-input bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-800">
+                ✓ This batch will zero out 3010 — your trial balance migration becomes complete on post.
+              </div>
+            ) : (
+              <div className="rounded-input bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+                3010 is non-zero. After all opening balances are entered, this should sit at zero (the source TB was already balanced). Common things missing: cash on hand, bank openings, fixed assets, retained earnings.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {topError && (
+        <div className="rounded-card border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {topError}
+        </div>
+      )}
+
+      {/* ── Section tabs ──────────────────────────────────────────────────── */}
+      <Tabs
+        value={section}
+        onChange={(v) => setSection(v as typeof section)}
+        items={[
+          { value: 'arap', label: 'Receivables & Payables', badge: postableSubsidiary.length || undefined },
+          { value: 'gl',   label: 'GL & Bank Balances',     badge: postableGl.length || undefined },
+          { value: 'inv',  label: 'Opening Inventory',      badge: postableInv.length || undefined },
+        ]}
+      />
+
+      {section === 'arap' && (<>
       {/* Explainer card */}
       <div className="rounded-card border border-border-subtle bg-surface-card p-5 text-sm text-ink-secondary">
         <p>
@@ -669,7 +1053,7 @@ export default function OpeningBalancesPage() {
           );
         })}
         <div style={{
-          border: '1px solid #6366F1', background: '#EEF2FF', color: '#3730A3',
+          border: '1px solid #7c3aed', background: '#f5f3ff', color: '#3730A3',
           borderRadius: '12px', padding: '12px 14px',
         }}>
           <div style={{ fontSize: '10.5px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
@@ -686,12 +1070,6 @@ export default function OpeningBalancesPage() {
         </div>
       </div>
 
-      {topError && (
-        <div className="rounded-card border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
-          {topError}
-        </div>
-      )}
-
       {/* Draft grid */}
       <div className="rounded-card border border-border-subtle bg-surface-card overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle px-5 py-3">
@@ -701,9 +1079,6 @@ export default function OpeningBalancesPage() {
             {rows.some(r => r.status === 'done') && (
               <Button size="sm" variant="ghost" onClick={clearDone} disabled={posting}>Clear completed</Button>
             )}
-            <Button size="sm" onClick={postAll} disabled={!canPost}>
-              {posting ? 'Posting…' : `Post ${totalDraft} row${totalDraft === 1 ? '' : 's'}`}
-            </Button>
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -736,7 +1111,7 @@ export default function OpeningBalancesPage() {
                       style={{ opacity: isDone ? 0.55 : 1, background: isError ? '#FEF2F2' : undefined }}>
                     <td className="px-3 py-2">
                       <select
-                        className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
+                        className="w-full border border-border-strong rounded px-2 py-1 text-sm"
                         value={r.type}
                         disabled={isDone || isPosting}
                         onChange={e => updateRow(r._key, {
@@ -752,7 +1127,7 @@ export default function OpeningBalancesPage() {
                     </td>
                     <td className="px-3 py-2">
                       <select
-                        className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
+                        className="w-full border border-border-strong rounded px-2 py-1 text-sm"
                         value={r.contact_id}
                         disabled={isDone || isPosting}
                         onChange={e => updateRow(r._key, { contact_id: e.target.value })}
@@ -767,7 +1142,7 @@ export default function OpeningBalancesPage() {
                       <input
                         type="text"
                         placeholder="INV-OLD-441"
-                        className="w-full border border-slate-300 rounded px-2 py-1 text-sm font-mono"
+                        className="w-full border border-border-strong rounded px-2 py-1 text-sm font-mono"
                         value={r.doc_number}
                         disabled={isDone || isPosting}
                         onChange={e => updateRow(r._key, { doc_number: e.target.value })}
@@ -776,7 +1151,7 @@ export default function OpeningBalancesPage() {
                     <td className="px-3 py-2">
                       <input
                         type="date"
-                        className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
+                        className="w-full border border-border-strong rounded px-2 py-1 text-sm"
                         value={r.date}
                         disabled={isDone || isPosting}
                         onChange={e => updateRow(r._key, { date: e.target.value })}
@@ -785,7 +1160,7 @@ export default function OpeningBalancesPage() {
                     <td className="px-3 py-2">
                       <input
                         type="date"
-                        className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
+                        className="w-full border border-border-strong rounded px-2 py-1 text-sm"
                         value={r.due_date}
                         disabled={isDone || isPosting || r.type === 'customer_credit' || r.type === 'vendor_credit'}
                         onChange={e => updateRow(r._key, { due_date: e.target.value })}
@@ -794,7 +1169,7 @@ export default function OpeningBalancesPage() {
                     <td className="px-3 py-2">
                       <input
                         type="number" step="0.01" min="0"
-                        className="w-full border border-slate-300 rounded px-2 py-1 text-sm text-end font-mono"
+                        className="w-full border border-border-strong rounded px-2 py-1 text-sm text-end font-mono"
                         value={r.amount}
                         disabled={isDone || isPosting}
                         onChange={e => updateRow(r._key, { amount: e.target.value })}
@@ -804,7 +1179,7 @@ export default function OpeningBalancesPage() {
                       <input
                         type="text"
                         placeholder="Optional"
-                        className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
+                        className="w-full border border-border-strong rounded px-2 py-1 text-sm"
                         value={r.notes}
                         disabled={isDone || isPosting}
                         onChange={e => updateRow(r._key, { notes: e.target.value })}
@@ -849,12 +1224,15 @@ export default function OpeningBalancesPage() {
         </div>
       </div>
 
+      </>)}
+
       {/* ── Phase 14.09b: GL opening balances grid ────────────────────────── */}
+      {section === 'gl' && (<>
       <div className="rounded-card border border-border-subtle bg-surface-card overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle px-5 py-3">
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-semibold text-ink-primary">General ledger balances</h2>
-            <span className="rounded-pill bg-slate-100 px-2 py-0.5 text-[10.5px] font-semibold text-slate-600 uppercase tracking-wider">
+            <span className="rounded-pill bg-surface-muted px-2 py-0.5 text-[10.5px] font-semibold text-ink-secondary uppercase tracking-wider">
               Fixed · Long-term · Capital
             </span>
           </div>
@@ -899,7 +1277,7 @@ export default function OpeningBalancesPage() {
                       style={{ opacity: isDone ? 0.55 : 1, background: isError ? '#FEF2F2' : undefined }}>
                     <td className="px-3 py-2">
                       {/* Phase 14.09c — segmented toggle: CoA vs Bank account */}
-                      <div className="mb-1 inline-flex rounded border border-slate-300 overflow-hidden text-[11px] font-semibold">
+                      <div className="mb-1 inline-flex rounded border border-border-strong overflow-hidden text-[11px] font-semibold">
                         <button
                           type="button"
                           disabled={isDone || isPosting}
@@ -908,7 +1286,7 @@ export default function OpeningBalancesPage() {
                           })}
                           style={{
                             padding: '3px 8px',
-                            background: r.target === 'coa' ? '#EEF2FF' : '#FFF',
+                            background: r.target === 'coa' ? '#f5f3ff' : '#FFF',
                             color:      r.target === 'coa' ? '#3730A3' : '#64748B',
                             cursor: isDone || isPosting ? 'not-allowed' : 'pointer',
                           }}
@@ -931,7 +1309,7 @@ export default function OpeningBalancesPage() {
                       </div>
                       {r.target === 'bank' ? (
                         <select
-                          className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
+                          className="w-full border border-border-strong rounded px-2 py-1 text-sm"
                           value={r.bank_account_id}
                           disabled={isDone || isPosting}
                           onChange={e => updateGlRow(r._key, {
@@ -946,7 +1324,7 @@ export default function OpeningBalancesPage() {
                         </select>
                       ) : (
                         <select
-                          className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
+                          className="w-full border border-border-strong rounded px-2 py-1 text-sm"
                           value={r.account_id}
                           disabled={isDone || isPosting}
                           onChange={e => {
@@ -992,7 +1370,7 @@ export default function OpeningBalancesPage() {
                     <td className="px-3 py-2">
                       <input
                         type="date"
-                        className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
+                        className="w-full border border-border-strong rounded px-2 py-1 text-sm"
                         value={r.date}
                         disabled={isDone || isPosting}
                         onChange={e => updateGlRow(r._key, { date: e.target.value })}
@@ -1023,7 +1401,7 @@ export default function OpeningBalancesPage() {
                     <td className="px-3 py-2">
                       <input
                         type="number" step="0.01" min="0"
-                        className="w-full border border-slate-300 rounded px-2 py-1 text-sm text-end font-mono"
+                        className="w-full border border-border-strong rounded px-2 py-1 text-sm text-end font-mono"
                         value={r.amount}
                         disabled={isDone || isPosting}
                         onChange={e => updateGlRow(r._key, { amount: e.target.value })}
@@ -1033,7 +1411,7 @@ export default function OpeningBalancesPage() {
                       <input
                         type="text"
                         placeholder="Optional (e.g. 'Toyota Hilux purchased 2024')"
-                        className="w-full border border-slate-300 rounded px-2 py-1 text-sm"
+                        className="w-full border border-border-strong rounded px-2 py-1 text-sm"
                         value={r.notes}
                         disabled={isDone || isPosting}
                         onChange={e => updateGlRow(r._key, { notes: e.target.value })}
@@ -1075,7 +1453,7 @@ export default function OpeningBalancesPage() {
               })}
               {/* Sum row */}
               {glDraftRows.length > 0 && (
-                <tr className="bg-slate-50">
+                <tr className="bg-surface-muted">
                   <td className="px-3 py-2 text-xs uppercase tracking-wider text-ink-tertiary font-semibold" colSpan={2}>
                     GL openings — this batch
                   </td>
@@ -1101,50 +1479,300 @@ export default function OpeningBalancesPage() {
         </div>
       </div>
 
-      {/* ── Phase 14.09b: 3010 zero-check indicator ───────────────────────── */}
-      <div className="rounded-card border border-border-subtle bg-surface-card p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="text-[10.5px] font-semibold text-ink-tertiary uppercase tracking-wider">
-              3010 Opening Balance Equity — migration check
-            </div>
-            <div className="mt-1 flex items-baseline gap-3">
-              <span className="text-xs text-ink-secondary">Now:</span>
-              <span className="font-mono text-sm font-medium text-ink-primary">
-                AED {fmt(live3010)}
-              </span>
-              {(totals.batchNet3010 !== 0) && (
-                <>
-                  <span className="text-xs text-ink-secondary">After post:</span>
-                  <span
-                    className="font-mono text-sm font-semibold"
-                    style={{ color: Math.abs(totals.projected3010) < 0.005 ? '#047857' : '#B45309' }}
-                  >
-                    AED {fmt(totals.projected3010)}
-                  </span>
-                </>
-              )}
-            </div>
+      </>)}
+
+      {/* ── Phase 14.15: Opening Inventory grid ──────────────────────────── */}
+      {section === 'inv' && (<>
+      <div className="rounded-card border border-border-subtle bg-surface-card overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle px-5 py-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-ink-primary">Opening Inventory</h2>
+            <span className="rounded-pill bg-emerald-50 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-700 uppercase tracking-wider">
+              Stock · COGS
+            </span>
           </div>
-          <div className="flex-1 max-w-md">
-            {Math.abs(live3010) < 0.005 && totals.batchNet3010 === 0 ? (
-              <div className="rounded-input bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-800">
-                ✓ 3010 is at zero — your migration is fully balanced. Bookkeeper can now clear 3010 → 3100 Retained Earnings.
-              </div>
-            ) : Math.abs(totals.projected3010) < 0.005 && totals.batchNet3010 !== 0 ? (
-              <div className="rounded-input bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-800">
-                ✓ This batch will zero out 3010 — your trial balance migration becomes complete on post.
-              </div>
-            ) : (
-              <div className="rounded-input bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
-                3010 is non-zero. After all opening balances are entered, this should sit at zero (the source TB was already balanced). Common things missing: cash on hand, bank openings, fixed assets, retained earnings.
-              </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm" variant="ghost"
+              onClick={() => csvInputRef.current?.click()}
+              disabled={invPosting}
+              title="Upload a CSV file to populate rows"
+            >
+              ↑ Upload CSV
+            </Button>
+            <Button
+              size="sm" variant="ghost"
+              onClick={downloadInvTemplate}
+              title="Download a CSV template to fill in"
+            >
+              ↓ Template
+            </Button>
+            <Button size="sm" variant="ghost" onClick={addInvRow} disabled={invPosting}>+ Add row</Button>
+            {invRows.some(r => r.status === 'done') && (
+              <Button size="sm" variant="ghost" onClick={clearInvDone} disabled={invPosting}>Clear done</Button>
             )}
+            <Button size="sm" onClick={postInvAll} disabled={!canPostInv}>
+              {invPosting
+                ? 'Posting…'
+                : `Post ${postableInv.length} item${postableInv.length === 1 ? '' : 's'}`}
+            </Button>
           </div>
+        </div>
+
+        {/* Hidden CSV file input */}
+        <input
+          ref={csvInputRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={handleInvCsvUpload}
+        />
+
+        {/* Accounting warning — only show when no items posted yet */}
+        {postedStock.length === 0 && (
+          <div className="mx-5 mt-4 rounded-card border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+            <p className="font-semibold mb-1">⚠️ Important — void your lump-sum entry first</p>
+            <p>
+              If you already posted a 300,000 lump-sum GL entry for inventory (e.g. JE-1003),{' '}
+              <strong>void it first</strong> from the Already posted panel on the GL &amp; Bank Balances tab.
+              Then post item-level entries here. Failing to void first will double-count
+              the inventory value on your Balance Sheet.
+            </p>
+          </div>
+        )}
+
+        <div className="px-5 py-3 text-xs text-ink-tertiary border-b border-border-subtle bg-surface-muted">
+          Enter each inventory item with its opening quantity and unit cost. Each row posts a
+          {' '}<strong className="text-ink-secondary">stock_ledger entry</strong> (sets qty + MAC cost) and
+          a <strong className="text-ink-secondary">GL journal entry</strong> (Dr 1300 Inventory / Cr 3200 Owner's Equity).
+          One-shot per product — if a product already has stock history, use Inventory Adjustment instead.
+          {' '}For many items, use <strong className="text-ink-secondary">Upload CSV</strong>.
+        </div>
+
+        {invError && (
+          <div className="mx-5 mt-3 rounded-card border border-red-300 bg-red-50 px-4 py-2 text-xs text-red-800">
+            {invError}
+          </div>
+        )}
+
+        {csvImportError && (
+          <div className="mx-5 mt-3 rounded-card border border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+            <p className="font-semibold mb-1">CSV import issues — rows were still loaded, fix highlighted fields:</p>
+            <p className="whitespace-pre-wrap">{csvImportError.split(' • ').join('\n')}</p>
+            <button
+              type="button"
+              className="mt-2 text-amber-700 underline"
+              onClick={() => setCsvImportError(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
+                <th className="px-3 py-2 text-start font-medium w-[260px]">Product</th>
+                <th className="px-3 py-2 text-start font-medium w-[170px]">Warehouse</th>
+                <th className="px-3 py-2 text-start font-medium w-[130px]">Date</th>
+                <th className="px-3 py-2 text-end   font-medium w-[110px]">Qty</th>
+                <th className="px-3 py-2 text-end   font-medium w-[120px]">Unit Cost</th>
+                <th className="px-3 py-2 text-end   font-medium w-[120px]">Total</th>
+                <th className="px-3 py-2 text-end   font-medium w-[80px]"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {invRows.map((r) => {
+                const err      = r.status === 'draft' ? invValidations[invDraftRows.indexOf(r)] : null;
+                const isDone   = r.status === 'done';
+                const isPosting = r.status === 'posting';
+                const isError  = r.status === 'error';
+                const isEmpty  = r.status === 'draft' && isInvRowEmpty(r);
+                const qty      = parseFloat(r.quantity)  || 0;
+                const cost     = parseFloat(r.unit_cost) || 0;
+                const rowTotal = qty * cost;
+                // Products already in "done" rows of this session or already posted
+                // should be greyed out in the dropdown (not blocked — let DB guard fire).
+                return (
+                  <tr key={r._key} className="border-b border-border-subtle last:border-0"
+                      style={{ opacity: isDone ? 0.55 : 1, background: isError ? '#FEF2F2' : undefined }}>
+                    {/* Product */}
+                    <td className="px-3 py-2">
+                      <select
+                        className="w-full border border-border-strong rounded px-2 py-1 text-sm"
+                        value={r.product_id}
+                        disabled={isDone || isPosting}
+                        onChange={e => updateInvRow(r._key, { product_id: e.target.value })}
+                      >
+                        <option value="">— select product —</option>
+                        {goodsProducts.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.sku} — {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    {/* Warehouse */}
+                    <td className="px-3 py-2">
+                      <select
+                        className="w-full border border-border-strong rounded px-2 py-1 text-sm"
+                        value={r.warehouse_id}
+                        disabled={isDone || isPosting}
+                        onChange={e => updateInvRow(r._key, { warehouse_id: e.target.value })}
+                      >
+                        <option value="">— select —</option>
+                        {warehouses.map(w => (
+                          <option key={w.id} value={w.id}>{w.name}</option>
+                        ))}
+                      </select>
+                    </td>
+                    {/* Date */}
+                    <td className="px-3 py-2">
+                      <input
+                        type="date"
+                        className="w-full border border-border-strong rounded px-2 py-1 text-sm"
+                        value={r.date}
+                        disabled={isDone || isPosting}
+                        onChange={e => updateInvRow(r._key, { date: e.target.value })}
+                      />
+                    </td>
+                    {/* Qty */}
+                    <td className="px-3 py-2">
+                      <input
+                        type="number" step="0.001" min="0"
+                        placeholder="0"
+                        className="w-full border border-border-strong rounded px-2 py-1 text-sm text-end font-mono"
+                        value={r.quantity}
+                        disabled={isDone || isPosting}
+                        onChange={e => updateInvRow(r._key, { quantity: e.target.value })}
+                      />
+                    </td>
+                    {/* Unit Cost */}
+                    <td className="px-3 py-2">
+                      <input
+                        type="number" step="0.01" min="0"
+                        placeholder="0.00"
+                        className="w-full border border-border-strong rounded px-2 py-1 text-sm text-end font-mono"
+                        value={r.unit_cost}
+                        disabled={isDone || isPosting}
+                        onChange={e => updateInvRow(r._key, { unit_cost: e.target.value })}
+                      />
+                    </td>
+                    {/* Total (computed) */}
+                    <td className="px-3 py-2 text-end font-mono text-sm text-ink-secondary">
+                      {rowTotal > 0 ? fmt(rowTotal) : '—'}
+                    </td>
+                    {/* Actions */}
+                    <td className="px-3 py-2 text-end">
+                      {isDone ? (
+                        <span className="rounded-pill bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                          ✓ Posted
+                        </span>
+                      ) : isPosting ? (
+                        <span className="text-xs text-ink-tertiary">…</span>
+                      ) : (
+                        <div className="flex flex-col items-end gap-0.5">
+                          {isEmpty && (
+                            <span className="text-[10.5px] text-ink-tertiary italic">Empty · skip</span>
+                          )}
+                          {err && (
+                            <span className="text-[10.5px] text-red-600">{err}</span>
+                          )}
+                          {isError && r.error && (
+                            <span className="text-[10.5px] text-red-700 font-medium">{r.error}</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removeInvRow(r._key)}
+                            disabled={invRows.length === 1}
+                            className="text-xs text-ink-tertiary hover:text-red-600 disabled:opacity-40"
+                          >Remove</button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {/* Totals footer */}
+              {postableInv.length > 0 && (
+                <tr className="bg-surface-muted border-t-2 border-border-subtle">
+                  <td colSpan={4} className="px-3 py-2 text-xs font-semibold text-ink-tertiary uppercase tracking-wider">
+                    {postableInv.length} item{postableInv.length === 1 ? '' : 's'} — inventory total
+                  </td>
+                  <td />
+                  <td className="px-3 py-2 text-end font-mono font-semibold text-sm text-ink-primary">
+                    {fmt(invTotal)}
+                  </td>
+                  <td />
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Already-posted inventory sub-panel */}
+        <div className="border-t border-border-subtle">
+          <div className="flex items-center justify-between px-5 py-3 bg-surface-muted/50">
+            <span className="text-xs font-semibold text-ink-secondary uppercase tracking-wider">
+              Already posted — inventory
+            </span>
+            <span className="text-xs text-ink-tertiary">
+              {postedStock.length} item{postedStock.length === 1 ? '' : 's'}
+              {postedStock.length > 0 && (
+                <> · Total {fmt(postedStock.reduce((s, r) => s + r.total_cost, 0))}</>
+              )}
+            </span>
+          </div>
+          {postedStockLoading ? (
+            <p className="px-5 py-3 text-xs text-ink-tertiary">Loading…</p>
+          ) : postedStockError ? (
+            <p className="px-5 py-3 text-xs text-red-600">
+              Failed to load. Refresh the page.
+            </p>
+          ) : postedStock.length === 0 ? (
+            <p className="px-5 py-3 text-xs text-ink-tertiary">
+              No opening stock posted yet. Add items above and click Post.
+            </p>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border-subtle text-ink-tertiary">
+                  <th className="px-5 py-2 text-start font-medium">SKU</th>
+                  <th className="px-5 py-2 text-start font-medium">Product</th>
+                  <th className="px-5 py-2 text-start font-medium">Warehouse</th>
+                  <th className="px-5 py-2 text-start font-medium">Date</th>
+                  <th className="px-5 py-2 text-end   font-medium">Qty</th>
+                  <th className="px-5 py-2 text-end   font-medium">Unit Cost</th>
+                  <th className="px-5 py-2 text-end   font-medium">Total</th>
+                  <th className="px-5 py-2 text-end   font-medium w-16"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {postedStock.map(s => (
+                  <VoidableStockRow
+                    key={s.stock_ledger_id}
+                    row={s}
+                    onVoided={() => {
+                      qc.invalidateQueries({ queryKey: ['opening_stock_posted', company_id] });
+                      qc.invalidateQueries({ queryKey: ['trial_balance'] });
+                      qc.invalidateQueries({ queryKey: ['balance_sheet'] });
+                      qc.invalidateQueries({ queryKey: ['dashboard_cards', company_id] });
+                      qc.invalidateQueries({ queryKey: ['ob_3010_balance', company_id] });
+                    }}
+                  />
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
-      {/* Already posted panel */}
+      </>)}
+
+      {/* Already posted panel — lists subsidiary + GL + bank docs, so it
+          accompanies both the AR/AP and GL tabs. */}
+      {section !== 'inv' && (
       <div className="rounded-card border border-border-subtle bg-surface-card overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle px-5 py-3">
           <h2 className="text-sm font-semibold text-ink-primary">Already posted</h2>
@@ -1152,6 +1780,11 @@ export default function OpeningBalancesPage() {
         </div>
         {postedLoading ? (
           <p className="px-5 py-4 text-sm text-ink-secondary">Loading…</p>
+        ) : postedError ? (
+          <p className="px-5 py-4 text-sm text-red-600">
+            Failed to load posted entries: {String((postedErrorObj as Error)?.message ?? postedErrorObj)}.
+            {' '}Please refresh the page.
+          </p>
         ) : posted.length === 0 ? (
           <p className="px-5 py-4 text-sm text-ink-tertiary">
             Nothing posted yet. Add rows above and click <strong>Post</strong> to migrate them.
@@ -1243,6 +1876,7 @@ export default function OpeningBalancesPage() {
           </table>
         )}
       </div>
+      )}
 
       {/* ── Phase 14.14i — Edit-posted modal ──────────────────────────────
             Edits an already-posted opening row via void + repost. Clean

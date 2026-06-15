@@ -18,8 +18,14 @@ const schema = z.object({
   name:              z.string().min(2, 'Required'),
   name_ar:           z.string(),
   address:           z.string(),
+  address_ar:        z.string(),
+  city:              z.string(),
+  state:             z.string(),
+  phone:             z.string(),
+  email:             z.string().email('Invalid email').or(z.literal('')),
   is_tax_registered: z.boolean(),
   tax_id:            z.string(),
+  prices_inclusive_of_tax: z.boolean(),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -53,8 +59,14 @@ export default function CompanySettingsPage() {
         name: company.name,
         name_ar: company.name_ar ?? '',
         address: company.address ?? '',
+        address_ar: company.address_ar ?? '',
+        city: company.city ?? '',
+        state: company.state ?? '',
+        phone: company.phone ?? '',
+        email: company.email ?? '',
         is_tax_registered: company.is_tax_registered,
         tax_id: company.tax_id ?? '',
+        prices_inclusive_of_tax: company.prices_inclusive_of_tax,
       });
       setLogoUrl(company.logo_url);
     }
@@ -66,8 +78,14 @@ export default function CompanySettingsPage() {
         name: values.name,
         name_ar: values.name_ar || null,
         address: values.address || null,
+        address_ar: values.address_ar || null,
+        city: values.city || null,
+        state: values.state || null,
+        phone: values.phone || null,
+        email: values.email || null,
         is_tax_registered: values.is_tax_registered,
         tax_id: values.tax_id || null,
+        prices_inclusive_of_tax: values.prices_inclusive_of_tax,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['company', company_id] });
@@ -156,78 +174,163 @@ export default function CompanySettingsPage() {
       </Card>
 
       {/* Company details form */}
-      <Card>
-        <form onSubmit={handleSubmit((v) => { clearBanner(); return onSubmit(v); }, onInvalid)} className="flex flex-col gap-4">
-          <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
-          <h2 className="text-base font-semibold text-ink-primary">{t('settings.company.details')}</h2>
+      <form onSubmit={handleSubmit((v) => { clearBanner(); return onSubmit(v); }, onInvalid)} className="flex flex-col gap-6">
+        <Card>
+          <div className="flex flex-col gap-4">
+            <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
+            <h2 className="text-base font-semibold text-ink-primary">{t('settings.company.details')}</h2>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input
-              label={t('settings.company.name')}
-              required
-              error={errors.name?.message}
-              {...register('name')}
-            />
-            <Input
-              label={t('settings.company.name_ar')}
-              dir="rtl"
-              error={errors.name_ar?.message}
-              {...register('name_ar')}
-            />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Input
+                label={t('settings.company.name')}
+                required
+                error={errors.name?.message}
+                {...register('name')}
+              />
+              <Input
+                label={t('settings.company.name_ar')}
+                dir="rtl"
+                error={errors.name_ar?.message}
+                {...register('name_ar')}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Input
+                label={t('settings.company.address')}
+                error={errors.address?.message}
+                {...register('address')}
+              />
+              <Input
+                label={t('settings.company.address_ar')}
+                dir="rtl"
+                error={errors.address_ar?.message}
+                {...register('address_ar')}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Input
+                label={t('settings.company.city')}
+                error={errors.city?.message}
+                {...register('city')}
+              />
+              <Input
+                label={t('settings.company.state')}
+                error={errors.state?.message}
+                {...register('state')}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Input
+                label={t('settings.company.phone')}
+                type="tel"
+                placeholder="+971 …"
+                error={errors.phone?.message}
+                {...register('phone')}
+              />
+              <Input
+                label={t('settings.company.email')}
+                type="email"
+                placeholder="info@company.com"
+                error={errors.email?.message}
+                {...register('email')}
+              />
+            </div>
           </div>
+        </Card>
 
-          <Input
-            label={t('settings.company.address')}
-            error={errors.address?.message}
-            {...register('address')}
-          />
+        {/* Tax & VAT */}
+        <Card>
+          <div className="flex flex-col gap-4">
+            <h2 className="text-base font-semibold text-ink-primary">{t('settings.company.tax_section')}</h2>
 
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-border-strong text-brand-500"
-              {...register('is_tax_registered')}
-            />
-            <span className="text-sm text-ink-primary">{t('wizard.step2.tax_registered')}</span>
-          </label>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-border-strong text-brand-500"
+                {...register('is_tax_registered')}
+              />
+              <span className="text-sm text-ink-primary">{t('wizard.step2.tax_registered')}</span>
+            </label>
 
-          {is_tax_registered && (
-            <Input
-              label={t('wizard.step2.tax_id')}
-              placeholder="TRN / GSTIN"
-              error={errors.tax_id?.message}
-              {...register('tax_id')}
-            />
-          )}
+            {is_tax_registered && (
+              <Input
+                label={t('wizard.step2.tax_id')}
+                placeholder="TRN / GSTIN"
+                error={errors.tax_id?.message}
+                {...register('tax_id')}
+              />
+            )}
 
-          {saveSuccess && (
-            <p className="rounded-lg bg-success-50 px-3 py-2 text-sm text-success-600">
-              {t('common.saved')}
-            </p>
-          )}
-
-          {saveMutation.error && (
-            <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-600">
-              {saveMutation.error instanceof Error
-                ? saveMutation.error.message
-                : t('common.error')}
-            </p>
-          )}
-
-          <div className="flex justify-end gap-3 pt-2">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => reset()}
-              disabled={!isDirty}
-            >
-              {t('common.cancel')}
-            </Button>
-            <Button type="submit" loading={isSubmitting} disabled={!isDirty}>
-              {t('common.save')}
-            </Button>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 rounded border-border-strong text-brand-500"
+                {...register('prices_inclusive_of_tax')}
+              />
+              <span className="text-sm">
+                <span className="block text-ink-primary">{t('settings.company.prices_inclusive')}</span>
+                <span className="block text-xs text-ink-tertiary">{t('settings.company.prices_inclusive_hint')}</span>
+              </span>
+            </label>
           </div>
-        </form>
+        </Card>
+
+        {saveSuccess && (
+          <p className="rounded-lg bg-success-50 px-3 py-2 text-sm text-success-600">
+            {t('common.saved')}
+          </p>
+        )}
+
+        {saveMutation.error && (
+          <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-600">
+            {saveMutation.error instanceof Error
+              ? saveMutation.error.message
+              : t('common.error')}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-3">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => reset()}
+            disabled={!isDirty}
+          >
+            {t('common.cancel')}
+          </Button>
+          <Button type="submit" loading={isSubmitting} disabled={!isDirty}>
+            {t('common.save')}
+          </Button>
+        </div>
+      </form>
+
+      {/* Finance — read-only. Set during onboarding; changing currency,
+          fiscal year or costing method after transactions exist would
+          corrupt the books, so these are display-only here. */}
+      <Card className="mt-6">
+        <h2 className="text-base font-semibold text-ink-primary">{t('settings.company.finance_section')}</h2>
+        <p className="mt-1 text-xs text-ink-tertiary">{t('settings.company.finance_hint')}</p>
+        <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
+          <div>
+            <p className="text-xs text-ink-tertiary">{t('settings.company.currency')}</p>
+            <p className="mt-0.5 font-medium text-ink-primary">{company?.currency ?? '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-ink-tertiary">{t('settings.company.country')}</p>
+            <p className="mt-0.5 font-medium text-ink-primary">{company?.country_code ?? '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-ink-tertiary">{t('settings.company.fiscal_year_start')}</p>
+            <p className="mt-0.5 font-medium text-ink-primary">{company?.fiscal_year_start ?? '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-ink-tertiary">{t('settings.company.costing_method')}</p>
+            <p className="mt-0.5 font-medium text-ink-primary uppercase">{company?.costing_method ?? 'MAC'}</p>
+          </div>
+        </div>
       </Card>
     </div>
   );

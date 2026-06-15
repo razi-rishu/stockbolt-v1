@@ -4,16 +4,10 @@ import { Link } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
-import type { BankTransferRow } from '@/data/adapter';
+import { StatusBadge } from '@/ui/status-badge';
+import type { BankTransferRow, BankAccountRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-function StatusBadge({ status }: { status: string }) {
-  const base = 'inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold';
-  if (status === 'confirmed') return <span className={`${base} bg-green-100 text-green-700`}>Confirmed</span>;
-  if (status === 'void')      return <span className={`${base} bg-red-100 text-red-600`}>Void</span>;
-  return <span className={`${base} bg-yellow-100 text-yellow-700`}>Draft</span>;
-}
 
 export default function BankTransfersPage() {
   const { t } = useTranslation();
@@ -25,48 +19,55 @@ export default function BankTransfersPage() {
     enabled:  !!company_id,
   });
 
+  const { data: bankAccounts = [] } = useQuery<BankAccountRow[]>({
+    queryKey: ['bank_accounts', company_id],
+    queryFn:  () => getAdapter().bankAccounts.list(company_id!),
+    enabled:  !!company_id,
+  });
+  const accountMap = Object.fromEntries(bankAccounts.map(a => [a.id, a.name]));
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">{t('banking.transfers_title')}</h1>
-          <p className="text-sm text-slate-500 mt-1">{t('banking.transfers_desc')}</p>
+          <h1 className="text-2xl font-bold text-ink-primary">{t('banking.transfers_title')}</h1>
+          <p className="text-sm text-ink-tertiary mt-1">{t('banking.transfers_desc')}</p>
         </div>
         <Link to="/banking/transfers/new">
           <Button variant="primary">{t('banking.new_transfer')}</Button>
         </Link>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+      <div className="bg-white border border-border-subtle rounded-lg overflow-hidden">
         {isLoading ? (
-          <p className="p-8 text-center text-sm text-slate-400">{t('common.loading')}</p>
+          <p className="p-8 text-center text-sm text-ink-tertiary">{t('common.loading')}</p>
         ) : transfers.length === 0 ? (
-          <p className="p-8 text-center text-slate-500">{t('banking.no_transfers')}</p>
+          <p className="p-8 text-center text-ink-tertiary">{t('banking.no_transfers')}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className="bg-surface-muted border-b border-border-subtle">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium text-slate-600">{t('banking.transfer_number')}</th>
-                  <th className="px-4 py-3 text-left font-medium text-slate-600">{t('common.date')}</th>
-                  <th className="px-4 py-3 text-left font-medium text-slate-600">{t('banking.from_account')}</th>
-                  <th className="px-4 py-3 text-left font-medium text-slate-600">{t('banking.to_account')}</th>
-                  <th className="px-4 py-3 text-right font-medium text-slate-600">{t('banking.amount')}</th>
-                  <th className="px-4 py-3 text-left font-medium text-slate-600">{t('common.status')}</th>
+                  <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('banking.transfer_number')}</th>
+                  <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('common.date')}</th>
+                  <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('banking.from_account')}</th>
+                  <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('banking.to_account')}</th>
+                  <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('banking.amount')}</th>
+                  <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('common.status')}</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-border-subtle">
                 {transfers.map(t2 => (
-                  <tr key={t2.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 font-mono text-blue-600">{t2.transfer_number}</td>
-                    <td className="px-4 py-3 text-slate-600">{t2.date}</td>
-                    <td className="px-4 py-3 text-slate-600 font-mono text-xs">{t2.from_account_id.slice(0, 8)}…</td>
-                    <td className="px-4 py-3 text-slate-600 font-mono text-xs">{t2.to_account_id.slice(0, 8)}…</td>
-                    <td className="px-4 py-3 text-right font-semibold text-slate-800">{fmt(t2.amount)}</td>
+                  <tr key={t2.id} className="hover:bg-surface-muted transition-colors">
+                    <td className="px-4 py-3 font-mono text-brand-600">{t2.transfer_number}</td>
+                    <td className="px-4 py-3 text-ink-secondary">{t2.date}</td>
+                    <td className="px-4 py-3 text-ink-secondary text-sm">{accountMap[t2.from_account_id] ?? t2.from_account_id}</td>
+                    <td className="px-4 py-3 text-ink-secondary text-sm">{accountMap[t2.to_account_id] ?? t2.to_account_id}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-ink-primary">{fmt(t2.amount)}</td>
                     <td className="px-4 py-3"><StatusBadge status={t2.status} /></td>
                     <td className="px-4 py-3 text-right">
-                      <Link to={`/banking/transfers/${t2.id}`} className="text-xs text-blue-600 hover:underline">
+                      <Link to={`/banking/transfers/${t2.id}`} className="text-xs text-brand-600 hover:underline">
                         {t('common.view')}
                       </Link>
                     </td>

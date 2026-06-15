@@ -9,6 +9,7 @@ import { Badge } from '@/ui/badge';
 import { Pagination, paginate } from '@/ui/pagination';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
+import { ListFilters } from '@/ui/list-filters';
 import type { VendorBillRow, ContactRow } from '@/data/adapter';
 
 const PAGE_SIZE = 50;
@@ -17,11 +18,31 @@ const statusColor: Record<string, string> = {
   draft: 'muted', confirmed: 'success', void: 'danger',
 };
 
+function FilterPill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        padding: '6px 14px', borderRadius: '999px', fontSize: '12px', fontWeight: 600,
+        border: active ? `1px solid ${theme.brand}` : `1px solid ${theme.border}`,
+        background: active ? theme.brand : '#fff',
+        color: active ? '#fff' : theme.inkMuted,
+        cursor: 'pointer', transition: 'background-color .12s, color .12s, border-color .12s',
+      }}
+    >{label}</button>
+  );
+}
+
 export default function VendorBillsPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [search, setSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   const { data: bills = [], isLoading } = useQuery<VendorBillRow[]>({
     queryKey: ['vendor_bills', company_id],
@@ -38,18 +59,55 @@ export default function VendorBillsPage() {
   });
   const supplierName = (id: string) => suppliers.find(s => s.id === id)?.name ?? `${id.slice(0, 8)}…`;
 
-  const paged = paginate(bills, page, PAGE_SIZE);
+  const q = search.trim().toLowerCase();
+  const filtered = bills.filter(bill => {
+    if (statusFilter && bill.status !== statusFilter) return false;
+    if (dateFrom && (bill.date as string) < dateFrom) return false;
+    if (dateTo && (bill.date as string) > dateTo) return false;
+    if (q) {
+      const name = supplierName(bill.supplier_id).toLowerCase();
+      if (!bill.bill_number.toLowerCase().includes(q) && !name.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const paged = paginate(filtered, page, PAGE_SIZE);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <PageHeader
         title={t('purchasing.bills_title')}
-        subtitle={`${bills.length} ${bills.length === 1 ? 'bill' : 'bills'}`}
+        subtitle={`${filtered.length} ${filtered.length === 1 ? 'bill' : 'bills'}`}
         actions={<Button size="sm" onClick={() => navigate('/purchasing/bills/new')}>+ {t('purchasing.new_bill')}</Button>}
       />
+
+      {!isLoading && bills.length > 0 && (
+        <>
+          <ListFilters
+            search={search}
+            onSearch={(v) => { setSearch(v); setPage(1); }}
+            searchPlaceholder={t('purchasing.search_bills') || 'Search bill # or supplier…'}
+            dateFrom={dateFrom}
+            onDateFrom={(v) => { setDateFrom(v); setPage(1); }}
+            dateTo={dateTo}
+            onDateTo={(v) => { setDateTo(v); setPage(1); }}
+          />
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {['', 'draft', 'confirmed', 'void'].map(s => (
+              <FilterPill
+                key={s}
+                label={s === '' ? t('common.all') : s.charAt(0).toUpperCase() + s.slice(1)}
+                active={statusFilter === s}
+                onClick={() => { setStatusFilter(s); setPage(1); }}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
       {isLoading ? (
         <div style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>{t('common.loading')}</div>
-      ) : bills.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>{t('purchasing.no_bills')}</div>
       ) : (
         <div
@@ -109,7 +167,7 @@ export default function VendorBillsPage() {
           <Pagination
             page={page}
             pageSize={PAGE_SIZE}
-            total={bills.length}
+            total={filtered.length}
             onChange={setPage}
             className="border-t"
           />

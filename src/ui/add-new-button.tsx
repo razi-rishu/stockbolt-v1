@@ -45,14 +45,14 @@ export function AddNewButton({ noun, query = '', onClick, style }: AddNewButtonP
         padding: '8px 12px',
         fontSize: '12px',
         fontWeight: 600,
-        color: '#4338ca',
+        color: '#5b21b6',
         background: 'transparent',
         border: 'none',
         cursor: 'pointer',
         textAlign: 'start',
         ...style,
       }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#eef2ff'; }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#f5f3ff'; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
     >
       <span style={{
@@ -62,7 +62,7 @@ export function AddNewButton({ noun, query = '', onClick, style }: AddNewButtonP
         width: '16px',
         height: '16px',
         borderRadius: '999px',
-        background: '#6366f1',
+        background: '#7c3aed',
         color: '#fff',
         fontSize: '11px',
         lineHeight: 1,

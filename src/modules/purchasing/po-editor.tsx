@@ -5,13 +5,15 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 // Phase 14.04 — Signature template view mode for saved POs.
-import { TaxInvoiceTemplate } from '@/modules/print/_signature/templates/tax-invoice';
+import { BoltDocTemplate } from '@/modules/print/_signature/templates/bolt-v4';
+import { usePrintConfig } from '@/hooks/use-print-config';
 import { purchaseOrderToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type { PurchaseOrderRow, PurchaseOrderItemRow, PurchaseOrderItemInsert, ContactRow, ProductRow, TaxRateRow, WarehouseRow, Company } from '@/data/adapter';
@@ -57,6 +59,7 @@ export default function POEditorPage() {
   const companyCurrency = useCompanyCurrency();    // Phase 14.14m
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const printConfig = usePrintConfig();
   const qc = useQueryClient();
   const isNew = id === 'new';
 
@@ -106,6 +109,8 @@ export default function POEditorPage() {
   });
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
   const [error, setError] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const confirmLeave = useUnsavedChangesGuard(dirty);
 
   // Phase 12.42 — quick-create product from inside the line picker.
   const [productQcOpen,    setProductQcOpen]    = useState(false);
@@ -153,12 +158,22 @@ export default function POEditorPage() {
       const u = { ...l, ...patch };
       return { ...u, ...calcLine(u) };
     }));
+    setDirty(true);
   }, []);
 
   const handleProductChange = (key: string, productId: string) => {
     const product = products.find(p => p.id === productId);
-    if (product) updateLine(key, { product_id: productId, description: product.name, unit_cost: '0' });
-    else updateLine(key, { product_id: null, description: '' });
+    if (product) {
+      const matchedRate = taxRates.find(r => r.is_active && r.tax_type === product.tax_category);
+      updateLine(key, {
+        product_id:  productId,
+        description: product.name,
+        unit_cost:   '0',
+        tax_rate:    String(matchedRate?.rate ?? 0),
+      });
+    } else {
+      updateLine(key, { product_id: null, description: '' });
+    }
   };
 
   function buildItems(): PurchaseOrderItemInsert[] {
@@ -203,8 +218,9 @@ export default function POEditorPage() {
       return null;
     },
     onSuccess: (data) => {
+      setDirty(false);
       qc.invalidateQueries({ queryKey: ['purchase_orders', company_id] });
-      if (isNew && data) navigate(`/purchasing/orders/${data.id}`);
+      if (isNew && data) navigate('/purchasing/orders');
       else {
         qc.invalidateQueries({ queryKey: ['purchase_order', id] });
         qc.invalidateQueries({ queryKey: ['purchase_order_items', id] });
@@ -238,7 +254,10 @@ export default function POEditorPage() {
   const supplierOpts = suppliers.map(s => ({ value: s.id, label: s.name }));
   const warehouseOpts = [{ value: '', label: t('purchasing.select_warehouse') }, ...warehouses.map(w => ({ value: w.id, label: w.name }))];
   const productOpts = products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }));
-  const taxOpts = [{ value: '0', label: t('sales.no_tax') }, ...taxRates.map(r => ({ value: String(r.rate), label: `${r.name} (${r.rate}%)` }))];
+  const taxOpts = [
+    { key: '__none__', value: '', label: t('sales.no_tax') },
+    ...taxRates.map(r => ({ key: r.id, value: String(r.rate), label: `${r.name} (${r.rate}%)` })),
+  ];
 
   // Phase 14.04 — view-mode renderer (Signature template).
   if (viewMode && !isNew && existing) {
@@ -255,7 +274,7 @@ export default function POEditorPage() {
           data-no-print="true"
           style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
         >
-          <button onClick={() => navigate('/purchasing/orders')} style={{
+          <button onClick={() => { if (confirmLeave()) navigate('/purchasing/orders'); }} style={{
             background: 'transparent', border: 'none', cursor: 'pointer',
             fontSize: '13px', color: '#64748b',
           }}>← {t('purchasing.po_title')}</button>
@@ -291,7 +310,7 @@ export default function POEditorPage() {
           </div>
         </div>
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
-          <TaxInvoiceTemplate data={doc} />
+          <BoltDocTemplate data={doc} config={printConfig} />
         </div>
       </div>
     );
@@ -300,7 +319,7 @@ export default function POEditorPage() {
   return (
     <div className="space-y-6 pb-16">
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/purchasing/orders')} className="text-sm text-ink-secondary hover:text-ink-primary">← {t('purchasing.po_title')}</button>
+        <button onClick={() => { if (confirmLeave()) navigate('/purchasing/orders'); }} className="text-sm text-ink-secondary hover:text-ink-primary">← {t('purchasing.po_title')}</button>
         <span className="text-ink-tertiary">/</span>
         <h1 className="text-xl font-semibold text-ink-primary">{isNew ? t('purchasing.new_po') : existing?.po_number ?? '…'}</h1>
         {!isNew && <span className="rounded-pill bg-gray-100 px-2.5 py-0.5 text-xs capitalize text-gray-600">{existing?.status}</span>}
@@ -315,7 +334,7 @@ export default function POEditorPage() {
               🖨 {t('print.print')}
             </Button>
           )}
-          <Button variant="ghost" size="sm" onClick={() => navigate('/purchasing/orders')}>{t('common.cancel')}</Button>
+          <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/purchasing/orders'); }}>{t('common.cancel')}</Button>
           {canEdit && (
             <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
               {saveMutation.isPending ? t('common.saving') : t('common.save')}
@@ -353,7 +372,7 @@ export default function POEditorPage() {
               options={supplierOpts}
               value={header.supplier_id}
               disabled={!canEdit}
-              onChange={(v) => setHeader(h => ({ ...h, supplier_id: v }))}
+              onChange={(v) => { setHeader(h => ({ ...h, supplier_id: v })); setDirty(true); }}
               placeholder={t('purchasing.select_supplier')}
               panelWidth={320}
             />
@@ -380,23 +399,22 @@ export default function POEditorPage() {
           <h2 className="text-sm font-semibold text-ink-primary">{t('purchasing.line_items')}</h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
+          <table className="w-full table-fixed text-xs" style={{ minWidth: '760px' }}>
             <thead>
               <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary">
-                <th className="px-3 py-2 text-start font-medium w-48">{t('purchasing.product')}</th>
-                <th className="px-3 py-2 text-start font-medium w-48">{t('purchasing.description')}</th>
-                <th className="px-3 py-2 text-end font-medium w-20">{t('purchasing.qty')}</th>
-                <th className="px-3 py-2 text-end font-medium w-24">{t('purchasing.unit_cost')}</th>
-                <th className="px-3 py-2 text-end font-medium w-20">{t('purchasing.disc_pct')}</th>
-                <th className="px-3 py-2 text-end font-medium w-28">{t('purchasing.tax')}</th>
-                <th className="px-3 py-2 text-end font-medium w-24">{t('purchasing.line_total')}</th>
-                {canEdit && <th className="w-10" />}
+                <th className="px-3 py-2 text-start font-medium" style={{ minWidth: '220px' }}>{t('purchasing.product')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '72px' }}>{t('purchasing.qty')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('purchasing.unit_cost')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '84px' }}>{t('purchasing.disc_pct')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('purchasing.tax')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('purchasing.line_total')}</th>
+                {canEdit && <th style={{ width: '36px' }} />}
               </tr>
             </thead>
             <tbody>
               {lines.map(line => (
                 <tr key={line._key} className="border-b border-border-subtle last:border-0">
-                  <td className="px-3 py-1.5">
+                  <td className="px-3 py-1.5 align-top">
                     <SearchableSelect
                       options={productOpts}
                       value={line.product_id ?? ''}
@@ -413,43 +431,43 @@ export default function POEditorPage() {
                         },
                       } : undefined}
                     />
-                  </td>
-                  <td className="px-3 py-1.5">
-                    <input className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60"
+                    <input
+                      className="mt-1 w-full rounded border border-transparent bg-transparent px-2 py-0.5 text-[11px] text-ink-tertiary placeholder:text-ink-tertiary hover:border-border-subtle focus:border-border-strong focus:bg-surface-subtle focus:text-ink-secondary disabled:opacity-60"
                       value={line.description} disabled={!canEdit}
+                      placeholder={t('purchasing.description') + ' (optional)'}
                       onChange={e => updateLine(line._key, { description: e.target.value })} />
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-3 py-1.5 align-top">
                     <input type="number" min="0" step="1"
                       className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60"
                       value={line.quantity} disabled={!canEdit}
                       onChange={e => updateLine(line._key, { quantity: e.target.value })} />
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-3 py-1.5 align-top">
                     <input type="number" min="0" step="0.01"
                       className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60"
                       value={line.unit_cost} disabled={!canEdit}
                       onChange={e => updateLine(line._key, { unit_cost: e.target.value })} />
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-3 py-1.5 align-top">
                     <input type="number" min="0" max="100" step="0.01"
                       className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60"
                       value={line.discount_percent} disabled={!canEdit}
                       onChange={e => updateLine(line._key, { discount_percent: e.target.value })} />
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-3 py-1.5 align-top">
                     <select className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60"
                       value={line.tax_rate} disabled={!canEdit}
                       onChange={e => updateLine(line._key, { tax_rate: e.target.value })}>
-                      {taxOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      {taxOpts.map(o => <option key={o.key} value={o.value}>{o.label}</option>)}
                     </select>
                   </td>
-                  <td className="px-3 py-1.5 text-end font-mono text-ink-primary">{fmt(line.line_total)}</td>
+                  <td className="px-3 py-1.5 align-top text-end font-mono text-ink-primary">{fmt(line.line_total)}</td>
                   {canEdit && (
-                    <td className="px-3 py-1.5">
+                    <td className="px-3 py-1.5 align-top">
                       <button className="text-red-400 hover:text-red-600 disabled:opacity-30"
                         disabled={lines.length === 1}
-                        onClick={() => setLines(prev => prev.filter(l => l._key !== line._key))}>×</button>
+                        onClick={() => { setLines(prev => prev.filter(l => l._key !== line._key)); setDirty(true); }}>×</button>
                     </td>
                   )}
                 </tr>
@@ -460,7 +478,7 @@ export default function POEditorPage() {
         {canEdit && (
           <div className="border-t border-border-subtle px-5 py-2">
             <button className="text-xs text-brand-600 hover:text-brand-700"
-              onClick={() => setLines(prev => [...prev, emptyLine()])}>
+              onClick={() => { setLines(prev => [...prev, emptyLine()]); setDirty(true); }}>
               + {t('purchasing.add_line')}
             </button>
           </div>

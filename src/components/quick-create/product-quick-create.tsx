@@ -197,7 +197,7 @@ export function ProductQuickCreate({
 
           {/* Brand with inline create */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Brand</label>
+            <label className="block text-xs font-medium text-ink-secondary mb-1">Brand</label>
             {showNewBrand ? (
               <div className="flex gap-2">
                 <input
@@ -206,7 +206,7 @@ export function ProductQuickCreate({
                   onChange={e => setNewBrandName(e.target.value)}
                   placeholder="New brand name"
                   autoFocus
-                  className="flex-1 h-9 rounded-md border border-slate-300 px-3 text-sm"
+                  className="flex-1 h-9 rounded-md border border-border-strong px-3 text-sm"
                 />
                 <Button size="sm" onClick={() => createBrandMutation.mutate()} disabled={createBrandMutation.isPending}>
                   {createBrandMutation.isPending ? '…' : 'Add'}
@@ -218,7 +218,7 @@ export function ProductQuickCreate({
             ) : (
               <div className="flex gap-2">
                 <select
-                  className="flex-1 h-9 rounded-md border border-slate-300 px-2 text-sm"
+                  className="flex-1 h-9 rounded-md border border-border-strong px-2 text-sm"
                   value={brandId}
                   onChange={e => setBrandId(e.target.value)}
                 >
@@ -234,7 +234,7 @@ export function ProductQuickCreate({
 
           {/* Category with inline create */}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Category</label>
+            <label className="block text-xs font-medium text-ink-secondary mb-1">Category</label>
             {showNewCategory ? (
               <div className="flex gap-2">
                 <input
@@ -243,7 +243,7 @@ export function ProductQuickCreate({
                   onChange={e => setNewCategoryName(e.target.value)}
                   placeholder="New category name"
                   autoFocus
-                  className="flex-1 h-9 rounded-md border border-slate-300 px-3 text-sm"
+                  className="flex-1 h-9 rounded-md border border-border-strong px-3 text-sm"
                 />
                 <Button size="sm" onClick={() => createCategoryMutation.mutate()} disabled={createCategoryMutation.isPending}>
                   {createCategoryMutation.isPending ? '…' : 'Add'}
@@ -255,7 +255,7 @@ export function ProductQuickCreate({
             ) : (
               <div className="flex gap-2">
                 <select
-                  className="flex-1 h-9 rounded-md border border-slate-300 px-2 text-sm"
+                  className="flex-1 h-9 rounded-md border border-border-strong px-2 text-sm"
                   value={categoryId}
                   onChange={e => setCategoryId(e.target.value)}
                 >

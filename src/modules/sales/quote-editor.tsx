@@ -9,8 +9,10 @@ import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { ContactPicker } from '@/components/contact-picker';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 // Phase 14.04 — Signature template view mode for saved quotes.
-import { TaxInvoiceTemplate } from '@/modules/print/_signature/templates/tax-invoice';
+import { BoltDocTemplate } from '@/modules/print/_signature/templates/bolt-v4';
+import { usePrintConfig } from '@/hooks/use-print-config';
 import { quoteToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type { SalesQuoteRow, SalesQuoteItemInsert, SalesQuoteItemRow, ContactRow, ProductRow, TaxRateRow, Company } from '@/data/adapter';
@@ -52,6 +54,7 @@ export default function QuoteEditorPage() {
   const companyCurrency = 'AED';
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const printConfig = usePrintConfig();
   const qc = useQueryClient();
   const isNew = id === 'new';
 
@@ -100,6 +103,8 @@ export default function QuoteEditorPage() {
   const [header, setHeader] = useState({ contact_id: '', salesperson_id: '', date: todayIso(), expiry_date: '', reference: '', notes: '', currency: companyCurrency ?? 'AED' });
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
   const [error, setError] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const confirmLeave = useUnsavedChangesGuard(dirty);
 
   // Phase 12.42 — quick-create product from inside the line picker.
   // Opening the modal seeds it with the in-progress search query.
@@ -146,12 +151,22 @@ export default function QuoteEditorPage() {
 
   const updateLine = useCallback((key: string, patch: Partial<LineRow>) => {
     setLines(prev => prev.map(l => { if (l._key !== key) return l; const u = { ...l, ...patch }; return { ...u, ...calcLine(u) }; }));
+    setDirty(true);
   }, []);
 
   const handleProductChange = (key: string, productId: string) => {
     const product = products.find(p => p.id === productId);
-    if (product) updateLine(key, { product_id: productId, description: product.name, unit_price: String(product.selling_price ?? 0) });
-    else updateLine(key, { product_id: null, description: '' });
+    if (product) {
+      const matchedRate = taxRates.find(r => r.is_active && r.tax_type === product.tax_category);
+      updateLine(key, {
+        product_id:  productId,
+        description: product.name,
+        unit_price:  String(product.selling_price ?? 0),
+        tax_rate:    String(matchedRate?.rate ?? 0),
+      });
+    } else {
+      updateLine(key, { product_id: null, description: '' });
+    }
   };
 
   function buildItems(): SalesQuoteItemInsert[] {
@@ -185,8 +200,9 @@ export default function QuoteEditorPage() {
       return null;
     },
     onSuccess: (data) => {
+      setDirty(false);
       qc.invalidateQueries({ queryKey: ['sales_quotes', company_id] });
-      if (isNew && data) navigate(`/sales/quotes/${data.id}`);
+      if (isNew && data) navigate('/sales/quotes');
       else { qc.invalidateQueries({ queryKey: ['sales_quote', id] }); qc.invalidateQueries({ queryKey: ['sales_quote_items', id] }); }
     },
     onError: (e: Error) => setError(e.message),
@@ -207,7 +223,10 @@ export default function QuoteEditorPage() {
   const canEdit = isNew || existing?.status === 'draft';
   // contactOpts removed — customer picker uses ContactPicker (D3).
   const productOpts = products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }));
-  const taxOpts = [{ value: '0', label: t('sales.no_tax') }, ...taxRates.map(r => ({ value: String(r.rate), label: `${r.name} (${r.rate}%)` }))];
+  const taxOpts = [
+    { key: '__none__', value: '', label: t('sales.no_tax') },
+    ...taxRates.map(r => ({ key: r.id, value: String(r.rate), label: `${r.name} (${r.rate}%)` })),
+  ];
 
   // Phase 14.04 — view-mode renderer (Signature template).
   if (viewMode && !isNew && existing) {
@@ -224,7 +243,7 @@ export default function QuoteEditorPage() {
           data-no-print="true"
           style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
         >
-          <button onClick={() => navigate('/sales/quotes')} style={{
+          <button onClick={() => { if (confirmLeave()) navigate('/sales/quotes'); }} style={{
             background: 'transparent', border: 'none', cursor: 'pointer',
             fontSize: '13px', color: '#64748b',
           }}>← {t('sales.quotes_title')}</button>
@@ -261,7 +280,7 @@ export default function QuoteEditorPage() {
           </div>
         </div>
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
-          <TaxInvoiceTemplate data={doc} />
+          <BoltDocTemplate data={doc} config={printConfig} />
         </div>
       </div>
     );
@@ -270,7 +289,7 @@ export default function QuoteEditorPage() {
   return (
     <div className="space-y-6 pb-16">
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/sales/quotes')} className="text-sm text-ink-secondary hover:text-ink-primary">← {t('sales.quotes_title')}</button>
+        <button onClick={() => { if (confirmLeave()) navigate('/sales/quotes'); }} className="text-sm text-ink-secondary hover:text-ink-primary">← {t('sales.quotes_title')}</button>
         <span className="text-ink-tertiary">/</span>
         <h1 className="text-xl font-semibold text-ink-primary">{isNew ? t('sales.new_quote') : existing?.quote_number ?? '…'}</h1>
         {!isNew && <span className="rounded-pill bg-gray-100 px-2.5 py-0.5 text-xs capitalize text-gray-600">{existing?.status}</span>}
@@ -285,7 +304,7 @@ export default function QuoteEditorPage() {
               🖨 {t('print.print')}
             </Button>
           )}
-          <Button variant="ghost" size="sm" onClick={() => navigate('/sales/quotes')}>{t('common.cancel')}</Button>
+          <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/sales/quotes'); }}>{t('common.cancel')}</Button>
           {canEdit && <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>{saveMutation.isPending ? t('common.saving') : t('common.save')}</Button>}
           {!isNew && existing && ['draft', 'sent', 'accepted'].includes(existing.status) && (
             <Button
@@ -330,7 +349,7 @@ export default function QuoteEditorPage() {
               type="customer"
               value={header.contact_id}
               disabled={!canEdit}
-              onChange={(id) => setHeader(h => ({ ...h, contact_id: id ?? '' }))}
+              onChange={(id) => { setHeader(h => ({ ...h, contact_id: id ?? '' })); setDirty(true); }}
               placeholder={t('sales.select_contact')}
               panelWidth={380}
             />
@@ -374,23 +393,22 @@ export default function QuoteEditorPage() {
           <h2 className="text-sm font-semibold text-ink-primary">{t('sales.line_items')}</h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
+          <table className="w-full table-fixed text-xs" style={{ minWidth: '760px' }}>
             <thead>
               <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary">
-                <th className="px-3 py-2 text-start font-medium w-48">{t('sales.product')}</th>
-                <th className="px-3 py-2 text-start font-medium w-48">{t('sales.description')}</th>
-                <th className="px-3 py-2 text-end font-medium w-20">{t('sales.qty')}</th>
-                <th className="px-3 py-2 text-end font-medium w-24">{t('sales.unit_price')}</th>
-                <th className="px-3 py-2 text-end font-medium w-20">{t('sales.disc_pct')}</th>
-                <th className="px-3 py-2 text-end font-medium w-28">{t('sales.tax')}</th>
-                <th className="px-3 py-2 text-end font-medium w-24">{t('sales.line_total')}</th>
-                {canEdit && <th className="w-10" />}
+                <th className="px-3 py-2 text-start font-medium" style={{ minWidth: '220px' }}>{t('sales.product')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '72px' }}>{t('sales.qty')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('sales.unit_price')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '84px' }}>{t('sales.disc_pct')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('sales.tax')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('sales.line_total')}</th>
+                {canEdit && <th style={{ width: '36px' }} />}
               </tr>
             </thead>
             <tbody>
               {lines.map(line => (
                 <tr key={line._key} className="border-b border-border-subtle last:border-0">
-                  <td className="px-3 py-1.5">
+                  <td className="px-3 py-1.5 align-top">
                     <SearchableSelect
                       options={productOpts}
                       value={line.product_id ?? ''}
@@ -407,20 +425,20 @@ export default function QuoteEditorPage() {
                         },
                       } : undefined}
                     />
+                    <input className="mt-1 w-full rounded border border-transparent bg-transparent px-2 py-0.5 text-[11px] text-ink-tertiary placeholder:text-ink-tertiary hover:border-border-subtle focus:border-border-strong focus:bg-surface-subtle focus:text-ink-secondary disabled:opacity-60" value={line.description} disabled={!canEdit} placeholder={t('sales.description') + ' (optional)'} onChange={e => updateLine(line._key, { description: e.target.value })} />
                   </td>
-                  <td className="px-3 py-1.5"><input className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60" value={line.description} disabled={!canEdit} onChange={e => updateLine(line._key, { description: e.target.value })} /></td>
-                  <td className="px-3 py-1.5"><input type="number" min="0" step="1" className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60" value={line.quantity} disabled={!canEdit} onChange={e => updateLine(line._key, { quantity: e.target.value })} /></td>
-                  <td className="px-3 py-1.5"><input type="number" min="0" step="0.01" className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60" value={line.unit_price} disabled={!canEdit} onChange={e => updateLine(line._key, { unit_price: e.target.value })} /></td>
-                  <td className="px-3 py-1.5"><input type="number" min="0" max="100" step="0.01" className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60" value={line.discount_percent} disabled={!canEdit} onChange={e => updateLine(line._key, { discount_percent: e.target.value })} /></td>
-                  <td className="px-3 py-1.5"><select className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60" value={line.tax_rate} disabled={!canEdit} onChange={e => updateLine(line._key, { tax_rate: e.target.value })}>{taxOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></td>
-                  <td className="px-3 py-1.5 text-end font-mono text-ink-primary">{fmt(line.line_total)}</td>
-                  {canEdit && <td className="px-3 py-1.5"><button className="text-red-400 hover:text-red-600 disabled:opacity-30" disabled={lines.length === 1} onClick={() => setLines(prev => prev.filter(l => l._key !== line._key))}>×</button></td>}
+                  <td className="px-3 py-1.5 align-top"><input type="number" min="0" step="1" className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60" value={line.quantity} disabled={!canEdit} onChange={e => updateLine(line._key, { quantity: e.target.value })} /></td>
+                  <td className="px-3 py-1.5 align-top"><input type="number" min="0" step="0.01" className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60" value={line.unit_price} disabled={!canEdit} onChange={e => updateLine(line._key, { unit_price: e.target.value })} /></td>
+                  <td className="px-3 py-1.5 align-top"><input type="number" min="0" max="100" step="0.01" className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60" value={line.discount_percent} disabled={!canEdit} onChange={e => updateLine(line._key, { discount_percent: e.target.value })} /></td>
+                  <td className="px-3 py-1.5 align-top"><select className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60" value={line.tax_rate} disabled={!canEdit} onChange={e => updateLine(line._key, { tax_rate: e.target.value })}>{taxOpts.map(o => <option key={o.key} value={o.value}>{o.label}</option>)}</select></td>
+                  <td className="px-3 py-1.5 align-top text-end font-mono text-ink-primary">{fmt(line.line_total)}</td>
+                  {canEdit && <td className="px-3 py-1.5 align-top"><button className="text-red-400 hover:text-red-600 disabled:opacity-30" disabled={lines.length === 1} onClick={() => { setLines(prev => prev.filter(l => l._key !== line._key)); setDirty(true); }}>×</button></td>}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        {canEdit && <div className="border-t border-border-subtle px-5 py-2"><button className="text-xs text-brand-600 hover:text-brand-700" onClick={() => setLines(prev => [...prev, emptyLine()])}>+ {t('sales.add_line')}</button></div>}
+        {canEdit && <div className="border-t border-border-subtle px-5 py-2"><button className="text-xs text-brand-600 hover:text-brand-700" onClick={() => { setLines(prev => [...prev, emptyLine()]); setDirty(true); }}>+ {t('sales.add_line')}</button></div>}
         <div className="border-t border-border-subtle px-5 py-4">
           <div className="ms-auto w-60 space-y-1.5 text-sm">
             <div className="flex justify-between text-ink-secondary"><span>{t('sales.subtotal')}</span><span className="font-mono">{fmt(subtotal)}</span></div>
