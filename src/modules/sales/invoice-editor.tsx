@@ -18,8 +18,8 @@ import { ContactPicker } from '@/components/contact-picker';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 import { AccountingPreview, buildSalesInvoicePreview } from '@/components/accounting-preview';
 // Phase 14.03 — Signature template view mode.
-import { BoltDocTemplate } from '@/modules/print/_signature/templates/bolt-v4';
-import { usePrintConfig } from '@/hooks/use-print-config';
+import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
+import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { invoiceToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type { InvoiceRow, InvoiceItemInsert, ContactRow, ProductRow, WarehouseRow, TaxRateRow, ProductSearchRow } from '@/data/adapter';
@@ -89,7 +89,7 @@ export default function InvoiceEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const printConfig = usePrintConfig();
+  const printTemplate = useResolvedPrintTemplate('sales_invoice');
   const qc = useQueryClient();
   // Phase 14.14k — invalidate all books-downstream caches (TB, BS, GL, aging,
   // statements, dashboard, stock ledger, etc.) after any GL-touching mutation.
@@ -664,7 +664,7 @@ export default function InvoiceEditorPage() {
 
         {/* The A4 document, floating on a slate canvas */}
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
-          <BoltDocTemplate data={doc} config={printConfig} />
+          <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
         {dangerModals}
       </div>

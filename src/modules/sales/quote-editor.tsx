@@ -12,8 +12,8 @@ import { ContactPicker } from '@/components/contact-picker';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 // Phase 14.04 — Signature template view mode for saved quotes.
-import { BoltDocTemplate } from '@/modules/print/_signature/templates/bolt-v4';
-import { usePrintConfig } from '@/hooks/use-print-config';
+import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
+import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { quoteToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type { SalesQuoteRow, SalesQuoteItemInsert, SalesQuoteItemRow, ContactRow, ProductRow, TaxRateRow, Company } from '@/data/adapter';
@@ -55,7 +55,7 @@ export default function QuoteEditorPage() {
   const companyCurrency = useCompanyCurrency();   // Issue 1 — was hardcoded 'AED'
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const printConfig = usePrintConfig();
+  const printTemplate = useResolvedPrintTemplate('quotation');
   const qc = useQueryClient();
   const isNew = id === 'new';
 
@@ -281,7 +281,7 @@ export default function QuoteEditorPage() {
           </div>
         </div>
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
-          <BoltDocTemplate data={doc} config={printConfig} />
+          <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
       </div>
     );

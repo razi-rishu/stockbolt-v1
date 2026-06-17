@@ -12,8 +12,8 @@ import { Select } from '@/ui/select';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 // Phase 14.04 — Signature template view mode for saved POs.
-import { BoltDocTemplate } from '@/modules/print/_signature/templates/bolt-v4';
-import { usePrintConfig } from '@/hooks/use-print-config';
+import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
+import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { purchaseOrderToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type { PurchaseOrderRow, PurchaseOrderItemRow, PurchaseOrderItemInsert, ContactRow, ProductRow, TaxRateRow, WarehouseRow, Company } from '@/data/adapter';
@@ -59,7 +59,7 @@ export default function POEditorPage() {
   const companyCurrency = useCompanyCurrency();    // Phase 14.14m
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const printConfig = usePrintConfig();
+  const printTemplate = useResolvedPrintTemplate('purchase_order');
   const qc = useQueryClient();
   const isNew = id === 'new';
 
@@ -310,7 +310,7 @@ export default function POEditorPage() {
           </div>
         </div>
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
-          <BoltDocTemplate data={doc} config={printConfig} />
+          <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
       </div>
     );

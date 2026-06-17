@@ -12,8 +12,8 @@ import { Select } from '@/ui/select';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 // Phase 14.06 — Signature template view mode for saved GRNs.
-import { BoltDocTemplate } from '@/modules/print/_signature/templates/bolt-v4';
-import { usePrintConfig } from '@/hooks/use-print-config';
+import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
+import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { grnToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type { GoodsReceiptRow, GoodsReceiptItemRow, GoodsReceiptItemInsert, ContactRow, ProductRow, WarehouseRow, Company } from '@/data/adapter';
@@ -38,7 +38,7 @@ export default function GRNEditorPage() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const printConfig = usePrintConfig();
+  const printTemplate = useResolvedPrintTemplate('delivery_note');
   const qc = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const isNew = id === 'new';
@@ -276,7 +276,7 @@ export default function GRNEditorPage() {
           </div>
         </div>
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
-          <BoltDocTemplate data={doc} config={printConfig} />
+          <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
       </div>
     );

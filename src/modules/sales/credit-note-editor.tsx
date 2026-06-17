@@ -9,8 +9,8 @@ import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { SearchableSelect } from '@/ui/searchable-select';
 // Phase 14.04 — Signature template view mode for saved credit notes.
-import { BoltDocTemplate } from '@/modules/print/_signature/templates/bolt-v4';
-import { usePrintConfig } from '@/hooks/use-print-config';
+import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
+import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { creditNoteToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type { CreditNoteRow, CreditNoteItemInsert, CreditNoteItemRow, ContactRow, InvoiceRow, InvoiceItemRow, Company, ProductRow } from '@/data/adapter';
@@ -41,7 +41,7 @@ export default function CreditNoteEditorPage() {
   const isNew       = !id || id === 'new';
   const { t }       = useTranslation();
   const navigate    = useNavigate();
-  const printConfig = usePrintConfig();
+  const printTemplate = useResolvedPrintTemplate('credit_note');
   const qc          = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const companyCurrency = useCompanyCurrency();    // Phase 14.14m
@@ -275,7 +275,7 @@ export default function CreditNoteEditorPage() {
           </div>
         </div>
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
-          <BoltDocTemplate data={doc} config={printConfig} />
+          <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
       </div>
     );

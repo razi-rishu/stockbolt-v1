@@ -14,8 +14,8 @@ import { ProductQuickCreate } from '@/components/quick-create/product-quick-crea
 import { ContactPicker } from '@/components/contact-picker';
 import { AccountingPreview, buildVendorBillPreview } from '@/components/accounting-preview';
 // Phase 14.03 — Signature template view mode for saved bills.
-import { BoltDocTemplate } from '@/modules/print/_signature/templates/bolt-v4';
-import { usePrintConfig } from '@/hooks/use-print-config';
+import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
+import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { vendorBillToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type { VendorBillRow, VendorBillItemInsert, ContactRow, ProductRow, TaxRateRow, CoaRow } from '@/data/adapter';
@@ -65,7 +65,7 @@ export default function VendorBillEditorPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const printConfig = usePrintConfig();
+  const printTemplate = useResolvedPrintTemplate('purchase_invoice');
   const qc = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const companyCurrency = useCompanyCurrency();    // Phase 14.14m
@@ -581,7 +581,7 @@ export default function VendorBillEditorPage() {
           </div>
         </div>
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
-          <BoltDocTemplate data={doc} config={printConfig} />
+          <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
         {deleteModalEl}
       </div>

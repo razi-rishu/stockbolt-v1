@@ -69,8 +69,8 @@ import { ContactPicker } from '@/components/contact-picker';
 import { CoaQuickCreate } from '@/components/quick-create/coa-quick-create';
 import { theme } from '@/ui/theme';
 // Phase 14.06 — Signature template view mode for saved expenses.
-import { BoltDocTemplate } from '@/modules/print/_signature/templates/bolt-v4';
-import { usePrintConfig } from '@/hooks/use-print-config';
+import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
+import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { expenseToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type {
@@ -138,7 +138,7 @@ export default function ExpenseEditorPage() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const printConfig = usePrintConfig();
+  const printTemplate = useResolvedPrintTemplate('purchase_invoice');
   const companyCurrency = useCompanyCurrency();   // Issue 1 — localize money to tenant currency
   const qc = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
@@ -457,7 +457,7 @@ export default function ExpenseEditorPage() {
           </div>
         </div>
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
-          <BoltDocTemplate data={doc} config={printConfig} />
+          <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
       </div>
     );
