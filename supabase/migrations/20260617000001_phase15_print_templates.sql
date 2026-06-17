@@ -15,6 +15,18 @@
 --   • All new section toggles default to TRUE so nothing disappears.
 -- ─────────────────────────────────────────────────────────────────────────
 
+-- ── Replace the legacy Phase 0 print_templates table ─────────────────────
+-- A `print_templates` table was created in Phase 0 (migration
+-- 20260430121400) with a different schema (template_name / document_type /
+-- paper_size / …) but was NEVER wired to the app — print settings have always
+-- used the companies.print_config JSONB blob. We drop it so THIS engine's
+-- schema is authoritative. Safe: the legacy table is empty and unreferenced
+-- by app code. Doing it here also makes a fresh-database migration run correct
+-- (otherwise the Phase 0 CREATE would win and CREATE TABLE IF NOT EXISTS below
+-- would be skipped). CASCADE clears the old RLS policy / trigger / indexes.
+DROP TABLE IF EXISTS public.print_template_defaults CASCADE;
+DROP TABLE IF EXISTS public.print_templates CASCADE;
+
 -- ── Table: print_templates ───────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.print_templates (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),

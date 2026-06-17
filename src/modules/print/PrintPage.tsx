@@ -24,20 +24,15 @@ import type {
 } from '@/data/adapter';
 
 import { ConfigurableDocTemplate }    from './engine/ConfigurableDocTemplate';
+import { DEFAULT_TEMPLATE_SETTINGS }  from './engine/types';
 import type { PrintTemplate, PrintDocumentType } from './engine/types';
 import {
   invoiceToDocumentData, quoteToDocumentData, creditNoteToDocumentData,
   debitNoteToDocumentData, purchaseOrderToDocumentData, vendorBillToDocumentData,
 } from './_signature/adapters';
-import { InvoiceClassicTemplate }      from './templates/invoice-classic';
-import { InvoiceBilingualTemplate }   from './templates/invoice-bilingual';
-import { InvoiceThermalTemplate }     from './templates/invoice-thermal';
-import { QuoteClassicTemplate }       from './templates/quote-classic';
+// Statements are a running-balance ledger, not a line-item document, so they
+// keep their dedicated classic template. All other docs render via the engine.
 import { StatementClassicTemplate }   from './templates/statement-classic';
-import { CreditNoteClassicTemplate }  from './templates/credit-note-classic';
-import { DebitNoteClassicTemplate }   from './templates/debit-note-classic';
-import { POClassicTemplate }          from './templates/po-classic';
-import { BillClassicTemplate }        from './templates/bill-classic';
 
 // ── Shared props passed to every template ────────────────────────────────────
 export interface PrintDocProps {
@@ -59,6 +54,17 @@ function docTypeToPrintType(docType: string | undefined): PrintDocumentType | nu
     case 'bill':        return 'purchase_invoice';
     default:            return null;
   }
+}
+
+// Synthetic classic template used if no saved template resolves (e.g. the
+// table is briefly unreachable). Keeps documents rendering through the engine.
+function classicFallbackTemplate(company_id: string): PrintTemplate {
+  return {
+    id: '', company_id, name: 'Default Template', template_style: 'classic',
+    primary_color: '#0F172A', secondary_color: '#475569', accent_color: '#F5C242', text_color: '#0F172A',
+    font_family: 'Inter', font_size: 'medium', logo_position: 'left', logo_size: 'medium',
+    is_default: true, settings: DEFAULT_TEMPLATE_SETTINGS,
+  };
 }
 
 function defaultPrintConfig(): PrintConfig {
@@ -140,7 +146,9 @@ export default function PrintPage() {
         if (printType) {
           try {
             patch.printTemplate = await adapter.printTemplates.getResolved(company_id!, printType);
-          } catch { /* keep legacy classic rendering */ }
+          } catch {
+            patch.printTemplate = classicFallbackTemplate(company_id!);
+          }
         }
 
         if (docType === 'invoice') {
@@ -266,99 +274,34 @@ export default function PrintPage() {
   // ── Render correct template ────────────────────────────────────────────────
   const baseProps = { company, printConfig };
 
-  if (docType === 'invoice' && state.invoice && state.invoiceItems) {
-    const tpl = printConfig.invoice_template;
-    // Phase 15 — when a real saved template resolves (id present), render via
-    // the configurable engine. A synthetic fallback (id === '') means the
-    // migration hasn't run yet → keep the exact legacy rendering.
-    if (state.printTemplate?.id) {
-      const docData = invoiceToDocumentData({
-        invoice: state.invoice, items: state.invoiceItems, contact, company,
-      });
-      return (
-        <>
-          {ActionBar}
-          <ConfigurableDocTemplate data={docData} template={state.printTemplate} />
-        </>
-      );
-    }
-    return (
-      <>
-        {ActionBar}
-        {tpl === 'thermal' ? (
-          <InvoiceThermalTemplate {...baseProps} invoice={state.invoice} items={state.invoiceItems} contact={contact} />
-        ) : tpl === 'bilingual' ? (
-          <InvoiceBilingualTemplate {...baseProps} invoice={state.invoice} items={state.invoiceItems} contact={contact} />
-        ) : (
-          <InvoiceClassicTemplate {...baseProps} invoice={state.invoice} items={state.invoiceItems} contact={contact} />
-        )}
-      </>
-    );
+  if (docType === 'invoice' && state.invoice && state.invoiceItems && state.printTemplate) {
+    const docData = invoiceToDocumentData({ invoice: state.invoice, items: state.invoiceItems, contact, company });
+    return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
   }
 
-  if (docType === 'quote' && state.quote && state.quoteItems) {
-    if (state.printTemplate?.id) {
-      const docData = quoteToDocumentData({ quote: state.quote, items: state.quoteItems, contact, company });
-      return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
-    }
-    return (
-      <>
-        {ActionBar}
-        <QuoteClassicTemplate {...baseProps} quote={state.quote} items={state.quoteItems} contact={contact} />
-      </>
-    );
+  if (docType === 'quote' && state.quote && state.quoteItems && state.printTemplate) {
+    const docData = quoteToDocumentData({ quote: state.quote, items: state.quoteItems, contact, company });
+    return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
   }
 
-  if (docType === 'credit-note' && state.creditNote && state.creditNoteItems) {
-    if (state.printTemplate?.id) {
-      const docData = creditNoteToDocumentData({ creditNote: state.creditNote, items: state.creditNoteItems, contact, company });
-      return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
-    }
-    return (
-      <>
-        {ActionBar}
-        <CreditNoteClassicTemplate {...baseProps} creditNote={state.creditNote} items={state.creditNoteItems} contact={contact} />
-      </>
-    );
+  if (docType === 'credit-note' && state.creditNote && state.creditNoteItems && state.printTemplate) {
+    const docData = creditNoteToDocumentData({ creditNote: state.creditNote, items: state.creditNoteItems, contact, company });
+    return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
   }
 
-  if (docType === 'debit-note' && state.debitNote && state.debitNoteItems) {
-    if (state.printTemplate?.id) {
-      const docData = debitNoteToDocumentData({ debitNote: state.debitNote, items: state.debitNoteItems, supplier: contact, company });
-      return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
-    }
-    return (
-      <>
-        {ActionBar}
-        <DebitNoteClassicTemplate {...baseProps} debitNote={state.debitNote} items={state.debitNoteItems} contact={contact} />
-      </>
-    );
+  if (docType === 'debit-note' && state.debitNote && state.debitNoteItems && state.printTemplate) {
+    const docData = debitNoteToDocumentData({ debitNote: state.debitNote, items: state.debitNoteItems, supplier: contact, company });
+    return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
   }
 
-  if (docType === 'po' && state.po && state.poItems) {
-    if (state.printTemplate?.id) {
-      const docData = purchaseOrderToDocumentData({ po: state.po, items: state.poItems, supplier: contact, company });
-      return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
-    }
-    return (
-      <>
-        {ActionBar}
-        <POClassicTemplate {...baseProps} po={state.po} items={state.poItems} contact={contact} />
-      </>
-    );
+  if (docType === 'po' && state.po && state.poItems && state.printTemplate) {
+    const docData = purchaseOrderToDocumentData({ po: state.po, items: state.poItems, supplier: contact, company });
+    return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
   }
 
-  if (docType === 'bill' && state.bill && state.billItems) {
-    if (state.printTemplate?.id) {
-      const docData = vendorBillToDocumentData({ bill: state.bill, items: state.billItems, supplier: contact, company });
-      return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
-    }
-    return (
-      <>
-        {ActionBar}
-        <BillClassicTemplate {...baseProps} bill={state.bill} items={state.billItems} contact={contact} />
-      </>
-    );
+  if (docType === 'bill' && state.bill && state.billItems && state.printTemplate) {
+    const docData = vendorBillToDocumentData({ bill: state.bill, items: state.billItems, supplier: contact, company });
+    return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
   }
 
   if ((docType === 'statement' || docType === 'supplier-statement') && state.statementMeta) {

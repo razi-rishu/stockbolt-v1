@@ -82,6 +82,8 @@ export default function PrintSettingsPage() {
   const [saved,   setSaved]   = useState(false);
   const [error,   setError]   = useState<string | null>(null);
   const [needsMigration, setNeedsMigration] = useState(false);
+  const [company, setCompany] = useState<{ name?: string; logo_url?: string | null; tax_id?: string | null; country_code?: string | null } | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const reload = useCallback(async (selectId?: string) => {
     if (!company_id) return;
@@ -102,6 +104,25 @@ export default function PrintSettingsPage() {
   }, [company_id, adapter]);
 
   useEffect(() => { reload().finally(() => setLoading(false)); }, [reload]);
+
+  // Real company identity for the live preview (logo / name / TRN / country).
+  useEffect(() => {
+    if (!company_id) return;
+    adapter.companies.getById(company_id)
+      .then(c => { if (c) setCompany(c as typeof company); })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [company_id]);
+
+  async function handleLogoUpload(file: File | null) {
+    if (!file || !company_id) return;
+    setUploading(true); setError(null);
+    try {
+      const url = await adapter.companies.uploadLogo(company_id, file);
+      setCompany(c => ({ ...(c ?? {}), logo_url: url }));
+    } catch (e) { setError(String(e)); }
+    finally { setUploading(false); }
+  }
 
   function setField<K extends keyof PrintTemplate>(key: K, value: PrintTemplate[K]) {
     setTpl(t => t ? { ...t, [key]: value } : t);
@@ -294,7 +315,23 @@ export default function PrintSettingsPage() {
                   <div><label className={labelCls}>Logo size</label>
                     <select className={selCls} value={tpl.logo_size} onChange={e => setField('logo_size', e.target.value as LogoSize)}>{LOGO_SZ.map(s => <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>)}</select></div>
                 </div>
-                <p className="mt-3 text-xs text-ink-tertiary">Your logo lives in <button className="text-brand-600 underline" onClick={() => navigate('/settings/company')}>Company Profile</button>.</p>
+              </div>
+
+              <div className={card}>
+                <h2 className="text-sm font-semibold text-ink-primary">Logo</h2>
+                <p className="mt-1 mb-3 text-xs text-ink-tertiary">Shown at the top of documents when “Company logo” is enabled. Shared with your <button className="text-brand-600 underline" onClick={() => navigate('/settings/company')}>Company Profile</button>.</p>
+                <div className="flex items-center gap-4">
+                  <div style={{ width: 96, height: 64, border: `1px dashed ${theme.border}`, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: '#fff' }}>
+                    {company?.logo_url
+                      ? <img src={company.logo_url} alt="logo" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                      : <span className="text-[11px] text-ink-tertiary">No logo</span>}
+                  </div>
+                  <label className="cursor-pointer rounded-card border border-border-subtle bg-surface-card px-3 py-2 text-sm text-ink-primary hover:bg-surface-hover">
+                    {uploading ? 'Uploading…' : (company?.logo_url ? 'Replace logo' : 'Upload logo')}
+                    <input type="file" accept="image/*" className="hidden" disabled={uploading}
+                      onChange={e => handleLogoUpload(e.target.files?.[0] ?? null)} />
+                  </label>
+                </div>
               </div>
 
               <div className={card}>
@@ -329,7 +366,16 @@ export default function PrintSettingsPage() {
                 </div>
                 <div style={{ border: `1px solid ${theme.border}`, borderRadius: 10, overflow: 'hidden', background: '#F8FAFC', height: 660 }}>
                   <div style={{ transform: 'scale(0.54)', transformOrigin: 'top left', width: '210mm' }}>
-                    <ConfigurableDocTemplate data={SAMPLE_TAX_INVOICE} template={tpl} />
+                    <ConfigurableDocTemplate data={{
+                      ...SAMPLE_TAX_INVOICE,
+                      company: {
+                        ...SAMPLE_TAX_INVOICE.company,
+                        name:     company?.name     ?? SAMPLE_TAX_INVOICE.company.name,
+                        logo_url: company?.logo_url ?? null,
+                        trn:      company?.tax_id   ?? SAMPLE_TAX_INVOICE.company.trn,
+                        country:  company?.country_code ?? SAMPLE_TAX_INVOICE.company.country,
+                      },
+                    }} template={tpl} />
                   </div>
                 </div>
                 <p className="mt-2 text-xs text-ink-tertiary">Sample data. Real documents use your own logo, company details and figures.</p>
