@@ -36,6 +36,8 @@ export function createSelfHostedAdapter(): DataAdapter {
       remove: () => notImplemented('printTemplates.remove'),
       setDefault: () => notImplemented('printTemplates.setDefault'),
       setDocTypeDefault: () => notImplemented('printTemplates.setDocTypeDefault'),
+      listDocTypeDefaults: () => notImplemented('printTemplates.listDocTypeDefaults'),
+      clearDocTypeDefault: () => notImplemented('printTemplates.clearDocTypeDefault'),
     },
     profiles: {
       getCurrent: () => notImplemented('profiles.getCurrent'),

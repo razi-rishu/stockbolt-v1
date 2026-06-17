@@ -269,6 +269,23 @@ export function createSupabaseAdapter(
             .upsert({ company_id, document_type: documentType, template_id: id }, { onConflict: 'company_id,document_type' });
           assertNoError(error, 'printTemplates.setDocTypeDefault');
         },
+
+        async listDocTypeDefaults(company_id: string): Promise<Record<string, string>> {
+          const { data, error } = await db.from('print_template_defaults')
+            .select('document_type, template_id').eq('company_id', company_id);
+          assertNoError(error, 'printTemplates.listDocTypeDefaults');
+          const out: Record<string, string> = {};
+          for (const r of (data ?? []) as { document_type: string; template_id: string }[]) {
+            out[r.document_type] = r.template_id;
+          }
+          return out;
+        },
+
+        async clearDocTypeDefault(company_id: string, documentType): Promise<void> {
+          const { error } = await db.from('print_template_defaults')
+            .delete().eq('company_id', company_id).eq('document_type', documentType);
+          assertNoError(error, 'printTemplates.clearDocTypeDefault');
+        },
       };
     })(),
 

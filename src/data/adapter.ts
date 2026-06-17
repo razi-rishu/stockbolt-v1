@@ -116,6 +116,10 @@ export interface PrintTemplatesAPI {
   setDefault(company_id: string, id: string): Promise<void>;
   /** Pin a template as the default for a specific document type. */
   setDocTypeDefault(company_id: string, documentType: PrintDocType, id: string): Promise<void>;
+  /** Current per-document-type default assignments: { document_type → template_id }. */
+  listDocTypeDefaults(company_id: string): Promise<Record<string, string>>;
+  /** Remove a per-document-type default (falls back to the global default). */
+  clearDocTypeDefault(company_id: string, documentType: PrintDocType): Promise<void>;
 }
 
 // ── Profiles API ──────────────────────────────────────────────────────────────
