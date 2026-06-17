@@ -159,15 +159,19 @@ function IncomeExpenseCard({ data }: { data: DashboardCards }) {
 }
 
 // ── 2. Top Expenses (donut) ─────────────────────────────────────────────
-const DONUT_PALETTE = ['#7c3aed', '#8b5cf6', '#f59e0b', '#ef4444', '#0ea5e9', '#cbd5e1'];
+// Distinct hues so each expense category is easy to tell apart at a glance
+// (violet · sky · amber · emerald · red · pink · teal · purple). "Others"
+// always gets a muted slate so it reads as the catch-all.
+const DONUT_PALETTE = ['#7c3aed', '#0ea5e9', '#f59e0b', '#10b981', '#ef4444', '#ec4899', '#14b8a6', '#a855f7'];
+const OTHERS_COLOR = '#94a3b8';
 
 function TopExpensesCard({ data }: { data: DashboardCards }) {
   const slices = [
     ...data.top_expenses.map((e, i) => ({
-      name: e.account_name, code: e.account_code, value: e.amount, color: DONUT_PALETTE[i],
+      name: e.account_name, code: e.account_code, value: e.amount, color: DONUT_PALETTE[i % DONUT_PALETTE.length],
     })),
     ...(data.top_expenses_others > 0.005 ? [{
-      name: 'Others', code: '', value: data.top_expenses_others, color: DONUT_PALETTE[5],
+      name: 'Others', code: '', value: data.top_expenses_others, color: OTHERS_COLOR,
     }] : []),
   ];
   const total = data.top_expenses_total;
