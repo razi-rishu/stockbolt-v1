@@ -16,8 +16,8 @@ import { AccountingPreview, buildCustomerPaymentPreview } from '@/components/acc
 import { ActivityLog } from '@/components/activity-log';
 import { theme } from '@/ui/theme';
 // Phase 14.05 — Signature template view mode for saved payments.
-import { BoltReceiptTemplate } from '@/modules/print/_signature/templates/bolt-v4';
-import { usePrintConfig } from '@/hooks/use-print-config';
+import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
+import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { paymentToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type { PaymentRow, BankAccountRow, OpenInvoice, PaymentAllocationInsert, Company, ContactRow, PaymentMethodRow, InvoiceRow } from '@/data/adapter';
@@ -47,7 +47,7 @@ export default function PaymentEditorPage() {
   const companyCurrency = useCompanyCurrency();   // Phase 14.14m
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const printConfig = usePrintConfig();
+  const printTemplate = useResolvedPrintTemplate('payment_receipt');
   const qc = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k — TB/BS/aging/GL sweep
   const [searchParams] = useSearchParams();
@@ -575,7 +575,7 @@ export default function PaymentEditorPage() {
           }}>{error}</div>
         )}
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
-          <BoltReceiptTemplate data={doc} config={printConfig} />
+          <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
         {dangerModalsEl}
       </div>

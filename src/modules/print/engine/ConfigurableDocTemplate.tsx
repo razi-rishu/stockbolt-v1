@@ -17,6 +17,7 @@ import { normalizeSettings } from './types';
 import {
   STYLE_PRESETS, FONT_STACK, FONT_SIZE_PX, LOGO_SIZE_PX,
 } from './presets';
+import { amountInWords } from './amount-in-words';
 
 interface Props {
   data:     DocumentData;
@@ -49,6 +50,8 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
   const tax = getTaxLabels(taxCountry);
   const cur = data.currency;
   const money = (n: number) => `${cur} ${num(n)}`;
+  // Payment receipts/vouchers carry `allocations` instead of line items.
+  const isPayment = !!data.allocations;
 
   const labelStyle: CSSProperties = {
     fontSize:       baseFont * 0.72,
@@ -265,6 +268,71 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
     );
   }
 
+  // ── Payment body (receipts / vouchers — allocations, not line items) ──────
+  function PaymentBody() {
+    const allocs = data.allocations ?? [];
+    return (
+      <>
+        {/* Payment method */}
+        {s.showBankDetails && (data.payment_method || data.bank_account) && (
+          <div style={{ marginTop: 18 }}>
+            <div style={labelStyle}>Payment Method</div>
+            <div style={{ fontSize: baseFont * 0.9, color: C.text, lineHeight: 1.7, marginTop: 4 }}>
+              {data.payment_method && <div>Mode: {data.payment_method}</div>}
+              {data.bank_account && <div>Account: {data.bank_account}</div>}
+            </div>
+          </div>
+        )}
+
+        {/* Allocations */}
+        <div style={{ marginTop: 18 }}>
+          <div style={labelStyle}>Applied To</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 6 }}>
+            <thead><tr>{['Document', 'Date', 'Amount', 'Discount', 'Paid'].map((h, i) => (
+              <th key={h} style={{ ...thStyle, textAlign: i < 2 ? 'start' : 'end' }}>{h}</th>
+            ))}</tr></thead>
+            <tbody>
+              {allocs.map((a, i) => (
+                <tr key={i}>
+                  <td style={{ ...tdBase, borderBottom: `1px solid ${C.hairline}` }}>{a.doc_number}</td>
+                  <td style={{ ...tdBase, borderBottom: `1px solid ${C.hairline}` }}>{a.doc_date ?? '—'}</td>
+                  <td style={{ ...tdBase, textAlign: 'end', borderBottom: `1px solid ${C.hairline}` }}>{a.original_amount != null ? num(a.original_amount) : '—'}</td>
+                  <td style={{ ...tdBase, textAlign: 'end', borderBottom: `1px solid ${C.hairline}` }}>{a.discount_amount ? num(a.discount_amount) : '0.00'}</td>
+                  <td style={{ ...tdBase, textAlign: 'end', borderBottom: `1px solid ${C.hairline}` }}>{num(a.applied_amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Amount in words + total */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24, marginTop: 18, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: '80mm' }}>
+            <div style={labelStyle}>Amount in Words</div>
+            <div style={{ fontSize: baseFont * 0.9, color: C.text, marginTop: 4 }}>{amountInWords(data.grand_total, cur)}</div>
+          </div>
+          <div style={{ width: '64mm' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderRadius: 6, background: C.accent, color: '#fff', fontWeight: 800, fontSize: baseFont * 1.05 }}>
+              <span>TOTAL PAID {cur}</span>
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{num(data.grand_total)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Authorisation signatures */}
+        {s.showSignature && (
+          <div style={{ display: 'flex', gap: 24, marginTop: 36 }}>
+            {['Prepared By', 'Approved By', 'Received By'].map(role => (
+              <div key={role} style={{ flex: 1 }}>
+                <div style={{ borderTop: `1px solid ${C.hairline}`, paddingTop: 6, fontSize: baseFont * 0.8, color: C.secondary }}>{role}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </>
+    );
+  }
+
   // ── Page ──────────────────────────────────────────────────────────────────
   return (
     <div style={{
@@ -285,6 +353,7 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
         )}
       </div>
 
+      {isPayment ? <PaymentBody /> : <>
       <div style={{ marginTop: 18 }}>
         <div style={labelStyle}>Line Items</div>
         <ItemsTable />
@@ -337,6 +406,7 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
           </div>
         )}
       </div>
+      </>}
 
       {/* Footer strip */}
       {s.showFooter && (s.footerEn || s.footerAr) && (

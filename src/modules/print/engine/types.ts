@@ -28,6 +28,8 @@ export type PrintDocumentType =
   | 'delivery_note'
   | 'purchase_order'
   | 'purchase_invoice'
+  | 'payment_receipt'
+  | 'payment_voucher'
   | 'statement';
 
 /**
