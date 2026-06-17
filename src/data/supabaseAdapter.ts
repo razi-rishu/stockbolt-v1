@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database, Json } from '@/types/database';
+import { normalizeSettings, DEFAULT_TEMPLATE_SETTINGS } from '@/modules/print/engine/types';
 import type {
   DataAdapter, Company, Profile,
   CoaRow, CoaInsert, TaxRateInsert, PaymentMethodInsert, UnitInsert,
@@ -181,6 +182,95 @@ export function createSupabaseAdapter(
         assertNoError(error, 'companies.savePrintConfig');
       },
     },
+
+    // ── Print Templates (Phase 15) ───────────────────────────────────────────
+    // The print_templates / print_template_defaults tables are added by the
+    // Phase 15 migration and may not be in the generated Database types until
+    // they're regenerated — so we access them through an untyped client handle.
+    printTemplates: (() => {
+      const db = client as unknown as SupabaseClient;
+      type Row = import('./adapter').PrintTemplate;
+
+      const map = (r: Record<string, unknown>): Row =>
+        ({ ...r, settings: normalizeSettings(r.settings) }) as unknown as Row;
+
+      const fallback = (company_id: string): Row => ({
+        id: '', company_id, name: 'Default Template', template_style: 'classic',
+        primary_color: '#0F172A', secondary_color: '#475569', accent_color: '#F5C242', text_color: '#0F172A',
+        font_family: 'Inter', font_size: 'medium', logo_position: 'left', logo_size: 'medium',
+        is_default: true, settings: DEFAULT_TEMPLATE_SETTINGS,
+      });
+
+      return {
+        async list(company_id: string): Promise<Row[]> {
+          const { data, error } = await db.from('print_templates')
+            .select('*').eq('company_id', company_id)
+            .order('is_default', { ascending: false }).order('created_at', { ascending: true });
+          assertNoError(error, 'printTemplates.list');
+          return (data ?? []).map(map);
+        },
+
+        async getResolved(company_id: string, documentType): Promise<Row> {
+          // 1) per-doc-type default
+          const { data: def } = await db.from('print_template_defaults')
+            .select('template_id').eq('company_id', company_id).eq('document_type', documentType).maybeSingle();
+          if (def?.template_id) {
+            const { data: t } = await db.from('print_templates').select('*').eq('id', def.template_id).maybeSingle();
+            if (t) return map(t);
+          }
+          // 2) company-wide default
+          const { data: d } = await db.from('print_templates')
+            .select('*').eq('company_id', company_id).eq('is_default', true).maybeSingle();
+          if (d) return map(d);
+          // 3) synthesized classic fallback (table empty / migration not yet run)
+          return fallback(company_id);
+        },
+
+        async create(company_id: string, template): Promise<Row> {
+          const insert = { ...template, company_id, settings: normalizeSettings(template.settings) };
+          const { data, error } = await db.from('print_templates').insert(insert).select('*').single();
+          assertNoError(error, 'printTemplates.create');
+          return map(data);
+        },
+
+        async update(id: string, patch): Promise<Row> {
+          const body = patch.settings ? { ...patch, settings: normalizeSettings(patch.settings) } : patch;
+          const { data, error } = await db.from('print_templates').update(body).eq('id', id).select('*').single();
+          assertNoError(error, 'printTemplates.update');
+          return map(data);
+        },
+
+        async duplicate(id: string, newName: string): Promise<Row> {
+          const { data: src, error: e1 } = await db.from('print_templates').select('*').eq('id', id).single();
+          assertNoError(e1, 'printTemplates.duplicate.read');
+          const { id: _id, created_at: _c, updated_at: _u, ...rest } = src as Record<string, unknown>;
+          const { data, error } = await db.from('print_templates')
+            .insert({ ...rest, name: newName, is_default: false }).select('*').single();
+          assertNoError(error, 'printTemplates.duplicate');
+          return map(data);
+        },
+
+        async remove(id: string): Promise<void> {
+          const { error } = await db.from('print_templates').delete().eq('id', id);
+          assertNoError(error, 'printTemplates.remove');
+        },
+
+        async setDefault(company_id: string, id: string): Promise<void> {
+          // Clear the existing default first (partial unique index allows only one).
+          const { error: e1 } = await db.from('print_templates')
+            .update({ is_default: false }).eq('company_id', company_id).eq('is_default', true);
+          assertNoError(e1, 'printTemplates.setDefault.clear');
+          const { error: e2 } = await db.from('print_templates').update({ is_default: true }).eq('id', id);
+          assertNoError(e2, 'printTemplates.setDefault.set');
+        },
+
+        async setDocTypeDefault(company_id: string, documentType, id: string): Promise<void> {
+          const { error } = await db.from('print_template_defaults')
+            .upsert({ company_id, document_type: documentType, template_id: id }, { onConflict: 'company_id,document_type' });
+          assertNoError(error, 'printTemplates.setDocTypeDefault');
+        },
+      };
+    })(),
 
     // ── Profiles ───────────────────────────────────────────────────────────
     profiles: {

@@ -23,7 +23,13 @@ import type {
   PrintConfig,
 } from '@/data/adapter';
 
-import { InvoiceClassicTemplate }     from './templates/invoice-classic';
+import { ConfigurableDocTemplate }    from './engine/ConfigurableDocTemplate';
+import type { PrintTemplate, PrintDocumentType } from './engine/types';
+import {
+  invoiceToDocumentData, quoteToDocumentData, creditNoteToDocumentData,
+  debitNoteToDocumentData, purchaseOrderToDocumentData, vendorBillToDocumentData,
+} from './_signature/adapters';
+import { InvoiceClassicTemplate }      from './templates/invoice-classic';
 import { InvoiceBilingualTemplate }   from './templates/invoice-bilingual';
 import { InvoiceThermalTemplate }     from './templates/invoice-thermal';
 import { QuoteClassicTemplate }       from './templates/quote-classic';
@@ -40,6 +46,21 @@ export interface PrintDocProps {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+// Map the URL docType to the print-template document_type key. Statements are
+// a running-balance ledger (not a line-item doc) so they keep their classic
+// template and are intentionally excluded from the configurable engine.
+function docTypeToPrintType(docType: string | undefined): PrintDocumentType | null {
+  switch (docType) {
+    case 'invoice':     return 'sales_invoice';
+    case 'quote':       return 'quotation';
+    case 'credit-note': return 'credit_note';
+    case 'debit-note':  return 'debit_note';
+    case 'po':          return 'purchase_order';
+    case 'bill':        return 'purchase_invoice';
+    default:            return null;
+  }
+}
+
 function defaultPrintConfig(): PrintConfig {
   return {
     invoice_template:     'classic',
@@ -71,6 +92,7 @@ export default function PrintPage() {
     error:   string | null;
     company:     Company | null;
     printConfig: PrintConfig;
+    printTemplate?: PrintTemplate;   // Phase 15 — resolved customizable template
     contact:     ContactRow | null;
     // per-docType payloads
     invoice?:        InvoiceRow;
@@ -110,6 +132,16 @@ export default function PrintPage() {
           ?? defaultPrintConfig();
 
         let patch: Partial<typeof state> = { company, printConfig };
+
+        // Phase 15 — resolve the customizable print template for the document
+        // type. Failure (e.g. migration not yet applied) is swallowed so the
+        // page safely falls back to the legacy classic template.
+        const printType = docTypeToPrintType(docType);
+        if (printType) {
+          try {
+            patch.printTemplate = await adapter.printTemplates.getResolved(company_id!, printType);
+          } catch { /* keep legacy classic rendering */ }
+        }
 
         if (docType === 'invoice') {
           const [inv, items] = await Promise.all([
@@ -236,6 +268,20 @@ export default function PrintPage() {
 
   if (docType === 'invoice' && state.invoice && state.invoiceItems) {
     const tpl = printConfig.invoice_template;
+    // Phase 15 — when a real saved template resolves (id present), render via
+    // the configurable engine. A synthetic fallback (id === '') means the
+    // migration hasn't run yet → keep the exact legacy rendering.
+    if (state.printTemplate?.id) {
+      const docData = invoiceToDocumentData({
+        invoice: state.invoice, items: state.invoiceItems, contact, company,
+      });
+      return (
+        <>
+          {ActionBar}
+          <ConfigurableDocTemplate data={docData} template={state.printTemplate} />
+        </>
+      );
+    }
     return (
       <>
         {ActionBar}
@@ -251,6 +297,10 @@ export default function PrintPage() {
   }
 
   if (docType === 'quote' && state.quote && state.quoteItems) {
+    if (state.printTemplate?.id) {
+      const docData = quoteToDocumentData({ quote: state.quote, items: state.quoteItems, contact, company });
+      return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
+    }
     return (
       <>
         {ActionBar}
@@ -260,6 +310,10 @@ export default function PrintPage() {
   }
 
   if (docType === 'credit-note' && state.creditNote && state.creditNoteItems) {
+    if (state.printTemplate?.id) {
+      const docData = creditNoteToDocumentData({ creditNote: state.creditNote, items: state.creditNoteItems, contact, company });
+      return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
+    }
     return (
       <>
         {ActionBar}
@@ -269,6 +323,10 @@ export default function PrintPage() {
   }
 
   if (docType === 'debit-note' && state.debitNote && state.debitNoteItems) {
+    if (state.printTemplate?.id) {
+      const docData = debitNoteToDocumentData({ debitNote: state.debitNote, items: state.debitNoteItems, supplier: contact, company });
+      return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
+    }
     return (
       <>
         {ActionBar}
@@ -278,6 +336,10 @@ export default function PrintPage() {
   }
 
   if (docType === 'po' && state.po && state.poItems) {
+    if (state.printTemplate?.id) {
+      const docData = purchaseOrderToDocumentData({ po: state.po, items: state.poItems, supplier: contact, company });
+      return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
+    }
     return (
       <>
         {ActionBar}
@@ -287,6 +349,10 @@ export default function PrintPage() {
   }
 
   if (docType === 'bill' && state.bill && state.billItems) {
+    if (state.printTemplate?.id) {
+      const docData = vendorBillToDocumentData({ bill: state.bill, items: state.billItems, supplier: contact, company });
+      return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
+    }
     return (
       <>
         {ActionBar}

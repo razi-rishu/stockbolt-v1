@@ -95,6 +95,29 @@ export interface CompaniesAPI {
   savePrintConfig(company_id: string, config: PrintConfig): Promise<void>;
 }
 
+// ── Print Templates API (Phase 15 — customizable print engine) ─────────────────
+// PrintTemplate / settings types live in the print engine; imported type-only.
+export type {
+  PrintTemplate, TemplateSettings, PrintDocumentType,
+} from '@/modules/print/engine/types';
+import type { PrintTemplate as PrintTemplateRow, PrintDocumentType as PrintDocType } from '@/modules/print/engine/types';
+
+export interface PrintTemplatesAPI {
+  /** All saved templates for a company (default first). */
+  list(company_id: string): Promise<PrintTemplateRow[]>;
+  /** Resolve the template to use for a doc type: per-doc default → global
+   *  default → a synthesized classic fallback (never throws / never null). */
+  getResolved(company_id: string, documentType: PrintDocType): Promise<PrintTemplateRow>;
+  create(company_id: string, template: Partial<PrintTemplateRow> & { name: string }): Promise<PrintTemplateRow>;
+  update(id: string, patch: Partial<PrintTemplateRow>): Promise<PrintTemplateRow>;
+  duplicate(id: string, newName: string): Promise<PrintTemplateRow>;
+  remove(id: string): Promise<void>;
+  /** Make this template the company-wide default (clears any previous default). */
+  setDefault(company_id: string, id: string): Promise<void>;
+  /** Pin a template as the default for a specific document type. */
+  setDocTypeDefault(company_id: string, documentType: PrintDocType, id: string): Promise<void>;
+}
+
 // ── Profiles API ──────────────────────────────────────────────────────────────
 export interface ProfilesAPI {
   getCurrent(): Promise<Profile | null>;
@@ -1754,6 +1777,7 @@ export interface PDCChequesAPI {
 export interface DataAdapter {
   auth: AuthAPI;
   companies: CompaniesAPI;
+  printTemplates: PrintTemplatesAPI;
   profiles: ProfilesAPI;
   onboarding: OnboardingAPI;
   // Phase 2

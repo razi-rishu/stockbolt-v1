@@ -27,6 +27,16 @@ export function createSelfHostedAdapter(): DataAdapter {
       getPrintConfig: () => notImplemented('companies.getPrintConfig'),
       savePrintConfig: () => notImplemented('companies.savePrintConfig'),
     },
+    printTemplates: {
+      list: () => notImplemented('printTemplates.list'),
+      getResolved: () => notImplemented('printTemplates.getResolved'),
+      create: () => notImplemented('printTemplates.create'),
+      update: () => notImplemented('printTemplates.update'),
+      duplicate: () => notImplemented('printTemplates.duplicate'),
+      remove: () => notImplemented('printTemplates.remove'),
+      setDefault: () => notImplemented('printTemplates.setDefault'),
+      setDocTypeDefault: () => notImplemented('printTemplates.setDocTypeDefault'),
+    },
     profiles: {
       getCurrent: () => notImplemented('profiles.getCurrent'),
     },
