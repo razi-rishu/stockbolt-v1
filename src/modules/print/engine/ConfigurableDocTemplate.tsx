@@ -334,8 +334,10 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
   }
 
   // ── Page ──────────────────────────────────────────────────────────────────
+  // `signature-page` class drives print isolation (see _signature/print.css):
+  // on print, everything is hidden except this subtree, anchored to paper 0,0.
   return (
-    <div style={{
+    <div className="signature-page" style={{
       position: 'relative', width: '210mm', minHeight: '297mm', background: C.paper,
       fontFamily: fontStack, fontSize: baseFont, color: C.text,
       padding: '16mm 16mm 16mm', boxSizing: 'border-box',
