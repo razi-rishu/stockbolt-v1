@@ -48,6 +48,17 @@ export function getTaxLabels(country?: string | null): { taxName: string; regist
 }
 
 /**
+ * Convert a transaction-currency amount to the company base currency
+ * (Phase 17). base = amount × rate, rounded to 2 dp. The canonical rule the
+ * posting engine will use so the GL is always stated in base currency.
+ */
+export function convertToBase(amount: number | string | null | undefined, rate: number | string | null | undefined): number {
+  const a = Number(amount) || 0;
+  const r = Number(rate) || 1;
+  return Math.round(a * r * 100) / 100;
+}
+
+/**
  * Dynamic label for the geographic-region field per country (Phase 16):
  * UAE → "Emirate", India → "State", everything else → "Region".
  */

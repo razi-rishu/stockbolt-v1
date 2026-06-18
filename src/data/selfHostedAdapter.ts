@@ -43,6 +43,12 @@ export function createSelfHostedAdapter(): DataAdapter {
       listRegions: () => notImplemented('geography.listRegions'),
       createRegion: () => notImplemented('geography.createRegion'),
     },
+    exchangeRates: {
+      list: () => notImplemented('exchangeRates.list'),
+      upsert: () => notImplemented('exchangeRates.upsert'),
+      remove: () => notImplemented('exchangeRates.remove'),
+      getRate: () => notImplemented('exchangeRates.getRate'),
+    },
     profiles: {
       getCurrent: () => notImplemented('profiles.getCurrent'),
     },

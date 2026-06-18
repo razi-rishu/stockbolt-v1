@@ -315,8 +315,9 @@ export default function CompanySettingsPage() {
         <p className="mt-1 text-xs text-ink-tertiary">{t('settings.company.finance_hint')}</p>
         <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
           <div>
-            <p className="text-xs text-ink-tertiary">{t('settings.company.currency')}</p>
-            <p className="mt-0.5 font-medium text-ink-primary">{company?.currency ?? '—'}</p>
+            <p className="text-xs text-ink-tertiary">Base Currency</p>
+            <p className="mt-0.5 font-medium text-ink-primary">{(company as { base_currency?: string } | null)?.base_currency ?? company?.currency ?? '—'}</p>
+            <p className="mt-0.5 text-[11px] text-ink-tertiary">All accounting reports are stated in this currency.</p>
           </div>
           <div>
             <p className="text-xs text-ink-tertiary">{t('settings.company.country')}</p>

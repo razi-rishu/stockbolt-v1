@@ -651,6 +651,41 @@ export function createSupabaseAdapter(
       };
     })(),
 
+    // ── Exchange rates (Phase 17) — untyped handle until generated types refresh ──
+    exchangeRates: (() => {
+      const db = client as unknown as SupabaseClient;
+      type Rate = import('./adapter').ExchangeRate;
+      return {
+        async list(company_id: string): Promise<Rate[]> {
+          const { data, error } = await db.from('exchange_rates')
+            .select('*').eq('company_id', company_id)
+            .order('effective_date', { ascending: false });
+          assertNoError(error, 'exchangeRates.list');
+          return (data ?? []) as Rate[];
+        },
+        async upsert(company_id: string, input): Promise<Rate> {
+          const { data, error } = await db.from('exchange_rates')
+            .upsert({ company_id, ...input }, { onConflict: 'company_id,from_currency,to_currency,effective_date' })
+            .select('*').single();
+          assertNoError(error, 'exchangeRates.upsert');
+          return data as Rate;
+        },
+        async remove(id: string): Promise<void> {
+          const { error } = await db.from('exchange_rates').delete().eq('id', id);
+          assertNoError(error, 'exchangeRates.remove');
+        },
+        async getRate(company_id: string, from: string, to: string, onDate: string): Promise<number> {
+          if (from === to) return 1;
+          const { data } = await db.from('exchange_rates')
+            .select('exchange_rate')
+            .eq('company_id', company_id).eq('from_currency', from).eq('to_currency', to)
+            .lte('effective_date', onDate)
+            .order('effective_date', { ascending: false }).limit(1).maybeSingle();
+          return data?.exchange_rate ? Number(data.exchange_rate) : 1;
+        },
+      };
+    })(),
+
     contacts: {
       async list(company_id, type = null): Promise<ContactRow[]> {
         let q = client.from('contacts').select('*').eq('company_id', company_id);

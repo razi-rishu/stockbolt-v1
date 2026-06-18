@@ -33,6 +33,7 @@ const UnitsPage          = lazy(() => import('@/modules/settings/units-of-measur
 const PriceLevelsPage    = lazy(() => import('@/modules/settings/price-levels'));
 const BankAccountsPage   = lazy(() => import('@/modules/settings/bank-accounts'));
 const TaxRatesPage       = lazy(() => import('@/modules/settings/tax-rates'));
+const ExchangeRatesPage  = lazy(() => import('@/modules/settings/exchange-rates'));
 const OpeningBalancesPage = lazy(() => import('@/modules/settings/opening-balances'));
 const DocumentNumberingPage = lazy(() => import('@/modules/settings/document-numbering'));
 const ImportExportPage    = lazy(() => import('@/modules/settings/import-export'));
@@ -226,6 +227,7 @@ function AppRoutes() {
               <Route path="/settings/price-levels"    element={<PriceLevelsPage />} />
               <Route path="/settings/bank-accounts"     element={<BankAccountsPage />} />
               <Route path="/settings/tax-rates"         element={<TaxRatesPage />} />
+              <Route path="/settings/exchange-rates"    element={<ExchangeRatesPage />} />
               <Route path="/settings/opening-balances"  element={<OpeningBalancesPage />} />
               <Route path="/settings/numbering"         element={<DocumentNumberingPage />} />
               <Route path="/settings/import-export"     element={<ImportExportPage />} />

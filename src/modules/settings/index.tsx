@@ -179,6 +179,7 @@ export default function SettingsHubPage() {
       tiles: [
         { to: '/settings/salespeople', icon: '👤', title: 'Salespeople',      desc: 'Master list tagged on invoices/quotes for commission reports.', count: salespeople.length },
         { to: '/settings/tax-rates',   icon: '📊', title: 'Tax Rates',         desc: 'VAT % rates (UAE 5%, zero-rated, exempt) used on lines.',      count: taxRates.length },
+        { to: '/settings/exchange-rates', icon: '💱', title: 'Exchange Rates',  desc: 'Manual currency rates used to convert foreign documents to your base currency.' },
         { to: '/settings/numbering',   icon: '🔢', title: 'Document Numbering', desc: 'Format, padding and next-number for every document type.' },
       ],
     },

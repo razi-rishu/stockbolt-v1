@@ -316,6 +316,24 @@ export interface GeographyAPI {
   createRegion(company_id: string, input: { country_code: string; region_name: string; region_type?: string }): Promise<GeographicRegion>;
 }
 
+// ── Exchange Rates API (Phase 17 — multi-currency foundation) ──────────────
+export interface ExchangeRate {
+  id:            string;
+  company_id:    string;
+  from_currency: string;
+  to_currency:   string;
+  exchange_rate: number;
+  effective_date: string;
+  created_at?:   string;
+}
+export interface ExchangeRatesAPI {
+  list(company_id: string): Promise<ExchangeRate[]>;
+  upsert(company_id: string, input: { from_currency: string; to_currency: string; exchange_rate: number; effective_date: string }): Promise<ExchangeRate>;
+  remove(id: string): Promise<void>;
+  /** Latest rate from→to effective on/before `onDate`; 1 when from===to or none. */
+  getRate(company_id: string, from: string, to: string, onDate: string): Promise<number>;
+}
+
 export interface ContactsAPI {
   list(company_id: string, type?: 'customer' | 'supplier' | 'both' | null): Promise<ContactRow[]>;
   getById(id: string): Promise<ContactRow | null>;
@@ -1817,6 +1835,7 @@ export interface DataAdapter {
   products: ProductsAPI;
   contacts: ContactsAPI;
   geography: GeographyAPI;
+  exchangeRates: ExchangeRatesAPI;
   priceLevels: PriceLevelsAPI;
   // Phase 3
   coa: CoaAPI;
