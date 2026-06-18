@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useShortcutAction } from '@/keyboard/use-shortcut-action';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
@@ -453,6 +454,11 @@ export default function VendorBillEditorPage() {
   });
 
   const canEdit = isNew || existing?.status === 'draft';
+
+  // Global keyboard actions (Phase 1) — Ctrl+S / Ctrl+Enter save, Ctrl+P print.
+  useShortcutAction('save', () => { setError(null); saveMutation.mutate(); }, canEdit && !saveMutation.isPending);
+  useShortcutAction('print', () => window.print(), !isNew && !!existing?.id);
+
   // supplierOpts removed — supplier picker uses ContactPicker (D3).
   const productOpts = products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }));
   const taxOpts = [

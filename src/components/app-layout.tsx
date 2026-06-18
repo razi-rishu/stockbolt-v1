@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth';
 import { getAdapter } from '@/data/index';
 import { LanguageToggle } from '@/components/language-toggle';
+import { CommandPaletteTrigger } from '@/keyboard/CommandPaletteTrigger';
 import { NotificationsBell } from '@/components/notifications-bell';
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -719,7 +720,8 @@ export function AppLayout({ children }: AppLayoutProps) {
         </nav>
 
         {/* Right tools */}
-        <div className="ms-auto flex items-center gap-1">
+        <div className="ms-auto flex items-center gap-2">
+          <CommandPaletteTrigger />
           <LanguageToggle variant="dark" />
           <NotificationsBell />
           <SettingsMenu />

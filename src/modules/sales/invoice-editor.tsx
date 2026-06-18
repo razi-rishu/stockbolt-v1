@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useShortcutAction } from '@/keyboard/use-shortcut-action';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
@@ -504,6 +505,10 @@ export default function InvoiceEditorPage() {
   const canEdit = isNew || status === 'draft' || editMode;
   const isConfirmed = status === 'confirmed';
   const isVoid = status === 'void';
+
+  // Global keyboard actions (Phase 1) — Ctrl+S / Ctrl+Enter save, Ctrl+P print.
+  useShortcutAction('save', () => { setError(null); saveMutation.mutate(); }, canEdit && !saveMutation.isPending);
+  useShortcutAction('print', () => window.print(), !!existing?.id);
 
   // ── Contact / warehouse options ──────────────────────────────────────────
   // SearchableSelect owns its own placeholder, so option lists don't include

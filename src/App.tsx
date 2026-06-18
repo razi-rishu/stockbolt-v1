@@ -4,6 +4,7 @@ import { useAuthInit } from '@/hooks/use-auth-init';
 import { useAuthStore } from '@/store/auth';
 import { RequireAuth } from '@/components/require-auth';
 import { RequireOnboarded } from '@/components/require-onboarded';
+import { KeyboardShortcutProvider } from '@/keyboard/shortcut-registry';
 import { RequireNotOnboarded } from '@/components/require-not-onboarded';
 import { AppLayout } from '@/components/app-layout';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -165,7 +166,11 @@ function Loading() {
 }
 
 function WithAppLayout() {
-  return <AppLayout><Outlet /></AppLayout>;
+  return (
+    <KeyboardShortcutProvider>
+      <AppLayout><Outlet /></AppLayout>
+    </KeyboardShortcutProvider>
+  );
 }
 
 /**
