@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Modal } from '@/ui/modal';
 import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
@@ -7,6 +7,18 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import type { ContactInsert } from '@/data/adapter';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
+import { getRegionLabel } from '@/lib/locale';
+
+// Countries StockBolt localises for (GCC + India). Phase 16.
+const COUNTRIES: { code: string; label: string }[] = [
+  { code: 'AE', label: 'United Arab Emirates' },
+  { code: 'SA', label: 'Saudi Arabia' },
+  { code: 'QA', label: 'Qatar' },
+  { code: 'OM', label: 'Oman' },
+  { code: 'BH', label: 'Bahrain' },
+  { code: 'KW', label: 'Kuwait' },
+  { code: 'IN', label: 'India' },
+];
 
 /**
  * ContactQuickCreate — modal popup for creating a customer or supplier
@@ -52,6 +64,39 @@ export function ContactQuickCreate({
   const [creditLimit, setCreditLimit] = useState('0');
   const [error, setError]             = useState<string | null>(null);
 
+  // Phase 16 — geography: Country → Region dependent dropdowns.
+  const [country, setCountry]   = useState('');
+  const [regionId, setRegionId] = useState('');
+
+  // Default the country to the company's country once known.
+  const { data: company } = useQuery({
+    queryKey: ['company', company_id],
+    queryFn: () => getAdapter().companies.getById(company_id!),
+    enabled: !!company_id,
+  });
+  useEffect(() => {
+    const cc = (company as { country_code?: string } | null)?.country_code;
+    if (cc && !country) setCountry(cc);
+  }, [company, country]);
+
+  const { data: regions = [], refetch: refetchRegions } = useQuery({
+    queryKey: ['regions', company_id, country],
+    queryFn: () => getAdapter().geography.listRegions(company_id!, country),
+    enabled: !!company_id && !!country,
+  });
+
+  async function handleRegionChange(value: string) {
+    if (value === '__new__') {
+      const name = window.prompt(`New ${getRegionLabel(country)} name:`);
+      if (!name?.trim() || !company_id) return;
+      const created = await getAdapter().geography.createRegion(company_id, { country_code: country, region_name: name.trim() });
+      await refetchRegions();
+      setRegionId(created.id);
+    } else {
+      setRegionId(value);
+    }
+  }
+
   // Reset when the initial name prop changes (different search query)
   useState(() => { if (initialName !== undefined) setName(initialName); });
 
@@ -74,6 +119,10 @@ export function ContactQuickCreate({
         address_street: address.trim() || null,
         credit_limit: limit,
         currency:     companyCurrency, // Phase 14.14m — company's base currency, editable on detail page
+        // Phase 16 — structured geography
+        country_code: country || null,
+        region_id:    regionId || null,
+        address_country: country || null,
       } as unknown as ContactInsert;
 
       return getAdapter().contacts.create(row);
@@ -84,6 +133,7 @@ export function ContactQuickCreate({
       // Reset for the next open
       setName(''); setPhone(''); setEmail('');
       setTaxRegistered(false); setTaxId(''); setAddress(''); setCreditLimit('0');
+      setRegionId('');
       setError(null);
     },
     onError: (e: Error) => setError(e.message),
@@ -160,6 +210,32 @@ export function ContactQuickCreate({
               value={address}
               onChange={e => setAddress(e.target.value)}
             />
+          </div>
+
+          {/* Phase 16 — geography */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-ink-secondary">Country</label>
+            <select
+              className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-2 text-sm text-ink-primary focus:outline-none focus:ring-1 focus:ring-brand-500"
+              value={country}
+              onChange={e => { setCountry(e.target.value); setRegionId(''); }}
+            >
+              <option value="">Select country…</option>
+              {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-ink-secondary">{getRegionLabel(country)}</label>
+            <select
+              className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-2 text-sm text-ink-primary focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
+              value={regionId}
+              disabled={!country}
+              onChange={e => handleRegionChange(e.target.value)}
+            >
+              <option value="">{country ? `Select ${getRegionLabel(country).toLowerCase()}…` : 'Pick a country first'}</option>
+              {regions.map(r => <option key={r.id} value={r.id}>{r.region_name}{r.is_system ? '' : ' (custom)'}</option>)}
+              {country && <option value="__new__">+ Add new {getRegionLabel(country).toLowerCase()}…</option>}
+            </select>
           </div>
         </div>
 

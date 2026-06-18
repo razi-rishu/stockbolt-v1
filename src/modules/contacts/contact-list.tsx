@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
+import { getRegionLabel } from '@/lib/locale';
 import { useAuthStore } from '@/store/auth';
 import { useQuery as useCompanyQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -23,6 +24,17 @@ import { FormErrorBanner } from '@/ui/form-error-banner';
 
 const PAGE_SIZE = 50;
 
+// Phase 16 — countries StockBolt localises geography for (GCC + India).
+const GEO_COUNTRIES: { code: string; label: string }[] = [
+  { code: 'AE', label: 'United Arab Emirates' },
+  { code: 'SA', label: 'Saudi Arabia' },
+  { code: 'QA', label: 'Qatar' },
+  { code: 'OM', label: 'Oman' },
+  { code: 'BH', label: 'Bahrain' },
+  { code: 'KW', label: 'Kuwait' },
+  { code: 'IN', label: 'India' },
+];
+
 const schema = z.object({
   name:                 z.string().min(1, 'Required'),
   name_ar:              z.string(),
@@ -35,6 +47,8 @@ const schema = z.object({
   address_street:       z.string(),
   address_city:         z.string(),
   address_country:      z.string(),
+  country_code:         z.string(),   // Phase 16 — structured geography
+  region_id:            z.string(),
   contact_person_name:  z.string(),
   contact_person_phone: z.string(),
   credit_limit:         z.coerce.number().min(0),
@@ -79,15 +93,30 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
   const defaultCurrency = company?.currency ?? 'AED';
 
   const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('contact-list');
-  const { register, handleSubmit, reset, watch, formState: { errors, isSubmitting } } = useForm<FormValues>({
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
-    defaultValues: { name: '', name_ar: '', type: defaultType, email: '', phone: '', mobile: '', currency: defaultCurrency, tax_id: '', address_street: '', address_city: '', address_country: '', contact_person_name: '', contact_person_phone: '', credit_limit: 0, payment_terms_days: 0, payable_account_code: '2100', notes: '' },
+    defaultValues: { name: '', name_ar: '', type: defaultType, email: '', phone: '', mobile: '', currency: defaultCurrency, tax_id: '', address_street: '', address_city: '', address_country: '', country_code: '', region_id: '', contact_person_name: '', contact_person_phone: '', credit_limit: 0, payment_terms_days: 0, payable_account_code: '2100', notes: '' },
   });
   const watchedType = watch('type');
 
+  // Phase 16 — Country → Region dependent dropdowns.
+  const watchCountry = watch('country_code');
+  const { data: regions = [], refetch: refetchRegions } = useQuery({
+    queryKey: ['regions', company_id, watchCountry],
+    queryFn: () => getAdapter().geography.listRegions(company_id!, watchCountry),
+    enabled: !!company_id && !!watchCountry,
+  });
+  async function addRegionInline() {
+    const name = window.prompt(`New ${getRegionLabel(watchCountry)} name:`);
+    if (!name?.trim() || !company_id) return;
+    const created = await getAdapter().geography.createRegion(company_id, { country_code: watchCountry, region_name: name.trim() });
+    await refetchRegions();
+    setValue('region_id', created.id);
+  }
+
   function openAdd() {
     setEditing(null);
-    reset({ name: '', name_ar: '', type: defaultType, email: '', phone: '', mobile: '', currency: defaultCurrency, tax_id: '', address_street: '', address_city: '', address_country: '', contact_person_name: '', contact_person_phone: '', credit_limit: 0, payment_terms_days: 0, payable_account_code: '2100', notes: '' });
+    reset({ name: '', name_ar: '', type: defaultType, email: '', phone: '', mobile: '', currency: defaultCurrency, tax_id: '', address_street: '', address_city: '', address_country: '', country_code: '', region_id: '', contact_person_name: '', contact_person_phone: '', credit_limit: 0, payment_terms_days: 0, payable_account_code: '2100', notes: '' });
     setOpen(true);
   }
 
@@ -98,6 +127,8 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
       email: row.email ?? '', phone: row.phone ?? '', mobile: row.mobile ?? '',
       currency: row.currency, tax_id: row.tax_id ?? '',
       address_street: row.address_street ?? '', address_city: row.address_city ?? '', address_country: row.address_country ?? '',
+      country_code: row.country_code ?? (row.address_country && row.address_country.length === 2 ? row.address_country.toUpperCase() : ''),
+      region_id: row.region_id ?? '',
       contact_person_name: row.contact_person_name ?? '', contact_person_phone: row.contact_person_phone ?? '',
       credit_limit: row.credit_limit, payment_terms_days: row.payment_terms_days,
       payable_account_code: row.payable_account_code ?? '2100', notes: row.notes ?? '',
@@ -128,7 +159,9 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
         name: values.name, name_ar: values.name_ar || null,
         type: values.type, email: values.email || null, phone: values.phone || null, mobile: values.mobile || null,
         currency: values.currency, tax_id: values.tax_id || null,
-        address_street: values.address_street || null, address_city: values.address_city || null, address_country: values.address_country || null,
+        address_street: values.address_street || null, address_city: values.address_city || null,
+        address_country: values.country_code || values.address_country || null,
+        country_code: values.country_code || null, region_id: values.region_id || null,
         billing_address_ar: null,
         contact_person_name: values.contact_person_name || null, contact_person_phone: values.contact_person_phone || null,
         contact_person_email: null,
@@ -307,7 +340,33 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
               <Input label={t('contacts.address_street')} {...register('address_street')} />
               <Input label={t('contacts.address_city')} {...register('address_city')} />
             </div>
-            <Input label={t('contacts.address_country')} className="mt-4" {...register('address_country')} />
+            {/* Phase 16 — structured Country → Region for geographic sales analysis */}
+            <div className="mt-4 grid grid-cols-2 gap-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-ink-secondary">Country</label>
+                <select
+                  className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-2 text-sm text-ink-primary focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  {...register('country_code')}
+                  onChange={(e) => { setValue('country_code', e.target.value); setValue('region_id', ''); }}
+                >
+                  <option value="">Select country…</option>
+                  {GEO_COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-ink-secondary">{getRegionLabel(watchCountry)}</label>
+                <select
+                  className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-2 text-sm text-ink-primary focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
+                  value={watch('region_id')}
+                  disabled={!watchCountry}
+                  onChange={(e) => { if (e.target.value === '__new__') addRegionInline(); else setValue('region_id', e.target.value); }}
+                >
+                  <option value="">{watchCountry ? `Select ${getRegionLabel(watchCountry).toLowerCase()}…` : 'Pick a country first'}</option>
+                  {regions.map(r => <option key={r.id} value={r.id}>{r.region_name}{r.is_system ? '' : ' (custom)'}</option>)}
+                  {watchCountry && <option value="__new__">+ Add new {getRegionLabel(watchCountry).toLowerCase()}…</option>}
+                </select>
+              </div>
+            </div>
           </div>
 
           <div className="border-t border-border-subtle pt-3">

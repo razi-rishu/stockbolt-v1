@@ -47,6 +47,18 @@ export function getTaxLabels(country?: string | null): { taxName: string; regist
   }
 }
 
+/**
+ * Dynamic label for the geographic-region field per country (Phase 16):
+ * UAE → "Emirate", India → "State", everything else → "Region".
+ */
+export function getRegionLabel(country?: string | null): string {
+  switch ((country ?? '').toUpperCase()) {
+    case 'AE': return 'Emirate';
+    case 'IN': return 'State';
+    default:   return 'Region';
+  }
+}
+
 /** Default tax rate (%) for a country — used only to pre-fill new setups. */
 export function defaultTaxRate(country?: string | null): number {
   return (country ?? '').toUpperCase() === 'IN' ? 18 : 5;

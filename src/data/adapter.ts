@@ -20,7 +20,14 @@ export type VehicleModelRow = Tables['vehicle_models']['Row'];
 export type ProductRow = Tables['products']['Row'];
 export type ProductCompatibilityRow = Tables['product_compatibility']['Row'];
 export type ProductSupplierCodeRow = Tables['product_supplier_codes']['Row'];
-export type ContactRow = Tables['contacts']['Row'];
+// Phase 16 — structured geography. These columns are added by migration but
+// may not be in the generated Database types yet, so we intersect them on.
+export interface ContactGeoFields {
+  country_code?: string | null;
+  region_id?:    string | null;
+  area_id?:      string | null;
+}
+export type ContactRow = Tables['contacts']['Row'] & ContactGeoFields;
 export type PriceLevelRow = Tables['price_levels']['Row'];
 export type ProductPriceLevelRow = Tables['product_price_levels']['Row'];
 
@@ -45,8 +52,8 @@ export type ProductInsert = Omit<Tables['products']['Insert'], 'id' | 'created_a
 export type ProductUpdate = Tables['products']['Update'];
 export type ProductCompatibilityInsert = Omit<Tables['product_compatibility']['Insert'], 'id' | 'created_at'>;
 export type ProductSupplierCodeInsert = Omit<Tables['product_supplier_codes']['Insert'], 'id' | 'created_at' | 'updated_at'>;
-export type ContactInsert = Omit<Tables['contacts']['Insert'], 'id' | 'created_at' | 'updated_at'>;
-export type ContactUpdate = Tables['contacts']['Update'];
+export type ContactInsert = Omit<Tables['contacts']['Insert'], 'id' | 'created_at' | 'updated_at'> & ContactGeoFields;
+export type ContactUpdate = Tables['contacts']['Update'] & ContactGeoFields;
 export type PriceLevelInsert = Omit<Tables['price_levels']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type PriceLevelUpdate = Tables['price_levels']['Update'];
 export type ProductPriceLevelInsert = Omit<Tables['product_price_levels']['Insert'], 'id' | 'created_at'>;
@@ -290,6 +297,23 @@ export interface ProductsAPI {
   listPriceOverrides(product_id: string): Promise<ProductPriceLevelRow[]>;
   upsertPriceOverride(row: ProductPriceLevelInsert): Promise<void>;
   removePriceOverride(id: string): Promise<void>;
+}
+
+// ── Geography API (Phase 16 — regions for sales analysis) ──────────────────
+export interface GeographicRegion {
+  id:           string;
+  company_id:   string | null;   // null = system row, visible to all tenants
+  country_code: string;
+  region_name:  string;
+  region_type:  string;
+  is_system:    boolean;
+  is_active:    boolean;
+}
+export interface GeographyAPI {
+  /** System + this company's regions for a country (active only, name-sorted). */
+  listRegions(company_id: string, country_code: string): Promise<GeographicRegion[]>;
+  /** Create a tenant region (is_system=false). */
+  createRegion(company_id: string, input: { country_code: string; region_name: string; region_type?: string }): Promise<GeographicRegion>;
 }
 
 export interface ContactsAPI {
@@ -1792,6 +1816,7 @@ export interface DataAdapter {
   vehicleMakes: VehicleMakesAPI;
   products: ProductsAPI;
   contacts: ContactsAPI;
+  geography: GeographyAPI;
   priceLevels: PriceLevelsAPI;
   // Phase 3
   coa: CoaAPI;

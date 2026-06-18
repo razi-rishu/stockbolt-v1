@@ -620,6 +620,37 @@ export function createSupabaseAdapter(
     },
 
     // ── Phase 2: Contacts ──────────────────────────────────────────────────
+    // ── Geography (Phase 16) — untyped handle until generated types refresh ──
+    geography: (() => {
+      const db = client as unknown as SupabaseClient;
+      type Region = import('./adapter').GeographicRegion;
+      return {
+        async listRegions(company_id: string, country_code: string): Promise<Region[]> {
+          const { data, error } = await db.from('geographic_regions')
+            .select('*')
+            .eq('country_code', country_code)
+            .eq('is_active', true)
+            .or(`company_id.is.null,company_id.eq.${company_id}`)
+            .order('region_name', { ascending: true });
+          assertNoError(error, 'geography.listRegions');
+          return (data ?? []) as Region[];
+        },
+        async createRegion(company_id: string, input): Promise<Region> {
+          const { data, error } = await db.from('geographic_regions')
+            .insert({
+              company_id,
+              country_code: input.country_code,
+              region_name:  input.region_name,
+              region_type:  input.region_type ?? 'region',
+              is_system:    false,
+            })
+            .select('*').single();
+          assertNoError(error, 'geography.createRegion');
+          return data as Region;
+        },
+      };
+    })(),
+
     contacts: {
       async list(company_id, type = null): Promise<ContactRow[]> {
         let q = client.from('contacts').select('*').eq('company_id', company_id);
@@ -634,12 +665,14 @@ export function createSupabaseAdapter(
         return data;
       },
       async create(row: ContactInsert): Promise<ContactRow> {
-        const { data, error } = await client.from('contacts').insert(row).select().single();
+        // country_code/region_id/area_id exist in the DB (Phase 16) but may not
+        // be in the generated Insert type yet — cast through the row shape.
+        const { data, error } = await client.from('contacts').insert(row as Database['public']['Tables']['contacts']['Insert']).select().single();
         assertNoError(error, 'contacts.create');
         return data!;
       },
       async update(id, row: ContactUpdate) {
-        const { error } = await client.from('contacts').update(row).eq('id', id);
+        const { error } = await client.from('contacts').update(row as Database['public']['Tables']['contacts']['Update']).eq('id', id);
         assertNoError(error, 'contacts.update');
       },
       async remove(id) {
