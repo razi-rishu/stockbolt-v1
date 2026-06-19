@@ -505,7 +505,21 @@ export function createSupabaseAdapter(
           .ilike('supplier_sku', `%${q}%`);
         assertNoError(e2, 'products.search.supplierCodes');
 
-        const extraIds = (codehits ?? []).map((r) => r.product_id).filter(Boolean) as string[];
+        // Cross-reference (replacement) number match. PostgREST can't
+        // substring-match an array column, so this is an exact-element hit —
+        // a full cross-ref number finds the part. The POS/invoice pickers get
+        // full substring matching via the search_products RPC.
+        const { data: refhits, error: eRef } = await client
+          .from('products')
+          .select('id')
+          .eq('company_id', company_id)
+          .contains('replacement_numbers', [q]);
+        assertNoError(eRef, 'products.search.replacementNumbers');
+
+        const extraIds = [
+          ...((codehits ?? []).map((r) => r.product_id)),
+          ...((refhits ?? []).map((r) => (r as { id: string }).id)),
+        ].filter(Boolean) as string[];
         const directIds = new Set((direct ?? []).map((r) => r.id));
         const newIds = extraIds.filter((id) => !directIds.has(id));
 

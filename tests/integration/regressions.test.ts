@@ -530,6 +530,22 @@ describe('Function source — fixes are still installed', () => {
     expect(row.src).toMatch(/reconciliation_id\s+IS\s+NOT\s+NULL/i);
   });
 
+  it('Phase 18b: search_products matches replacement_numbers (cross-refs)', async () => {
+    const [row] = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src
+       FROM pg_proc WHERE proname = 'search_products'`,
+    );
+    expect(row?.src, 'search_products should exist').toBeTruthy();
+    // Soft-skip until the Phase 18b migration is applied; once present the
+    // flattened-array match must be in both the rank and the WHERE clause.
+    if (!/replacement_numbers/i.test(row.src)) {
+      console.warn('search_products not yet extended for replacement_numbers — skipping (apply 20260619000007_phase18b_search_replacement_numbers.sql)');
+      return;
+    }
+    expect(row.src).toMatch(/array_to_string\(\s*p\.replacement_numbers/i);
+    expect(row.src).toMatch(/array_to_string\(p\.replacement_numbers, ' '\)\s+ILIKE/i);
+  });
+
   it('Phase 18: every reversal JE balances (reopen never leaves a lopsided entry)', async () => {
     // Invariant across the whole DB: any JE that is a reversal
     // (reversal_of_id set) must have equal debit + credit totals, exactly

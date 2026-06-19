@@ -58,6 +58,7 @@ interface WizardForm {
   category_id:         string;
   unit_id:             string;
   oe_number:           string;
+  replacement_numbers: string;
   is_excise:           boolean;
   // Step 2
   selling_price:       string;
@@ -91,7 +92,7 @@ const initialForm: WizardForm = {
   type: 'goods',
   name: '', name_ar: '', sku: '',
   brand_id: '', category_id: '', unit_id: '',
-  oe_number: '', is_excise: false,
+  oe_number: '', replacement_numbers: '', is_excise: false,
   selling_price: '', tax_category: 'standard', quality_tier: '',
   description: '', purchase_account_id: '',
   barcode: '', requires_serial: false,
@@ -184,7 +185,12 @@ export function ProductWizard() {
         description: form.description.trim() || null,
         description_ar: null,
         oe_number: form.oe_number.trim() || null,
-        replacement_numbers: null,
+        // Comma-separated cross-reference numbers → TEXT[] (matches the
+        // product Edit form). Trims blanks; null when none entered.
+        replacement_numbers: (() => {
+          const arr = form.replacement_numbers.split(',').map(s => s.trim()).filter(Boolean);
+          return arr.length ? arr : null;
+        })(),
         brand_id: form.brand_id || null,
         category_id: form.category_id || null,
         unit_id: form.unit_id || null,
@@ -569,8 +575,11 @@ function Step1({
               <QcBtn onClick={openCategoryQC} label="Add new category" />
             </div>
           </Field>
-          <Field label="OE / Replace number">
-            <Input value={form.oe_number} onChange={(e) => set('oe_number', e.target.value)} placeholder="Alternate / OEM number" />
+          <Field label="OE / OEM number">
+            <Input value={form.oe_number} onChange={(e) => set('oe_number', e.target.value)} placeholder="Original equipment number" />
+          </Field>
+          <Field label="Replacement / cross-reference numbers" hint="Separate multiple numbers with commas">
+            <Input value={form.replacement_numbers} onChange={(e) => set('replacement_numbers', e.target.value)} placeholder="e.g. 4567-AB, 9921-X, BOS-110" />
           </Field>
         </Grid>
 
