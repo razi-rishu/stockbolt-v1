@@ -2849,9 +2849,10 @@ export function createSupabaseAdapter(
         //           account), where cash-effect = (Σcredit − Σdebit) in the
         //           period (asset↑ consumes cash → −; liability/equity↑ → +).
         //
-        // CRITICAL — exclude OPENING-BALANCE entries (source_type
-        // 'opening_balance' / 'opening_gl') from the period changes in ALL
-        // three sections. Opening balances set up the books with NO cash
+        // CRITICAL — exclude OPENING-BALANCE entries (every source_type that
+        // starts with 'opening' — opening_balance / opening_gl / opening_bank /
+        // opening_stock) from the period changes in ALL three sections.
+        // Opening balances set up the books with NO cash
         // movement (Dr asset / Cr Opening Balance Equity), so counting them
         // would falsely show e.g. opening Vehicles as an Investing outflow and
         // Opening Balance Equity as a Financing inflow. Their cash leg (the
@@ -2871,7 +2872,7 @@ export function createSupabaseAdapter(
           .from('journal_entries')
           .select('id')
           .eq('company_id', company_id)
-          .in('source_type', ['opening_balance', 'opening_gl']);
+          .like('source_type', 'opening%');
         const obSet = new Set((obJes ?? []).map((j) => (j as { id: string }).id));
 
         // Actual cash (11xx, incl. cash/bank sub-accounts) up to a date.
