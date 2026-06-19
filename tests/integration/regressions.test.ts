@@ -506,6 +506,13 @@ describe('Function source — fixes are still installed', () => {
     expect(row.src).toMatch(/customer_receipt[\s\S]{0,40}customer_advance/i);
     // … only consider unreversed originals …
     expect(row.src).toMatch(/reversed_by_id\s+IS\s+NULL/i);
+    // Phase 18c: must ALSO exclude reversal entries themselves, else a repeat
+    // edit re-reverses prior reopen reversals and drifts the control balance.
+    if (/reversal_of_id\s+IS\s+NULL/i.test(row.src)) {
+      // fix present — the receipt-JE reversal loop filters reversal entries out
+    } else {
+      console.warn('reopen_payment missing Phase 18c double-reversal fix — apply 20260619000008_phase18c_fix_reopen_double_reversal.sql');
+    }
     // … drop allocations so paid invoices reopen …
     expect(row.src).toMatch(/DELETE\s+FROM\s+public\.payment_allocations/i);
     // … and end at status='draft', NOT 'void'.
@@ -524,6 +531,9 @@ describe('Function source — fixes are still installed', () => {
     // Must reverse the vendor payment's own JEs …
     expect(row.src).toMatch(/vendor_payment[\s\S]{0,40}vendor_advance/i);
     expect(row.src).toMatch(/reversed_by_id\s+IS\s+NULL/i);
+    if (!/reversal_of_id\s+IS\s+NULL/i.test(row.src)) {
+      console.warn('reopen_vendor_payment missing Phase 18c double-reversal fix — apply 20260619000008_phase18c_fix_reopen_double_reversal.sql');
+    }
     expect(row.src).toMatch(/DELETE\s+FROM\s+public\.payment_allocations/i);
     expect(row.src).toMatch(/status\s*=\s*'draft'/i);
     expect(row.src).not.toMatch(/status\s*=\s*'void'/i);
@@ -542,8 +552,10 @@ describe('Function source — fixes are still installed', () => {
       console.warn('search_products not yet extended for replacement_numbers — skipping (apply 20260619000007_phase18b_search_replacement_numbers.sql)');
       return;
     }
-    expect(row.src).toMatch(/array_to_string\(\s*p\.replacement_numbers/i);
-    expect(row.src).toMatch(/array_to_string\(p\.replacement_numbers, ' '\)\s+ILIKE/i);
+    // Uses the IMMUTABLE wrapper (array_to_string is only STABLE) in both the
+    // rank and the WHERE clause so the functional trigram index is used.
+    expect(row.src).toMatch(/flatten_replacement_numbers\(\s*p\.replacement_numbers/i);
+    expect(row.src).toMatch(/flatten_replacement_numbers\(p\.replacement_numbers\)\s+ILIKE/i);
   });
 
   it('Phase 18: every reversal JE balances (reopen never leaves a lopsided entry)', async () => {

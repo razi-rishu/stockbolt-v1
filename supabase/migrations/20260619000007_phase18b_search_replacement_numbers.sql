@@ -7,16 +7,29 @@
 -- be found by typing one of its cross-refs at POS / invoice / quote pickers.
 --
 -- This extends search_products to match + rank against the flattened
--- replacement_numbers array, and adds a trigram index on the flattened text
--- so the OR clause still uses an index at scale. array_to_string(...) is
--- IMMUTABLE, so a functional GIN trigram index is allowed.
+-- replacement_numbers array, and adds a trigram index on the flattened text.
+--
+-- NOTE: array_to_string() is only STABLE (the element output function can be
+-- non-immutable in the general case), so it CANNOT appear in an index
+-- expression. The column is TEXT[], where joining elements is genuinely
+-- immutable, so we wrap it in a small IMMUTABLE SQL function and use that
+-- SAME wrapper in both the index and the query (the planner only uses a
+-- functional index when the query expression matches it exactly).
 --
 -- Read-only / search only — no posting, GL, or inventory change. Idempotent.
 -- ─────────────────────────────────────────────────────────────────────────
 
+-- IMMUTABLE wrapper so the flattened array can be indexed + matched.
+CREATE OR REPLACE FUNCTION public.flatten_replacement_numbers(arr TEXT[])
+RETURNS TEXT
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+AS $$ SELECT array_to_string(arr, ' ') $$;
+
 -- Trigram index on the flattened cross-reference numbers.
 CREATE INDEX IF NOT EXISTS products_replacement_numbers_trgm_idx
-  ON public.products USING gin (array_to_string(replacement_numbers, ' ') gin_trgm_ops)
+  ON public.products USING gin (public.flatten_replacement_numbers(replacement_numbers) gin_trgm_ops)
   WHERE replacement_numbers IS NOT NULL;
 
 CREATE OR REPLACE FUNCTION public.search_products(
@@ -81,7 +94,7 @@ BEGIN
         similarity(p.sku,                 v_q),
         similarity(p.name,                v_q),
         similarity(COALESCE(p.oe_number,''), v_q),
-        similarity(COALESCE(array_to_string(p.replacement_numbers, ' '), ''), v_q)
+        similarity(COALESCE(public.flatten_replacement_numbers(p.replacement_numbers), ''), v_q)
       ))::REAL
     END)::REAL AS match_rank
   FROM public.products p
@@ -98,7 +111,7 @@ BEGIN
       OR p.sku       ILIKE '%' || v_q || '%'
       OR p.name      ILIKE '%' || v_q || '%'
       OR p.oe_number ILIKE '%' || v_q || '%'
-      OR array_to_string(p.replacement_numbers, ' ') ILIKE '%' || v_q || '%'
+      OR public.flatten_replacement_numbers(p.replacement_numbers) ILIKE '%' || v_q || '%'
     )
   ORDER BY 15 DESC, p.name ASC
   LIMIT v_limit;
