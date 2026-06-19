@@ -261,7 +261,26 @@
     "edit_make": "تعديل الماركة",
     "edit_model": "تعديل الطراز",
     "year_from": "من سنة",
-    "year_to": "إلى سنة"
+    "year_to": "إلى سنة",
+    "vehicles": {
+      "title": "ماركات المركبات والطرازات",
+      "makes": "الماركات",
+      "make": "الماركة",
+      "model": "الطراز",
+      "chassis": "رمز الهيكل",
+      "makes_title": "الماركات",
+      "models_for": "طرازات",
+      "select_make": "الطرازات",
+      "select_make_hint": "اختر ماركة لعرض طرازاتها.",
+      "empty_makes": "لا توجد ماركات مركبات بعد.",
+      "empty_models": "لا توجد طرازات لهذه الماركة بعد.",
+      "add_make": "إضافة ماركة",
+      "add_model": "إضافة طراز",
+      "edit_make": "تعديل الماركة",
+      "edit_model": "تعديل الطراز",
+      "make_name": "اسم الماركة",
+      "model_name": "اسم الطراز"
+    }
   },
   "products": {
     "title": "المنتجات",

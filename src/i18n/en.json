@@ -261,7 +261,26 @@
     "edit_make": "Edit Make",
     "edit_model": "Edit Model",
     "year_from": "Year from",
-    "year_to": "Year to"
+    "year_to": "Year to",
+    "vehicles": {
+      "title": "Vehicle Makes & Models",
+      "makes": "Makes",
+      "make": "Make",
+      "model": "Model",
+      "chassis": "Chassis Code",
+      "makes_title": "Makes",
+      "models_for": "Models for",
+      "select_make": "Models",
+      "select_make_hint": "Select a make to see its models.",
+      "empty_makes": "No vehicle makes yet.",
+      "empty_models": "No models for this make yet.",
+      "add_make": "Add Make",
+      "add_model": "Add Model",
+      "edit_make": "Edit Make",
+      "edit_model": "Edit Model",
+      "make_name": "Make Name",
+      "model_name": "Model Name"
+    }
   },
   "products": {
     "title": "Products",
