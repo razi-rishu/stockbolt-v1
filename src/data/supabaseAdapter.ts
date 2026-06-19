@@ -2840,22 +2840,41 @@ export function createSupabaseAdapter(
       },
 
       async getCashFlow(company_id, from, to): Promise<CashFlowStatement> {
-        // ── Indirect cash flow, rebuilt account-driven so it ALWAYS reconciles ──
-        // By double-entry, over any period:
-        //   Δcash = NetProfit + Σ(cash-effect of every non-cash balance-sheet account)
-        // where cash-effect = (Σcredit − Σdebit) for the account in the period
-        // (an asset increase consumes cash → negative; a liability/equity
-        // increase is a source → positive). We classify each balance-sheet
-        // account into Operating / Investing / Financing by its CoA type, so
-        // nothing (opening-balance equity, capital, payroll accruals, PDCs,
-        // accruals, fixed assets…) can be silently dropped — which is what
-        // broke the old hard-coded version.
+        // ── Indirect cash flow ──────────────────────────────────────────────
+        // Start with Net Profit, add back non-cash items (depreciation), then
+        // adjust for the period CHANGE in every non-cash balance-sheet account,
+        // classified Operating / Investing / Financing by its CoA type.
+        //
+        //   Δcash = NetProfit + Σ(cash-effect of every non-cash balance-sheet
+        //           account), where cash-effect = (Σcredit − Σdebit) in the
+        //           period (asset↑ consumes cash → −; liability/equity↑ → +).
+        //
+        // CRITICAL — exclude OPENING-BALANCE entries (source_type
+        // 'opening_balance' / 'opening_gl') from the period changes in ALL
+        // three sections. Opening balances set up the books with NO cash
+        // movement (Dr asset / Cr Opening Balance Equity), so counting them
+        // would falsely show e.g. opening Vehicles as an Investing outflow and
+        // Opening Balance Equity as a Financing inflow. Their cash leg (the
+        // opening balance OF cash) is folded into Opening Cash instead. This
+        // matches a normal report where opening balances precede the period;
+        // it only mattered because the first period spans the go-live date.
+        // Read-only — no posting/GL/customer data is changed.
         const pl = await this.getProfitAndLoss(company_id, from, to);
         const netProfit = pl.net_profit;
 
         const prevDay = (d: string) => { const dt = new Date(d); dt.setDate(dt.getDate() - 1); return dt.toISOString().slice(0, 10); };
 
-        // Actual cash (11xx, incl. cash/bank sub-accounts) from the GL.
+        // Opening-balance journal entries for this company (small set). Their
+        // legs are non-cash establishment entries, excluded from the period
+        // changes; their cash leg becomes part of Opening Cash.
+        const { data: obJes } = await client
+          .from('journal_entries')
+          .select('id')
+          .eq('company_id', company_id)
+          .in('source_type', ['opening_balance', 'opening_gl']);
+        const obSet = new Set((obJes ?? []).map((j) => (j as { id: string }).id));
+
+        // Actual cash (11xx, incl. cash/bank sub-accounts) up to a date.
         const cashAsOf = async (date: string) => {
           const { data } = await client
             .from('general_ledger')
@@ -2865,23 +2884,39 @@ export function createSupabaseAdapter(
             .lte('date', date);
           return (data ?? []).reduce((s, r) => s + (Number(r.debit) - Number(r.credit)), 0);
         };
-        const openingCash = await cashAsOf(prevDay(from));
+        const openingCashBase = await cashAsOf(prevDay(from));
         const closingCash = await cashAsOf(to);
 
-        // Period movement per account code.
+        // Period rows — pull journal_entry_id so we can exclude opening-balance
+        // entries and detect the opening-cash leg.
         const { data: glRows } = await client
           .from('general_ledger')
-          .select('account_code, debit, credit')
+          .select('account_code, debit, credit, journal_entry_id')
           .eq('company_id', company_id)
           .gte('date', from).lte('date', to);
+
         const move = new Map<string, { dr: number; cr: number }>();
+        // Opening balance OF cash that happens to be dated inside the period —
+        // treat it as part of Opening Cash, not as a period flow.
+        let openingCashInPeriod = 0;
         for (const r of glRows ?? []) {
           const code = (r as { account_code: string }).account_code;
+          const je   = (r as { journal_entry_id: string }).journal_entry_id;
+          const isOB = obSet.has(je);
+          const isCash = code.startsWith('11');
+          if (isOB) {
+            // Opening-balance entry: only its cash leg matters, and it belongs
+            // to Opening Cash. All other legs are dropped from the sections.
+            if (isCash) openingCashInPeriod += (Number(r.debit) || 0) - (Number(r.credit) || 0);
+            continue;
+          }
+          if (isCash) continue; // real cash movements are the RESULT, not a line
           const m = move.get(code) ?? { dr: 0, cr: 0 };
           m.dr += Number(r.debit)  || 0;
           m.cr += Number(r.credit) || 0;
           move.set(code, m);
         }
+        const openingCash = openingCashBase + openingCashInPeriod;
 
         // Classify each account by its CoA type/sub_type (fallback to prefix).
         // NOTE: query directly — `this` here is the `reports` sub-object, which
@@ -2894,7 +2929,10 @@ export function createSupabaseAdapter(
         type Bucket = 'cash' | 'pl' | 'operating' | 'investing' | 'financing';
         const classify = (code: string): Bucket => {
           if (code.startsWith('11')) return 'cash';
-          const a = byCode.get(code) as ({ type?: string; sub_type?: string } | undefined);
+          const a = byCode.get(code) as ({ type?: string; sub_type?: string; name?: string } | undefined);
+          // Accumulated depreciation / amortization is a NON-CASH add-back and
+          // belongs in Operating, not Investing (where the fixed asset sits).
+          if (a?.name && /deprecia|amorti/i.test(a.name)) return 'operating';
           if (a?.type) {
             if (a.type === 'income' || a.type === 'expense') return 'pl';
             if (a.type === 'equity')    return 'financing';
