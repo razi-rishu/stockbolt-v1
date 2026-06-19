@@ -156,6 +156,8 @@ export default function PaymentEditorPage() {
   const [deleteModal, setDeleteModal] = useState(false);
   const [voidModal, setVoidModal] = useState(false);
   const [voidReason, setVoidReason] = useState('');
+  // Phase 18 — edit a confirmed receipt: reverse the posting + reopen as draft.
+  const [reopenModal, setReopenModal] = useState(false);
   const confirmLeave = useUnsavedChangesGuard(dirty);
 
   // Phase 14.08 — auto-open the apply-advance modal when the user
@@ -406,6 +408,21 @@ export default function PaymentEditorPage() {
     onError: (e: Error) => { setVoidModal(false); setError(e.message); },
   });
 
+  // Phase 18 — reverse a confirmed receipt's posting and reopen it as a draft,
+  // then drop the user into the edit form to change + re-confirm.
+  const reopenMutation = useMutation({
+    mutationFn: () => getAdapter().payments.reopen(id!),
+    onSuccess: async () => {
+      setReopenModal(false);
+      await invalidateBooks();
+      qc.invalidateQueries({ queryKey: ['payment', id] });
+      qc.invalidateQueries({ queryKey: ['payment_allocations', id] });
+      qc.invalidateQueries({ queryKey: ['payments', company_id] });
+      setViewMode(false);
+    },
+    onError: (e: Error) => { setReopenModal(false); setError(e.message); },
+  });
+
   const applyMutation = useMutation({
     mutationFn: () => getAdapter().payments.applyAdvance(id!, applyInvId, parseFloat(applyAmt)),
     onSuccess: async () => {
@@ -446,6 +463,20 @@ export default function PaymentEditorPage() {
             <Button variant="ghost" size="sm" onClick={() => setVoidModal(false)}>{t('common.cancel')}</Button>
             <Button variant="danger" size="sm" onClick={() => voidMutation.mutate()} disabled={voidMutation.isPending}>
               {voidMutation.isPending ? '…' : t('payments.void_payment')}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+      {/* Phase 18 — confirm before reversing a posted receipt for editing. */}
+      <Modal open={reopenModal} onClose={() => setReopenModal(false)} title={t('payments.edit_payment') || 'Edit payment'}>
+        <div className="space-y-4">
+          <p className="text-sm text-ink-secondary">
+            {t('payments.reopen_confirm_text') || 'Editing this payment reverses its posted journal entries and reopens it as a draft. Any invoices it paid will reopen. You can change it and confirm again.'}
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setReopenModal(false)}>{t('common.cancel')}</Button>
+            <Button size="sm" onClick={() => { setError(null); reopenMutation.mutate(); }} disabled={reopenMutation.isPending}>
+              {reopenMutation.isPending ? '…' : (t('payments.reopen_to_edit') || 'Reverse & edit')}
             </Button>
           </div>
         </div>
@@ -537,6 +568,13 @@ export default function PaymentEditorPage() {
           <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
             {canEdit && (
               <Button variant="ghost" size="sm" onClick={() => setViewMode(false)}>
+                ✎ {t('common.edit') || 'Edit'}
+              </Button>
+            )}
+            {/* Phase 18 — a confirmed receipt can be edited by reversing its
+                posting and reopening it as a draft (un-reconcile first). */}
+            {isConfirmed && !isReconciled && (
+              <Button variant="ghost" size="sm" onClick={() => setReopenModal(true)}>
                 ✎ {t('common.edit') || 'Edit'}
               </Button>
             )}

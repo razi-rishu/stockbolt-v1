@@ -805,6 +805,10 @@ export interface PaymentsAPI {
   confirm(payment_id: string): Promise<PaymentConfirmResult>;
   applyAdvance(payment_id: string, invoice_id: string, amount: number): Promise<ApplyAdvanceResult>;
   void(payment_id: string, reason?: string): Promise<void>;
+  /** Reopen a CONFIRMED receipt for editing: reverses its GL posting +
+   *  advance applications, drops allocations, flips status back to 'draft'.
+   *  Refuses if not confirmed, bank-reconciled, or in a locked period. */
+  reopen(payment_id: string): Promise<void>;
   /** Hard-delete a DRAFT payment (and its allocations). Refuses if not draft —
    *  confirmed payments must be voided, never deleted. */
   deleteDraft(payment_id: string): Promise<void>;
@@ -1344,6 +1348,10 @@ export interface VendorPaymentsAPI {
   update(id: string, row: Partial<PaymentInsert>, allocations?: PaymentAllocationInsert[]): Promise<PaymentRow>;
   confirm(payment_id: string): Promise<VendorPaymentConfirmResult>;
   applyAdvance(payment_id: string, bill_id: string, amount: number): Promise<ApplyVendorAdvanceResult>;
+  /** Reopen a CONFIRMED vendor payment for editing: reverses its GL posting +
+   *  advance applications, drops allocations, flips status back to 'draft'.
+   *  Refuses if not confirmed, bank-reconciled, or in a locked period. */
+  reopen(payment_id: string): Promise<void>;
   getNextNumber(company_id: string): Promise<string>;
 }
 

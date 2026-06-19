@@ -492,6 +492,62 @@ describe('Function source — fixes are still installed', () => {
       'AR (1200) rows without contact_id — drill-down will surface them as "(no contact)"',
     ).toBe(0);
   });
+
+  // ── Phase 18 — edit a confirmed payment (reverse-and-reopen) ─────────────
+  it('Phase 18: reopen_payment reverses the receipt + reopens it as a draft', async () => {
+    const [row] = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src
+       FROM pg_proc WHERE proname = 'reopen_payment' AND pronargs = 1`,
+    );
+    // Soft-skip until the Phase 18 migration is applied to this DB. Once it
+    // exists, the assertions below lock the fix in place.
+    if (!row?.src) { console.warn('reopen_payment not installed yet — skipping (apply 20260619000006_phase18_reopen_payment.sql)'); return; }
+    // Must reverse the receipt's own JEs (customer side) …
+    expect(row.src).toMatch(/customer_receipt[\s\S]{0,40}customer_advance/i);
+    // … only consider unreversed originals …
+    expect(row.src).toMatch(/reversed_by_id\s+IS\s+NULL/i);
+    // … drop allocations so paid invoices reopen …
+    expect(row.src).toMatch(/DELETE\s+FROM\s+public\.payment_allocations/i);
+    // … and end at status='draft', NOT 'void'.
+    expect(row.src).toMatch(/status\s*=\s*'draft'/i);
+    expect(row.src).not.toMatch(/status\s*=\s*'void'/i);
+    // Must keep the bank-reconciliation guard (cannot edit a reconciled receipt).
+    expect(row.src).toMatch(/reconciliation_id\s+IS\s+NOT\s+NULL/i);
+  });
+
+  it('Phase 18: reopen_vendor_payment reverses the payment + reopens it as a draft', async () => {
+    const [row] = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src
+       FROM pg_proc WHERE proname = 'reopen_vendor_payment' AND pronargs = 1`,
+    );
+    if (!row?.src) { console.warn('reopen_vendor_payment not installed yet — skipping (apply 20260619000006_phase18_reopen_payment.sql)'); return; }
+    // Must reverse the vendor payment's own JEs …
+    expect(row.src).toMatch(/vendor_payment[\s\S]{0,40}vendor_advance/i);
+    expect(row.src).toMatch(/reversed_by_id\s+IS\s+NULL/i);
+    expect(row.src).toMatch(/DELETE\s+FROM\s+public\.payment_allocations/i);
+    expect(row.src).toMatch(/status\s*=\s*'draft'/i);
+    expect(row.src).not.toMatch(/status\s*=\s*'void'/i);
+    expect(row.src).toMatch(/reconciliation_id\s+IS\s+NOT\s+NULL/i);
+  });
+
+  it('Phase 18: every reversal JE balances (reopen never leaves a lopsided entry)', async () => {
+    // Invariant across the whole DB: any JE that is a reversal
+    // (reversal_of_id set) must have equal debit + credit totals, exactly
+    // mirroring its original. A buggy reopen that mis-copied GL lines would
+    // surface here as a non-zero imbalance.
+    const rows = await sql<{ count: number }>(
+      `SELECT COUNT(*)::int AS count
+       FROM (
+         SELECT gl.journal_entry_id
+         FROM general_ledger gl
+         JOIN journal_entries je ON je.id = gl.journal_entry_id
+         WHERE je.reversal_of_id IS NOT NULL
+         GROUP BY gl.journal_entry_id
+         HAVING ROUND(SUM(gl.debit)::numeric, 2) <> ROUND(SUM(gl.credit)::numeric, 2)
+       ) bad`,
+    );
+    expect(rows[0]?.count ?? 0, 'unbalanced reversal journal entries').toBe(0);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────

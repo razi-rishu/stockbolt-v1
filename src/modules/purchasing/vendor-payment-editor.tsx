@@ -107,6 +107,8 @@ export default function VendorPaymentEditorPage() {
   const [applyModal, setApplyModal] = useState(false);
   const [applyBillId, setApplyBillId] = useState('');
   const [applyAmount, setApplyAmount] = useState('');
+  // Phase 18 — edit a confirmed payment: reverse the posting + reopen as draft.
+  const [reopenModal, setReopenModal] = useState(false);
   // Phase 14.08b — OpenVendorBill carries `outstanding`, so the modal can
   // show what's actually left to pay on each bill (not the gross total).
   const [openBills, setOpenBills] = useState<OpenVendorBill[]>([]);
@@ -311,6 +313,21 @@ export default function VendorPaymentEditorPage() {
     onError: (e: Error) => setError(e.message),
   });
 
+  // Phase 18 — reverse a confirmed payment's posting and reopen as a draft,
+  // then drop into the edit form to change + re-confirm.
+  const reopenMutation = useMutation({
+    mutationFn: () => getAdapter().vendorPayments.reopen(id!),
+    onSuccess: async () => {
+      setReopenModal(false);
+      await invalidateBooks();
+      qc.invalidateQueries({ queryKey: ['vendor_payment', id] });
+      qc.invalidateQueries({ queryKey: ['vendor_payment_allocations', id] });
+      qc.invalidateQueries({ queryKey: ['vendor_payments', company_id] });
+      setViewMode(false);
+    },
+    onError: (e: Error) => { setReopenModal(false); setError(e.message); },
+  });
+
   const applyMutation = useMutation({
     mutationFn: () => getAdapter().vendorPayments.applyAdvance(id!, applyBillId, Number(applyAmount)),
     onSuccess: async () => {
@@ -396,6 +413,13 @@ export default function VendorPaymentEditorPage() {
                 ✎ {t('common.edit') || 'Edit'}
               </Button>
             )}
+            {/* Phase 18 — a confirmed payment can be edited by reversing its
+                posting and reopening it as a draft (un-reconcile first). */}
+            {existing?.status === 'confirmed' && !isReconciled && (
+              <Button variant="ghost" size="sm" onClick={() => setReopenModal(true)}>
+                ✎ {t('common.edit') || 'Edit'}
+              </Button>
+            )}
             {existing?.id && (
               <Button variant="ghost" size="sm" onClick={() => window.print()}>
                 🖨 {t('print.print') || 'Print'}
@@ -403,9 +427,27 @@ export default function VendorPaymentEditorPage() {
             )}
           </div>
         </div>
+        {error && <div className="rounded-input bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
+        {/* Phase 18 — confirm before reversing a posted payment for editing. */}
+        {reopenModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="w-[26rem] rounded-card bg-surface-card p-6 shadow-xl space-y-4">
+              <h3 className="text-base font-semibold text-ink-primary">{t('purchasing.edit_payment') || 'Edit payment'}</h3>
+              <p className="text-sm text-ink-secondary">
+                {t('purchasing.reopen_confirm_text') || 'Editing this payment reverses its posted journal entries and reopens it as a draft. Any bills it paid will reopen. You can change it and confirm again.'}
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setReopenModal(false)}>{t('common.cancel')}</Button>
+                <Button size="sm" onClick={() => { setError(null); reopenMutation.mutate(); }} disabled={reopenMutation.isPending}>
+                  {reopenMutation.isPending ? '…' : (t('purchasing.reopen_to_edit') || 'Reverse & edit')}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

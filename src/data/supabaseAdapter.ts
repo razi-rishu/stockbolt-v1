@@ -1584,6 +1584,14 @@ export function createSupabaseAdapter(
         } as never);
         assertNoError(error, 'payments.void');
       },
+      async reopen(payment_id): Promise<void> {
+        // Phase 18 — reverse the posting + reopen as draft so a confirmed
+        // receipt can be edited, then re-confirmed via the normal draft path.
+        const { error } = await client.rpc('reopen_payment' as never, {
+          p_payment_id: payment_id,
+        } as never);
+        assertNoError(error, 'payments.reopen');
+      },
       async deleteDraft(payment_id): Promise<void> {
         // Drafts only — a draft payment has never posted to the GL, so a hard
         // delete is safe. Guard on status so a confirmed payment is never wiped.
@@ -3512,6 +3520,14 @@ export function createSupabaseAdapter(
         const { data, error } = await client.rpc('apply_vendor_advance', { p_payment_id: payment_id, p_bill_id: bill_id, p_amount: amount });
         assertNoError(error, 'vendorPayments.applyAdvance');
         return data as unknown as ApplyVendorAdvanceResult;
+      },
+      async reopen(payment_id): Promise<void> {
+        // Phase 18 — reverse the posting + reopen as draft so a confirmed
+        // vendor payment can be edited, then re-confirmed via the draft path.
+        const { error } = await client.rpc('reopen_vendor_payment' as never, {
+          p_payment_id: payment_id,
+        } as never);
+        assertNoError(error, 'vendorPayments.reopen');
       },
       async getNextNumber(company_id) {
         const { data, error } = await client.rpc('get_next_document_number', { p_company_id: company_id, p_prefix: 'VP' });

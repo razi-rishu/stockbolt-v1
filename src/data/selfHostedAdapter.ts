@@ -206,6 +206,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       confirm:       () => notImplemented('payments.confirm'),
       applyAdvance:  () => notImplemented('payments.applyAdvance'),
       void:          () => notImplemented('payments.void'),
+      reopen:        () => notImplemented('payments.reopen'),
       deleteDraft:   () => notImplemented('payments.deleteDraft'),
       getNextNumber: () => notImplemented('payments.getNextNumber'),
       getAppliedMap: () => notImplemented('payments.getAppliedMap'),
@@ -284,6 +285,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       update:        () => notImplemented('vendorPayments.update'),
       confirm:       () => notImplemented('vendorPayments.confirm'),
       applyAdvance:  () => notImplemented('vendorPayments.applyAdvance'),
+      reopen:        () => notImplemented('vendorPayments.reopen'),
       getNextNumber: () => notImplemented('vendorPayments.getNextNumber'),
     },
     stockTransfers: {
