@@ -409,7 +409,7 @@ export default function VendorPaymentEditorPage() {
           }}>{existing.status}</span>
           <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
             {canEdit && (
-              <Button size="sm" onClick={() => setViewMode(false)}>
+              <Button variant="ghost" size="sm" onClick={() => setViewMode(false)}>
                 ✎ {t('common.edit') || 'Edit'}
               </Button>
             )}
@@ -423,6 +423,13 @@ export default function VendorPaymentEditorPage() {
             {existing?.id && (
               <Button variant="ghost" size="sm" onClick={() => window.print()}>
                 🖨 {t('print.print') || 'Print'}
+              </Button>
+            )}
+            {/* Draft → Confirm posts it to the books. Available straight from
+                the view so the user doesn't have to enter the edit form. */}
+            {existing?.status === 'draft' && (
+              <Button size="sm" onClick={() => { setError(null); confirmMutation.mutate(); }} disabled={confirmMutation.isPending}>
+                {confirmMutation.isPending ? '…' : t('purchasing.confirm_payment')}
               </Button>
             )}
           </div>
