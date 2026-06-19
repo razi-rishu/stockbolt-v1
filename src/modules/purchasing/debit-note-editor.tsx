@@ -305,7 +305,7 @@ export default function DebitNoteEditorPage() {
         </div>
       </div>
 
-      <div className="bg-white border border-border-subtle rounded-lg p-6 grid grid-cols-2 gap-4">
+      <div className="glass-card p-6 grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-ink-secondary mb-1">{t('common.supplier')} *</label>
           <SearchableSelect
@@ -363,9 +363,9 @@ export default function DebitNoteEditorPage() {
       </div>
 
       {/* Line items */}
-      <div className="bg-white border border-border-subtle rounded-lg overflow-hidden">
+      <div className="glass-card overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
-          <h2 className="font-semibold text-ink-secondary">{t('returns.line_items')}</h2>
+          <h2 className="text-sm font-semibold text-ink-primary">{t('returns.line_items')}</h2>
           {isDraft && <Button variant="secondary" onClick={addLine}>{t('returns.add_line')}</Button>}
         </div>
         <div className="overflow-x-auto">

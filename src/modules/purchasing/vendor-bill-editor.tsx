@@ -652,7 +652,7 @@ export default function VendorBillEditorPage() {
            Shows payable, overdue, last payment so the buyer has full
            context while writing the bill. */}
       {selectedSupplier && (
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 2px rgba(15,23,42,.04)', padding: '16px' }}>
+        <div className="glass-card" style={{ padding: '16px' }}>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
             <div>
               <p className="text-xs uppercase tracking-wide text-ink-tertiary">Payable</p>
@@ -711,7 +711,7 @@ export default function VendorBillEditorPage() {
 
       {deleteModalEl}
 
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 2px rgba(15,23,42,.04)', padding: '20px' }}>
+      <div className="glass-card" style={{ padding: '20px' }}>
         <h2 className="mb-4 text-sm font-semibold text-ink-primary">{t('purchasing.bill_details')}</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="col-span-2 md:col-span-1">
@@ -756,7 +756,7 @@ export default function VendorBillEditorPage() {
 
       {/* Line items + Sticky sidebar */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 2px rgba(15,23,42,.04)' }}>
+      <div className="glass-card">
         <div className="border-b border-border-subtle px-5 py-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-ink-primary">{t('purchasing.line_items')}</h2>
           {canEdit && (
@@ -954,7 +954,7 @@ export default function VendorBillEditorPage() {
 
       {/* Sticky financial summary sidebar + accounting preview */}
       <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 2px rgba(15,23,42,.04)', overflow: 'hidden' }}>
+        <div className="glass-card" style={{ overflow: 'hidden' }}>
           <div className="border-b border-border-subtle px-4 py-2.5 bg-surface-muted/40">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-tertiary">Summary</h3>
           </div>

@@ -331,7 +331,7 @@ export default function GRNEditorPage() {
         </div>
       )}
 
-      <div className="rounded-card border border-border-subtle bg-surface-card p-5">
+      <div className="glass-card p-5">
         <h2 className="mb-4 text-sm font-semibold text-ink-primary">{t('purchasing.grn_details')}</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="col-span-2 md:col-span-1">
@@ -356,7 +356,7 @@ export default function GRNEditorPage() {
         </div>
       </div>
 
-      <div className="rounded-card border border-border-subtle bg-surface-card">
+      <div className="glass-card">
         <div className="border-b border-border-subtle px-5 py-3">
           <h2 className="text-sm font-semibold text-ink-primary">{t('purchasing.items_received')}</h2>
         </div>
