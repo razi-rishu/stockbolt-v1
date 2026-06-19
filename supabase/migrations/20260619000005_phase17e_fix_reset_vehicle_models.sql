@@ -8,6 +8,10 @@
 -- the rest of the function is identical to Phase 14.13f.
 -- ─────────────────────────────────────────────────────────────────────────
 
+-- The live function's parameter is named differently in some databases, and
+-- CREATE OR REPLACE cannot rename parameters — drop the old signature first.
+DROP FUNCTION IF EXISTS public.reset_company_data(UUID, TEXT);
+
 CREATE OR REPLACE FUNCTION public.reset_company_data(
   p_company_id   UUID,
   p_confirmation TEXT
