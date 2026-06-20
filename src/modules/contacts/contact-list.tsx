@@ -17,6 +17,7 @@ import { Badge } from '@/ui/badge';
 import { Pagination, paginate } from '@/ui/pagination';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
+import { ALL_CURRENCIES } from '@/lib/currencies';
 import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { ContactRow } from '@/data/adapter';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
@@ -310,7 +311,30 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Input label={t('contacts.mobile')} {...register('mobile')} />
-            <Input label={t('contacts.currency')} required {...register('currency')} />
+            {/* Currency — dropdown sourced from the shared currency master list
+                (same set as Settings → Exchange Rates), not free text. */}
+            <div className="flex w-full flex-col gap-1">
+              <label
+                htmlFor="contact-currency"
+                style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.05em', display: 'flex', gap: '3px', alignItems: 'center' }}
+              >
+                {t('contacts.currency')}<span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <select
+                id="contact-currency"
+                {...register('currency')}
+                style={{ width: '100%', padding: '8px 10px', fontSize: '13px', border: '1px solid #e2e8f0', borderRadius: '7px', background: '#fff', color: '#1e293b', outline: 'none' }}
+              >
+                {/* Keep an existing non-standard value selectable so editing a
+                    contact never silently rewrites its stored currency. */}
+                {watch('currency') && !ALL_CURRENCIES.some(c => c.code === watch('currency')) && (
+                  <option value={watch('currency')}>{watch('currency')}</option>
+                )}
+                {ALL_CURRENCIES.map(c => (
+                  <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <Input label={t('contacts.tax_id')} {...register('tax_id')} />
 
