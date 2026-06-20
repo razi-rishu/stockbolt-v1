@@ -618,7 +618,9 @@ export default function PaymentEditorPage() {
                 ✎ {t('common.edit') || 'Edit'}
               </Button>
             )}
-            {isConfirmed && (
+            {/* Only when there's unallocated credit left to apply. A fully
+                against-invoice receipt has none, so the button is hidden. */}
+            {isConfirmed && availableCredit > 0.005 && (
               <Button size="sm" onClick={() => setApplyModal(true)}>
                 {t('payments.apply_advance')}
               </Button>
@@ -708,7 +710,7 @@ export default function PaymentEditorPage() {
               {t('common.delete')}
             </Button>
           )}
-          {isConfirmed && (
+          {isConfirmed && availableCredit > 0.005 && (
             <Button variant="ghost" size="sm" onClick={() => setApplyModal(true)}>
               {t('payments.apply_advance')}
             </Button>
