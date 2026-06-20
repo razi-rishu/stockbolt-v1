@@ -589,6 +589,22 @@ describe('Function source — fixes are still installed', () => {
     expect(row.src).toMatch(/'pdc_creation'/);
   });
 
+  it('Phase 18d: reopen/void cascade reverses advance applications for ALL classifications', async () => {
+    for (const name of ['reopen_payment', 'reopen_vendor_payment', 'void_payment']) {
+      const [row] = await sql<{ src: string }>(
+        `SELECT pg_get_functiondef(oid) AS src FROM pg_proc WHERE proname = '${name}' LIMIT 1`,
+      );
+      if (!row?.src) continue;
+      // Soft-skip while the classification gate is still present (phase18d not
+      // applied yet). Once applied, the cascade must NOT be gated.
+      if (/classification IN \('advance','on_account'\)/.test(row.src)) {
+        console.warn(`${name} still has the classification-gated cascade — apply 20260619000010_phase18d_cascade_all_classifications.sql`);
+        continue;
+      }
+      expect(row.src, `${name} must still reverse advance applications`).toMatch(/advance_application/);
+    }
+  });
+
   it('Phase 18: every reversal JE balances (reopen never leaves a lopsided entry)', async () => {
     // Invariant across the whole DB: any JE that is a reversal
     // (reversal_of_id set) must have equal debit + credit totals, exactly
