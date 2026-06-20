@@ -157,6 +157,8 @@ const CashFlowPage                    = lazy(() => import('@/modules/reports/cas
 const SystemHealthPage                = lazy(() => import('@/modules/settings/system-health'));
 const ResetDataPage                   = lazy(() => import('@/modules/settings/reset-data'));
 const SalespeoplePage                 = lazy(() => import('@/modules/settings/salespeople'));
+const AdminDashboardPage              = lazy(() => import('@/modules/admin/admin-dashboard'));
+const RequirePlatformAdmin            = lazy(() => import('@/modules/admin/require-platform-admin'));
 
 function Loading() {
   return (
@@ -210,6 +212,13 @@ function AppRoutes() {
               early return). */}
           <Route element={<RequireNotOnboarded />}>
             <Route path="/setup" element={<SetupWizardPage />} />
+          </Route>
+
+          {/* ── Platform Admin (owner-only) — standalone, no tenant chrome.
+               Guarded client-side; the get_admin_dashboard RPC enforces it
+               server-side regardless. Not in any tenant navigation. ───── */}
+          <Route element={<RequirePlatformAdmin />}>
+            <Route path="/admin" element={<AdminDashboardPage />} />
           </Route>
 
           {/* ── Authenticated + onboarded (wrapped in AppLayout) ───── */}

@@ -400,6 +400,8 @@ export function createSelfHostedAdapter(): DataAdapter {
     // Phase 12.13: Admin
     admin: {
       resetCompanyData: () => notImplemented('admin.resetCompanyData'),
+      isPlatformAdmin: async () => false,
+      getDashboard: () => notImplemented('admin.getDashboard'),
     },
     // Phase 12.16: Salespeople
     salespeople: {

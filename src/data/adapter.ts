@@ -317,6 +317,23 @@ export interface GeographyAPI {
 }
 
 // ── Exchange Rates API (Phase 17 — multi-currency foundation) ──────────────
+// ── Platform Admin (owner-only, cross-tenant) ─────────────────────────────
+export interface AdminDashboard {
+  total_companies:    number;
+  active_companies:   number;
+  new_registrations:  number;
+  total_users:        number;
+  total_invoices:     number;
+  total_products:     number;
+  database_bytes:     number;
+  storage_bytes:      number;
+  failed_logins_30d:  number;
+  subscription_status: string | null;
+  error_logs_count:    number | null;
+  support_tickets_open: number | null;
+  recent_companies:   { id: string; name: string; created_at: string; users: number }[];
+  generated_at:       string;
+}
 export interface ExchangeRate {
   id:            string;
   company_id:    string;
@@ -2184,4 +2201,10 @@ export interface AdminAPI {
    * completely.
    */
   resetCompanyData(company_id: string, confirmation: string): Promise<ResetCompanyDataResult>;
+
+  // ── Platform Admin (owner-only, cross-tenant) — Phase 20 ──
+  /** True only for platform owners (platform_admins allow-list). */
+  isPlatformAdmin(): Promise<boolean>;
+  /** Cross-tenant platform metrics. Server-side refuses non-admins. */
+  getDashboard(): Promise<AdminDashboard>;
 }

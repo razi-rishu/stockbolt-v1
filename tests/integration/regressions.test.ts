@@ -605,6 +605,22 @@ describe('Function source — fixes are still installed', () => {
     }
   });
 
+  it('Phase 20: admin dashboard RPC is platform-admin-gated + tenant cannot read platform_admins', async () => {
+    const [row] = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc WHERE proname = 'get_admin_dashboard'`,
+    );
+    if (!row?.src) { console.warn('get_admin_dashboard not installed yet — skipping (apply 20260619000011_phase20_admin_panel.sql)'); return; }
+    // Must be SECURITY DEFINER and refuse non-platform-admin callers.
+    expect(row.src).toMatch(/SECURITY DEFINER/i);
+    expect(row.src).toMatch(/is_platform_admin\(\)/);
+    expect(row.src).toMatch(/forbidden/i);
+    // platform_admins must have RLS enabled (so PostgREST can't read it).
+    const rls = await sql<{ relrowsecurity: boolean }>(
+      `SELECT relrowsecurity FROM pg_class WHERE relname = 'platform_admins' AND relnamespace = 'public'::regnamespace`,
+    );
+    expect(rls[0]?.relrowsecurity, 'platform_admins must have RLS enabled').toBe(true);
+  });
+
   it('Phase 18: every reversal JE balances (reopen never leaves a lopsided entry)', async () => {
     // Invariant across the whole DB: any JE that is a reversal
     // (reversal_of_id set) must have equal debit + credit totals, exactly

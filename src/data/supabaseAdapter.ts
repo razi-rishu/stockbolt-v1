@@ -4434,6 +4434,17 @@ export function createSupabaseAdapter(
         assertNoError(error as Error | null, 'admin.resetCompanyData');
         return data as import('./adapter').ResetCompanyDataResult;
       },
+      // Phase 20 — platform-owner (cross-tenant) metrics.
+      async isPlatformAdmin(): Promise<boolean> {
+        const { data, error } = await (client.rpc as unknown as (fn: string) => Promise<{ data: unknown; error: unknown }>)('is_platform_admin');
+        if (error) return false;   // fail closed
+        return data === true;
+      },
+      async getDashboard(): Promise<import('./adapter').AdminDashboard> {
+        const { data, error } = await (client.rpc as unknown as (fn: string) => Promise<{ data: unknown; error: unknown }>)('get_admin_dashboard');
+        assertNoError(error as Error | null, 'admin.getDashboard');
+        return data as import('./adapter').AdminDashboard;
+      },
     },
 
     // ── Phase 12.16: Salespeople master ───────────────────────────────────
