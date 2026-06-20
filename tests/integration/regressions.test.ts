@@ -564,9 +564,10 @@ describe('Function source — fixes are still installed', () => {
        FROM pg_proc WHERE proname = 'confirm_pdc_payment'`,
     );
     if (!row?.src) { console.warn('confirm_pdc_payment not installed yet — skipping (apply 20260619000009_phase19_pdc_payment.sql)'); return; }
-    // Cash leg hits 1250 PDC Receivable, never a bank account at creation.
+    // Cash leg hits 1250 PDC Receivable, and NO bank COA is resolved for
+    // posting (bank_account_id is only stored as the cheque's deposit account).
     expect(row.src).toMatch(/'1250'/);
-    expect(row.src).not.toMatch(/bank_account/i);
+    expect(row.src).not.toMatch(/coa_account_id/i);
     // Settles AR (1200) per allocations, remainder to 2400 advances.
     expect(row.src).toMatch(/'1200'/);
     expect(row.src).toMatch(/'2400'/);
@@ -582,7 +583,7 @@ describe('Function source — fixes are still installed', () => {
     );
     if (!row?.src) { console.warn('confirm_pdc_vendor_payment not installed yet — skipping (apply 20260619000009_phase19_pdc_payment.sql)'); return; }
     expect(row.src).toMatch(/'2450'/);
-    expect(row.src).not.toMatch(/bank_account/i);
+    expect(row.src).not.toMatch(/coa_account_id/i);
     expect(row.src).toMatch(/'2100'/);
     expect(row.src).toMatch(/INSERT INTO public\.pdc_cheques/i);
     expect(row.src).toMatch(/'pdc_creation'/);

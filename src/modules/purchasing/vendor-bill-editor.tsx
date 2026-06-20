@@ -11,6 +11,8 @@ import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
+import { Select } from '@/ui/select';
+import { currencyOptions } from '@/lib/currencies';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 import { ContactPicker } from '@/components/contact-picker';
 import { AccountingPreview, buildVendorBillPreview } from '@/components/accounting-preview';
@@ -735,7 +737,7 @@ export default function VendorBillEditorPage() {
             disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, supplier_bill_number: e.target.value }))} />
           <Input label={t('purchasing.reference')} value={header.reference}
             disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, reference: e.target.value }))} />
-          <Input label={t('purchasing.currency')} value={header.currency}
+          <Select label={t('purchasing.currency')} options={currencyOptions(header.currency)} value={header.currency}
             disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, currency: e.target.value }))} />
           {/* Landed cost — freight + duty + customs + insurance.
                Only allowed on standalone bills (RPC enforces). */}

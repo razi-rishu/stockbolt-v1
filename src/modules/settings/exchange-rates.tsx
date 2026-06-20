@@ -17,23 +17,8 @@ import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
-
-// Currencies StockBolt commonly deals with (GCC + India + major trade currencies).
-const ALL_CURRENCIES: { code: string; name: string }[] = [
-  { code: 'AED', name: 'UAE Dirham' },
-  { code: 'SAR', name: 'Saudi Riyal' },
-  { code: 'QAR', name: 'Qatari Riyal' },
-  { code: 'OMR', name: 'Omani Rial' },
-  { code: 'BHD', name: 'Bahraini Dinar' },
-  { code: 'KWD', name: 'Kuwaiti Dinar' },
-  { code: 'INR', name: 'Indian Rupee' },
-  { code: 'USD', name: 'US Dollar' },
-  { code: 'EUR', name: 'Euro' },
-  { code: 'GBP', name: 'British Pound' },
-  { code: 'JPY', name: 'Japanese Yen' },
-  { code: 'CNY', name: 'Chinese Yuan' },
-  { code: 'PKR', name: 'Pakistani Rupee' },
-];
+// Shared currency master list — also feeds the document currency dropdowns.
+import { ALL_CURRENCIES } from '@/lib/currencies';
 
 export default function ExchangeRatesPage() {
   const company_id = useAuthStore(s => s.company_id);
