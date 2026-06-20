@@ -501,7 +501,9 @@ export default function VendorBillEditorPage() {
 
   // Phase 14.03 — view-mode renderer (Signature template). Active only
   // on saved bills where viewMode hasn't been toggled off.
-  if (viewMode && !isNew && existing) {
+  // Drafts open in the editable form (single Save posts them); only posted
+  // bills show the read-only template view.
+  if (viewMode && !isNew && existing && existing.status !== 'draft') {
     const doc = vendorBillToDocumentData({
       bill: existing,
       items: existingItems as Parameters<typeof vendorBillToDocumentData>[0]['items'],
@@ -603,7 +605,7 @@ export default function VendorBillEditorPage() {
         {!isNew && statusPill(existing?.status)}
         <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
           {/* Phase 14.03 — flip back into template view for saved bills. */}
-          {!isNew && existing && (
+          {!isNew && existing && existing.status !== 'draft' && (
             <Button variant="ghost" size="sm" onClick={() => setViewMode(true)}>
               {t('common.view') || 'View'}
             </Button>

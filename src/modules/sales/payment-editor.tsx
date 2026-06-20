@@ -574,7 +574,9 @@ export default function PaymentEditorPage() {
   // Phase 14.05 — view-mode renderer (Signature template).
   // Phase 14.08 — bypass when the user landed via ?apply=1 so the editor
   // hosts the apply-advance modal immediately.
-  if (viewMode && !autoApply && !isNew && existing) {
+  // Drafts open in the editable form (single Save posts them); only posted
+  // receipts show the read-only template view.
+  if (viewMode && !autoApply && !isNew && existing && existing.status !== 'draft') {
     const doc = paymentToDocumentData({
       payment: existing,
       allocations: existingAllocations,
@@ -680,7 +682,7 @@ export default function PaymentEditorPage() {
           </>
         )}
         <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
-          {!isNew && existing && (
+          {!isNew && existing && existing.status !== 'draft' && (
             <Button variant="ghost" size="sm" onClick={() => setViewMode(true)}>
               {t('common.view') || 'View'}
             </Button>

@@ -414,7 +414,9 @@ export default function VendorPaymentEditorPage() {
 
   // Phase 14.05 — view-mode renderer (Signature template).
   // Phase 14.08 — bypass when ?apply=1 so the editor hosts the modal.
-  if (viewMode && !autoApply && !isNew && existing) {
+  // Drafts open in the editable form (single Save posts them); only posted
+  // payments show the read-only template view.
+  if (viewMode && !autoApply && !isNew && existing && existing.status !== 'draft') {
     const doc = vendorPaymentToDocumentData({
       payment: existing,
       allocations: existingAllocations,
@@ -513,7 +515,7 @@ export default function VendorPaymentEditorPage() {
           </span>
         )}
         <div className="ms-auto flex gap-2">
-          {!isNew && existing && (
+          {!isNew && existing && existing.status !== 'draft' && (
             <Button variant="ghost" size="sm" onClick={() => setViewMode(true)}>
               {t('common.view') || 'View'}
             </Button>

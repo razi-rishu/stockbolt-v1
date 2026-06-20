@@ -232,7 +232,9 @@ export default function CreditNoteEditorPage() {
   const isConfirmed = existing?.status === 'confirmed';
 
   // Phase 14.04 — view-mode renderer (Signature template).
-  if (viewMode && !isNew && existing) {
+  // Drafts open in the editable form (single Save posts them); only posted
+  // credit notes show the read-only template view.
+  if (viewMode && !isNew && existing && existing.status !== 'draft') {
     const linkedInv = existing.linked_invoice_id
       ? invoices.find(i => i.id === existing.linked_invoice_id)
       : null;
@@ -290,7 +292,7 @@ export default function CreditNoteEditorPage() {
           {isNew ? t('returns.new_credit_note') : `${t('returns.cn_number')}: ${existing?.credit_note_number}`}
         </h1>
         <div className="flex gap-2">
-          {!isNew && existing && (
+          {!isNew && existing && existing.status !== 'draft' && (
             <Button variant="ghost" onClick={() => setViewMode(true)}>
               {t('common.view') || 'View'}
             </Button>

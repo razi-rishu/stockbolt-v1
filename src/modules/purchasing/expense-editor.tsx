@@ -417,7 +417,9 @@ export default function ExpenseEditorPage() {
   };
 
   // Phase 14.06 — view-mode renderer (Signature template).
-  if (viewMode && !isNew && expense) {
+  // Drafts open in the editable form (single Save posts them); only posted
+  // expenses show the read-only template view.
+  if (viewMode && !isNew && expense && expense.status !== 'draft') {
     const doc = expenseToDocumentData({
       expense,
       items,
@@ -479,7 +481,7 @@ export default function ExpenseEditorPage() {
         </h1>
         {!isNew && statusPill(expense?.status)}
         <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
-          {!isNew && expense && (
+          {!isNew && expense && expense.status !== 'draft' && (
             <Button variant="ghost" size="sm" onClick={() => setViewMode(true)}>
               {t('common.view') || 'View'}
             </Button>

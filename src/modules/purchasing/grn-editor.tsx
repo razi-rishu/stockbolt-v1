@@ -230,7 +230,9 @@ export default function GRNEditorPage() {
   const productOpts = products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }));
 
   // Phase 14.06 — view-mode renderer (Signature template).
-  if (viewMode && !isNew && existing) {
+  // Drafts open in the editable form (single Save posts them); only posted
+  // GRNs show the read-only template view.
+  if (viewMode && !isNew && existing && existing.status !== 'draft') {
     const doc = grnToDocumentData({
       grn: existing,
       items: existingItems,
@@ -286,7 +288,7 @@ export default function GRNEditorPage() {
         <h1 className="text-xl font-semibold text-ink-primary">{isNew ? t('purchasing.new_grn') : existing?.grn_number ?? '…'}</h1>
         {!isNew && <span className="rounded-pill bg-gray-100 px-2.5 py-0.5 text-xs capitalize text-gray-600">{existing?.status}</span>}
         <div className="ms-auto flex gap-2">
-          {!isNew && existing && (
+          {!isNew && existing && existing.status !== 'draft' && (
             <Button variant="ghost" size="sm" onClick={() => setViewMode(true)}>
               {t('common.view') || 'View'}
             </Button>

@@ -223,7 +223,9 @@ export default function DebitNoteEditorPage() {
   const isConfirmed = existing?.status === 'confirmed';
 
   // Phase 14.04 — view-mode renderer (Signature template).
-  if (viewMode && !isNew && existing) {
+  // Drafts open in the editable form (single Save posts them); only posted
+  // debit notes show the read-only template view.
+  if (viewMode && !isNew && existing && existing.status !== 'draft') {
     const linkedBill = existing.linked_bill_id
       ? bills.find(b => b.id === existing.linked_bill_id)
       : null;
@@ -281,7 +283,7 @@ export default function DebitNoteEditorPage() {
           {isNew ? t('returns.new_debit_note') : `${t('returns.dn_number')}: ${existing?.debit_note_number}`}
         </h1>
         <div className="flex gap-2">
-          {!isNew && existing && (
+          {!isNew && existing && existing.status !== 'draft' && (
             <Button variant="ghost" onClick={() => setViewMode(true)}>
               {t('common.view') || 'View'}
             </Button>

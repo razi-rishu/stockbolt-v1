@@ -575,7 +575,9 @@ export default function InvoiceEditorPage() {
 
   // Phase 14.03 — view-mode renderer (Signature template). Active only on
   // saved invoices where viewMode hasn't been toggled off.
-  if (viewMode && !isNew && existing) {
+  // Drafts open in the editable form (single Save posts them); only posted
+  // documents show the read-only template view.
+  if (viewMode && !isNew && existing && existing.status !== 'draft') {
     const doc = invoiceToDocumentData({
       invoice: existing,
       items: (existingItems as InvoiceItemInsert[] as unknown as Parameters<typeof invoiceToDocumentData>[0]['items']),
@@ -688,7 +690,7 @@ export default function InvoiceEditorPage() {
         <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
           {/* Phase 14.03 — flip back into the template view for saved
                invoices. Hidden on brand-new ones (nothing saved to view). */}
-          {!isNew && existing && (
+          {!isNew && existing && existing.status !== 'draft' && (
             <Button variant="ghost" size="sm" onClick={() => setViewMode(true)}>
               {t('common.view') || 'View'}
             </Button>
