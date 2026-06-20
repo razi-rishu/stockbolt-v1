@@ -374,8 +374,21 @@ export default function PaymentEditorPage() {
       }, updateAllocations);
   };
 
+  // Save = persist the draft then immediately post it (single-step). Failed
+  // post leaves a saved draft; a new receipt routes to its record so a retry
+  // updates+posts instead of duplicating.
   const saveMutation = useMutation({
-    mutationFn: persistDraft,
+    mutationFn: async () => {
+      const saved = await persistDraft();
+      const pid = isNew ? saved.id : id!;
+      try {
+        await getAdapter().payments.confirm(pid);
+      } catch (e) {
+        if (isNew) navigate(`/sales/payments/${pid}`);
+        throw e;
+      }
+      return saved;
+    },
     onSuccess: async (data) => {
       setDirty(false);
       await invalidateBooks();
@@ -411,15 +424,6 @@ export default function PaymentEditorPage() {
     onError: (e: Error) => setError(e.message),
   });
 
-  const confirmMutation = useMutation({
-    mutationFn: () => getAdapter().payments.confirm(id!),
-    onSuccess: async () => {
-      await invalidateBooks();
-      qc.invalidateQueries({ queryKey: ['payments', company_id] });
-      qc.invalidateQueries({ queryKey: ['payment', id] });
-    },
-    onError: (e: Error) => setError(e.message),
-  });
 
   const deleteMutation = useMutation({
     mutationFn: () => getAdapter().payments.deleteDraft(id!),
@@ -612,12 +616,6 @@ export default function PaymentEditorPage() {
                 ✎ {t('common.edit') || 'Edit'}
               </Button>
             )}
-            {/* Draft → Confirm posts it to the books; Delete removes the unposted draft. */}
-            {status === 'draft' && (
-              <Button size="sm" onClick={() => { setError(null); confirmMutation.mutate(); }} disabled={confirmMutation.isPending}>
-                {confirmMutation.isPending ? '…' : t('payments.confirm_payment')}
-              </Button>
-            )}
             {isConfirmed && (
               <Button size="sm" onClick={() => setApplyModal(true)}>
                 {t('payments.apply_advance')}
@@ -702,11 +700,6 @@ export default function PaymentEditorPage() {
                 </Button>
               )}
             </>
-          )}
-          {!isNew && status === 'draft' && (
-            <Button size="sm" onClick={() => { setError(null); confirmMutation.mutate(); }} disabled={confirmMutation.isPending}>
-              {confirmMutation.isPending ? '…' : t('payments.confirm_payment')}
-            </Button>
           )}
           {!isNew && status === 'draft' && (
             <Button variant="danger" size="sm" onClick={() => setDeleteModal(true)}>

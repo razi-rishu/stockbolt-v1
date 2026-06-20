@@ -194,25 +194,27 @@ export default function CreditNoteEditorPage() {
         notes:             notes || undefined,
         status:            'draft' as const,
       };
+      // Save = persist the draft then immediately post it (single-step).
+      let noteId: string;
       if (isNew) {
-        return getAdapter().creditNotes.create(header, buildItems());
+        const created = await getAdapter().creditNotes.create(header, buildItems());
+        noteId = created.id;
       } else {
-        return getAdapter().creditNotes.update(id!, header, buildItems());
+        await getAdapter().creditNotes.update(id!, header, buildItems());
+        noteId = id!;
       }
+      try {
+        await getAdapter().creditNotes.confirm(noteId);
+      } catch (e) {
+        if (isNew) navigate(`/sales/credit-notes/${noteId}`);
+        throw e;
+      }
+      return noteId;
     },
     onSuccess: async () => {
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['credit_notes'] });
       navigate('/sales/credit-notes');
-    },
-  });
-
-  const confirmMutation = useMutation({
-    mutationFn: () => getAdapter().creditNotes.confirm(id!),
-    onSuccess: async () => {
-      await invalidateBooks();
-      qc.invalidateQueries({ queryKey: ['credit_notes'] });
-      qc.invalidateQueries({ queryKey: ['credit_note', id] });
     },
   });
 
@@ -301,14 +303,9 @@ export default function CreditNoteEditorPage() {
           {!isNew && isConfirmed && (
             <Button variant="secondary" onClick={() => setShowVoidDlg(true)}>{t('common.void')}</Button>
           )}
-          {!isNew && isDraft && (
-            <Button variant="primary" onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}>
-              {t('common.confirm')}
-            </Button>
-          )}
           {isDraft && (
             <Button variant="primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-              {t('common.save')}
+              {saveMutation.isPending ? t('common.saving') : t('common.save')}
             </Button>
           )}
         </div>
@@ -458,9 +455,6 @@ export default function CreditNoteEditorPage() {
 
       {saveMutation.isError && (
         <p className="text-red-600 text-sm">{String((saveMutation.error as Error).message)}</p>
-      )}
-      {confirmMutation.isError && (
-        <p className="text-red-600 text-sm">{String((confirmMutation.error as Error).message)}</p>
       )}
 
       {/* Void dialog */}

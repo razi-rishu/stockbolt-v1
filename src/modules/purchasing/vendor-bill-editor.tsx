@@ -173,7 +173,6 @@ export default function VendorBillEditorPage() {
   const [productQcOpen,    setProductQcOpen]    = useState(false);
   const [productQcSeed,    setProductQcSeed]    = useState('');
   const [productQcLineKey, setProductQcLineKey] = useState<string | null>(null);
-  const [confirmModal, setConfirmModal] = useState(false);
   const [deleteModal, setDeleteModal] = useState(false);
   const [dirty, setDirty] = useState(false);
   const confirmLeave = useUnsavedChangesGuard(dirty);
@@ -396,8 +395,20 @@ export default function VendorBillEditorPage() {
     return id!;
   }
 
+  // Save = persist the draft then immediately post it (single-step workflow).
+  // If posting fails, the draft is saved; a brand-new doc is routed to its
+  // saved record so a retry updates+posts rather than creating a duplicate.
   const saveMutation = useMutation({
-    mutationFn: persistDraft,
+    mutationFn: async () => {
+      const savedId = await persistDraft();
+      try {
+        await getAdapter().vendorBills.confirm(savedId);
+      } catch (e) {
+        if (isNew) navigate(`/purchasing/bills/${savedId}`);
+        throw e;
+      }
+      return savedId;
+    },
     onSuccess: async (savedId) => {
       setDirty(false);
       await invalidateBooks();
@@ -406,28 +417,10 @@ export default function VendorBillEditorPage() {
       else {
         qc.invalidateQueries({ queryKey: ['vendor_bill', savedId] });
         qc.invalidateQueries({ queryKey: ['vendor_bill_items', savedId] });
+        setViewMode(true);
       }
     },
     onError: (e: Error) => setError(e.message),
-  });
-
-  // Confirm = save the current grid first, THEN post. This guarantees the
-  // posted GL/stock matches exactly what the user sees on screen (the bug:
-  // confirm used to post whatever was last in the DB, dropping edits).
-  const confirmMutation = useMutation({
-    mutationFn: async () => {
-      const savedId = await persistDraft();
-      return getAdapter().vendorBills.confirm(savedId);
-    },
-    onSuccess: async () => {
-      setConfirmModal(false);
-      setDirty(false);
-      await invalidateBooks();
-      qc.invalidateQueries({ queryKey: ['vendor_bills', company_id] });
-      qc.invalidateQueries({ queryKey: ['vendor_bill', id] });
-      qc.invalidateQueries({ queryKey: ['vendor_bill_items', id] });
-    },
-    onError: (e: Error) => { setConfirmModal(false); setError(e.message); },
   });
 
   // Re-open a CONFIRMED bill: edit_vendor_bill RPC reverses the JE + stock
@@ -633,9 +626,6 @@ export default function VendorBillEditorPage() {
                 {saveMutation.isPending ? t('common.saving') : t('common.save')}
               </Button>
               {!isNew && (
-                <Button size="sm" onClick={() => setConfirmModal(true)}>{t('purchasing.confirm_bill')}</Button>
-              )}
-              {!isNew && (
                 <Button variant="danger" size="sm" onClick={() => setDeleteModal(true)}>{t('common.delete')}</Button>
               )}
             </>
@@ -691,21 +681,6 @@ export default function VendorBillEditorPage() {
                   <p className="text-xs text-ink-tertiary mt-0.5">No payments yet</p>
                 </>
               )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {confirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-80 rounded-card bg-surface-card p-6 shadow-xl">
-            <h3 className="mb-3 text-base font-semibold text-ink-primary">{t('purchasing.confirm_bill')}</h3>
-            <p className="mb-5 text-sm text-ink-secondary">{t('purchasing.confirm_bill_desc')}</p>
-            <div className="flex gap-2 justify-end">
-              <Button variant="ghost" size="sm" onClick={() => setConfirmModal(false)}>{t('common.cancel')}</Button>
-              <Button size="sm" onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}>
-                {confirmMutation.isPending ? t('common.saving') : t('purchasing.confirm_bill')}
-              </Button>
             </div>
           </div>
         </div>

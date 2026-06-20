@@ -396,40 +396,35 @@ export default function InvoiceEditorPage() {
         voided_by:       null,
       };
 
+      // Save = persist the draft then immediately post it (single-step). Failed
+      // post leaves a saved draft; a new invoice routes to its record so a
+      // retry updates+posts instead of duplicating.
+      let invId: string;
       if (isNew) {
-        return getAdapter().invoices.create(row, buildItems());
+        const created = await getAdapter().invoices.create(row, buildItems());
+        invId = created.id;
       } else {
         await getAdapter().invoices.update(id!, row, buildItems());
-        return null;
+        invId = id!;
       }
+      try {
+        await getAdapter().invoices.confirm(invId);
+      } catch (e) {
+        if (isNew) navigate(`/sales/invoices/${invId}`);
+        throw e;
+      }
+      return invId;
     },
-    onSuccess: async (data) => {
+    onSuccess: async () => {
       setDirty(false);
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['invoices', company_id] });
-      if (isNew && data) {
-        navigate('/sales/invoices');
-      } else {
+      if (!isNew) {
         qc.invalidateQueries({ queryKey: ['invoice', id] });
         qc.invalidateQueries({ queryKey: ['invoice_items', id] });
-        setEditMode(false); navigate('/sales/invoices');
+        setEditMode(false);
       }
-    },
-    onError: (e: Error) => setError(e.message),
-  });
-
-  // Save the draft (with current header + lines) then immediately confirm it.
-  // Used when the user is in edit mode on a draft and wants one-click confirm.
-  const saveAndConfirmMutation = useMutation({
-    mutationFn: async () => {
-      await saveMutation.mutateAsync();          // reuse existing save logic (validates warehouse)
-      await getAdapter().invoices.confirm(id!);  // then confirm
-    },
-    onSuccess: async () => {
-      await invalidateBooks();
-      qc.invalidateQueries({ queryKey: ['invoices', company_id] });
-      qc.invalidateQueries({ queryKey: ['invoice', id] });
-      setEditMode(false);
+      navigate('/sales/invoices');
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -709,45 +704,20 @@ export default function InvoiceEditorPage() {
               </Button>
             </>
           )}
-          {/* ── Existing DRAFT, view mode (editMode=false) ── */}
-          {!isNew && status === 'draft' && !editMode && (
+          {/* ── Existing DRAFT (view or edit mode) — single Save posts it ── */}
+          {!isNew && status === 'draft' && (
             <>
-              <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/sales/invoices'); }}>
+              <Button variant="ghost" size="sm" onClick={() => { if (editMode) { setEditMode(false); setError(null); } else if (confirmLeave()) navigate('/sales/invoices'); }}>
                 {t('common.cancel')}
               </Button>
               <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
                 {saveMutation.isPending ? t('common.saving') : t('common.save')}
               </Button>
-              {/* Always save-then-confirm so the DB has the latest warehouse_id
-                   before confirm_invoice RPC reads it. */}
-              <Button
-                size="sm"
-                disabled={saveAndConfirmMutation.isPending}
-                onClick={() => { setError(null); saveAndConfirmMutation.mutate(); }}
-              >
-                {saveAndConfirmMutation.isPending ? '…' : t('sales.confirm_invoice')}
-              </Button>
-              <Button variant="danger" size="sm" onClick={() => setDeleteModal(true)}>
-                {t('common.delete')}
-              </Button>
-            </>
-          )}
-          {/* ── Existing DRAFT, edit mode (editMode=true) ── e.g. after auto-opening to fix warehouse */}
-          {!isNew && status === 'draft' && editMode && (
-            <>
-              <Button variant="ghost" size="sm" onClick={() => { setEditMode(false); setError(null); }}>
-                {t('common.cancel')}
-              </Button>
-              <Button variant="secondary" size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
-                {saveMutation.isPending ? t('common.saving') : t('common.save')}
-              </Button>
-              <Button
-                size="sm"
-                disabled={saveAndConfirmMutation.isPending}
-                onClick={() => { setError(null); saveAndConfirmMutation.mutate(); }}
-              >
-                {saveAndConfirmMutation.isPending ? '…' : 'Save & Confirm'}
-              </Button>
+              {!editMode && (
+                <Button variant="danger" size="sm" onClick={() => setDeleteModal(true)}>
+                  {t('common.delete')}
+                </Button>
+              )}
             </>
           )}
           {/* Print (any non-new invoice) */}

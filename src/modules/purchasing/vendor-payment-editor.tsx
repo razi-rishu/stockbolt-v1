@@ -299,8 +299,21 @@ export default function VendorPaymentEditorPage() {
       }, updateAllocations);
   };
 
+  // Save = persist the draft then immediately post it (single-step). Failed
+  // post leaves a saved draft; a new payment routes to its record so a retry
+  // updates+posts instead of duplicating.
   const saveMutation = useMutation({
-    mutationFn: persistDraft,
+    mutationFn: async () => {
+      const saved = await persistDraft();
+      const pid = isNew ? saved.id : id!;
+      try {
+        await getAdapter().vendorPayments.confirm(pid);
+      } catch (e) {
+        if (isNew) navigate(`/purchasing/payments/${pid}`);
+        throw e;
+      }
+      return saved;
+    },
     onSuccess: async (data) => {
       setDirty(false);
       await invalidateBooks();
@@ -332,16 +345,6 @@ export default function VendorPaymentEditorPage() {
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['vendor_payments', company_id] });
       navigate('/banking/pdc-issued');
-    },
-    onError: (e: Error) => setError(e.message),
-  });
-
-  const confirmMutation = useMutation({
-    mutationFn: () => getAdapter().vendorPayments.confirm(id!),
-    onSuccess: async () => {
-      await invalidateBooks();
-      qc.invalidateQueries({ queryKey: ['vendor_payments', company_id] });
-      qc.invalidateQueries({ queryKey: ['vendor_payment', id] });
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -458,13 +461,6 @@ export default function VendorPaymentEditorPage() {
                 🖨 {t('print.print') || 'Print'}
               </Button>
             )}
-            {/* Draft → Confirm posts it to the books. Available straight from
-                the view so the user doesn't have to enter the edit form. */}
-            {existing?.status === 'draft' && (
-              <Button size="sm" onClick={() => { setError(null); confirmMutation.mutate(); }} disabled={confirmMutation.isPending}>
-                {confirmMutation.isPending ? '…' : t('purchasing.confirm_payment')}
-              </Button>
-            )}
           </div>
         </div>
         {error && <div className="rounded-input bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
@@ -533,11 +529,6 @@ export default function VendorPaymentEditorPage() {
                 {saveMutation.isPending ? t('common.saving') : t('common.save')}
               </Button>
             )
-          )}
-          {!isNew && existing?.status === 'draft' && (
-            <Button size="sm" onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}>
-              {t('purchasing.confirm_payment')}
-            </Button>
           )}
           {!isNew && existing?.status === 'confirmed' && available > 0 && (
             <Button size="sm" variant="ghost" onClick={() => setApplyModal(true)}>

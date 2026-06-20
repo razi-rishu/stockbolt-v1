@@ -351,6 +351,14 @@ export default function ExpenseEditorPage() {
         header,
         items: itemInserts,
       });
+      // Save = persist then immediately post (single-step). Failed post leaves
+      // a saved draft; a new doc routes to its record so retry won't duplicate.
+      try {
+        await getAdapter().expenses.confirm(expenseId);
+      } catch (e) {
+        if (isNew) navigate(`/purchasing/expenses/${expenseId}`);
+        throw e;
+      }
       return expenseId;
     },
     onSuccess: async (expenseId) => {
@@ -360,16 +368,6 @@ export default function ExpenseEditorPage() {
       qc.invalidateQueries({ queryKey: ['expense', expenseId] });
       qc.invalidateQueries({ queryKey: ['expense_items', expenseId] });
       if (isNew) navigate('/purchasing/expenses');
-    },
-    onError: (e: Error) => setError(e.message),
-  });
-
-  const confirmMutation = useMutation({
-    mutationFn: async () => { await getAdapter().expenses.confirm(id!); },
-    onSuccess: async () => {
-      await invalidateBooks();
-      qc.invalidateQueries({ queryKey: ['expenses', company_id] });
-      qc.invalidateQueries({ queryKey: ['expense', id] });
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -492,11 +490,6 @@ export default function ExpenseEditorPage() {
           {isDraft && (
             <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
               {saveMutation.isPending ? t('common.saving') : t('common.save')}
-            </Button>
-          )}
-          {!isNew && expense?.status === 'draft' && (
-            <Button size="sm" onClick={() => { setError(null); confirmMutation.mutate(); }} disabled={confirmMutation.isPending}>
-              {confirmMutation.isPending ? '…' : 'Confirm'}
             </Button>
           )}
           {isConfirmed && (

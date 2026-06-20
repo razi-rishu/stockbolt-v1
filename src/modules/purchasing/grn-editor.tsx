@@ -104,7 +104,6 @@ export default function GRNEditorPage() {
   const [productQcOpen,    setProductQcOpen]    = useState(false);
   const [productQcSeed,    setProductQcSeed]    = useState('');
   const [productQcLineKey, setProductQcLineKey] = useState<string | null>(null);
-  const [confirmModal, setConfirmModal] = useState(false);
 
   useEffect(() => {
     if (existing) {
@@ -197,8 +196,20 @@ export default function GRNEditorPage() {
     return id!;
   }
 
+  // Save = persist the draft then immediately post it (single-step). A failed
+  // post leaves the draft saved; a new doc routes to its record so a retry
+  // updates+posts instead of duplicating.
   const saveMutation = useMutation({
-    mutationFn: persistDraft,
+    mutationFn: async () => {
+      const savedId = await persistDraft();
+      try {
+        await getAdapter().goodsReceipts.confirm(savedId);
+      } catch (e) {
+        if (isNew) navigate(`/purchasing/grns/${savedId}`);
+        throw e;
+      }
+      return savedId;
+    },
     onSuccess: async (savedId) => {
       setDirty(false);
       await invalidateBooks();
@@ -207,25 +218,10 @@ export default function GRNEditorPage() {
       else {
         qc.invalidateQueries({ queryKey: ['goods_receipt', savedId] });
         qc.invalidateQueries({ queryKey: ['goods_receipt_items', savedId] });
+        setViewMode(true);
       }
     },
     onError: (e: Error) => setError(e.message),
-  });
-
-  const confirmMutation = useMutation({
-    mutationFn: async () => {
-      const savedId = await persistDraft();   // save the grid first
-      return getAdapter().goodsReceipts.confirm(savedId);
-    },
-    onSuccess: async () => {
-      setConfirmModal(false);
-      setDirty(false);
-      await invalidateBooks();
-      qc.invalidateQueries({ queryKey: ['goods_receipts', company_id] });
-      qc.invalidateQueries({ queryKey: ['goods_receipt', id] });
-      qc.invalidateQueries({ queryKey: ['goods_receipt_items', id] });
-    },
-    onError: (e: Error) => { setConfirmModal(false); setError(e.message); },
   });
 
   const canEdit = isNew || existing?.status === 'draft';
@@ -301,9 +297,6 @@ export default function GRNEditorPage() {
               <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
                 {saveMutation.isPending ? t('common.saving') : t('common.save')}
               </Button>
-              {!isNew && (
-                <Button size="sm" onClick={() => setConfirmModal(true)}>{t('purchasing.confirm_grn')}</Button>
-              )}
             </>
           )}
           {!isNew && existing?.status === 'received' && (
@@ -316,20 +309,6 @@ export default function GRNEditorPage() {
 
       {error && <div className="rounded-input bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
 
-      {confirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-80 rounded-card bg-surface-card p-6 shadow-xl">
-            <h3 className="mb-3 text-base font-semibold text-ink-primary">{t('purchasing.confirm_grn')}</h3>
-            <p className="mb-5 text-sm text-ink-secondary">{t('purchasing.confirm_grn_desc')}</p>
-            <div className="flex gap-2 justify-end">
-              <Button variant="ghost" size="sm" onClick={() => setConfirmModal(false)}>{t('common.cancel')}</Button>
-              <Button size="sm" onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}>
-                {confirmMutation.isPending ? t('common.saving') : t('purchasing.confirm_grn')}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="glass-card p-5">
         <h2 className="mb-4 text-sm font-semibold text-ink-primary">{t('purchasing.grn_details')}</h2>
