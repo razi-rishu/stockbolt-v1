@@ -158,6 +158,13 @@ export default function PaymentEditorPage() {
   const [voidReason, setVoidReason] = useState('');
   // Phase 18 — edit a confirmed receipt: reverse the posting + reopen as draft.
   const [reopenModal, setReopenModal] = useState(false);
+  // Phase 19 — PDC: mark this receipt as a post-dated cheque. When ticked the
+  // money routes to 1250 PDC Receivable (not bank) and a linked cheque is
+  // created for the Banking → PDC Received lifecycle.
+  const [isPdc, setIsPdc] = useState(false);
+  const [chequeNumber, setChequeNumber] = useState('');
+  const [chequeBank, setChequeBank] = useState('');
+  const [chequeDueDate, setChequeDueDate] = useState('');
   const confirmLeave = useUnsavedChangesGuard(dirty);
 
   // Phase 14.08 — auto-open the apply-advance modal when the user
@@ -267,8 +274,9 @@ export default function PaymentEditorPage() {
     return existingAllocations.filter(a => a.doc_type === 'invoice' && !openIds.has(a.doc_id));
   }, [isDraftLike, existingAllocations, openInvoices]);
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
+  // Build + persist the draft (create or update) and return the row. Shared by
+  // the normal Save and the Phase 19 "Confirm as PDC" flow.
+  const persistDraft = async (): Promise<PaymentRow> => {
       if (!header.contact_id) throw new Error(t('payments.error_contact_required'));
       if (!header.amount || isNaN(parseFloat(header.amount))) throw new Error(t('payments.error_amount_required'));
       if (parseFloat(header.amount) <= 0) throw new Error('Amount must be greater than zero');
@@ -364,7 +372,10 @@ export default function PaymentEditorPage() {
         classification:    header.classification,
         notes:             header.notes || null,
       }, updateAllocations);
-    },
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: persistDraft,
     onSuccess: async (data) => {
       setDirty(false);
       await invalidateBooks();
@@ -373,6 +384,29 @@ export default function PaymentEditorPage() {
       qc.invalidateQueries({ queryKey: ['payment_allocations', id] });
       qc.invalidateQueries({ queryKey: ['open_invoices', company_id, selectedContact] });
       if (isNew && data) navigate('/sales/payments');
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  // Phase 19 — save the draft then confirm it as a PDC (posts to 1250, creates
+  // the linked cheque). One click from the editor.
+  const pdcMutation = useMutation({
+    mutationFn: async () => {
+      if (!chequeNumber.trim()) throw new Error('Cheque number is required for a PDC');
+      if (!chequeDueDate) throw new Error('Cheque due date is required for a PDC');
+      const saved = await persistDraft();
+      const pid = isNew ? saved.id : id!;
+      return getAdapter().payments.confirmAsPdc(pid, {
+        cheque_number: chequeNumber.trim(),
+        bank_name: chequeBank.trim(),
+        due_date: chequeDueDate,
+      });
+    },
+    onSuccess: async () => {
+      setDirty(false);
+      await invalidateBooks();
+      qc.invalidateQueries({ queryKey: ['payments', company_id] });
+      navigate('/banking/pdc-received');
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -658,9 +692,15 @@ export default function PaymentEditorPage() {
               <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/sales/payments'); }}>
                 {t('common.cancel')}
               </Button>
-              <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
-                {saveMutation.isPending ? t('common.saving') : t('common.save')}
-              </Button>
+              {isPdc ? (
+                <Button size="sm" onClick={() => { setError(null); pdcMutation.mutate(); }} disabled={pdcMutation.isPending}>
+                  {pdcMutation.isPending ? '…' : (t('payments.confirm_as_pdc') || 'Confirm as PDC')}
+                </Button>
+              ) : (
+                <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
+                  {saveMutation.isPending ? t('common.saving') : t('common.save')}
+                </Button>
+              )}
             </>
           )}
           {!isNew && status === 'draft' && (
@@ -810,6 +850,40 @@ export default function PaymentEditorPage() {
             onChange={e => setHeader(h => ({ ...h, notes: e.target.value }))}
           />
         </div>
+
+        {/* Phase 19 — Post-dated cheque (PDC). When ticked, the receipt routes
+             to PDC Receivable (not bank) and a linked cheque is created. */}
+        {canEdit && isNew && (
+          <div className="mt-4 rounded-card border border-border-subtle" style={{ padding: '12px 14px', background: theme.panelHead }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
+              <input type="checkbox" checked={isPdc} onChange={e => setIsPdc(e.target.checked)} />
+              <span style={{ fontSize: '13px', fontWeight: 600, color: theme.ink }}>{t('payments.is_pdc') || 'Post-dated cheque (PDC)'}</span>
+              <span style={{ fontSize: '11px', color: theme.inkFaint }}>{t('payments.pdc_hint') || '— money goes to PDC Receivable, not the bank, until the cheque clears'}</span>
+            </label>
+            {isPdc && (
+              <div className="mt-3 grid grid-cols-2 gap-4 md:grid-cols-3">
+                <Input
+                  label={t('payments.cheque_number') || 'Cheque number'}
+                  required
+                  value={chequeNumber}
+                  onChange={e => setChequeNumber(e.target.value)}
+                />
+                <Input
+                  label={t('payments.drawee_bank') || 'Drawee bank'}
+                  value={chequeBank}
+                  onChange={e => setChequeBank(e.target.value)}
+                />
+                <Input
+                  label={t('payments.cheque_due_date') || 'Cheque due date'}
+                  type="date"
+                  required
+                  value={chequeDueDate}
+                  onChange={e => setChequeDueDate(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Apply to Invoices panel ─────────────────────────────────────────

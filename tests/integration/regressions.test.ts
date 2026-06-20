@@ -558,6 +558,36 @@ describe('Function source — fixes are still installed', () => {
     expect(row.src).toMatch(/flatten_replacement_numbers\(p\.replacement_numbers\)\s+ILIKE/i);
   });
 
+  it('Phase 19: confirm_pdc_payment posts to 1250 (PDC), not bank, + creates a cheque', async () => {
+    const [row] = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src
+       FROM pg_proc WHERE proname = 'confirm_pdc_payment'`,
+    );
+    if (!row?.src) { console.warn('confirm_pdc_payment not installed yet — skipping (apply 20260619000009_phase19_pdc_payment.sql)'); return; }
+    // Cash leg hits 1250 PDC Receivable, never a bank account at creation.
+    expect(row.src).toMatch(/'1250'/);
+    expect(row.src).not.toMatch(/bank_account/i);
+    // Settles AR (1200) per allocations, remainder to 2400 advances.
+    expect(row.src).toMatch(/'1200'/);
+    expect(row.src).toMatch(/'2400'/);
+    // Creates the linked cheque + anchors the JE to the PDC so clear/cancel work.
+    expect(row.src).toMatch(/INSERT INTO public\.pdc_cheques/i);
+    expect(row.src).toMatch(/'pdc_creation'/);
+  });
+
+  it('Phase 19: confirm_pdc_vendor_payment posts to 2450 (PDC Payable), not bank', async () => {
+    const [row] = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src
+       FROM pg_proc WHERE proname = 'confirm_pdc_vendor_payment'`,
+    );
+    if (!row?.src) { console.warn('confirm_pdc_vendor_payment not installed yet — skipping (apply 20260619000009_phase19_pdc_payment.sql)'); return; }
+    expect(row.src).toMatch(/'2450'/);
+    expect(row.src).not.toMatch(/bank_account/i);
+    expect(row.src).toMatch(/'2100'/);
+    expect(row.src).toMatch(/INSERT INTO public\.pdc_cheques/i);
+    expect(row.src).toMatch(/'pdc_creation'/);
+  });
+
   it('Phase 18: every reversal JE balances (reopen never leaves a lopsided entry)', async () => {
     // Invariant across the whole DB: any JE that is a reversal
     // (reversal_of_id set) must have equal debit + credit totals, exactly

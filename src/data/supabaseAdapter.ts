@@ -1581,6 +1581,19 @@ export function createSupabaseAdapter(
         assertNoError(error, 'payments.confirm');
         return data as unknown as PaymentConfirmResult;
       },
+      async confirmAsPdc(payment_id, cheque) {
+        // Phase 19 — route the receipt to 1250 PDC Receivable (not bank) and
+        // create a linked pdc_cheques record for the Banking → PDC lifecycle.
+        const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)
+          ('confirm_pdc_payment', {
+            p_payment_id: payment_id,
+            p_cheque_number: cheque.cheque_number,
+            p_bank_name: cheque.bank_name,
+            p_due_date: cheque.due_date,
+          });
+        assertNoError(error as Error | null, 'payments.confirmAsPdc');
+        return data as unknown as import('./adapter').ConfirmPdcResult;
+      },
       async applyAdvance(payment_id, invoice_id, amount): Promise<ApplyAdvanceResult> {
         const { data, error } = await client.rpc('apply_advance', {
           p_payment_id: payment_id,
@@ -3568,6 +3581,19 @@ export function createSupabaseAdapter(
         const { data, error } = await client.rpc('confirm_vendor_payment', { p_payment_id: payment_id });
         assertNoError(error, 'vendorPayments.confirm');
         return data as unknown as VendorPaymentConfirmResult;
+      },
+      async confirmAsPdc(payment_id, cheque) {
+        // Phase 19 — route the payment to 2450 PDC Payable (not bank) and
+        // create a linked issued-cheque record for the PDC lifecycle.
+        const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)
+          ('confirm_pdc_vendor_payment', {
+            p_payment_id: payment_id,
+            p_cheque_number: cheque.cheque_number,
+            p_bank_name: cheque.bank_name,
+            p_due_date: cheque.due_date,
+          });
+        assertNoError(error as Error | null, 'vendorPayments.confirmAsPdc');
+        return data as unknown as import('./adapter').ConfirmPdcResult;
       },
       async applyAdvance(payment_id, bill_id, amount) {
         const { data, error } = await client.rpc('apply_vendor_advance', { p_payment_id: payment_id, p_bill_id: bill_id, p_amount: amount });

@@ -109,6 +109,12 @@ export default function VendorPaymentEditorPage() {
   const [applyAmount, setApplyAmount] = useState('');
   // Phase 18 — edit a confirmed payment: reverse the posting + reopen as draft.
   const [reopenModal, setReopenModal] = useState(false);
+  // Phase 19 — PDC: issue this payment as a post-dated cheque (posts to 2450
+  // PDC Payable, not bank; creates a linked cheque for the PDC lifecycle).
+  const [isPdc, setIsPdc] = useState(false);
+  const [chequeNumber, setChequeNumber] = useState('');
+  const [chequeBank, setChequeBank] = useState('');
+  const [chequeDueDate, setChequeDueDate] = useState('');
   // Phase 14.08b — OpenVendorBill carries `outstanding`, so the modal can
   // show what's actually left to pay on each bill (not the gross total).
   const [openBills, setOpenBills] = useState<OpenVendorBill[]>([]);
@@ -212,8 +218,9 @@ export default function VendorPaymentEditorPage() {
     }
   }, [applyModal, existing, company_id]);
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
+  // Build + persist the draft (create or update) and return the row. Shared by
+  // the normal Save and the Phase 19 "Confirm as PDC" flow.
+  const persistDraft = async (): Promise<PaymentRow> => {
       if (!header.contact_id) throw new Error(t('purchasing.error_supplier_required'));
       if (!header.amount || isNaN(Number(header.amount))) throw new Error(t('purchasing.error_amount_required'));
       if (Number(header.amount) <= 0) throw new Error('Amount must be greater than zero');
@@ -290,7 +297,10 @@ export default function VendorPaymentEditorPage() {
         classification:    header.classification,
         notes:             header.notes || null,
       }, updateAllocations);
-    },
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: persistDraft,
     onSuccess: async (data) => {
       setDirty(false);
       await invalidateBooks();
@@ -299,6 +309,29 @@ export default function VendorPaymentEditorPage() {
       qc.invalidateQueries({ queryKey: ['vendor_payment', id] });
       qc.invalidateQueries({ queryKey: ['vendor_payment_allocations', id] });
       if (isNew && data) navigate('/purchasing/payments');
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  // Phase 19 — save the draft then confirm it as an issued PDC (posts to 2450,
+  // creates the linked cheque). One click from the editor.
+  const pdcMutation = useMutation({
+    mutationFn: async () => {
+      if (!chequeNumber.trim()) throw new Error('Cheque number is required for a PDC');
+      if (!chequeDueDate) throw new Error('Cheque due date is required for a PDC');
+      const saved = await persistDraft();
+      const pid = isNew ? saved.id : id!;
+      return getAdapter().vendorPayments.confirmAsPdc(pid, {
+        cheque_number: chequeNumber.trim(),
+        bank_name: chequeBank.trim(),
+        due_date: chequeDueDate,
+      });
+    },
+    onSuccess: async () => {
+      setDirty(false);
+      await invalidateBooks();
+      qc.invalidateQueries({ queryKey: ['vendor_payments', company_id] });
+      navigate('/banking/pdc-issued');
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -491,9 +524,15 @@ export default function VendorPaymentEditorPage() {
           )}
           <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/purchasing/payments'); }}>{t('common.cancel')}</Button>
           {canEdit && (
-            <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
-              {saveMutation.isPending ? t('common.saving') : t('common.save')}
-            </Button>
+            isPdc ? (
+              <Button size="sm" onClick={() => { setError(null); pdcMutation.mutate(); }} disabled={pdcMutation.isPending}>
+                {pdcMutation.isPending ? '…' : (t('purchasing.confirm_as_pdc') || 'Confirm as PDC')}
+              </Button>
+            ) : (
+              <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
+                {saveMutation.isPending ? t('common.saving') : t('common.save')}
+              </Button>
+            )
           )}
           {!isNew && existing?.status === 'draft' && (
             <Button size="sm" onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}>
@@ -703,6 +742,28 @@ export default function VendorPaymentEditorPage() {
           <Input label={t('purchasing.reference')} value={header.reference}
             disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, reference: e.target.value }))} />
         </div>
+
+        {/* Phase 19 — issue this payment as a post-dated cheque. Routes to
+             2450 PDC Payable (not bank) and creates a linked cheque. */}
+        {canEdit && isNew && (
+          <div className="mt-4 rounded-card border border-border-subtle bg-surface-muted" style={{ padding: '12px 14px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
+              <input type="checkbox" checked={isPdc} onChange={e => setIsPdc(e.target.checked)} />
+              <span className="text-sm font-semibold text-ink-primary">{t('purchasing.is_pdc') || 'Post-dated cheque (PDC)'}</span>
+              <span className="text-xs text-ink-tertiary">{t('purchasing.pdc_hint') || '— money goes to PDC Payable, not the bank, until the cheque clears'}</span>
+            </label>
+            {isPdc && (
+              <div className="mt-3 grid grid-cols-2 gap-4 md:grid-cols-3">
+                <Input label={t('purchasing.cheque_number') || 'Cheque number'} required value={chequeNumber}
+                  onChange={e => setChequeNumber(e.target.value)} />
+                <Input label={t('purchasing.drawee_bank') || 'Drawee bank'} value={chequeBank}
+                  onChange={e => setChequeBank(e.target.value)} />
+                <Input label={t('purchasing.cheque_due_date') || 'Cheque due date'} type="date" required value={chequeDueDate}
+                  onChange={e => setChequeDueDate(e.target.value)} />
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Apply to Bills panel ─────────────────────────────────────────

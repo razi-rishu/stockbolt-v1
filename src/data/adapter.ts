@@ -596,6 +596,23 @@ export interface PaymentConfirmResult {
   entry_number: string;
 }
 
+/** Cheque details captured when confirming a payment as a PDC. */
+export interface PdcChequeInput {
+  cheque_number: string;
+  bank_name: string;
+  /** Cheque due date (ISO yyyy-mm-dd) — when it can be deposited/cleared. */
+  due_date: string;
+}
+
+export interface ConfirmPdcResult {
+  payment_id: string;
+  payment_number: string;
+  pdc_id: string;
+  pdc_number: string;
+  je_id: string;
+  entry_number: string;
+}
+
 export interface ApplyAdvanceResult {
   je_id: string;
   entry_number: string;
@@ -803,6 +820,10 @@ export interface PaymentsAPI {
    */
   update(id: string, row: Partial<PaymentInsert>, allocations?: PaymentAllocationInsert[]): Promise<PaymentRow>;
   confirm(payment_id: string): Promise<PaymentConfirmResult>;
+  /** Confirm a DRAFT receipt as a Post-Dated Cheque: posts to 1250 PDC
+   *  Receivable (not bank) and creates a linked pdc_cheques record that flows
+   *  through Banking → PDC Received (clear-to-bank / bounce / cancel). */
+  confirmAsPdc(payment_id: string, cheque: PdcChequeInput): Promise<ConfirmPdcResult>;
   applyAdvance(payment_id: string, invoice_id: string, amount: number): Promise<ApplyAdvanceResult>;
   void(payment_id: string, reason?: string): Promise<void>;
   /** Reopen a CONFIRMED receipt for editing: reverses its GL posting +
@@ -1347,6 +1368,9 @@ export interface VendorPaymentsAPI {
    */
   update(id: string, row: Partial<PaymentInsert>, allocations?: PaymentAllocationInsert[]): Promise<PaymentRow>;
   confirm(payment_id: string): Promise<VendorPaymentConfirmResult>;
+  /** Confirm a DRAFT vendor payment as an issued Post-Dated Cheque: posts to
+   *  2450 PDC Payable (not bank) and creates a linked pdc_cheques record. */
+  confirmAsPdc(payment_id: string, cheque: PdcChequeInput): Promise<ConfirmPdcResult>;
   applyAdvance(payment_id: string, bill_id: string, amount: number): Promise<ApplyVendorAdvanceResult>;
   /** Reopen a CONFIRMED vendor payment for editing: reverses its GL posting +
    *  advance applications, drops allocations, flips status back to 'draft'.
