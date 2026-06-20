@@ -111,7 +111,8 @@
     },
     "verification": {
       "title": "Email verified",
-      "description": "Your email has been confirmed. You can now sign in."
+      "description": "Your email has been confirmed. You can now sign in.",
+      "continue": "Continue to StockBolt"
     }
   },
   "wizard": {

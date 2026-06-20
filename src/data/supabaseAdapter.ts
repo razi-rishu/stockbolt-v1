@@ -101,7 +101,16 @@ export function createSupabaseAdapter(
     // ── Auth ───────────────────────────────────────────────────────────────
     auth: {
       async signUp({ email, password }) {
-        const { data, error } = await client.auth.signUp({ email, password });
+        // Land the confirmation link on /verify-email so the user sees a clear
+        // "Email verified" page. (The redirect URL must be allow-listed in
+        // Supabase → Auth → URL Configuration.)
+        const emailRedirectTo = typeof window !== 'undefined'
+          ? `${window.location.origin}/verify-email`
+          : undefined;
+        const { data, error } = await client.auth.signUp({
+          email, password,
+          options: emailRedirectTo ? { emailRedirectTo } : undefined,
+        });
         if (error) throw new SupabaseAuthError(error.message);
         if (!data.user) throw new SupabaseAuthError('signUp returned no user');
         return { user_id: data.user.id };
