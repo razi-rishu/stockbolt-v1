@@ -11,7 +11,7 @@
  */
 import type { CSSProperties } from 'react';
 import type { DocumentData, LineItem } from '../_signature/types';
-import { getTaxLabels } from '@/lib/locale';
+import { getTaxLabels, formatDate } from '@/lib/locale';
 import type { PrintTemplate } from './types';
 import { normalizeSettings } from './types';
 import {
@@ -101,9 +101,9 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
           {data.title ?? 'Tax Invoice'}
         </div>
         <div style={{ fontSize: baseFont, fontWeight: 700, color: fg, fontVariantNumeric: 'tabular-nums' }}>#{data.number}</div>
-        <div style={{ fontSize: baseFont * 0.82, color: fgMuted }}>Date: {data.date}</div>
+        <div style={{ fontSize: baseFont * 0.82, color: fgMuted }}>Date: {formatDate(data.date)}</div>
         {s.showDueDate && data.due_date && (
-          <div style={{ fontSize: baseFont * 0.82, color: fgMuted }}>Due: {data.due_date}</div>
+          <div style={{ fontSize: baseFont * 0.82, color: fgMuted }}>Due: {formatDate(data.due_date)}</div>
         )}
         {s.showReferenceNumber && data.reference && (
           <div style={{ fontSize: baseFont * 0.82, color: fgMuted }}>Ref: {data.reference}</div>
@@ -138,7 +138,7 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
             {data.title ?? 'Tax Invoice'} · #{data.number}
           </div>
           <div style={{ fontSize: baseFont * 0.82, color: C.secondary }}>
-            Date: {data.date}{s.showDueDate && data.due_date ? `  ·  Due: ${data.due_date}` : ''}
+            Date: {formatDate(data.date)}{s.showDueDate && data.due_date ? `  ·  Due: ${formatDate(data.due_date)}` : ''}
           </div>
         </div>
       );
@@ -295,7 +295,7 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
               {allocs.map((a, i) => (
                 <tr key={i}>
                   <td style={{ ...tdBase, borderBottom: `1px solid ${C.hairline}` }}>{a.doc_number}</td>
-                  <td style={{ ...tdBase, borderBottom: `1px solid ${C.hairline}` }}>{a.doc_date ?? '—'}</td>
+                  <td style={{ ...tdBase, borderBottom: `1px solid ${C.hairline}` }}>{a.doc_date ? formatDate(a.doc_date) : '—'}</td>
                   <td style={{ ...tdBase, textAlign: 'end', borderBottom: `1px solid ${C.hairline}` }}>{a.original_amount != null ? num(a.original_amount) : '—'}</td>
                   <td style={{ ...tdBase, textAlign: 'end', borderBottom: `1px solid ${C.hairline}` }}>{a.discount_amount ? num(a.discount_amount) : '0.00'}</td>
                   <td style={{ ...tdBase, textAlign: 'end', borderBottom: `1px solid ${C.hairline}` }}>{num(a.applied_amount)}</td>

@@ -27,6 +27,7 @@
  * vocabulary in tooltips).
  */
 import { type ReactNode } from 'react';
+import { formatDate } from '@/lib/locale';
 
 // ── Design tokens (mirror of _signature/tokens.ts, narrowed to what
 //    statements actually need) ──────────────────────────────────────────────
@@ -636,7 +637,7 @@ function SpineRow({ line }: { line: SpineLine }) {
       onMouseEnter={clickable ? (e) => { (e.currentTarget as HTMLTableRowElement).style.background = stmt.paperSoft; } : undefined}
       onMouseLeave={clickable ? (e) => { (e.currentTarget as HTMLTableRowElement).style.background = ''; } : undefined}
     >
-      <td style={{ padding: '10px 14px', color: stmt.inkMuted, fontSize: '12.5px' }}>{line.date}</td>
+      <td style={{ padding: '10px 14px', color: stmt.inkMuted, fontSize: '12.5px' }}>{formatDate(line.date)}</td>
       <td style={{ padding: '10px 14px', color: stmt.inkBody, fontSize: '12.5px' }}>{line.doc_type}</td>
       <td style={{
         padding: '10px 14px',

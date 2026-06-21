@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { formatDate } from '@/lib/locale';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
@@ -58,7 +59,7 @@ export default function StockTransfersPage() {
                   <td className="px-4 py-3 font-mono text-xs text-brand-700">{tr.transfer_number}</td>
                   <td className="px-4 py-3 text-ink-secondary text-sm">{warehouseMap[tr.from_warehouse_id] ?? tr.from_warehouse_id}</td>
                   <td className="px-4 py-3 text-ink-secondary text-sm">{warehouseMap[tr.to_warehouse_id] ?? tr.to_warehouse_id}</td>
-                  <td className="px-4 py-3 text-ink-secondary">{tr.date as string}</td>
+                  <td className="px-4 py-3 text-ink-secondary">{formatDate(tr.date as string)}</td>
                   <td className="px-4 py-3 text-center">
                     <Badge variant={statusColor[tr.status] as 'muted' | 'success' | 'danger'}>{tr.status}</Badge>
                   </td>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatDate } from '@/lib/locale';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
@@ -144,7 +145,7 @@ export default function PDCIssuedPage() {
                     <td className="px-4 py-3 text-ink-secondary">{contactName(pdc.contact_id)}</td>
                     <td className="px-4 py-3 font-mono text-ink-secondary">{pdc.cheque_number}</td>
                     <td className="px-4 py-3 text-ink-secondary">{pdc.bank_name ?? '—'}</td>
-                    <td className="px-4 py-3 text-ink-secondary">{pdc.due_date}</td>
+                    <td className="px-4 py-3 text-ink-secondary">{formatDate(pdc.due_date)}</td>
                     <td className="px-4 py-3 text-right font-semibold text-ink-primary">{pdc.currency} {fmt(pdc.amount)}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${STATUS_COLORS[pdc.status] ?? 'bg-surface-muted text-ink-secondary'}`}>

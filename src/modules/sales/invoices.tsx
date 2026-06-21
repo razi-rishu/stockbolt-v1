@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatDate } from '@/lib/locale';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -229,7 +230,7 @@ export default function InvoicesPage() {
                 >
                   <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>{inv.invoice_number}</td>
                   <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px', fontWeight: 500 }}>{customerMap[inv.contact_id] ?? '—'}</td>
-                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{inv.date}</td>
+                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(inv.date)}</td>
                   <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{inv.due_date ?? '—'}</td>
                   <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>
                     {inv.currency} {fmt(Number(inv.total_amount))}
@@ -239,7 +240,7 @@ export default function InvoicesPage() {
                       status={inv.status}
                       total={Number(inv.total_amount ?? 0)}
                       applied={appliedMap[inv.id] ?? 0}
-                      dueDate={inv.due_date}
+                      dueDate={formatDate(inv.due_date)}
                       today={today}
                     />
                   </td>

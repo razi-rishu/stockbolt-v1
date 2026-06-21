@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { formatDate } from '@/lib/locale';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
@@ -198,7 +199,7 @@ export default function GeneralLedgerPage() {
               <tbody>
                 {visibleEntries.map((e) => (
                   <tr key={e.id} className="border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
-                    <td className="px-4 py-2.5 text-ink-secondary">{e.date}</td>
+                    <td className="px-4 py-2.5 text-ink-secondary">{formatDate(e.date)}</td>
                     <td className="px-4 py-2.5 font-mono text-xs text-brand-600">{e.entry_number}</td>
                     <td className="px-4 py-2.5"><SourceCell type={e.source_type} number={e.source_number} /></td>
                     <td className="px-4 py-2.5 text-ink-primary">{e.description || '—'}</td>

@@ -6,6 +6,7 @@
  * caller that isn't in platform_admins — so this is never customer-reachable.
  */
 import { useQuery } from '@tanstack/react-query';
+import { formatDate } from '@/lib/locale';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import type { AdminDashboard } from '@/data/adapter';
@@ -116,7 +117,7 @@ export default function AdminDashboardPage() {
                 {d.recent_companies.map((c) => (
                   <tr key={c.id} style={{ borderTop: '1px solid rgba(255,255,255,.06)' }}>
                     <td style={{ padding: '10px 18px', fontWeight: 600 }}>{c.name}</td>
-                    <td style={{ padding: '10px 18px', color: '#94a3b8' }}>{String(c.created_at).slice(0, 10)}</td>
+                    <td style={{ padding: '10px 18px', color: '#94a3b8' }}>{formatDate(c.created_at)}</td>
                     <td style={{ padding: '10px 18px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtNum(c.users)}</td>
                   </tr>
                 ))}

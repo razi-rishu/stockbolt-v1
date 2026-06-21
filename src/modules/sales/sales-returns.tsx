@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { formatDate } from '@/lib/locale';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
@@ -91,7 +92,7 @@ export default function SalesReturnsPage() {
                   <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px', fontWeight: 500 }}>
                     {customerMap[invoiceMap[sr.invoice_id]?.contact_id ?? ''] ?? '—'}
                   </td>
-                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{sr.date}</td>
+                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(sr.date)}</td>
                   <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.inkMuted }}>
                     {invoiceMap[sr.invoice_id]?.invoice_number ?? `${sr.invoice_id.slice(0, 8)}…`}
                   </td>

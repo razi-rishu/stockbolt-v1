@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { formatDate } from '@/lib/locale';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
@@ -58,7 +59,7 @@ export default function InventoryAdjustmentsPage() {
                   <td className="px-4 py-3 font-mono text-xs text-brand-700">{adj.adjustment_number}</td>
                   <td className="px-4 py-3 text-ink-secondary text-sm">{warehouseMap[adj.warehouse_id] ?? adj.warehouse_id}</td>
                   <td className="px-4 py-3 text-ink-secondary capitalize">{adj.reason}</td>
-                  <td className="px-4 py-3 text-ink-secondary">{adj.date as string}</td>
+                  <td className="px-4 py-3 text-ink-secondary">{formatDate(adj.date as string)}</td>
                   <td className="px-4 py-3 text-center">
                     <Badge variant={statusColor[adj.status] as 'muted' | 'success' | 'danger'}>{adj.status}</Badge>
                   </td>

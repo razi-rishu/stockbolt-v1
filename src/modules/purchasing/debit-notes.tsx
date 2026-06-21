@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { formatDate } from '@/lib/locale';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
@@ -81,7 +82,7 @@ export default function DebitNotesPage() {
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
                 >
                   <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>{dn.debit_note_number}</td>
-                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{dn.date}</td>
+                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(dn.date)}</td>
                   <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px' }}>{supplierName(dn.supplier_id)}</td>
                   <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px', textTransform: 'capitalize' }}>{dn.reason ?? '—'}</td>
                   <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', fontSize: '13px', fontWeight: 600, color: theme.ink }}>{fmt(dn.total_amount)}</td>

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { formatDate } from '@/lib/locale';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
@@ -61,7 +62,7 @@ export default function BankTransfersPage() {
                 {transfers.map(t2 => (
                   <tr key={t2.id} className="hover:bg-surface-muted transition-colors">
                     <td className="px-4 py-3 font-mono text-brand-600">{t2.transfer_number}</td>
-                    <td className="px-4 py-3 text-ink-secondary">{t2.date}</td>
+                    <td className="px-4 py-3 text-ink-secondary">{formatDate(t2.date)}</td>
                     <td className="px-4 py-3 text-ink-secondary text-sm">{accountMap[t2.from_account_id] ?? t2.from_account_id}</td>
                     <td className="px-4 py-3 text-ink-secondary text-sm">{accountMap[t2.to_account_id] ?? t2.to_account_id}</td>
                     <td className="px-4 py-3 text-right font-semibold text-ink-primary">{fmt(t2.amount)}</td>

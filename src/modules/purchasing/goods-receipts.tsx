@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { formatDate } from '@/lib/locale';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
@@ -55,7 +56,7 @@ export default function GoodsReceiptsPage() {
                   onClick={() => navigate(`/purchasing/grns/${grn.id}`)}>
                   <td className="px-4 py-3 font-mono text-xs text-brand-700">{grn.grn_number}</td>
                   <td className="px-4 py-3 text-ink-primary">{supplierName(grn.supplier_id)}</td>
-                  <td className="px-4 py-3 text-ink-secondary">{grn.date as string}</td>
+                  <td className="px-4 py-3 text-ink-secondary">{formatDate(grn.date as string)}</td>
                   <td className="px-4 py-3 text-center">
                     <Badge variant={statusColor[grn.status] as 'muted' | 'success' | 'brand' | 'danger'}>{grn.status}</Badge>
                   </td>

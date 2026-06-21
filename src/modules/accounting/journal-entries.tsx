@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { formatDate } from '@/lib/locale';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -184,7 +185,7 @@ export default function JournalEntriesPage() {
                     onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
                   >
                     <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>{je.entry_number}</td>
-                    <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{je.date}</td>
+                    <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(je.date)}</td>
                     <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px' }}>{je.description ?? '—'}</td>
                     <td className="px-4 py-3">
                       {src

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { formatDate } from '@/lib/locale';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -230,7 +231,7 @@ export default function JournalEntryEditorPage() {
           <div className="flex items-start justify-between">
             <div>
               <p className="font-mono text-lg font-semibold text-brand-600">{existingJE.entry_number}</p>
-              <p className="text-sm text-ink-secondary">{existingJE.date} · {je.source_type}</p>
+              <p className="text-sm text-ink-secondary">{formatDate(existingJE.date)} · {je.source_type}</p>
               {existingJE.description && <p className="mt-1 text-sm text-ink-primary">{existingJE.description}</p>}
             </div>
             <div className="flex gap-2">

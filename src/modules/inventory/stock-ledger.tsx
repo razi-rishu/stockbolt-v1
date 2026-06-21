@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatDate } from '@/lib/locale';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -165,7 +166,7 @@ export default function StockLedgerPage() {
                   const isOut = row.direction === -1;
                   return (
                     <tr key={i} style={{ borderTop: i === 0 ? 'none' : '1px solid #f1f5f9' }}>
-                      <td className="px-4 py-2" style={{ color: theme.inkMuted, fontSize: '13px' }}>{row.date as string}</td>
+                      <td className="px-4 py-2" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(row.date as string)}</td>
                       <td className="px-4 py-2" style={{ color: theme.ink, fontSize: '13px' }}>
                         <span style={{ fontWeight: 600 }}>{row.product_name}</span>
                         {row.sku && <span style={{ marginInlineStart: '6px', fontSize: '11px', color: theme.inkMuted }}>({row.sku})</span>}

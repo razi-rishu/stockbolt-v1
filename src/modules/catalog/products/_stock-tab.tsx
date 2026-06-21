@@ -20,6 +20,7 @@
  * consistent across pages.
  */
 import { useState, useMemo } from 'react';
+import { formatDate } from '@/lib/locale';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
@@ -205,7 +206,7 @@ export function ProductStockTab({
                 const typeTone  = TYPE_TONE[row.movement_type]  ?? 'bg-gray-100 text-gray-700';
                 return (
                   <tr key={i} className="border-b border-border-subtle last:border-0 hover:bg-surface-muted/30">
-                    <td className="px-4 py-2 text-ink-secondary font-mono text-xs">{row.date as string}</td>
+                    <td className="px-4 py-2 text-ink-secondary font-mono text-xs">{formatDate(row.date as string)}</td>
                     <td className="px-4 py-2">
                       <span className={`rounded-pill px-2 py-0.5 text-[10px] font-medium ${typeTone}`}>
                         {typeLabel}

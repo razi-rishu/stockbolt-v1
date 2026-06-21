@@ -6,6 +6,7 @@
  * the run editor for adjustments (overtime / bonus / deductions / loans).
  */
 import { useState } from 'react';
+import { formatDate } from '@/lib/locale';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
@@ -121,7 +122,7 @@ export default function PayrollRunsPage() {
                   >
                     <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>{r.run_number}</td>
                     <td className="px-4 py-3" style={{ color: theme.ink, fontWeight: 500 }}>{MONTHS[r.period_month - 1]} {r.period_year}</td>
-                    <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{r.date}</td>
+                    <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(r.date)}</td>
                     <td className="px-4 py-3 font-mono" style={{ textAlign: 'end' }}>{fmt(Number(r.total_gross))}</td>
                     <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: theme.inkMuted }}>{fmt(Number(r.total_deductions) + Number(r.total_loan_repayment))}</td>
                     <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', fontWeight: 600 }}>{fmt(Number(r.total_net))}</td>

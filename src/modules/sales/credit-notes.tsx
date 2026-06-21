@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { formatDate } from '@/lib/locale';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
@@ -84,7 +85,7 @@ export default function CreditNotesPage() {
                 >
                   <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>{cn.credit_note_number}</td>
                   <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px', fontWeight: 500 }}>{customerMap[cn.contact_id] ?? '—'}</td>
-                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{cn.date}</td>
+                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(cn.date)}</td>
                   <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px', textTransform: 'capitalize' }}>{cn.reason ?? '—'}</td>
                   <td className="px-4 py-3">
                     {cn.restock

@@ -12,7 +12,7 @@ import type {
   CompanyInfo, PartyInfo, LineItem, DocumentStatus,
   BankingDetails,
 } from './types';
-import { getTaxLabels } from '@/lib/locale';
+import { getTaxLabels, formatDate } from '@/lib/locale';
 
 // ──────────────────────────────────────────────────────────────────────────
 // Page shell
@@ -179,11 +179,11 @@ export function StampCard({
         }} />
         <span>{tone.label}</span>
         <span style={{ opacity: 0.5 }}>·</span>
-        <span style={numericStyle}>{date}</span>
+        <span style={numericStyle}>{formatDate(date)}</span>
       </div>
       {dueDate && (
         <div style={{ fontSize: tokens.fsBodyMicro, color: tokens.stampInk, opacity: 0.6 }}>
-          Due&nbsp;<span style={numericStyle}>{dueDate}</span>
+          Due&nbsp;<span style={numericStyle}>{formatDate(dueDate)}</span>
         </div>
       )}
     </div>

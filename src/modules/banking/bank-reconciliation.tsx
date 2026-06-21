@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { formatDate } from '@/lib/locale';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
@@ -277,7 +278,7 @@ export default function BankReconciliationPage() {
                           checked={!!checked[line.id]}
                           onChange={e => setChecked(prev => ({ ...prev, [line.id]: e.target.checked }))} />
                       </td>
-                      <td className="px-4 py-2 text-ink-secondary">{line.date}</td>
+                      <td className="px-4 py-2 text-ink-secondary">{formatDate(line.date)}</td>
                       <td className="px-4 py-2 font-mono text-brand-600">{line.je_number}</td>
                       <td className="px-4 py-2">
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-surface-muted text-ink-secondary">

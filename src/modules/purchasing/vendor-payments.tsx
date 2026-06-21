@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { formatDate } from '@/lib/locale';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
@@ -94,7 +95,7 @@ export default function VendorPaymentsPage() {
                   onClick={() => navigate(`/purchasing/payments/${pmt.id}`)}>
                   <td className="px-4 py-3 font-mono text-xs text-brand-700">{pmt.payment_number}</td>
                   <td className="px-4 py-3 text-ink-primary">{supplierName(pmt.contact_id)}</td>
-                  <td className="px-4 py-3 text-ink-secondary">{pmt.date as string}</td>
+                  <td className="px-4 py-3 text-ink-secondary">{formatDate(pmt.date as string)}</td>
                   <td className="px-4 py-3 text-end font-mono">{Number(pmt.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                   <td className="px-4 py-3 text-ink-secondary capitalize">{pmt.classification}</td>
                   <td className="px-4 py-3 text-center">

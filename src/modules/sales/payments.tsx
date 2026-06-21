@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatDate } from '@/lib/locale';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -145,7 +146,7 @@ export default function PaymentsPage() {
                 >
                   <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>{pmt.payment_number}</td>
                   <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px', fontWeight: 500 }}>{customerMap[pmt.contact_id] ?? '—'}</td>
-                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{pmt.date}</td>
+                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(pmt.date)}</td>
                   <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px', textTransform: 'capitalize' }}>{pmt.classification.replace('_', ' ')}</td>
                   <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>
                     {pmt.currency} {fmt(Number(pmt.amount))}

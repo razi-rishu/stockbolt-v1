@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatDate } from '@/lib/locale';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -152,8 +153,8 @@ export default function VendorBillsPage() {
                 >
                   <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>{bill.bill_number}</td>
                   <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px' }}>{supplierName(bill.supplier_id)}</td>
-                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{bill.date as string}</td>
-                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{(bill.due_date as string | null) ?? '—'}</td>
+                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(bill.date as string)}</td>
+                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{bill.due_date ? formatDate(bill.due_date as string) : '—'}</td>
                   <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>
                     {Number(bill.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </td>

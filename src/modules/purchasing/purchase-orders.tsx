@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatDate } from '@/lib/locale';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -109,7 +110,7 @@ export default function PurchaseOrdersPage() {
                   >
                     <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>{po.po_number}</td>
                     <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px' }}>{supplierName(po.supplier_id)}</td>
-                    <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{po.date as string}</td>
+                    <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(po.date as string)}</td>
                     <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>
                       {Number(po.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                     </td>

@@ -14,6 +14,7 @@
  *  10. Account Statement (date range, debit/credit/running balance)
  */
 import { useState, useMemo } from 'react';
+import { formatDate } from '@/lib/locale';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -507,7 +508,7 @@ export default function CustomerDetailPage() {
                   onClick={() => navigate(`/sales/invoices/${inv.id}`)}
                   className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
                   <td className="px-4 py-2 font-mono text-xs text-brand-600">{inv.invoice_number}</td>
-                  <td className="px-4 py-2 text-ink-secondary">{inv.date as unknown as string}</td>
+                  <td className="px-4 py-2 text-ink-secondary">{formatDate(inv.date as unknown as string)}</td>
                   <td className="px-4 py-2 text-ink-secondary">{(inv.due_date as unknown as string | null) ?? '—'}</td>
                   <td className="px-4 py-2 text-end font-mono text-ink-secondary">{fmt(Number(inv.total_amount))}</td>
                   <td className="px-4 py-2 text-end font-mono font-medium text-ink-primary">{fmt(inv.outstanding)}</td>
@@ -544,7 +545,7 @@ export default function CustomerDetailPage() {
                   onClick={() => navigate(`/sales/invoices/${inv.id}`)}
                   className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
                   <td className="px-4 py-2 font-mono text-xs text-brand-600">{inv.invoice_number}</td>
-                  <td className="px-4 py-2 text-ink-secondary">{inv.date as unknown as string}</td>
+                  <td className="px-4 py-2 text-ink-secondary">{formatDate(inv.date as unknown as string)}</td>
                   <td className="px-4 py-2"><StatusBadge status={inv.status} /></td>
                   <td className="px-4 py-2 text-end font-mono text-ink-primary">{inv.currency} {fmt(Number(inv.total_amount))}</td>
                 </tr>
@@ -574,7 +575,7 @@ export default function CustomerDetailPage() {
                   onClick={() => navigate(`/sales/quotes/${q.id}`)}
                   className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
                   <td className="px-4 py-2 font-mono text-xs text-brand-600">{q.quote_number}</td>
-                  <td className="px-4 py-2 text-ink-secondary">{q.date as unknown as string}</td>
+                  <td className="px-4 py-2 text-ink-secondary">{formatDate(q.date as unknown as string)}</td>
                   <td className="px-4 py-2"><StatusBadge status={q.status} /></td>
                   <td className="px-4 py-2 text-end font-mono text-ink-primary">{q.currency} {fmt(Number(q.total_amount))}</td>
                 </tr>
@@ -604,7 +605,7 @@ export default function CustomerDetailPage() {
                   onClick={() => navigate(`/sales/payments/${p.id}`)}
                   className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
                   <td className="px-4 py-2 font-mono text-xs text-brand-600">{p.payment_number}</td>
-                  <td className="px-4 py-2 text-ink-secondary">{p.date as unknown as string}</td>
+                  <td className="px-4 py-2 text-ink-secondary">{formatDate(p.date as unknown as string)}</td>
                   <td className="px-4 py-2"><StatusBadge status={p.status} /></td>
                   <td className="px-4 py-2 text-end font-mono text-ink-primary">{p.currency} {fmt(Number(p.amount))}</td>
                 </tr>
@@ -634,7 +635,7 @@ export default function CustomerDetailPage() {
                   onClick={() => navigate(`/sales/credit-notes/${cn.id}`)}
                   className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
                   <td className="px-4 py-2 font-mono text-xs text-brand-600">{cn.credit_note_number}</td>
-                  <td className="px-4 py-2 text-ink-secondary">{cn.date as unknown as string}</td>
+                  <td className="px-4 py-2 text-ink-secondary">{formatDate(cn.date as unknown as string)}</td>
                   <td className="px-4 py-2"><StatusBadge status={cn.status} /></td>
                   <td className="px-4 py-2 text-end font-mono text-ink-primary">{cn.currency} {fmt(Number(cn.total_amount))}</td>
                 </tr>
@@ -670,7 +671,7 @@ export default function CustomerDetailPage() {
                     onClick={() => navigate(`/sales/returns/${sr.id}`)}
                     className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
                     <td className="px-4 py-2 font-mono text-xs text-brand-600">{sr.return_number}</td>
-                    <td className="px-4 py-2 text-ink-secondary">{sr.date as unknown as string}</td>
+                    <td className="px-4 py-2 text-ink-secondary">{formatDate(sr.date as unknown as string)}</td>
                     <td className="px-4 py-2"><StatusBadge status={sr.status} /></td>
                     <td className="px-4 py-2 font-mono text-xs text-ink-secondary">{inv?.invoice_number ?? '—'}</td>
                     <td className="px-4 py-2 text-ink-secondary capitalize">{(sr.reason ?? '').replace(/_/g, ' ') || '—'}</td>

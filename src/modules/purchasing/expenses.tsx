@@ -13,6 +13,7 @@
  *   - Click a row to open the editor (multi-line aware)
  */
 import { useMemo, useState } from 'react';
+import { formatDate } from '@/lib/locale';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
@@ -141,7 +142,7 @@ export default function ExpensesPage() {
                   <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>
                     {exp.expense_number}
                   </td>
-                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{exp.date}</td>
+                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(exp.date)}</td>
                   <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px', maxWidth: '320px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {exp.description}
                   </td>

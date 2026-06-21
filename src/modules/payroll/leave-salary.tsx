@@ -15,6 +15,7 @@
  * days settled reduce the balance.
  */
 import { useEffect, useState } from 'react';
+import { formatDate } from '@/lib/locale';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
@@ -231,7 +232,7 @@ export default function LeaveSalaryPage() {
                   <tr key={r.id} style={{ borderTop: idx === 0 ? 'none' : '1px solid #f1f5f9' }}>
                     <td className="px-4 py-3" style={{ color: theme.ink, fontWeight: 500 }}>{empMap[r.employee_id]?.name ?? '—'}</td>
                     <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: theme.inkMuted }}>{r.days}</td>
-                    <td className="px-4 py-3" style={{ textAlign: 'end', color: theme.inkMuted, fontSize: '13px' }}>{r.date}</td>
+                    <td className="px-4 py-3" style={{ textAlign: 'end', color: theme.inkMuted, fontSize: '13px' }}>{formatDate(r.date)}</td>
                     <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', fontWeight: 600 }}>{fmt(Number(r.amount))}</td>
                     <td className="px-4 py-3">
                       <span style={{

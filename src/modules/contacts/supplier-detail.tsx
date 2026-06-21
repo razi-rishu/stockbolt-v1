@@ -15,6 +15,7 @@
  *  10. Supplier Statement (date range)
  */
 import { useState, useMemo } from 'react';
+import { formatDate } from '@/lib/locale';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -465,7 +466,7 @@ export default function SupplierDetailPage() {
                   onClick={() => navigate(`/purchasing/bills/${b.id}`)}
                   className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
                   <td className="px-4 py-2 font-mono text-xs text-brand-600">{b.bill_number}</td>
-                  <td className="px-4 py-2 text-ink-secondary">{b.date as unknown as string}</td>
+                  <td className="px-4 py-2 text-ink-secondary">{formatDate(b.date as unknown as string)}</td>
                   <td className="px-4 py-2 text-ink-secondary">{(b.due_date as unknown as string | null) ?? '—'}</td>
                   <td className="px-4 py-2 text-end font-mono text-ink-secondary">{fmt(Number(b.total_amount))}</td>
                   <td className="px-4 py-2 text-end font-mono font-medium text-ink-primary">{fmt(b.outstanding)}</td>
@@ -502,7 +503,7 @@ export default function SupplierDetailPage() {
                   onClick={() => navigate(`/purchasing/bills/${b.id}`)}
                   className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
                   <td className="px-4 py-2 font-mono text-xs text-brand-600">{b.bill_number}</td>
-                  <td className="px-4 py-2 text-ink-secondary">{b.date as unknown as string}</td>
+                  <td className="px-4 py-2 text-ink-secondary">{formatDate(b.date as unknown as string)}</td>
                   <td className="px-4 py-2"><StatusBadge status={b.status} /></td>
                   <td className="px-4 py-2 text-end font-mono text-ink-primary">{b.currency} {fmt(Number(b.total_amount))}</td>
                 </tr>
@@ -532,7 +533,7 @@ export default function SupplierDetailPage() {
                   onClick={() => navigate(`/purchasing/orders/${p.id}`)}
                   className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
                   <td className="px-4 py-2 font-mono text-xs text-brand-600">{p.po_number}</td>
-                  <td className="px-4 py-2 text-ink-secondary">{p.date as unknown as string}</td>
+                  <td className="px-4 py-2 text-ink-secondary">{formatDate(p.date as unknown as string)}</td>
                   <td className="px-4 py-2"><StatusBadge status={p.status} /></td>
                   <td className="px-4 py-2 text-end font-mono text-ink-primary">{p.currency} {fmt(Number(p.total_amount))}</td>
                 </tr>
@@ -562,7 +563,7 @@ export default function SupplierDetailPage() {
                   onClick={() => navigate(`/purchasing/payments/${p.id}`)}
                   className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
                   <td className="px-4 py-2 font-mono text-xs text-brand-600">{p.payment_number}</td>
-                  <td className="px-4 py-2 text-ink-secondary">{p.date as unknown as string}</td>
+                  <td className="px-4 py-2 text-ink-secondary">{formatDate(p.date as unknown as string)}</td>
                   <td className="px-4 py-2"><StatusBadge status={p.status} /></td>
                   <td className="px-4 py-2 text-end font-mono text-ink-primary">{p.currency} {fmt(Number(p.amount))}</td>
                 </tr>
@@ -592,7 +593,7 @@ export default function SupplierDetailPage() {
                   onClick={() => navigate(`/purchasing/debit-notes/${dn.id}`)}
                   className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
                   <td className="px-4 py-2 font-mono text-xs text-brand-600">{dn.debit_note_number}</td>
-                  <td className="px-4 py-2 text-ink-secondary">{dn.date as unknown as string}</td>
+                  <td className="px-4 py-2 text-ink-secondary">{formatDate(dn.date as unknown as string)}</td>
                   <td className="px-4 py-2"><StatusBadge status={dn.status} /></td>
                   <td className="px-4 py-2 text-end font-mono text-ink-primary">{dn.currency} {fmt(Number(dn.total_amount))}</td>
                 </tr>
