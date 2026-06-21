@@ -20,7 +20,7 @@
  *   - is_system flag (server-only)
  */
 import { useState, useEffect } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Modal } from '@/ui/modal';
 import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
@@ -42,6 +42,27 @@ const TYPE_PRESETS: Array<{ value: string; label: string; type: string; sub_type
   { value: 'direct_expense',        label: 'Direct Expense (COGS)',          type: 'expense',   sub_type: 'direct'    },
   { value: 'indirect_expense',      label: 'Indirect Expense (Operating)',   type: 'expense',   sub_type: 'indirect'  },
 ];
+
+// First digit of the code range per preset (StockBolt standard CoA numbering).
+const PRESET_PREFIX: Record<string, string> = {
+  current_asset: '1', fixed_asset: '1',
+  current_liability: '2', long_term_liability: '2',
+  equity: '3',
+  direct_income: '4', indirect_income: '4',
+  direct_expense: '5', indirect_expense: '6',
+};
+
+/** Suggest the next free 4-digit code in the preset's range (e.g. 6860). */
+function suggestCode(preset: string, existing: string[]): string {
+  const prefix = PRESET_PREFIX[preset] ?? '6';
+  const taken = new Set(existing);
+  const nums = existing.filter(c => /^\d{4}$/.test(c) && c.startsWith(prefix)).map(Number);
+  const base = nums.length ? Math.max(...nums) : Number(prefix + '099');
+  let cand = Math.ceil((base + 1) / 10) * 10;          // round up to a tidy x10
+  while (taken.has(String(cand)) && cand < Number(prefix + '999')) cand += 10;
+  while (taken.has(String(cand))) cand += 1;            // fall back to +1 if x10s exhausted
+  return String(cand);
+}
 
 export interface CoaQuickCreateProps {
   open:        boolean;
@@ -65,16 +86,31 @@ export function CoaQuickCreate({
   const [isActive, setIsActive] = useState(true);
   const [error, setError]   = useState<string | null>(null);
 
+  // Existing codes — so we can auto-suggest the next free one (the user no
+  // longer has to know the numbering scheme).
+  const { data: coaList = [] } = useQuery<CoaRow[]>({
+    queryKey: ['coa', company_id],
+    queryFn:  () => getAdapter().coa.list(company_id!),
+    enabled:  !!company_id && open,
+  });
+  const existingCodes = coaList.map(c => c.code);
+
   // Reset whenever the modal opens (fresh state per open).
   useEffect(() => {
     if (open) {
       setPreset(defaultPreset);
-      setCode('');
       setName(initialName);
       setIsActive(true);
       setError(null);
     }
   }, [open, defaultPreset, initialName]);
+
+  // Auto-fill the code with the next free one whenever the modal opens or the
+  // preset (range) changes. The user can still type their own.
+  useEffect(() => {
+    if (open) setCode(suggestCode(preset, existingCodes));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, preset, coaList.length]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {

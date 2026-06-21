@@ -106,13 +106,19 @@ const newLine = (): LineRow => ({
   customer_id: '',
 });
 
-function calcLine(l: LineRow) {
+function calcLine(l: LineRow, inclusive = false) {
   const qty = parseFloat(l.quantity) || 0;
   const unit = parseFloat(l.unit_amount) || 0;
   const rate = parseFloat(l.tax_rate) || 0;
-  const sub = round2(qty * unit);
-  const tax = round2(sub * (rate / 100));
-  return { line_subtotal: sub, tax_amount: tax, line_total: round2(sub + tax) };
+  const amount = round2(qty * unit);
+  if (inclusive) {
+    // The entered amount already INCLUDES tax — back out the net + tax.
+    const sub = round2(amount / (1 + rate / 100));
+    return { line_subtotal: sub, tax_amount: round2(amount - sub), line_total: amount };
+  }
+  // Tax-exclusive: the entered amount is the net; tax is added on top.
+  const tax = round2(amount * (rate / 100));
+  return { line_subtotal: amount, tax_amount: tax, line_total: round2(amount + tax) };
 }
 
 // ── Section divider that matches the editor's vibe ─────────────────────────
@@ -157,6 +163,8 @@ export default function ExpenseEditorPage() {
   // Lines (always at least 1 — the "primary" expense category)
   const [lines, setLines]   = useState<LineRow[]>([newLine()]);
   const [splitOpen, setSplitOpen] = useState(false);
+  // Whether the entered amount already includes tax (vs tax added on top).
+  const [taxInclusive, setTaxInclusive] = useState(false);
 
   const [error, setError]   = useState<string | null>(null);
   const [dirty, setDirty]   = useState(false);
@@ -266,12 +274,12 @@ export default function ExpenseEditorPage() {
   const totals = useMemo(() => {
     let sub = 0, tax = 0;
     for (const l of lines) {
-      const c = calcLine(l);
+      const c = calcLine(l, taxInclusive);
       sub += c.line_subtotal;
       tax += c.tax_amount;
     }
     return { subtotal: round2(sub), tax: round2(tax), total: round2(sub + tax) };
-  }, [lines]);
+  }, [lines, taxInclusive]);
 
   // Reference options
   const isDraft = isNew || expense?.status === 'draft';
@@ -306,7 +314,7 @@ export default function ExpenseEditorPage() {
       }
 
       const itemInserts: ExpenseItemInsert[] = lines.map((l, idx) => {
-        const c = calcLine(l);
+        const c = calcLine(l, taxInclusive);
         return {
           sort_order: idx,
           expense_account_id: l.expense_account_id,
@@ -396,7 +404,7 @@ export default function ExpenseEditorPage() {
   // Primary line = first line. When split is closed, lines[0] is the only
   // line; when split is open the user can add more.
   const primary = lines[0];
-  const primaryCalc = calcLine(primary);
+  const primaryCalc = calcLine(primary, taxInclusive);
 
   // Status pill
   const statusPill = (s?: string) => {
@@ -571,6 +579,28 @@ export default function ExpenseEditorPage() {
             </div>
           </div>
 
+          {/* Tax inclusive / exclusive toggle */}
+          <div style={{ marginTop: '14px', display: 'flex', gap: '8px' }}>
+            {([
+              { v: false, label: 'Amount excludes tax' },
+              { v: true,  label: 'Amount includes tax' },
+            ] as const).map(opt => (
+              <button
+                key={String(opt.v)}
+                type="button"
+                disabled={!isDraft}
+                onClick={() => { setTaxInclusive(opt.v); setDirty(true); }}
+                style={{
+                  fontSize: '11.5px', fontWeight: 600, padding: '5px 12px', borderRadius: '999px',
+                  cursor: isDraft ? 'pointer' : 'default',
+                  border: `1px solid ${taxInclusive === opt.v ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.25)'}`,
+                  background: taxInclusive === opt.v ? 'rgba(255,255,255,.92)' : 'transparent',
+                  color: taxInclusive === opt.v ? '#5b21b6' : 'rgba(255,255,255,.8)',
+                }}
+              >{opt.label}</button>
+            ))}
+          </div>
+
           {/* computed summary chips */}
           <div style={{
             marginTop: '16px', paddingTop: '14px',
@@ -631,7 +661,7 @@ export default function ExpenseEditorPage() {
         {splitOpen && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {lines.map((line) => {
-              const c = calcLine(line);
+              const c = calcLine(line, taxInclusive);
               return (
                 <div key={line._key} style={{
                   background: theme.page,
