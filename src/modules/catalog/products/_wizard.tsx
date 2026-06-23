@@ -27,7 +27,8 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { useCompanyCurrency } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useCompanyCountry } from '@/hooks/use-company-currency';
+import { defaultTaxRate } from '@/lib/locale';
 import type {
   BrandRow, CategoryRow, UnitRow, CoaRow,
   ContactRow, WarehouseRow,
@@ -609,6 +610,7 @@ function Step2({
   coa: CoaRow[];
 }) {
   const companyCurrency = useCompanyCurrency();   // Issue 1 — localize money to tenant currency
+  const stdRate = defaultTaxRate(useCompanyCountry());   // 5% GCC / 18% India
   const selling = parseFloat(form.selling_price) || 0;
   const cost    = parseFloat(form.opening_stock_rate) || 0;
   const { margin, markup } = useMemo(() => {
@@ -651,7 +653,7 @@ function Step2({
           </Field>
           <Field label="Tax">
             <Select value={form.tax_category} onChange={(e) => set('tax_category', e.target.value as WizardForm['tax_category'])}>
-              <option value="standard">Standard Rate [5%]</option>
+              <option value="standard">Standard Rate [{stdRate}%]</option>
               <option value="zero_rated">Zero Rated</option>
               <option value="exempt">Exempt</option>
             </Select>

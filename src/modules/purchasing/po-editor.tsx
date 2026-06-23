@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { useCompanyCurrency } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useCompanyCountry } from '@/hooks/use-company-currency';
+import { defaultTaxRate } from '@/lib/locale';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
@@ -58,6 +59,7 @@ export default function POEditorPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const companyCurrency = useCompanyCurrency();    // Phase 14.14m
+  const companyCountry = useCompanyCountry();       // Phase 21 — country standard tax rate
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const printTemplate = useResolvedPrintTemplate('purchase_order');
@@ -79,6 +81,12 @@ export default function POEditorPage() {
     queryFn: () => getAdapter().taxRates.list(company_id!),
     enabled: !!company_id,
   });
+  // Phase 21 — company standard tax rate (5% GCC / 18% India), matched to a seeded row.
+  const stdTaxRate = (() => {
+    const target = defaultTaxRate(companyCountry);
+    const hit = taxRates.find(r => r.is_active && Number(r.rate) === target);
+    return hit ? String(hit.rate) : '0';
+  })();
   const { data: warehouses = [] } = useQuery<WarehouseRow[]>({
     queryKey: ['warehouses', company_id],
     queryFn: () => getAdapter().warehouses.list(company_id!),
@@ -161,6 +169,18 @@ export default function POEditorPage() {
     }));
     setDirty(true);
   }, []);
+
+  // Phase 21 — pre-fill the pristine opening line on a NEW PO with the company
+  // standard rate once tax rates + country resolve (runs once, untouched line only).
+  const seededDefaultRate = useRef(false);
+  useEffect(() => {
+    if (!isNew || seededDefaultRate.current || stdTaxRate === '0') return;
+    seededDefaultRate.current = true;
+    setLines(prev => prev.map(l =>
+      (l.product_id == null && l.description === '' && l.tax_rate === '0')
+        ? { ...l, tax_rate: stdTaxRate, ...calcLine({ ...l, tax_rate: stdTaxRate }) }
+        : l));
+  }, [isNew, stdTaxRate]);
 
   const handleProductChange = (key: string, productId: string) => {
     const product = products.find(p => p.id === productId);
@@ -479,7 +499,7 @@ export default function POEditorPage() {
         {canEdit && (
           <div className="border-t border-border-subtle px-5 py-2">
             <button className="text-xs text-brand-600 hover:text-brand-700"
-              onClick={() => { setLines(prev => [...prev, emptyLine()]); setDirty(true); }}>
+              onClick={() => { const b = { ...emptyLine(), tax_rate: stdTaxRate }; setLines(prev => [...prev, { ...b, ...calcLine(b) }]); setDirty(true); }}>
               + {t('purchasing.add_line')}
             </button>
           </div>

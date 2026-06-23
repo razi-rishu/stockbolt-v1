@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
+import { useCompanyCountry } from '@/hooks/use-company-currency';
+import { defaultTaxRate as countryStdTaxRate } from '@/lib/locale';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Button } from '@/ui/button';
@@ -124,6 +126,7 @@ export default function POSScreen() {
     queryFn: () => getAdapter().taxRates.list(company_id!),
     enabled: !!company_id,
   });
+  const companyCountry = useCompanyCountry();
 
   const { data: customers = [] } = useQuery<ContactRow[]>({
     queryKey: ['contacts', company_id, 'customer'],
@@ -199,7 +202,10 @@ export default function POSScreen() {
     : [];
 
   // ── Cart helpers ──────────────────────────────────────────────────────────────
-  const defaultTaxRate = taxRates[0]?.rate ?? 0;
+  // Default new cart lines to the company's standard rate (5% GCC / 18% India),
+  // not the alphabetically-first seeded rate (which would be a 0% / exempt row).
+  const stdRate = countryStdTaxRate(companyCountry);
+  const defaultTaxRate = taxRates.find(r => Number(r.rate) === stdRate)?.rate ?? (taxRates[0]?.rate ?? 0);
 
   const addToCart = useCallback((product: ProductRow) => {
     setCart(prev => {

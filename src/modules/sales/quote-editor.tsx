@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { useCompanyCurrency } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useCompanyCountry } from '@/hooks/use-company-currency';
+import { defaultTaxRate } from '@/lib/locale';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
@@ -55,6 +56,7 @@ export default function QuoteEditorPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const companyCurrency = useCompanyCurrency();   // Issue 1 — was hardcoded 'AED'
+  const companyCountry = useCompanyCountry();      // Phase 21 — country standard tax rate
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const printTemplate = useResolvedPrintTemplate('quotation');
@@ -83,6 +85,12 @@ export default function QuoteEditorPage() {
     queryFn: () => getAdapter().taxRates.list(company_id!),
     enabled: !!company_id,
   });
+  // Phase 21 — company standard tax rate (5% GCC / 18% India), matched to a seeded row.
+  const stdTaxRate = (() => {
+    const target = defaultTaxRate(companyCountry);
+    const hit = taxRates.find(r => r.is_active && Number(r.rate) === target);
+    return hit ? String(hit.rate) : '0';
+  })();
   const { data: existing } = useQuery<SalesQuoteRow | null>({
     queryKey: ['sales_quote', id],
     queryFn: () => getAdapter().salesQuotes.getById(id!),
@@ -151,6 +159,18 @@ export default function QuoteEditorPage() {
   const projectedOutstanding = currentOutstanding + grandTotal;
   const creditOverage        = projectedOutstanding - creditLimit;
   const overCreditLimit      = creditLimit > 0 && creditOverage > 0.005;
+
+  // Phase 21 — pre-fill the pristine opening line on a NEW quote with the company
+  // standard rate once tax rates + country resolve (runs once, untouched line only).
+  const seededDefaultRate = useRef(false);
+  useEffect(() => {
+    if (!isNew || seededDefaultRate.current || stdTaxRate === '0') return;
+    seededDefaultRate.current = true;
+    setLines(prev => prev.map(l =>
+      (l.product_id == null && l.description === '' && l.tax_rate === '0')
+        ? { ...l, tax_rate: stdTaxRate, ...calcLine({ ...l, tax_rate: stdTaxRate }) }
+        : l));
+  }, [isNew, stdTaxRate]);
 
   const updateLine = useCallback((key: string, patch: Partial<LineRow>) => {
     setLines(prev => prev.map(l => { if (l._key !== key) return l; const u = { ...l, ...patch }; return { ...u, ...calcLine(u) }; }));
@@ -441,7 +461,7 @@ export default function QuoteEditorPage() {
             </tbody>
           </table>
         </div>
-        {canEdit && <div className="border-t border-border-subtle px-5 py-2"><button className="text-xs text-brand-600 hover:text-brand-700" onClick={() => { setLines(prev => [...prev, emptyLine()]); setDirty(true); }}>+ {t('sales.add_line')}</button></div>}
+        {canEdit && <div className="border-t border-border-subtle px-5 py-2"><button className="text-xs text-brand-600 hover:text-brand-700" onClick={() => { const b = { ...emptyLine(), tax_rate: stdTaxRate }; setLines(prev => [...prev, { ...b, ...calcLine(b) }]); setDirty(true); }}>+ {t('sales.add_line')}</button></div>}
         <div className="border-t border-border-subtle px-5 py-4">
           <div className="ms-auto w-60 space-y-1.5 text-sm">
             <div className="flex justify-between text-ink-secondary"><span>{t('sales.subtotal')}</span><span className="font-mono">{fmt(subtotal)}</span></div>

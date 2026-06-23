@@ -40,3 +40,24 @@ export function useCompanyCurrency(): string {
 
   return company?.currency || FALLBACK_CURRENCY;
 }
+
+/**
+ * useCompanyCountry — the active tenant's ISO country code ('AE', 'SA', 'IN', …).
+ *
+ * Shares the same cached ['company', company_id] query as useCompanyCurrency,
+ * so it's a free read once the tree has loaded. Used to derive the country's
+ * default tax rate (5% GCC / 18% India) for pre-filling new document lines.
+ * Returns null until the company query resolves.
+ */
+export function useCompanyCountry(): string | null {
+  const company_id = useAuthStore((s) => s.company_id);
+
+  const { data: company } = useQuery<Company | null>({
+    queryKey: ['company', company_id],
+    queryFn:  () => getAdapter().companies.getById(company_id!),
+    enabled:  !!company_id,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  return company?.country_code ?? null;
+}

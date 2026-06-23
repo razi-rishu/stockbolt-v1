@@ -6,7 +6,8 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useShortcutAction } from '@/keyboard/use-shortcut-action';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
-import { useCompanyCurrency } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useCompanyCountry } from '@/hooks/use-company-currency';
+import { defaultTaxRate } from '@/lib/locale';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
@@ -88,6 +89,7 @@ export default function InvoiceEditorPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const companyCurrency = useCompanyCurrency();   // Phase 14.14m — reads companies.currency, falls back to AED
+  const companyCountry = useCompanyCountry();      // Phase 21 — default tax to the country's standard rate
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
@@ -119,6 +121,13 @@ export default function InvoiceEditorPage() {
     queryFn: () => getAdapter().taxRates.list(company_id!),
     enabled: !!company_id,
   });
+  // Phase 21 — the company's standard tax rate (5% GCC / 18% India), matched to a
+  // seeded tax_rates row. New lines default to this instead of "No Tax (0%)".
+  const stdTaxRate = (() => {
+    const target = defaultTaxRate(companyCountry);
+    const hit = taxRates.find(r => r.is_active && Number(r.rate) === target);
+    return hit ? String(hit.rate) : '0';
+  })();
   // Salespeople — dedicated master table (Phase 12.16). Required field
   // below. Add/edit/deactivate names from Settings → Salespeople.
   const { data: salespeople = [] } = useQuery({
@@ -314,8 +323,26 @@ export default function InvoiceEditorPage() {
     setDirty(true);
   }, [pricesInclusive]);
 
-  const addLine = () => { setLines(prev => [...prev, emptyLine()]); setDirty(true); };
+  const addLine = () => {
+    const base = { ...emptyLine(), tax_rate: stdTaxRate };
+    setLines(prev => [...prev, { ...base, ...calcLine(base, pricesInclusive) }]);
+    setDirty(true);
+  };
   const removeLine = (key: string) => { setLines(prev => prev.filter(l => l._key !== key)); setDirty(true); };
+
+  // Phase 21 — pre-fill the pristine opening line on a NEW invoice with the
+  // company's standard rate once tax rates + country resolve. Touches only the
+  // untouched starter line (no product, no edits), runs once, and never clobbers
+  // a cloned/loaded line or a rate the user has already chosen.
+  const seededDefaultRate = useRef(false);
+  useEffect(() => {
+    if (!isNew || seededDefaultRate.current || stdTaxRate === '0') return;
+    seededDefaultRate.current = true;
+    setLines(prev => prev.map(l =>
+      (l.product_id == null && l.description === '' && l.tax_rate === '0')
+        ? { ...l, tax_rate: stdTaxRate, ...calcLine({ ...l, tax_rate: stdTaxRate }, pricesInclusive) }
+        : l));
+  }, [isNew, stdTaxRate, pricesInclusive]);
 
   const handleProductChange = (key: string, productId: string) => {
     const product = products.find(p => p.id === productId);

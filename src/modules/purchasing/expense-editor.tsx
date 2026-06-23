@@ -54,13 +54,14 @@
  * by the RPC reading expense_items — if items exist, multi-line; else,
  * legacy single-line.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { useCompanyCurrency } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useCompanyCountry } from '@/hooks/use-company-currency';
+import { defaultTaxRate } from '@/lib/locale';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
@@ -146,6 +147,9 @@ export default function ExpenseEditorPage() {
   const navigate = useNavigate();
   const printTemplate = useResolvedPrintTemplate('purchase_invoice');
   const companyCurrency = useCompanyCurrency();   // Issue 1 — localize money to tenant currency
+  const companyCountry = useCompanyCountry();     // Phase 21 — default tax to the country's standard rate
+  // Country's standard tax rate (5% GCC / 18% India). '0' until the company loads.
+  const stdTaxRate = companyCountry ? String(defaultTaxRate(companyCountry)) : '0';
   const qc = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const { company_id } = useAuthStore();
@@ -165,6 +169,20 @@ export default function ExpenseEditorPage() {
   const [splitOpen, setSplitOpen] = useState(false);
   // Whether the entered amount already includes tax (vs tax added on top).
   const [taxInclusive, setTaxInclusive] = useState(false);
+
+  // Phase 21 — on a NEW expense, default the tax pill to the country's standard
+  // rate (5% GCC / 18% India) once the company loads. Touches only the pristine
+  // primary line (no account picked, still 0%), runs once, never on an existing
+  // expense or a rate the user already changed.
+  const seededDefaultRate = useRef(false);
+  useEffect(() => {
+    if (!isNew || seededDefaultRate.current || stdTaxRate === '0') return;
+    seededDefaultRate.current = true;
+    setLines(prev => prev.map((l, i) =>
+      (i === 0 && l.expense_account_id === '' && l.tax_rate === '0')
+        ? { ...l, tax_rate: stdTaxRate }
+        : l));
+  }, [isNew, stdTaxRate]);
 
   const [error, setError]   = useState<string | null>(null);
   const [dirty, setDirty]   = useState(false);
@@ -399,7 +417,7 @@ export default function ExpenseEditorPage() {
     setLines(prev => prev.length > 1 ? prev.filter(l => l._key !== k) : prev);
     setDirty(true);
   };
-  const addLine = () => { setLines(prev => [...prev, newLine()]); setDirty(true); };
+  const addLine = () => { setLines(prev => [...prev, { ...newLine(), tax_rate: stdTaxRate }]); setDirty(true); };
 
   // Primary line = first line. When split is closed, lines[0] is the only
   // line; when split is open the user can add more.

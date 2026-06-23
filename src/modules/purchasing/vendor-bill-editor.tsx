@@ -6,7 +6,8 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useShortcutAction } from '@/keyboard/use-shortcut-action';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
-import { useCompanyCurrency } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useCompanyCountry } from '@/hooks/use-company-currency';
+import { defaultTaxRate } from '@/lib/locale';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
@@ -72,6 +73,7 @@ export default function VendorBillEditorPage() {
   const qc = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const companyCurrency = useCompanyCurrency();    // Phase 14.14m
+  const companyCountry = useCompanyCountry();       // Phase 21 — country standard tax rate
   const isNew = id === 'new';
   const linkedGrnId = searchParams.get('grn_id');
 
@@ -90,6 +92,12 @@ export default function VendorBillEditorPage() {
     queryFn: () => getAdapter().taxRates.list(company_id!),
     enabled: !!company_id,
   });
+  // Phase 21 — company standard tax rate (5% GCC / 18% India), matched to a seeded row.
+  const stdTaxRate = (() => {
+    const target = defaultTaxRate(companyCountry);
+    const hit = taxRates.find(r => r.is_active && Number(r.rate) === target);
+    return hit ? String(hit.rate) : '0';
+  })();
   const { data: coaAccounts = [] } = useQuery<CoaRow[]>({
     queryKey: ['coa', company_id],
     queryFn: () => getAdapter().coa.list(company_id!),
@@ -313,6 +321,18 @@ export default function VendorBillEditorPage() {
     }));
     setDirty(true);
   }, [pricesInclusive]);
+
+  // Phase 21 — pre-fill the pristine opening line on a NEW bill with the company
+  // standard rate once tax rates + country resolve (runs once, untouched line only).
+  const seededDefaultRate = useRef(false);
+  useEffect(() => {
+    if (!isNew || seededDefaultRate.current || stdTaxRate === '0') return;
+    seededDefaultRate.current = true;
+    setLines(prev => prev.map(l =>
+      (l.product_id == null && l.description === '' && l.tax_rate === '0')
+        ? { ...l, tax_rate: stdTaxRate, ...calcLine({ ...l, tax_rate: stdTaxRate }, pricesInclusive) }
+        : l));
+  }, [isNew, stdTaxRate, pricesInclusive]);
 
   const handleProductChange = (key: string, productId: string) => {
     const product = products.find(p => p.id === productId);
@@ -924,7 +944,7 @@ export default function VendorBillEditorPage() {
         {canEdit && (
           <div className="border-t border-border-subtle px-5 py-2">
             <button className="text-xs text-brand-600 hover:text-brand-700"
-              onClick={() => { setLines(prev => [...prev, emptyLine()]); setDirty(true); }}>
+              onClick={() => { const b = { ...emptyLine(), tax_rate: stdTaxRate }; setLines(prev => [...prev, { ...b, ...calcLine(b, pricesInclusive) }]); setDirty(true); }}>
               + {t('purchasing.add_line')}
             </button>
           </div>
