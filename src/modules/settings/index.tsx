@@ -203,7 +203,7 @@ export default function SettingsHubPage() {
     {
       title: 'Users & Permissions',
       tiles: [
-        { to: '/settings/users', icon: '👥', title: 'Users & Roles', desc: 'Invite teammates, assign Admin/Manager/Salesperson roles.', comingSoon: true },
+        { to: '/settings/users', icon: '👥', title: 'Users & Roles', desc: 'Invite teammates, assign Admin / Accountant / Sales / Counter / Viewer roles.' },
       ],
     },
     {

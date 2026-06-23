@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Language } from '@/i18n/config';
+import type { PendingInvite } from '@/data/adapter';
 
 interface AuthState {
   user_id: string | null;
@@ -8,11 +9,21 @@ interface AuthState {
   company_id: string | null;
   role: string | null;
   is_onboarded: boolean;
+  // Phase 23 — the signed-in user's effective permission strings, loaded from
+  // my_permissions(). Authoritative for custom roles; persisted so refreshes
+  // gate correctly before the async reload returns.
+  permissions: string[];
+  // Phase 22 — a pending invite for a signed-in user who has no profile yet.
+  // Transient (not persisted); set during bootstrap to route them to
+  // /accept-invite instead of the create-company wizard.
+  pending_invite: PendingInvite | null;
   language: Language;
 
   set_session(params: { user_id: string; email: string }): void;
   set_profile(params: { company_id: string; role: string }): void;
   set_onboarded(value: boolean): void;
+  set_permissions(perms: string[]): void;
+  set_pending_invite(invite: PendingInvite | null): void;
   set_language(lang: Language): void;
   clear(): void;
 }
@@ -25,11 +36,15 @@ export const useAuthStore = create<AuthState>()(
       company_id: null,
       role: null,
       is_onboarded: false,
+      permissions: [],
+      pending_invite: null,
       language: 'en',
 
       set_session: ({ user_id, email }) => set({ user_id, email }),
-      set_profile: ({ company_id, role }) => set({ company_id, role }),
+      set_profile: ({ company_id, role }) => set({ company_id, role, pending_invite: null }),
       set_onboarded: (is_onboarded) => set({ is_onboarded }),
+      set_permissions: (permissions) => set({ permissions }),
+      set_pending_invite: (pending_invite) => set({ pending_invite }),
       set_language: (language) => set({ language }),
 
       clear: () =>
@@ -39,6 +54,8 @@ export const useAuthStore = create<AuthState>()(
           company_id: null,
           role: null,
           is_onboarded: false,
+          permissions: [],
+          pending_invite: null,
         }),
     }),
     {
@@ -65,6 +82,7 @@ export const useAuthStore = create<AuthState>()(
         email:       s.email,
         company_id:  s.company_id,
         role:        s.role,
+        permissions: s.permissions,
         is_onboarded: s.is_onboarded,
       }),
     },

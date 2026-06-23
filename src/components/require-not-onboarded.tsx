@@ -15,9 +15,15 @@ import { useAuthStore } from '@/store/auth';
  */
 export function RequireNotOnboarded() {
   const is_onboarded = useAuthStore((s) => s.is_onboarded);
+  const pending_invite = useAuthStore((s) => s.pending_invite);
 
   if (is_onboarded) {
     return <Navigate to="/dashboard" replace />;
+  }
+  // Phase 22 — an invited user landing on /setup should join their company,
+  // not create a new one.
+  if (pending_invite) {
+    return <Navigate to="/accept-invite" replace />;
   }
 
   return <Outlet />;

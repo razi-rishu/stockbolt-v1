@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth';
 import { getAdapter } from '@/data/index';
 import { LanguageToggle } from '@/components/language-toggle';
+import { hasPerm, type Permission } from '@/lib/permissions';
 import { CommandPaletteTrigger } from '@/keyboard/CommandPaletteTrigger';
 import { NotificationsBell } from '@/components/notifications-bell';
 
@@ -28,6 +29,8 @@ interface NavGroup {
   /** Group label shown as a section header inside the dropdown (optional) */
   label?: string;
   items: NavItem[];
+  /** Phase 22 — hide this group unless the role has this permission */
+  perm?: Permission;
 }
 
 interface NavSection {
@@ -37,6 +40,8 @@ interface NavSection {
   to?: string;
   /** Dropdown contents grouped into subsections */
   groups?: NavGroup[];
+  /** Phase 22 — hide this whole section unless the role has this permission */
+  perm?: Permission;
   /** Renders as greyed/disabled with a title-tooltip */
   disabled?: boolean;
   disabledHint?: string;
@@ -89,6 +94,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
 
     {
       label: t('nav.sales'),
+      perm: 'sales.read',
       groups: [{
         items: [
           { to: '/sales/invoices',     label: t('nav.invoices') },
@@ -104,6 +110,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
 
     {
       label: t('purchasing.nav_title'),
+      perm: 'purchasing.read',
       groups: [{
         items: [
           { to: '/purchasing/orders',      label: t('purchasing.po_title') },
@@ -119,6 +126,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
 
     {
       label: t('nav.inventory'),
+      perm: 'inventory.read',
       groups: [
         {
           label: 'Catalog',
@@ -143,6 +151,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
 
     {
       label: t('nav.accounting'),
+      perm: 'accounting.read',
       groups: [
         {
           label: 'Books',
@@ -168,6 +177,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
     // Payroll P1 (owner override 2026-06-13) — was disabled "Coming in v2"
     {
       label: 'Payroll',
+      perm: 'payroll.read',
       groups: [{
         items: [
           { to: '/payroll/runs',         label: 'Payroll Runs' },
@@ -180,9 +190,11 @@ function useNavSections(t: (k: string) => string): NavSection[] {
     {
       label: t('nav.reports'),
       wide: true,
+      perm: 'reports.read',
       groups: [
         {
           label: 'Financial',
+          perm: 'accounting.read',
           items: [
             { to: '/reports/trial-balance', label: t('nav.trial_balance') },
             { to: '/reports/profit-loss',   label: t('nav.profit_loss') },
@@ -630,13 +642,19 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const { t } = useTranslation();
-  const { email, clear } = useAuthStore();
+  const { email, clear, role, permissions } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const navRef = useRef<HTMLDivElement>(null);
-  const sections = useNavSections(t);
+  // Phase 22 — hide nav sections/groups the role can't read (admin sees all).
+  const sections = useNavSections(t)
+    .filter((s) => !s.perm || hasPerm(role, permissions, s.perm))
+    .map((s) => s.groups
+      ? { ...s, groups: s.groups.filter((g) => !g.perm || hasPerm(role, permissions, g.perm)) }
+      : s)
+    .filter((s) => s.to || (s.groups != null && s.groups.length > 0));
 
   // Close dropdowns on outside click or route change or Escape
   useEffect(() => { setOpenIdx(null); }, [location.pathname]);

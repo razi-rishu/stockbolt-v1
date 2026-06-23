@@ -134,6 +134,68 @@ export interface ProfilesAPI {
   getCurrent(): Promise<Profile | null>;
 }
 
+// ── Users & Roles (Phase 22) ───────────────────────────────────────────────
+export type AppRole = 'admin' | 'accountant' | 'sales' | 'counter' | 'viewer';
+
+export interface CompanyInviteRow {
+  id:          string;
+  company_id:  string;
+  email:       string;
+  role:        AppRole;
+  status:      'pending' | 'accepted' | 'revoked';
+  invited_by:  string | null;
+  created_at:  string;
+  accepted_at: string | null;
+}
+
+export interface PendingInvite {
+  invite_id:    string;
+  role:         AppRole;
+  company_name: string;
+}
+
+/** A role row — the 5 system roles (is_system, company_id null) + per-company custom roles. */
+export interface RoleRow {
+  id:         string;
+  company_id: string | null;
+  key:        string;
+  name:       string;
+  is_system:  boolean;
+}
+
+export interface UsersAPI {
+  /** Members (profiles) of the current company. */
+  listUsers(company_id: string): Promise<Profile[]>;
+  /** Pending invites for the current company (admin only). */
+  listInvites(company_id: string): Promise<CompanyInviteRow[]>;
+  /** The full role→permission matrix (global config, read by UI + RLS). */
+  listRolePermissions(): Promise<{ role: AppRole; permission: string }[]>;
+  /** Invite a teammate by email + role (admin only). Returns the invite id. */
+  inviteUser(email: string, role: AppRole): Promise<string>;
+  /** Revoke a pending invite (admin only). */
+  revokeInvite(invite_id: string): Promise<void>;
+  /** Change a member's role (admin only; last-admin guarded). */
+  setRole(user_id: string, role: AppRole): Promise<void>;
+  /** Activate / deactivate a member (admin only; last-admin guarded). */
+  setActive(user_id: string, active: boolean): Promise<void>;
+  /** Pending invite for the signed-in user's email (drives self-signup join). */
+  myPendingInvite(): Promise<PendingInvite | null>;
+  /** Accept the pending invite → attach this user's profile to the company. */
+  acceptInvite(): Promise<{ company_id: string; role: AppRole }>;
+
+  // ── Custom roles (Phase 23) ──────────────────────────────────────────────
+  /** All roles visible to the company: 5 system roles + this company's custom roles. */
+  listRoles(): Promise<RoleRow[]>;
+  /** The signed-in user's effective permission strings (drives UI gating). */
+  myPermissions(): Promise<string[]>;
+  /** Create a custom role (admin only). `users.manage` is never grantable. Returns the role key. */
+  createRole(name: string, permissions: string[]): Promise<string>;
+  /** Replace a custom role's name + permissions (admin only). */
+  updateRole(roleKey: string, name: string, permissions: string[]): Promise<void>;
+  /** Delete a custom role (admin only; blocked if any user still has it). */
+  deleteRole(roleKey: string): Promise<void>;
+}
+
 // ── Salespeople (Phase 12.16) ─────────────────────────────────────────────
 export interface SalespersonRow {
   id:             string;
@@ -1841,6 +1903,10 @@ export interface ExpensesAPI {
    *  failed item-replace rolls the header insert/update back too. Pass
    *  `id: null` for create, `id` for update. */
   saveWithItems(input: { id: string | null; header: ExpenseInsert; items: ExpenseItemInsert[] }): Promise<string>;
+  /** Phase 21b — spend grouped by expense account, confirmed expenses only.
+   *  Backs the "Top categories" bento tile. Sorted highest-spend first;
+   *  account names are resolved by the caller from its CoA query. */
+  categoryBreakdown(company_id: string): Promise<Array<{ account_id: string; amount: number }>>;
 }
 
 export interface PDCCreateParams {
@@ -1874,6 +1940,7 @@ export interface DataAdapter {
   companies: CompaniesAPI;
   printTemplates: PrintTemplatesAPI;
   profiles: ProfilesAPI;
+  users: UsersAPI;
   onboarding: OnboardingAPI;
   // Phase 2
   categories: CategoriesAPI;

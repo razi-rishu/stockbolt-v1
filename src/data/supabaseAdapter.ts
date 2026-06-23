@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database, Json } from '@/types/database';
 import { normalizeSettings, DEFAULT_TEMPLATE_SETTINGS } from '@/modules/print/engine/types';
 import type {
-  DataAdapter, Company, Profile,
+  DataAdapter, Company, Profile, AppRole, CompanyInviteRow, PendingInvite, RoleRow,
   CoaRow, CoaInsert, TaxRateInsert, PaymentMethodInsert, UnitInsert,
   WarehouseInsert, BankAccountInsert, CompanyUpdate, OnboardingRpcInput,
   CategoryRow, CategoryInsert, CategoryUpdate,
@@ -97,6 +97,10 @@ function assertNoError(error: { message: string } | null, context: string): void
 export function createSupabaseAdapter(
   client: SupabaseClient<Database> = getSupabaseClient(),
 ): DataAdapter {
+  // Call an RPC that isn't in the generated DB types yet (Phase 22 invite/role
+  // functions). Mirrors the cast used for save_expense_with_items.
+  const rpcAny = (fn: string, args: Record<string, unknown>) =>
+    (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)(fn, args);
   return {
     // ── Auth ───────────────────────────────────────────────────────────────
     auth: {
@@ -307,6 +311,84 @@ export function createSupabaseAdapter(
         const { data, error } = await client.from('profiles').select('*').eq('id', userId).maybeSingle();
         assertNoError(error, 'profiles.getCurrent');
         return data;
+      },
+    },
+
+    // ── Users & Roles (Phase 22) ───────────────────────────────────────────
+    // company_invites / role_permissions and the invite RPCs aren't in the
+    // generated DB types yet, so reach them through a loosely-typed cast (same
+    // pattern as expense_items / save_expense_with_items above).
+    users: {
+      async listUsers(company_id) {
+        const { data, error } = await client.from('profiles').select('*')
+          .eq('company_id', company_id).order('created_at', { ascending: true });
+        assertNoError(error, 'users.listUsers');
+        return (data ?? []) as Profile[];
+      },
+      async listInvites(company_id) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (client as any).from('company_invites').select('*')
+          .eq('company_id', company_id).eq('status', 'pending').order('created_at', { ascending: false });
+        assertNoError(error as Error | null, 'users.listInvites');
+        return (data ?? []) as CompanyInviteRow[];
+      },
+      async listRolePermissions() {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (client as any).from('role_permissions').select('role, permission');
+        assertNoError(error as Error | null, 'users.listRolePermissions');
+        return (data ?? []) as { role: AppRole; permission: string }[];
+      },
+      async inviteUser(email, role) {
+        const { data, error } = await rpcAny('invite_user', { p_email: email, p_role: role });
+        assertNoError(error as Error | null, 'users.inviteUser');
+        return data as string;
+      },
+      async revokeInvite(invite_id) {
+        const { error } = await rpcAny('revoke_invite', { p_invite_id: invite_id });
+        assertNoError(error as Error | null, 'users.revokeInvite');
+      },
+      async setRole(user_id, role) {
+        const { error } = await rpcAny('set_user_role', { p_user_id: user_id, p_role: role });
+        assertNoError(error as Error | null, 'users.setRole');
+      },
+      async setActive(user_id, active) {
+        const { error } = await rpcAny('set_user_active', { p_user_id: user_id, p_active: active });
+        assertNoError(error as Error | null, 'users.setActive');
+      },
+      async myPendingInvite() {
+        const { data, error } = await rpcAny('my_pending_invite', {});
+        assertNoError(error as Error | null, 'users.myPendingInvite');
+        return (data ?? null) as PendingInvite | null;
+      },
+      async acceptInvite() {
+        const { data, error } = await rpcAny('accept_invite', {});
+        assertNoError(error as Error | null, 'users.acceptInvite');
+        return data as { company_id: string; role: AppRole };
+      },
+      // ── Custom roles (Phase 23) ──
+      async listRoles() {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (client as any).from('roles').select('id, company_id, key, name, is_system').order('is_system', { ascending: false }).order('name');
+        assertNoError(error as Error | null, 'users.listRoles');
+        return (data ?? []) as RoleRow[];
+      },
+      async myPermissions() {
+        const { data, error } = await rpcAny('my_permissions', {});
+        assertNoError(error as Error | null, 'users.myPermissions');
+        return (data ?? []) as string[];
+      },
+      async createRole(name, permissions) {
+        const { data, error } = await rpcAny('create_role', { p_name: name, p_permissions: permissions });
+        assertNoError(error as Error | null, 'users.createRole');
+        return data as string;
+      },
+      async updateRole(roleKey, name, permissions) {
+        const { error } = await rpcAny('update_role', { p_role_key: roleKey, p_name: name, p_permissions: permissions });
+        assertNoError(error as Error | null, 'users.updateRole');
+      },
+      async deleteRole(roleKey) {
+        const { error } = await rpcAny('delete_role', { p_role_key: roleKey });
+        assertNoError(error as Error | null, 'users.deleteRole');
       },
     },
 
@@ -3988,6 +4070,34 @@ export function createSupabaseAdapter(
         });
         assertNoError(error as Error | null, 'expenses.saveWithItems');
         return data as string;
+      },
+      async categoryBreakdown(company_id) {
+        // Phase 21b — spend by expense account for confirmed expenses only.
+        // Inner-join filter on the parent expense (company + status); RLS also
+        // scopes to the tenant. expense_items isn't in the generated types, so
+        // bypass the typed client with a raw any-cast (same as getItems).
+        const raw = client as unknown as {
+          from: (t: string) => { select: (c: string) => {
+            eq: (col: string, val: string) => {
+              eq: (col: string, val: string) => Promise<{ data: unknown; error: unknown }>
+            }
+          } }
+        };
+        const { data, error } = await raw
+          .from('expense_items')
+          .select('expense_account_id, line_subtotal, expenses!inner(company_id,status)')
+          .eq('expenses.company_id', company_id)
+          .eq('expenses.status', 'confirmed');
+        assertNoError(error as Error | null, 'expenses.categoryBreakdown');
+        const rows = (data ?? []) as Array<{ expense_account_id: string; line_subtotal: number }>;
+        const map = new Map<string, number>();
+        for (const r of rows) {
+          if (!r.expense_account_id) continue;
+          map.set(r.expense_account_id, (map.get(r.expense_account_id) ?? 0) + (Number(r.line_subtotal) || 0));
+        }
+        return [...map.entries()]
+          .map(([account_id, amount]) => ({ account_id, amount }))
+          .sort((a, b) => b.amount - a.amount);
       },
     },
 

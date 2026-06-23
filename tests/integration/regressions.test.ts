@@ -802,3 +802,135 @@ describe('Data invariants — no accounting corruption', () => {
     ).toEqual([]);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// Phase 22 — Users & Roles (RBAC + invites). All tests soft-skip until the
+// phase22 migrations are applied, then become tripwires.
+// ════════════════════════════════════════════════════════════════════════════
+describe('Phase 22 — Users & Roles', () => {
+  async function tableExists(name: string): Promise<boolean> {
+    const [r] = await sql<{ v: boolean }>(`SELECT (to_regclass('public.${name}') IS NOT NULL) AS v`);
+    return !!r?.v;
+  }
+  async function fnSrc(fn: string): Promise<string> {
+    const [r] = await sql<{ src: string }>(
+      `SELECT COALESCE((SELECT pg_get_functiondef(oid) FROM pg_proc WHERE proname='${fn}' LIMIT 1),'') AS src`);
+    return r?.src ?? '';
+  }
+
+  it('role_permissions is seeded with the expected matrix', async () => {
+    if (!(await tableExists('role_permissions'))) {
+      console.warn('role_permissions not installed yet — skipping (apply 20260619000013_phase22_user_roles_foundation.sql)');
+      return;
+    }
+    const rows = await sql<{ role: string; n: number }>(
+      `SELECT role, count(*)::int AS n FROM role_permissions GROUP BY role`);
+    const byRole = Object.fromEntries(rows.map(r => [r.role, Number(r.n)]));
+    expect(byRole.admin, 'admin should have all 14 permissions').toBe(14);
+    expect(byRole.accountant).toBe(9);
+    expect(byRole.sales).toBe(4);
+    expect(byRole.counter).toBe(3);
+    expect(byRole.viewer).toBe(7);
+  });
+
+  it('has_perm short-circuits admin and respects is_active', async () => {
+    const src = await fnSrc('has_perm');
+    if (!src) { console.warn('has_perm not installed yet — skipping (apply phase22 foundation).'); return; }
+    expect(src, 'admin must short-circuit to TRUE').toMatch(/v_role\s*=\s*'admin'/);
+    expect(src, 'inactive users must get no permissions').toMatch(/is_active|v_active/);
+  });
+
+  it('management RPCs guard the last admin', async () => {
+    const roleSrc = await fnSrc('set_user_role');
+    if (!roleSrc) { console.warn('set_user_role not installed yet — skipping (apply phase22 foundation).'); return; }
+    expect(roleSrc, 'set_user_role must guard the last admin').toMatch(/last admin/i);
+    const activeSrc = await fnSrc('set_user_active');
+    expect(activeSrc, 'set_user_active must guard the last admin').toMatch(/last admin/i);
+  });
+
+  it('accept_invite joins an existing company (does not create one)', async () => {
+    const src = await fnSrc('accept_invite');
+    if (!src) { console.warn('accept_invite not installed yet — skipping (apply phase22 foundation).'); return; }
+    expect(src, 'accept_invite must insert a profile').toMatch(/INSERT INTO public\.profiles/i);
+    expect(src, 'accept_invite must NOT create a company').not.toMatch(/INSERT INTO public\.companies/i);
+  });
+
+  it('write-lockdown restrictive policies exist on key tables', async () => {
+    if (!(await tableExists('role_permissions'))) {
+      console.warn('phase22b not applied yet — skipping write-lockdown policy check.');
+      return;
+    }
+    const rows = await sql<{ tablename: string; policyname: string }>(
+      `SELECT tablename, policyname FROM pg_policies
+        WHERE schemaname='public' AND policyname LIKE 'rbac_w_%'`);
+    const onInvoices = rows.some(r => r.tablename === 'invoices');
+    const onJournal  = rows.some(r => r.tablename === 'journal_entries');
+    if (rows.length === 0) {
+      console.warn('no rbac_w_ policies found — apply 20260619000014_phase22b_rls_write_lockdown.sql');
+      return;
+    }
+    expect(onInvoices, 'invoices must have a rbac write policy').toBe(true);
+    expect(onJournal, 'journal_entries must have a rbac write policy').toBe(true);
+  });
+
+  it('backward-compat: every company still has at least one active admin (no lockout)', async () => {
+    if (!(await tableExists('role_permissions'))) {
+      console.warn('phase22 not applied yet — skipping no-lockout invariant.');
+      return;
+    }
+    const rows = await sql<{ company_id: string }>(
+      `SELECT c.id AS company_id FROM companies c
+        WHERE NOT EXISTS (
+          SELECT 1 FROM profiles p
+          WHERE p.company_id = c.id AND p.role = 'admin' AND p.is_active
+        )`);
+    expect(rows, 'every company must keep at least one active admin').toEqual([]);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Phase 23 — Custom roles. Soft-skip until phase23 is applied.
+// ════════════════════════════════════════════════════════════════════════════
+describe('Phase 23 — Custom roles', () => {
+  async function tableExists(name: string): Promise<boolean> {
+    const [r] = await sql<{ v: boolean }>(`SELECT (to_regclass('public.${name}') IS NOT NULL) AS v`);
+    return !!r?.v;
+  }
+  async function fnSrc(fn: string): Promise<string> {
+    const [r] = await sql<{ src: string }>(
+      `SELECT COALESCE((SELECT pg_get_functiondef(oid) FROM pg_proc WHERE proname='${fn}' LIMIT 1),'') AS src`);
+    return r?.src ?? '';
+  }
+
+  it('roles table is seeded with the 5 system roles', async () => {
+    if (!(await tableExists('roles'))) {
+      console.warn('roles not installed yet — skipping (apply 20260619000016_phase23_custom_roles.sql)');
+      return;
+    }
+    const [r] = await sql<{ n: number }>(
+      `SELECT count(*)::int AS n FROM roles WHERE company_id IS NULL AND is_system`);
+    expect(Number(r?.n), 'should be 5 system roles').toBe(5);
+  });
+
+  it('role_permissions is company-aware and has_perm scopes by company', async () => {
+    if (!(await tableExists('roles'))) { console.warn('phase23 not applied — skipping.'); return; }
+    const [col] = await sql<{ v: boolean }>(
+      `SELECT EXISTS(SELECT 1 FROM information_schema.columns
+         WHERE table_schema='public' AND table_name='role_permissions' AND column_name='company_id') AS v`);
+    expect(col?.v, 'role_permissions must have company_id').toBe(true);
+    const src = await fnSrc('has_perm');
+    expect(src, 'has_perm must scope by company').toMatch(/company_id IS NULL OR company_id = v_company/);
+  });
+
+  it('create_role refuses to grant users.manage (anti-escalation)', async () => {
+    const src = await fnSrc('create_role');
+    if (!src) { console.warn('create_role not installed yet — skipping (apply phase23).'); return; }
+    expect(src, "create_role must skip users.manage").toMatch(/<>\s*'users\.manage'/);
+  });
+
+  it('delete_role blocks deleting a role still in use', async () => {
+    const src = await fnSrc('delete_role');
+    if (!src) { console.warn('delete_role not installed yet — skipping (apply phase23).'); return; }
+    expect(src, 'delete_role must guard in-use roles').toMatch(/still assigned/i);
+  });
+});

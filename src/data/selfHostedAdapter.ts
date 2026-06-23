@@ -52,6 +52,22 @@ export function createSelfHostedAdapter(): DataAdapter {
     profiles: {
       getCurrent: () => notImplemented('profiles.getCurrent'),
     },
+    users: {
+      listUsers:           () => notImplemented('users.listUsers'),
+      listInvites:         () => notImplemented('users.listInvites'),
+      listRolePermissions: () => notImplemented('users.listRolePermissions'),
+      inviteUser:          () => notImplemented('users.inviteUser'),
+      revokeInvite:        () => notImplemented('users.revokeInvite'),
+      setRole:             () => notImplemented('users.setRole'),
+      setActive:           () => notImplemented('users.setActive'),
+      myPendingInvite:     () => notImplemented('users.myPendingInvite'),
+      acceptInvite:        () => notImplemented('users.acceptInvite'),
+      listRoles:           () => notImplemented('users.listRoles'),
+      myPermissions:       () => notImplemented('users.myPermissions'),
+      createRole:          () => notImplemented('users.createRole'),
+      updateRole:          () => notImplemented('users.updateRole'),
+      deleteRole:          () => notImplemented('users.deleteRole'),
+    },
     onboarding: {
       createCompanyAndProfile: () => notImplemented('onboarding.createCompanyAndProfile'),
       insertCoaBatch: () => notImplemented('onboarding.insertCoaBatch'),
@@ -343,6 +359,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       getItems:      () => notImplemented('expenses.getItems'),
       replaceItems:  () => notImplemented('expenses.replaceItems'),
       saveWithItems: () => notImplemented('expenses.saveWithItems'),
+      categoryBreakdown: () => notImplemented('expenses.categoryBreakdown'),
     },
     pdcCheques: {
       list:    () => notImplemented('pdcCheques.list'),

@@ -6,6 +6,7 @@ import { RequireAuth } from '@/components/require-auth';
 import { RequireOnboarded } from '@/components/require-onboarded';
 import { KeyboardShortcutProvider } from '@/keyboard/shortcut-registry';
 import { RequireNotOnboarded } from '@/components/require-not-onboarded';
+import { RequirePermission } from '@/components/require-permission';
 import { AppLayout } from '@/components/app-layout';
 import { ErrorBoundary } from '@/components/error-boundary';
 
@@ -21,6 +22,8 @@ const EmailVerifyPage    = lazy(() => import('@/modules/auth/email-verification'
 
 // Onboarding
 const SetupWizardPage    = lazy(() => import('@/modules/onboarding/setup-wizard'));
+const AcceptInvitePage   = lazy(() => import('@/modules/onboarding/accept-invite'));
+const UsersRolesPage     = lazy(() => import('@/modules/settings/users/index'));
 
 // App shell pages
 const DashboardPage      = lazy(() => import('@/modules/dashboard/index'));
@@ -214,6 +217,9 @@ function AppRoutes() {
             <Route path="/setup" element={<SetupWizardPage />} />
           </Route>
 
+          {/* Phase 22 — invited teammates accept here (no tenant chrome). */}
+          <Route path="/accept-invite" element={<AcceptInvitePage />} />
+
           {/* ── Platform Admin (owner-only) — standalone, no tenant chrome.
                Guarded client-side; the get_admin_dashboard RPC enforces it
                server-side regardless. Not in any tenant navigation. ───── */}
@@ -228,18 +234,23 @@ function AppRoutes() {
               <Route path="/design-system"            element={<DesignSystemPage />} />
               <Route path="/print-templates"          element={<SignatureTemplateGalleryPage />} />
 
-              {/* Settings */}
-              <Route path="/settings"                 element={<SettingsHubPage />} />
-              <Route path="/settings/company"         element={<CompanySettingsPage />} />
-              <Route path="/settings/warehouses"      element={<WarehousesPage />} />
-              <Route path="/settings/units"           element={<UnitsPage />} />
-              <Route path="/settings/price-levels"    element={<PriceLevelsPage />} />
-              <Route path="/settings/bank-accounts"     element={<BankAccountsPage />} />
-              <Route path="/settings/tax-rates"         element={<TaxRatesPage />} />
-              <Route path="/settings/exchange-rates"    element={<ExchangeRatesPage />} />
-              <Route path="/settings/opening-balances"  element={<OpeningBalancesPage />} />
-              <Route path="/settings/numbering"         element={<DocumentNumberingPage />} />
-              <Route path="/settings/import-export"     element={<ImportExportPage />} />
+              {/* Settings — require settings.read (Phase 22) */}
+              <Route element={<RequirePermission perm="settings.read" />}>
+                <Route path="/settings"                 element={<SettingsHubPage />} />
+                <Route path="/settings/company"         element={<CompanySettingsPage />} />
+                <Route path="/settings/warehouses"      element={<WarehousesPage />} />
+                <Route path="/settings/units"           element={<UnitsPage />} />
+                <Route path="/settings/price-levels"    element={<PriceLevelsPage />} />
+                <Route path="/settings/bank-accounts"     element={<BankAccountsPage />} />
+                <Route path="/settings/tax-rates"         element={<TaxRatesPage />} />
+                <Route path="/settings/exchange-rates"    element={<ExchangeRatesPage />} />
+                <Route path="/settings/opening-balances"  element={<OpeningBalancesPage />} />
+                <Route path="/settings/numbering"         element={<DocumentNumberingPage />} />
+                <Route path="/settings/import-export"     element={<ImportExportPage />} />
+                <Route path="/settings/users"             element={<RequirePermission perm="users.manage" />}>
+                  <Route index element={<UsersRolesPage />} />
+                </Route>
+              </Route>
 
               {/* Catalog */}
               <Route path="/products/categories"      element={<CategoriesPage />} />
@@ -253,12 +264,14 @@ function AppRoutes() {
               <Route path="/contacts/customers"       element={<CustomersPage />} />
               <Route path="/contacts/suppliers"       element={<SuppliersPage />} />
 
-              {/* Accounting */}
-              <Route path="/accounting/chart-of-accounts"        element={<CoAPage />} />
-              <Route path="/accounting/journal-entries/:id"      element={<JEEditorPage />} />
-              <Route path="/accounting/journal-entries"          element={<JournalEntriesPage />} />
-              <Route path="/accounting/general-ledger"           element={<GeneralLedgerPage />} />
-              <Route path="/accounting/period-lock"              element={<PeriodLockPage />} />
+              {/* Accounting — require accounting.read (Phase 22) */}
+              <Route element={<RequirePermission perm="accounting.read" />}>
+                <Route path="/accounting/chart-of-accounts"        element={<CoAPage />} />
+                <Route path="/accounting/journal-entries/:id"      element={<JEEditorPage />} />
+                <Route path="/accounting/journal-entries"          element={<JournalEntriesPage />} />
+                <Route path="/accounting/general-ledger"           element={<GeneralLedgerPage />} />
+                <Route path="/accounting/period-lock"              element={<PeriodLockPage />} />
+              </Route>
 
               {/* Reports */}
               <Route path="/reports/trial-balance"               element={<TrialBalancePage />} />
@@ -292,11 +305,13 @@ function AppRoutes() {
               <Route path="/purchasing/expenses/:id"            element={<PurchasingExpenseEditorPage />} />
               <Route path="/purchasing/expenses"                element={<PurchasingExpensesPage />} />
 
-              {/* Payroll P1 (owner override 2026-06-13) */}
-              <Route path="/payroll/employees"                  element={<EmployeesPage />} />
-              <Route path="/payroll/runs/:id"                   element={<PayrollRunEditorPage />} />
-              <Route path="/payroll/runs"                       element={<PayrollRunsPage />} />
-              <Route path="/payroll/leave-salary"               element={<LeaveSalaryPage />} />
+              {/* Payroll — require payroll.read (Phase 22) */}
+              <Route element={<RequirePermission perm="payroll.read" />}>
+                <Route path="/payroll/employees"                  element={<EmployeesPage />} />
+                <Route path="/payroll/runs/:id"                   element={<PayrollRunEditorPage />} />
+                <Route path="/payroll/runs"                       element={<PayrollRunsPage />} />
+                <Route path="/payroll/leave-salary"               element={<LeaveSalaryPage />} />
+              </Route>
 
               {/* Phase 5 reports */}
               <Route path="/reports/ap-aging"                   element={<APAgingPage />} />
@@ -324,16 +339,18 @@ function AppRoutes() {
               <Route path="/reports/pos-session"                element={<POSSessionReportPage />} />
               <Route path="/reports/daily-sales"                element={<DailySalesReportPage />} />
 
-              {/* Phase 8 — Banking & PDC */}
-              <Route path="/banking/transfers/:id"              element={<BankTransferEditorPage />} />
-              <Route path="/banking/transfers"                  element={<BankTransfersPage />} />
               {/* Expenses merged into Purchasing (2026-06-14). Old Banking
                   paths redirect — same underlying expenses table. */}
               <Route path="/banking/expenses/:id"               element={<Navigate to="/purchasing/expenses" replace />} />
               <Route path="/banking/expenses"                   element={<Navigate to="/purchasing/expenses" replace />} />
-              <Route path="/banking/pdc-received"               element={<PDCReceivedPage />} />
-              <Route path="/banking/pdc-issued"                 element={<PDCIssuedPage />} />
-              <Route path="/banking/reconciliation"             element={<BankReconciliationPage />} />
+              {/* Phase 8 — Banking & PDC — require accounting.read (Phase 22) */}
+              <Route element={<RequirePermission perm="accounting.read" />}>
+                <Route path="/banking/transfers/:id"              element={<BankTransferEditorPage />} />
+                <Route path="/banking/transfers"                  element={<BankTransfersPage />} />
+                <Route path="/banking/pdc-received"               element={<PDCReceivedPage />} />
+                <Route path="/banking/pdc-issued"                 element={<PDCIssuedPage />} />
+                <Route path="/banking/reconciliation"             element={<BankReconciliationPage />} />
+              </Route>
 
               {/* Phase 8 — Banking reports */}
               <Route path="/reports/daily-cash"                 element={<DailyCashPage />} />

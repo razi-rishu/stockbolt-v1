@@ -14,7 +14,7 @@ import { applyDirection } from '@/i18n/config';
  */
 export function useAuthInit(): { loading: boolean } {
   const [loading, setLoading] = useState(true);
-  const { set_session, set_profile, set_onboarded, set_language, clear, language } =
+  const { set_session, set_profile, set_onboarded, set_permissions, set_pending_invite, set_language, clear, language } =
     useAuthStore.getState();
 
   // Apply stored language preference immediately (before async work)
@@ -63,6 +63,18 @@ export function useAuthInit(): { loading: boolean } {
         if (profile) {
           set_profile({ company_id: profile.company_id, role: profile.role });
           set_onboarded(true);
+          // Phase 23 — load effective permissions (authoritative for custom roles).
+          try { set_permissions(await adapter.users.myPermissions()); }
+          catch (e) { console.error('[useAuthInit] myPermissions threw:', e); }
+        } else if (!wasOnboardedLocally) {
+          // No profile yet — a freshly-signed-up user. They may have been
+          // invited to an existing company; if so, route them to /accept-invite
+          // (handled by the guards) instead of the create-company wizard.
+          try {
+            set_pending_invite(await adapter.users.myPendingInvite());
+          } catch (e) {
+            console.error('[useAuthInit] myPendingInvite threw:', e);
+          }
         } else if (wasOnboardedLocally && persisted.company_id) {
           // Profile fetch failed but the persisted store says this user
           // was onboarded last session. Trust the local snapshot rather
@@ -104,8 +116,15 @@ export function useAuthInit(): { loading: boolean } {
         if (profile) {
           set_profile({ company_id: profile.company_id, role: profile.role });
           set_onboarded(true);
+          try { set_permissions(await adapter.users.myPermissions()); }
+          catch (e) { console.error('[useAuthInit] myPermissions threw:', e); }
         } else {
           set_onboarded(false);
+          try {
+            set_pending_invite(await adapter.users.myPendingInvite());
+          } catch (e) {
+            console.error('[useAuthInit] myPendingInvite threw:', e);
+          }
         }
         setLoading(false);
       }
