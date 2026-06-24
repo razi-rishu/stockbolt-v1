@@ -1,24 +1,31 @@
 import { useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { unsavedGuard } from '@/lib/unsaved-guard';
 
 /**
- * Guards against losing unsaved form edits. Two layers:
+ * Guards against losing unsaved form edits. Three layers:
  *
  *  1. Browser-level (`beforeunload`) — fires on refresh, tab close, or
  *     navigating away from the app entirely. The browser shows its own
  *     native "Leave site?" prompt; we can't customise its text.
  *
- *  2. In-app — call the returned `confirmLeave()` from the editor's own
- *     Back / Cancel handlers before `navigate()`. Returns `true` when it's
- *     safe to leave (not dirty, or the user confirmed the discard).
+ *  2. In-app navigation (Phase 27) — mirrors `dirty` into a global flag that
+ *     the app-wide UnsavedNavGuard reads to intercept ANY <Link>/nav-bar
+ *     click and prompt before leaving. This covers top-nav menu items,
+ *     breadcrumbs, etc. — the case the editor Back/Cancel buttons missed.
  *
- * NOTE: clicking a top-nav menu item or the browser Back button is an
- * in-app (pushState) navigation that this lightweight guard does NOT
- * intercept — that needs a React-Router data router + useBlocker. Wiring
- * the editor Back/Cancel buttons covers the common accidental-exit case.
+ *  3. `confirmLeave()` — still call it from the editor's own Back / Cancel
+ *     handlers before `navigate()` (programmatic nav isn't a link click).
+ *     Returns `true` when it's safe to leave (not dirty, or user confirmed).
  */
 export function useUnsavedChangesGuard(dirty: boolean) {
   const { t } = useTranslation();
+
+  // Mirror dirty into the global flag for the app-wide nav interceptor.
+  useEffect(() => {
+    unsavedGuard.setDirty(dirty);
+    return () => unsavedGuard.setDirty(false);
+  }, [dirty]);
 
   useEffect(() => {
     if (!dirty) return;

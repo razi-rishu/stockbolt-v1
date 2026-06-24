@@ -7,6 +7,7 @@ import { RequireOnboarded } from '@/components/require-onboarded';
 import { KeyboardShortcutProvider } from '@/keyboard/shortcut-registry';
 import { RequireNotOnboarded } from '@/components/require-not-onboarded';
 import { RequirePermission } from '@/components/require-permission';
+import { UnsavedNavGuard } from '@/components/unsaved-nav-guard';
 import { AppLayout } from '@/components/app-layout';
 import { ErrorBoundary } from '@/components/error-boundary';
 
@@ -199,6 +200,8 @@ function AppRoutes() {
 
   return (
     <Suspense fallback={<Loading />}>
+      {/* Phase 27 — warn before navigating away from an editor with unsaved edits. */}
+      <UnsavedNavGuard />
       <Routes>
         {/* ── Public auth routes ───────────────────────────────────── */}
         <Route path="/login"            element={<LoginPage />} />
