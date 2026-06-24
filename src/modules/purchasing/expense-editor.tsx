@@ -141,6 +141,27 @@ function SectionLabel({ children, action }: { children: React.ReactNode; action?
   );
 }
 
+// ── Uniform field styling (Phase 28b — tidy the "messy containers") ──────────
+// One height, one border, one radius for every control in the form.
+function fld(editable: boolean): React.CSSProperties {
+  return {
+    // ~30px tall to line up with the SearchableSelect / ContactPicker triggers
+    // (which render compact at py-1 text-xs) so each Details row aligns.
+    width: '100%', height: '30px', padding: '0 10px', fontSize: '13px',
+    border: `1px solid ${theme.border}`, borderRadius: '8px', outline: 'none',
+    background: editable ? '#fff' : theme.muted, color: theme.ink,
+  };
+}
+// Labelled field cell for the details grid.
+function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', minWidth: 0 }}>
+      <label style={{ fontSize: '11px', fontWeight: 600, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.05em' }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────
 export default function ExpenseEditorPage() {
   const { t } = useTranslation();
@@ -688,11 +709,7 @@ export default function ExpenseEditorPage() {
                 value={primary.description}
                 disabled={!isDraft}
                 onChange={e => setLine(primary._key, { description: e.target.value })}
-                style={{
-                  width: '100%', padding: '8px 12px', fontSize: '13px',
-                  border: `1px solid ${theme.border}`, borderRadius: '8px',
-                  outline: 'none', background: !isDraft ? theme.muted : '#fff',
-                }}
+                style={fld(isDraft)}
               />
             </div>
           </>
@@ -731,25 +748,25 @@ export default function ExpenseEditorPage() {
                       type="text" placeholder="Memo" value={line.description}
                       disabled={!isDraft}
                       onChange={e => setLine(line._key, { description: e.target.value })}
-                      style={{ padding: '6px 10px', fontSize: '12px', border: `1px solid ${theme.border}`, borderRadius: '6px', outline: 'none', background: !isDraft ? theme.muted : '#fff' }}
+                      style={{ height: '34px', padding: '0 10px', fontSize: '12px', border: `1px solid ${theme.border}`, borderRadius: '8px', outline: 'none', background: !isDraft ? theme.muted : '#fff' }}
                     />
                     <input
                       type="number" min="0" step="0.01" placeholder="Qty" value={line.quantity}
                       disabled={!isDraft}
                       onChange={e => setLine(line._key, { quantity: e.target.value })}
-                      style={{ padding: '6px 10px', fontSize: '12px', border: `1px solid ${theme.border}`, borderRadius: '6px', outline: 'none', textAlign: 'end', background: !isDraft ? theme.muted : '#fff' }}
+                      style={{ height: '34px', padding: '0 10px', fontSize: '12px', border: `1px solid ${theme.border}`, borderRadius: '8px', outline: 'none', textAlign: 'end', background: !isDraft ? theme.muted : '#fff' }}
                     />
                     <input
                       type="number" min="0" step="0.01" placeholder="Unit" value={line.unit_amount}
                       disabled={!isDraft}
                       onChange={e => setLine(line._key, { unit_amount: e.target.value })}
-                      style={{ padding: '6px 10px', fontSize: '12px', border: `1px solid ${theme.border}`, borderRadius: '6px', outline: 'none', textAlign: 'end', background: !isDraft ? theme.muted : '#fff' }}
+                      style={{ height: '34px', padding: '0 10px', fontSize: '12px', border: `1px solid ${theme.border}`, borderRadius: '8px', outline: 'none', textAlign: 'end', background: !isDraft ? theme.muted : '#fff' }}
                     />
                     <input
                       type="number" min="0" max="100" step="0.01" placeholder="Tax %" value={line.tax_rate}
                       disabled={!isDraft}
                       onChange={e => setLine(line._key, { tax_rate: e.target.value })}
-                      style={{ padding: '6px 10px', fontSize: '12px', border: `1px solid ${theme.border}`, borderRadius: '6px', outline: 'none', textAlign: 'end', background: !isDraft ? theme.muted : '#fff' }}
+                      style={{ height: '34px', padding: '0 10px', fontSize: '12px', border: `1px solid ${theme.border}`, borderRadius: '8px', outline: 'none', textAlign: 'end', background: !isDraft ? theme.muted : '#fff' }}
                     />
                     <div className="font-mono" style={{ textAlign: 'end', fontSize: '13px', fontWeight: 600, color: theme.ink }}>
                       {fmt(c.line_total)}
@@ -816,22 +833,18 @@ export default function ExpenseEditorPage() {
           </div>
         )}
 
-        {/* ── Quick context ── */}
-        <SectionLabel>Quick context</SectionLabel>
+        {/* ── Details (uniform 2-column field grid) ── */}
+        <SectionLabel>Details</SectionLabel>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '10px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '10px', fontWeight: 600, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.05em' }}>Date</label>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px' }}>
+          <Field label="Date">
             <input
               type="date" value={date} disabled={!isDraft}
               onChange={e => setDate(e.target.value)}
-              style={{ padding: '7px 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', outline: 'none', background: !isDraft ? theme.muted : '#fff' }}
+              style={fld(isDraft)}
             />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '10px', fontWeight: 600, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.05em' }}>
-              Paid from <span style={{ color: theme.danger }}>*</span>
-            </label>
+          </Field>
+          <Field label={<>Paid from <span style={{ color: theme.danger }}>*</span></>}>
             <SearchableSelect
               options={bankOpts}
               value={paidFromId}
@@ -840,9 +853,8 @@ export default function ExpenseEditorPage() {
               placeholder="Bank / cash"
               panelWidth={240}
             />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '10px', fontWeight: 600, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.05em' }}>Vendor</label>
+          </Field>
+          <Field label="Vendor">
             <ContactPicker
               type="supplier"
               value={supplierId}
@@ -850,22 +862,25 @@ export default function ExpenseEditorPage() {
               disabled={!isDraft}
               placeholder="Optional"
             />
+          </Field>
+          <Field label="Reference / invoice #">
+            <input
+              type="text" value={reference} disabled={!isDraft}
+              placeholder="e.g. INV-2231"
+              onChange={e => setReference(e.target.value)}
+              style={fld(isDraft)}
+            />
+          </Field>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <Field label="Description">
+              <input
+                type="text" value={description} disabled={!isDraft}
+                placeholder="e.g. June office rent"
+                onChange={e => setDescription(e.target.value)}
+                style={fld(isDraft)}
+              />
+            </Field>
           </div>
-        </div>
-
-        <div className="mt-2.5 grid grid-cols-1 gap-2.5 md:grid-cols-[1fr_2fr]">
-          <input
-            type="text" value={reference} disabled={!isDraft}
-            placeholder="Reference / invoice #"
-            onChange={e => setReference(e.target.value)}
-            style={{ padding: '8px 12px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', outline: 'none', background: !isDraft ? theme.muted : '#fff' }}
-          />
-          <input
-            type="text" value={description} disabled={!isDraft}
-            placeholder="Description (e.g. June office rent)"
-            onChange={e => setDescription(e.target.value)}
-            style={{ padding: '8px 12px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', outline: 'none', background: !isDraft ? theme.muted : '#fff' }}
-          />
         </div>
 
         {/* Billable section — only shown in single-line mode. In split mode

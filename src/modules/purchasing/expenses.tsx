@@ -217,7 +217,7 @@ export default function ExpensesPage() {
           </Tile>
 
           {/* Top categories */}
-          <Tile span={2}>
+          <Tile span={2} rows={2}>
             <TileLabel>📊 Top categories</TileLabel>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', marginTop: '10px' }}>
               {categories.top.length === 0 ? (
@@ -263,16 +263,8 @@ export default function ExpensesPage() {
             </div>
           </Tile>
 
-          {/* New expense CTA */}
-          <Tile span={2} style={{ background: theme.brand, border: `1px solid ${theme.brand}`, padding: 0 }}>
-            <Link to="/purchasing/expenses/new" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px', textDecoration: 'none', height: '100%' }}>
-              <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(255,255,255,.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', color: '#fff', flexShrink: 0 }}>+</div>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: '#fff' }}>New expense</div>
-                <div style={{ fontSize: '11px', color: '#e9d5ff' }}>Record a bill or cash spend</div>
-              </div>
-            </Link>
-          </Tile>
+          {/* (Removed the duplicate "New expense" CTA tile — the header
+              "+ New expense" button is the single, standard affordance.) */}
 
         </div>
       )}
