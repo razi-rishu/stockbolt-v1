@@ -67,6 +67,8 @@ export function createSelfHostedAdapter(): DataAdapter {
       createRole:          () => notImplemented('users.createRole'),
       updateRole:          () => notImplemented('users.updateRole'),
       deleteRole:          () => notImplemented('users.deleteRole'),
+      getUserOverrides:    () => notImplemented('users.getUserOverrides'),
+      setUserOverrides:    () => notImplemented('users.setUserOverrides'),
     },
     onboarding: {
       createCompanyAndProfile: () => notImplemented('onboarding.createCompanyAndProfile'),
@@ -360,6 +362,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       replaceItems:  () => notImplemented('expenses.replaceItems'),
       saveWithItems: () => notImplemented('expenses.saveWithItems'),
       categoryBreakdown: () => notImplemented('expenses.categoryBreakdown'),
+      reopen:        () => notImplemented('expenses.reopen'),
     },
     pdcCheques: {
       list:    () => notImplemented('pdcCheques.list'),

@@ -63,6 +63,7 @@ import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency, useCompanyCountry } from '@/hooks/use-company-currency';
 import { defaultTaxRate } from '@/lib/locale';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
+import { useHasPermission } from '@/hooks/use-permissions';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
 import { SearchableSelect } from '@/ui/searchable-select';
@@ -152,6 +153,7 @@ export default function ExpenseEditorPage() {
   const stdTaxRate = companyCountry ? String(defaultTaxRate(companyCountry)) : '0';
   const qc = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
+  const canEditExpenses = useHasPermission('purchasing.write');   // Phase 25 — gate Edit
   const { company_id } = useAuthStore();
   const isNew = !id || id === 'new';
   const today = new Date().toISOString().slice(0, 10);
@@ -408,6 +410,19 @@ export default function ExpenseEditorPage() {
     onError: (e: Error) => setError(e.message),
   });
 
+  // Phase 25 — reverse a confirmed expense's posting and reopen it as a draft.
+  const reopenMutation = useMutation({
+    mutationFn: async () => { await getAdapter().expenses.reopen(id!); },
+    onSuccess: async () => {
+      await invalidateBooks();
+      await qc.invalidateQueries({ queryKey: ['expense', id] });
+      qc.invalidateQueries({ queryKey: ['expenses', company_id] });
+      qc.invalidateQueries({ queryKey: ['expense_items', id] });
+      setViewMode(false);   // drop into the editable draft
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
   // Line helpers
   const setLine = (k: number, patch: Partial<LineRow>) => {
     setLines(prev => prev.map(l => l._key === k ? { ...l, ...patch } : l));
@@ -473,6 +488,13 @@ export default function ExpenseEditorPage() {
             {isDraft && (
               <Button size="sm" onClick={() => setViewMode(false)}>
                 ✎ {t('common.edit') || 'Edit'}
+              </Button>
+            )}
+            {isConfirmed && canEditExpenses && (
+              <Button size="sm" disabled={reopenMutation.isPending} onClick={() => {
+                if (window.confirm('Editing reverses this expense’s journal entry and reopens it as a draft. You’ll re-confirm after your changes. Continue?')) reopenMutation.mutate();
+              }}>
+                ✎ {reopenMutation.isPending ? 'Reopening…' : (t('common.edit') || 'Edit')}
               </Button>
             )}
             {expense?.id && (

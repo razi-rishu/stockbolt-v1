@@ -9,7 +9,7 @@
  *
  * Route is guarded by RequirePermission perm="users.manage".
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
@@ -55,6 +55,7 @@ export default function UsersRolesPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [roleModal, setRoleModal] = useState<{ open: boolean; editing: RoleRow | null }>({ open: false, editing: null });
+  const [overrideUser, setOverrideUser] = useState<Profile | null>(null);
 
   const usersQ = useQuery<Profile[]>({ queryKey: ['users', company_id], queryFn: () => getAdapter().users.listUsers(company_id!), enabled: !!company_id });
   const invitesQ = useQuery<CompanyInviteRow[]>({ queryKey: ['user_invites', company_id], queryFn: () => getAdapter().users.listInvites(company_id!), enabled: !!company_id });
@@ -132,7 +133,14 @@ export default function UsersRolesPage() {
                     </select>
                   </td>
                   <td style={td}><span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '999px', background: u.is_active ? theme.successSoft : theme.muted, color: u.is_active ? theme.success : theme.inkMuted, border: `1px solid ${u.is_active ? theme.successBorder : theme.border}` }}>{u.is_active ? 'Active' : 'Disabled'}</span></td>
-                  <td style={{ ...td, textAlign: 'end' }}>
+                  <td style={{ ...td, textAlign: 'end', whiteSpace: 'nowrap' }}>
+                    {u.role !== 'admin' && (
+                      <button onClick={() => setOverrideUser(u)}
+                        title="Allow or deny specific options for this person on top of their role"
+                        style={{ fontSize: '12px', fontWeight: 600, background: 'none', border: 'none', color: theme.brand, cursor: 'pointer', marginInlineEnd: '10px' }}>
+                        Customize
+                      </button>
+                    )}
                     <button onClick={() => setActive.mutate({ id: u.id, active: !u.is_active })} disabled={(isLastAdmin && u.is_active) || isSelf || setActive.isPending}
                       title={isSelf ? 'You cannot disable yourself' : isLastAdmin ? 'Cannot disable the last admin' : undefined}
                       style={{ fontSize: '12px', fontWeight: 600, background: 'none', border: 'none', color: (isSelf || (isLastAdmin && u.is_active)) ? theme.inkFaint : (u.is_active ? theme.danger : theme.success), cursor: (isSelf || (isLastAdmin && u.is_active)) ? 'not-allowed' : 'pointer' }}>
@@ -208,7 +216,104 @@ export default function UsersRolesPage() {
           onError={fail}
         />
       )}
+
+      {overrideUser && (
+        <UserOverridesModal
+          user={overrideUser}
+          roleName={roleName(overrideUser.role)}
+          baseline={permsByRole.get(overrideUser.role) ?? new Set()}
+          onClose={() => setOverrideUser(null)}
+          onSaved={() => { setOverrideUser(null); setError(null); refresh(); }}
+          onError={fail}
+        />
+      )}
     </div>
+  );
+}
+
+// ── Per-user permission overrides (allow/deny on top of the role) ────────────
+function UserOverridesModal({ user, roleName, baseline, onClose, onSaved, onError }: {
+  user: Profile;
+  roleName: string;
+  baseline: Set<string>;
+  onClose: () => void;
+  onSaved: () => void;
+  onError: (e: unknown) => void;
+}) {
+  // Effective = (role baseline ∪ allow) − deny. Start from baseline, then apply
+  // the user's existing overrides once they load.
+  const [effective, setEffective] = useState<Set<string>>(new Set(baseline));
+  const ovQ = useQuery({ queryKey: ['user_overrides', user.id], queryFn: () => getAdapter().users.getUserOverrides(user.id) });
+
+  // Apply loaded overrides to the baseline exactly once.
+  const applied = useRef(false);
+  useEffect(() => {
+    if (applied.current || !ovQ.data) return;
+    applied.current = true;
+    const next = new Set(baseline);
+    for (const o of ovQ.data) { if (o.mode === 'allow') next.add(o.permission); else next.delete(o.permission); }
+    setEffective(next);
+  }, [ovQ.data, baseline]);
+
+  const setPerm = (p: string, on: boolean) => setEffective(prev => { const n = new Set(prev); if (on) n.add(p); else n.delete(p); return n; });
+  const setWrite = (read: string, write: string, on: boolean) => setEffective(prev => { const n = new Set(prev); if (on) { n.add(write); n.add(read); } else n.delete(write); return n; });
+
+  const save = useMutation({
+    mutationFn: () => {
+      const allow: string[] = [];
+      const deny: string[] = [];
+      for (const g of PERM_GROUPS) {
+        for (const p of [g.read, g.write].filter(Boolean) as string[]) {
+          const want = effective.has(p);
+          const base = baseline.has(p);
+          if (want && !base) allow.push(p);
+          else if (!want && base) deny.push(p);
+        }
+      }
+      return getAdapter().users.setUserOverrides(user.id, allow, deny);
+    },
+    onSuccess: onSaved,
+    onError,
+  });
+
+  const diffCount = (() => {
+    let n = 0;
+    for (const g of PERM_GROUPS) for (const p of [g.read, g.write].filter(Boolean) as string[]) if (effective.has(p) !== baseline.has(p)) n++;
+    return n;
+  })();
+
+  return (
+    <Modal open onClose={onClose} title={`Customize access — ${user.full_name}`}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <p style={{ fontSize: '12.5px', color: theme.inkMuted, margin: 0 }}>
+          Base role: <strong style={{ color: theme.ink }}>{roleName}</strong>. Tick to grant, untick to remove —
+          anything different from the role becomes a personal override for {user.full_name.split(' ')[0]}.
+        </p>
+        <div style={{ border: `1px solid ${theme.border}`, borderRadius: theme.radiusLg, overflow: 'hidden' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 70px', background: theme.panelHead, padding: '8px 12px', fontSize: '11px', fontWeight: 700, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+            <span>Module</span><span style={{ textAlign: 'center' }}>View</span><span style={{ textAlign: 'center' }}>Edit</span>
+          </div>
+          {PERM_GROUPS.map((g, i) => (
+            <div key={g.module} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 70px', alignItems: 'center', padding: '8px 12px', borderTop: i === 0 ? 'none' : `1px solid ${theme.muted}`, fontSize: '13px' }}>
+              <span style={{ color: theme.ink }}>
+                {g.module}
+                {(effective.has(g.read) !== baseline.has(g.read) || (g.write != null && effective.has(g.write) !== baseline.has(g.write))) &&
+                  <span style={{ marginInlineStart: '6px', fontSize: '10px', fontWeight: 700, color: theme.brandSoftText }}>● override</span>}
+              </span>
+              <span style={{ textAlign: 'center' }}><input type="checkbox" checked={effective.has(g.read)} onChange={(e) => setPerm(g.read, e.target.checked)} /></span>
+              <span style={{ textAlign: 'center' }}>
+                {g.write ? <input type="checkbox" checked={effective.has(g.write)} onChange={(e) => setWrite(g.read, g.write!, e.target.checked)} /> : <span style={{ color: theme.inkFaint }}>—</span>}
+              </span>
+            </div>
+          ))}
+        </div>
+        <p style={{ fontSize: '11.5px', color: theme.inkFaint, margin: 0 }}>{diffCount === 0 ? 'No overrides — matches the role exactly.' : `${diffCount} override${diffCount === 1 ? '' : 's'} vs the role.`} User management stays Admin-only.</p>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => save.mutate()} disabled={save.isPending || ovQ.isLoading}>{save.isPending ? 'Saving…' : 'Save overrides'}</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

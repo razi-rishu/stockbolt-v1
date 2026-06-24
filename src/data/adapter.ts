@@ -194,6 +194,12 @@ export interface UsersAPI {
   updateRole(roleKey: string, name: string, permissions: string[]): Promise<void>;
   /** Delete a custom role (admin only; blocked if any user still has it). */
   deleteRole(roleKey: string): Promise<void>;
+
+  // ── Per-user permission overrides (Phase 26) ─────────────────────────────
+  /** A user's overrides on top of their role (admin only). */
+  getUserOverrides(userId: string): Promise<{ permission: string; mode: 'allow' | 'deny' }[]>;
+  /** Replace a user's overrides (admin only). users.manage is never overridable. */
+  setUserOverrides(userId: string, allow: string[], deny: string[]): Promise<void>;
 }
 
 // ── Salespeople (Phase 12.16) ─────────────────────────────────────────────
@@ -1907,6 +1913,9 @@ export interface ExpensesAPI {
    *  Backs the "Top categories" bento tile. Sorted highest-spend first;
    *  account names are resolved by the caller from its CoA query. */
   categoryBreakdown(company_id: string): Promise<Array<{ account_id: string; amount: number }>>;
+  /** Phase 25 — reverse a confirmed expense's posting and reopen it as a draft
+   *  for editing + re-confirm (mirrors the payment reopen pattern). */
+  reopen(id: string): Promise<void>;
 }
 
 export interface PDCCreateParams {

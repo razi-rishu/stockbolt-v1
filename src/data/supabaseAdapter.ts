@@ -390,6 +390,17 @@ export function createSupabaseAdapter(
         const { error } = await rpcAny('delete_role', { p_role_key: roleKey });
         assertNoError(error as Error | null, 'users.deleteRole');
       },
+      async getUserOverrides(userId) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (client as any).from('user_permission_overrides')
+          .select('permission, mode').eq('user_id', userId);
+        assertNoError(error as Error | null, 'users.getUserOverrides');
+        return (data ?? []) as { permission: string; mode: 'allow' | 'deny' }[];
+      },
+      async setUserOverrides(userId, allow, deny) {
+        const { error } = await rpcAny('set_user_overrides', { p_user_id: userId, p_allow: allow, p_deny: deny });
+        assertNoError(error as Error | null, 'users.setUserOverrides');
+      },
     },
 
     // ── Onboarding ─────────────────────────────────────────────────────────
@@ -4016,6 +4027,10 @@ export function createSupabaseAdapter(
         const { error } = await client.rpc('void_expense', { p_expense_id: id, p_void_reason: reason ?? undefined });
         assertNoError(error, 'expenses.void');
         return;
+      },
+      async reopen(id) {
+        const { error } = await rpcAny('reopen_expense', { p_expense_id: id });
+        assertNoError(error as Error | null, 'expenses.reopen');
       },
       async getNextNumber(company_id) {
         const { data, error } = await client.rpc('get_next_document_number', { p_company_id: company_id, p_prefix: 'EXP' });

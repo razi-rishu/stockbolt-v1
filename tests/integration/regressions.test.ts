@@ -878,13 +878,16 @@ describe('Phase 22 — Users & Roles', () => {
       console.warn('phase22 not applied yet — skipping no-lockout invariant.');
       return;
     }
+    // Only companies that actually have users matter — orphan companies (an
+    // abandoned signup that never created a profile) have no one to lock out.
     const rows = await sql<{ company_id: string }>(
       `SELECT c.id AS company_id FROM companies c
-        WHERE NOT EXISTS (
-          SELECT 1 FROM profiles p
-          WHERE p.company_id = c.id AND p.role = 'admin' AND p.is_active
-        )`);
-    expect(rows, 'every company must keep at least one active admin').toEqual([]);
+        WHERE EXISTS (SELECT 1 FROM profiles p WHERE p.company_id = c.id)
+          AND NOT EXISTS (
+            SELECT 1 FROM profiles p
+            WHERE p.company_id = c.id AND p.role = 'admin' AND p.is_active
+          )`);
+    expect(rows, 'every company with users must keep at least one active admin').toEqual([]);
   });
 });
 
@@ -932,5 +935,56 @@ describe('Phase 23 — Custom roles', () => {
     const src = await fnSrc('delete_role');
     if (!src) { console.warn('delete_role not installed yet — skipping (apply phase23).'); return; }
     expect(src, 'delete_role must guard in-use roles').toMatch(/still assigned/i);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Phase 24–26 — posting-gate fix, expense reopen, per-user overrides.
+// ════════════════════════════════════════════════════════════════════════════
+describe('Phase 24–26 — posting fix, expense reopen, per-user overrides', () => {
+  async function fnSrc(fn: string): Promise<string> {
+    const [r] = await sql<{ src: string }>(
+      `SELECT COALESCE((SELECT pg_get_functiondef(oid) FROM pg_proc WHERE proname='${fn}' LIMIT 1),'') AS src`);
+    return r?.src ?? '';
+  }
+  async function tableExists(name: string): Promise<boolean> {
+    const [r] = await sql<{ v: boolean }>(`SELECT (to_regclass('public.${name}') IS NOT NULL) AS v`);
+    return !!r?.v;
+  }
+
+  it('phase24: posting-engine tables use has_any_write (non-admin roles can post)', async () => {
+    const src = await fnSrc('has_any_write');
+    if (!src) { console.warn('has_any_write not installed — skipping (apply 20260619000017_phase24_fix_posting_rls.sql)'); return; }
+    const rows = await sql<{ qual: string; with_check: string }>(
+      `SELECT COALESCE(qual,'') AS qual, COALESCE(with_check,'') AS with_check
+         FROM pg_policies WHERE schemaname='public' AND tablename='journal_entries' AND policyname='rbac_w_ins_journal_entries'`);
+    expect(rows[0]?.with_check ?? '', 'journal_entries insert must allow any write role').toMatch(/has_any_write/);
+  });
+
+  it('phase24: deferred_cogs_queue read lock removed (read during confirm)', async () => {
+    if (!(await fnSrc('has_any_write'))) { console.warn('phase24 not applied — skipping.'); return; }
+    const rows = await sql<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_policies
+        WHERE schemaname='public' AND tablename='deferred_cogs_queue' AND policyname='rbac_r_sel_deferred_cogs_queue'`);
+    expect(Number(rows[0]?.n), 'deferred_cogs_queue read lock must be gone').toBe(0);
+  });
+
+  it('phase25: reopen_expense reverses and flips back to draft', async () => {
+    const src = await fnSrc('reopen_expense');
+    if (!src) { console.warn('reopen_expense not installed — skipping (apply 20260619000018_phase25_reopen_expense.sql)'); return; }
+    expect(src, 'must reopen to draft').toMatch(/status\s*=\s*'draft'/);
+    expect(src, 'must post a reversal JE').toMatch(/reversal_of_id/);
+  });
+
+  it('phase26: per-user overrides honored by has_perm (deny > allow > role)', async () => {
+    if (!(await tableExists('user_permission_overrides'))) {
+      console.warn('user_permission_overrides not installed — skipping (apply 20260619000019_phase26_user_overrides.sql)');
+      return;
+    }
+    const src = await fnSrc('has_perm');
+    expect(src, 'has_perm must consult overrides').toMatch(/user_permission_overrides/);
+    expect(src, "deny must win").toMatch(/'deny'/);
+    const setSrc = await fnSrc('set_user_overrides');
+    expect(setSrc, 'set_user_overrides must strip users.manage').toMatch(/<>\s*'users\.manage'/);
   });
 });
