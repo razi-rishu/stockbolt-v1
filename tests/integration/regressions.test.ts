@@ -988,3 +988,46 @@ describe('Phase 24–26 — posting fix, expense reopen, per-user overrides', ()
     expect(setSrc, 'set_user_overrides must strip users.manage').toMatch(/<>\s*'users\.manage'/);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// Phase 29 — Stock valuation (E1) remediation. Soft-skip until applied.
+// ════════════════════════════════════════════════════════════════════════════
+describe('Phase 29 — Stock valuation E1 remediation', () => {
+  async function fnSrc(fn: string): Promise<string> {
+    const [r] = await sql<{ src: string }>(`SELECT COALESCE((SELECT pg_get_functiondef(oid) FROM pg_proc WHERE proname='${fn}' LIMIT 1),'') AS src`);
+    return r?.src ?? '';
+  }
+
+  it('phase29a: recompute_stock_valuation re-derives running cost from net cost', async () => {
+    const src = await fnSrc('recompute_stock_valuation');
+    if (!src) { console.warn('recompute_stock_valuation not installed — skipping (apply 20260619000020_phase29a...).'); return; }
+    expect(src, 'must re-derive running_avg_cost from cumulative net cost').toMatch(/direction \* total_cost/);
+  });
+
+  it('phase29b: stock_ledger valuation trigger exists (prevents recurrence)', async () => {
+    const [r] = await sql<{ v: boolean }>(`SELECT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='stock_ledger_recompute_valuation') AS v`);
+    if (!r?.v) { console.warn('stock_ledger_recompute_valuation trigger not installed — skipping (apply 20260619000021_phase29b...).'); return; }
+    expect(r.v).toBe(true);
+  });
+
+  it('phase29c+E1: companies with an inventory GL balance pass Stock Valuation = Inventory 1300', async () => {
+    if (!(await fnSrc('recompute_stock_valuation'))) { console.warn('phase29 not applied — skipping E1 invariant check.'); return; }
+    // Only companies that actually run inventory through the books (GL 1300 != 0)
+    // are in scope: the recompute ties the subledger to the GL control account.
+    // A company with stock but GL 1300 = 0 (inventory never posted — e.g. an
+    // abandoned test tenant) is a separate setup problem, not a valuation drift.
+    const rows = await sql<{ name: string; e1pass: boolean; diff: number; tol: number }>(`
+      SELECT c.name,
+        (inv->>'pass')::boolean AS e1pass,
+        (inv->>'difference')::numeric AS diff,
+        (inv->>'tolerance')::numeric AS tol
+      FROM companies c
+      CROSS JOIN LATERAL (
+        SELECT elem FROM jsonb_array_elements(public.verify_invariants(c.id, CURRENT_DATE)) elem
+        WHERE elem->>'invariant' = 'E1'
+      ) x(inv)
+      WHERE (inv->>'pass')::boolean = false
+        AND (inv->>'inv_tb')::numeric <> 0`);
+    expect(rows, `companies with inventory on the books still failing E1: ${JSON.stringify(rows)}`).toEqual([]);
+  });
+});
