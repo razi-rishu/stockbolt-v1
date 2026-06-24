@@ -339,7 +339,7 @@ export default function CustomerDetailPage() {
             + Quote
           </Button>
           <Button variant="ghost" size="sm" onClick={() => navigate('/sales/payments/new')}>
-            + Receive Payment
+            + Record Receipt
           </Button>
           <Button variant="ghost" size="sm" onClick={() => navigate('/sales/credit-notes/new')}>
             + Credit Note
@@ -585,8 +585,8 @@ export default function CustomerDetailPage() {
         )}
       </Section>
 
-      {/* ── Payments Received ─────────────────────────────────────────── */}
-      <Section title={`Payments Received (${paymentsForCustomer.length})`}>
+      {/* ── Receipts ──────────────────────────────────────────────────── */}
+      <Section title={`Receipts (${paymentsForCustomer.length})`}>
         {paymentsForCustomer.length === 0 ? (
           <div className="px-5 py-6 text-sm text-ink-tertiary">No payments yet.</div>
         ) : (

@@ -16,6 +16,7 @@ import { useAuthStore } from '@/store/auth';
 import { getAdapter } from '@/data/index';
 import { LanguageToggle } from '@/components/language-toggle';
 import { hasPerm, type Permission } from '@/lib/permissions';
+import { CompanyAvatar } from '@/components/company-avatar';
 import { CommandPaletteTrigger } from '@/keyboard/CommandPaletteTrigger';
 import { NotificationsBell } from '@/components/notifications-bell';
 
@@ -392,18 +393,16 @@ function UserMenu({ email, onSignOut }: { email: string | null; onSignOut: () =>
     return () => document.removeEventListener('mousedown', onClick);
   }, [open]);
 
-  const initial = (email ?? '?').charAt(0).toUpperCase();
-
   return (
     <div ref={ref} className="relative">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold text-white shadow-sm ring-2 ring-white/25 hover:opacity-90"
-        style={{ background: 'linear-gradient(135deg, #7c3aed, #8b5cf6)' }}
+        className="flex h-9 w-9 items-center justify-center rounded-full shadow-sm ring-2 ring-white/25 hover:opacity-90"
         aria-label="User menu"
       >
-        {initial}
+        {/* Phase 28 — company logo if uploaded, else initials avatar. */}
+        <CompanyAvatar size={36} fallbackText={email ?? undefined} />
       </button>
       {open && (
         <div className="absolute end-0 z-50 mt-2 w-56 overflow-hidden rounded-card border border-border-subtle bg-surface-card shadow-xl">

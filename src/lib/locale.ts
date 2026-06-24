@@ -94,3 +94,16 @@ export function getRegionLabel(country?: string | null): string {
 export function defaultTaxRate(country?: string | null): number {
   return (country ?? '').toUpperCase() === 'IN' ? 18 : 5;
 }
+
+/**
+ * Short fiscal-year label from the company's fiscal_year_start date, e.g.
+ * 2026-01-01 → "Jan–Dec", 2026-04-01 → "Apr–Mar". Derived from the start
+ * month so it follows the tenant's setting (Jan–Dec GCC, Apr–Mar India).
+ */
+export function fiscalYearLabel(fiscalYearStart?: string | null): string {
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const m = /^\d{4}-(\d{2})/.exec(fiscalYearStart ?? '');
+  const startIdx = m ? (parseInt(m[1], 10) - 1) : 0;
+  const safeStart = startIdx >= 0 && startIdx < 12 ? startIdx : 0;
+  return `${MONTHS[safeStart]}–${MONTHS[(safeStart + 11) % 12]}`;
+}

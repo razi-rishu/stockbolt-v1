@@ -61,3 +61,22 @@ export function useCompanyCountry(): string | null {
 
   return company?.country_code ?? null;
 }
+
+/**
+ * useCompany — the full active-tenant company row (name, logo_url, currency,
+ * country_code, fiscal_year_start, …). Shares the same cached
+ * ['company', company_id] query as the currency/country hooks, so it's a free
+ * read once the tree has loaded. The single source for company branding.
+ */
+export function useCompany(): Company | null {
+  const company_id = useAuthStore((s) => s.company_id);
+
+  const { data: company } = useQuery<Company | null>({
+    queryKey: ['company', company_id],
+    queryFn:  () => getAdapter().companies.getById(company_id!),
+    enabled:  !!company_id,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  return company ?? null;
+}

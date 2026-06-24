@@ -669,7 +669,7 @@ export default function InvoiceEditorPage() {
             >⧉ {t('common.duplicate')}</Button>
             {isConfirmed && (
               <Button size="sm" onClick={() => navigate(`/sales/payments/new?contact=${existing.contact_id}`)}>
-                💰 {t('sales.receive_payment') || 'Receive Payment'}
+                💰 {t('sales.receive_payment') || 'Record Receipt'}
               </Button>
             )}
             {existing?.id && (

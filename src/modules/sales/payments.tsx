@@ -91,7 +91,7 @@ export default function PaymentsPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <PageHeader
         title={t('payments.title')}
-        subtitle={`${allPayments.length} ${allPayments.length === 1 ? 'payment' : 'payments'}`}
+        subtitle={`${allPayments.length} ${allPayments.length === 1 ? 'receipt' : 'receipts'}`}
         actions={
           <Button size="sm" onClick={() => navigate('/sales/payments/new')}>
             + {t('payments.new_payment')}

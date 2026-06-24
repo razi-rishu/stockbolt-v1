@@ -27,7 +27,7 @@ import {
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
-import { formatCurrency } from '@/lib/locale';
+import { formatCurrency, fiscalYearLabel } from '@/lib/locale';
 import type { OwnerDashboard } from '@/data/adapter';
 import { Panel } from '@/ui/primitives';
 import DashboardSummaryCards from './_summary-cards';
@@ -52,12 +52,6 @@ function fmtToday() {
   return new Date().toLocaleDateString(undefined, {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   });
-}
-
-/** Time-aware greeting for the hero band. */
-function greeting() {
-  const h = new Date().getHours();
-  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
 }
 
 // ── Inline icons (Lucide-style, hand-rolled to avoid a dep) ─────────────────
@@ -372,13 +366,30 @@ export default function DashboardPage() {
         gap: '16px', flexWrap: 'wrap',
         boxShadow: '0 8px 24px rgba(124,58,237,.22)',
       }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 700, letterSpacing: '-.02em' }}>
-            {greeting()}{greetName ? `, ${greetName}` : ''}
-          </h1>
-          <p style={{ margin: '6px 0 0', fontSize: '13px', color: 'rgba(255,255,255,.75)', fontWeight: 500 }}>
-            {fmtToday()}
-          </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', minWidth: 0 }}>
+          {/* Phase 28 — company logo (if uploaded); no initials fallback in the hero. */}
+          {company?.logo_url && (
+            <div style={{
+              width: '56px', height: '56px', borderRadius: '12px', background: '#fff',
+              flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              overflow: 'hidden', boxShadow: '0 2px 10px rgba(0,0,0,.20)',
+            }}>
+              <img src={company.logo_url} alt={greetName || 'Company logo'}
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            </div>
+          )}
+          <div style={{ minWidth: 0 }}>
+            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, letterSpacing: '-.01em' }}>
+              {greetName || 'StockBolt'}
+            </h1>
+            <p style={{ margin: '5px 0 0', fontSize: '12.5px', color: 'rgba(255,255,255,.78)', fontWeight: 500 }}>
+              {fmtToday()}
+            </p>
+            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '8px', fontSize: '12px', color: 'rgba(255,255,255,.9)' }}>
+              <span><span style={{ opacity: .7 }}>Currency:</span> <strong>{currency}</strong></span>
+              <span><span style={{ opacity: .7 }}>Fiscal Year:</span> <strong>{fiscalYearLabel(company?.fiscal_year_start)}</strong></span>
+            </div>
+          </div>
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <Link to="/sales/invoices/new" style={{
@@ -394,7 +405,7 @@ export default function DashboardPage() {
             border: '1px solid rgba(255,255,255,.3)',
             fontSize: '13px', fontWeight: 600, textDecoration: 'none',
             whiteSpace: 'nowrap',
-          }}>Receive Payment</Link>
+          }}>+ Record Receipt</Link>
           <Link to="/purchasing/bills/new" style={{
             padding: '9px 18px', borderRadius: '999px',
             background: 'rgba(255,255,255,.12)', color: '#fff',
