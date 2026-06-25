@@ -98,13 +98,13 @@ function useNavSections(t: (k: string) => string): NavSection[] {
       perm: 'sales.read',
       groups: [{
         items: [
-          { to: '/sales/invoices',     label: t('nav.invoices') },
-          { to: '/sales/quotes',       label: t('nav.quotes') },
-          { to: '/sales/payments',     label: t('nav.payments') },
-          { to: '/sales/returns',      label: t('returns.sales_returns_title') },
+          { to: '/sales/invoices', label: t('nav.invoices') },
+          { to: '/sales/quotes', label: t('nav.quotes') },
+          { to: '/sales/payments', label: t('nav.payments') },
+          { to: '/sales/returns', label: t('returns.sales_returns_title') },
           { to: '/sales/credit-notes', label: t('returns.credit_notes_title') },
           { to: '/contacts/customers', label: t('nav.customers') },
-          { to: '/pos',                label: t('pos.counter_sales') },
+          { to: '/pos', label: t('pos.counter_sales') },
         ],
       }],
     },
@@ -114,13 +114,13 @@ function useNavSections(t: (k: string) => string): NavSection[] {
       perm: 'purchasing.read',
       groups: [{
         items: [
-          { to: '/purchasing/orders',      label: t('purchasing.po_title') },
-          { to: '/purchasing/grns',        label: t('purchasing.grn_title') },
-          { to: '/purchasing/bills',       label: t('purchasing.bills_title') },
-          { to: '/purchasing/payments',    label: t('purchasing.vp_title') },
-          { to: '/purchasing/expenses',    label: 'Expenses' },
+          { to: '/purchasing/orders', label: t('purchasing.po_title') },
+          { to: '/purchasing/grns', label: t('purchasing.grn_title') },
+          { to: '/purchasing/bills', label: t('purchasing.bills_title') },
+          { to: '/purchasing/payments', label: t('purchasing.vp_title') },
+          { to: '/purchasing/expenses', label: 'Expenses' },
           { to: '/purchasing/debit-notes', label: t('returns.debit_notes_title') },
-          { to: '/contacts/suppliers',     label: t('nav.suppliers') },
+          { to: '/contacts/suppliers', label: t('nav.suppliers') },
         ],
       }],
     },
@@ -132,18 +132,18 @@ function useNavSections(t: (k: string) => string): NavSection[] {
         {
           label: 'Catalog',
           items: [
-            { to: '/products',            label: t('nav.all_products') },
+            { to: '/products', label: t('nav.all_products') },
             { to: '/products/categories', label: t('nav.categories') },
-            { to: '/products/brands',     label: t('nav.brands') },
-            { to: '/products/vehicles',   label: t('nav.vehicles') },
-            { to: '/catalog',             label: t('nav.parts_catalog') },
+            { to: '/products/brands', label: t('nav.brands') },
+            { to: '/products/vehicles', label: t('nav.vehicles') },
+            { to: '/catalog', label: t('nav.parts_catalog') },
           ],
         },
         {
           label: 'Stock',
           items: [
-            { to: '/inventory/transfers',    label: t('inventory.transfers_title') },
-            { to: '/inventory/adjustments',  label: t('inventory.adjustments_title') },
+            { to: '/inventory/transfers', label: t('inventory.transfers_title') },
+            { to: '/inventory/adjustments', label: t('inventory.adjustments_title') },
             { to: '/inventory/stock-ledger', label: t('inventory.stock_ledger_title') },
           ],
         },
@@ -158,17 +158,17 @@ function useNavSections(t: (k: string) => string): NavSection[] {
           label: 'Books',
           items: [
             { to: '/accounting/chart-of-accounts', label: t('nav.coa') },
-            { to: '/accounting/journal-entries',   label: t('nav.journal_entries') },
-            { to: '/accounting/general-ledger',    label: t('nav.general_ledger') },
-            { to: '/accounting/period-lock',       label: t('nav.period_lock') },
+            { to: '/accounting/journal-entries', label: t('nav.journal_entries') },
+            { to: '/accounting/general-ledger', label: t('nav.general_ledger') },
+            { to: '/accounting/period-lock', label: t('nav.period_lock') },
           ],
         },
         {
           label: t('nav.banking'),
           items: [
-            { to: '/banking/transfers',    label: t('banking.transfers_title') },
+            { to: '/banking/transfers', label: t('banking.transfers_title') },
             { to: '/banking/pdc-received', label: t('banking.pdc_received_title') },
-            { to: '/banking/pdc-issued',   label: t('banking.pdc_issued_title') },
+            { to: '/banking/pdc-issued', label: t('banking.pdc_issued_title') },
             { to: '/banking/reconciliation', label: 'Bank Reconciliation' },
           ],
         },
@@ -181,8 +181,8 @@ function useNavSections(t: (k: string) => string): NavSection[] {
       perm: 'payroll.read',
       groups: [{
         items: [
-          { to: '/payroll/runs',         label: 'Payroll Runs' },
-          { to: '/payroll/employees',    label: 'Employees' },
+          { to: '/payroll/runs', label: 'Payroll Runs' },
+          { to: '/payroll/employees', label: 'Employees' },
           { to: '/payroll/leave-salary', label: 'Leave Salary' },
         ],
       }],
@@ -198,45 +198,45 @@ function useNavSections(t: (k: string) => string): NavSection[] {
           perm: 'accounting.read',
           items: [
             { to: '/reports/trial-balance', label: t('nav.trial_balance') },
-            { to: '/reports/profit-loss',   label: t('nav.profit_loss') },
+            { to: '/reports/profit-loss', label: t('nav.profit_loss') },
             { to: '/reports/balance-sheet', label: t('nav.balance_sheet') },
-            { to: '/reports/cash-flow',     label: t('reports.cash_flow') },
-            { to: '/reports/vat-return',    label: t('reports.vat_return') },
+            { to: '/reports/cash-flow', label: t('reports.cash_flow') },
+            { to: '/reports/vat-return', label: t('reports.vat_return') },
           ],
         },
         {
           label: 'Sales',
           items: [
-            { to: '/reports/ar-aging',              label: t('nav.ar_aging') },
-            { to: '/reports/sales-by-customer',     label: t('reports.sales_by_customer') },
-            { to: '/reports/sales-by-product',      label: t('reports.sales_by_product') },
-            { to: '/reports/sales-by-brand',        label: t('reports.sales_by_brand') },
-            { to: '/reports/sales-by-vehicle',      label: t('reports.sales_by_vehicle') },
-            { to: '/reports/sales-by-salesperson',  label: t('reports.sales_by_salesperson') },
-            { to: '/reports/sales-trend',           label: t('reports.sales_trend') },
-            { to: '/reports/daily-sales',           label: t('reports.daily_sales_summary') },
-            { to: '/reports/pos-session',           label: t('reports.pos_session_report') },
+            { to: '/reports/ar-aging', label: t('nav.ar_aging') },
+            { to: '/reports/sales-by-customer', label: t('reports.sales_by_customer') },
+            { to: '/reports/sales-by-product', label: t('reports.sales_by_product') },
+            { to: '/reports/sales-by-brand', label: t('reports.sales_by_brand') },
+            { to: '/reports/sales-by-vehicle', label: t('reports.sales_by_vehicle') },
+            { to: '/reports/sales-by-salesperson', label: t('reports.sales_by_salesperson') },
+            { to: '/reports/sales-trend', label: t('reports.sales_trend') },
+            { to: '/reports/daily-sales', label: t('reports.daily_sales_summary') },
+            { to: '/reports/pos-session', label: t('reports.pos_session_report') },
           ],
         },
         {
           label: 'Purchases',
           items: [
-            { to: '/reports/ap-aging',             label: t('reports.ap_aging') },
-            { to: '/reports/supplier-statement',   label: t('reports.supplier_statement') },
-            { to: '/reports/grn-reconciliation',   label: t('reports.grn_reconciliation') },
-            { to: '/reports/purchases-by-supplier',label: t('reports.purchases_by_supplier') },
+            { to: '/reports/ap-aging', label: t('reports.ap_aging') },
+            { to: '/reports/supplier-statement', label: t('reports.supplier_statement') },
+            { to: '/reports/grn-reconciliation', label: t('reports.grn_reconciliation') },
+            { to: '/reports/purchases-by-supplier', label: t('reports.purchases_by_supplier') },
             { to: '/reports/purchases-by-product', label: t('reports.purchases_by_product') },
-            { to: '/reports/outstanding-pos',      label: t('reports.outstanding_pos') },
+            { to: '/reports/outstanding-pos', label: t('reports.outstanding_pos') },
           ],
         },
         {
           label: 'Inventory',
           items: [
-            { to: '/reports/stock-valuation',             label: t('nav.stock_valuation') },
-            { to: '/reports/stock-movement',              label: t('reports.stock_movement') },
-            { to: '/reports/slow-moving',                 label: t('reports.slow_moving') },
-            { to: '/reports/reorder',                     label: t('reports.reorder') },
-            { to: '/reports/stock-aging',                 label: t('reports.stock_aging') },
+            { to: '/reports/stock-valuation', label: t('nav.stock_valuation') },
+            { to: '/reports/stock-movement', label: t('reports.stock_movement') },
+            { to: '/reports/slow-moving', label: t('reports.slow_moving') },
+            { to: '/reports/reorder', label: t('reports.reorder') },
+            { to: '/reports/stock-aging', label: t('reports.stock_aging') },
             { to: '/reports/inventory-adjustment-report', label: t('reports.inventory_adjustment_report') },
           ],
         },
@@ -250,7 +250,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
         {
           label: 'Audit',
           items: [
-            { to: '/reports/audit-log',      label: t('reports.audit_log') },
+            { to: '/reports/audit-log', label: t('reports.audit_log') },
             { to: '/reports/reversal-trail', label: t('reports.reversal_trail') },
           ],
         },
@@ -282,10 +282,9 @@ function NavButton({
         to={section.to}
         onClick={onItemClick}
         className={({ isActive }) =>
-          `flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-            isActive
-              ? 'bg-brand-600 text-white'
-              : 'text-white/65 hover:bg-white/10 hover:text-white'
+          `flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-colors ${isActive
+            ? 'bg-brand-600 text-white'
+            : 'text-white/65 hover:bg-white/10 hover:text-white'
           }`
         }
       >
@@ -312,13 +311,12 @@ function NavButton({
     <button
       type="button"
       onClick={onToggle}
-      className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-        isActive
-          ? 'bg-brand-600 text-white'
-          : isOpen
+      className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-colors ${isActive
+        ? 'bg-brand-600 text-white'
+        : isOpen
           ? 'bg-white/15 text-white'
           : 'text-white/65 hover:bg-white/10 hover:text-white'
-      }`}
+        }`}
       onKeyDown={(e) => {
         if (e.key === 'ArrowDown' && !isOpen) onToggle();
         if (e.key === 'Enter') {
@@ -342,9 +340,8 @@ function NavDropdownPanel({ section, onItemClick }: { section: NavSection; onIte
   const wide = section.wide;
   return (
     <div
-      className={`absolute z-50 mt-2 rounded-2xl border border-border-subtle bg-surface-card p-2 shadow-xl ${
-        wide ? 'w-[640px]' : 'w-56'
-      }`}
+      className={`absolute z-50 mt-2 rounded-2xl border border-border-subtle bg-surface-card p-2 shadow-xl ${wide ? 'w-[640px]' : 'w-56'
+        }`}
     >
       <div className={wide ? 'grid grid-cols-3 gap-2' : 'flex flex-col'}>
         {groups.map((g, gi) => (
@@ -361,10 +358,9 @@ function NavDropdownPanel({ section, onItemClick }: { section: NavSection; onIte
                     to={it.to}
                     onClick={onItemClick}
                     className={({ isActive }) =>
-                      `block rounded-card px-3 py-1.5 text-sm transition-colors ${
-                        isActive
-                          ? 'bg-brand-50 text-brand-700'
-                          : 'text-ink-primary hover:bg-surface-muted'
+                      `block rounded-card px-3 py-1.5 text-sm transition-colors ${isActive
+                        ? 'bg-brand-50 text-brand-700'
+                        : 'text-ink-primary hover:bg-surface-muted'
                       }`
                     }
                   >
@@ -447,69 +443,16 @@ function UserMenu({ email, onSignOut }: { email: string | null; onSignOut: () =>
 
 // ── Settings dropdown ───────────────────────────────────────────────────────
 function SettingsMenu() {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const { t } = useTranslation();
-  useEffect(() => {
-    if (!open) return;
-    const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, [open]);
-
-  // Top item links to the Settings hub (Phase 12.45) — single place that
-  // shows every configurable area with a live count. The legacy items
-  // below remain for quick-jump muscle memory.
-  const settings: NavItem[] = [
-    { to: '/settings',               label: 'All settings' },
-    { to: '/settings/company',       label: t('nav.company') },
-    { to: '/settings/warehouses',    label: t('nav.warehouses') },
-    { to: '/settings/units',         label: t('nav.units') },
-    { to: '/settings/price-levels',  label: t('nav.price_levels') },
-    { to: '/settings/tax-rates',     label: 'Tax Rates' },
-    { to: '/settings/bank-accounts', label: 'Bank Accounts' },
-    { to: '/settings/print',         label: t('print.settings_title') },
-    { to: '/settings/system-health', label: t('settings.system_health') },
-    { to: '/settings/salespeople',   label: 'Salespeople' },
-    { to: '/settings/reset-data',    label: 'Reset Data' },
-  ];
-
   return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex h-9 w-9 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-white"
-        aria-label="Settings"
-      >
-        <CogIcon />
-      </button>
-      {open && (
-        <div className="absolute end-0 z-50 mt-2 w-56 overflow-hidden rounded-card border border-border-subtle bg-surface-card shadow-xl">
-          <p className="border-b border-border-subtle bg-surface-muted px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-ink-tertiary">
-            Settings
-          </p>
-          <ul className="py-1">
-            {settings.map((s) => (
-              <li key={s.to}>
-                <Link
-                  to={s.to}
-                  onClick={() => setOpen(false)}
-                  className="block px-4 py-2 text-sm text-ink-primary hover:bg-surface-muted"
-                >
-                  {s.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
+    <Link
+      to="/settings"
+      className="flex h-9 w-9 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-white"
+      aria-label="Settings"
+    >
+      <CogIcon />
+    </Link>
   );
 }
-
 // ── Mobile drawer (used when viewport is below the top-nav breakpoint) ─────
 function MobileDrawer({
   open,
@@ -569,8 +512,7 @@ function MobileDrawer({
                   to={section.to}
                   onClick={onClose}
                   className={({ isActive }) =>
-                    `mb-1 block rounded-card px-3 py-2 text-sm font-medium ${
-                      isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-primary hover:bg-surface-muted'
+                    `mb-1 block rounded-card px-3 py-2 text-sm font-medium ${isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-primary hover:bg-surface-muted'
                     }`
                   }
                 >
@@ -589,8 +531,7 @@ function MobileDrawer({
                     to={it.to}
                     onClick={onClose}
                     className={({ isActive }) =>
-                      `block rounded-card px-3 py-1.5 text-sm ${
-                        isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-secondary hover:bg-surface-muted hover:text-ink-primary'
+                      `block rounded-card px-3 py-1.5 text-sm ${isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-secondary hover:bg-surface-muted hover:text-ink-primary'
                       }`
                     }
                   >
@@ -759,7 +700,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       {/* Inner wrapper caps page width so forms don't stretch edge-to-edge
           on large monitors. 1536px (not 1280) because line-item editors
           (invoice/bill/PO) have 10+ columns that get crushed any narrower. */}
-      <main className="flex-1 overflow-y-auto p-4 md:p-3">
+      <main className="flex-1 overflow-y-auto p-4 md:p-8">
         <div style={{ maxWidth: '1536px', margin: '0 auto', width: '100%' }}>
           {children}
         </div>
