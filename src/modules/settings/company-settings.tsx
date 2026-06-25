@@ -26,6 +26,7 @@ const schema = z.object({
   is_tax_registered: z.boolean(),
   tax_id:            z.string(),
   prices_inclusive_of_tax: z.boolean(),
+  allow_negative_stock: z.boolean(),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -67,6 +68,7 @@ export default function CompanySettingsPage() {
         is_tax_registered: company.is_tax_registered,
         tax_id: company.tax_id ?? '',
         prices_inclusive_of_tax: company.prices_inclusive_of_tax,
+        allow_negative_stock: (company as { allow_negative_stock?: boolean }).allow_negative_stock ?? false,
       });
       setLogoUrl(company.logo_url);
     }
@@ -86,7 +88,9 @@ export default function CompanySettingsPage() {
         is_tax_registered: values.is_tax_registered,
         tax_id: values.tax_id || null,
         prices_inclusive_of_tax: values.prices_inclusive_of_tax,
-      }),
+        // Phase 30 — not yet in generated DB types; cast like setPeriodLock.
+        allow_negative_stock: values.allow_negative_stock,
+      } as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['company', company_id] });
       setSaveSuccess(true);
@@ -273,6 +277,24 @@ export default function CompanySettingsPage() {
               <span className="text-sm">
                 <span className="block text-ink-primary">{t('settings.company.prices_inclusive')}</span>
                 <span className="block text-xs text-ink-tertiary">{t('settings.company.prices_inclusive_hint')}</span>
+              </span>
+            </label>
+          </div>
+        </Card>
+
+        {/* Inventory — Phase 30 backorder policy */}
+        <Card>
+          <div className="flex flex-col gap-4">
+            <h2 className="text-base font-semibold text-ink-primary">{t('settings.company.inventory_section')}</h2>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 rounded border-border-strong text-brand-500"
+                {...register('allow_negative_stock')}
+              />
+              <span className="text-sm">
+                <span className="block text-ink-primary">{t('settings.company.allow_backorders')}</span>
+                <span className="block text-xs text-ink-tertiary">{t('settings.company.allow_backorders_hint')}</span>
               </span>
             </label>
           </div>
