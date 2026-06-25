@@ -5,7 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
-import { useCompanyCurrency } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useCompanyCountry } from '@/hooks/use-company-currency';
+import { defaultTaxRate } from '@/lib/locale';
 import { Button } from '@/ui/button';
 import { SearchableSelect } from '@/ui/searchable-select';
 // Phase 14.04 — Signature template view mode for saved credit notes.
@@ -45,6 +46,7 @@ export default function CreditNoteEditorPage() {
   const qc          = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const companyCurrency = useCompanyCurrency();    // Phase 14.14m
+  const companyCountry  = useCompanyCountry();      // Phase 21 — new lines default to country tax rate
   const { company_id } = useAuthStore();
 
   // Header state
@@ -140,7 +142,7 @@ export default function CreditNoteEditorPage() {
   }
 
   function addLine() {
-    setLines(prev => [...prev, { product_id: null, description: '', quantity: 1, unit_price: 0, discount_percent: 0, tax_rate: 5, cost_at_sale: null }]);
+    setLines(prev => [...prev, { product_id: null, description: '', quantity: 1, unit_price: 0, discount_percent: 0, tax_rate: defaultTaxRate(companyCountry), cost_at_sale: null }]);
   }
   function removeLine(i: number) {
     setLines(prev => prev.filter((_, idx) => idx !== i));

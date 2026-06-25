@@ -27,6 +27,7 @@ const schema = z.object({
   company_name_ar:   z.string(),
   address:           z.string(),
   country_code:      z.string().min(2),
+  fiscal_year_start_month: z.string().min(2),
   is_tax_registered: z.boolean(),
   tax_id:            z.string(),
   load_sample_data:  z.boolean(),
@@ -46,6 +47,28 @@ const TOTAL_STEPS = 3;
 
 function fiscalYearMonthFor(country_code: string): string {
   return country_code === 'IN' ? '04' : '01';
+}
+
+const MONTHS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: '01', label: 'January' },
+  { value: '02', label: 'February' },
+  { value: '03', label: 'March' },
+  { value: '04', label: 'April' },
+  { value: '05', label: 'May' },
+  { value: '06', label: 'June' },
+  { value: '07', label: 'July' },
+  { value: '08', label: 'August' },
+  { value: '09', label: 'September' },
+  { value: '10', label: 'October' },
+  { value: '11', label: 'November' },
+  { value: '12', label: 'December' },
+];
+
+// Financial year runs 12 months from the chosen start month, e.g. '04' → "Apr – Mar".
+function fyRangeLabel(month: string): string {
+  const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const start = Math.max(0, Math.min(11, parseInt(month, 10) - 1));
+  return `${names[start]} – ${names[(start + 11) % 12]}`;
 }
 
 // ── Step metadata used by both the sidebar and the right-panel heading ────
@@ -99,12 +122,14 @@ export default function SetupWizardPage() {
       address:           '',
       tax_id:            '',
       country_code:      'AE',
+      fiscal_year_start_month: '01',
       is_tax_registered: false,
       load_sample_data:  false,
     },
   });
 
   const country_code      = watch('country_code');
+  const fiscal_year_start_month = watch('fiscal_year_start_month');
   const is_tax_registered = watch('is_tax_registered');
 
   const inferredCurrency =
@@ -151,7 +176,7 @@ export default function SetupWizardPage() {
     setError('');
     try {
       const currentYear = new Date().getFullYear();
-      const fyMonth = fiscalYearMonthFor(values.country_code);
+      const fyMonth = values.fiscal_year_start_month;
       const wizard: WizardData = {
         ...values,
         // Issue 2 — production companies always start empty. Sample data is
@@ -335,14 +360,34 @@ export default function SetupWizardPage() {
               {/* ── Step 2 — Country & tax ────────────────────────────── */}
               {step === 1 && (
                 <>
-                  <Field label="Country" required hint={`Currency ${inferredCurrency} · Fiscal year starts ${country_code === 'IN' ? 'April 1' : 'January 1'} · Change anytime in Settings → Company`}>
+                  <Field label="Country" required hint={`Sets your currency (${inferredCurrency}). Change anytime in Settings → Company.`}>
                     <select
                       value={country_code}
-                      onChange={(e) => setValue('country_code', e.target.value)}
+                      onChange={(e) => {
+                        setValue('country_code', e.target.value);
+                        // Suggest the country's usual financial-year start; user can still change it.
+                        setValue('fiscal_year_start_month', fiscalYearMonthFor(e.target.value));
+                      }}
                       style={inputStyle}
                     >
                       {COUNTRIES.map((c) => (
                         <option key={c.value} value={c.value}>{c.label}</option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field
+                    label="Financial Year Start"
+                    required
+                    hint={`Your books will run ${fyRangeLabel(fiscal_year_start_month)}. ${country_code === 'IN' ? 'India usually starts in April.' : 'GCC usually starts in January.'}`}
+                  >
+                    <select
+                      value={fiscal_year_start_month}
+                      onChange={(e) => setValue('fiscal_year_start_month', e.target.value)}
+                      style={inputStyle}
+                    >
+                      {MONTHS.map((m) => (
+                        <option key={m.value} value={m.value}>{m.label}</option>
                       ))}
                     </select>
                   </Field>
@@ -387,7 +432,7 @@ export default function SetupWizardPage() {
                     />
                     <SummaryRow
                       label="Currency / fiscal year"
-                      value={`${inferredCurrency} · ${country_code === 'IN' ? 'Apr – Mar' : 'Jan – Dec'}`}
+                      value={`${inferredCurrency} · ${fyRangeLabel(fiscal_year_start_month)}`}
                       mono
                     />
                     <SummaryRow
