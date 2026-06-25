@@ -453,6 +453,11 @@ export function createSelfHostedAdapter(): DataAdapter {
       list: () => notImplemented('documentSequences.list'),
       save: () => notImplemented('documentSequences.save'),
     },
+    billing: {
+      getSubscription: () => notImplemented('billing.getSubscription'),
+      getAddress:      () => notImplemented('billing.getAddress'),
+      upsertAddress:   () => notImplemented('billing.upsertAddress'),
+    },
     payroll: {
       listRuns:         () => notImplemented('payroll.listRuns'),
       getRun:           () => notImplemented('payroll.getRun'),

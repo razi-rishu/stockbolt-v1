@@ -161,6 +161,7 @@ export default function SettingsHubPage() {
       title: 'Company & Location',
       tiles: [
         { to: '/settings/company',     icon: '🏢', title: 'Company Profile',  desc: 'Name, logo, tax number, currency, fiscal year start.' },
+        { to: '/settings/billing',     icon: '💳', title: 'Billing & Subscription', desc: 'Your plan, trial, payment history and billing address.' },
         { to: '/settings/warehouses',  icon: '🏬', title: 'Warehouses & Branches', desc: 'Storage locations and default branch for new documents.', count: warehouses.length },
       ],
     },

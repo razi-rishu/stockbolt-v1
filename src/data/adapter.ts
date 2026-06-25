@@ -2007,6 +2007,56 @@ export interface DataAdapter {
   payroll: PayrollAPI;
   // Document numbering settings (2026-06-13)
   documentSequences: DocumentSequencesAPI;
+  // Phase 31 — SaaS subscription & billing (M1/M2)
+  billing: BillingAPI;
+}
+
+// ── Phase 31 — SaaS subscription & billing ──────────────────────────────────
+// New tables aren't in the generated DB types yet; these are hand-written views.
+export interface SubscriptionPlanView {
+  code: string;
+  name: string;
+  monthly_price: number;
+  yearly_price: number;
+  price_currency: string;
+  trial_days: number;
+  features: Record<string, unknown>;
+}
+export interface SubscriptionView {
+  id: string;
+  company_id: string;
+  status: string;
+  billing_cycle: string | null;
+  provider: string;
+  grandfathered: boolean;
+  trial_start: string | null;
+  trial_end: string | null;
+  trial_days_left: number | null;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  next_billing_date: string | null;
+  amount: number | null;
+  currency: string | null;
+  cancel_at_period_end: boolean;
+  plan: SubscriptionPlanView | null;
+}
+export interface BillingAddressRow {
+  company_id: string;
+  company_name: string | null;
+  address: string | null;
+  country: string | null;
+  state: string | null;
+  city: string | null;
+  postal_code: string | null;
+  tax_number: string | null;
+  phone: string | null;
+  email: string | null;
+}
+export interface BillingAPI {
+  /** The caller's own subscription (+ plan), via get_my_subscription(). Null if none. */
+  getSubscription(): Promise<SubscriptionView | null>;
+  getAddress(company_id: string): Promise<BillingAddressRow | null>;
+  upsertAddress(company_id: string, data: Partial<BillingAddressRow>): Promise<void>;
 }
 
 // ── Document numbering ──────────────────────────────────────────────────────

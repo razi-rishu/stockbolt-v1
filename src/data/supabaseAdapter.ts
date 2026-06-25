@@ -102,6 +102,26 @@ export function createSupabaseAdapter(
   const rpcAny = (fn: string, args: Record<string, unknown>) =>
     (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)(fn, args);
   return {
+    // ── Phase 31 — SaaS subscription & billing (M1/M2) ──────────────────────
+    billing: {
+      async getSubscription() {
+        const { data, error } = await rpcAny('get_my_subscription', {});
+        // Null (→ "not set up yet") if the RPC isn't installed (M1 not applied) or no row exists.
+        if (error) return null as any;
+        return (data ?? null) as any;
+      },
+      async getAddress(company_id: string) {
+        const { data, error } = await (client.from as any)('billing_addresses')
+          .select('*').eq('company_id', company_id).maybeSingle();
+        if (error) assertNoError(error, 'billing.getAddress');
+        return (data ?? null) as any;
+      },
+      async upsertAddress(company_id: string, patch: Record<string, unknown>) {
+        const { error } = await (client.from as any)('billing_addresses')
+          .upsert({ company_id, ...patch, updated_at: new Date().toISOString() }, { onConflict: 'company_id' });
+        assertNoError(error, 'billing.upsertAddress');
+      },
+    },
     // ── Auth ───────────────────────────────────────────────────────────────
     auth: {
       async signUp({ email, password }) {

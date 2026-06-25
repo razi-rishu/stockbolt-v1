@@ -23,6 +23,7 @@ const EmailVerifyPage    = lazy(() => import('@/modules/auth/email-verification'
 
 // Onboarding
 const SetupWizardPage    = lazy(() => import('@/modules/onboarding/setup-wizard'));
+const BillingPage        = lazy(() => import('@/modules/settings/billing'));
 const AcceptInvitePage   = lazy(() => import('@/modules/onboarding/accept-invite'));
 const UsersRolesPage     = lazy(() => import('@/modules/settings/users/index'));
 
@@ -241,6 +242,7 @@ function AppRoutes() {
               <Route element={<RequirePermission perm="settings.read" />}>
                 <Route path="/settings"                 element={<SettingsHubPage />} />
                 <Route path="/settings/company"         element={<CompanySettingsPage />} />
+                <Route path="/settings/billing"         element={<BillingPage />} />
                 <Route path="/settings/warehouses"      element={<WarehousesPage />} />
                 <Route path="/settings/units"           element={<UnitsPage />} />
                 <Route path="/settings/price-levels"    element={<PriceLevelsPage />} />
