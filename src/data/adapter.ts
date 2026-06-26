@@ -501,6 +501,8 @@ export interface TrialBalance {
 
 export interface LedgerEntry {
   id: string;
+  /** The journal entry this GL line belongs to — drill-down target for the entry number. */
+  journal_entry_id: string | null;
   date: string;
   entry_number: string;
   description: string;
@@ -809,6 +811,8 @@ export interface CustomerStatementLine {
   date: string;
   doc_type: string;
   doc_number: string;
+  /** Source document UUID for drill-down (null for plain manual JEs). */
+  doc_id?: string | null;
   debit: number;
   credit: number;
   balance: number;
@@ -1339,6 +1343,8 @@ export interface SupplierStatementLine {
   date: string;
   doc_type: string;
   doc_number: string;
+  /** Source document UUID for drill-down (null for plain manual JEs). */
+  doc_id?: string | null;
   debit: number;
   credit: number;
   balance: number;

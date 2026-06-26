@@ -1048,6 +1048,7 @@ export function createSupabaseAdapter(
           const srcId   = (r as any).related_doc_id || jeInfo?.source_id || null;
           return {
             id: r.id,
+            journal_entry_id: r.journal_entry_id ?? null,
             date: r.date,
             entry_number: jeInfo?.entry_number ?? '',
             description: r.description ?? '',
@@ -2149,6 +2150,7 @@ export function createSupabaseAdapter(
             date: row.date as string,
             doc_type: row.related_doc_type ?? 'je',
             doc_number: je?.entry_number ?? row.id,
+            doc_id: (row as any).related_doc_id ?? null,
             debit: Number(row.debit),
             credit: Number(row.credit),
             balance,
@@ -2255,6 +2257,7 @@ export function createSupabaseAdapter(
             date: row.date as string,
             doc_type: row.related_doc_type ?? 'je',
             doc_number: je?.entry_number ?? row.id,
+            doc_id: (row as any).related_doc_id ?? null,
             debit: Number(row.debit),
             credit: Number(row.credit),
             balance,

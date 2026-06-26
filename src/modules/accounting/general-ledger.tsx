@@ -7,6 +7,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
+import { DocLink } from '@/ui/doc-link';
 import type { LedgerEntry, CoaRow } from '@/data/adapter';
 
 function fmt(n: number) {
@@ -30,11 +31,11 @@ const SOURCE_LABELS: Record<string, { label: string; cls: string }> = {
   inventory_cogs:       { label: 'COGS',        cls: 'bg-amber-50 text-amber-700' },
 };
 
-function SourceCell({ type, number }: { type: string; number: string | null }) {
+function SourceCell({ type, id, number }: { type: string; id: string | null; number: string | null }) {
   const meta = SOURCE_LABELS[type] ?? { label: type ? type.replace(/_/g, ' ') : 'Manual', cls: 'bg-surface-muted text-ink-secondary' };
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-      {number && <span className="font-mono text-xs text-ink-primary">{number}</span>}
+      {number && <DocLink type={type} id={id} label={number} className="font-mono text-xs text-brand-600 hover:underline" />}
       <span className={`rounded-pill px-1.5 py-0.5 text-[10px] font-semibold capitalize ${meta.cls}`}>
         {meta.label}
       </span>
@@ -200,8 +201,12 @@ export default function GeneralLedgerPage() {
                 {visibleEntries.map((e) => (
                   <tr key={e.id} className="border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
                     <td className="px-4 py-2.5 text-ink-secondary">{formatDate(e.date)}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-brand-600">{e.entry_number}</td>
-                    <td className="px-4 py-2.5"><SourceCell type={e.source_type} number={e.source_number} /></td>
+                    <td className="px-4 py-2.5 font-mono text-xs">
+                      <DocLink type="journal_entry" id={e.journal_entry_id} label={e.entry_number}
+                        status={e.reversed_by_id ? 'reversed' : 'active'}
+                        className="font-mono text-xs text-brand-600 hover:underline" />
+                    </td>
+                    <td className="px-4 py-2.5"><SourceCell type={e.source_type} id={e.source_id} number={e.source_number} /></td>
                     <td className="px-4 py-2.5 text-ink-primary">{e.description || '—'}</td>
                     <td className="px-4 py-2.5 text-end font-mono">{e.debit > 0 ? fmt(e.debit) : ''}</td>
                     <td className="px-4 py-2.5 text-end font-mono">{e.credit > 0 ? fmt(e.credit) : ''}</td>
