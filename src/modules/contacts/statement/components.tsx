@@ -28,6 +28,7 @@
  */
 import { type ReactNode } from 'react';
 import { formatDate } from '@/lib/locale';
+import { DocLink } from '@/ui/doc-link';
 
 // ── Design tokens (mirror of _signature/tokens.ts, narrowed to what
 //    statements actually need) ──────────────────────────────────────────────
@@ -473,6 +474,9 @@ export interface SpineLine {
   date:         string;
   doc_type:     string;    // friendly label e.g. "Invoice"
   doc_number:   string;
+  /** Drill-down (Document 7 — D4): raw doc type + source UUID. */
+  ref_type?:    string;
+  doc_id?:      string | null;
   reference?:   string | null;
   debit:        number;
   credit:       number;
@@ -645,7 +649,7 @@ function SpineRow({ line }: { line: SpineLine }) {
         fontSize: '12px',
         color: stmt.brand,
         fontWeight: 500,
-      }}>{line.doc_number}</td>
+      }}><DocLink type={line.ref_type} id={line.doc_id ?? null} label={line.doc_number} /></td>
       <td style={{ padding: '10px 14px', color: stmt.inkMuted, fontSize: '12.5px' }}>{line.reference ?? '—'}</td>
       <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 500, color: stmt.inkBody }}>
         {line.debit > 0 ? fmt(line.debit) : '—'}

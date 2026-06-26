@@ -665,6 +665,8 @@ export default function SupplierDetailPage() {
             date:       l.date,
             doc_type:   sourceLabel(l.source_type, l.doc_type, l.account_code),
             doc_number: l.doc_number,
+            ref_type:   l.doc_type,
+            doc_id:     l.doc_id ?? null,
             reference:  null,
             debit:      l.debit,
             credit:     l.credit,
