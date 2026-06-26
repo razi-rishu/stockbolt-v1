@@ -5,6 +5,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
+import { DocLink } from '@/ui/doc-link';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -87,7 +88,7 @@ export default function ARAgingPage() {
                 const netNegative = b.net_due < -0.005;
                 return (
                   <tr key={b.contact_id} className="border-b border-border-subtle last:border-0">
-                    <td className="px-4 py-2.5 text-ink-primary">{b.contact_name}</td>
+                    <td className="px-4 py-2.5"><DocLink type="customer" id={b.contact_id} label={b.contact_name} className="font-medium text-brand-600 hover:underline" /></td>
                     <td className="px-4 py-2.5 text-end font-mono text-ink-primary">{b.current > 0 ? fmt(b.current) : '—'}</td>
                     <td className="px-4 py-2.5 text-end font-mono text-orange-600">{b.days_31_60 > 0 ? fmt(b.days_31_60) : '—'}</td>
                     <td className="px-4 py-2.5 text-end font-mono text-red-500">{b.days_61_90 > 0 ? fmt(b.days_61_90) : '—'}</td>

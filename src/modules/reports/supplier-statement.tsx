@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/auth';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Button } from '@/ui/button';
+import { DocLink } from '@/ui/doc-link';
 import type { ContactRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -66,7 +67,7 @@ export default function SupplierStatementPage() {
               {data.lines.map((line, i) => (
                 <tr key={i} className="border-b border-border-subtle last:border-0">
                   <td className="px-4 py-3 text-ink-secondary">{line.date}</td>
-                  <td className="px-4 py-3 font-mono text-xs">{line.doc_number}</td>
+                  <td className="px-4 py-3 font-mono text-xs"><DocLink type={line.doc_type} id={line.doc_id ?? null} label={line.doc_number} status={line.is_reversed ? 'reversed' : 'active'} className="font-mono text-xs text-brand-600 hover:underline" /></td>
                   <td className="px-4 py-3 text-end font-mono">{line.debit > 0 ? fmt(line.debit) : '—'}</td>
                   <td className="px-4 py-3 text-end font-mono">{line.credit > 0 ? fmt(line.credit) : '—'}</td>
                   <td className="px-4 py-3 text-end font-mono font-medium">{fmt(line.balance)}</td>
