@@ -598,6 +598,62 @@ export function createSupabaseAdapter(
         const { error } = await client.from('vehicle_models').delete().eq('id', id);
         assertNoError(error, 'vehicleMakes.removeModel');
       },
+      // ── Phase 32 — deep hierarchy (tables not in generated types → `as any`) ──
+      async listGenerations(model_id: string) {
+        const { data, error } = await (client.from as any)('vehicle_generations').select('*').eq('model_id', model_id).order('year_from', { nullsFirst: true });
+        assertNoError(error, 'vehicleMakes.listGenerations');
+        return (data ?? []) as any;
+      },
+      async createGeneration(row: any) {
+        const { data, error } = await (client.from as any)('vehicle_generations').insert(row).select().single();
+        assertNoError(error, 'vehicleMakes.createGeneration');
+        return data as any;
+      },
+      async updateGeneration(id: string, row: any) {
+        const { error } = await (client.from as any)('vehicle_generations').update(row).eq('id', id);
+        assertNoError(error, 'vehicleMakes.updateGeneration');
+      },
+      async removeGeneration(id: string) {
+        const { error } = await (client.from as any)('vehicle_generations').delete().eq('id', id);
+        assertNoError(error, 'vehicleMakes.removeGeneration');
+      },
+      async listVariants(generation_id: string) {
+        const { data, error } = await (client.from as any)('vehicle_variants').select('*').eq('generation_id', generation_id).order('label', { nullsFirst: true });
+        assertNoError(error, 'vehicleMakes.listVariants');
+        return (data ?? []) as any;
+      },
+      async createVariant(row: any) {
+        const { data, error } = await (client.from as any)('vehicle_variants').insert(row).select().single();
+        assertNoError(error, 'vehicleMakes.createVariant');
+        return data as any;
+      },
+      async updateVariant(id: string, row: any) {
+        const { error } = await (client.from as any)('vehicle_variants').update(row).eq('id', id);
+        assertNoError(error, 'vehicleMakes.updateVariant');
+      },
+      async removeVariant(id: string) {
+        const { error } = await (client.from as any)('vehicle_variants').delete().eq('id', id);
+        assertNoError(error, 'vehicleMakes.removeVariant');
+      },
+      async listEngines(_company_id: string) {
+        // RLS returns own + system (company_id NULL) engines.
+        const { data, error } = await (client.from as any)('vehicle_engines').select('*').order('engine_code');
+        assertNoError(error, 'vehicleMakes.listEngines');
+        return (data ?? []) as any;
+      },
+      async createEngine(row: any) {
+        const { data, error } = await (client.from as any)('vehicle_engines').insert(row).select().single();
+        assertNoError(error, 'vehicleMakes.createEngine');
+        return data as any;
+      },
+      async updateEngine(id: string, row: any) {
+        const { error } = await (client.from as any)('vehicle_engines').update(row).eq('id', id);
+        assertNoError(error, 'vehicleMakes.updateEngine');
+      },
+      async removeEngine(id: string) {
+        const { error } = await (client.from as any)('vehicle_engines').delete().eq('id', id);
+        assertNoError(error, 'vehicleMakes.removeEngine');
+      },
     },
 
     // ── Phase 2: Products ──────────────────────────────────────────────────
@@ -719,7 +775,8 @@ export function createSupabaseAdapter(
         return data ?? [];
       },
       async addCompatibility(row: ProductCompatibilityInsert): Promise<ProductCompatibilityRow> {
-        const { data, error } = await client.from('product_compatibility').insert(row).select().single();
+        // `as any` — generation_id/variant_id aren't in the generated insert type yet (Phase 32).
+        const { data, error } = await client.from('product_compatibility').insert(row as any).select().single();
         assertNoError(error, 'products.addCompatibility');
         return data!;
       },

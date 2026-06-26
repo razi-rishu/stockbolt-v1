@@ -18,7 +18,7 @@ export type BrandRow = Tables['brands']['Row'];
 export type VehicleMakeRow = Tables['vehicle_makes']['Row'];
 export type VehicleModelRow = Tables['vehicle_models']['Row'];
 export type ProductRow = Tables['products']['Row'];
-export type ProductCompatibilityRow = Tables['product_compatibility']['Row'];
+export type ProductCompatibilityRow = Tables['product_compatibility']['Row'] & CompatibilityVehicleFields;
 export type ProductSupplierCodeRow = Tables['product_supplier_codes']['Row'];
 // Phase 16 — structured geography. These columns are added by migration but
 // may not be in the generated Database types yet, so we intersect them on.
@@ -48,9 +48,53 @@ export type BrandInsert = Omit<Tables['brands']['Insert'], 'id' | 'created_at' |
 export type BrandUpdate = Tables['brands']['Update'];
 export type VehicleMakeInsert = Omit<Tables['vehicle_makes']['Insert'], 'id' | 'created_at'>;
 export type VehicleModelInsert = Omit<Tables['vehicle_models']['Insert'], 'id' | 'created_at'>;
+
+// ── Phase 32 — deep vehicle hierarchy (new tables; not in generated DB types yet)
+export interface VehicleEngineRow {
+  id: string; company_id: string | null; engine_code: string;
+  displacement_cc: number | null; fuel_type: string | null; power_hp: number | null;
+  description: string | null; is_active: boolean;
+  external_source: string | null; external_ref: string | null;
+  created_at: string; updated_at: string;
+}
+export interface VehicleEngineInsert {
+  company_id?: string | null; engine_code: string;
+  displacement_cc?: number | null; fuel_type?: string | null; power_hp?: number | null;
+  description?: string | null; is_active?: boolean;
+  external_source?: string | null; external_ref?: string | null;
+}
+export interface VehicleGenerationRow {
+  id: string; model_id: string; name: string; code: string | null;
+  year_from: number | null; year_to: number | null; is_active: boolean;
+  external_source: string | null; external_ref: string | null;
+  created_at: string; updated_at: string;
+}
+export interface VehicleGenerationInsert {
+  model_id: string; name: string; code?: string | null;
+  year_from?: number | null; year_to?: number | null; is_active?: boolean;
+  external_source?: string | null; external_ref?: string | null;
+}
+export interface VehicleVariantRow {
+  id: string; generation_id: string; engine_id: string | null; label: string | null;
+  transmission: string | null; drive_type: string | null; fuel_type: string | null;
+  year_from: number | null; year_to: number | null; chassis_code: string | null;
+  is_active: boolean; external_source: string | null; external_ref: string | null;
+  created_at: string; updated_at: string;
+}
+export interface VehicleVariantInsert {
+  generation_id: string; engine_id?: string | null; label?: string | null;
+  transmission?: string | null; drive_type?: string | null; fuel_type?: string | null;
+  year_from?: number | null; year_to?: number | null; chassis_code?: string | null;
+  is_active?: boolean; external_source?: string | null; external_ref?: string | null;
+}
+/** Phase 32 — compatibility can now target a generation/variant for precise fitment. */
+export interface CompatibilityVehicleFields {
+  generation_id?: string | null;
+  variant_id?: string | null;
+}
 export type ProductInsert = Omit<Tables['products']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type ProductUpdate = Tables['products']['Update'];
-export type ProductCompatibilityInsert = Omit<Tables['product_compatibility']['Insert'], 'id' | 'created_at'>;
+export type ProductCompatibilityInsert = Omit<Tables['product_compatibility']['Insert'], 'id' | 'created_at'> & CompatibilityVehicleFields;
 export type ProductSupplierCodeInsert = Omit<Tables['product_supplier_codes']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type ContactInsert = Omit<Tables['contacts']['Insert'], 'id' | 'created_at' | 'updated_at'> & ContactGeoFields;
 export type ContactUpdate = Tables['contacts']['Update'] & ContactGeoFields;
@@ -294,6 +338,19 @@ export interface VehicleMakesAPI {
   createModel(row: VehicleModelInsert): Promise<VehicleModelRow>;
   updateModel(id: string, row: Partial<VehicleModelInsert>): Promise<void>;
   removeModel(id: string): Promise<void>;
+  // Phase 32 — deep hierarchy: generations → variants, + reusable engines.
+  listGenerations(model_id: string): Promise<VehicleGenerationRow[]>;
+  createGeneration(row: VehicleGenerationInsert): Promise<VehicleGenerationRow>;
+  updateGeneration(id: string, row: Partial<VehicleGenerationInsert>): Promise<void>;
+  removeGeneration(id: string): Promise<void>;
+  listVariants(generation_id: string): Promise<VehicleVariantRow[]>;
+  createVariant(row: VehicleVariantInsert): Promise<VehicleVariantRow>;
+  updateVariant(id: string, row: Partial<VehicleVariantInsert>): Promise<void>;
+  removeVariant(id: string): Promise<void>;
+  listEngines(company_id: string): Promise<VehicleEngineRow[]>;
+  createEngine(row: VehicleEngineInsert): Promise<VehicleEngineRow>;
+  updateEngine(id: string, row: Partial<VehicleEngineInsert>): Promise<void>;
+  removeEngine(id: string): Promise<void>;
 }
 
 // ── Phase 12.18: SmartEntitySearch result shapes ──────────────────────────
