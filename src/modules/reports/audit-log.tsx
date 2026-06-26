@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
+import { DocLink } from '@/ui/doc-link';
 import type { AuditLogLine } from '@/data/adapter';
 
 export default function AuditLogPage() {
@@ -72,7 +73,7 @@ export default function AuditLogPage() {
                       <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${actionColor(r.action)}`}>{r.action}</span>
                     </td>
                     <td className="px-4 py-2 text-ink-secondary text-xs">{r.entity_type}</td>
-                    <td className="px-4 py-2 text-ink-secondary text-xs font-mono truncate max-w-[120px]">{r.entity_id}</td>
+                    <td className="px-4 py-2 text-xs font-mono truncate max-w-[120px]"><DocLink type={r.entity_type} id={r.entity_id} label={r.entity_id} className="text-brand-600 hover:underline" /></td>
                     <td className="px-4 py-2">
                       {(r.old_values || r.new_values) && (
                         <button onClick={() => setExpanded(expanded === r.id ? null : r.id)} className="text-xs text-brand-600 hover:underline">
