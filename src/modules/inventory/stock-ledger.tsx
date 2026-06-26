@@ -10,6 +10,7 @@ import { Select } from '@/ui/select';
 import { Button } from '@/ui/button';
 import { PageHeader, Panel } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
+import { DocLink } from '@/ui/doc-link';
 import type { ProductRow, WarehouseRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -168,7 +169,7 @@ export default function StockLedgerPage() {
                     <tr key={i} style={{ borderTop: i === 0 ? 'none' : '1px solid #f1f5f9' }}>
                       <td className="px-4 py-2" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(row.date as string)}</td>
                       <td className="px-4 py-2" style={{ color: theme.ink, fontSize: '13px' }}>
-                        <span style={{ fontWeight: 600 }}>{row.product_name}</span>
+                        <DocLink type="product" id={row.product_id} label={row.product_name} className="font-semibold text-brand-600 hover:underline" />
                         {row.sku && <span style={{ marginInlineStart: '6px', fontSize: '11px', color: theme.inkMuted }}>({row.sku})</span>}
                       </td>
                       <td className="px-4 py-2" style={{ color: theme.inkMuted, fontSize: '13px' }}>{row.warehouse_name}</td>

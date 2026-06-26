@@ -5,6 +5,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
+import { DocLink } from '@/ui/doc-link';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -62,7 +63,7 @@ export default function StockValuationPage() {
               {sv.lines.map((l, i) => (
                 <tr key={i} className="border-b border-border-subtle last:border-0">
                   <td className="px-4 py-2.5 font-mono text-xs text-ink-primary">{l.product_code}</td>
-                  <td className="px-4 py-2.5 text-ink-primary">{l.product_name}</td>
+                  <td className="px-4 py-2.5"><DocLink type="product" id={l.product_id} label={l.product_name} className="font-medium text-brand-600 hover:underline" /></td>
                   <td className="px-4 py-2.5 text-ink-secondary">{l.warehouse_name}</td>
                   <td className="px-4 py-2.5 text-end font-mono text-ink-primary">{l.quantity.toLocaleString()}</td>
                   <td className="px-4 py-2.5 text-end font-mono text-ink-primary">{fmt(l.unit_cost)}</td>
