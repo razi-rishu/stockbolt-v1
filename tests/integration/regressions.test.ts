@@ -1126,3 +1126,48 @@ describe('Phase 31 — SaaS subscription foundation', () => {
     expect(fn?.v, 'get_my_subscription RPC present').toBe(true);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// Phase 32 — Automotive catalog C1 schema. Soft-skip until applied.
+// ════════════════════════════════════════════════════════════════════════════
+describe('Phase 32 — Automotive catalog (C1)', () => {
+  async function hasTable(name: string): Promise<boolean> {
+    const [r] = await sql<{ v: boolean }>(`SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='${name}') AS v`);
+    return !!r?.v;
+  }
+
+  it('phase32: new vehicle tables exist with RLS', async () => {
+    if (!(await hasTable('vehicle_variants'))) { console.warn('phase32 not applied — skipping (apply 20260625000003_phase32...).'); return; }
+    const rows = await sql<{ relrowsecurity: boolean }>(
+      `SELECT relrowsecurity FROM pg_class WHERE relnamespace='public'::regnamespace
+         AND relname IN ('vehicle_engines','vehicle_generations','vehicle_variants')`);
+    expect(rows.length, 'all 3 new vehicle tables present').toBe(3);
+    expect(rows.every(r => r.relrowsecurity), 'RLS enabled on each').toBe(true);
+  });
+
+  it('phase32: enrichment + compatibility columns added', async () => {
+    if (!(await hasTable('vehicle_variants'))) { console.warn('phase32 not applied — skipping column check.'); return; }
+    const cols = await sql<{ c: string }>(
+      `SELECT column_name AS c FROM information_schema.columns
+       WHERE table_schema='public' AND (
+         (table_name='brands' AND column_name='country') OR
+         (table_name='categories' AND column_name='icon') OR
+         (table_name='vehicle_makes' AND column_name='country') OR
+         (table_name='product_compatibility' AND column_name='variant_id'))`);
+    expect(cols.length, 'brands.country + categories.icon + makes.country + compat.variant_id').toBe(4);
+  });
+
+  it('phase32: shared GCC/India make catalog seeded (company_id NULL)', async () => {
+    if (!(await hasTable('vehicle_variants'))) { console.warn('phase32 not applied — skipping seed check.'); return; }
+    const [r] = await sql<{ n: number }>(`SELECT COUNT(*)::int AS n FROM vehicle_makes WHERE company_id IS NULL AND name='Toyota'`);
+    expect(r?.n ?? 0, 'Toyota seeded as a system make').toBeGreaterThan(0);
+  });
+
+  it('phase32: backfill — every vehicle_model has a generation', async () => {
+    if (!(await hasTable('vehicle_generations'))) { console.warn('phase32 not applied — skipping backfill check.'); return; }
+    const missing = await sql<{ id: string }>(
+      `SELECT m.id::text AS id FROM vehicle_models m
+       WHERE NOT EXISTS (SELECT 1 FROM vehicle_generations g WHERE g.model_id = m.id)`);
+    expect(missing, `models without a generation after backfill: ${JSON.stringify(missing)}`).toEqual([]);
+  });
+});
