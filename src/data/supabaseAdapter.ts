@@ -743,6 +743,27 @@ export function createSupabaseAdapter(
         assertNoError(error, 'products.listByModel');
         return data ?? [];
       },
+      async listByVehicle(company_id, opts): Promise<ProductRow[]> {
+        // `select('*')` (not specific columns) keeps this working before the Phase 32
+        // generation_id/variant_id columns exist; we narrow client-side with null-fallback
+        // semantics — a model/generation-level row fits every generation/variant below it.
+        let q = client.from('product_compatibility').select('*').eq('model_id', opts.model_id);
+        if (opts.year) {
+          q = (q as any)
+            .or(`year_from.is.null,year_from.lte.${opts.year}`)
+            .or(`year_to.is.null,year_to.gte.${opts.year}`);
+        }
+        const { data: compat, error: e1 } = await q;
+        assertNoError(e1, 'products.listByVehicle.compat');
+        let rows = (compat ?? []) as any[];
+        if (opts.generation_id) rows = rows.filter((r) => !r.generation_id || r.generation_id === opts.generation_id);
+        if (opts.variant_id) rows = rows.filter((r) => !r.variant_id || r.variant_id === opts.variant_id);
+        const ids = [...new Set(rows.map((r) => r.product_id as string))];
+        if (ids.length === 0) return [];
+        const { data, error } = await client.from('products').select('*').eq('company_id', company_id).in('id', ids).order('name');
+        assertNoError(error, 'products.listByVehicle');
+        return data ?? [];
+      },
       async getById(id): Promise<ProductRow | null> {
         const { data, error } = await client.from('products').select('*').eq('id', id).maybeSingle();
         assertNoError(error, 'products.getById');

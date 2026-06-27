@@ -421,6 +421,9 @@
     "title": "كتالوج القطع",
     "select_make": "اختر الماركة…",
     "select_model": "اختر الطراز…",
+    "all_generations": "كل الأجيال",
+    "all_variants": "كل الفئات",
+    "variant": "الفئة",
     "year_optional": "السنة (اختياري)",
     "select_make_hint": "اختر ماركة المركبة والطراز لعرض القطع المتوافقة.",
     "no_results": "لا توجد قطع لهذه المركبة."

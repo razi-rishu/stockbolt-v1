@@ -132,6 +132,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       search: () => notImplemented('products.search'),
       smartSearch: () => notImplemented('products.smartSearch'),
       listByModel: () => notImplemented('products.listByModel'),
+      listByVehicle: () => notImplemented('products.listByVehicle'),
       getById: () => notImplemented('products.getById'),
       create: () => notImplemented('products.create'),
       update: () => notImplemented('products.update'),

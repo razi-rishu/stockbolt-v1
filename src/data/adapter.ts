@@ -408,6 +408,8 @@ export interface ProductsAPI {
    */
   smartSearch(input: ProductSearchInput): Promise<ProductSearchRow[]>;
   listByModel(company_id: string, model_id: string, year?: number): Promise<ProductRow[]>;
+  /** Phase 32 — cascading fitment search: products whose compatibility covers the chosen vehicle (model/generation/variant + optional year). */
+  listByVehicle(company_id: string, opts: { model_id: string; generation_id?: string | null; variant_id?: string | null; year?: number | null }): Promise<ProductRow[]>;
   getById(id: string): Promise<ProductRow | null>;
   create(row: ProductInsert): Promise<ProductRow>;
   update(id: string, row: ProductUpdate): Promise<void>;

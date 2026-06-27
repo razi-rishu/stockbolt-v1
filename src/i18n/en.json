@@ -800,6 +800,9 @@
     "title": "Parts Catalog",
     "select_make": "Select make…",
     "select_model": "Select model…",
+    "all_generations": "All generations",
+    "all_variants": "All variants",
+    "variant": "Variant",
     "year_optional": "Year (optional)",
     "select_make_hint": "Select a vehicle make and model to browse compatible parts.",
     "no_results": "No parts found for this vehicle."
