@@ -303,8 +303,10 @@ function AppRoutes() {
               <Route path="/reports/stock-valuation"            element={<StockValuationPage />} />
 
               {/* Sales */}
-              <Route path="/sales/invoices/:id"                 element={<InvoiceEditorPage />} />
-              <Route path="/sales/invoices"                     element={<InvoicesPage />} />
+              <Route path="/sales/invoices" element={<InvoicesPage />}>
+                <Route index element={<div className="flex items-center justify-center rounded-card border border-border-subtle p-12 text-center text-sm text-ink-tertiary">Select an invoice to view it here.</div>} />
+                <Route path=":id" element={<InvoiceEditorPage />} />
+              </Route>
               <Route path="/sales/quotes/:id"                   element={<QuoteEditorPage />} />
               <Route path="/sales/quotes"                       element={<QuotesPage />} />
               <Route path="/sales/payments/:id"                 element={<PaymentEditorPage />} />
