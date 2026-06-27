@@ -1,20 +1,9 @@
 /**
- * Settings hub — Phase 12.45.
+ * Settings hub — Phase 12.45, two-paned in Phase 32.x.
  *
- * Single landing page that links to every configurable area in the
- * ERP. Grouped by domain (Company, Catalog, Sales/Tax, Accounting,
- * Printing, Admin) so a new owner can find what they need in one
- * scan. Each tile shows a live count from the relevant table where
- * useful (warehouses: N, brands: N, etc.).
- *
- * Sections deliberately mirror Abdul's mental model:
- *   1. Company & Location  - profile, branches/warehouses, currency, VAT
- *   2. Inventory & Catalog - units, categories, brands, vehicles, price levels
- *   3. Sales & Customers   - salespeople, tax rates, document numbering (v2)
- *   4. Accounting          - chart of accounts, period lock, bank accounts
- *   5. Printing & Hardware - print templates, scanners/printers (v2)
- *   6. Users & Permissions - users, roles (v2)
- *   7. System              - system health, reset data, audit log
+ * Renders the card grid (right pane of the SettingsLayout). The section/item
+ * spec lives in ./_nav so the hub cards and the pinned left rail stay in sync;
+ * this file only layers the live row-counts onto each tile.
  */
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
@@ -22,15 +11,14 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
+import { SETTINGS_SECTIONS, type SettingsNavSection } from './_nav';
 
 interface TileSpec {
   to:        string;
   icon:      string;
   title:     string;
   desc:      string;
-  /** Optional count rendered as a small pill in the corner. */
   count?:    number | string;
-  /** Marks the tile as not-yet-built; shows a "Coming soon" pill and disables nav. */
   comingSoon?: boolean;
 }
 
@@ -143,8 +131,7 @@ function Section({ spec }: { spec: SectionSpec }) {
 export default function SettingsHubPage() {
   const { company_id } = useAuthStore();
 
-  // Live counts — used to label each tile so the owner knows the state
-  // of each section at a glance. Cheap list() calls, all cached by RQ.
+  // Live counts — labelled as a pill on the relevant tile.
   const { data: warehouses  = [] } = useQuery({ queryKey: ['warehouses',   company_id], queryFn: () => getAdapter().warehouses.list(company_id!),  enabled: !!company_id });
   const { data: units       = [] } = useQuery({ queryKey: ['units',        company_id], queryFn: () => getAdapter().units.list(company_id!),       enabled: !!company_id });
   const { data: categories  = [] } = useQuery({ queryKey: ['categories',   company_id], queryFn: () => getAdapter().categories.list(company_id!),  enabled: !!company_id });
@@ -156,66 +143,23 @@ export default function SettingsHubPage() {
   const { data: coa         = [] } = useQuery({ queryKey: ['coa',          company_id], queryFn: () => getAdapter().coa.list(company_id!),         enabled: !!company_id });
   const { data: banks       = [] } = useQuery({ queryKey: ['bankAccounts', company_id], queryFn: () => getAdapter().bankAccounts.list(company_id!), enabled: !!company_id });
 
-  const sections: SectionSpec[] = [
-    {
-      title: 'Company & Location',
-      tiles: [
-        { to: '/settings/company',     icon: '🏢', title: 'Company Profile',  desc: 'Name, logo, tax number, currency, fiscal year start.' },
-        { to: '/settings/billing',     icon: '💳', title: 'Billing & Subscription', desc: 'Your plan, trial, payment history and billing address.' },
-        { to: '/settings/warehouses',  icon: '🏬', title: 'Warehouses & Branches', desc: 'Storage locations and default branch for new documents.', count: warehouses.length },
-      ],
-    },
-    {
-      title: 'Inventory & Catalog',
-      tiles: [
-        { to: '/settings/units',      icon: '📏', title: 'Units of Measure', desc: 'pcs, kg, m, box — used on product cards and invoices.', count: units.length },
-        { to: '/products/categories', icon: '🗂️', title: 'Categories',       desc: 'Hierarchical product categories (Engine, Brakes…).',     count: categories.length },
-        { to: '/products/brands',     icon: '🏷️', title: 'Brands',            desc: 'Manufacturer brands (Bosch, Denso, Genuine…).',          count: brands.length },
-        { to: '/products/vehicles',   icon: '🚗', title: 'Vehicle Makes',     desc: 'Vehicle compatibility list for parts catalog.',          count: vehicles.length },
-        { to: '/settings/price-levels', icon: '💰', title: 'Price Levels',    desc: 'Retail / Wholesale / Trade / Counter pricing tiers.',    count: priceLevels.length },
-      ],
-    },
-    {
-      title: 'Sales, Customers & Tax',
-      tiles: [
-        { to: '/settings/salespeople', icon: '👤', title: 'Salespeople',      desc: 'Master list tagged on invoices/quotes for commission reports.', count: salespeople.length },
-        { to: '/settings/tax-rates',   icon: '📊', title: 'Tax Rates',         desc: 'VAT % rates (UAE 5%, zero-rated, exempt) used on lines.',      count: taxRates.length },
-        { to: '/settings/exchange-rates', icon: '💱', title: 'Exchange Rates',  desc: 'Manual currency rates used to convert foreign documents to your base currency.' },
-        { to: '/settings/numbering',   icon: '🔢', title: 'Document Numbering', desc: 'Format, padding and next-number for every document type.' },
-      ],
-    },
-    {
-      title: 'Accounting & Banking',
-      tiles: [
-        { to: '/accounting/chart-of-accounts', icon: '📒', title: 'Chart of Accounts', desc: 'GL accounts grouped by Asset / Liability / Equity / Income / Expense.', count: coa.length },
-        { to: '/accounting/period-lock',       icon: '🔒', title: 'Period Lock',       desc: 'Close accounting periods so no one back-dates entries.' },
-        { to: '/settings/bank-accounts',       icon: '🏦', title: 'Bank Accounts',     desc: 'Bank / cash accounts used to receive payments and post expenses.', count: banks.length },
-        { to: '/settings/opening-balances',    icon: '⤵️', title: 'Opening Balances',  desc: 'Migrate unpaid invoices / bills / credits from a prior system. Posts to 3010 Opening Balance Equity.' },
-        { to: '/settings/import-export',       icon: '📤', title: 'Import / Export',   desc: 'Bulk-load master data from CSV / Excel, or export your current data for backup / reporting.' },
-      ],
-    },
-    {
-      title: 'Printing & Hardware',
-      tiles: [
-        { to: '/settings/print',    icon: '🖨️', title: 'Print Templates', desc: 'Choose invoice/receipt template (Classic, Thermal POS, Trade).' },
-        { to: '/settings/hardware', icon: '📷', title: 'Barcode & Printer Setup', desc: 'Configure barcode scanner and receipt printer connections.', comingSoon: true },
-      ],
-    },
-    {
-      title: 'Users & Permissions',
-      tiles: [
-        { to: '/settings/users', icon: '👥', title: 'Users & Roles', desc: 'Invite teammates, assign Admin / Accountant / Sales / Counter / Viewer roles.' },
-      ],
-    },
-    {
-      title: 'System & Admin',
-      tiles: [
-        { to: '/settings/system-health', icon: '✅', title: 'System Health',  desc: 'Runs invariant checks (TB balance, AR matches, stock matches GL).' },
-        { to: '/reports/audit-log',      icon: '📋', title: 'Audit Log',      desc: 'Read-only trail of who-did-what across the ERP.' },
-        { to: '/settings/reset-data',    icon: '🧹', title: 'Reset Company Data', desc: 'Destructive admin operation — wipes transactions for QA cycles.' },
-      ],
-    },
-  ];
+  const countByPath: Record<string, number> = {
+    '/settings/warehouses':       warehouses.length,
+    '/settings/units':            units.length,
+    '/settings/categories':       categories.length,
+    '/settings/brands':           brands.length,
+    '/settings/vehicles':         vehicles.length,
+    '/settings/price-levels':     priceLevels.length,
+    '/settings/salespeople':      salespeople.length,
+    '/settings/tax-rates':        taxRates.length,
+    '/settings/chart-of-accounts': coa.length,
+    '/settings/bank-accounts':    banks.length,
+  };
+
+  const sections: SectionSpec[] = SETTINGS_SECTIONS.map((s: SettingsNavSection) => ({
+    title: s.title,
+    tiles: s.items.map((it) => ({ ...it, count: countByPath[it.to] })),
+  }));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', paddingBottom: '48px' }}>

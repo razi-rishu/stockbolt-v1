@@ -32,6 +32,7 @@ const DashboardPage      = lazy(() => import('@/modules/dashboard/index'));
 const DesignSystemPage   = lazy(() => import('@/modules/design-system/index'));
 const SignatureTemplateGalleryPage = lazy(() => import('@/modules/print/_signature/gallery'));
 const SettingsHubPage    = lazy(() => import('@/modules/settings/index'));
+const SettingsLayout     = lazy(() => import('@/modules/settings/_layout'));
 const CompanySettingsPage = lazy(() => import('@/modules/settings/company-settings'));
 const WarehousesPage     = lazy(() => import('@/modules/settings/warehouses'));
 const UnitsPage          = lazy(() => import('@/modules/settings/units-of-measure'));
@@ -238,22 +239,38 @@ function AppRoutes() {
               <Route path="/design-system"            element={<DesignSystemPage />} />
               <Route path="/print-templates"          element={<SignatureTemplateGalleryPage />} />
 
-              {/* Settings — require settings.read (Phase 22) */}
-              <Route element={<RequirePermission perm="settings.read" />}>
-                <Route path="/settings"                 element={<SettingsHubPage />} />
-                <Route path="/settings/company"         element={<CompanySettingsPage />} />
-                <Route path="/settings/billing"         element={<BillingPage />} />
-                <Route path="/settings/warehouses"      element={<WarehousesPage />} />
-                <Route path="/settings/units"           element={<UnitsPage />} />
-                <Route path="/settings/price-levels"    element={<PriceLevelsPage />} />
-                <Route path="/settings/bank-accounts"     element={<BankAccountsPage />} />
-                <Route path="/settings/tax-rates"         element={<TaxRatesPage />} />
-                <Route path="/settings/exchange-rates"    element={<ExchangeRatesPage />} />
-                <Route path="/settings/opening-balances"  element={<OpeningBalancesPage />} />
-                <Route path="/settings/numbering"         element={<DocumentNumberingPage />} />
-                <Route path="/settings/import-export"     element={<ImportExportPage />} />
-                <Route path="/settings/users"             element={<RequirePermission perm="users.manage" />}>
-                  <Route index element={<UsersRolesPage />} />
+              {/* Settings — two-pane layout with a pinned left nav rail */}
+              <Route path="/settings" element={<SettingsLayout />}>
+                <Route element={<RequirePermission perm="settings.read" />}>
+                  <Route index                   element={<SettingsHubPage />} />
+                  <Route path="company"          element={<CompanySettingsPage />} />
+                  <Route path="billing"          element={<BillingPage />} />
+                  <Route path="warehouses"       element={<WarehousesPage />} />
+                  <Route path="units"            element={<UnitsPage />} />
+                  <Route path="price-levels"     element={<PriceLevelsPage />} />
+                  <Route path="bank-accounts"    element={<BankAccountsPage />} />
+                  <Route path="tax-rates"        element={<TaxRatesPage />} />
+                  <Route path="exchange-rates"   element={<ExchangeRatesPage />} />
+                  <Route path="opening-balances" element={<OpeningBalancesPage />} />
+                  <Route path="numbering"        element={<DocumentNumberingPage />} />
+                  <Route path="import-export"    element={<ImportExportPage />} />
+                  <Route path="users" element={<RequirePermission perm="users.manage" />}>
+                    <Route index element={<UsersRolesPage />} />
+                  </Route>
+                </Route>
+                {/* Catalog masters + admin tools — authenticated; writes still RLS-gated */}
+                <Route path="categories"    element={<CategoriesPage />} />
+                <Route path="brands"        element={<BrandsPage />} />
+                <Route path="vehicles"      element={<VehicleMakesPage />} />
+                <Route path="salespeople"   element={<SalespeoplePage />} />
+                <Route path="print"         element={<PrintSettingsPage />} />
+                <Route path="system-health" element={<SystemHealthPage />} />
+                <Route path="reset-data"    element={<ResetDataPage />} />
+                <Route path="audit-log"     element={<AuditLogPage />} />
+                {/* Accounting masters — require accounting.read */}
+                <Route element={<RequirePermission perm="accounting.read" />}>
+                  <Route path="chart-of-accounts" element={<CoAPage />} />
+                  <Route path="period-lock"       element={<PeriodLockPage />} />
                 </Route>
               </Route>
 
@@ -383,10 +400,6 @@ function AppRoutes() {
               <Route path="/reports/audit-log"                  element={<AuditLogPage />} />
               <Route path="/reports/reversal-trail"             element={<ReversalTrailPage />} />
               <Route path="/reports/cash-flow"                  element={<CashFlowPage />} />
-              <Route path="/settings/system-health"             element={<SystemHealthPage />} />
-              <Route path="/settings/reset-data"                element={<ResetDataPage />} />
-              <Route path="/settings/salespeople"               element={<SalespeoplePage />} />
-              <Route path="/settings/print"                     element={<PrintSettingsPage />} />
             </Route>
           </Route>
 
