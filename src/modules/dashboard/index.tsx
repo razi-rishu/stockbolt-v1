@@ -119,7 +119,7 @@ function KpiTile({
           textTransform: 'uppercase', letterSpacing: '.06em',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>{label}</div>
-        <div style={{ marginTop: '2px', fontSize: '19px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em', whiteSpace: 'nowrap' }}>{value}</div>
+        <div style={{ marginTop: '2px', fontSize: '17px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
         <div style={{ marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span style={{ flex: 1, fontSize: '11px', color: theme.inkFaint, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</span>
           {hasDelta && (
