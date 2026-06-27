@@ -313,6 +313,8 @@ export interface BrandsAPI {
   update(id: string, row: BrandUpdate): Promise<void>;
   remove(id: string): Promise<void>;
   uploadLogo(company_id: string, brand_id: string, file: File): Promise<string>;
+  /** Phase 32 C6 — re-point products off the duplicate onto the kept brand, then delete the duplicate (DEFINER, audited). */
+  merge(keep_id: string, dup_id: string): Promise<void>;
 }
 
 export interface WarehousesManagementAPI {

@@ -92,6 +92,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       update: () => notImplemented('brands.update'),
       remove: () => notImplemented('brands.remove'),
       uploadLogo: () => notImplemented('brands.uploadLogo'),
+      merge: () => notImplemented('brands.merge'),
     },
     warehouses: {
       list: () => notImplemented('warehouses.list'),

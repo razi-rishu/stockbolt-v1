@@ -514,6 +514,10 @@ export function createSupabaseAdapter(
         const { data } = client.storage.from('logos').getPublicUrl(path);
         return data.publicUrl;
       },
+      async merge(keep_id, dup_id) {
+        const { error } = await rpcAny('merge_brands', { p_keep_id: keep_id, p_dup_id: dup_id });
+        assertNoError(error as Error | null, 'brands.merge');
+      },
     },
 
     // ── Phase 2: Warehouses (management) ──────────────────────────────────
