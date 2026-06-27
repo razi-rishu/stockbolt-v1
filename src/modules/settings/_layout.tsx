@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { SETTINGS_SECTIONS } from './_nav';
 
 /**
@@ -9,6 +9,11 @@ import { SETTINGS_SECTIONS } from './_nav';
  * screens the rail stacks above the content.
  */
 export default function SettingsLayout() {
+  const { pathname } = useLocation();
+  // The hub (/settings) shows the cards full-width; the pinned nav rail appears
+  // only once you drill into a specific setting.
+  if (pathname === '/settings' || pathname === '/settings/') return <Outlet />;
+
   return (
     <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
       {/* Left rail */}
