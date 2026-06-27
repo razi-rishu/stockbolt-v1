@@ -403,6 +403,8 @@ export function createSelfHostedAdapter(): DataAdapter {
       getById:       () => notImplemented('salesReturns.getById'),
       getItems:      () => notImplemented('salesReturns.getItems'),
       create:        () => notImplemented('salesReturns.create'),
+      confirm:       () => notImplemented('salesReturns.confirm'),
+      void:          () => notImplemented('salesReturns.void'),
       getNextNumber: () => notImplemented('salesReturns.getNextNumber'),
     },
     debitNotes: {

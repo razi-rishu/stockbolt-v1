@@ -155,6 +155,27 @@ export default function SalesReturnEditorPage() {
     },
   });
 
+  // Phase 33 — confirm posts the return through the credit-note engine
+  // (restock + credit the customer); void reverses it.
+  const confirmMutation = useMutation({
+    mutationFn: () => getAdapter().salesReturns.confirm(id!),
+    onSuccess: async () => {
+      await invalidateBooks();
+      qc.invalidateQueries({ queryKey: ['sales_return', id] });
+      qc.invalidateQueries({ queryKey: ['sales_returns'] });
+      qc.invalidateQueries({ queryKey: ['credit_notes'] });
+    },
+  });
+  const voidMutation = useMutation({
+    mutationFn: () => getAdapter().salesReturns.void(id!),
+    onSuccess: async () => {
+      await invalidateBooks();
+      qc.invalidateQueries({ queryKey: ['sales_return', id] });
+      qc.invalidateQueries({ queryKey: ['sales_returns'] });
+      qc.invalidateQueries({ queryKey: ['credit_notes'] });
+    },
+  });
+
   const isDraft = !existing || existing.status === 'draft';
 
   // Phase 14.04 — view-mode renderer (Signature template).
@@ -189,9 +210,27 @@ export default function SalesReturnEditorPage() {
             background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
           }}>{existing.status}</span>
           <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+            {isDraft && existing?.id && (
+              <Button
+                variant="primary"
+                loading={confirmMutation.isPending}
+                onClick={() => { if (window.confirm(t('returns.confirm_post_warn') || 'Confirm this return? It restocks the goods and credits the customer (posts a linked credit note).')) confirmMutation.mutate(); }}
+              >
+                ✓ {t('returns.confirm') || 'Confirm'}
+              </Button>
+            )}
             {isDraft && (
-              <Button variant="primary" onClick={() => setViewMode(false)}>
+              <Button variant="secondary" onClick={() => setViewMode(false)}>
                 ✎ {t('common.edit') || 'Edit'}
+              </Button>
+            )}
+            {existing?.status === 'confirmed' && (
+              <Button
+                variant="danger"
+                loading={voidMutation.isPending}
+                onClick={() => { if (window.confirm(t('returns.void_warn') || 'Void this return? It reverses the credit note — un-credits the customer and removes the restock.')) voidMutation.mutate(); }}
+              >
+                {t('common.void') || 'Void'}
               </Button>
             )}
             {existing?.id && (
@@ -201,6 +240,11 @@ export default function SalesReturnEditorPage() {
             )}
           </div>
         </div>
+        {(confirmMutation.error || voidMutation.error) && (
+          <div data-no-print="true" style={{ color: '#b91c1c', fontSize: '13px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px' }}>
+            {String((confirmMutation.error as Error)?.message || (voidMutation.error as Error)?.message || confirmMutation.error || voidMutation.error)}
+          </div>
+        )}
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>

@@ -1804,6 +1804,9 @@ export interface SalesReturnsAPI {
   getById(id: string): Promise<SalesReturnRow | null>;
   getItems(sales_return_id: string): Promise<SalesReturnItemRow[]>;
   create(row: SalesReturnInsert, items: SalesReturnItemInsert[]): Promise<SalesReturnRow>;
+  /** Phase 33 — post the return by generating + confirming a linked credit note (GL + restock). */
+  confirm(id: string): Promise<{ credit_note_id: string; credit_note_number: string }>;
+  void(id: string, reason?: string): Promise<void>;
   getNextNumber(company_id: string): Promise<string>;
 }
 

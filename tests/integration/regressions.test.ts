@@ -1175,3 +1175,14 @@ describe('Phase 32 — Automotive catalog (C1)', () => {
     expect(Array.isArray(missing)).toBe(true);
   });
 });
+
+describe('Phase 33 — Sales Return posting', () => {
+  it('phase33: confirmed sales returns are posted via a linked credit note', async () => {
+    const [fn] = await sql<{ n: number }>(`SELECT COUNT(*)::int AS n FROM pg_proc WHERE proname = 'confirm_sales_return'`);
+    if (!fn || fn.n === 0) { console.warn('phase33 not applied — skipping sales-return posting check.'); return; }
+    // confirm_sales_return links every confirmed return to the credit note that posted it.
+    const orphans = await sql<{ id: string }>(
+      `SELECT id::text AS id FROM public.sales_returns WHERE status = 'confirmed' AND credit_note_id IS NULL`);
+    expect(orphans, `confirmed sales returns with no linked credit note: ${JSON.stringify(orphans)}`).toEqual([]);
+  });
+});

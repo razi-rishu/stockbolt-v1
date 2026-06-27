@@ -4379,6 +4379,15 @@ export function createSupabaseAdapter(
         assertNoError(iErr, 'salesReturns.create items');
         return sr as SalesReturnRow;
       },
+      async confirm(id) {
+        const { data, error } = await rpcAny('confirm_sales_return', { p_sales_return_id: id });
+        assertNoError(error as Error | null, 'salesReturns.confirm');
+        return data as { credit_note_id: string; credit_note_number: string };
+      },
+      async void(id, reason) {
+        const { error } = await rpcAny('void_sales_return', { p_sales_return_id: id, p_reason: reason ?? null });
+        assertNoError(error as Error | null, 'salesReturns.void');
+      },
       async getNextNumber(company_id): Promise<string> {
         const { data, error } = await client.rpc('get_next_document_number', {
           p_company_id: company_id,
