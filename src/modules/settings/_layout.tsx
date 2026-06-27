@@ -17,7 +17,7 @@ export default function SettingsLayout() {
   return (
     <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
       {/* Left rail */}
-      <aside className="lg:sticky lg:top-4 lg:h-fit lg:w-60 lg:shrink-0">
+      <aside className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-5rem)] lg:w-60 lg:shrink-0 lg:overflow-y-auto lg:pr-1">
         <nav className="flex flex-col gap-5">
           {SETTINGS_SECTIONS.map((section) => (
             <div key={section.title}>
