@@ -92,6 +92,16 @@ export interface CompatibilityVehicleFields {
   generation_id?: string | null;
   variant_id?: string | null;
 }
+/** Phase 32 C8 — one flat CSV row for the bulk vehicle importer. */
+export interface VehicleImportRow {
+  make: string; model: string; generation?: string;
+  year_from?: string; year_to?: string; engine_code?: string;
+  fuel?: string; transmission?: string; drive?: string; chassis?: string;
+}
+export interface VehicleImportResult {
+  rows: number; makes_created: number; models_created: number;
+  generations_created: number; variants_created: number; engines_created: number;
+}
 export type ProductInsert = Omit<Tables['products']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type ProductUpdate = Tables['products']['Update'];
 export type ProductCompatibilityInsert = Omit<Tables['product_compatibility']['Insert'], 'id' | 'created_at'> & CompatibilityVehicleFields;
@@ -353,6 +363,8 @@ export interface VehicleMakesAPI {
   createEngine(row: VehicleEngineInsert): Promise<VehicleEngineRow>;
   updateEngine(id: string, row: Partial<VehicleEngineInsert>): Promise<void>;
   removeEngine(id: string): Promise<void>;
+  /** Phase 32 C8 — bulk hierarchical upsert from flat CSV rows (find-or-create by natural key). */
+  importVehicles(rows: VehicleImportRow[]): Promise<VehicleImportResult>;
 }
 
 // ── Phase 12.18: SmartEntitySearch result shapes ──────────────────────────

@@ -8,6 +8,7 @@ import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Modal } from '@/ui/modal';
 import { Table, type Column } from '@/ui/table';
+import Papa from 'papaparse';
 import type {
   VehicleMakeRow,
   VehicleModelRow,
@@ -249,6 +250,57 @@ export default function VehicleMakesPage() {
     await saveEngMut.mutateAsync();
   }
 
+  // ── vehicle import (C8) ──────────────────────────────────
+  const [importOpen, setImportOpen] = useState(false);
+  const [importRows, setImportRows] = useState<any[]>([]);
+  const [importErr, setImportErr] = useState('');
+  const [importResult, setImportResult] = useState<any>(null);
+
+  const importMut = useMutation({
+    mutationFn: () => getAdapter().vehicleMakes.importVehicles(importRows),
+    onSuccess: (res) => {
+      setImportResult(res);
+      setImportRows([]);
+      qc.invalidateQueries({ queryKey: ['vehicle_makes', company_id] });
+      if (selectedMake) qc.invalidateQueries({ queryKey: ['vehicle_models', selectedMake.id] });
+    },
+  });
+
+  // CSV header (any case / spacing / underscores) → our row key.
+  const IMPORT_MAP: Record<string, string> = {
+    make: 'make', model: 'model', generation: 'generation', gen: 'generation',
+    yearfrom: 'year_from', fromyear: 'year_from', yearto: 'year_to', toyear: 'year_to',
+    engine: 'engine_code', enginecode: 'engine_code', fuel: 'fuel', fueltype: 'fuel',
+    transmission: 'transmission', trans: 'transmission', gearbox: 'transmission',
+    drive: 'drive', drivetype: 'drive', chassis: 'chassis', chassiscode: 'chassis',
+  };
+
+  function parseImportCsv(text: string) {
+    setImportErr(''); setImportResult(null);
+    if (!text.trim()) { setImportRows([]); return; }
+    const parsed = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: true });
+    const rows = (parsed.data || []).map((raw) => {
+      const out: Record<string, string> = {};
+      for (const [h, v] of Object.entries(raw)) {
+        const k = IMPORT_MAP[h.toLowerCase().replace(/[\s_]+/g, '')];
+        if (k && v != null) out[k] = String(v).trim();
+      }
+      return out;
+    }).filter((row) => row.make && row.model);
+    if (rows.length === 0) { setImportErr(t('catalog.vehicles.import_none')); setImportRows([]); return; }
+    setImportRows(rows);
+  }
+
+  function downloadImportTemplate() {
+    const csv = 'Make,Model,Generation,Year From,Year To,Engine Code,Fuel,Transmission,Drive,Chassis\nToyota,Corolla,E170,2013,2018,2ZR-FE,Petrol,Automatic,FWD,NRE170\n';
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = 'vehicle-import-template.csv'; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function openImport() { setImportRows([]); setImportErr(''); setImportResult(null); setImportOpen(true); }
+
   // ── navigation helpers ───────────────────────────────────
   function selectMake(m: VehicleMakeRow) { setSelectedMake(m); setSelectedModel(null); setSelectedGen(null); setTab('models'); }
   function drillToGenerations(m: VehicleModelRow) { setSelectedModel(m); setSelectedGen(null); setTab('generations'); }
@@ -307,7 +359,10 @@ export default function VehicleMakesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-bold text-ink-primary">{t('catalog.vehicles.title')}</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold text-ink-primary">{t('catalog.vehicles.title')}</h1>
+        <Button size="sm" variant="secondary" onClick={openImport}>{t('catalog.vehicles.import')}</Button>
+      </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
         {/* ── LEFT: makes ── */}
@@ -525,6 +580,40 @@ export default function VehicleMakesPage() {
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="secondary" onClick={() => setEngModal(false)}>{t('common.cancel')}</Button>
             <Button loading={saveEngMut.isPending} onClick={saveEng}>{t('common.save')}</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* import */}
+      <Modal open={importOpen} onClose={() => setImportOpen(false)} title={t('catalog.vehicles.import_title')}>
+        <div className="flex flex-col gap-4">
+          <p className="text-xs text-ink-tertiary">{t('catalog.vehicles.import_hint')}</p>
+          <div className="flex items-center gap-3">
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              className="text-sm"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) f.text().then(parseImportCsv); e.target.value = ''; }}
+            />
+            <button type="button" onClick={downloadImportTemplate} className="text-xs text-brand-600 hover:underline">{t('catalog.vehicles.import_template')}</button>
+          </div>
+          <textarea
+            placeholder={t('catalog.vehicles.import_paste')}
+            onChange={(e) => parseImportCsv(e.target.value)}
+            rows={5}
+            className="w-full rounded-input border border-border-strong bg-surface-subtle px-3 py-2 font-mono text-xs focus:border-brand-500 focus:outline-none"
+          />
+          {importErr && <p className="text-xs text-danger-500">{importErr}</p>}
+          {importRows.length > 0 && !importResult && <p className="text-sm text-ink-secondary">{t('catalog.vehicles.import_ready', { n: importRows.length })}</p>}
+          {importResult && (
+            <div className="rounded-card border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+              {t('catalog.vehicles.import_done', { rows: importResult.rows, makes: importResult.makes_created, models: importResult.models_created, gens: importResult.generations_created, variants: importResult.variants_created })}
+            </div>
+          )}
+          {importMut.error && <p className="text-xs text-danger-500">{String(importMut.error)}</p>}
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="secondary" onClick={() => setImportOpen(false)}>{t('common.cancel')}</Button>
+            <Button loading={importMut.isPending} disabled={importRows.length === 0} onClick={() => importMut.mutate()}>{t('catalog.vehicles.import_cta', { n: importRows.length })}</Button>
           </div>
         </div>
       </Modal>

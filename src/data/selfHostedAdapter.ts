@@ -127,6 +127,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       createEngine: () => notImplemented('vehicleMakes.createEngine'),
       updateEngine: () => notImplemented('vehicleMakes.updateEngine'),
       removeEngine: () => notImplemented('vehicleMakes.removeEngine'),
+      importVehicles: () => notImplemented('vehicleMakes.importVehicles'),
     },
     products: {
       list: () => notImplemented('products.list'),

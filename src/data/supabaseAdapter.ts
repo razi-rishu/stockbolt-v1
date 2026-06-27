@@ -658,6 +658,11 @@ export function createSupabaseAdapter(
         const { error } = await (client.from as any)('vehicle_engines').delete().eq('id', id);
         assertNoError(error, 'vehicleMakes.removeEngine');
       },
+      async importVehicles(rows) {
+        const { data, error } = await rpcAny('import_vehicles', { p_rows: rows });
+        assertNoError(error as Error | null, 'vehicleMakes.importVehicles');
+        return data as any;
+      },
     },
 
     // ── Phase 2: Products ──────────────────────────────────────────────────
