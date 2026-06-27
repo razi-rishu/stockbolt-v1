@@ -12,7 +12,7 @@ import { Input } from '@/ui/input';
 import { Textarea } from '@/ui/textarea';
 import { Select } from '@/ui/select';
 import { Modal } from '@/ui/modal';
-import type { ProductCompatibilityRow, ProductSupplierCodeRow, ContactRow, VehicleMakeRow, VehicleModelRow, CoaRow } from '@/data/adapter';
+import type { ProductCompatibilityRow, ProductSupplierCodeRow, ContactRow, VehicleMakeRow, VehicleModelRow, VehicleGenerationRow, VehicleVariantRow, VehicleEngineRow, CoaRow } from '@/data/adapter';
 import { ProductStockTab } from './_stock-tab';
 import { ProductWizard } from './_wizard';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
@@ -97,6 +97,8 @@ export default function ProductDetailPage() {
 
   const [compatMakeId, setCompatMakeId] = useState('');
   const [compatModelId, setCompatModelId] = useState('');
+  const [compatGenId, setCompatGenId] = useState('');
+  const [compatVarId, setCompatVarId] = useState('');
   const [compatYearFrom, setCompatYearFrom] = useState('');
   const [compatYearTo, setCompatYearTo] = useState('');
   const [compatEngine, setCompatEngine] = useState('');
@@ -115,6 +117,9 @@ export default function ProductDetailPage() {
   const { data: coaAccounts = [] } = useQuery<CoaRow[]>({ queryKey: ['coa', company_id], queryFn: () => getAdapter().coa.list(company_id!), enabled: !!company_id });
   const { data: makes = [] } = useQuery<VehicleMakeRow[]>({ queryKey: ['vehicle_makes', company_id], queryFn: () => getAdapter().vehicleMakes.list(company_id!), enabled: !!company_id });
   const { data: models = [] } = useQuery<VehicleModelRow[]>({ queryKey: ['vehicle_models', compatMakeId], queryFn: () => getAdapter().vehicleMakes.listModels(compatMakeId), enabled: !!compatMakeId });
+  const { data: compatGenerations = [] } = useQuery<VehicleGenerationRow[]>({ queryKey: ['vehicle_generations', compatModelId], queryFn: () => getAdapter().vehicleMakes.listGenerations(compatModelId), enabled: !!compatModelId });
+  const { data: compatVariants = [] } = useQuery<VehicleVariantRow[]>({ queryKey: ['vehicle_variants', compatGenId], queryFn: () => getAdapter().vehicleMakes.listVariants(compatGenId), enabled: !!compatGenId });
+  const { data: compatEngines = [] } = useQuery<VehicleEngineRow[]>({ queryKey: ['vehicle_engines', company_id], queryFn: () => getAdapter().vehicleMakes.listEngines(company_id!), enabled: !!company_id });
   const { data: suppliers = [] } = useQuery<ContactRow[]>({ queryKey: ['contacts', company_id, 'supplier'], queryFn: () => getAdapter().contacts.list(company_id!, 'supplier'), enabled: !!company_id });
   const { data: compat = [] } = useQuery<ProductCompatibilityRow[]>({ queryKey: ['compat', id], queryFn: () => getAdapter().products.listCompatibility(id!), enabled: !isNew && !!id });
   const { data: supplierCodes = [] } = useQuery<ProductSupplierCodeRow[]>({ queryKey: ['supplier_codes', id], queryFn: () => getAdapter().products.listSupplierCodes(id!), enabled: !isNew && !!id });
@@ -165,11 +170,18 @@ export default function ProductDetailPage() {
   });
 
   const addCompatMutation = useMutation({
-    mutationFn: () => getAdapter().products.addCompatibility({
-      product_id: id!, make_id: compatMakeId,
-      model_id: compatModelId || null, year_from: compatYearFrom ? parseInt(compatYearFrom) : null,
-      year_to: compatYearTo ? parseInt(compatYearTo) : null, engine: compatEngine || null, notes: null,
-    }),
+    mutationFn: () => {
+      // generation_id/variant_id are only sent when picked, so adding compatibility
+      // still works before the Phase 32 columns exist (migration-tolerant).
+      const row: any = {
+        product_id: id!, make_id: compatMakeId,
+        model_id: compatModelId || null, year_from: compatYearFrom ? parseInt(compatYearFrom) : null,
+        year_to: compatYearTo ? parseInt(compatYearTo) : null, engine: compatEngine || null, notes: null,
+      };
+      if (compatGenId) row.generation_id = compatGenId;
+      if (compatVarId) row.variant_id = compatVarId;
+      return getAdapter().products.addCompatibility(row);
+    },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['compat', id] }); setCompatModal(false); },
   });
 
@@ -432,7 +444,7 @@ export default function ProductDetailPage() {
       {activeTab === 'compat' && !isNew && (
         <div className="flex flex-col gap-4">
           <div className="flex justify-end">
-            <Button size="sm" onClick={() => { setCompatMakeId(''); setCompatModelId(''); setCompatYearFrom(''); setCompatYearTo(''); setCompatEngine(''); setCompatModal(true); }}>{t('common.add')} {t('products.compatibility')}</Button>
+            <Button size="sm" onClick={() => { setCompatMakeId(''); setCompatModelId(''); setCompatGenId(''); setCompatVarId(''); setCompatYearFrom(''); setCompatYearTo(''); setCompatEngine(''); setCompatModal(true); }}>{t('common.add')} {t('products.compatibility')}</Button>
           </div>
           {compat.length === 0
             ? <p className="py-8 text-center text-sm text-ink-tertiary">{t('products.no_compat')}</p>
@@ -444,6 +456,11 @@ export default function ProductDetailPage() {
                       {c.model_id && <span className="ms-2 text-ink-secondary">{modelMap[c.model_id] ?? c.model_id}</span>}
                       {(c.year_from || c.year_to) && <span className="ms-2 text-ink-tertiary">{c.year_from}–{c.year_to}</span>}
                       {c.engine && <span className="ms-2 text-ink-tertiary">{c.engine}</span>}
+                      {c.variant_id
+                        ? <span className="ms-2 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-brand-700">{t('products.fits_variant')}</span>
+                        : c.generation_id
+                          ? <span className="ms-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-500">{t('products.fits_generation')}</span>
+                          : null}
                     </div>
                     <button onClick={() => removeCompatMutation.mutate(c.id)} className="text-xs text-danger-500 hover:underline">{t('common.delete')}</button>
                   </div>
@@ -506,7 +523,7 @@ export default function ProductDetailPage() {
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-ink-primary">{t('products.make')} <span className="text-danger-500">*</span></label>
-            <select className="h-10 rounded-input border border-border-strong bg-surface-subtle px-4 text-sm focus:border-brand-500 focus:outline-none" value={compatMakeId} onChange={(e) => { setCompatMakeId(e.target.value); setCompatModelId(''); }}>
+            <select className="h-10 rounded-input border border-border-strong bg-surface-subtle px-4 text-sm focus:border-brand-500 focus:outline-none" value={compatMakeId} onChange={(e) => { setCompatMakeId(e.target.value); setCompatModelId(''); setCompatGenId(''); setCompatVarId(''); }}>
               <option value="">{t('common.select')}</option>
               {makes.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
@@ -514,9 +531,48 @@ export default function ProductDetailPage() {
           {compatMakeId && (
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-ink-primary">{t('products.model')}</label>
-              <select className="h-10 rounded-input border border-border-strong bg-surface-subtle px-4 text-sm focus:border-brand-500 focus:outline-none" value={compatModelId} onChange={(e) => setCompatModelId(e.target.value)}>
+              <select className="h-10 rounded-input border border-border-strong bg-surface-subtle px-4 text-sm focus:border-brand-500 focus:outline-none" value={compatModelId} onChange={(e) => { setCompatModelId(e.target.value); setCompatGenId(''); setCompatVarId(''); }}>
                 <option value="">{t('products.all_models')}</option>
                 {(models as VehicleModelRow[]).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+          )}
+          {compatModelId && (
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-ink-primary">{t('products.generation')}</label>
+              <select className="h-10 rounded-input border border-border-strong bg-surface-subtle px-4 text-sm focus:border-brand-500 focus:outline-none" value={compatGenId} onChange={(e) => { setCompatGenId(e.target.value); setCompatVarId(''); }}>
+                <option value="">{t('products.all_generations')}</option>
+                {compatGenerations.map((g) => <option key={g.id} value={g.id}>{g.name}{(g.year_from || g.year_to) ? ` (${g.year_from ?? '…'}–${g.year_to ?? 'now'})` : ''}</option>)}
+              </select>
+            </div>
+          )}
+          {compatGenId && (
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-ink-primary">{t('products.variant')}</label>
+              <select
+                className="h-10 rounded-input border border-border-strong bg-surface-subtle px-4 text-sm focus:border-brand-500 focus:outline-none"
+                value={compatVarId}
+                onChange={(e) => {
+                  const vid = e.target.value;
+                  setCompatVarId(vid);
+                  const v = compatVariants.find((x) => x.id === vid);
+                  if (v) {
+                    // Denormalise the variant into the free-text engine/year fields so the
+                    // saved row stays human-readable in the list without a join.
+                    const eng = compatEngines.find((en) => en.id === v.engine_id);
+                    const desc = v.label || [eng?.engine_code, v.fuel_type, v.transmission].filter(Boolean).join(' · ');
+                    if (desc) setCompatEngine(desc);
+                    if (v.year_from) setCompatYearFrom(String(v.year_from));
+                    if (v.year_to) setCompatYearTo(String(v.year_to));
+                  }
+                }}
+              >
+                <option value="">{t('products.all_variants')}</option>
+                {compatVariants.map((v) => {
+                  const eng = compatEngines.find((en) => en.id === v.engine_id);
+                  const lbl = v.label || [eng?.engine_code, v.fuel_type, v.transmission].filter(Boolean).join(' · ') || t('products.variant');
+                  return <option key={v.id} value={v.id}>{lbl}</option>;
+                })}
               </select>
             </div>
           )}
