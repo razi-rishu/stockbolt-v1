@@ -4331,6 +4331,10 @@ export function createSupabaseAdapter(
         assertNoError(error, 'creditNotes.confirm');
         return data as unknown as CreditNoteConfirmResult;
       },
+      async reopen(id) {
+        const { error } = await rpcAny('reopen_credit_note', { p_credit_note_id: id });
+        assertNoError(error as Error | null, 'creditNotes.reopen');
+      },
       async void(id, reason?): Promise<void> {
         const { error } = await client.rpc('void_credit_note', {
           p_credit_note_id: id,
@@ -4388,6 +4392,10 @@ export function createSupabaseAdapter(
         const { error } = await rpcAny('void_sales_return', { p_sales_return_id: id, p_reason: reason ?? null });
         assertNoError(error as Error | null, 'salesReturns.void');
       },
+      async reopen(id) {
+        const { error } = await rpcAny('reopen_sales_return', { p_sales_return_id: id });
+        assertNoError(error as Error | null, 'salesReturns.reopen');
+      },
       async getNextNumber(company_id): Promise<string> {
         const { data, error } = await client.rpc('get_next_document_number', {
           p_company_id: company_id,
@@ -4442,6 +4450,10 @@ export function createSupabaseAdapter(
         const { data, error } = await client.rpc('confirm_debit_note', { p_debit_note_id: id });
         assertNoError(error, 'debitNotes.confirm');
         return data as unknown as DebitNoteConfirmResult;
+      },
+      async reopen(id) {
+        const { error } = await rpcAny('reopen_debit_note', { p_debit_note_id: id });
+        assertNoError(error as Error | null, 'debitNotes.reopen');
       },
       async void(id, reason?): Promise<void> {
         const { error } = await client.rpc('void_debit_note', {

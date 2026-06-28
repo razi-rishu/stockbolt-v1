@@ -396,6 +396,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       update:        () => notImplemented('creditNotes.update'),
       confirm:       () => notImplemented('creditNotes.confirm'),
       void:          () => notImplemented('creditNotes.void'),
+      reopen:        () => notImplemented('creditNotes.reopen'),
       getNextNumber: () => notImplemented('creditNotes.getNextNumber'),
     },
     salesReturns: {
@@ -405,6 +406,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       create:        () => notImplemented('salesReturns.create'),
       confirm:       () => notImplemented('salesReturns.confirm'),
       void:          () => notImplemented('salesReturns.void'),
+      reopen:        () => notImplemented('salesReturns.reopen'),
       getNextNumber: () => notImplemented('salesReturns.getNextNumber'),
     },
     debitNotes: {
@@ -415,6 +417,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       update:        () => notImplemented('debitNotes.update'),
       confirm:       () => notImplemented('debitNotes.confirm'),
       void:          () => notImplemented('debitNotes.void'),
+      reopen:        () => notImplemented('debitNotes.reopen'),
       getNextNumber: () => notImplemented('debitNotes.getNextNumber'),
     },
     // Phase 10

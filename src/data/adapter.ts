@@ -1796,6 +1796,8 @@ export interface CreditNotesAPI {
   update(id: string, row: CreditNoteUpdate, items: CreditNoteItemInsert[]): Promise<void>;
   confirm(id: string): Promise<CreditNoteConfirmResult>;
   void(id: string, reason?: string): Promise<void>;
+  /** Phase 34 — reverse a confirmed note + reopen as draft (edit-after-confirm). */
+  reopen(id: string): Promise<void>;
   getNextNumber(company_id: string): Promise<string>;
 }
 
@@ -1807,6 +1809,8 @@ export interface SalesReturnsAPI {
   /** Phase 33 — post the return by generating + confirming a linked credit note (GL + restock). */
   confirm(id: string): Promise<{ credit_note_id: string; credit_note_number: string }>;
   void(id: string, reason?: string): Promise<void>;
+  /** Phase 34 — reverse a confirmed return (void its credit note) + reopen as draft. */
+  reopen(id: string): Promise<void>;
   getNextNumber(company_id: string): Promise<string>;
 }
 
@@ -1818,6 +1822,8 @@ export interface DebitNotesAPI {
   update(id: string, row: DebitNoteUpdate, items: DebitNoteItemInsert[]): Promise<void>;
   confirm(id: string): Promise<DebitNoteConfirmResult>;
   void(id: string, reason?: string): Promise<void>;
+  /** Phase 34 — reverse a confirmed note + reopen as draft (edit-after-confirm). */
+  reopen(id: string): Promise<void>;
   getNextNumber(company_id: string): Promise<string>;
 }
 

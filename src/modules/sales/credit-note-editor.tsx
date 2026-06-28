@@ -230,6 +230,17 @@ export default function CreditNoteEditorPage() {
     },
   });
 
+  // Phase 34 — Edit a CONFIRMED note: reverse the posting + reopen as a draft.
+  const reopenMutation = useMutation({
+    mutationFn: () => getAdapter().creditNotes.reopen(id!),
+    onSuccess: async () => {
+      await invalidateBooks();
+      qc.invalidateQueries({ queryKey: ['credit_notes'] });
+      qc.invalidateQueries({ queryKey: ['credit_note', id] });
+      setViewMode(false);
+    },
+  });
+
   const isDraft     = !existing || existing.status === 'draft';
   const isConfirmed = existing?.status === 'confirmed';
 
@@ -268,8 +279,8 @@ export default function CreditNoteEditorPage() {
             background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
           }}>{existing.status}</span>
           <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
-            {isDraft && (
-              <Button variant="primary" onClick={() => setViewMode(false)}>
+            {isConfirmed && (
+              <Button variant="primary" loading={reopenMutation.isPending} onClick={() => { if (window.confirm(t('common.reopen_warn') || 'Edit this confirmed document? It reverses its posted entries and reopens it as a draft so you can change it and confirm again.')) reopenMutation.mutate(); }}>
                 ✎ {t('common.edit') || 'Edit'}
               </Button>
             )}

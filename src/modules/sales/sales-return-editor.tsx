@@ -175,6 +175,17 @@ export default function SalesReturnEditorPage() {
       qc.invalidateQueries({ queryKey: ['credit_notes'] });
     },
   });
+  // Phase 34 — Edit a confirmed return: void its credit note + reopen as a draft.
+  const reopenMutation = useMutation({
+    mutationFn: () => getAdapter().salesReturns.reopen(id!),
+    onSuccess: async () => {
+      await invalidateBooks();
+      qc.invalidateQueries({ queryKey: ['sales_return', id] });
+      qc.invalidateQueries({ queryKey: ['sales_returns'] });
+      qc.invalidateQueries({ queryKey: ['credit_notes'] });
+      setViewMode(false);
+    },
+  });
 
   const isDraft = !existing || existing.status === 'draft';
 
@@ -221,6 +232,15 @@ export default function SalesReturnEditorPage() {
             )}
             {isDraft && (
               <Button variant="secondary" onClick={() => setViewMode(false)}>
+                ✎ {t('common.edit') || 'Edit'}
+              </Button>
+            )}
+            {existing?.status === 'confirmed' && (
+              <Button
+                variant="secondary"
+                loading={reopenMutation.isPending}
+                onClick={() => { if (window.confirm(t('common.reopen_warn') || 'Edit this confirmed return? It reverses the credit note (un-credits the customer, removes the restock) and reopens it as a draft to change and confirm again.')) reopenMutation.mutate(); }}
+              >
                 ✎ {t('common.edit') || 'Edit'}
               </Button>
             )}
