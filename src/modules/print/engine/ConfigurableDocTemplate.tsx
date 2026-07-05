@@ -341,6 +341,10 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
       position: 'relative', width: '210mm', minHeight: '297mm', background: C.paper,
       fontFamily: fontStack, fontSize: baseFont, color: C.text,
       padding: '16mm 16mm 16mm', boxSizing: 'border-box',
+      // Flex column so the Payment Details / Signatory / QR block can be pinned to
+      // the bottom of the page (marginTop:auto below) — identical in preview + print,
+      // regardless of how many line items the document has.
+      display: 'flex', flexDirection: 'column',
     }}>
       {preset.accentStrip && (
         <div style={{ position: 'absolute', insetBlock: 0, insetInlineStart: 0, width: '4mm', background: C.accent }} />
@@ -382,8 +386,11 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
         </div>
       )}
 
-      {/* Bank details + signature row */}
-      <div style={{ display: 'flex', gap: 24, marginTop: 22, flexWrap: 'wrap' }}>
+      {/* Bank details + signature row — pinned to the bottom of the page
+          (marginTop:auto) so it sits in the same place every time, in both the
+          on-screen preview and the printed/exported PDF. paddingTop keeps a
+          minimum gap when the items already fill most of the page. */}
+      <div style={{ display: 'flex', gap: 24, marginTop: 'auto', paddingTop: 22, flexWrap: 'wrap' }}>
         {s.showBankDetails && data.banking && (
           <div style={{ flex: 1, minWidth: '70mm' }}>
             <div style={labelStyle}>Payment Details</div>
