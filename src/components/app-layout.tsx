@@ -135,8 +135,6 @@ function useNavSections(t: (k: string) => string): NavSection[] {
             { to: '/products', label: t('nav.all_products') },
             { to: '/products/categories', label: t('nav.categories') },
             { to: '/products/brands', label: t('nav.brands') },
-            { to: '/products/vehicles', label: t('nav.vehicles') },
-            { to: '/catalog', label: t('nav.parts_catalog') },
           ],
         },
         {
