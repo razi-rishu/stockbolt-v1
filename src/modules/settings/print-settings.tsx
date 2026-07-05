@@ -130,7 +130,7 @@ export default function PrintSettingsPage() {
   function setToggle(key: keyof TemplateSettings, value: boolean) {
     setTpl(t => t ? { ...t, settings: { ...t.settings, [key]: value } } : t);
   }
-  function setFooter(key: 'footerEn' | 'footerAr' | 'paymentTermsEn' | 'paymentTermsAr', value: string) {
+  function setFooter(key: 'footerEn' | 'footerAr' | 'paymentTermsEn' | 'paymentTermsAr' | 'bankAccountName' | 'bankName' | 'bankAccountNumber' | 'bankIban' | 'signatureLabel', value: string) {
     setTpl(t => t ? { ...t, settings: { ...t.settings, [key]: value } } : t);
   }
   function chooseStyle(style: TemplateStyle) {
@@ -356,6 +356,27 @@ export default function PrintSettingsPage() {
               </div>
 
               <div className={card}>
+                <h2 className="text-sm font-semibold text-ink-primary">Bank / payment details</h2>
+                <p className="mt-1 mb-3 text-xs text-ink-tertiary">Shown in the “Payment Details” block when “Bank / payment details” is enabled below.</p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div><label className={labelCls}>Account name</label>
+                    <input className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-3 text-sm" value={tpl.settings.bankAccountName} onChange={e => setFooter('bankAccountName', e.target.value)} placeholder="Your Company Trading LLC" /></div>
+                  <div><label className={labelCls}>Bank name</label>
+                    <input className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-3 text-sm" value={tpl.settings.bankName} onChange={e => setFooter('bankName', e.target.value)} placeholder="Emirates NBD" /></div>
+                  <div><label className={labelCls}>Account number</label>
+                    <input className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-3 text-sm" value={tpl.settings.bankAccountNumber} onChange={e => setFooter('bankAccountNumber', e.target.value)} placeholder="012-345-6789-001" /></div>
+                  <div><label className={labelCls}>IBAN</label>
+                    <input className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-3 text-sm" value={tpl.settings.bankIban} onChange={e => setFooter('bankIban', e.target.value)} placeholder="AE07 0331 2345 6789 0010 02" /></div>
+                </div>
+              </div>
+
+              <div className={card}>
+                <h2 className="text-sm font-semibold text-ink-primary">Signature</h2>
+                <p className="mt-1 mb-3 text-xs text-ink-tertiary">The label under the signing line when “Signature block” is enabled below.</p>
+                <input className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-3 text-sm sm:w-1/2" value={tpl.settings.signatureLabel} onChange={e => setFooter('signatureLabel', e.target.value)} placeholder="Authorised Signatory" />
+              </div>
+
+              <div className={card}>
                 <h2 className="text-sm font-semibold text-ink-primary">Show on documents</h2>
                 <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {TOGGLES.map(({ key, label }) => (
@@ -379,6 +400,9 @@ export default function PrintSettingsPage() {
                   <div style={{ transform: 'scale(0.54)', transformOrigin: 'top left', width: '210mm' }}>
                     <ConfigurableDocTemplate data={{
                       ...SAMPLE_TAX_INVOICE,
+                      // Sample banking stripped so the preview reflects the template's
+                      // own Bank/payment fields (same source real documents use).
+                      banking: null,
                       company: {
                         ...SAMPLE_TAX_INVOICE.company,
                         name:     company?.name     ?? SAMPLE_TAX_INVOICE.company.name,

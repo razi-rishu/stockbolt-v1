@@ -53,6 +53,17 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
   // Payment receipts/vouchers carry `allocations` instead of line items.
   const isPayment = !!data.allocations;
 
+  // Bank details: per-document data wins when present; otherwise fall back to
+  // the template's own settings (entered in Print Settings), so banking can be
+  // added without any schema change.
+  const banking = data.banking ?? (
+    (s.bankAccountName || s.bankName || s.bankAccountNumber || s.bankIban) ? {
+      account_name:   s.bankAccountName || data.company.name,
+      bank_name:      s.bankName || null,
+      account_number: s.bankAccountNumber || null,
+      iban:           s.bankIban || null,
+    } : null);
+
   const labelStyle: CSSProperties = {
     fontSize:       baseFont * 0.72,
     fontWeight:     600,
@@ -412,21 +423,21 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
           on-screen preview and the printed/exported PDF. paddingTop keeps a
           minimum gap when the items already fill most of the page. */}
       <div style={{ display: 'flex', gap: 24, marginTop: 'auto', paddingTop: 22, flexWrap: 'wrap' }}>
-        {s.showBankDetails && data.banking && (
+        {s.showBankDetails && banking && (
           <div style={{ flex: 1, minWidth: '70mm' }}>
             <div style={labelStyle}>Payment Details</div>
             <div style={{ fontSize: baseFont * 0.85, color: C.text, lineHeight: 1.6, marginTop: 4 }}>
-              {data.banking.account_name && <div>Account: {data.banking.account_name}</div>}
-              {data.banking.bank_name && <div>Bank: {data.banking.bank_name}</div>}
-              {data.banking.account_number && <div>A/C No: {data.banking.account_number}</div>}
-              {data.banking.iban && <div>IBAN: {data.banking.iban}</div>}
+              {banking.account_name && <div>Account: {banking.account_name}</div>}
+              {banking.bank_name && <div>Bank: {banking.bank_name}</div>}
+              {banking.account_number && <div>A/C No: {banking.account_number}</div>}
+              {banking.iban && <div>IBAN: {banking.iban}</div>}
             </div>
           </div>
         )}
         {s.showSignature && (
           <div style={{ width: '60mm', alignSelf: 'flex-end' }}>
             <div style={{ borderTop: `1px solid ${C.hairline}`, marginTop: 28, paddingTop: 6, fontSize: baseFont * 0.8, color: C.secondary, textAlign: 'center' }}>
-              {data.signed_by || 'Authorised Signatory'}
+              {data.signed_by || s.signatureLabel || 'Authorised Signatory'}
             </div>
           </div>
         )}

@@ -60,6 +60,13 @@ export interface TemplateSettings {
   /** Payment-terms text — shown on the document when showPaymentTerms is on. */
   paymentTermsEn:        string;
   paymentTermsAr:        string;
+  /** Bank / payment details — shown when showBankDetails is on. */
+  bankAccountName:       string;
+  bankName:              string;
+  bankAccountNumber:     string;
+  bankIban:              string;
+  /** Label under the signature line (defaults to "Authorised Signatory"). */
+  signatureLabel:        string;
 }
 
 /** A saved print template row (mirrors the print_templates table). */
@@ -104,6 +111,11 @@ export const DEFAULT_TEMPLATE_SETTINGS: TemplateSettings = {
   footerAr:              '',
   paymentTermsEn:        '',
   paymentTermsAr:        '',
+  bankAccountName:       '',
+  bankName:              '',
+  bankAccountNumber:     '',
+  bankIban:              '',
+  signatureLabel:        '',
 };
 
 /**
