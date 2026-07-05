@@ -35,11 +35,13 @@ export function CompanyAvatar({
 
   if (company?.logo_url) {
     return (
-      <div style={{ ...common, background: '#fff', border: `1px solid ${theme.border}` }}>
+      <div style={{ ...common, background: '#fff', border: `1px solid ${theme.border}`, padding: Math.max(2, Math.round(size * 0.08)), boxSizing: 'border-box' }}>
         <img
           src={company.logo_url}
           alt={company.name ?? 'Company logo'}
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          // `contain` (not cover) so a wide wordmark logo shows in full instead of
+          // being cropped to a slice — the circle is small, but the whole mark fits.
+          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
         />
       </div>
     );

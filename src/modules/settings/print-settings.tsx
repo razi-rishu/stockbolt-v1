@@ -130,7 +130,7 @@ export default function PrintSettingsPage() {
   function setToggle(key: keyof TemplateSettings, value: boolean) {
     setTpl(t => t ? { ...t, settings: { ...t.settings, [key]: value } } : t);
   }
-  function setFooter(key: 'footerEn' | 'footerAr', value: string) {
+  function setFooter(key: 'footerEn' | 'footerAr' | 'paymentTermsEn' | 'paymentTermsAr', value: string) {
     setTpl(t => t ? { ...t, settings: { ...t.settings, [key]: value } } : t);
   }
   function chooseStyle(style: TemplateStyle) {
@@ -341,6 +341,17 @@ export default function PrintSettingsPage() {
                     <textarea className="w-full rounded-input border border-border-subtle bg-surface-input p-2 text-sm" rows={2} value={tpl.settings.footerEn} onChange={e => setFooter('footerEn', e.target.value)} placeholder="Bank: ENBD · IBAN: AE00… · Thank you" /></div>
                   <div><label className={labelCls}>Footer (Arabic)</label>
                     <textarea className="w-full rounded-input border border-border-subtle bg-surface-input p-2 text-sm" dir="rtl" rows={2} value={tpl.settings.footerAr} onChange={e => setFooter('footerAr', e.target.value)} /></div>
+                </div>
+              </div>
+
+              <div className={card}>
+                <h2 className="text-sm font-semibold text-ink-primary">Payment terms</h2>
+                <p className="mt-1 mb-3 text-xs text-ink-tertiary">The text shown on documents when “Payment terms” is enabled below.</p>
+                <div className="mt-1 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div><label className={labelCls}>Terms (English)</label>
+                    <textarea className="w-full rounded-input border border-border-subtle bg-surface-input p-2 text-sm" rows={2} value={tpl.settings.paymentTermsEn} onChange={e => setFooter('paymentTermsEn', e.target.value)} placeholder="Payment due within 30 days of invoice date." /></div>
+                  <div><label className={labelCls}>Terms (Arabic)</label>
+                    <textarea className="w-full rounded-input border border-border-subtle bg-surface-input p-2 text-sm" dir="rtl" rows={2} value={tpl.settings.paymentTermsAr} onChange={e => setFooter('paymentTermsAr', e.target.value)} /></div>
                 </div>
               </div>
 

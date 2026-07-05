@@ -145,10 +145,10 @@ export default function InvoicesPage() {
         </div>
       )}
 
-      {/* ── master-detail split ─────────────────────────────────────────── */}
-      <div className="flex flex-col lg:flex-row" style={{ gap: '16px' }}>
+      {/* ── list (full-width until an invoice is opened, then side-by-side) ── */}
+      <div className={selectedId ? 'flex flex-col lg:flex-row' : ''} style={{ gap: '16px' }}>
         {/* LEFT — list */}
-        <aside className="flex flex-col lg:w-[340px] lg:shrink-0" style={{ gap: '10px' }}>
+        <aside className={`flex flex-col ${selectedId ? 'lg:w-[340px] lg:shrink-0' : 'w-full'}`} style={{ gap: '10px' }}>
           <ListFilters
             search={search}
             onSearch={setSearch}
@@ -202,10 +202,12 @@ export default function InvoicesPage() {
           </div>
         </aside>
 
-        {/* RIGHT — detail / editor */}
-        <div className="min-w-0 flex-1">
-          <Outlet />
-        </div>
+        {/* RIGHT — detail / editor (only once an invoice is opened) */}
+        {selectedId && (
+          <div className="min-w-0 flex-1">
+            <Outlet />
+          </div>
+        )}
       </div>
     </div>
   );

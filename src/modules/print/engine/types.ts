@@ -57,6 +57,9 @@ export interface TemplateSettings {
   /** Footer strip text — carried per template so it travels with the design. */
   footerEn:              string;
   footerAr:              string;
+  /** Payment-terms text — shown on the document when showPaymentTerms is on. */
+  paymentTermsEn:        string;
+  paymentTermsAr:        string;
 }
 
 /** A saved print template row (mirrors the print_templates table). */
@@ -99,6 +102,8 @@ export const DEFAULT_TEMPLATE_SETTINGS: TemplateSettings = {
   showReferenceNumber:   true,
   footerEn:              '',
   footerAr:              '',
+  paymentTermsEn:        '',
+  paymentTermsAr:        '',
 };
 
 /**

@@ -386,6 +386,15 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
         </div>
       )}
 
+      {/* Payment terms (shown when the toggle is on and terms text is set) */}
+      {s.showPaymentTerms && (s.paymentTermsEn || s.paymentTermsAr) && (
+        <div style={{ marginTop: 18, maxWidth: '120mm' }}>
+          <div style={labelStyle}>Payment Terms</div>
+          {s.paymentTermsEn && <div style={{ fontSize: baseFont * 0.85, color: C.text, marginTop: 4, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{s.paymentTermsEn}</div>}
+          {s.paymentTermsAr && <div style={{ fontSize: baseFont * 0.85, color: C.text, marginTop: 4, lineHeight: 1.6, whiteSpace: 'pre-wrap' }} dir="rtl">{s.paymentTermsAr}</div>}
+        </div>
+      )}
+
       {/* Bank details + signature row — pinned to the bottom of the page
           (marginTop:auto) so it sits in the same place every time, in both the
           on-screen preview and the printed/exported PDF. paddingTop keeps a
