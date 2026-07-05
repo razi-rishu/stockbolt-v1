@@ -62,7 +62,7 @@ import type {
   SalesByCustomerLine, SalesByProductLine, SalesByBrandLine,
   SalesByVehicleLine, SalesBySalespersonLine, SalesTrendLine,
   PurchasesBySupplierLine, PurchasesByProductLine, OutstandingPOLine,
-  VATReturn, VATReturnBox,
+  VATReturn, VATReturnBox, VATReturnRegionRow,
   AuditLogLine, ReversalTrailLine,
   CashFlowStatement, CashFlowSection,
   OwnerDashboard,
@@ -2956,7 +2956,7 @@ export function createSupabaseAdapter(
         // Input VAT (account 1500) — debits = VAT paid on purchases
         const { data: inRows, error: inErr } = await client
           .from('general_ledger')
-          .select('debit, credit')
+          .select('debit, credit, contact_id')
           .eq('company_id', company_id)
           .eq('account_code', '1500')
           .gte('date', from).lte('date', to);
@@ -2967,7 +2967,7 @@ export function createSupabaseAdapter(
         // Get sales subtotal for Box 1 (standard-rated)
         const { data: salesRows, error: salesErr } = await client
           .from('general_ledger')
-          .select('debit, credit')
+          .select('debit, credit, contact_id')
           .eq('company_id', company_id)
           .eq('account_code', '4100')
           .gte('date', from).lte('date', to);
@@ -2991,7 +2991,71 @@ export function createSupabaseAdapter(
         const inputBoxes: VATReturnBox[] = [
           { box: '9', label: 'Standard Rated Expenses', taxable_amount: Math.max(0, totalExpenses), vat_amount: Math.max(0, totalInputVAT) },
         ];
-        return { period_start: from, period_end: to, output_boxes: outputBoxes, total_output_vat: Math.max(0, totalOutputVAT), input_boxes: inputBoxes, total_input_vat: Math.max(0, totalInputVAT), net_vat_payable: Math.max(0, totalOutputVAT) - Math.max(0, totalInputVAT) };
+
+        // ── Place-wise breakdown (VAT201 boxes 1a–1g) ─────────────────────
+        // Group output taxable (4100) + output VAT (2200) by the CUSTOMER's
+        // region, and input VAT (1500) by the SUPPLIER's region. Regions come
+        // from the Phase 16 geography on contacts; AE emirates get their
+        // official VAT201 box code. Contacts without a region → "Unassigned".
+        const EMIRATE_BOX: Record<string, string> = {
+          abudhabi: '1a', dubai: '1b', sharjah: '1c', ajman: '1d',
+          ummalquwain: '1e', rasalkhaimah: '1f', fujairah: '1g',
+        };
+        const normName = (s: string) => s.toLowerCase().replace(/[^a-z]/g, '');
+
+        const { data: contactRows } = await (client as any)
+          .from('contacts').select('id, region_id').eq('company_id', company_id);
+        const regionOfContact: Record<string, string> = {};
+        for (const c of (contactRows ?? []) as { id: string; region_id: string | null }[]) {
+          if (c.region_id) regionOfContact[c.id] = c.region_id;
+        }
+        const { data: regionRows } = await (client as any)
+          .from('geographic_regions').select('id, region_name');
+        const regionName: Record<string, string> = {};
+        for (const r of (regionRows ?? []) as { id: string; region_name: string }[]) {
+          regionName[r.id] = r.region_name;
+        }
+
+        type RegionAcc = { taxable: number; vat: number };
+        const groupBy = (rows: { contact_id?: string | null; debit: number; credit: number }[] | null, field: 'taxable' | 'vat', sign: 'credit' | 'debit', into: Map<string, RegionAcc>) => {
+          for (const r of rows ?? []) {
+            const key = (r.contact_id && regionOfContact[r.contact_id]) || '';
+            const acc = into.get(key) ?? { taxable: 0, vat: 0 };
+            const amt = sign === 'credit' ? Number(r.credit) - Number(r.debit) : Number(r.debit) - Number(r.credit);
+            acc[field] += amt;
+            into.set(key, acc);
+          }
+        };
+        const outMap = new Map<string, RegionAcc>();
+        groupBy(salesRows as never, 'taxable', 'credit', outMap);
+        groupBy(outRows as never, 'vat', 'credit', outMap);
+        const inMap = new Map<string, RegionAcc>();
+        groupBy(inRows as never, 'vat', 'debit', inMap);
+
+        const toRegionRows = (map: Map<string, RegionAcc>): VATReturnRegionRow[] =>
+          [...map.entries()]
+            .filter(([, a]) => Math.abs(a.taxable) > 0.005 || Math.abs(a.vat) > 0.005)
+            .map(([regionId, a]) => {
+              const name = regionId ? (regionName[regionId] ?? 'Unassigned') : 'Unassigned';
+              return { region_name: name, box: EMIRATE_BOX[normName(name)] ?? null, taxable_amount: a.taxable, vat_amount: a.vat };
+            })
+            .sort((a, b) => {
+              if (a.region_name === 'Unassigned') return 1;
+              if (b.region_name === 'Unassigned') return -1;
+              if (a.box && b.box) return a.box.localeCompare(b.box);
+              if (a.box) return -1;
+              if (b.box) return 1;
+              return a.region_name.localeCompare(b.region_name);
+            });
+
+        return {
+          period_start: from, period_end: to,
+          output_boxes: outputBoxes, total_output_vat: Math.max(0, totalOutputVAT),
+          input_boxes: inputBoxes, total_input_vat: Math.max(0, totalInputVAT),
+          net_vat_payable: Math.max(0, totalOutputVAT) - Math.max(0, totalInputVAT),
+          output_by_region: toRegionRows(outMap),
+          input_by_region: toRegionRows(inMap),
+        };
       },
 
       async getAuditLog(company_id, params): Promise<AuditLogLine[]> {

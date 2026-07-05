@@ -4,7 +4,7 @@ import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
 import { PageHeader, Panel } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
-import type { VATReturn } from '@/data/adapter';
+import type { VATReturn, VATReturnRegionRow } from '@/data/adapter';
 
 function fmt(n: number) {
   return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
@@ -76,6 +76,46 @@ export default function VATReturnPage() {
     </div>
   );
 
+  // Place-wise breakdown (customer/supplier regions; emirates → VAT201 1a–1g).
+  const RegionSection = ({ title, hint, rows, showTaxable }: { title: string; hint: string; rows: VATReturnRegionRow[]; showTaxable: boolean }) => (
+    <div style={{
+      background: theme.card, border: `1px solid ${theme.border}`,
+      borderRadius: '12px', boxShadow: theme.shadowSm, overflow: 'hidden',
+    }}>
+      <div style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}`, padding: '10px 16px' }}>
+        <span style={{ fontSize: '11px', fontWeight: 700, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.06em' }}>{title}</span>
+      </div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr style={{ borderBottom: `1px solid ${theme.border}` }}>
+            {[
+              { l: t('reports.box'),   a: 'start' as const },
+              { l: t('reports.place'), a: 'start' as const },
+              ...(showTaxable ? [{ l: t('reports.taxable_amount'), a: 'end' as const }] : []),
+              { l: t('reports.vat_amount'), a: 'end' as const },
+            ].map(c => (
+              <th key={c.l} className="px-4 py-2" style={{
+                fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
+                textTransform: 'uppercase', letterSpacing: '.06em', textAlign: c.a,
+              }}>{c.l}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={`${r.region_name}-${i}`} style={{ borderTop: i === 0 ? 'none' : '1px solid #f1f5f9' }}>
+              <td className="px-4 py-2 font-mono" style={{ color: theme.inkMuted, fontSize: '12px' }}>{r.box ?? '—'}</td>
+              <td className="px-4 py-2" style={{ color: r.region_name === 'Unassigned' ? theme.inkFaint : theme.ink, fontSize: '13px', fontStyle: r.region_name === 'Unassigned' ? 'italic' : 'normal' }}>{r.region_name}</td>
+              {showTaxable && <td className="px-4 py-2 font-mono" style={{ textAlign: 'end', color: theme.inkMuted, fontSize: '13px' }}>{fmt(r.taxable_amount)}</td>}
+              <td className="px-4 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px', fontWeight: 500 }}>{fmt(r.vat_amount)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p style={{ margin: 0, padding: '8px 16px', fontSize: '11px', color: theme.inkFaint, borderTop: `1px solid ${theme.border}` }}>{hint}</p>
+    </div>
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <PageHeader title={t('reports.vat_return')} subtitle={data ? `${data.period_start} — ${data.period_end}` : `${from} — ${to}`} />
@@ -101,6 +141,13 @@ export default function VATReturnPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: '16px' }}>
           <Section title={t('reports.vat_on_sales')}    boxes={data.output_boxes} total={data.total_output_vat} totalLabel={t('reports.total_output_vat')} />
           <Section title={t('reports.vat_on_expenses')} boxes={data.input_boxes}  total={data.total_input_vat}  totalLabel={t('reports.total_input_vat')} />
+
+          {data.output_by_region && data.output_by_region.length > 0 && (
+            <RegionSection title={t('reports.vat_by_place')} hint={t('reports.vat_place_hint')} rows={data.output_by_region} showTaxable />
+          )}
+          {data.input_by_region && data.input_by_region.length > 0 && (
+            <RegionSection title={t('reports.vat_input_by_place')} hint={t('reports.vat_input_place_hint')} rows={data.input_by_region} showTaxable={false} />
+          )}
 
           {/* Net payable */}
           <div style={{

@@ -1197,6 +1197,14 @@ export interface VATReturnBox {
   vat_amount: number;
 }
 
+/** Place-wise breakdown row — emirates get their official VAT201 box code (1a–1g). */
+export interface VATReturnRegionRow {
+  region_name: string;
+  box: string | null;
+  taxable_amount: number;
+  vat_amount: number;
+}
+
 export interface VATReturn {
   period_start: string;
   period_end: string;
@@ -1205,6 +1213,10 @@ export interface VATReturn {
   input_boxes: VATReturnBox[];
   total_input_vat: number;
   net_vat_payable: number;
+  /** Box 1 split by the customer's region (VAT201 boxes 1a–1g for AE emirates). */
+  output_by_region?: VATReturnRegionRow[];
+  /** Input VAT split by the supplier's region — analysis, not an FTA box. */
+  input_by_region?: VATReturnRegionRow[];
 }
 
 export interface AuditLogLine {
