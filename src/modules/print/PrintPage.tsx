@@ -117,6 +117,9 @@ export default function PrintPage() {
     // CustomerStatement type works for both (see SupplierStatement in adapter.ts).
     statementLines?: import('@/data/adapter').CustomerStatementLine[];
     statementMeta?:  import('@/data/adapter').CustomerStatement;
+    // Names for the template's Warehouse / Salesperson toggles.
+    warehouseName?:   string | null;
+    salespersonName?: string | null;
   }>({
     loading: true,
     error:   null,
@@ -158,7 +161,15 @@ export default function PrintPage() {
           ]);
           if (!inv) throw new Error('Invoice not found');
           const contact = inv.contact_id ? await adapter.contacts.getById(inv.contact_id) : null;
-          patch = { ...patch, invoice: inv, invoiceItems: items, contact };
+          const [whs, sps] = await Promise.all([
+            inv.warehouse_id ? adapter.warehouses.list(company_id!).catch(() => []) : Promise.resolve([]),
+            inv.salesperson_id ? adapter.salespeople.list(company_id!).catch(() => []) : Promise.resolve([]),
+          ]);
+          patch = {
+            ...patch, invoice: inv, invoiceItems: items, contact,
+            warehouseName: whs.find(w => w.id === inv.warehouse_id)?.name ?? null,
+            salespersonName: sps.find(p => p.id === inv.salesperson_id)?.name ?? null,
+          };
 
         } else if (docType === 'quote') {
           const [quote, items] = await Promise.all([
@@ -167,7 +178,11 @@ export default function PrintPage() {
           ]);
           if (!quote) throw new Error('Quote not found');
           const contact = quote.contact_id ? await adapter.contacts.getById(quote.contact_id) : null;
-          patch = { ...patch, quote, quoteItems: items, contact };
+          const sps = quote.salesperson_id ? await adapter.salespeople.list(company_id!).catch(() => []) : [];
+          patch = {
+            ...patch, quote, quoteItems: items, contact,
+            salespersonName: sps.find(p => p.id === quote.salesperson_id)?.name ?? null,
+          };
 
         } else if (docType === 'credit-note') {
           const [cn, items] = await Promise.all([
@@ -203,7 +218,13 @@ export default function PrintPage() {
           ]);
           if (!bill) throw new Error('Bill not found');
           const contact = bill.supplier_id ? await adapter.contacts.getById(bill.supplier_id) : null;
-          patch = { ...patch, bill, billItems: items, contact };
+          // warehouse_id was added to bills in phase12_17; the generated row type predates it.
+          const billWhId = (bill as { warehouse_id?: string | null }).warehouse_id ?? null;
+          const whs = billWhId ? await adapter.warehouses.list(company_id!).catch(() => []) : [];
+          patch = {
+            ...patch, bill, billItems: items, contact,
+            warehouseName: whs.find(w => w.id === billWhId)?.name ?? null,
+          };
 
         } else if (docType === 'statement' || docType === 'supplier-statement') {
           // id = contact_id (customer or supplier). Date range overrideable via
@@ -275,12 +296,12 @@ export default function PrintPage() {
   const baseProps = { company, printConfig };
 
   if (docType === 'invoice' && state.invoice && state.invoiceItems && state.printTemplate) {
-    const docData = invoiceToDocumentData({ invoice: state.invoice, items: state.invoiceItems, contact, company });
+    const docData = invoiceToDocumentData({ invoice: state.invoice, items: state.invoiceItems, contact, company, warehouseName: state.warehouseName, salespersonName: state.salespersonName });
     return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
   }
 
   if (docType === 'quote' && state.quote && state.quoteItems && state.printTemplate) {
-    const docData = quoteToDocumentData({ quote: state.quote, items: state.quoteItems, contact, company });
+    const docData = quoteToDocumentData({ quote: state.quote, items: state.quoteItems, contact, company, salespersonName: state.salespersonName });
     return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
   }
 
@@ -300,7 +321,7 @@ export default function PrintPage() {
   }
 
   if (docType === 'bill' && state.bill && state.billItems && state.printTemplate) {
-    const docData = vendorBillToDocumentData({ bill: state.bill, items: state.billItems, supplier: contact, company });
+    const docData = vendorBillToDocumentData({ bill: state.bill, items: state.billItems, supplier: contact, company, warehouseName: state.warehouseName });
     return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
   }
 

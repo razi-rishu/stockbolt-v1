@@ -359,6 +359,18 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
         )}
       </div>
 
+      {/* Salesperson / Warehouse meta line (each behind its toggle) */}
+      {((s.showSalesperson && data.salesperson_name) || (s.showWarehouse && data.warehouse_name)) && (
+        <div style={{ display: 'flex', gap: 20, marginTop: 12, fontSize: baseFont * 0.85, color: C.secondary }}>
+          {s.showSalesperson && data.salesperson_name && (
+            <span>Salesperson: <span style={{ color: C.text, fontWeight: 600 }}>{data.salesperson_name}</span></span>
+          )}
+          {s.showWarehouse && data.warehouse_name && (
+            <span>Warehouse: <span style={{ color: C.text, fontWeight: 600 }}>{data.warehouse_name}</span></span>
+          )}
+        </div>
+      )}
+
       {isPayment ? <PaymentBody /> : <>
       <div style={{ marginTop: 18 }}>
         <div style={labelStyle}>Line Items</div>

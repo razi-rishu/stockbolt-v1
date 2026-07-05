@@ -123,6 +123,10 @@ export interface DocumentData {
   notes?:         string | null;
   terms?:         string | null;
 
+  /** Shown when the template's Warehouse / Salesperson toggles are on. */
+  warehouse_name?:   string | null;
+  salesperson_name?: string | null;
+
   /** Optional signature block — used by Delivery Note + Quotation. */
   show_signature?: boolean;
   signed_by?:      string | null;

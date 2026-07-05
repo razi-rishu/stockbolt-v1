@@ -100,6 +100,9 @@ export const SAMPLE_TAX_INVOICE: DocumentData = {
   },
   notes: 'Thank you for your business. Goods once sold are not returnable.',
   terms: 'Payment due within 30 days. Late payment 1.5%/mo.',
+  // So the Print Settings live preview demonstrates the Warehouse/Salesperson toggles.
+  warehouse_name: 'Main Warehouse',
+  salesperson_name: 'Ahmed Hassan',
 };
 
 /** Just exporting the tokens too in case the gallery wants to colour-match. */

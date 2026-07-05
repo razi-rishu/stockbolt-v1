@@ -530,6 +530,7 @@ export default function VendorBillEditorPage() {
       supplier: suppliers.find(s => s.id === existing.supplier_id) ?? null,
       company: companyRow ?? null,
       products,
+      warehouseName: warehouses.find(w => w.id === (existing as { warehouse_id?: string | null }).warehouse_id)?.name ?? null,
     });
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>

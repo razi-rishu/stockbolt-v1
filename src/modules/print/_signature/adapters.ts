@@ -110,10 +110,13 @@ export interface InvoiceToDocInput {
   products?: ProductRow[];
   /** Optional paid amount (from payment_allocations sum). */
   paidAmount?: number;
+  /** Optional names for the template's Warehouse / Salesperson toggles. */
+  warehouseName?:   string | null;
+  salespersonName?: string | null;
 }
 
 export function invoiceToDocumentData({
-  invoice, items, contact, company, products, paidAmount,
+  invoice, items, contact, company, products, paidAmount, warehouseName, salespersonName,
 }: InvoiceToDocInput): DocumentData {
   const productById: Record<string, ProductRow> = {};
   for (const p of products ?? []) productById[p.id] = p;
@@ -160,6 +163,8 @@ export function invoiceToDocumentData({
     due_date: (invoice.due_date as unknown as string) ?? null,
     reference: invoice.reference ?? null,
     currency: invoice.currency ?? 'AED',
+    warehouse_name:   warehouseName ?? null,
+    salesperson_name: salespersonName ?? null,
 
     company: companyToInfo(company),
     bill_to: contactToParty(contact),
@@ -202,6 +207,8 @@ export interface BillToDocInput {
   supplier:  ContactRow | null;
   company:   CompanyRow | null;
   products?: ProductRow[];
+  /** Optional name for the template's Warehouse toggle. */
+  warehouseName?: string | null;
 }
 
 /**
@@ -214,7 +221,7 @@ export interface BillToDocInput {
  * the printout makes sense.
  */
 export function vendorBillToDocumentData({
-  bill, items, supplier, company, products,
+  bill, items, supplier, company, products, warehouseName,
 }: BillToDocInput): DocumentData {
   const productById: Record<string, ProductRow> = {};
   for (const p of products ?? []) productById[p.id] = p;
@@ -250,6 +257,7 @@ export function vendorBillToDocumentData({
     due_date: (bill.due_date as unknown as string) ?? null,
     reference: bill.supplier_bill_number ?? bill.reference ?? null,
     currency: bill.currency ?? 'AED',
+    warehouse_name: warehouseName ?? null,
 
     company: companyToInfo(company),
     bill_to: contactToParty(supplier),          // shown in the From-labelled slot
@@ -299,12 +307,14 @@ export interface QuoteToDocInput {
   contact:  ContactRow | null;
   company:  Company | null;
   products?: ProductRow[];
+  /** Optional name for the template's Salesperson toggle. */
+  salespersonName?: string | null;
 }
 
 /** Sales Quote → DocumentData. Renders with title "Quotation" and
  *  swaps the "Due date" stamp slot for an "Expires" date. */
 export function quoteToDocumentData({
-  quote, items, contact, company, products,
+  quote, items, contact, company, products, salespersonName,
 }: QuoteToDocInput): DocumentData {
   const productById: Record<string, ProductRow> = {};
   for (const p of products ?? []) productById[p.id] = p;
@@ -343,6 +353,7 @@ export function quoteToDocumentData({
     valid_until: (quote.expiry_date as unknown as string) ?? null,
     reference:   quote.reference ?? null,
     currency:    quote.currency ?? 'AED',
+    salesperson_name: salespersonName ?? null,
 
     company: companyToInfo(company),
     bill_to: contactToParty(contact),

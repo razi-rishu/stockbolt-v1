@@ -611,6 +611,8 @@ export default function InvoiceEditorPage() {
       contact: contacts.find(c => c.id === existing.contact_id) ?? null,
       company: companyRow ?? null,
       products,
+      warehouseName: warehouses.find(w => w.id === existing.warehouse_id)?.name ?? null,
+      salespersonName: salespeople.find(p => p.id === existing.salesperson_id)?.name ?? null,
     });
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
