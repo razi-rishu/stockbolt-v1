@@ -1091,13 +1091,15 @@ describe('Phase 31 — SaaS subscription foundation', () => {
     expect(rows.every(r => r.relrowsecurity), 'RLS enabled on every billing table').toBe(true);
   });
 
-  it('phase31: Professional plan ($10/$100) + AE/IN tax profiles seeded', async () => {
+  it('phase31: Professional plan + AE/IN tax profiles seeded', async () => {
     if (!(await hasTable('subscription_plans'))) { console.warn('phase31 not applied — skipping seed check.'); return; }
+    // Exact prices are asserted by the phase35 test (pricing is a business
+    // setting that later migrations may change); here we only require the seed.
     const [plan] = await sql<{ monthly_price: number; yearly_price: number }>(
       `SELECT monthly_price, yearly_price FROM subscription_plans WHERE code='professional'`);
     expect(plan, 'professional plan seeded').toBeTruthy();
-    expect(Number(plan.monthly_price)).toBe(10);
-    expect(Number(plan.yearly_price)).toBe(100);
+    expect(Number(plan.monthly_price)).toBeGreaterThan(0);
+    expect(Number(plan.yearly_price)).toBeGreaterThan(0);
     const tax = await sql<{ country: string }>(`SELECT country FROM tax_profiles WHERE country IN ('AE','IN')`);
     expect(tax.length, 'AE + IN tax profiles seeded').toBe(2);
   });
@@ -1197,14 +1199,13 @@ describe('Phase 35 — SaaS M3 (PayPal + new pricing)', () => {
 
   it('phase35: professional plan is 21/105/200 with a 365-day trial', async () => {
     if (!(await applied())) { console.warn('phase35 not applied — skipping pricing check.'); return; }
-    const [p] = await sql<{ m: number; h: number; y: number; t: number }>(
-      `SELECT monthly_price::numeric AS m, half_yearly_price::numeric AS h,
-              yearly_price::numeric AS y, trial_days AS t
+    const [p] = await sql<{ monthly_price: number; half_yearly_price: number; yearly_price: number; trial_days: number }>(
+      `SELECT monthly_price, half_yearly_price, yearly_price, trial_days
        FROM subscription_plans WHERE code = 'professional'`);
-    expect(Number(p?.m)).toBe(21);
-    expect(Number(p?.h)).toBe(105);
-    expect(Number(p?.y)).toBe(200);
-    expect(Number(p?.t)).toBe(365);
+    expect(Number(p?.monthly_price)).toBe(21);
+    expect(Number(p?.half_yearly_price)).toBe(105);
+    expect(Number(p?.yearly_price)).toBe(200);
+    expect(Number(p?.trial_days)).toBe(365);
   });
 
   it('phase35: M3 tables exist with RLS (webhook_logs server-only, payments read-only)', async () => {
