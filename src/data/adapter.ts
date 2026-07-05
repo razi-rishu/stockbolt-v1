@@ -2117,6 +2117,8 @@ export interface SubscriptionPlanView {
   code: string;
   name: string;
   monthly_price: number;
+  /** Phase 35 — 6-month price (0 until the M3 migration is applied). */
+  half_yearly_price?: number;
   yearly_price: number;
   price_currency: string;
   trial_days: number;
@@ -2152,11 +2154,25 @@ export interface BillingAddressRow {
   phone: string | null;
   email: string | null;
 }
+/** Phase 35 — one PayPal payment result (IDs only, never card data). */
+export interface SubscriptionPaymentRow {
+  id: string;
+  provider: string;
+  provider_payment_id: string | null;
+  amount: number;
+  currency: string;
+  status: string;
+  paid_at: string | null;
+  created_at: string;
+}
+
 export interface BillingAPI {
   /** The caller's own subscription (+ plan), via get_my_subscription(). Null if none. */
   getSubscription(): Promise<SubscriptionView | null>;
   getAddress(company_id: string): Promise<BillingAddressRow | null>;
   upsertAddress(company_id: string, data: Partial<BillingAddressRow>): Promise<void>;
+  /** Phase 35 — payment history (empty until the M3 migration is applied). */
+  listPayments(company_id: string): Promise<SubscriptionPaymentRow[]>;
 }
 
 // ── Document numbering ──────────────────────────────────────────────────────

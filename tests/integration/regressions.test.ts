@@ -1186,3 +1186,45 @@ describe('Phase 33 — Sales Return posting', () => {
     expect(orphans, `confirmed sales returns with no linked credit note: ${JSON.stringify(orphans)}`).toEqual([]);
   });
 });
+
+describe('Phase 35 — SaaS M3 (PayPal + new pricing)', () => {
+  const applied = async () => {
+    const [c] = await sql<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM information_schema.columns
+       WHERE table_name = 'subscription_plans' AND column_name = 'half_yearly_price'`);
+    return (c?.n ?? 0) > 0;
+  };
+
+  it('phase35: professional plan is 21/105/200 with a 365-day trial', async () => {
+    if (!(await applied())) { console.warn('phase35 not applied — skipping pricing check.'); return; }
+    const [p] = await sql<{ m: number; h: number; y: number; t: number }>(
+      `SELECT monthly_price::numeric AS m, half_yearly_price::numeric AS h,
+              yearly_price::numeric AS y, trial_days AS t
+       FROM subscription_plans WHERE code = 'professional'`);
+    expect(Number(p?.m)).toBe(21);
+    expect(Number(p?.h)).toBe(105);
+    expect(Number(p?.y)).toBe(200);
+    expect(Number(p?.t)).toBe(365);
+  });
+
+  it('phase35: M3 tables exist with RLS (webhook_logs server-only, payments read-only)', async () => {
+    if (!(await applied())) { console.warn('phase35 not applied — skipping table check.'); return; }
+    const rows = await sql<{ tablename: string; rowsecurity: boolean }>(
+      `SELECT tablename, rowsecurity FROM pg_tables
+       WHERE schemaname = 'public' AND tablename IN ('webhook_logs','subscription_payments')`);
+    expect(rows.length, 'both M3 tables exist').toBe(2);
+    for (const r of rows) expect(r.rowsecurity, `${r.tablename} has RLS`).toBe(true);
+    // webhook_logs must have NO client policies (service-role only).
+    const [pol] = await sql<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM pg_policies WHERE tablename = 'webhook_logs'`);
+    expect(pol?.n ?? 0, 'webhook_logs has no client policies').toBe(0);
+  });
+
+  it('phase35: every existing grandfathered tenant got the free year (no stale back-fill rows)', async () => {
+    if (!(await applied())) { console.warn('phase35 not applied — skipping free-year check.'); return; }
+    const stale = await sql<{ id: string }>(
+      `SELECT id::text AS id FROM subscriptions
+       WHERE grandfathered = true AND provider = 'manual' AND status = 'active' AND trial_end IS NULL`);
+    expect(stale, `grandfathered rows not converted to the free year: ${JSON.stringify(stale)}`).toEqual([]);
+  });
+});

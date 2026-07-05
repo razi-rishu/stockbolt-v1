@@ -121,6 +121,16 @@ export function createSupabaseAdapter(
           .upsert({ company_id, ...patch, updated_at: new Date().toISOString() }, { onConflict: 'company_id' });
         assertNoError(error, 'billing.upsertAddress');
       },
+      async listPayments(company_id: string) {
+        const { data, error } = await (client.from as any)('subscription_payments')
+          .select('id, provider, provider_payment_id, amount, currency, status, paid_at, created_at')
+          .eq('company_id', company_id)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        // Table arrives with the M3 migration — degrade to empty until then.
+        if (error) return [] as any;
+        return (data ?? []) as any;
+      },
     },
     // ── Auth ───────────────────────────────────────────────────────────────
     auth: {
