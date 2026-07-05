@@ -217,7 +217,7 @@ export default function QuoteEditorPage() {
       if (!header.contact_id) throw new Error(t('sales.error_contact_required'));
       if (!header.salesperson_id) throw new Error('Salesperson is required');
       const quoteNum = isNew ? await getAdapter().salesQuotes.getNextNumber(company_id!) : existing!.quote_number;
-      const row = { company_id: company_id!, quote_number: quoteNum, contact_id: header.contact_id, salesperson_id: header.salesperson_id, date: header.date, expiry_date: header.expiry_date || null, reference: header.reference || null, price_level_id: null, currency: header.currency, exchange_rate: 1, prices_inclusive: false, subtotal: +subtotal.toFixed(2), discount_amount: +discountTotal.toFixed(2), tax_amount: +taxTotal.toFixed(2), total_amount: +grandTotal.toFixed(2), status: 'draft' as const, invoiced_amount: 0, terms: null, terms_ar: null, notes: header.notes || null };
+      const row = { company_id: company_id!, quote_number: quoteNum, contact_id: header.contact_id, salesperson_id: header.salesperson_id, date: header.date, expiry_date: header.expiry_date || null, reference: header.reference || null, price_level_id: null, currency: header.currency, exchange_rate: 1, prices_inclusive: false, subtotal: +subtotal.toFixed(2), discount_amount: +discountTotal.toFixed(2), tax_amount: +taxTotal.toFixed(2), total_amount: +grandTotal.toFixed(2), status: isNew ? 'draft' : existing!.status, invoiced_amount: existing?.invoiced_amount ?? 0, terms: null, terms_ar: null, notes: header.notes || null };
       if (isNew) return getAdapter().salesQuotes.create(row, buildItems());
       await getAdapter().salesQuotes.update(id!, row, buildItems());
       return null;
@@ -243,7 +243,10 @@ export default function QuoteEditorPage() {
     onError: (e: Error) => setError(e.message),
   });
 
-  const canEdit = isNew || existing?.status === 'draft';
+  // Quotes are non-GL proposals — editable in any status (draft/sent/accepted/
+  // fully_invoiced). The existing status is preserved on save so a fully-invoiced
+  // quote can't be silently reset to draft and re-converted.
+  const canEdit = isNew || !!existing;
   // contactOpts removed — customer picker uses ContactPicker (D3).
   const productOpts = products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }));
   const taxOpts = [
