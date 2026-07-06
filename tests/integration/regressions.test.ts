@@ -260,7 +260,11 @@ describe('Function source — fixes are still installed', () => {
        FROM pg_proc WHERE proname = 'confirm_vendor_bill' AND pronargs = 1`,
     );
     expect(row?.src).toBeTruthy();
-    expect(row.src, 'phase tag missing').toMatch(/Phase 12\.27/);
+    // Assert the BEHAVIOR (active-row filter), not a comment tag — later
+    // rewrites (e.g. Phase 36) legitimately carry the logic without the
+    // original comment text.
+    expect(row.src, 'MAC lookup must exclude reversal rows').toMatch(/reversal_of_id\s+IS\s+NULL/i);
+    expect(row.src, 'MAC lookup must exclude reversed originals').toMatch(/NOT\s+EXISTS/i);
     // The MAC lookup now scopes to active rows via the same NOT EXISTS
     // pattern Phase 12.21 used for journal_entries. Without this filter,
     // legacy reversal corruption can make Postgres pick the wrong
