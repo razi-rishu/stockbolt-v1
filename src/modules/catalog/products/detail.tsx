@@ -174,6 +174,27 @@ export default function ProductDetailPage() {
     },
   });
 
+  // Delete: only possible for never-used products (DB RESTRICT enforces it).
+  // A product with transactions keeps its history — we offer Deactivate instead.
+  const deleteMutation = useMutation({
+    mutationFn: () => getAdapter().products.remove(id!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['products', company_id] });
+      navigate('/products');
+    },
+    onError: async (e: Error) => {
+      if (String(e.message).includes('PRODUCT_IN_USE')) {
+        if (window.confirm(t('products.in_use_deactivate'))) {
+          await getAdapter().products.update(id!, { is_active: false });
+          qc.invalidateQueries({ queryKey: ['products', company_id] });
+          qc.invalidateQueries({ queryKey: ['product', id] });
+        }
+      } else {
+        window.alert(e.message);
+      }
+    },
+  });
+
   const addCompatMutation = useMutation({
     mutationFn: () => {
       // generation_id/variant_id are only sent when picked, so adding compatibility
@@ -262,9 +283,22 @@ export default function ProductDetailPage() {
           </div>
         </div>
         {!editMode && (
-          <Button type="button" size="sm" onClick={() => setEditMode(true)} style={{ flexShrink: 0, marginTop: '24px' }}>
-            ✎ {t('common.edit')}
-          </Button>
+          <div style={{ display: 'flex', gap: '8px', flexShrink: 0, marginTop: '24px' }}>
+            <Button type="button" size="sm" onClick={() => setEditMode(true)}>
+              ✎ {t('common.edit')}
+            </Button>
+            {!isNew && product && (
+              <Button
+                type="button"
+                size="sm"
+                variant="danger"
+                loading={deleteMutation.isPending}
+                onClick={() => { if (window.confirm(t('products.delete_confirm'))) deleteMutation.mutate(); }}
+              >
+                {t('common.delete')}
+              </Button>
+            )}
+          </div>
         )}
       </div>
 

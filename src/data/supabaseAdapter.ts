@@ -798,8 +798,20 @@ export function createSupabaseAdapter(
         assertNoError(error, 'products.update');
       },
       async remove(id) {
+        // Master-data children go first — they're attributes of the product,
+        // not transaction history. Transaction tables (invoice_items, stock
+        // ledger, bills…) reference products ON DELETE RESTRICT, so the DB
+        // itself refuses to delete a product that has ever been used.
+        await (client.from as any)('product_compatibility').delete().eq('product_id', id);
+        await (client.from as any)('product_supplier_codes').delete().eq('product_id', id);
+        await (client.from as any)('product_price_levels').delete().eq('product_id', id);
         const { error } = await client.from('products').delete().eq('id', id);
-        assertNoError(error, 'products.remove');
+        if (error) {
+          if ((error as { code?: string }).code === '23503') {
+            throw new SupabaseDataError('PRODUCT_IN_USE');
+          }
+          assertNoError(error, 'products.remove');
+        }
       },
       async uploadImage(company_id, product_id, file) {
         const ext = file.name.split('.').pop() ?? 'jpg';

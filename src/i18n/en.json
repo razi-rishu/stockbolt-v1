@@ -425,6 +425,8 @@
     "item_type": "Type",
     "type_goods": "Goods (stock-tracked)",
     "type_service": "Service",
+    "delete_confirm": "Delete this product permanently? This only works if it has never been used on any document.",
+    "in_use_deactivate": "This product has transactions (invoices, bills or stock movements), so it can't be deleted — the history must stay intact. Deactivate it instead? It will disappear from pickers but keep its history.",
     "generation": "Generation",
     "variant": "Variant",
     "all_generations": "All generations",
