@@ -77,6 +77,10 @@ export default function ProductsListPage() {
     {
       key: 'stock', header: 'Stock', width: '90px',
       render: (r) => {
+        // Services are never stock-tracked (Phase 36) — show a badge, not a qty.
+        if ((r as { type?: string }).type === 'service') {
+          return <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-500">{t('products.type_service')}</span>;
+        }
         const qty = stockMap[r.id]?.qty ?? 0;
         // Red for negative (oversold), amber for low-stock, default ink for
         // healthy. min_stock_level is per-product so we compare against it.

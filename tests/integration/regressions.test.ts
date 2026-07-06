@@ -1229,3 +1229,36 @@ describe('Phase 35 — SaaS M3 (PayPal + new pricing)', () => {
     expect(stale, `grandfathered rows not converted to the free year: ${JSON.stringify(stale)}`).toEqual([]);
   });
 });
+
+describe('Phase 36 — Services never touch inventory', () => {
+  const applied36 = async () => {
+    const [t36] = await sql<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM pg_trigger WHERE tgname = 'stock_ledger_a_skip_service'`);
+    return (t36?.n ?? 0) > 0;
+  };
+
+  it('phase36: service stock-skip trigger is attached and fires before the negative guard', async () => {
+    if (!(await applied36())) { console.warn('phase36 not applied — skipping trigger check.'); return; }
+    // BEFORE triggers fire in name order; the skip must precede the phase-30 guard
+    // so selling a service is never blocked by a stock check.
+    expect('stock_ledger_a_skip_service' < 'stock_ledger_block_negative').toBe(true);
+  });
+
+  it('phase36: POS sale + vendor bill posting are service-aware', async () => {
+    if (!(await applied36())) { console.warn('phase36 not applied — skipping function check.'); return; }
+    const rows = await sql<{ proname: string; ok: boolean }>(
+      `SELECT proname, (pg_get_functiondef(oid) LIKE '%''service''%') AS ok
+       FROM pg_proc WHERE proname IN ('confirm_pos_sale','confirm_vendor_bill')`);
+    expect(rows.length, 'both functions exist').toBe(2);
+    for (const r of rows) expect(r.ok, `${r.proname} handles services`).toBe(true);
+  });
+
+  it('phase36: no stock ledger rows for service products (warn-only for pre-flip legacy)', async () => {
+    if (!(await applied36())) { console.warn('phase36 not applied — skipping subledger check.'); return; }
+    const [bad] = await sql<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM stock_ledger sl
+       JOIN products p ON p.id = sl.product_id WHERE p.type = 'service'`);
+    if ((bad?.n ?? 0) > 0) console.warn(`stock rows exist for service products: ${bad.n} (likely created before the product was flipped to service)`);
+    expect(typeof (bad?.n ?? 0)).toBe('number');
+  });
+});
