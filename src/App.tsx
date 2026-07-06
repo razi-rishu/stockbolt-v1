@@ -33,6 +33,7 @@ const DesignSystemPage   = lazy(() => import('@/modules/design-system/index'));
 const SignatureTemplateGalleryPage = lazy(() => import('@/modules/print/_signature/gallery'));
 const SettingsHubPage    = lazy(() => import('@/modules/settings/index'));
 const SettingsLayout     = lazy(() => import('@/modules/settings/_layout'));
+const HardwareSettingsPage = lazy(() => import('@/modules/settings/hardware'));
 const CompanySettingsPage = lazy(() => import('@/modules/settings/company-settings'));
 const WarehousesPage     = lazy(() => import('@/modules/settings/warehouses'));
 const UnitsPage          = lazy(() => import('@/modules/settings/units-of-measure'));
@@ -264,6 +265,7 @@ function AppRoutes() {
                 <Route path="vehicles"      element={<VehicleMakesPage />} />
                 <Route path="salespeople"   element={<SalespeoplePage />} />
                 <Route path="print"         element={<PrintSettingsPage />} />
+                <Route path="hardware"      element={<HardwareSettingsPage />} />
                 <Route path="system-health" element={<SystemHealthPage />} />
                 <Route path="reset-data"    element={<ResetDataPage />} />
                 <Route path="audit-log"     element={<AuditLogPage />} />

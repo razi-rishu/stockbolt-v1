@@ -11,6 +11,7 @@ import { Select } from '@/ui/select';
 import { Button } from '@/ui/button';
 import { Modal } from '@/ui/modal';
 import { calcPOSLine, calcPOSTotals, type POSCartLine, type POSCartLineResult } from '@/core/pos/pos-calc';
+import { loadHardwareConfig, resolveScan } from '@/lib/hardware-config';
 import type { ProductRow, WarehouseRow, TaxRateRow, ContactRow, PosSessionRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -94,6 +95,8 @@ export default function POSScreen() {
 
   const searchRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
+  // Per-device scanner/printer config (Settings → Barcode & Printer Setup).
+  const hwCfg = useRef(loadHardwareConfig()).current;
   const [cart, setCart] = useState<POSCartLine[]>([]);
   const [customerId, setCustomerId] = useState<string>('');
   const [paymentModal, setPaymentModal] = useState<PaymentMethod | null>(null);
@@ -185,6 +188,10 @@ export default function POSScreen() {
       setCustomerId('');
       setPaymentModal(null);
       setError(null);
+      // Settings → Barcode & Printer Setup: open the print dialog automatically.
+      if (hwCfg.printer.autoPrintAfterSale && result.invoice_id) {
+        window.open(`/print/invoice/${result.invoice_id}?autoprint=1`, '_blank');
+      }
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['pos_session'] });
     },
@@ -197,7 +204,8 @@ export default function POSScreen() {
         const q = search.toLowerCase();
         return p.name?.toLowerCase().includes(q)
           || p.sku?.toLowerCase().includes(q)
-          || p.oe_number?.toLowerCase().includes(q);
+          || p.oe_number?.toLowerCase().includes(q)
+          || p.barcode?.toLowerCase().includes(q);
       }).slice(0, 24)
     : [];
 
@@ -225,6 +233,36 @@ export default function POSScreen() {
     });
     setSearch('');
   }, [defaultTaxRate]);
+
+  // ── Barcode scanner (keyboard-wedge burst capture) ────────────────────────────
+  // Scanners "type" the code very fast and finish with Enter. When the user isn't
+  // typing in a field, we collect those bursts and resolve them through the
+  // configured mapping (Settings → Barcode & Printer Setup). Exact matches only.
+  const scanBuf = useRef({ chars: '', last: 0 });
+  useEffect(() => {
+    if (!hwCfg.scanner.enabled) return;
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+      if (typing) return;                    // the search box handles its own Enter below
+      const now = Date.now();
+      if (now - scanBuf.current.last > 120) scanBuf.current.chars = '';   // humans type slower than this
+      scanBuf.current.last = now;
+      if (e.key === 'Enter') {
+        const code = scanBuf.current.chars;
+        scanBuf.current.chars = '';
+        if (code.length >= hwCfg.scanner.minLength) {
+          const hit = resolveScan(code, products, hwCfg);
+          if (hit) { addToCart(hit); setError(null); }
+          else setError(`${t('pos.no_results')} — "${code}"`);
+        }
+      } else if (e.key.length === 1) {
+        scanBuf.current.chars += e.key;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [products, addToCart, hwCfg, t]);
 
   const updateQty = (product_id: string, qty: number) => {
     if (qty <= 0) {
@@ -284,6 +322,15 @@ export default function POSScreen() {
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
+            onKeyDown={e => {
+              if (e.key !== 'Enter' || !search.trim()) return;
+              e.preventDefault();
+              // Scanner (or typed code) into the search box: exact mapping first,
+              // then a single filtered result — either way straight into the cart.
+              const hit = resolveScan(search, products, hwCfg);
+              if (hit) { addToCart(hit); setError(null); return; }
+              if (filtered.length === 1) addToCart(filtered[0]);
+            }}
             placeholder={`${t('pos.search_placeholder')} (F2)`}
             className="w-full rounded-card border border-border-subtle bg-surface-page px-3 py-2 text-sm text-ink-primary placeholder:text-ink-tertiary focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200"
           />

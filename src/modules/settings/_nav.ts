@@ -62,7 +62,7 @@ export const SETTINGS_SECTIONS: SettingsNavSection[] = [
     title: 'Printing & Hardware',
     items: [
       { to: '/settings/print',    icon: '🖨️', title: 'Print Templates',        desc: 'Choose invoice/receipt template (Classic, Thermal POS, Trade).' },
-      { to: '/settings/hardware', icon: '📷', title: 'Barcode & Printer Setup', desc: 'Configure barcode scanner and receipt printer connections.', comingSoon: true },
+      { to: '/settings/hardware', icon: '📷', title: 'Barcode & Printer Setup', desc: 'Barcode scanner mapping and receipt printer for this device.' },
     ],
   },
   {

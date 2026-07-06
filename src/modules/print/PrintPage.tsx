@@ -253,6 +253,15 @@ export default function PrintPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [company_id, docType, id]);
 
+  // ?autoprint=1 (Settings → Barcode & Printer Setup, "auto print after sale"):
+  // open the system print dialog once the document has rendered.
+  const autoPrint = searchParams.get('autoprint') === '1';
+  useEffect(() => {
+    if (!autoPrint || state.loading || state.error) return;
+    const t = setTimeout(() => window.print(), 700);
+    return () => clearTimeout(t);
+  }, [autoPrint, state.loading, state.error]);
+
   if (state.loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
