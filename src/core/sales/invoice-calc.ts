@@ -28,7 +28,10 @@ export function calcLine(input: LineInput): LineResult {
       ? round2(net * input.tax_rate / (100 + input.tax_rate))
       : 0;
     return {
-      line_subtotal:   subtotal,
+      // Header identity must hold in BOTH modes: subtotal − discount + tax =
+      // total. Store the subtotal net of the extracted tax so the GL can post
+      // revenue = subtotal without double-counting the VAT buried in the price.
+      line_subtotal:   round2(subtotal - taxAmt),
       discount_amount: discAmt,
       tax_amount:      taxAmt,
       line_total:      net,   // customer pays `net`; tax is already inside

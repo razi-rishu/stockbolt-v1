@@ -1266,3 +1266,101 @@ describe('Phase 36 — Services never touch inventory', () => {
     expect(typeof (bad?.n ?? 0)).toBe('number');
   });
 });
+
+describe('Phase 37 — every GL-writing function fills account_code', () => {
+  // general_ledger.account_code and .date are NOT NULL with no default, so a
+  // function that inserts GL rows without them fails on EVERY call. Phase 37
+  // patched the 8 offenders (bank transfers, PDC lifecycle, expense
+  // void/reopen). This invariant sweeps ALL functions so a future RPC with
+  // the same defect fails the suite instead of failing in production.
+  const applied37 = async () => {
+    const [f] = await sql<{ ok: boolean }>(
+      `SELECT (prosrc LIKE '%account_code%') AS ok FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public' AND p.proname = 'confirm_bank_transfer' LIMIT 1`);
+    return f?.ok === true;
+  };
+
+  it('phase37: no public function inserts into general_ledger without account_code', async () => {
+    if (!(await applied37())) { console.warn('phase37 not applied — skipping GL account_code sweep.'); return; }
+    const offenders = await sql<{ proname: string }>(
+      `SELECT p.proname FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public' AND p.prokind = 'f'
+         AND p.prosrc LIKE '%INSERT INTO public.general_ledger%'
+         AND p.prosrc NOT LIKE '%account_code%'
+       ORDER BY p.proname`);
+    expect(offenders, `functions inserting GL rows without account_code: ${JSON.stringify(offenders)}`).toEqual([]);
+  });
+
+  it('phase37: bank transfer + PDC GL rows carry a date and drill-down link', async () => {
+    if (!(await applied37())) { console.warn('phase37 not applied — skipping GL date/link check.'); return; }
+    const rows = await sql<{ proname: string; dated: boolean; linked: boolean }>(
+      `SELECT p.proname,
+              (p.prosrc LIKE '%account_code, date%') AS dated,
+              (p.prosrc LIKE '%related_doc_type%') AS linked
+       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public'
+         AND p.proname IN ('confirm_bank_transfer','void_bank_transfer',
+                           'create_pdc','clear_pdc','bounce_pdc','cancel_pdc',
+                           'void_expense','reopen_expense')`);
+    expect(rows.length, 'all 8 patched functions exist').toBe(8);
+    for (const r of rows) {
+      expect(r.dated, `${r.proname} dates its GL rows`).toBe(true);
+      expect(r.linked, `${r.proname} links GL rows to the source document`).toBe(true);
+    }
+  });
+});
+
+describe('Phase 38 — tax-inclusive documents post balanced JEs', () => {
+  // Tax-inclusive headers used to keep subtotal at gross while the posting
+  // engine credited revenue = subtotal AND VAT = tax against AR = total,
+  // unbalancing every inclusive JE by the extracted VAT. Phase 38 derives
+  // the revenue/goods side from total − tax, repairs the bad rows, and
+  // installs a commit-time balance guard on general_ledger.
+  const applied38 = async () => {
+    const [f] = await sql<{ ok: boolean }>(
+      `SELECT (prosrc LIKE '%v_inv.total_amount - v_inv.tax_amount%') AS ok
+       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public' AND p.proname = 'confirm_invoice' LIMIT 1`);
+    return f?.ok === true;
+  };
+
+  it('phase38: posting functions derive amounts from total − tax (never trust header subtotal)', async () => {
+    if (!(await applied38())) { console.warn('phase38 not applied — skipping derivation check.'); return; }
+    const rows = await sql<{ proname: string; ok: boolean }>(
+      `SELECT p.proname,
+              (p.prosrc LIKE '%v_inv.total_amount - v_inv.tax_amount%'
+            OR p.prosrc LIKE '%v_cn.total_amount - v_cn.tax_amount%'
+            OR p.prosrc LIKE '%v_item.line_total - v_item.tax_amount%'
+            OR p.prosrc LIKE '%v_bill.total_amount - v_bill.tax_amount%') AS ok
+       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public'
+         AND p.proname IN ('confirm_invoice','edit_invoice','confirm_credit_note',
+                           'confirm_debit_note','confirm_vendor_bill')`);
+    expect(rows.length, 'all 5 patched functions exist').toBe(5);
+    for (const r of rows) expect(r.ok, `${r.proname} derives from total − tax`).toBe(true);
+  });
+
+  it('phase38: je_must_balance deferred constraint trigger is installed', async () => {
+    if (!(await applied38())) { console.warn('phase38 not applied — skipping trigger check.'); return; }
+    const [trg] = await sql<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM pg_trigger
+       WHERE tgname = 'je_must_balance' AND tgdeferrable AND tginitdeferred`);
+    expect(trg?.n ?? 0, 'je_must_balance is a deferred constraint trigger').toBe(1);
+  });
+
+  it('phase38: stored inclusive headers satisfy subtotal − discount + tax = total', async () => {
+    if (!(await applied38())) { console.warn('phase38 not applied — skipping header identity check.'); return; }
+    const badInv = await sql<{ invoice_number: string }>(
+      `SELECT invoice_number FROM invoices
+       WHERE COALESCE(prices_inclusive, false) AND status <> 'draft'
+         AND ABS((subtotal - discount_amount + tax_amount) - total_amount) > 0.02`);
+    expect(badInv, `inclusive invoices violating the header identity: ${JSON.stringify(badInv)}`).toEqual([]);
+    const badBill = await sql<{ bill_number: string }>(
+      `SELECT bill_number FROM vendor_bills
+       WHERE COALESCE(prices_inclusive, false) AND status <> 'draft'
+         AND ABS((subtotal - discount_amount + tax_amount) - total_amount) > 0.02`);
+    expect(badBill, `inclusive bills violating the header identity: ${JSON.stringify(badBill)}`).toEqual([]);
+  });
+});

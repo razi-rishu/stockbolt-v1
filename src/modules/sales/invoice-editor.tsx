@@ -106,6 +106,13 @@ export default function InvoiceEditorPage() {
     queryFn: () => getAdapter().contacts.list(company_id!, 'customer'),
     enabled: !!company_id,
   });
+  // Receipts applied to invoices — shows Paid / Balance due on the doc view.
+  const { data: appliedMap = {} } = useQuery<Record<string, number>>({
+    queryKey: ['invoice_applied_map', company_id],
+    queryFn: () => getAdapter().payments.getAppliedMap(company_id!, 'invoice'),
+    enabled: !!company_id,
+  });
+
   const { data: warehouses = [] } = useQuery<WarehouseRow[]>({
     queryKey: ['warehouses', company_id],
     queryFn: () => getAdapter().warehouses.list(company_id!),
@@ -613,6 +620,7 @@ export default function InvoiceEditorPage() {
       products,
       warehouseName: warehouses.find(w => w.id === existing.warehouse_id)?.name ?? null,
       salespersonName: salespeople.find(p => p.id === existing.salesperson_id)?.name ?? null,
+      paidAmount: appliedMap[existing.id] ?? 0,
     });
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>

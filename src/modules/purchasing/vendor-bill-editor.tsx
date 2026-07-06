@@ -103,6 +103,13 @@ export default function VendorBillEditorPage() {
     queryFn: () => getAdapter().coa.list(company_id!),
     enabled: !!company_id,
   });
+  // Vendor payments applied to bills — shows Paid / Balance due on the doc view.
+  const { data: appliedMap = {} } = useQuery<Record<string, number>>({
+    queryKey: ['bill_applied_map', company_id],
+    queryFn: () => getAdapter().payments.getAppliedMap(company_id!, 'vendor_bill'),
+    enabled: !!company_id,
+  });
+
   const { data: warehouses = [] } = useQuery({
     queryKey: ['warehouses', company_id],
     queryFn: () => getAdapter().warehouses.list(company_id!),
@@ -531,6 +538,7 @@ export default function VendorBillEditorPage() {
       company: companyRow ?? null,
       products,
       warehouseName: warehouses.find(w => w.id === (existing as { warehouse_id?: string | null }).warehouse_id)?.name ?? null,
+      paidAmount: appliedMap[existing.id] ?? 0,
     });
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>

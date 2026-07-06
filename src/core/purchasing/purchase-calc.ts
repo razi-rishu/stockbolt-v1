@@ -33,7 +33,15 @@ export function calcPurchaseLine(input: PurchaseLineInput): PurchaseLineResult {
     const tax_amount = input.tax_rate > 0
       ? round2(net * input.tax_rate / (100 + input.tax_rate))
       : 0;
-    return { line_subtotal, discount_amount, tax_amount, line_total: net };
+    // Same identity as invoice-calc: subtotal − discount + tax = total, so the
+    // stored subtotal must be net of the tax extracted from the price. This
+    // also keeps inventory cost net of recoverable VAT.
+    return {
+      line_subtotal: round2(line_subtotal - tax_amount),
+      discount_amount,
+      tax_amount,
+      line_total: net,
+    };
   }
 
   const tax_amount = round2(net * (input.tax_rate / 100));

@@ -19,6 +19,29 @@ const statusColor: Record<string, string> = {
   draft: 'muted', confirmed: 'success', void: 'danger',
 };
 
+// ── Payment-status badge (same semantics as the Invoices list: "is it paid?") ──
+function PayBadge({ status, total, applied, dueDate, today }: {
+  status: string; total: number; applied: number; dueDate: string | null; today: string;
+}) {
+  if (status !== 'confirmed') return <Badge variant={statusColor[status] as 'muted' | 'success' | 'danger'}>{status}</Badge>;
+  const outstanding = total - applied;
+  const cfg =
+    outstanding <= 0.005
+      ? { label: 'Paid',           bg: '#ecfdf5', text: '#047857', border: '#a7f3d0' }
+      : dueDate && dueDate < today
+      ? { label: 'Overdue',        bg: '#fef2f2', text: '#dc2626', border: '#fecaca' }
+      : applied > 0.005
+      ? { label: 'Partially paid', bg: '#fffbeb', text: '#b45309', border: '#fde68a' }
+      : { label: 'Unpaid',         bg: '#f5f3ff', text: '#6d28d9', border: '#ddd6fe' };
+  return (
+    <span style={{
+      display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
+      fontSize: '11px', fontWeight: 600,
+      background: cfg.bg, color: cfg.text, border: `1px solid ${cfg.border}`,
+    }}>{cfg.label}</span>
+  );
+}
+
 function FilterPill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
@@ -59,6 +82,15 @@ export default function VendorBillsPage() {
     enabled: !!company_id,
   });
   const supplierName = (id: string) => suppliers.find(s => s.id === id)?.name ?? `${id.slice(0, 8)}…`;
+
+  // Vendor payments applied per bill — drives the Paid / Partial / Unpaid /
+  // Overdue badge (mirrors the Invoices list).
+  const { data: appliedMap = {} } = useQuery<Record<string, number>>({
+    queryKey: ['bill_applied_map', company_id],
+    queryFn: () => getAdapter().payments.getAppliedMap(company_id!, 'vendor_bill'),
+    enabled: !!company_id,
+  });
+  const today = new Date().toISOString().slice(0, 10);
 
   const q = search.trim().toLowerCase();
   const filtered = bills.filter(bill => {
@@ -159,7 +191,13 @@ export default function VendorBillsPage() {
                     {Number(bill.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </td>
                   <td className="px-4 py-3" style={{ textAlign: 'center' }}>
-                    <Badge variant={statusColor[bill.status] as 'muted' | 'success' | 'danger'}>{bill.status}</Badge>
+                    <PayBadge
+                      status={bill.status}
+                      total={Number(bill.total_amount ?? 0)}
+                      applied={appliedMap[bill.id] ?? 0}
+                      dueDate={(bill.due_date as string) ?? null}
+                      today={today}
+                    />
                   </td>
                 </tr>
               ))}

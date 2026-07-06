@@ -209,6 +209,8 @@ export interface BillToDocInput {
   products?: ProductRow[];
   /** Optional name for the template's Warehouse toggle. */
   warehouseName?: string | null;
+  /** Optional vendor payments applied (drives Paid / Balance due on the doc). */
+  paidAmount?: number;
 }
 
 /**
@@ -221,7 +223,7 @@ export interface BillToDocInput {
  * the printout makes sense.
  */
 export function vendorBillToDocumentData({
-  bill, items, supplier, company, products, warehouseName,
+  bill, items, supplier, company, products, warehouseName, paidAmount,
 }: BillToDocInput): DocumentData {
   const productById: Record<string, ProductRow> = {};
   for (const p of products ?? []) productById[p.id] = p;
@@ -270,8 +272,8 @@ export function vendorBillToDocumentData({
     tax_total:      tax,
     shipping_total: 0,
     grand_total:    total,
-    paid_amount:    0,                          // payment side not loaded
-    balance_due:    total,
+    paid_amount:    paidAmount ?? 0,
+    balance_due:    Math.max(total - (paidAmount ?? 0), 0),
 
     vat_breakdown: buildVatBreakdown(items.map(it => ({
       tax_rate: Number(it.tax_rate ?? 0),

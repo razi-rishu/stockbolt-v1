@@ -120,6 +120,8 @@ export default function PrintPage() {
     // Names for the template's Warehouse / Salesperson toggles.
     warehouseName?:   string | null;
     salespersonName?: string | null;
+    // Payments applied to the doc (drives Paid / Balance due on the print).
+    paidAmount?:      number;
   }>({
     loading: true,
     error:   null,
@@ -161,14 +163,16 @@ export default function PrintPage() {
           ]);
           if (!inv) throw new Error('Invoice not found');
           const contact = inv.contact_id ? await adapter.contacts.getById(inv.contact_id) : null;
-          const [whs, sps] = await Promise.all([
+          const [whs, sps, applied] = await Promise.all([
             inv.warehouse_id ? adapter.warehouses.list(company_id!).catch(() => []) : Promise.resolve([]),
             inv.salesperson_id ? adapter.salespeople.list(company_id!).catch(() => []) : Promise.resolve([]),
+            adapter.payments.getAppliedMap(company_id!, 'invoice').catch(() => ({} as Record<string, number>)),
           ]);
           patch = {
             ...patch, invoice: inv, invoiceItems: items, contact,
             warehouseName: whs.find(w => w.id === inv.warehouse_id)?.name ?? null,
             salespersonName: sps.find(p => p.id === inv.salesperson_id)?.name ?? null,
+            paidAmount: applied[inv.id] ?? 0,
           };
 
         } else if (docType === 'quote') {
@@ -220,10 +224,14 @@ export default function PrintPage() {
           const contact = bill.supplier_id ? await adapter.contacts.getById(bill.supplier_id) : null;
           // warehouse_id was added to bills in phase12_17; the generated row type predates it.
           const billWhId = (bill as { warehouse_id?: string | null }).warehouse_id ?? null;
-          const whs = billWhId ? await adapter.warehouses.list(company_id!).catch(() => []) : [];
+          const [whs, applied] = await Promise.all([
+            billWhId ? adapter.warehouses.list(company_id!).catch(() => []) : Promise.resolve([]),
+            adapter.payments.getAppliedMap(company_id!, 'vendor_bill').catch(() => ({} as Record<string, number>)),
+          ]);
           patch = {
             ...patch, bill, billItems: items, contact,
             warehouseName: whs.find(w => w.id === billWhId)?.name ?? null,
+            paidAmount: applied[bill.id] ?? 0,
           };
 
         } else if (docType === 'statement' || docType === 'supplier-statement') {
@@ -305,7 +313,7 @@ export default function PrintPage() {
   const baseProps = { company, printConfig };
 
   if (docType === 'invoice' && state.invoice && state.invoiceItems && state.printTemplate) {
-    const docData = invoiceToDocumentData({ invoice: state.invoice, items: state.invoiceItems, contact, company, warehouseName: state.warehouseName, salespersonName: state.salespersonName });
+    const docData = invoiceToDocumentData({ invoice: state.invoice, items: state.invoiceItems, contact, company, warehouseName: state.warehouseName, salespersonName: state.salespersonName, paidAmount: state.paidAmount });
     return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
   }
 
@@ -330,7 +338,7 @@ export default function PrintPage() {
   }
 
   if (docType === 'bill' && state.bill && state.billItems && state.printTemplate) {
-    const docData = vendorBillToDocumentData({ bill: state.bill, items: state.billItems, supplier: contact, company, warehouseName: state.warehouseName });
+    const docData = vendorBillToDocumentData({ bill: state.bill, items: state.billItems, supplier: contact, company, warehouseName: state.warehouseName, paidAmount: state.paidAmount });
     return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
   }
 

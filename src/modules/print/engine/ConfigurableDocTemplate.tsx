@@ -273,8 +273,23 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
         {!!data.shipping_total && data.shipping_total > 0 && row('Shipping', money(data.shipping_total))}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, padding: '8px 12px', borderRadius: 6, background: C.accent, color: '#fff', fontWeight: 800, fontSize: baseFont * 1.05 }}>
           <span>TOTAL {cur}</span>
-          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{num(data.balance_due ?? data.grand_total)}</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{num(data.grand_total)}</span>
         </div>
+        {/* Payments applied → show what's been paid and what's still owed. */}
+        {Number(data.paid_amount ?? 0) > 0 && (
+          <>
+            {row('Amount paid', `(${num(Number(data.paid_amount))})`)}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, padding: '6px 12px', borderRadius: 6, border: `2px solid ${C.accent}`, color: C.text, fontWeight: 800, fontSize: baseFont * 0.95 }}>
+              <span>BALANCE DUE {cur}</span>
+              <span style={{ fontVariantNumeric: 'tabular-nums', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                {num(Number(data.balance_due ?? 0))}
+                {Number(data.balance_due ?? 0) <= 0.005 && (
+                  <span style={{ fontSize: baseFont * 0.7, color: '#047857', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 999, padding: '1px 8px', fontWeight: 700 }}>PAID</span>
+                )}
+              </span>
+            </div>
+          </>
+        )}
       </div>
     );
   }
