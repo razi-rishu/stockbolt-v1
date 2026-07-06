@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation, useParams } from 'react-router-dom';
 import { useAuthInit } from '@/hooks/use-auth-init';
 import { useAuthStore } from '@/store/auth';
 import { RequireAuth } from '@/components/require-auth';
@@ -70,6 +70,14 @@ const StockValuationPage     = lazy(() => import('@/modules/reports/stock-valuat
 // Sales
 const InvoicesPage       = lazy(() => import('@/modules/sales/invoices'));
 const InvoiceEditorPage  = lazy(() => import('@/modules/sales/invoice-editor'));
+// The invoice detail/new editor renders inside the Invoices master-detail
+// workspace via a single :id route, so navigating 66d4… → new (or A → B)
+// changes only the param without remounting. Keying by :id forces a fresh
+// mount so no state (loaded lines, edit mode) leaks between invoices.
+function KeyedInvoiceEditor() {
+  const { id } = useParams();
+  return <InvoiceEditorPage key={id ?? 'new'} />;
+}
 const QuotesPage         = lazy(() => import('@/modules/sales/quotes'));
 const QuoteEditorPage    = lazy(() => import('@/modules/sales/quote-editor'));
 const PaymentsPage       = lazy(() => import('@/modules/sales/payments'));
@@ -307,7 +315,7 @@ function AppRoutes() {
               {/* Sales */}
               <Route path="/sales/invoices" element={<InvoicesPage />}>
                 <Route index element={<div className="flex items-center justify-center rounded-card border border-border-subtle p-12 text-center text-sm text-ink-tertiary">Select an invoice to view it here.</div>} />
-                <Route path=":id" element={<InvoiceEditorPage />} />
+                <Route path=":id" element={<KeyedInvoiceEditor />} />
               </Route>
               <Route path="/sales/quotes/:id"                   element={<QuoteEditorPage />} />
               <Route path="/sales/quotes"                       element={<QuotesPage />} />
