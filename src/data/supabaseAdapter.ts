@@ -4181,6 +4181,11 @@ export function createSupabaseAdapter(
         assertNoError(error, 'bankTransfers.void');
         return;
       },
+      async reopen(id) {
+        const { error } = await rpcAny('reopen_bank_transfer', { p_transfer_id: id });
+        assertNoError(error as Error | null, 'bankTransfers.reopen');
+        return;
+      },
       async getNextNumber(company_id) {
         const { data, error } = await client.rpc('get_next_document_number', { p_company_id: company_id, p_prefix: 'TRF' });
         assertNoError(error, 'bankTransfers.getNextNumber');

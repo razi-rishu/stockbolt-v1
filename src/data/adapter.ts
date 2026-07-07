@@ -1986,6 +1986,8 @@ export interface BankTransfersAPI {
   update(id: string, data: BankTransferUpdate): Promise<BankTransferRow>;
   confirm(id: string): Promise<BankTransferConfirmResult>;
   void(id: string, reason?: string): Promise<void>;
+  /** Phase 39 — Edit a CONFIRMED transfer: reverse the posting + back to draft. */
+  reopen(id: string): Promise<void>;
   getNextNumber(company_id: string): Promise<string>;
 }
 

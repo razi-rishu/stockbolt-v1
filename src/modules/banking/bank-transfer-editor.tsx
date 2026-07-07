@@ -110,6 +110,17 @@ export default function BankTransferEditorPage() {
     onError: (e: Error) => setError(e.message),
   });
 
+  // Phase 39 — Edit a CONFIRMED transfer: reverse the posting + reopen as a draft.
+  const reopenMutation = useMutation({
+    mutationFn: () => getAdapter().bankTransfers.reopen(id!),
+    onSuccess: async () => {
+      await invalidateBooks();
+      qc.invalidateQueries({ queryKey: ['bank_transfer', id] });
+      qc.invalidateQueries({ queryKey: ['bank_transfers'] });
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
   const isDraft = !transfer || transfer.status === 'draft';
   const isConfirmed = transfer?.status === 'confirmed';
   const accountOpts = bankAccounts.map(a => ({ value: a.id, label: a.name }));
@@ -189,11 +200,17 @@ export default function BankTransferEditorPage() {
           </>
         )}
         {isConfirmed && (
-          <Button variant="ghost" className="text-red-600 border-red-300"
-            disabled={voidMutation.isPending}
-            onClick={() => { if (confirm(t('banking.void_confirm_text'))) { setError(null); voidMutation.mutate(); } }}>
-            {t('banking.void_transfer')}
-          </Button>
+          <>
+            <Button variant="primary" disabled={reopenMutation.isPending}
+              onClick={() => { if (confirm(t('common.reopen_warn') || 'Edit this confirmed document? It reverses its posted entries and reopens it as a draft so you can change it and confirm again.')) { setError(null); reopenMutation.mutate(); } }}>
+              ✎ {t('common.edit') || 'Edit'}
+            </Button>
+            <Button variant="ghost" className="text-red-600 border-red-300"
+              disabled={voidMutation.isPending}
+              onClick={() => { if (confirm(t('banking.void_confirm_text'))) { setError(null); voidMutation.mutate(); } }}>
+              {t('banking.void_transfer')}
+            </Button>
+          </>
         )}
       </div>
     </div>

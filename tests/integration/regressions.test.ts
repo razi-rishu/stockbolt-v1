@@ -1350,6 +1350,19 @@ describe('Phase 38 — tax-inclusive documents post balanced JEs', () => {
     expect(trg?.n ?? 0, 'je_must_balance is a deferred constraint trigger').toBe(1);
   });
 
+  it('phase39: reopen_bank_transfer reverses the live JE and lands on draft', async () => {
+    const rows = await sql<{ ok_code: boolean; ok_rev: boolean; ok_draft: boolean }>(
+      `SELECT (prosrc LIKE '%account_code%')    AS ok_code,
+              (prosrc LIKE '%reversal_of_id%')  AS ok_rev,
+              (prosrc LIKE '%''draft''%')       AS ok_draft
+       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public' AND p.proname = 'reopen_bank_transfer'`);
+    if (rows.length === 0) { console.warn('phase39 not applied — skipping reopen_bank_transfer check.'); return; }
+    expect(rows[0].ok_code,  'reversal GL rows carry account_code').toBe(true);
+    expect(rows[0].ok_rev,   'reversal is linked via reversal_of_id').toBe(true);
+    expect(rows[0].ok_draft, 'transfer returns to draft').toBe(true);
+  });
+
   it('phase38: stored inclusive headers satisfy subtotal − discount + tax = total', async () => {
     if (!(await applied38())) { console.warn('phase38 not applied — skipping header identity check.'); return; }
     const badInv = await sql<{ invoice_number: string }>(

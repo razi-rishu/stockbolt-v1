@@ -363,6 +363,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       update:        () => notImplemented('bankTransfers.update'),
       confirm:       () => notImplemented('bankTransfers.confirm'),
       void:          () => notImplemented('bankTransfers.void'),
+      reopen:        () => notImplemented('bankTransfers.reopen'),
       getNextNumber: () => notImplemented('bankTransfers.getNextNumber'),
     },
     expenses: {
