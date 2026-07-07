@@ -238,16 +238,24 @@ function FloatingActionButton() {
 }
 
 // ── Sales Trend chart ───────────────────────────────────────────────────────
-function SalesTrendChart({ data }: { data: { date: string; sales: number; purchases: number }[] }) {
-  const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+type TrendMode = 'week' | 'month' | 'year';
+
+function SalesTrendChart({ data, mode = 'week' }: { data: { date: string; sales: number; purchases: number }[]; mode?: TrendMode }) {
+  const dayLabels   = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const chartData = data.map((d) => ({
     ...d,
-    label: dayLabels[new Date(d.date).getDay()],
+    label: mode === 'week'  ? dayLabels[new Date(d.date).getDay()]
+         : mode === 'month' ? String(Number(d.date.slice(8, 10)))          // day of month
+         :                    monthLabels[Number(d.date.slice(5, 7)) - 1], // month of year
   }));
   const hasData = data.some((d) => d.sales > 0 || d.purchases > 0);
 
   if (!hasData) {
-    return <p style={{ padding: '40px 0', textAlign: 'center', fontSize: theme.fontBase, color: theme.inkFaint }}>No transactions in the last 7 days.</p>;
+    const emptyMsg = mode === 'week'  ? 'No transactions in the last 7 days.'
+                   : mode === 'month' ? 'No transactions this month yet.'
+                   :                    'No transactions this year yet.';
+    return <p style={{ padding: '40px 0', textAlign: 'center', fontSize: theme.fontBase, color: theme.inkFaint }}>{emptyMsg}</p>;
   }
 
   return (
@@ -265,17 +273,43 @@ function SalesTrendChart({ data }: { data: { date: string; sales: number; purcha
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke={theme.border} vertical={false} />
-          <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: theme.inkMuted }} />
+          <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: theme.inkMuted }}
+            interval={mode === 'week' ? 0 : 'preserveStartEnd'} />
           <YAxis hide />
           <Tooltip
             contentStyle={{ borderRadius: 8, border: `1px solid ${theme.border}`, fontSize: 12 }}
             formatter={(v, name) => [fmt(Number(v ?? 0)), name === 'sales' ? 'Sales' : 'Purchases']}
-            labelFormatter={(l) => `Day: ${l}`}
+            labelFormatter={(l) => (mode === 'week' ? `Day: ${l}` : mode === 'month' ? `Day ${l}` : String(l))}
           />
           <Area type="monotone" dataKey="sales"     stroke="#7c3aed" strokeWidth={2.5} fill="url(#gradSales)" />
           <Area type="monotone" dataKey="purchases" stroke="#10b981" strokeWidth={2.5} fill="url(#gradPurchases)" />
         </AreaChart>
       </ResponsiveContainer>
+    </div>
+  );
+}
+
+// ── Phase 40 — Today / This Month / This Year KPI period toggle ─────────────
+type KpiPeriod = 'today' | 'month' | 'year';
+const KPI_PERIOD_KEY = 'stockbolt.dashboard.period';
+
+function PeriodToggle({ value, onChange }: { value: KpiPeriod; onChange: (p: KpiPeriod) => void }) {
+  const opts: { key: KpiPeriod; label: string }[] = [
+    { key: 'today', label: 'Today' },
+    { key: 'month', label: 'This Month' },
+    { key: 'year',  label: 'This Year' },
+  ];
+  return (
+    <div style={{ display: 'inline-flex', background: theme.muted, borderRadius: '999px', padding: '3px', gap: '2px' }}>
+      {opts.map(o => (
+        <button key={o.key} onClick={() => onChange(o.key)} style={{
+          padding: '5px 14px', borderRadius: '999px', border: 'none', cursor: 'pointer',
+          fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
+          background: value === o.key ? '#fff' : 'transparent',
+          color: value === o.key ? '#5b21b6' : theme.inkMuted,
+          boxShadow: value === o.key ? '0 1px 3px rgba(0,0,0,.12)' : 'none',
+        }}>{o.label}</button>
+      ))}
     </div>
   );
 }
@@ -320,6 +354,16 @@ export default function DashboardPage() {
   const [data, setData] = useState<OwnerDashboard | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Phase 40 — KPI period (Today / This Month / This Year), remembered per device.
+  const [period, setPeriodState] = useState<KpiPeriod>(() => {
+    const saved = localStorage.getItem(KPI_PERIOD_KEY);
+    return saved === 'month' || saved === 'year' ? saved : 'today';
+  });
+  const setPeriod = (p: KpiPeriod) => {
+    setPeriodState(p);
+    try { localStorage.setItem(KPI_PERIOD_KEY, p); } catch { /* private mode */ }
+  };
+
   useEffect(() => {
     if (!company_id) return;
     adapter.reports.getOwnerDashboard(company_id)
@@ -346,9 +390,24 @@ export default function DashboardPage() {
     <div style={{ padding: '96px 0', textAlign: 'center', color: theme.inkMuted }}>{t('common.no_data')}</div>
   );
 
+  // Phase 40 — flow KPIs follow the selected period (fall back to the legacy
+  // today fields if period_stats is missing, e.g. a stale cached payload).
+  const ps = data.period_stats?.[period] ?? {
+    sales: data.today_sales_amount, sales_prev: data.today_sales_amount_prev,
+    purchases: data.today_purchases_amount, purchases_prev: data.today_purchases_amount_prev,
+  };
+  const periodWord   = period === 'today' ? 'Today' : period === 'month' ? 'This Month' : 'This Year';
+  const monthTitle   = new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  const trendTitle   = period === 'today' ? 'Sales Trend — last 7 days'
+                     : period === 'month' ? `Sales Trend — ${monthTitle}`
+                     :                      `Sales Trend — ${new Date().getFullYear()}`;
+  const trendData    = period === 'today' ? data.trend_7d
+                     : period === 'month' ? (data.trend_month ?? data.trend_7d)
+                     :                      (data.trend_year ?? data.trend_7d);
+
   // Pre-compute deltas
-  const dSales      = deltaPct(data.today_sales_amount,    data.today_sales_amount_prev);
-  const dPurchases  = deltaPct(data.today_purchases_amount, data.today_purchases_amount_prev);
+  const dSales      = deltaPct(ps.sales,     ps.sales_prev);
+  const dPurchases  = deltaPct(ps.purchases, ps.purchases_prev);
   const dInventory  = deltaPct(data.inventory_value,        data.inventory_value_prev);
   const dSku        = deltaPct(data.sku_count,              data.sku_count_prev);
   const dAR         = deltaPct(data.outstanding_ar,         data.outstanding_ar_prev);
@@ -416,14 +475,19 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* ── Phase 40 — KPI period toggle (drives Sales/Purchases + trend) ── */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '-12px' }}>
+        <PeriodToggle value={period} onChange={setPeriod} />
+      </div>
+
       {/* ── 6 KPI tiles (3×2 on desktop, horizontal compact layout) ────── */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
         gap: '14px',
       }}>
-        <KpiTile label="Today Sales"      value={formatCurrency(data.today_sales_amount, currency)}      sub="Revenue (excl. VAT)" delta={dSales}     icon={<TrendingUpIcon />} tone="emerald" href="/sales/invoices" />
-        <KpiTile label="Today Purchases"  value={formatCurrency(data.today_purchases_amount, currency)}  sub="Inventory Received"  delta={dPurchases} icon={<CartIcon />}       tone="violet"  href="/purchasing/bills" />
+        <KpiTile label={`${periodWord} Sales`}     value={formatCurrency(ps.sales, currency)}     sub="Revenue (excl. VAT)" delta={dSales}     icon={<TrendingUpIcon />} tone="emerald" href="/sales/invoices" />
+        <KpiTile label={`${periodWord} Purchases`} value={formatCurrency(ps.purchases, currency)} sub="Bills (excl. VAT)"   delta={dPurchases} icon={<CartIcon />}       tone="violet"  href="/purchasing/bills" />
         <KpiTile label="Inventory Value"  value={formatCurrency(data.inventory_value, currency)}         sub="Asset Value"         delta={dInventory} icon={<WalletIcon />}     tone="slate"   href="/reports/stock-valuation" />
         <KpiTile label="SKU Count"        value={fmtInt(data.sku_count)}                     sub="Unique Parts"        delta={dSku}       icon={<StoreIcon />}      tone="sky"     href="/products" />
         <KpiTile label="Receivables"      value={formatCurrency(data.outstanding_ar, currency)}          sub="Outstanding"         delta={dAR}        icon={<CoinIcon />}       tone="orange"  href="/reports/ar-aging" />
@@ -435,10 +499,10 @@ export default function DashboardPage() {
         {/* Sales Trend (2/3) */}
         <Panel
           icon="📈"
-          title="Sales Trend — last 7 days"
+          title={trendTitle}
           right={<LinkChip to="/reports/profit-loss">P&amp;L</LinkChip>}
         >
-          <SalesTrendChart data={data.trend_7d} />
+          <SalesTrendChart data={trendData} mode={period === 'today' ? 'week' : period} />
         </Panel>
 
         {/* Recent Inventory (1/3) */}

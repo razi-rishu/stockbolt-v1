@@ -1262,6 +1262,14 @@ export interface CashFlowStatement {
   closing_cash: number;
 }
 
+/** Phase 40 — one period's flow KPIs, net of VAT (total − tax). */
+export interface DashboardPeriodStats {
+  sales: number;           // confirmed invoices in the period
+  sales_prev: number;      // same-length comparison period (for delta %)
+  purchases: number;       // confirmed vendor bills in the period
+  purchases_prev: number;
+}
+
 export interface OwnerDashboard {
   // ── Today snapshots ────────────────────────────────────────────────────
   today_sales_count: number;
@@ -1269,6 +1277,12 @@ export interface OwnerDashboard {
   today_sales_amount_prev: number;     // yesterday's confirmed sales (for delta %)
   today_purchases_amount: number;      // confirmed vendor bills today
   today_purchases_amount_prev: number; // yesterday's confirmed bill total
+  // ── Phase 40 — Today / This Month / This Year KPI periods ─────────────
+  period_stats: {
+    today: DashboardPeriodStats;
+    month: DashboardPeriodStats;   // month-to-date vs same days last month
+    year:  DashboardPeriodStats;   // year-to-date vs same period last year
+  };
   // ── Snapshot totals (current value + value 30 days ago for delta) ─────
   inventory_value: number;
   inventory_value_prev: number;
@@ -1286,6 +1300,10 @@ export interface OwnerDashboard {
   overdue_invoices_count: number;
   /** 7-day trend (sales + purchases per day) */
   trend_7d: { date: string; sales: number; purchases: number }[];
+  /** Phase 40 — daily trend for the current month */
+  trend_month: { date: string; sales: number; purchases: number }[];
+  /** Phase 40 — monthly trend for the current year (date = YYYY-MM-01) */
+  trend_year: { date: string; sales: number; purchases: number }[];
   /** Recent inventory additions — latest products created */
   recent_inventory: { product_id: string; name: string; oe_number: string | null; sku: string; unit_code: string; quantity: number }[];
 }

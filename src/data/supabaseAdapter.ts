@@ -3330,8 +3330,51 @@ export function createSupabaseAdapter(
         const today = todayDate.toISOString().slice(0, 10);
         const yesterday = new Date(todayDate.getTime() - 86_400_000).toISOString().slice(0, 10);
         const monthStart = today.slice(0, 7) + '-01';
-        const last7 = new Date(todayDate.getTime() - 6 * 86_400_000).toISOString().slice(0, 10);
         const last30 = new Date(todayDate.getTime() - 30 * 86_400_000).toISOString().slice(0, 10);
+
+        // Phase 40 — Today / This Month / This Year period anchors. Comparison
+        // periods are the same length: MTD vs same days last month, YTD vs
+        // same dates last year (day clamped, e.g. Jul 31 → Jun 30).
+        const pad2 = (n: number) => String(n).padStart(2, '0');
+        const clampDay = (y: number, m: number, d: number) => {
+          const last = new Date(Date.UTC(y, m, 0)).getUTCDate(); // day 0 of next month = last day of m
+          return `${y}-${pad2(m)}-${pad2(Math.min(d, last))}`;
+        };
+        const curY = Number(today.slice(0, 4));
+        const curM = Number(today.slice(5, 7));
+        const curD = Number(today.slice(8, 10));
+        const yearStart         = `${curY}-01-01`;
+        const prevYearStart     = `${curY - 1}-01-01`;
+        const prevYearSameDate  = clampDay(curY - 1, curM, curD);
+        const prevMonthY        = curM === 1 ? curY - 1 : curY;
+        const prevMonthM        = curM === 1 ? 12 : curM - 1;
+        const prevMonthStart    = `${prevMonthY}-${pad2(prevMonthM)}-01`;
+        const prevMonthSameDay  = clampDay(prevMonthY, prevMonthM, curD);
+
+        // One paged fetch per document type covers every KPI period AND all
+        // three trend charts (7-day, daily-this-month, monthly-this-year).
+        // Amounts are net of VAT (total − tax) so "Revenue (excl. VAT)" is true.
+        type FlowRow = { date: string; total_amount: number; tax_amount: number | null };
+        const fetchFlows = async (table: 'invoices' | 'vendor_bills'): Promise<FlowRow[]> => {
+          const out: FlowRow[] = [];
+          const page = 1000;
+          for (let i = 0; i < 25; i++) {
+            const { data, error } = await client
+              .from(table)
+              .select('date, total_amount, tax_amount')
+              .eq('company_id', company_id)
+              .eq('status', 'confirmed')
+              .gte('date', prevYearStart)
+              .lte('date', today)
+              .order('date', { ascending: true })
+              .range(i * page, (i + 1) * page - 1);
+            assertNoError(error, 'reports.getOwnerDashboard');
+            out.push(...((data ?? []) as FlowRow[]));
+            if ((data ?? []).length < page) return out;
+          }
+          console.warn(`getOwnerDashboard: ${table} fetch capped at 25k rows — period totals may be understated`);
+          return out;
+        };
 
         // Helper: GL balance for a single account code up to a given date (inclusive).
         // normalDebit=true for asset/expense (DR-CR), false for liability/revenue (CR-DR).
@@ -3357,8 +3400,7 @@ export function createSupabaseAdapter(
         };
 
         const [
-          { data: todayInvs },     { data: yestInvs },
-          { data: todayBills },    { data: yestBills },
+          flowInvs, flowBills,
           arNow, arPrev,
           apNow, apPrev,
           invNow, invPrev,
@@ -3368,14 +3410,10 @@ export function createSupabaseAdapter(
           { data: topProds },
           { data: lowStock },
           { data: overdueInvs },
-          { data: trendInvs },
-          { data: trendBills },
           { data: recentProds },
         ] = await Promise.all([
-          client.from('invoices').select('total_amount').eq('company_id', company_id).eq('status', 'confirmed').eq('date', today),
-          client.from('invoices').select('total_amount').eq('company_id', company_id).eq('status', 'confirmed').eq('date', yesterday),
-          client.from('vendor_bills').select('total_amount').eq('company_id', company_id).eq('status', 'confirmed').eq('date', today),
-          client.from('vendor_bills').select('total_amount').eq('company_id', company_id).eq('status', 'confirmed').eq('date', yesterday),
+          fetchFlows('invoices'),
+          fetchFlows('vendor_bills'),
 
           balanceAsOf('1200', today,  true),
           balanceAsOf('1200', last30, true),
@@ -3405,22 +3443,41 @@ export function createSupabaseAdapter(
 
           client.from('invoices').select('id, total_amount').eq('company_id', company_id).eq('status', 'confirmed').lt('due_date', today).limit(500),
 
-          // 7-day trend — sales
-          client.from('invoices').select('date, total_amount').eq('company_id', company_id).eq('status', 'confirmed').gte('date', last7).lte('date', today),
-          // 7-day trend — purchases
-          client.from('vendor_bills').select('date, total_amount').eq('company_id', company_id).eq('status', 'confirmed').gte('date', last7).lte('date', today),
-
           // Recent inventory: latest 5 active products + a unit code (best-effort)
           client.from('products').select('id, name, oe_number, sku, unit_id, units_of_measure(code)')
             .eq('company_id', company_id).eq('is_active', true)
             .order('created_at', { ascending: false }).limit(5),
         ]);
 
-        const todayCount     = (todayInvs ?? []).length;
-        const todayAmount    = (todayInvs ?? []).reduce((s, r) => s + Number(r.total_amount ?? 0), 0);
-        const yestAmount     = (yestInvs ?? []).reduce((s, r) => s + Number(r.total_amount ?? 0), 0);
-        const todayPurchases = (todayBills ?? []).reduce((s, r) => s + Number(r.total_amount ?? 0), 0);
-        const yestPurchases  = (yestBills ?? []).reduce((s, r) => s + Number(r.total_amount ?? 0), 0);
+        // Net revenue / purchases per period (total − tax so figures are excl. VAT).
+        const net = (r: FlowRow) => Number(r.total_amount ?? 0) - Number(r.tax_amount ?? 0);
+        const sumRange = (rows: FlowRow[], from: string, to: string) =>
+          rows.reduce((s, r) => (r.date >= from && r.date <= to ? s + net(r) : s), 0);
+
+        const todayCount     = flowInvs.filter(r => r.date === today).length;
+        const todayAmount    = sumRange(flowInvs,  today, today);
+        const yestAmount     = sumRange(flowInvs,  yesterday, yesterday);
+        const todayPurchases = sumRange(flowBills, today, today);
+        const yestPurchases  = sumRange(flowBills, yesterday, yesterday);
+
+        const periodStats = {
+          today: {
+            sales: todayAmount, sales_prev: yestAmount,
+            purchases: todayPurchases, purchases_prev: yestPurchases,
+          },
+          month: {
+            sales:          sumRange(flowInvs,  monthStart, today),
+            sales_prev:     sumRange(flowInvs,  prevMonthStart, prevMonthSameDay),
+            purchases:      sumRange(flowBills, monthStart, today),
+            purchases_prev: sumRange(flowBills, prevMonthStart, prevMonthSameDay),
+          },
+          year: {
+            sales:          sumRange(flowInvs,  yearStart, today),
+            sales_prev:     sumRange(flowInvs,  prevYearStart, prevYearSameDate),
+            purchases:      sumRange(flowBills, yearStart, today),
+            purchases_prev: sumRange(flowBills, prevYearStart, prevYearSameDate),
+          },
+        };
 
         // Top products by revenue this month
         const prodRevenue: Record<string, { name: string; qty: number; rev: number }> = {};
@@ -3463,19 +3520,42 @@ export function createSupabaseAdapter(
           if (row.min > 0 && row.qty <= row.min) lowStockCount++;
         }
 
-        // 7-day trend — build a date-keyed map then iterate days for a complete series
+        // Trends — date-keyed (daily) and month-keyed maps from the same rows,
+        // then iterate the calendar so every series is gap-free.
         const salesByDate: Record<string, number> = {};
-        for (const r of (trendInvs ?? []) as { date: string; total_amount: number }[]) {
-          salesByDate[r.date] = (salesByDate[r.date] ?? 0) + Number(r.total_amount ?? 0);
+        const salesByMonth: Record<string, number> = {};
+        for (const r of flowInvs) {
+          salesByDate[r.date] = (salesByDate[r.date] ?? 0) + net(r);
+          if (r.date >= yearStart) {
+            const m = r.date.slice(0, 7);
+            salesByMonth[m] = (salesByMonth[m] ?? 0) + net(r);
+          }
         }
         const purchasesByDate: Record<string, number> = {};
-        for (const r of (trendBills ?? []) as { date: string; total_amount: number }[]) {
-          purchasesByDate[r.date] = (purchasesByDate[r.date] ?? 0) + Number(r.total_amount ?? 0);
+        const purchasesByMonth: Record<string, number> = {};
+        for (const r of flowBills) {
+          purchasesByDate[r.date] = (purchasesByDate[r.date] ?? 0) + net(r);
+          if (r.date >= yearStart) {
+            const m = r.date.slice(0, 7);
+            purchasesByMonth[m] = (purchasesByMonth[m] ?? 0) + net(r);
+          }
         }
         const trend7d: { date: string; sales: number; purchases: number }[] = [];
         for (let i = 6; i >= 0; i--) {
           const d = new Date(todayDate.getTime() - i * 86_400_000).toISOString().slice(0, 10);
           trend7d.push({ date: d, sales: salesByDate[d] ?? 0, purchases: purchasesByDate[d] ?? 0 });
+        }
+        // Daily series for the current month (1st → today).
+        const trendMonth: { date: string; sales: number; purchases: number }[] = [];
+        for (let d = 1; d <= curD; d++) {
+          const key = `${today.slice(0, 7)}-${pad2(d)}`;
+          trendMonth.push({ date: key, sales: salesByDate[key] ?? 0, purchases: purchasesByDate[key] ?? 0 });
+        }
+        // Monthly series for the current year (Jan → current month).
+        const trendYear: { date: string; sales: number; purchases: number }[] = [];
+        for (let m = 1; m <= curM; m++) {
+          const key = `${curY}-${pad2(m)}`;
+          trendYear.push({ date: `${key}-01`, sales: salesByMonth[key] ?? 0, purchases: purchasesByMonth[key] ?? 0 });
         }
 
         // Overdue: confirmed invoices past due AND with positive outstanding
@@ -3513,6 +3593,7 @@ export function createSupabaseAdapter(
           today_sales_amount_prev: yestAmount,
           today_purchases_amount: todayPurchases,
           today_purchases_amount_prev: yestPurchases,
+          period_stats: periodStats,
           inventory_value: Math.max(0, invNow),
           inventory_value_prev: Math.max(0, invPrev),
           sku_count: skuCountNow ?? 0,
@@ -3527,6 +3608,8 @@ export function createSupabaseAdapter(
           low_stock_count: lowStockCount,
           overdue_invoices_count: overdueCount,
           trend_7d: trend7d,
+          trend_month: trendMonth,
+          trend_year: trendYear,
           recent_inventory: recentInventory,
         };
       },
