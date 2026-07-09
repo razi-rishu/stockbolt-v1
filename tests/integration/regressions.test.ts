@@ -1406,6 +1406,59 @@ describe('Phase 38 — tax-inclusive documents post balanced JEs', () => {
     expect(true).toBe(true);
   });
 
+  it('phase42: no stranded deferred-COGS (pending queue, zero on-hand, value stuck in 1300) — warn-only', async () => {
+    // Pre-phase41 mis-costed edit-reposts parked sales in the deferred queue
+    // with the purchase cost stranded in 1300. Phase 42 flushed them; phase41
+    // prevents new ones. Tenant data must not block commits → warn-only.
+    const stranded = await sql<{ company: string; product: string; value: number }>(
+      `SELECT co.name AS company, p.name AS product,
+              ROUND(SUM(sl.direction * sl.total_cost), 2) AS value
+       FROM deferred_cogs_queue dcq
+       JOIN companies co ON co.id = dcq.company_id
+       JOIN products  p  ON p.id  = dcq.product_id
+       JOIN stock_ledger sl ON sl.company_id = dcq.company_id AND sl.product_id = dcq.product_id
+        AND sl.reversal_of_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM stock_ledger x WHERE x.reversal_of_id = sl.id)
+       WHERE dcq.status = 'pending'
+       GROUP BY co.name, p.name
+       HAVING SUM(sl.direction * sl.quantity) = 0 AND SUM(sl.direction * sl.total_cost) > 0`);
+    if (stranded.length > 0) console.warn(`stranded deferred-COGS found (run phase42 repair): ${JSON.stringify(stranded)}`);
+    expect(Array.isArray(stranded)).toBe(true);
+  });
+
+  it('phase43: reversals carry the voucher date, never CURRENT_DATE', async () => {
+    const [gate] = await sql<{ ok: boolean }>(
+      `SELECT (prosrc LIKE '%v_rev_entry, v_je.date%') AS ok FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname='public' AND p.proname='void_invoice' LIMIT 1`);
+    if (!gate?.ok) { console.warn('phase43 not applied — skipping voucher-date checks.'); return; }
+
+    // No reversal/reopen/void function may date its reversal at today.
+    const offenders = await sql<{ proname: string }>(
+      `SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname='public'
+         AND (p.prosrc LIKE '%v_rev_entry, CURRENT_DATE%'
+           OR p.prosrc LIKE '%v_rev_je_num, CURRENT_DATE%')`);
+    expect(offenders, `functions still dating reversals at today: ${JSON.stringify(offenders)}`).toEqual([]);
+
+    // Every reversal JE sits on its original's date (locked-period rows excepted).
+    const [bad] = await sql<{ n: number }>(
+      `SELECT COUNT(*)::int AS n
+       FROM journal_entries rev
+       JOIN journal_entries orig ON orig.id = rev.reversal_of_id
+       JOIN companies co ON co.id = rev.company_id
+       WHERE rev.date <> orig.date
+         AND (co.period_lock_date IS NULL OR orig.date > co.period_lock_date)`);
+    expect(bad?.n ?? 0, 'reversal JEs dated away from their voucher date').toBe(0);
+
+    // GL rows always carry their JE's date (period reports read gl.date).
+    const [glbad] = await sql<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM general_ledger gl
+       JOIN journal_entries je ON je.id = gl.journal_entry_id
+       WHERE gl.date <> je.date`);
+    expect(glbad?.n ?? 0, 'GL rows dated differently from their JE').toBe(0);
+  });
+
   it('phase38: stored inclusive headers satisfy subtotal − discount + tax = total', async () => {
     if (!(await applied38())) { console.warn('phase38 not applied — skipping header identity check.'); return; }
     const badInv = await sql<{ invoice_number: string }>(
