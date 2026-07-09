@@ -134,16 +134,20 @@ export function createSupabaseAdapter(
     },
     // ── Auth ───────────────────────────────────────────────────────────────
     auth: {
-      async signUp({ email, password }) {
+      async signUp({ email, password, first_name, last_name }) {
         // Land the confirmation link on /verify-email so the user sees a clear
         // "Email verified" page. (The redirect URL must be allow-listed in
         // Supabase → Auth → URL Configuration.)
         const emailRedirectTo = typeof window !== 'undefined'
           ? `${window.location.origin}/verify-email`
           : undefined;
+        const full_name = [first_name, last_name].filter(Boolean).join(' ');
         const { data, error } = await client.auth.signUp({
           email, password,
-          options: emailRedirectTo ? { emailRedirectTo } : undefined,
+          options: {
+            ...(emailRedirectTo ? { emailRedirectTo } : {}),
+            ...(full_name ? { data: { first_name, last_name, full_name } } : {}),
+          },
         });
         if (error) throw new SupabaseAuthError(error.message);
         if (!data.user) throw new SupabaseAuthError('signUp returned no user');
@@ -154,6 +158,15 @@ export function createSupabaseAdapter(
         if (error) throw new SupabaseAuthError(error.message);
         if (!data.user) throw new SupabaseAuthError('signIn returned no user');
         return { user_id: data.user.id };
+      },
+      async signInWithOAuth(provider) {
+        // The redirect URL must be allow-listed in Supabase → Auth →
+        // URL Configuration (same rule as /verify-email above).
+        const { error } = await client.auth.signInWithOAuth({
+          provider,
+          options: { redirectTo: `${window.location.origin}/auth/callback` },
+        });
+        if (error) throw new SupabaseAuthError(error.message);
       },
       async signOut() {
         const { error } = await client.auth.signOut();

@@ -134,8 +134,15 @@ export interface PrintConfig {
 
 // ── Auth API ──────────────────────────────────────────────────────────────────
 export interface AuthAPI {
-  signUp(params: { email: string; password: string }): Promise<{ user_id: string }>;
+  signUp(params: {
+    email: string;
+    password: string;
+    first_name?: string;
+    last_name?: string;
+  }): Promise<{ user_id: string }>;
   signIn(params: { email: string; password: string }): Promise<{ user_id: string }>;
+  /** Starts an OAuth redirect flow; the browser leaves the app and returns to /auth/callback. */
+  signInWithOAuth(provider: 'google'): Promise<void>;
   signOut(): Promise<void>;
   getCurrentUserId(): Promise<string | null>;
   getSession(): Promise<{ user_id: string; email: string } | null>;

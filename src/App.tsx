@@ -20,6 +20,7 @@ const RegisterPage       = lazy(() => import('@/modules/auth/register'));
 const ForgotPasswordPage = lazy(() => import('@/modules/auth/forgot-password'));
 const ResetPasswordPage  = lazy(() => import('@/modules/auth/reset-password'));
 const EmailVerifyPage    = lazy(() => import('@/modules/auth/email-verification'));
+const OAuthCallbackPage  = lazy(() => import('@/modules/auth/oauth-callback'));
 
 // Onboarding
 const SetupWizardPage    = lazy(() => import('@/modules/onboarding/setup-wizard'));
@@ -220,6 +221,7 @@ function AppRoutes() {
         <Route path="/forgot-password"  element={<ForgotPasswordPage />} />
         <Route path="/reset-password"   element={<ResetPasswordPage />} />
         <Route path="/verify-email"     element={<EmailVerifyPage />} />
+        <Route path="/auth/callback"    element={<OAuthCallbackPage />} />
 
         {/* ── Authenticated ────────────────────────────────────────── */}
         <Route element={<RequireAuth />}>

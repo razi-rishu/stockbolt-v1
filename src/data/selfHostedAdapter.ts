@@ -12,6 +12,7 @@ export function createSelfHostedAdapter(): DataAdapter {
     auth: {
       signUp: () => notImplemented('auth.signUp'),
       signIn: () => notImplemented('auth.signIn'),
+      signInWithOAuth: () => notImplemented('auth.signInWithOAuth'),
       signOut: () => notImplemented('auth.signOut'),
       getCurrentUserId: () => notImplemented('auth.getCurrentUserId'),
       getSession: () => notImplemented('auth.getSession'),
