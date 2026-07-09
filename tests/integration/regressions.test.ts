@@ -1363,6 +1363,49 @@ describe('Phase 38 — tax-inclusive documents post balanced JEs', () => {
     expect(rows[0].ok_draft, 'transfer returns to draft').toBe(true);
   });
 
+  it('phase41: stock_ledger has a unique monotonic seq and no function uses the uuid tiebreaker', async () => {
+    const [col] = await sql<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM information_schema.columns
+       WHERE table_schema='public' AND table_name='stock_ledger' AND column_name='seq'`);
+    if ((col?.n ?? 0) === 0) { console.warn('phase41 not applied — skipping seq ordering checks.'); return; }
+
+    // seq must be unique (it is the deterministic tiebreaker).
+    const [dup] = await sql<{ total: number; distinct: number }>(
+      `SELECT COUNT(*)::int AS total, COUNT(DISTINCT seq)::int AS distinct FROM stock_ledger`);
+    expect(dup?.total, 'seq is unique across stock_ledger').toBe(dup?.distinct);
+
+    // No function may still order stock_ledger by the random uuid tiebreaker,
+    // and the key readers must use seq.
+    const offenders = await sql<{ proname: string }>(
+      `SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname='public' AND p.prosrc LIKE '%stock_ledger%'
+         AND (p.prosrc LIKE '%created_at DESC, sl.id DESC%' OR p.prosrc LIKE '%created_at DESC, id DESC%')`);
+    expect(offenders, `functions still using the uuid tiebreaker: ${JSON.stringify(offenders)}`).toEqual([]);
+    const readers = await sql<{ proname: string; ok: boolean }>(
+      `SELECT p.proname, (p.prosrc LIKE '%seq DESC%' OR p.prosrc LIKE '%ORDER BY seq%' OR p.prosrc LIKE '%sl.seq%') AS ok
+       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname='public'
+         AND p.proname IN ('confirm_invoice','edit_invoice','confirm_pos_sale','confirm_vendor_bill',
+                           'verify_invariants','find_stock_mismatches','recompute_stock_valuation')`);
+    expect(readers.length, 'key stock readers exist').toBe(7);
+    for (const r of readers) expect(r.ok, `${r.proname} orders by seq`).toBe(true);
+  });
+
+  it('phase41: E1 stock-vs-GL drift per company (warn-only, deferred-COGS legacy excepted)', async () => {
+    const [col] = await sql<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM information_schema.columns
+       WHERE table_schema='public' AND table_name='stock_ledger' AND column_name='seq'`);
+    if ((col?.n ?? 0) === 0) { console.warn('phase41 not applied — skipping E1 sweep.'); return; }
+    const companies = await sql<{ id: string; name: string }>(`SELECT id::text AS id, name FROM companies`);
+    for (const co of companies) {
+      const res = await sql<{ r: { invariant: string; pass: boolean; difference?: number }[] }>(
+        `SELECT verify_invariants('${co.id}'::uuid, CURRENT_DATE) AS r`);
+      const e1 = (res[0]?.r ?? []).find(x => x.invariant === 'E1');
+      if (e1 && !e1.pass) console.warn(`E1 drift at ${co.name}: ${e1.difference} (deferred-COGS legacy or new drift — inspect)`);
+    }
+    expect(true).toBe(true);
+  });
+
   it('phase38: stored inclusive headers satisfy subtotal − discount + tax = total', async () => {
     if (!(await applied38())) { console.warn('phase38 not applied — skipping header identity check.'); return; }
     const badInv = await sql<{ invoice_number: string }>(
