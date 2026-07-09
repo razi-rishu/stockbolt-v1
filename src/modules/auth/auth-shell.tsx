@@ -1,6 +1,7 @@
 import { forwardRef, type InputHTMLAttributes, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { LanguageToggle } from '@/components/language-toggle';
+import { BrandLogo } from '@/components/brand-logo';
 
 /**
  * Shared split-panel shell for the auth pages (2026-07 redesign).
@@ -123,14 +124,6 @@ function Spinner({ className = 'h-4 w-4' }: { className?: string }) {
   );
 }
 
-function BrandMark({ size = 'h-10 w-10' }: { size?: string }) {
-  return (
-    <div className={`flex ${size} items-center justify-center rounded-xl bg-brand-500 shadow-[0_6px_14px_-4px_rgba(124,58,237,0.5)]`}>
-      <IconBolt className="h-5 w-5 text-white" />
-    </div>
-  );
-}
-
 // ── Shell ─────────────────────────────────────────────────────────────────────
 
 export interface AuthFeature {
@@ -176,10 +169,7 @@ export function AuthShell({ marketing, topQuestion, topLinkLabel, topLinkTo, chi
           <div aria-hidden="true" className="pointer-events-none absolute -bottom-24 -end-24 h-96 w-96 rounded-full border-[28px] border-brand-500/[0.05]" />
           <div aria-hidden="true" className="pointer-events-none absolute -bottom-6 -end-6 h-52 w-52 rounded-full border-[20px] border-brand-500/[0.06]" />
 
-          <div className="flex items-center gap-2.5">
-            <BrandMark />
-            <span className="text-xl font-extrabold tracking-tight text-ink-primary">StockBolt</span>
-          </div>
+          <BrandLogo mark={40} text={18} />
 
           <h1 className="mt-14 text-[34px] font-extrabold leading-[1.2] tracking-tight text-ink-primary">
             {marketing.line1}
@@ -233,9 +223,8 @@ export function AuthShell({ marketing, topQuestion, topLinkLabel, topLinkTo, chi
           </div>
 
           {/* small-screen brand row (left panel is hidden) */}
-          <div className="mt-8 flex items-center justify-center gap-2.5 lg:hidden">
-            <BrandMark size="h-9 w-9" />
-            <span className="text-lg font-extrabold tracking-tight text-ink-primary">StockBolt</span>
+          <div className="mt-8 flex justify-center lg:hidden">
+            <BrandLogo mark={36} text={16} />
           </div>
 
           <div className="mx-auto flex w-full max-w-[420px] flex-1 flex-col justify-center py-8">{children}</div>

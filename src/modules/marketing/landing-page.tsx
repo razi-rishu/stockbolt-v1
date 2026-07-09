@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, type Variants } from 'framer-motion';
+import { BrandLogo } from '@/components/brand-logo';
 import {
   Boxes, Calculator, ReceiptText, Users, ShieldCheck, Languages, Warehouse,
   ScrollText, Puzzle, Check, X, ArrowRight, Sparkles, Wallet,
@@ -231,11 +232,8 @@ export default function LandingPage() {
       {/* ── Nav ─────────────────────────────────────────────────────────── */}
       <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(248,250,252,0.72)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', borderBottom: `1px solid ${C.border}` }}>
         <nav className="mx-auto flex items-center justify-between px-5 md:px-8" style={{ maxWidth: 1200, height: 64 }}>
-          <Link to="/" className="flex items-center gap-2" aria-label="StockBolt home">
-            <span style={{ width: 30, height: 30, borderRadius: 9, background: GRAD, display: 'grid', placeItems: 'center', boxShadow: '0 6px 16px -4px rgba(109,40,217,.5)' }}>
-              <Zap size={17} color="#fff" />
-            </span>
-            <span style={{ fontWeight: 800, fontSize: 18, letterSpacing: '-.02em' }}>StockBolt</span>
+          <Link to="/" className="flex items-center" aria-label="StockBolt home">
+            <BrandLogo mark={32} text={16} />
           </Link>
           <div className="hidden items-center gap-7 md:flex" style={{ fontSize: 14, fontWeight: 500, color: C.muted }}>
             <a href="#features" className="transition-colors hover:text-slate-900">Features</a>
@@ -479,10 +477,7 @@ export default function LandingPage() {
       <footer style={{ borderTop: `1px solid ${C.border}`, background: '#fff' }}>
         <div className="mx-auto grid gap-8 px-5 md:px-8 md:grid-cols-2" style={{ maxWidth: 1100, paddingTop: 48, paddingBottom: 40 }}>
           <div>
-            <div className="flex items-center gap-2">
-              <span style={{ width: 28, height: 28, borderRadius: 8, background: GRAD, display: 'grid', placeItems: 'center' }}><Zap size={16} color="#fff" /></span>
-              <span style={{ fontWeight: 800, fontSize: 17 }}>StockBolt ERP</span>
-            </div>
+            <BrandLogo mark={28} text={15} />
             <p style={{ color: C.text, fontSize: 15, fontWeight: 600, marginTop: 16 }}>Inventory. Accounting. Sales.</p>
             <p style={{ color: C.muted, fontSize: 14, marginTop: 6, maxWidth: 320, lineHeight: 1.6 }}>Made for modern auto parts businesses.</p>
           </div>

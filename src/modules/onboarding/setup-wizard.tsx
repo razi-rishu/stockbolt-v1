@@ -9,6 +9,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { runOnboarding, type WizardData } from '@/core/onboarding';
 import { LanguageToggle } from '@/components/language-toggle';
+import { BrandLogo } from '@/components/brand-logo';
 
 // ── Country / currency data ────────────────────────────────────────────────
 const COUNTRIES = [
@@ -235,13 +236,8 @@ export default function SetupWizardPage() {
           <div style={{ ...decorCircleStyle, width: 120, height: 120, bottom: 40, left: -30, background: 'rgba(255,255,255,0.05)' }} />
 
           {/* Logo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '2.5rem', position: 'relative', zIndex: 1 }}>
-            <div style={logoIconStyle}>
-              <svg viewBox="0 0 24 24" fill="white" style={{ width: 16, height: 16 }} aria-hidden="true">
-                <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" />
-              </svg>
-            </div>
-            <span style={{ fontSize: 15, fontWeight: 600, color: '#fff', letterSpacing: '-0.01em' }}>StockBolt</span>
+          <div style={{ marginBottom: '2.5rem', position: 'relative', zIndex: 1 }}>
+            <BrandLogo mark={30} text={14} tone="white" />
           </div>
 
           {/* Steps */}
@@ -566,13 +562,6 @@ const sidebarStyle: CSSProperties = {
 const decorCircleStyle: CSSProperties = {
   position: 'absolute',
   borderRadius: '50%',
-};
-
-const logoIconStyle: CSSProperties = {
-  width: 32, height: 32,
-  background: 'rgba(255,255,255,0.18)',
-  borderRadius: 8,
-  display: 'flex', alignItems: 'center', justifyContent: 'center',
 };
 
 const rightPanelStyle: CSSProperties = {

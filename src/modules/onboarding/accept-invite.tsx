@@ -17,6 +17,7 @@ import { ROLE_LABELS, ROLE_DESCRIPTIONS, type AppRole } from '@/lib/permissions'
 import { theme } from '@/ui/theme';
 import { Button } from '@/ui/button';
 import { LanguageToggle } from '@/components/language-toggle';
+import { BrandLogo } from '@/components/brand-logo';
 import type { PendingInvite } from '@/data/adapter';
 
 export default function AcceptInvitePage() {
@@ -74,9 +75,8 @@ export default function AcceptInvitePage() {
     <div style={{ minHeight: '100vh', background: theme.page, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
       <div style={{ position: 'absolute', top: '16px', insetInlineEnd: '16px' }}><LanguageToggle /></div>
       <div style={{ width: '100%', maxWidth: '440px', background: '#fff', border: `1px solid ${theme.border}`, borderRadius: theme.radiusXl, boxShadow: theme.shadowLg, padding: '32px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
-          <div style={{ width: '34px', height: '34px', borderRadius: '9px', background: theme.brand, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800 }}>⚡</div>
-          <span style={{ fontSize: '17px', fontWeight: 800, color: theme.ink }}>StockBolt</span>
+        <div style={{ marginBottom: '18px' }}>
+          <BrandLogo mark={32} text={15} />
         </div>
 
         {checking ? (

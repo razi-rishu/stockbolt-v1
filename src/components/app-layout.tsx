@@ -19,6 +19,7 @@ import { hasPerm, type Permission } from '@/lib/permissions';
 import { CompanyAvatar } from '@/components/company-avatar';
 import { CommandPaletteTrigger } from '@/keyboard/CommandPaletteTrigger';
 import { NotificationsBell } from '@/components/notifications-bell';
+import { BrandMark, BrandLogo } from '@/components/brand-logo';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 interface NavItem {
@@ -51,13 +52,6 @@ interface NavSection {
 }
 
 // ── Icons ───────────────────────────────────────────────────────────────────
-function BoltIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="white" className="h-5 w-5">
-      <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" />
-    </svg>
-  );
-}
 function ChevronDownIcon() {
   return (
     <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
@@ -479,15 +473,7 @@ function MobileDrawer({
       <aside className="absolute start-0 top-0 flex h-full w-72 flex-col border-e border-border-subtle bg-surface-card shadow-xl">
         {/* Drawer header */}
         <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-          <div className="flex items-center gap-2.5">
-            <div
-              className="flex h-8 w-8 items-center justify-center rounded-lg shadow-sm"
-              style={{ background: 'linear-gradient(135deg, #7c3aed, #8b5cf6)' }}
-            >
-              <BoltIcon />
-            </div>
-            <span className="font-semibold text-ink-primary">StockBolt</span>
-          </div>
+          <BrandLogo mark={30} text={14} />
           <button type="button" onClick={onClose} className="text-ink-secondary hover:text-ink-primary"><XIcon /></button>
         </div>
 
@@ -644,13 +630,8 @@ export function AppLayout({ children }: AppLayoutProps) {
 
         {/* Brand */}
         <Link to="/dashboard" className="flex items-center gap-2.5">
-          <div
-            className="flex h-8 w-8 items-center justify-center rounded-lg shadow-sm"
-            style={{ background: 'linear-gradient(135deg, #7c3aed, #8b5cf6)' }}
-          >
-            <BoltIcon />
-          </div>
-          <span className="hidden text-base font-bold text-white sm:block">StockBolt</span>
+          <BrandMark size={30} />
+          <span className="hidden sm:block" style={{ fontSize: 15, fontWeight: 800, letterSpacing: '0.1em', color: '#fff', lineHeight: 1 }}>STOCKBOLT</span>
         </Link>
 
         {/* Desktop nav — sections */}
