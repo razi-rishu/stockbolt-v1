@@ -1,25 +1,29 @@
 /**
- * AppLayout — top-nav shell that wraps every authenticated, onboarded page.
+ * AppLayout — sidebar shell that wraps every authenticated, onboarded page
+ * (2026-07 redesign, replacing the dark top-nav shell).
  *
- * Replaces the previous left sidebar with a horizontal nav: brand on the
- * left, 6 nav sections in the middle (Dashboard + 5 dropdowns + Payroll
- * "coming in v2"), and tools on the right (bell, settings, language,
- * avatar menu).
+ * Desktop: fixed white left sidebar — brand, accordion nav sections,
+ * SHORTCUTS quick links, company chip pinned at the bottom — plus a white
+ * top bar with global search (command palette), language, bell, settings
+ * and the profile menu.
  *
- * Mobile: collapses to a hamburger → side drawer with the same content
- * but in a stacked accordion view.
+ * Mobile: sidebar collapses into a drawer (hamburger in the top bar) that
+ * renders the exact same sidebar content.
  */
 import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
 import { getAdapter } from '@/data/index';
 import { LanguageToggle } from '@/components/language-toggle';
 import { hasPerm, type Permission } from '@/lib/permissions';
 import { CompanyAvatar } from '@/components/company-avatar';
-import { CommandPaletteTrigger } from '@/keyboard/CommandPaletteTrigger';
+import { useShortcutContext } from '@/keyboard/shortcut-registry';
 import { NotificationsBell } from '@/components/notifications-bell';
-import { BrandMark, BrandLogo } from '@/components/brand-logo';
+import { BrandMark } from '@/components/brand-logo';
+import { useCompanyCurrency } from '@/hooks/use-company-currency';
+import { fiscalYearLabel } from '@/lib/locale';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 interface NavItem {
@@ -28,7 +32,7 @@ interface NavItem {
 }
 
 interface NavGroup {
-  /** Group label shown as a section header inside the dropdown (optional) */
+  /** Group label shown as a small header inside the expanded section (optional) */
   label?: string;
   items: NavItem[];
   /** Phase 22 — hide this group unless the role has this permission */
@@ -36,29 +40,46 @@ interface NavGroup {
 }
 
 interface NavSection {
-  /** Top-bar button label */
+  /** Sidebar row label */
   label: string;
-  /** If set, the section is a single direct link (no dropdown) */
+  /** Sidebar row icon */
+  icon: ReactNode;
+  /** If set, the section is a single direct link (no accordion) */
   to?: string;
-  /** Dropdown contents grouped into subsections */
+  /** Accordion contents grouped into subsections */
   groups?: NavGroup[];
   /** Phase 22 — hide this whole section unless the role has this permission */
   perm?: Permission;
-  /** Renders as greyed/disabled with a title-tooltip */
-  disabled?: boolean;
-  disabledHint?: string;
-  /** Mega-menu (renders dropdown in 2/3 columns) */
-  wide?: boolean;
 }
 
-// ── Icons ───────────────────────────────────────────────────────────────────
-function ChevronDownIcon() {
+// ── Icons (18px stroke, Lucide-style) ───────────────────────────────────────
+const stroked = 'fill-none stroke-current';
+function icn(paths: ReactNode, viewBox = '0 0 24 24') {
   return (
-    <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
-      <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 011.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+    <svg viewBox={viewBox} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={`h-[18px] w-[18px] shrink-0 ${stroked}`}>
+      {paths}
     </svg>
   );
 }
+const HomeIcon       = () => icn(<><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /><path d="M9.5 21v-6h5v6" /></>);
+const SalesIcon      = () => icn(<><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M9 8h6M9 12h6M9 16h3" /></>);
+const PurchasingIcon = () => icn(<><circle cx="9" cy="20" r="1.4" /><circle cx="18" cy="20" r="1.4" /><path d="M2 3h3l2.5 12.5a1.5 1.5 0 0 0 1.5 1.2h8.6a1.5 1.5 0 0 0 1.5-1.2L21 7H6" /></>);
+const InventoryIcon  = () => icn(<><path d="M21 8 12 3 3 8v8l9 5 9-5V8z" /><path d="M3 8l9 5 9-5M12 13v8" /></>);
+const AccountingIcon = () => icn(<><rect x="4" y="2.5" width="16" height="19" rx="2" /><path d="M8 7h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h4.01" /></>);
+const PayrollIcon    = () => icn(<><circle cx="9" cy="8.5" r="3.2" /><path d="M3.5 19.5c.9-3 3-4.5 5.5-4.5s4.6 1.5 5.5 4.5" /><circle cx="17" cy="9.5" r="2.4" /><path d="M16 14.6c2.3.2 3.9 1.6 4.6 4" /></>);
+const ReportsIcon    = () => icn(<><path d="M4 20V10M10 20V4M16 20v-7M21 20H3" /></>);
+const ContactsIcon   = () => icn(<><circle cx="12" cy="8" r="3.5" /><path d="M5 19.5c1.2-3 4-4.5 7-4.5s5.8 1.5 7 4.5" /></>);
+const InvoicePlusIcon= () => icn(<><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M12 9v6M9 12h6" /></>);
+const BillIcon       = () => icn(<><path d="M6 2.5h12V21l-2.4-1.6L13.2 21l-2.4-1.6L8.4 21 6 19.4V2.5z" /><path d="M9.5 8h5M9.5 12h5" /></>);
+const ReceiptIcon    = () => icn(<><circle cx="12" cy="12" r="9" /><path d="M12 7.5v9M15 10a2 2 0 0 0-2-2h-2.2a1.8 1.8 0 0 0 0 3.6h2.4a1.8 1.8 0 0 1 0 3.6H9" /></>);
+const PaymentIcon    = () => icn(<><rect x="2.5" y="6" width="19" height="13" rx="2" /><path d="M2.5 10h19M6.5 15h4" /></>);
+const SearchIcon     = () => icn(<><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></>);
+const ChevronDownIcon = ({ className = '' }: { className?: string }) => (
+  <svg viewBox="0 0 20 20" fill="currentColor" className={`h-3.5 w-3.5 shrink-0 transition-transform ${className}`}>
+    <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 011.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+  </svg>
+);
+const UpDownIcon = () => icn(<><path d="M8 9l4-4 4 4M8 15l4 4 4-4" /></>);
 function CogIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
@@ -85,10 +106,11 @@ function XIcon() {
 // ── Build the nav structure once per render (translated labels) ──────────────
 function useNavSections(t: (k: string) => string): NavSection[] {
   return [
-    { label: t('nav.dashboard'), to: '/dashboard' },
+    { label: t('nav.dashboard'), to: '/dashboard', icon: <HomeIcon /> },
 
     {
       label: t('nav.sales'),
+      icon: <SalesIcon />,
       perm: 'sales.read',
       groups: [{
         items: [
@@ -97,7 +119,6 @@ function useNavSections(t: (k: string) => string): NavSection[] {
           { to: '/sales/payments', label: t('nav.payments') },
           { to: '/sales/returns', label: t('returns.sales_returns_title') },
           { to: '/sales/credit-notes', label: t('returns.credit_notes_title') },
-          { to: '/contacts/customers', label: t('nav.customers') },
           { to: '/pos', label: t('pos.counter_sales') },
         ],
       }],
@@ -105,6 +126,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
 
     {
       label: t('purchasing.nav_title'),
+      icon: <PurchasingIcon />,
       perm: 'purchasing.read',
       groups: [{
         items: [
@@ -114,13 +136,13 @@ function useNavSections(t: (k: string) => string): NavSection[] {
           { to: '/purchasing/payments', label: t('purchasing.vp_title') },
           { to: '/purchasing/expenses', label: 'Expenses' },
           { to: '/purchasing/debit-notes', label: t('returns.debit_notes_title') },
-          { to: '/contacts/suppliers', label: t('nav.suppliers') },
         ],
       }],
     },
 
     {
       label: t('nav.inventory'),
+      icon: <InventoryIcon />,
       perm: 'inventory.read',
       groups: [
         {
@@ -144,6 +166,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
 
     {
       label: t('nav.accounting'),
+      icon: <AccountingIcon />,
       perm: 'accounting.read',
       groups: [
         {
@@ -167,9 +190,10 @@ function useNavSections(t: (k: string) => string): NavSection[] {
       ],
     },
 
-    // Payroll P1 (owner override 2026-06-13) — was disabled "Coming in v2"
+    // Payroll P1 (owner override 2026-06-13)
     {
       label: 'Payroll',
+      icon: <PayrollIcon />,
       perm: 'payroll.read',
       groups: [{
         items: [
@@ -182,7 +206,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
 
     {
       label: t('nav.reports'),
-      wide: true,
+      icon: <ReportsIcon />,
       perm: 'reports.read',
       groups: [
         {
@@ -248,128 +272,224 @@ function useNavSections(t: (k: string) => string): NavSection[] {
         },
       ],
     },
+
+    {
+      label: t('nav.contacts'),
+      icon: <ContactsIcon />,
+      groups: [
+        { items: [{ to: '/contacts/customers', label: t('nav.customers') }], perm: 'sales.read' },
+        { items: [{ to: '/contacts/suppliers', label: t('nav.suppliers') }], perm: 'purchasing.read' },
+      ],
+    },
   ];
 }
 
-// ── NavButton — a section in the top bar ────────────────────────────────────
-function NavButton({
+// ── Sidebar ─────────────────────────────────────────────────────────────────
+const rowBase = 'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors';
+const rowIdle = 'text-ink-secondary hover:bg-surface-subtle hover:text-ink-primary';
+const rowActive = 'bg-brand-50 text-brand-600';
+
+function SidebarSection({
   section,
-  isOpen,
-  isActive,
+  open,
   onToggle,
-  onItemClick,
+  onNavigate,
+  pathname,
 }: {
   section: NavSection;
-  isOpen: boolean;
-  isActive: boolean;
+  open: boolean;
   onToggle: () => void;
-  onItemClick: () => void;
+  onNavigate: () => void;
+  pathname: string;
 }) {
-  const navigate = useNavigate();
-
   // Direct link (Dashboard)
   if (section.to) {
     return (
       <NavLink
         to={section.to}
-        onClick={onItemClick}
-        className={({ isActive }) =>
-          `flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-colors ${isActive
-            ? 'bg-brand-600 text-white'
-            : 'text-white/65 hover:bg-white/10 hover:text-white'
-          }`
-        }
+        onClick={onNavigate}
+        className={({ isActive }) => `${rowBase} ${isActive ? rowActive : rowIdle}`}
       >
+        {section.icon}
         {section.label}
       </NavLink>
     );
   }
 
-  if (section.disabled) {
-    return (
+  const groups = section.groups ?? [];
+  const sectionActive = groups.some((g) => g.items.some((it) => pathname.startsWith(it.to)));
+
+  return (
+    <div>
       <button
         type="button"
-        disabled
-        title={section.disabledHint}
-        className="flex cursor-not-allowed items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium text-white/30"
+        onClick={onToggle}
+        aria-expanded={open}
+        className={`${rowBase} ${sectionActive && !open ? rowActive : rowIdle}`}
       >
-        {section.label}
-        <ChevronDownIcon />
+        {section.icon}
+        <span className="flex-1 text-start">{section.label}</span>
+        <ChevronDownIcon className={open ? 'rotate-180' : ''} />
       </button>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-colors ${isActive
-        ? 'bg-brand-600 text-white'
-        : isOpen
-          ? 'bg-white/15 text-white'
-          : 'text-white/65 hover:bg-white/10 hover:text-white'
-        }`}
-      onKeyDown={(e) => {
-        if (e.key === 'ArrowDown' && !isOpen) onToggle();
-        if (e.key === 'Enter') {
-          // navigate to the first item on Enter
-          const first = section.groups?.[0]?.items?.[0];
-          if (first) navigate(first.to);
-        }
-      }}
-      aria-haspopup="true"
-      aria-expanded={isOpen}
-    >
-      {section.label}
-      <ChevronDownIcon />
-    </button>
-  );
-}
-
-// ── NavDropdownPanel — popover with grouped items ───────────────────────────
-function NavDropdownPanel({ section, onItemClick }: { section: NavSection; onItemClick: () => void }) {
-  const groups = section.groups ?? [];
-  const wide = section.wide;
-  return (
-    <div
-      className={`absolute z-50 mt-2 rounded-2xl border border-border-subtle bg-surface-card p-2 shadow-xl ${wide ? 'w-[640px]' : 'w-56'
-        }`}
-    >
-      <div className={wide ? 'grid grid-cols-3 gap-2' : 'flex flex-col'}>
-        {groups.map((g, gi) => (
-          <div key={gi}>
-            {g.label && (
-              <p className="px-3 pt-2 text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
-                {g.label}
-              </p>
-            )}
-            <ul className="py-1">
+      {open && (
+        <div className="mb-1 mt-0.5 flex flex-col gap-0.5 border-s border-border-subtle ps-4 ms-[21px]">
+          {groups.map((g, gi) => (
+            <div key={gi} className="flex flex-col gap-0.5">
+              {g.label && (
+                <p className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
+                  {g.label}
+                </p>
+              )}
               {g.items.map((it) => (
-                <li key={it.to}>
-                  <NavLink
-                    to={it.to}
-                    onClick={onItemClick}
-                    className={({ isActive }) =>
-                      `block rounded-card px-3 py-1.5 text-sm transition-colors ${isActive
-                        ? 'bg-brand-50 text-brand-700'
-                        : 'text-ink-primary hover:bg-surface-muted'
-                      }`
-                    }
-                  >
-                    {it.label}
-                  </NavLink>
-                </li>
+                <NavLink
+                  key={it.to}
+                  to={it.to}
+                  onClick={onNavigate}
+                  className={({ isActive }) =>
+                    `block rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
+                      isActive ? 'bg-brand-50 font-medium text-brand-600' : 'text-ink-secondary hover:bg-surface-subtle hover:text-ink-primary'
+                    }`
+                  }
+                >
+                  {it.label}
+                </NavLink>
               ))}
-            </ul>
-          </div>
-        ))}
-      </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
+function SidebarContent({
+  sections,
+  onNavigate,
+  companyName,
+  companySub,
+  canSales,
+  canPurchasing,
+}: {
+  sections: NavSection[];
+  onNavigate: () => void;
+  companyName: string;
+  companySub: string;
+  canSales: boolean;
+  canPurchasing: boolean;
+}) {
+  const location = useLocation();
+  const [openSection, setOpenSection] = useState<string | null>(null);
+
+  // Auto-open the accordion section that owns the current route.
+  useEffect(() => {
+    const owner = sections.find(
+      (s) => !s.to && (s.groups ?? []).some((g) => g.items.some((it) => location.pathname.startsWith(it.to))),
+    );
+    if (owner) setOpenSection(owner.label);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
+  const shortcuts = [
+    ...(canSales ? [
+      { to: '/sales/invoices/new', label: 'New Invoice', icon: <InvoicePlusIcon /> },
+    ] : []),
+    ...(canPurchasing ? [
+      { to: '/purchasing/bills/new', label: 'New Bill', icon: <BillIcon /> },
+    ] : []),
+    ...(canSales ? [
+      { to: '/sales/payments/new', label: 'Record Receipt', icon: <ReceiptIcon /> },
+    ] : []),
+    ...(canPurchasing ? [
+      { to: '/purchasing/payments/new', label: 'New Payment', icon: <PaymentIcon /> },
+    ] : []),
+  ];
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Brand */}
+      <Link to="/dashboard" onClick={onNavigate} className="flex items-center gap-2.5 px-5 pb-4 pt-5">
+        <BrandMark size={34} />
+        <span className="flex flex-col">
+          <span className="text-[14px] font-extrabold leading-tight tracking-[0.08em] text-ink-primary">STOCKBOLT</span>
+          <span className="text-[11px] leading-tight text-ink-tertiary">Auto Parts ERP</span>
+        </span>
+      </Link>
+
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto px-3 pb-4">
+        <div className="flex flex-col gap-0.5">
+          {sections.map((section) => (
+            <SidebarSection
+              key={section.label}
+              section={section}
+              open={openSection === section.label}
+              onToggle={() => setOpenSection((cur) => (cur === section.label ? null : section.label))}
+              onNavigate={onNavigate}
+              pathname={location.pathname}
+            />
+          ))}
+        </div>
+
+        {shortcuts.length > 0 && (
+          <div className="mt-6">
+            <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-tertiary">
+              Shortcuts
+            </p>
+            <div className="flex flex-col gap-0.5">
+              {shortcuts.map((s) => (
+                <NavLink
+                  key={s.to}
+                  to={s.to}
+                  onClick={onNavigate}
+                  className={`${rowBase} !py-2 text-[13px] ${rowIdle}`}
+                >
+                  {s.icon}
+                  {s.label}
+                </NavLink>
+              ))}
+            </div>
+          </div>
+        )}
+      </nav>
+
+      {/* Company chip */}
+      <Link
+        to="/settings/company"
+        onClick={onNavigate}
+        className="flex items-center gap-2.5 border-t border-border-subtle px-4 py-3.5 transition-colors hover:bg-surface-subtle"
+      >
+        <CompanyAvatar size={34} fallbackText={companyName || undefined} />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-[13px] font-semibold text-ink-primary">{companyName || '—'}</span>
+          <span className="truncate text-[11px] text-ink-tertiary">{companySub}</span>
+        </span>
+        <span className="text-ink-tertiary"><UpDownIcon /></span>
+      </Link>
+    </div>
+  );
+}
+
+// ── Search bar (opens the command palette) ──────────────────────────────────
+function SearchBar() {
+  const { openPalette } = useShortcutContext();
+  return (
+    <button
+      type="button"
+      onClick={openPalette}
+      aria-label="Open global search"
+      className="flex h-11 w-full max-w-[520px] items-center gap-3 rounded-xl border border-border-subtle bg-white px-4 text-sm text-ink-tertiary transition-colors hover:border-border-strong"
+    >
+      <span className="text-ink-tertiary"><SearchIcon /></span>
+      <span className="flex-1 truncate text-start">Search anything...</span>
+      <kbd className="hidden rounded-md border border-border-subtle bg-surface-subtle px-1.5 py-0.5 text-[11px] font-medium text-ink-tertiary sm:inline">
+        Ctrl + K
+      </kbd>
+    </button>
+  );
+}
+
 // ── User menu dropdown ──────────────────────────────────────────────────────
-function UserMenu({ email, onSignOut }: { email: string | null; onSignOut: () => void }) {
+function UserMenu({ email, companyName, onSignOut }: { email: string | null; companyName: string; onSignOut: () => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -386,11 +506,15 @@ function UserMenu({ email, onSignOut }: { email: string | null; onSignOut: () =>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex h-9 w-9 items-center justify-center rounded-full shadow-sm ring-2 ring-white/25 hover:opacity-90"
+        className="flex items-center gap-2 rounded-full py-1 pe-2 ps-1 transition-colors hover:bg-surface-muted"
         aria-label="User menu"
       >
         {/* Phase 28 — company logo if uploaded, else initials avatar. */}
-        <CompanyAvatar size={36} fallbackText={email ?? undefined} />
+        <CompanyAvatar size={32} fallbackText={email ?? undefined} />
+        <span className="hidden max-w-[140px] truncate text-sm font-semibold text-ink-primary md:block">
+          {companyName || email || '—'}
+        </span>
+        <span className="hidden text-ink-tertiary md:block"><ChevronDownIcon /></span>
       </button>
       {open && (
         <div className="absolute end-0 z-50 mt-2 w-56 overflow-hidden rounded-card border border-border-subtle bg-surface-card shadow-xl">
@@ -433,132 +557,6 @@ function UserMenu({ email, onSignOut }: { email: string | null; onSignOut: () =>
   );
 }
 
-// ── Settings dropdown ───────────────────────────────────────────────────────
-function SettingsMenu() {
-  return (
-    <Link
-      to="/settings"
-      className="flex h-9 w-9 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-white"
-      aria-label="Settings"
-    >
-      <CogIcon />
-    </Link>
-  );
-}
-// ── Mobile drawer (used when viewport is below the top-nav breakpoint) ─────
-function MobileDrawer({
-  open,
-  onClose,
-  sections,
-  email,
-  onSignOut,
-}: {
-  open: boolean;
-  onClose: () => void;
-  sections: NavSection[];
-  email: string | null;
-  onSignOut: () => void;
-}) {
-  // Phase 14.02 — hooks must run in a stable order every render. Calling
-  // useTranslation AFTER an early `return null` violated the Rules of
-  // Hooks (when `open` was false on first render, the hook was skipped;
-  // when it flipped true on next render, React tried to compare an empty
-  // slot to a useState/useContext call → "Internal React error: Expected
-  // static flag was missing". Hooks above conditional returns ALWAYS.
-  const { t } = useTranslation();
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 lg:hidden">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <aside className="absolute start-0 top-0 flex h-full w-72 flex-col border-e border-border-subtle bg-surface-card shadow-xl">
-        {/* Drawer header */}
-        <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-          <BrandLogo mark={30} text={14} />
-          <button type="button" onClick={onClose} className="text-ink-secondary hover:text-ink-primary"><XIcon /></button>
-        </div>
-
-        {/* Drawer body — stacked sections */}
-        <nav className="flex-1 overflow-y-auto p-3">
-          {sections.map((section, si) => {
-            if (section.disabled) {
-              return (
-                <div key={si} className="mb-3">
-                  <p className="px-3 py-2 text-xs font-medium uppercase tracking-wider text-ink-tertiary/60">
-                    {section.label} <span className="text-[10px]">({section.disabledHint})</span>
-                  </p>
-                </div>
-              );
-            }
-            if (section.to) {
-              return (
-                <NavLink
-                  key={si}
-                  to={section.to}
-                  onClick={onClose}
-                  className={({ isActive }) =>
-                    `mb-1 block rounded-card px-3 py-2 text-sm font-medium ${isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-primary hover:bg-surface-muted'
-                    }`
-                  }
-                >
-                  {section.label}
-                </NavLink>
-              );
-            }
-            return (
-              <div key={si} className="mb-3">
-                <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
-                  {section.label}
-                </p>
-                {(section.groups ?? []).flatMap((g) => g.items).map((it) => (
-                  <NavLink
-                    key={it.to}
-                    to={it.to}
-                    onClick={onClose}
-                    className={({ isActive }) =>
-                      `block rounded-card px-3 py-1.5 text-sm ${isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-secondary hover:bg-surface-muted hover:text-ink-primary'
-                      }`
-                    }
-                  >
-                    {it.label}
-                  </NavLink>
-                ))}
-              </div>
-            );
-          })}
-          <div className="mt-3 border-t border-border-subtle pt-3">
-            <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">Settings</p>
-            {(['company', 'warehouses', 'units', 'price-levels', 'print', 'system-health'] as const).map((key) => (
-              <NavLink
-                key={key}
-                to={`/settings/${key}`}
-                onClick={onClose}
-                className="block rounded-card px-3 py-1.5 text-sm text-ink-secondary hover:bg-surface-muted hover:text-ink-primary"
-              >
-                {key.replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase())}
-              </NavLink>
-            ))}
-          </div>
-        </nav>
-
-        {/* Drawer footer */}
-        <div className="border-t border-border-subtle p-3">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <span className="truncate text-xs text-ink-tertiary">{email ?? '—'}</span>
-            <LanguageToggle />
-          </div>
-          <button
-            type="button"
-            onClick={onSignOut}
-            className="w-full rounded-card border border-border-strong px-3 py-1.5 text-sm text-ink-secondary hover:bg-surface-muted"
-          >
-            {t('common.sign_out')}
-          </button>
-        </div>
-      </aside>
-    </div>
-  );
-}
-
 // ── AppLayout ───────────────────────────────────────────────────────────────
 interface AppLayoutProps {
   children: ReactNode;
@@ -566,12 +564,13 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const { t } = useTranslation();
-  const { email, clear, role, permissions } = useAuthStore();
+  const { email, clear, role, permissions, company_id } = useAuthStore();
   const navigate = useNavigate();
-  const location = useLocation();
-  const [openIdx, setOpenIdx] = useState<number | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const navRef = useRef<HTMLDivElement>(null);
+  const [sidebarHidden, setSidebarHidden] = useState(false);
+  const location = useLocation();
+  const currency = useCompanyCurrency();
+
   // Phase 22 — hide nav sections/groups the role can't read (admin sees all).
   const sections = useNavSections(t)
     .filter((s) => !s.perm || hasPerm(role, permissions, s.perm))
@@ -580,28 +579,19 @@ export function AppLayout({ children }: AppLayoutProps) {
       : s)
     .filter((s) => s.to || (s.groups != null && s.groups.length > 0));
 
-  // Close dropdowns on outside click or route change or Escape
-  useEffect(() => { setOpenIdx(null); }, [location.pathname]);
-  useEffect(() => {
-    if (openIdx === null) return;
-    const onClick = (e: MouseEvent) => {
-      if (navRef.current && !navRef.current.contains(e.target as Node)) setOpenIdx(null);
-    };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpenIdx(null); };
-    document.addEventListener('mousedown', onClick);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onClick);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [openIdx]);
+  const canSales = hasPerm(role, permissions, 'sales.read');
+  const canPurchasing = hasPerm(role, permissions, 'purchasing.read');
 
-  // Detect which top-level section the current path belongs to, for the active style.
-  const isSectionActive = (section: NavSection): boolean => {
-    if (section.to) return location.pathname.startsWith(section.to);
-    const items = (section.groups ?? []).flatMap((g) => g.items);
-    return items.some((it) => location.pathname.startsWith(it.to));
-  };
+  const { data: company } = useQuery({
+    queryKey: ['company', company_id],
+    queryFn: () => getAdapter().companies.getById(company_id!),
+    enabled: !!company_id,
+  });
+  const companyName = company?.name ?? '';
+  const companySub = `${currency} · ${fiscalYearLabel(company?.fiscal_year_start)}`;
+
+  // Close the mobile drawer whenever the route changes.
+  useEffect(() => { setDrawerOpen(false); }, [location.pathname]);
 
   async function handleSignOut() {
     await getAdapter().auth.signOut();
@@ -609,81 +599,85 @@ export function AppLayout({ children }: AppLayoutProps) {
     navigate('/login', { replace: true });
   }
 
+  const sidebarContent = (
+    <SidebarContent
+      sections={sections}
+      onNavigate={() => setDrawerOpen(false)}
+      companyName={companyName}
+      companySub={companySub}
+      canSales={canSales}
+      canPurchasing={canPurchasing}
+    />
+  );
+
   return (
-    <div className="flex h-screen flex-col bg-surface-page">
-      {/* ── Top nav ───────────────────────────────────────────────────── */}
-      {/* Dark violet-ink bar — dropdown panels stay white. */}
-      <header
-        ref={navRef}
-        className="relative z-30 flex h-16 shrink-0 items-center gap-2 px-4 lg:px-6"
-        style={{ background: '#1e1838', borderBottom: '1px solid rgba(255,255,255,.08)' }}
-      >
-        {/* Mobile hamburger */}
-        <button
-          type="button"
-          className="flex h-9 w-9 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-white lg:hidden"
-          onClick={() => setDrawerOpen(true)}
-          aria-label="Open menu"
-        >
-          <MenuIcon />
-        </button>
+    <div className="flex h-screen bg-surface-page">
+      {/* ── Desktop sidebar ───────────────────────────────────────────── */}
+      {!sidebarHidden && (
+        <aside className="hidden w-[236px] shrink-0 border-e border-border-subtle bg-surface-card lg:block">
+          {sidebarContent}
+        </aside>
+      )}
 
-        {/* Brand */}
-        <Link to="/dashboard" className="flex items-center gap-2.5">
-          <BrandMark size={30} />
-          <span className="hidden sm:block" style={{ fontSize: 15, fontWeight: 800, letterSpacing: '0.1em', color: '#fff', lineHeight: 1 }}>STOCKBOLT</span>
-        </Link>
-
-        {/* Desktop nav — sections */}
-        <nav className="ms-4 hidden flex-1 items-center gap-1 lg:flex">
-          {sections.map((section, idx) => {
-            const isOpen = openIdx === idx;
-            const isActive = isSectionActive(section);
-            return (
-              <div key={idx} className="relative">
-                <NavButton
-                  section={section}
-                  isOpen={isOpen}
-                  isActive={isActive}
-                  onToggle={() => setOpenIdx(isOpen ? null : idx)}
-                  onItemClick={() => setOpenIdx(null)}
-                />
-                {isOpen && section.groups && (
-                  <NavDropdownPanel section={section} onItemClick={() => setOpenIdx(null)} />
-                )}
-              </div>
-            );
-          })}
-        </nav>
-
-        {/* Right tools */}
-        <div className="ms-auto flex items-center gap-2">
-          <CommandPaletteTrigger />
-          <LanguageToggle variant="dark" />
-          <NotificationsBell />
-          <SettingsMenu />
-          <UserMenu email={email} onSignOut={handleSignOut} />
+      {/* ── Mobile drawer ─────────────────────────────────────────────── */}
+      {drawerOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setDrawerOpen(false)} />
+          <aside className="absolute start-0 top-0 h-full w-[280px] border-e border-border-subtle bg-surface-card shadow-xl">
+            <button
+              type="button"
+              onClick={() => setDrawerOpen(false)}
+              className="absolute end-3 top-5 text-ink-secondary hover:text-ink-primary"
+              aria-label="Close menu"
+            >
+              <XIcon />
+            </button>
+            {sidebarContent}
+          </aside>
         </div>
-      </header>
+      )}
 
-      {/* ── Mobile drawer ──────────────────────────────────────────────── */}
-      <MobileDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        sections={sections}
-        email={email}
-        onSignOut={handleSignOut}
-      />
+      {/* ── Main column ───────────────────────────────────────────────── */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="z-30 flex h-16 shrink-0 items-center gap-3 border-b border-border-subtle bg-surface-card px-4 lg:px-6">
+          {/* Hamburger — opens the drawer on mobile, collapses the sidebar on desktop */}
+          <button
+            type="button"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-secondary hover:bg-surface-muted hover:text-ink-primary"
+            onClick={() => {
+              if (window.innerWidth >= 1024) setSidebarHidden((h) => !h);
+              else setDrawerOpen(true);
+            }}
+            aria-label="Toggle menu"
+          >
+            <MenuIcon />
+          </button>
 
-      {/* ── Main content ──────────────────────────────────────────────── */}
-      {/* Inner wrapper caps page width so forms don't stretch edge-to-edge
-          on large monitors. 1536px (not 1280) because line-item editors
-          (invoice/bill/PO) have 10+ columns that get crushed any narrower. */}
-      <main className="flex-1 overflow-y-auto p-4 md:p-8">
-        <div style={{ maxWidth: '1536px', margin: '0 auto', width: '100%' }}>
-          {children}
-        </div>
-      </main>
+          <SearchBar />
+
+          <div className="ms-auto flex items-center gap-1.5">
+            <LanguageToggle />
+            <NotificationsBell />
+            <Link
+              to="/settings"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-ink-secondary hover:bg-surface-muted hover:text-ink-primary"
+              aria-label="Settings"
+            >
+              <CogIcon />
+            </Link>
+            <UserMenu email={email} companyName={companyName} onSignOut={handleSignOut} />
+          </div>
+        </header>
+
+        {/* Inner wrapper caps page width so forms don't stretch edge-to-edge
+            on large monitors. 1536px (not 1280) because line-item editors
+            (invoice/bill/PO) have 10+ columns that get crushed any narrower. */}
+        <main className="flex-1 overflow-y-auto p-4 md:p-8">
+          <div style={{ maxWidth: '1536px', margin: '0 auto', width: '100%' }}>
+            {children}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

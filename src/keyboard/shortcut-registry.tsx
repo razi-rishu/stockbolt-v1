@@ -74,8 +74,8 @@ export function KeyboardShortcutProvider({ children }: { children: ReactNode }) 
       const mod = e.ctrlKey || e.metaKey;
       const typing = isTypingTarget(e.target);
 
-      // ── Command palette: mod + /  (works even while typing) ──────────────
-      if (mod && e.key === '/') {
+      // ── Command palette: mod + /  or mod + K  (works even while typing) ──
+      if (mod && (e.key === '/' || e.key.toLowerCase() === 'k')) {
         e.preventDefault();
         setPaletteOpen(p => !p);
         return;

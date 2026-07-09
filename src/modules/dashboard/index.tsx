@@ -29,7 +29,6 @@ import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { formatCurrency, fiscalYearLabel } from '@/lib/locale';
 import type { OwnerDashboard } from '@/data/adapter';
-import { Panel } from '@/ui/primitives';
 import DashboardSummaryCards from './_summary-cards';
 import { theme } from '@/ui/theme';
 
@@ -66,6 +65,8 @@ function PlusIcon()        { return <svg viewBox="0 0 24 24" width="22" height="
 function ArrowUpRightIcon(){ return <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17 17 7" /><path d="M7 7h10v10" /></svg>; }
 function ArrowUpIcon()     { return <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></svg>; }
 function ArrowDownIcon()   { return <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" /></svg>; }
+function CalendarIcon()    { return <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>; }
+function BoxThumbIcon()    { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5V8z" /><path d="M3 8l9 5 9-5M12 13v8" /></svg>; }
 
 // ── Card primitive (light slate-200 border, soft shadow) ────────────────────
 const cardStyle: CSSProperties = {
@@ -102,41 +103,46 @@ function KpiTile({
   const pal = tonePalette[tone];
   const inner = (
     <div
-      style={{ ...cardStyle, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}
+      style={{ ...cardStyle, padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px', height: '100%' }}
       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = theme.shadowMd; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = theme.shadowSm; }}
     >
-      <div style={{
-        height: '42px', width: '42px', flexShrink: 0,
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        borderRadius: '12px', background: pal.bg, color: pal.fg,
-      }}>
-        {icon}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         <div style={{
-          fontSize: '10px', fontWeight: 700, color: theme.inkMuted,
-          textTransform: 'uppercase', letterSpacing: '.06em',
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        }}>{label}</div>
-        <div style={{ marginTop: '2px', fontSize: '17px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
-        <div style={{ marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ flex: 1, fontSize: '11px', color: theme.inkFaint, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</span>
-          {hasDelta && (
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: '3px',
-              flexShrink: 0,
-              padding: '1px 6px', borderRadius: '999px',
-              fontSize: '10px', fontWeight: 700,
-              background: positive ? '#ecfdf5' : '#fef2f2',
-              color: positive ? '#059669' : '#dc2626',
-              border: `1px solid ${positive ? '#a7f3d0' : '#fecaca'}`,
-            }}>
-              {positive ? <ArrowUpIcon /> : <ArrowDownIcon />}
-              {Math.abs(delta!).toFixed(0)}%
-            </span>
-          )}
+          height: '40px', width: '40px', flexShrink: 0,
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          borderRadius: '12px', background: pal.bg, color: pal.fg,
+        }}>
+          {icon}
         </div>
+        <div style={{ fontSize: '12px', fontWeight: 600, color: theme.inkMuted, lineHeight: 1.3 }}>{label}</div>
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: '19px', fontWeight: 800, color: theme.ink, letterSpacing: '-.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+        <div style={{ marginTop: '2px', fontSize: '12px', color: theme.inkFaint, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>
+      </div>
+      <div>
+        {hasDelta ? (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: '4px',
+            padding: '2px 8px', borderRadius: '999px',
+            fontSize: '11px', fontWeight: 700,
+            background: positive ? '#ecfdf5' : '#fef2f2',
+            color: positive ? '#059669' : '#dc2626',
+          }}>
+            {positive ? <ArrowUpIcon /> : <ArrowDownIcon />}
+            {Math.abs(delta!).toFixed(1)}%
+          </span>
+        ) : (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: '4px',
+            padding: '2px 10px', borderRadius: '999px',
+            fontSize: '11px', fontWeight: 700,
+            background: theme.muted, color: theme.inkFaint,
+          }}>
+            —
+          </span>
+        )}
       </div>
     </div>
   );
@@ -237,6 +243,68 @@ function FloatingActionButton() {
   );
 }
 
+// ── Hero "more actions" (⋯) menu ────────────────────────────────────────────
+function HeroMoreMenu() {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  const actions = [
+    { label: 'New Quote',          href: '/sales/quotes/new' },
+    { label: 'New Purchase Order', href: '/purchasing/orders/new' },
+    { label: 'New Expense',        href: '/purchasing/expenses/new' },
+    { label: 'New Product',        href: '/products/new' },
+  ];
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        aria-label="More actions"
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          height: '37px', width: '37px', borderRadius: '999px',
+          background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.3)',
+          color: '#fff', cursor: 'pointer', fontSize: '17px', lineHeight: 1, fontWeight: 700,
+        }}
+      >⋯</button>
+      {open && (
+        <div style={{
+          position: 'absolute', insetInlineEnd: 0, top: 'calc(100% + 8px)', width: '196px',
+          background: '#fff', borderRadius: '12px', border: `1px solid ${theme.border}`,
+          boxShadow: theme.shadowLg, padding: '4px 0', zIndex: 30,
+        }}>
+          {actions.map((a) => (
+            <button
+              key={a.href}
+              type="button"
+              onClick={() => { setOpen(false); navigate(a.href); }}
+              style={{
+                display: 'block', width: '100%', textAlign: 'start',
+                padding: '8px 14px', fontSize: '13px', color: theme.ink,
+                background: 'transparent', border: 'none', cursor: 'pointer',
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = theme.muted; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Sales Trend chart ───────────────────────────────────────────────────────
 type TrendMode = 'week' | 'month' | 'year';
 
@@ -300,37 +368,18 @@ function PeriodToggle({ value, onChange }: { value: KpiPeriod; onChange: (p: Kpi
     { key: 'year',  label: 'This Year' },
   ];
   return (
-    <div style={{ display: 'inline-flex', background: theme.muted, borderRadius: '999px', padding: '3px', gap: '2px' }}>
+    <div style={{ display: 'inline-flex', gap: '6px' }}>
       {opts.map(o => (
         <button key={o.key} onClick={() => onChange(o.key)} style={{
-          padding: '5px 14px', borderRadius: '999px', border: 'none', cursor: 'pointer',
-          fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
+          padding: '7px 16px', borderRadius: '999px', cursor: 'pointer',
+          fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap',
           background: value === o.key ? '#fff' : 'transparent',
-          color: value === o.key ? '#5b21b6' : theme.inkMuted,
-          boxShadow: value === o.key ? '0 1px 3px rgba(0,0,0,.12)' : 'none',
+          color: value === o.key ? '#6d28d9' : theme.inkMuted,
+          border: value === o.key ? `1px solid ${theme.border}` : '1px solid transparent',
+          boxShadow: value === o.key ? '0 1px 3px rgba(15,23,42,.08)' : 'none',
         }}>{o.label}</button>
       ))}
     </div>
-  );
-}
-
-// ── Small "see more" link chip in panel headers ─────────────────────────────
-function LinkChip({ to, children }: { to: string; children: React.ReactNode }) {
-  return (
-    <Link
-      to={to}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: '4px',
-        padding: '4px 10px',
-        background: theme.muted,
-        color: theme.inkMuted,
-        borderRadius: '999px',
-        fontSize: theme.fontXs, fontWeight: 600,
-        textDecoration: 'none',
-      }}
-    >
-      {children} <ArrowUpRightIcon />
-    </Link>
   );
 }
 
@@ -441,8 +490,8 @@ export default function DashboardPage() {
             <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, letterSpacing: '-.01em' }}>
               {greetName || 'StockBolt'}
             </h1>
-            <p style={{ margin: '5px 0 0', fontSize: '12.5px', color: 'rgba(255,255,255,.78)', fontWeight: 500 }}>
-              {fmtToday()}
+            <p style={{ margin: '5px 0 0', fontSize: '12.5px', color: 'rgba(255,255,255,.78)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <CalendarIcon /> {fmtToday()}
             </p>
             <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '8px', fontSize: '12px', color: 'rgba(255,255,255,.9)' }}>
               <span><span style={{ opacity: .7 }}>Currency:</span> <strong>{currency}</strong></span>
@@ -471,7 +520,8 @@ export default function DashboardPage() {
             border: '1px solid rgba(255,255,255,.3)',
             fontSize: '13px', fontWeight: 600, textDecoration: 'none',
             whiteSpace: 'nowrap',
-          }}>New Bill</Link>
+          }}>+ New Bill</Link>
+          <HeroMoreMenu />
         </div>
       </div>
 
@@ -495,41 +545,99 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Sales Trend + Recent Inventory — stack below lg ───────────── */}
-      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
         {/* Sales Trend (2/3) */}
-        <Panel
-          icon="📈"
-          title={trendTitle}
-          right={<LinkChip to="/reports/profit-loss">P&amp;L</LinkChip>}
-        >
+        <div style={{ ...cardStyle, padding: '20px 22px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+              <div style={{
+                height: '34px', width: '34px', flexShrink: 0, borderRadius: '10px',
+                background: '#f5f3ff', color: '#7c3aed',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <TrendingUpIcon />
+              </div>
+              <h3 style={{ margin: 0, fontSize: '15.5px', fontWeight: 700, color: theme.ink }}>{trendTitle}</h3>
+            </div>
+            <Link to="/reports/profit-loss" style={{
+              display: 'inline-flex', alignItems: 'center', gap: '5px',
+              padding: '6px 14px', borderRadius: '999px',
+              border: `1px solid ${theme.border}`, background: '#fff',
+              color: theme.ink, fontSize: '12.5px', fontWeight: 600, textDecoration: 'none',
+              whiteSpace: 'nowrap',
+            }}>P&amp;L <ArrowUpRightIcon /></Link>
+          </div>
+
+          {/* Legend */}
+          <div style={{ display: 'flex', gap: '18px', margin: '12px 0 2px', fontSize: '12px', color: theme.inkMuted }}>
+            <span><span style={{ color: '#7c3aed' }}>◆</span> Sales ({currency})</span>
+            <span><span style={{ color: '#10b981' }}>◆</span> Purchases ({currency})</span>
+          </div>
+
           <SalesTrendChart data={trendData} mode={period === 'today' ? 'week' : period} />
-        </Panel>
+
+          {/* Period totals */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginTop: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#f5f3ff', borderRadius: '12px', padding: '12px 14px' }}>
+              <div style={{ height: '36px', width: '36px', flexShrink: 0, borderRadius: '10px', background: '#fff', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <WalletIcon />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '12px', color: theme.inkMuted }}>Total Sales (excl. VAT)</div>
+                <div style={{ fontSize: '15px', fontWeight: 800, color: theme.ink, fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(ps.sales, currency)}</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#ecfdf5', borderRadius: '12px', padding: '12px 14px' }}>
+              <div style={{ height: '36px', width: '36px', flexShrink: 0, borderRadius: '10px', background: '#fff', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <CartIcon />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '12px', color: theme.inkMuted }}>Total Purchases (excl. VAT)</div>
+                <div style={{ fontSize: '15px', fontWeight: 800, color: theme.ink, fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(ps.purchases, currency)}</div>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Recent Inventory (1/3) */}
-        <Panel
-          icon="📦"
-          title="Recent Inventory"
-          right={<LinkChip to="/products">Stock</LinkChip>}
-        >
+        <div style={{ ...cardStyle, padding: '20px 22px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+            <h3 style={{ margin: 0, fontSize: '15.5px', fontWeight: 700, color: theme.ink }}>Recent Inventory</h3>
+            <Link to="/inventory/stock-ledger" style={{
+              display: 'inline-flex', alignItems: 'center', gap: '5px',
+              padding: '6px 14px', borderRadius: '999px',
+              border: `1px solid ${theme.border}`, background: '#fff',
+              color: theme.ink, fontSize: '12.5px', fontWeight: 600, textDecoration: 'none',
+              whiteSpace: 'nowrap',
+            }}>Stock <ArrowUpRightIcon /></Link>
+          </div>
+
           {data.recent_inventory.length === 0 ? (
             <p style={{ padding: '24px 0', textAlign: 'center', fontSize: theme.fontBase, color: theme.inkFaint }}>No items yet.</p>
           ) : (
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            <ul style={{ listStyle: 'none', margin: '8px 0 0', padding: 0, flex: 1 }}>
               {data.recent_inventory.map((it, idx) => (
                 <li
                   key={it.product_id}
                   style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '10px 0',
+                    display: 'flex', alignItems: 'center', gap: '12px',
+                    padding: '11px 0',
                     borderTop: idx === 0 ? 'none' : `1px solid ${theme.border}`,
                   }}
                 >
+                  <div style={{
+                    height: '40px', width: '40px', flexShrink: 0, borderRadius: '10px',
+                    background: '#f1f5f9', color: '#64748b',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <BoxThumbIcon />
+                  </div>
                   <Link
                     to={`/products/${it.product_id}`}
                     style={{ flex: 1, minWidth: 0, textDecoration: 'none', color: 'inherit' }}
                   >
                     <div style={{
-                      fontSize: theme.fontBase, fontWeight: 500, color: theme.ink,
+                      fontSize: '13px', fontWeight: 600, color: theme.ink,
                       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                     }}>{it.name}</div>
                     {it.oe_number && (
@@ -537,16 +645,23 @@ export default function DashboardPage() {
                     )}
                   </Link>
                   <span style={{
-                    marginInlineStart: '12px', flexShrink: 0,
-                    fontSize: theme.fontBase, fontWeight: 600, color: theme.ink,
+                    flexShrink: 0,
+                    fontSize: '13px', fontWeight: 700, color: theme.ink, fontVariantNumeric: 'tabular-nums',
                   }}>
-                    {fmtInt(it.quantity)} {it.unit_code}
+                    {fmtInt(it.quantity)} {(it.unit_code || 'PCS').toUpperCase()}
                   </span>
                 </li>
               ))}
             </ul>
           )}
-        </Panel>
+
+          <Link to="/products" style={{
+            marginTop: 'auto', paddingTop: '12px',
+            fontSize: '13px', fontWeight: 600, color: '#6d28d9', textDecoration: 'none',
+          }}>
+            View all inventory
+          </Link>
+        </div>
       </div>
 
       {/* ── Phase 13.03 — Summary cards row (Income/Expense, Top Expenses,
