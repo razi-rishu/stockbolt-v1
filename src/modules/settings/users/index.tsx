@@ -54,7 +54,10 @@ export default function UsersRolesPage() {
   const [inviteRole, setInviteRole] = useState<string>('sales');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [roleModal, setRoleModal] = useState<{ open: boolean; editing: RoleRow | null }>({ open: false, editing: null });
+  const [roleModal, setRoleModal] = useState<
+    | { open: false }
+    | { open: true; mode: 'create' | 'edit' | 'view'; role: RoleRow | null; presetName?: string; presetPerms: string[] }
+  >({ open: false });
   const [overrideUser, setOverrideUser] = useState<Profile | null>(null);
 
   const usersQ = useQuery<Profile[]>({ queryKey: ['users', company_id], queryFn: () => getAdapter().users.listUsers(company_id!), enabled: !!company_id });
@@ -134,12 +137,17 @@ export default function UsersRolesPage() {
                   </td>
                   <td style={td}><span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '999px', background: u.is_active ? theme.successSoft : theme.muted, color: u.is_active ? theme.success : theme.inkMuted, border: `1px solid ${u.is_active ? theme.successBorder : theme.border}` }}>{u.is_active ? 'Active' : 'Disabled'}</span></td>
                   <td style={{ ...td, textAlign: 'end', whiteSpace: 'nowrap' }}>
-                    {u.role !== 'admin' && (
+                    {u.role !== 'admin' ? (
                       <button onClick={() => setOverrideUser(u)}
                         title="Allow or deny specific options for this person on top of their role"
-                        style={{ fontSize: '12px', fontWeight: 600, background: 'none', border: 'none', color: theme.brand, cursor: 'pointer', marginInlineEnd: '10px' }}>
+                        style={{ fontSize: '12px', fontWeight: 600, padding: '4px 12px', borderRadius: '999px', background: '#fff', border: `1px solid ${theme.border}`, color: theme.brand, cursor: 'pointer', marginInlineEnd: '10px' }}>
                         Customize
                       </button>
+                    ) : (
+                      <span title="Admins always have full access — assign a different role to limit what this person can do"
+                        style={{ fontSize: '12px', color: theme.inkFaint, marginInlineEnd: '10px' }}>
+                        Full access
+                      </span>
                     )}
                     <button onClick={() => setActive.mutate({ id: u.id, active: !u.is_active })} disabled={(isLastAdmin && u.is_active) || isSelf || setActive.isPending}
                       title={isSelf ? 'You cannot disable yourself' : isLastAdmin ? 'Cannot disable the last admin' : undefined}
@@ -176,7 +184,7 @@ export default function UsersRolesPage() {
       <div style={card}>
         <div style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: theme.inkMuted }}>Roles ({roles.length})</span>
-          <button onClick={() => setRoleModal({ open: true, editing: null })} style={{ fontSize: '12px', fontWeight: 700, color: theme.brand, background: 'none', border: 'none', cursor: 'pointer' }}>+ New role</button>
+          <button onClick={() => setRoleModal({ open: true, mode: 'create', role: null, presetPerms: [] })} style={{ fontSize: '12px', fontWeight: 700, color: theme.brand, background: 'none', border: 'none', cursor: 'pointer' }}>+ New role</button>
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead><tr style={{ background: theme.panelHead }}><th style={th}>Role</th><th style={th}>Type</th><th style={th}>Members</th><th style={th}>Permissions</th><th style={th}></th></tr></thead>
@@ -184,16 +192,35 @@ export default function UsersRolesPage() {
             {roles.map((r, i) => {
               const count = users.filter(u => u.role === r.key).length;
               const perms = r.key === 'admin' ? ['everything'] : [...(permsByRole.get(r.key) ?? [])];
+              const rolePerms = [...(permsByRole.get(r.key) ?? [])];
+              const openRole = () => setRoleModal(
+                r.is_system
+                  ? { open: true, mode: 'view', role: r, presetPerms: rolePerms }
+                  : { open: true, mode: 'edit', role: r, presetPerms: rolePerms },
+              );
               return (
                 <tr key={r.id} style={{ borderTop: i === 0 ? 'none' : `1px solid ${theme.muted}` }}>
-                  <td style={{ ...td, fontWeight: 600 }}>{r.name}</td>
+                  <td style={{ ...td, fontWeight: 600 }}>
+                    <button onClick={openRole} title={r.is_system ? 'View this role\'s permissions' : 'Edit this role'}
+                      style={{ background: 'none', border: 'none', padding: 0, fontSize: '13px', fontWeight: 600, color: theme.brand, cursor: 'pointer' }}>
+                      {r.name}
+                    </button>
+                  </td>
                   <td style={td}><span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '999px', background: r.is_system ? theme.muted : theme.brandSoft, color: r.is_system ? theme.inkMuted : theme.brandSoftText, border: `1px solid ${r.is_system ? theme.border : theme.purpleBorder}` }}>{r.is_system ? 'System' : 'Custom'}</span></td>
                   <td style={{ ...td, color: theme.inkMuted }}>{count}</td>
                   <td style={{ ...td, color: theme.inkMuted, fontSize: '12px' }}>{perms.length === 0 ? '—' : `${perms.length} permission${perms.length === 1 ? '' : 's'}`}</td>
-                  <td style={{ ...td, textAlign: 'end' }}>
-                    {!r.is_system && (
+                  <td style={{ ...td, textAlign: 'end', whiteSpace: 'nowrap' }}>
+                    {r.is_system ? (
+                      r.key !== 'admin' && (
+                        <button onClick={() => setRoleModal({ open: true, mode: 'create', role: null, presetName: `${r.name} (Custom)`, presetPerms: rolePerms })}
+                          title="Copy this role into an editable custom role"
+                          style={{ fontSize: '12px', fontWeight: 600, color: theme.brand, background: 'none', border: 'none', cursor: 'pointer' }}>
+                          Duplicate &amp; customize
+                        </button>
+                      )
+                    ) : (
                       <>
-                        <button onClick={() => setRoleModal({ open: true, editing: r })} style={{ fontSize: '12px', fontWeight: 600, color: theme.brand, background: 'none', border: 'none', cursor: 'pointer', marginInlineEnd: '10px' }}>Edit</button>
+                        <button onClick={openRole} style={{ fontSize: '12px', fontWeight: 600, color: theme.brand, background: 'none', border: 'none', cursor: 'pointer', marginInlineEnd: '10px' }}>Edit</button>
                         <button onClick={() => { if (count > 0) { setError(`"${r.name}" is assigned to ${count} member(s) — reassign them first.`); return; } delRole.mutate(r.key); }} style={{ fontSize: '12px', fontWeight: 600, color: theme.danger, background: 'none', border: 'none', cursor: 'pointer' }}>Delete</button>
                       </>
                     )}
@@ -205,14 +232,22 @@ export default function UsersRolesPage() {
         </table>
       </div>
 
-      <p style={{ fontSize: '12px', color: theme.inkFaint }}>Invited teammates sign up with the same email and are auto-added to your company with the role you chose. System roles can't be edited; build a custom role to fine-tune access.</p>
+      <p style={{ fontSize: '12px', color: theme.inkFaint }}>
+        Invited teammates sign up with the same email and are auto-added to your company with the role you chose.
+        Click a role to see or change what it can access — system roles are shared templates, so use
+        “Duplicate &amp; customize” to make your own editable copy. Use “Customize” on a member to grant or
+        deny specific modules for just that person. Members only ever see what their role + overrides allow.
+      </p>
 
       {roleModal.open && (
         <RoleEditorModal
-          editing={roleModal.editing}
-          initialPerms={roleModal.editing ? [...(permsByRole.get(roleModal.editing.key) ?? [])] : []}
-          onClose={() => setRoleModal({ open: false, editing: null })}
-          onSaved={() => { setRoleModal({ open: false, editing: null }); setError(null); refresh(); }}
+          mode={roleModal.mode}
+          role={roleModal.role}
+          presetName={roleModal.presetName}
+          initialPerms={roleModal.presetPerms}
+          onDuplicate={(name, permsList) => setRoleModal({ open: true, mode: 'create', role: null, presetName: name, presetPerms: permsList })}
+          onClose={() => setRoleModal({ open: false })}
+          onSaved={() => { setRoleModal({ open: false }); setError(null); refresh(); }}
           onError={fail}
         />
       )}
@@ -317,15 +352,22 @@ function UserOverridesModal({ user, roleName, baseline, onClose, onSaved, onErro
   );
 }
 
-// ── Create / edit a custom role ──────────────────────────────────────────────
-function RoleEditorModal({ editing, initialPerms, onClose, onSaved, onError }: {
-  editing: RoleRow | null;
+// ── Create / edit / view a role ──────────────────────────────────────────────
+// mode 'view' shows a system role's matrix read-only with a
+// "Duplicate & customize" action that reopens the modal in create mode.
+function RoleEditorModal({ mode, role, presetName, initialPerms, onDuplicate, onClose, onSaved, onError }: {
+  mode: 'create' | 'edit' | 'view';
+  role: RoleRow | null;
+  presetName?: string;
   initialPerms: string[];
+  onDuplicate: (name: string, perms: string[]) => void;
   onClose: () => void;
   onSaved: () => void;
   onError: (e: unknown) => void;
 }) {
-  const [name, setName] = useState(editing?.name ?? '');
+  const editing = mode === 'edit' ? role : null;
+  const readOnly = mode === 'view';
+  const [name, setName] = useState(editing?.name ?? presetName ?? (readOnly ? role?.name ?? '' : ''));
   const [perms, setPerms] = useState<Set<string>>(new Set(initialPerms));
 
   const toggle = (p: string, on: boolean) => {
@@ -356,12 +398,22 @@ function RoleEditorModal({ editing, initialPerms, onClose, onSaved, onError }: {
   });
 
   return (
-    <Modal open onClose={onClose} title={editing ? `Edit role — ${editing.name}` : 'New custom role'}>
+    <Modal open onClose={onClose} title={
+      readOnly ? `Role permissions — ${role?.name ?? ''}`
+      : editing ? `Edit role — ${editing.name}`
+      : 'New custom role'
+    }>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {readOnly && (
+          <p style={{ fontSize: '12.5px', color: theme.inkMuted, margin: 0 }}>
+            This is a built-in system role shared by all companies, so it can't be changed directly.
+            Duplicate it to get your own editable copy.
+          </p>
+        )}
         <div>
           <label style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: theme.inkMuted }}>Role name</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Warehouse Manager"
-            style={{ width: '100%', marginTop: '4px', padding: '8px 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: theme.radius, color: theme.ink }} />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Warehouse Manager" disabled={readOnly}
+            style={{ width: '100%', marginTop: '4px', padding: '8px 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: theme.radius, color: theme.ink, background: readOnly ? theme.muted : '#fff' }} />
         </div>
 
         <div>
@@ -374,11 +426,11 @@ function RoleEditorModal({ editing, initialPerms, onClose, onSaved, onError }: {
               <div key={g.module} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 70px', alignItems: 'center', padding: '8px 12px', borderTop: i === 0 ? 'none' : `1px solid ${theme.muted}`, fontSize: '13px' }}>
                 <span style={{ color: theme.ink }}>{g.module}</span>
                 <span style={{ textAlign: 'center' }}>
-                  <input type="checkbox" checked={perms.has(g.read)} onChange={(e) => toggle(g.read, e.target.checked)} />
+                  <input type="checkbox" checked={perms.has(g.read)} disabled={readOnly} onChange={(e) => toggle(g.read, e.target.checked)} />
                 </span>
                 <span style={{ textAlign: 'center' }}>
                   {g.write
-                    ? <input type="checkbox" checked={perms.has(g.write)} onChange={(e) => toggleWrite(g.read, g.write!, e.target.checked)} />
+                    ? <input type="checkbox" checked={perms.has(g.write)} disabled={readOnly} onChange={(e) => toggleWrite(g.read, g.write!, e.target.checked)} />
                     : <span style={{ color: theme.inkFaint }}>—</span>}
                 </span>
               </div>
@@ -388,8 +440,16 @@ function RoleEditorModal({ editing, initialPerms, onClose, onSaved, onError }: {
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => save.mutate()} disabled={save.isPending || !name.trim()}>{save.isPending ? 'Saving…' : (editing ? 'Save changes' : 'Create role')}</Button>
+          <Button variant="ghost" onClick={onClose}>{readOnly ? 'Close' : 'Cancel'}</Button>
+          {readOnly ? (
+            role?.key !== 'admin' && (
+              <Button onClick={() => onDuplicate(`${role?.name ?? 'Role'} (Custom)`, [...perms])}>
+                Duplicate &amp; customize
+              </Button>
+            )
+          ) : (
+            <Button onClick={() => save.mutate()} disabled={save.isPending || !name.trim()}>{save.isPending ? 'Saving…' : (editing ? 'Save changes' : 'Create role')}</Button>
+          )}
         </div>
       </div>
     </Modal>
