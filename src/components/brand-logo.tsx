@@ -20,9 +20,9 @@ export const BRAND_NAVY = '#101B33';
  * right-aligned with it, and the bottom bar is left-aligned with the middle
  * one and extends furthest right — all slanted ~25° up to the right.
  */
-function Bars() {
+function Bars({ fill = BRAND_ORANGE }: { fill?: string }) {
   return (
-    <g transform="translate(0 9) skewY(-25)" fill={BRAND_ORANGE}>
+    <g transform="translate(0 9) skewY(-25)" fill={fill}>
       <rect x="8" y="16" width="36" height="11" rx="3" />
       <rect x="20" y="30" width="24" height="11" rx="3" />
       <rect x="20" y="44" width="36" height="11" rx="3" />
@@ -30,10 +30,19 @@ function Bars() {
   );
 }
 
-export function BrandMark({ size = 32, className = '' }: { size?: number; className?: string }) {
+export function BrandMark({
+  size = 32,
+  className = '',
+  color = BRAND_ORANGE,
+}: {
+  size?: number;
+  className?: string;
+  /** Mark colour — brand orange by default; the marketing site uses teal. */
+  color?: string;
+}) {
   return (
     <svg viewBox="0 0 64 64" width={size} height={size} className={className} aria-hidden="true">
-      <Bars />
+      <Bars fill={color} />
     </svg>
   );
 }

@@ -1,219 +1,287 @@
 /**
- * Landing page — premium marketing site for StockBolt ERP.
+ * Landing page — StockBolt marketing site (2026-07 redesign).
  *
- * Public page at `/` (anonymous) and `/landing`. Apple/Linear/Stripe-inspired:
- * minimal, lots of whitespace, soft gradients, glassmorphism, subtle
- * Framer-Motion reveals, Lucide icons. Light mode only. Tailwind for layout,
- * brand colours inline so they survive any Tailwind purge config.
+ * Public page at `/` (anonymous) and `/landing`. Navy / blue / teal palette
+ * per the approved mock: sticky nav, hero with CSS-built dashboard + phone
+ * mockups, trusted-brands strip, 6-feature grid, industries band, navy stats
+ * bar, free-trial pricing card, gradient CTA and a 5-column footer.
  *
- * Screenshots: the showcase uses self-contained CSS mock UIs so the page is
- * complete with zero image assets. To use real captures, drop PNGs in
- * /public/screenshots and swap the <ModuleMock> for an <img>.
+ * The brand mark renders in teal here (marketing palette per the mock); the
+ * app itself uses the default orange mark.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, type Variants } from 'framer-motion';
-import { BrandLogo } from '@/components/brand-logo';
 import {
-  Boxes, Calculator, ReceiptText, Users, ShieldCheck, Languages, Warehouse,
-  ScrollText, Puzzle, Check, X, ArrowRight, Sparkles, Wallet,
-  Building2, Wrench, Truck, ChevronDown, Globe, Zap,
+  ArrowRight, PlayCircle, CheckCircle2, ChevronDown, Menu, X,
+  ShoppingCart, Package, ShoppingBag, Calculator, Users, BarChart3,
+  Store, Truck, Globe, Wrench, Building2, FileText, ShieldCheck,
+  Rocket, Cog, Send,
 } from 'lucide-react';
+import { BrandMark } from '@/components/brand-logo';
 
-// ── Brand tokens ──────────────────────────────────────────────────────────
+// ── Palette ──────────────────────────────────────────────────────────────────
 const C = {
-  primary:   '#6D28D9',
-  secondary: '#8B5CF6',
-  accent:    '#A855F7',
-  bg:        '#F8FAFC',
-  text:      '#0F172A',
-  muted:     '#64748B',
-  border:    'rgba(15,23,42,0.08)',
+  navy:   '#0A2540',
+  ink:    '#0F2747',
+  text:   '#334155',
+  muted:  '#64748B',
+  faint:  '#94A3B8',
+  border: '#E2E8F0',
+  bg:     '#F4F8FC',
+  card:   '#FFFFFF',
+  blue:   '#2563EB',
+  teal:   '#0EA5A4',
+  green:  '#10B981',
 };
-const GRAD = `linear-gradient(135deg, ${C.primary}, ${C.accent})`;
+const TEAL_MARK = '#0EA5A4';
+const DEMO_MAILTO = 'mailto:sales@stockbolt.com?subject=StockBolt%20Demo';
 
-// ── Motion helpers ──────────────────────────────────────────────────────────
-const fadeUp: Variants = {
-  hidden: { opacity: 0, y: 26 },
-  show:   { opacity: 1, y: 0 },
-};
-function Reveal({ children, delay = 0, className = '' }: { children: React.ReactNode; delay?: number; className?: string }) {
+// ── Shared bits ──────────────────────────────────────────────────────────────
+function Reveal({ children, delay = 0, className = '', style }: { children: ReactNode; delay?: number; className?: string; style?: CSSProperties }) {
+  const variants: Variants = {
+    hidden: { opacity: 0, y: 24 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: 'easeOut', delay } },
+  };
   return (
     <motion.div
       className={className}
+      style={style}
+      variants={variants}
       initial="hidden"
       whileInView="show"
-      viewport={{ once: true, margin: '-80px' }}
-      variants={fadeUp}
-      transition={{ duration: 0.6, delay, ease: [0.22, 1, 0.36, 1] }}
+      viewport={{ once: true, margin: '-60px' }}
     >
       {children}
     </motion.div>
   );
 }
 
-// ── Reusable glass mock "browser" frame ───────────────────────────────────────
-function MockFrame({ title, children }: { title: string; children: React.ReactNode }) {
+function Kicker({ children }: { children: ReactNode }) {
   return (
-    <div
-      style={{
-        background: 'rgba(255,255,255,0.7)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        border: `1px solid ${C.border}`,
-        borderRadius: 24,
-        boxShadow: '0 30px 60px -20px rgba(76,29,149,0.30), 0 10px 30px -10px rgba(15,23,42,0.15)',
-        overflow: 'hidden',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', borderBottom: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.55)' }}>
-        <span style={{ width: 11, height: 11, borderRadius: 99, background: '#FF5F57' }} />
-        <span style={{ width: 11, height: 11, borderRadius: 99, background: '#FEBC2E' }} />
-        <span style={{ width: 11, height: 11, borderRadius: 99, background: '#28C840' }} />
-        <span style={{ marginInlineStart: 12, fontSize: 12, fontWeight: 600, color: C.muted }}>{title}</span>
-      </div>
-      <div style={{ padding: 18 }}>{children}</div>
+    <p style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: C.blue, letterSpacing: '.01em' }}>{children}</p>
+  );
+}
+
+function H2({ children }: { children: ReactNode }) {
+  return (
+    <h2 style={{ margin: '8px 0 0', fontSize: 'clamp(26px, 3.4vw, 34px)', fontWeight: 800, letterSpacing: '-.02em', color: C.ink }}>
+      {children}
+    </h2>
+  );
+}
+
+function BrandRow({ text = 15, tone = C.ink }: { text?: number; tone?: string }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9 }}>
+      <BrandMark size={Math.round(text * 1.9)} color={TEAL_MARK} />
+      <span style={{ fontSize: text, fontWeight: 800, letterSpacing: '0.1em', color: tone, lineHeight: 1 }}>STOCKBOLT</span>
+    </span>
+  );
+}
+
+// ── Nav ──────────────────────────────────────────────────────────────────────
+function NavDrop({ label, items }: { label: string; items: { label: string; href: string }[] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 500, color: C.text, padding: '6px 2px' }}
+      >
+        {label} <ChevronDown size={14} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', top: 'calc(100% + 8px)', insetInlineStart: 0, minWidth: 210, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: '0 16px 40px -12px rgba(15,39,71,.18)', padding: '6px 0', zIndex: 60 }}>
+          {items.map((it) => (
+            <a key={it.label} href={it.href} onClick={() => setOpen(false)}
+              style={{ display: 'block', padding: '8px 16px', fontSize: 13.5, color: C.text, textDecoration: 'none' }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = C.bg; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+            >{it.label}</a>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-const tile = (label: string, value: string, tone: string = C.primary) => (
-  <div style={{ flex: 1, minWidth: 110, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 14, padding: '12px 14px' }}>
-    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: C.muted }}>{label}</div>
-    <div style={{ fontSize: 19, fontWeight: 800, color: tone, marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
-  </div>
-);
-
-// Each module gets a believable little UI so the showcase feels real without images.
-function ModuleMock({ kind }: { kind: string }) {
-  if (kind === 'dashboard') {
-    return (
-      <MockFrame title="StockBolt — Dashboard">
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
-          {tile('Sales (MTD)', 'AED 412,500', C.primary)}
-          {tile('Receivables', 'AED 86,200', '#0ea5e9')}
-          {tile('Inventory', 'AED 1.24M', '#16a34a')}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 90, padding: '0 4px' }}>
-          {[40, 62, 48, 80, 56, 92, 70, 100, 64].map((h, i) => (
-            <div key={i} style={{ flex: 1, height: `${h}%`, borderRadius: 6, background: GRAD, opacity: 0.35 + h / 200 }} />
-          ))}
-        </div>
-      </MockFrame>
-    );
-  }
-  if (kind === 'sales') {
-    return (
-      <MockFrame title="StockBolt — Invoice INV-1042">
-        <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
-          {tile('Total', 'AED 12,600')}
-          {tile('Paid', 'AED 8,000', '#16a34a')}
-          {tile('Due', 'AED 4,600', '#dc2626')}
-        </div>
-        {[['Shock Absorber', '4 × 1,200'], ['Brake Pad Set', '6 × 850'], ['Oil Filter', '12 × 75']].map((r, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderTop: i ? `1px solid ${C.border}` : 'none', fontSize: 13, color: C.text }}>
-            <span>{r[0]}</span><span style={{ color: C.muted, fontFamily: 'monospace' }}>{r[1]}</span>
-          </div>
-        ))}
-      </MockFrame>
-    );
-  }
-  if (kind === 'inventory') {
-    return (
-      <MockFrame title="StockBolt — Stock Movement">
-        {[['Shock Absorber', 'WH-01', '218', '#16a34a'], ['Brake Pad Set', 'WH-02', '54', '#16a34a'], ['Oil Filter', 'WH-01', '6', '#d97706'], ['Clutch Kit', 'WH-02', '0', '#dc2626']].map((r, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 10, alignItems: 'center', padding: '10px 0', borderTop: i ? `1px solid ${C.border}` : 'none', fontSize: 13 }}>
-            <span style={{ color: C.text, fontWeight: 500 }}>{r[0]}</span>
-            <span style={{ color: C.muted, fontSize: 11 }}>{r[1]}</span>
-            <span style={{ color: r[3], fontWeight: 700, fontFamily: 'monospace' }}>{r[2]}</span>
-          </div>
-        ))}
-      </MockFrame>
-    );
-  }
-  if (kind === 'statements') {
-    return (
-      <MockFrame title="StockBolt — AR Aging">
-        <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
-          {tile('Current', '52,000', '#16a34a')}
-          {tile('31–60', '18,400', '#d97706')}
-          {tile('90+', '6,100', '#dc2626')}
-        </div>
-        {[['Al Noor Garage', '38,200'], ['FastTrack Workshop', '21,500'], ['AIM Auto Spare', '17,000']].map((r, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderTop: i ? `1px solid ${C.border}` : 'none', fontSize: 13, color: C.text }}>
-            <span>{r[0]}</span><span style={{ fontFamily: 'monospace', color: C.muted }}>AED {r[1]}</span>
-          </div>
-        ))}
-      </MockFrame>
-    );
-  }
-  // accounting
+// ── Hero mockups (pure CSS/SVG — no images) ─────────────────────────────────
+function MiniKpi({ label, value, delta, color }: { label: string; value: string; delta: string; color: string }) {
   return (
-    <MockFrame title="StockBolt — Trial Balance">
-      {[['1100 Cash in Hand', '120,000', ''], ['1200 Accounts Receivable', '86,200', ''], ['1300 Inventory Asset', '1,240,000', ''], ['4100 Sales Revenue', '', '2,318,000'], ['2200 Output VAT', '', '115,900']].map((r, i) => (
-        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 14, padding: '8px 0', borderTop: i ? `1px solid ${C.border}` : 'none', fontSize: 12.5 }}>
-          <span style={{ color: C.text }}>{r[0]}</span>
-          <span style={{ width: 78, textAlign: 'right', fontFamily: 'monospace', color: C.muted }}>{r[1]}</span>
-          <span style={{ width: 78, textAlign: 'right', fontFamily: 'monospace', color: C.muted }}>{r[2]}</span>
-        </div>
-      ))}
-    </MockFrame>
+    <div style={{ flex: '1 1 110px', minWidth: 0, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, padding: '10px 12px' }}>
+      <div style={{ fontSize: 9.5, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
+      <div style={{ marginTop: 2, fontSize: 13, fontWeight: 800, color: C.ink, whiteSpace: 'nowrap' }}>{value}</div>
+      <div style={{ marginTop: 2, fontSize: 9.5, fontWeight: 700, color }}>{delta}</div>
+    </div>
   );
 }
 
-// ── Data ──────────────────────────────────────────────────────────────────
-const SHOWCASE = [
-  { kind: 'dashboard',  name: 'Dashboard',           caption: 'Real-time business insights at a glance.',         features: ['Sales KPIs', 'Receivables & payables', 'Inventory value', 'Cash flow visibility'] },
-  { kind: 'sales',      name: 'Sales & Invoicing',   caption: 'Create invoices and receive payments in seconds.', features: ['VAT invoices', 'Payment tracking', 'Outstanding balances', 'Customer history'] },
-  { kind: 'inventory',  name: 'Inventory',           caption: 'Track stock movement with precision.',             features: ['Multi-warehouse support', 'Stock movement', 'Moving-average costing', 'Product compatibility'] },
-  { kind: 'statements', name: 'Customer Statements', caption: 'Know exactly who owes you money.',                  features: ['AR aging', 'Credit limits', 'Receivables', 'Customer history'] },
-  { kind: 'accounting', name: 'Accounting',          caption: 'Built-in accounting without extra software.',      features: ['Chart of Accounts', 'Trial Balance', 'P&L & Balance Sheet', 'VAT reports'] },
-];
+function DashboardMock() {
+  const menu = ['Dashboard', 'Sales', 'Purchasing', 'Inventory', 'Accounting', 'Reports', 'Payroll', 'Suppliers', 'Customers', 'Settings'];
+  const parts = [['Oil Filter', '1,250'], ['Brake Pad', '980'], ['Air Filter', '875'], ['Spark Plug', '650']];
+  return (
+    <div style={{ background: '#fff', borderRadius: 18, border: `1px solid ${C.border}`, boxShadow: '0 40px 80px -24px rgba(15,39,71,.28)', overflow: 'hidden', display: 'flex', minHeight: 340 }}>
+      {/* sidebar */}
+      <div style={{ width: 132, borderInlineEnd: `1px solid ${C.border}`, padding: '14px 10px', flexShrink: 0 }} className="hidden sm:block">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingInlineStart: 4, marginBottom: 14 }}>
+          <BrandMark size={18} color={TEAL_MARK} />
+          <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.08em', color: C.ink }}>STOCKBOLT</span>
+        </div>
+        {menu.map((m, i) => (
+          <div key={m} style={{
+            display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', borderRadius: 8, marginBottom: 1,
+            background: i === 0 ? '#EAF1FE' : 'transparent',
+            color: i === 0 ? C.blue : C.muted, fontSize: 10.5, fontWeight: i === 0 ? 700 : 500,
+          }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, border: `1.4px solid currentColor`, opacity: .75 }} />
+            {m}
+          </div>
+        ))}
+      </div>
+      {/* main */}
+      <div style={{ flex: 1, minWidth: 0, padding: '14px 16px', background: '#FAFCFF' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <span style={{ fontSize: 13, fontWeight: 800, color: C.ink }}>Dashboard</span>
+          <span style={{ display: 'flex', gap: 6 }}>
+            {[0, 1, 2].map((i) => <span key={i} style={{ width: 18, height: 18, borderRadius: 6, border: `1px solid ${C.border}`, background: '#fff' }} />)}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+          <MiniKpi label="Total Sales" value="AED 1,806.66" delta="▲ +12.5%" color={C.green} />
+          <MiniKpi label="Purchases" value="AED 1,589.00" delta="▲ +8.2%" color={C.blue} />
+          <MiniKpi label="Inventory Value" value="AED 245,320" delta="▲ +10.4%" color={C.teal} />
+          <MiniKpi label="Total Profit" value="AED 216.32" delta="▲ +15.6%" color={C.green} />
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'stretch', flexWrap: 'wrap' }}>
+          {/* chart */}
+          <div style={{ flex: '2 1 240px', minWidth: 0, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, padding: '10px 12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: C.ink }}>Sales Overview</span>
+              <span style={{ fontSize: 9, color: C.muted, border: `1px solid ${C.border}`, borderRadius: 999, padding: '2px 8px' }}>This Year ▾</span>
+            </div>
+            <svg viewBox="0 0 360 110" style={{ width: '100%', height: 'auto', display: 'block' }} aria-hidden="true">
+              <defs>
+                <linearGradient id="lpFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={C.blue} stopOpacity="0.22" />
+                  <stop offset="100%" stopColor={C.blue} stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              {[22, 44, 66, 88].map((y) => <line key={y} x1="0" x2="360" y1={y} y2={y} stroke={C.border} strokeDasharray="3 4" strokeWidth="1" />)}
+              <path d="M0,95 C30,88 45,70 70,72 C95,74 108,50 135,52 C160,54 172,78 200,72 C228,66 238,30 265,32 C288,34 300,55 322,48 C338,43 350,30 360,26" fill="none" stroke={C.blue} strokeWidth="2.5" strokeLinecap="round" />
+              <path d="M0,95 C30,88 45,70 70,72 C95,74 108,50 135,52 C160,54 172,78 200,72 C228,66 238,30 265,32 C288,34 300,55 322,48 C338,43 350,30 360,26 L360,110 L0,110 Z" fill="url(#lpFill)" />
+            </svg>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8.5, color: C.faint, marginTop: 4 }}>
+              {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'].map((m) => <span key={m}>{m}</span>)}
+            </div>
+          </div>
+          {/* top parts */}
+          <div style={{ flex: '1 1 130px', minWidth: 0, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, padding: '10px 12px' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.ink, marginBottom: 8 }}>Top Selling Parts</div>
+            {parts.map(([name, qty]) => (
+              <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 0', borderTop: `1px solid ${C.bg}` }}>
+                <span style={{ width: 20, height: 20, borderRadius: 6, background: '#EAF1FE', color: C.blue, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Cog size={11} />
+                </span>
+                <span style={{ flex: 1, fontSize: 10, color: C.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: C.ink }}>{qty}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
+function PhoneMock() {
+  return (
+    <div style={{ width: 172, background: '#fff', borderRadius: 22, border: `1px solid ${C.border}`, boxShadow: '0 30px 60px -18px rgba(15,39,71,.35)', padding: '12px 12px 14px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <span style={{ fontSize: 9, color: C.faint }}>‹</span>
+        <span style={{ display: 'flex', gap: 3 }}>
+          {[0, 1, 2].map((i) => <span key={i} style={{ width: 4, height: 4, borderRadius: 999, background: C.border }} />)}
+        </span>
+      </div>
+      <div style={{ fontSize: 8.5, color: C.muted }}>Good Morning,</div>
+      <div style={{ fontSize: 12, fontWeight: 800, color: C.ink, marginBottom: 8 }}>Admin</div>
+      <div style={{ fontSize: 8.5, fontWeight: 700, color: C.muted, marginBottom: 5 }}>Today's Overview</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginBottom: 9 }}>
+        {[
+          ['Sales', 'AED 1,806.66', C.green], ['Purchases', 'AED 1,589.00', C.blue],
+          ['Invoices', '24', C.teal], ['Low Stock', '12', '#DC2626'],
+        ].map(([l, v, col]) => (
+          <div key={l as string} style={{ background: '#F8FBFF', border: `1px solid ${C.border}`, borderRadius: 8, padding: '6px 7px' }}>
+            <div style={{ fontSize: 7.5, color: col as string, fontWeight: 700 }}>{l}</div>
+            <div style={{ fontSize: 9.5, fontWeight: 800, color: C.ink, whiteSpace: 'nowrap' }}>{v}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+        <span style={{ fontSize: 8.5, fontWeight: 700, color: C.muted }}>Recent Activity</span>
+        <span style={{ fontSize: 8, color: C.blue, fontWeight: 600 }}>View all</span>
+      </div>
+      {[
+        ['Invoice #INV-00124', '2 mins ago', 'AED 850.00'],
+        ['Purchase #PO-00056', '1 hour ago', 'AED 1,250.00'],
+      ].map(([title, when, amt]) => (
+        <div key={title} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 0', borderTop: `1px solid ${C.bg}` }}>
+          <span style={{ width: 16, height: 16, borderRadius: 5, background: '#E7F8F1', color: C.green, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+            <FileText size={9} />
+          </span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 8, fontWeight: 700, color: C.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
+            <span style={{ display: 'block', fontSize: 7, color: C.faint }}>{when}</span>
+          </span>
+          <span style={{ fontSize: 8, fontWeight: 800, color: C.ink, whiteSpace: 'nowrap' }}>{amt}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Data ─────────────────────────────────────────────────────────────────────
 const FEATURES = [
-  { icon: Boxes,       title: 'Inventory Management',  body: 'Real-time stock across every warehouse with moving-average costing.' },
-  { icon: Calculator,  title: 'Integrated Accounting', body: 'A full general ledger, trial balance and statements — no add-ons.' },
-  { icon: ReceiptText, title: 'Sales & Invoicing',     body: 'VAT-ready invoices, payments and receipts in a few clicks.' },
-  { icon: Users,       title: 'Customer Statements',   body: 'AR aging, credit limits and a clear picture of who owes you.' },
-  { icon: ShieldCheck, title: 'VAT Compliance',        body: 'GCC VAT built in — output/input VAT and ready-to-file returns.' },
-  { icon: Languages,   title: 'Arabic Support',        body: 'Full English + Arabic, right-to-left aware throughout.' },
-  { icon: Warehouse,   title: 'Multi-Warehouse',       body: 'Move and value stock across multiple locations with ease.' },
-  { icon: ScrollText,  title: 'Audit Logs',            body: 'Every posting tracked — reversible, traceable, audit-ready.' },
-  { icon: Puzzle,      title: 'Product Compatibility', body: 'Map parts to the vehicles they fit and sell with confidence.' },
+  { icon: ShoppingCart, tint: '#E7F8F1', color: C.green,  title: 'Sales Management',   text: 'Create invoices, manage customers, track sales and quotes effortlessly.' },
+  { icon: Package,      tint: '#F1EDFE', color: '#7C3AED', title: 'Inventory Control',  text: 'Real-time stock tracking, multi-warehouse management and low stock alerts.' },
+  { icon: ShoppingBag,  tint: '#F1EDFE', color: '#7C3AED', title: 'Purchasing',         text: 'Manage suppliers, purchase orders, receipts and vendor bills.' },
+  { icon: Calculator,   tint: '#FEF3E7', color: '#EA580C', title: 'Accounting',         text: 'Powerful accounting with reports, P&L, balance sheet and cash flow.' },
+  { icon: Users,        tint: '#EAF1FE', color: C.blue,   title: 'Multi-User Access',  text: 'Role-based access control for your team with complete data security.' },
+  { icon: BarChart3,    tint: '#E7F8F1', color: C.green,  title: 'Reports & Analytics', text: 'Beautiful insights and custom reports to help your business grow faster.' },
 ];
 
-const COMPARE: [string, boolean | string, boolean | string][] = [
-  ['Auto Parts Focus',       true, false],
-  ['Inventory + Accounting', true, 'Limited'],
-  ['Arabic Support',         true, 'Limited'],
-  ['Affordable Pricing',     true, false],
-  ['GCC VAT Ready',          true, 'Partial'],
+const INDUSTRIES = [
+  { icon: Store,     label: 'Auto Parts Retailers' },
+  { icon: Truck,     label: 'Parts Distributors' },
+  { icon: Globe,     label: 'Importers & Exporters' },
+  { icon: Wrench,    label: 'Workshops & Garages' },
+  { icon: Building2, label: 'Multi-Branch Businesses' },
+  { icon: ShoppingBag, label: 'E-commerce Sellers' },
 ];
 
-const USE_CASES = [
-  { icon: Building2, title: 'Retail Parts Shops', body: 'Manage thousands of SKUs effortlessly.' },
-  { icon: Wrench,    title: 'Workshops',          body: 'Track inventory and invoices in one place.' },
-  { icon: Truck,     title: 'Distributors',       body: 'Control stock across warehouses.' },
+const STATS = [
+  { icon: Users,       tint: C.teal,  value: '10K+',  label: 'Active Users' },
+  { icon: FileText,    tint: C.blue,  value: '50K+',  label: 'Invoices Generated' },
+  { icon: Package,     tint: '#7C3AED', value: '1M+', label: 'Parts Managed' },
+  { icon: ShieldCheck, tint: C.green, value: '99.9%', label: 'Uptime & Security' },
 ];
 
-const PROOF = [
-  { icon: Zap,         label: 'Inventory + Accounting in one platform' },
-  { icon: Globe,       label: 'Built for GCC businesses' },
-  { icon: Languages,   label: 'Arabic & English ready' },
-  { icon: ShieldCheck, label: 'VAT compliant' },
-];
+const TRUSTED = ['BOSCH', 'DENSO', 'MAHLE', 'AISIN', 'MANN FILTER', 'NGK', 'WÜRTH', 'Valeo'];
 
-const FAQS = [
-  { q: 'What businesses is StockBolt built for?', a: 'StockBolt is purpose-built for retail auto parts shops, workshops and distributors — typically 1–5 users — who need inventory and accounting in one affordable system.' },
-  { q: 'Does StockBolt support UAE VAT?', a: 'Yes. GCC VAT is built in — input and output VAT are tracked automatically on every invoice and bill, with VAT-return reports ready to file.' },
-  { q: 'Does StockBolt support Arabic?', a: 'Yes. The entire interface is available in both English and Arabic with full right-to-left support.' },
-  { q: 'Can I manage inventory and accounting together?', a: "Absolutely — that's the core idea. Every sale, purchase and payment posts to a real double-entry general ledger automatically. No second accounting tool needed." },
-  { q: 'Is StockBolt cloud based?', a: 'Yes. StockBolt runs in the cloud — access it from any browser, with your data securely isolated per business.' },
-];
+const TRIAL_CHECKS = ['All Modules Included', 'No Time Limit Restrictions', 'Priority Support', 'Easy Setup'];
 
-// ── Page ────────────────────────────────────────────────────────────────────
+// ── Page ─────────────────────────────────────────────────────────────────────
 export default function LandingPage() {
-  const [faqOpen, setFaqOpen] = useState<number | null>(0);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [newsletterEmail, setNewsletterEmail] = useState('');
 
   // Lightweight SEO — title + description (no react-helmet dependency).
   useEffect(() => {
@@ -223,286 +291,320 @@ export default function LandingPage() {
       const m = document.createElement('meta'); m.setAttribute('name', 'description'); document.head.appendChild(m); return m;
     })();
     const prevDesc = meta.getAttribute('content');
-    meta.setAttribute('content', 'StockBolt is the affordable, all-in-one inventory and accounting ERP built specifically for auto parts retailers. VAT-ready, Arabic support, cloud based. Free during launch.');
+    meta.setAttribute('content', 'StockBolt is the all-in-one ERP for auto parts businesses — sales, inventory, purchasing and accounting in one powerful system. VAT-ready, Arabic support, cloud based.');
     return () => { document.title = prevTitle; if (prevDesc) meta.setAttribute('content', prevDesc); };
   }, []);
+
+  const navLinks = (
+    <>
+      <NavDrop label="Features" items={FEATURES.map((f) => ({ label: f.title, href: '#features' }))} />
+      <a href="#features" style={{ fontSize: 14, fontWeight: 500, color: C.text, textDecoration: 'none', padding: '6px 2px' }}>Modules</a>
+      <NavDrop label="Industries" items={INDUSTRIES.map((i) => ({ label: i.label, href: '#industries' }))} />
+      <a href="#pricing" style={{ fontSize: 14, fontWeight: 500, color: C.text, textDecoration: 'none', padding: '6px 2px' }}>Pricing</a>
+      <NavDrop label="Resources" items={[
+        { label: 'Documentation', href: DEMO_MAILTO },
+        { label: 'Help Center', href: 'mailto:support@stockbolt.com' },
+        { label: 'Contact Us', href: DEMO_MAILTO },
+      ]} />
+    </>
+  );
 
   return (
     <div style={{ background: C.bg, color: C.text, fontFamily: '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif', overflowX: 'hidden' }}>
       {/* ── Nav ─────────────────────────────────────────────────────────── */}
-      <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(248,250,252,0.72)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', borderBottom: `1px solid ${C.border}` }}>
-        <nav className="mx-auto flex items-center justify-between px-5 md:px-8" style={{ maxWidth: 1200, height: 64 }}>
-          <Link to="/" className="flex items-center" aria-label="StockBolt home">
-            <BrandLogo mark={32} text={16} />
+      <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(244,248,252,0.82)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', borderBottom: `1px solid ${C.border}` }}>
+        <nav className="mx-auto flex items-center justify-between gap-4 px-5 md:px-8" style={{ maxWidth: 1240, height: 66 }}>
+          <Link to="/" aria-label="StockBolt home" style={{ textDecoration: 'none', flexShrink: 0 }}>
+            <BrandRow text={15} />
           </Link>
-          <div className="hidden items-center gap-7 md:flex" style={{ fontSize: 14, fontWeight: 500, color: C.muted }}>
-            <a href="#features" className="transition-colors hover:text-slate-900">Features</a>
-            <a href="#why" className="transition-colors hover:text-slate-900">Why StockBolt</a>
-            <a href="#pricing" className="transition-colors hover:text-slate-900">Pricing</a>
-            <a href="#faq" className="transition-colors hover:text-slate-900">FAQ</a>
+          <div className="hidden items-center gap-7 lg:flex">{navLinks}</div>
+          <div className="hidden items-center gap-3 lg:flex" style={{ flexShrink: 0 }}>
+            <Link to="/login" style={{ padding: '9px 20px', borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', color: C.ink, fontSize: 14, fontWeight: 600, textDecoration: 'none' }}>Log in</Link>
+            <Link to="/register" style={{ padding: '9px 20px', borderRadius: 10, background: C.navy, color: '#fff', fontSize: 14, fontWeight: 600, textDecoration: 'none' }}>Get Started</Link>
           </div>
-          <div className="flex items-center gap-2">
-            <Link to="/login" className="hidden rounded-full px-4 py-2 text-sm font-semibold transition-colors hover:bg-slate-100 sm:inline-block" style={{ color: C.text }}>Sign in</Link>
-            <Link to="/register" className="rounded-full px-4 py-2 text-sm font-semibold text-white transition-transform hover:-translate-y-0.5" style={{ background: GRAD, boxShadow: '0 8px 20px -6px rgba(109,40,217,.5)' }}>Start Free</Link>
-          </div>
+          <button type="button" aria-label="Menu" onClick={() => setMobileOpen((o) => !o)} className="lg:hidden" style={{ background: 'none', border: 'none', color: C.ink, cursor: 'pointer' }}>
+            {mobileOpen ? <X size={22} /> : <Menu size={22} />}
+          </button>
         </nav>
+        {mobileOpen && (
+          <div className="lg:hidden" style={{ borderTop: `1px solid ${C.border}`, background: '#fff', padding: '14px 20px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <a href="#features" onClick={() => setMobileOpen(false)} style={{ color: C.text, textDecoration: 'none', fontSize: 15, fontWeight: 500 }}>Features</a>
+            <a href="#industries" onClick={() => setMobileOpen(false)} style={{ color: C.text, textDecoration: 'none', fontSize: 15, fontWeight: 500 }}>Industries</a>
+            <a href="#pricing" onClick={() => setMobileOpen(false)} style={{ color: C.text, textDecoration: 'none', fontSize: 15, fontWeight: 500 }}>Pricing</a>
+            <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+              <Link to="/login" style={{ flex: 1, textAlign: 'center', padding: '10px 0', borderRadius: 10, border: `1px solid ${C.border}`, color: C.ink, fontSize: 14, fontWeight: 600, textDecoration: 'none' }}>Log in</Link>
+              <Link to="/register" style={{ flex: 1, textAlign: 'center', padding: '10px 0', borderRadius: 10, background: C.navy, color: '#fff', fontSize: 14, fontWeight: 600, textDecoration: 'none' }}>Get Started</Link>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* ── Hero ────────────────────────────────────────────────────────── */}
-      <section style={{ position: 'relative' }}>
-        <div aria-hidden style={{ position: 'absolute', top: -120, right: -80, width: 460, height: 460, background: `radial-gradient(circle, ${C.accent}33, transparent 65%)`, filter: 'blur(20px)', pointerEvents: 'none' }} />
-        <div aria-hidden style={{ position: 'absolute', top: 120, left: -120, width: 420, height: 420, background: `radial-gradient(circle, ${C.secondary}26, transparent 65%)`, filter: 'blur(20px)', pointerEvents: 'none' }} />
-        <div className="mx-auto grid items-center gap-12 px-5 md:px-8 lg:grid-cols-2" style={{ maxWidth: 1200, paddingTop: 72, paddingBottom: 80 }}>
+      <section style={{ position: 'relative', overflow: 'hidden' }}>
+        {/* soft background washes */}
+        <div aria-hidden="true" style={{ position: 'absolute', top: -120, insetInlineStart: -120, width: 420, height: 420, borderRadius: '50%', background: 'radial-gradient(circle, rgba(16,185,129,.10), transparent 65%)' }} />
+        <div aria-hidden="true" style={{ position: 'absolute', top: -80, insetInlineEnd: -100, width: 520, height: 520, borderRadius: '50%', background: 'radial-gradient(circle, rgba(37,99,235,.12), transparent 65%)' }} />
+        <div className="mx-auto grid items-center gap-12 px-5 md:px-8 lg:grid-cols-2" style={{ maxWidth: 1240, paddingTop: 64, paddingBottom: 80, position: 'relative' }}>
           <Reveal>
-            <span className="inline-flex items-center gap-2 rounded-full px-3 py-1.5" style={{ background: '#fff', border: `1px solid ${C.border}`, fontSize: 13, fontWeight: 600, color: C.primary, boxShadow: '0 2px 8px rgba(15,23,42,.04)' }}>
-              <Sparkles size={14} /> Built for Auto Parts Businesses
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: '#E7F8F1', color: '#047857', borderRadius: 999, padding: '7px 14px', fontSize: 12.5, fontWeight: 700 }}>
+              ⚡ Smart ERP for Auto Parts Businesses
             </span>
-            <h1 style={{ fontSize: 'clamp(34px, 5vw, 56px)', lineHeight: 1.05, fontWeight: 800, letterSpacing: '-.03em', marginTop: 20 }}>
-              The affordable alternative to{' '}
-              <span style={{ background: GRAD, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>expensive ERP software.</span>
+            <h1 style={{ margin: '22px 0 0', fontSize: 'clamp(34px, 4.6vw, 52px)', lineHeight: 1.12, fontWeight: 800, letterSpacing: '-.025em', color: C.ink }}>
+              Run Your Auto Parts Business <span style={{ color: C.blue }}>Smarter,</span><br />
+              Faster, <span style={{ color: C.teal }}>Better.</span>
             </h1>
-            <p style={{ fontSize: 'clamp(16px, 2vw, 19px)', lineHeight: 1.6, color: C.muted, marginTop: 22, maxWidth: 540 }}>
-              Manage inventory, sales, purchasing and accounting from one powerful platform built specifically for auto parts retailers.
+            <p style={{ margin: '20px 0 0', fontSize: 17, lineHeight: 1.65, color: C.muted, maxWidth: 460 }}>
+              StockBolt is an all-in-one ERP platform that helps you manage sales, inventory, purchasing, accounting and more — in one powerful system.
             </p>
-            <div className="flex flex-wrap items-center gap-3" style={{ marginTop: 30 }}>
-              <Link to="/register" className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-base font-semibold text-white transition-transform hover:-translate-y-0.5" style={{ background: GRAD, boxShadow: '0 14px 30px -8px rgba(109,40,217,.55)' }}>
-                Start Free <ArrowRight size={18} />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 30 }}>
+              <Link to="/register" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '13px 26px', borderRadius: 12, background: C.navy, color: '#fff', fontSize: 15, fontWeight: 700, textDecoration: 'none', boxShadow: '0 14px 30px -10px rgba(10,37,64,.45)' }}>
+                Start 365-Day Free Trial <ArrowRight size={17} />
               </Link>
-              <a href="mailto:sales@stockbolt.com?subject=StockBolt%20Demo" className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-base font-semibold transition-colors hover:bg-white" style={{ border: `1px solid ${C.border}`, color: C.text, background: 'rgba(255,255,255,.6)' }}>
-                Book a Demo
+              <a href={DEMO_MAILTO} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '13px 24px', borderRadius: 12, border: `1px solid ${C.border}`, background: '#fff', color: C.ink, fontSize: 15, fontWeight: 600, textDecoration: 'none' }}>
+                <PlayCircle size={17} /> Book a Demo
               </a>
             </div>
-            <div className="flex flex-wrap gap-x-5 gap-y-2" style={{ marginTop: 26, fontSize: 13.5, color: C.muted, fontWeight: 500 }}>
-              {['Free during launch', 'UAE VAT Ready', 'Arabic Support', 'Cloud Based'].map(t => (
-                <span key={t} className="inline-flex items-center gap-1.5"><Check size={15} color={C.primary} /> {t}</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 22, marginTop: 26 }}>
+              {['No Credit Card', 'Full Access', 'Easy Setup'].map((c) => (
+                <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 13.5, fontWeight: 600, color: C.text }}>
+                  <CheckCircle2 size={16} color={C.green} /> {c}
+                </span>
               ))}
             </div>
           </Reveal>
+
           <Reveal delay={0.15}>
-            <motion.div initial={{ rotate: 1.5 }} animate={{ rotate: 0 }} transition={{ duration: 1, ease: 'easeOut' }}>
-              <ModuleMock kind="dashboard" />
-            </motion.div>
-          </Reveal>
-        </div>
-      </section>
-
-      {/* ── Screenshot showcase ─────────────────────────────────────────── */}
-      <section id="product" style={{ paddingTop: 40, paddingBottom: 40 }}>
-        <div className="mx-auto px-5 md:px-8" style={{ maxWidth: 1200 }}>
-          {SHOWCASE.map((m, i) => (
-            <div key={m.kind} className="grid items-center gap-10 lg:grid-cols-2" style={{ paddingTop: 56, paddingBottom: 56 }}>
-              <Reveal className={i % 2 === 1 ? 'lg:order-2' : ''}>
-                <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: C.accent }}>{m.name}</span>
-                <h3 style={{ fontSize: 'clamp(24px, 3vw, 32px)', fontWeight: 800, letterSpacing: '-.02em', marginTop: 10, lineHeight: 1.15 }}>{m.caption}</h3>
-                <ul style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {m.features.map(f => (
-                    <li key={f} className="flex items-center gap-3" style={{ fontSize: 15.5, color: C.text }}>
-                      <span style={{ width: 22, height: 22, borderRadius: 7, background: `${C.primary}14`, display: 'grid', placeItems: 'center', flexShrink: 0 }}><Check size={13} color={C.primary} /></span>
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-              </Reveal>
-              <Reveal delay={0.1} className={i % 2 === 1 ? 'lg:order-1' : ''}>
-                <ModuleMock kind={m.kind} />
-              </Reveal>
+            <div style={{ position: 'relative', paddingBottom: 70 }}>
+              <DashboardMock />
+              <div className="hidden sm:block" style={{ position: 'absolute', bottom: 0, insetInlineEnd: -8 }}>
+                <PhoneMock />
+              </div>
             </div>
-          ))}
+          </Reveal>
         </div>
       </section>
 
-      {/* ── Feature grid ────────────────────────────────────────────────── */}
-      <section id="features" style={{ paddingTop: 80, paddingBottom: 80 }}>
-        <div className="mx-auto px-5 md:px-8" style={{ maxWidth: 1200 }}>
-          <Reveal>
-            <h2 style={{ textAlign: 'center', fontSize: 'clamp(28px, 4vw, 42px)', fontWeight: 800, letterSpacing: '-.025em' }}>Everything your shop runs on</h2>
-            <p style={{ textAlign: 'center', color: C.muted, fontSize: 18, marginTop: 14, maxWidth: 560, marginInline: 'auto' }}>One platform for inventory, accounting, sales and compliance — nothing bolted on.</p>
+      {/* ── Trusted brands strip ────────────────────────────────────────── */}
+      <section style={{ background: '#fff', borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}` }}>
+        <div className="mx-auto px-5 md:px-8" style={{ maxWidth: 1240, paddingTop: 30, paddingBottom: 34 }}>
+          <p style={{ margin: 0, textAlign: 'center', fontSize: 13, color: C.muted }}>
+            Trusted by auto parts businesses across the region
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '18px 44px', marginTop: 18 }}>
+            {TRUSTED.map((b) => (
+              <span key={b} style={{ fontSize: 17, fontWeight: 800, letterSpacing: '.04em', color: '#9AA6B5' }}>{b}</span>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Features ────────────────────────────────────────────────────── */}
+      <section id="features" style={{ paddingTop: 80, paddingBottom: 40 }}>
+        <div className="mx-auto px-5 md:px-8" style={{ maxWidth: 1240 }}>
+          <Reveal style={{ textAlign: 'center' }}>
+            <Kicker>Everything You Need</Kicker>
+            <H2>Powerful Features. All in One Place.</H2>
           </Reveal>
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3" style={{ marginTop: 48 }}>
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6" style={{ marginTop: 44 }}>
             {FEATURES.map((f, i) => (
-              <Reveal key={f.title} delay={(i % 3) * 0.08}>
-                <motion.div
-                  whileHover={{ y: -6 }}
-                  transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                  style={{ height: '100%', background: '#fff', border: `1px solid ${C.border}`, borderRadius: 24, padding: 26, boxShadow: '0 1px 2px rgba(15,23,42,.04)' }}
+              <Reveal key={f.title} delay={i * 0.05}>
+                <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 16, padding: '26px 20px', height: '100%', transition: 'box-shadow .2s, transform .2s' }}
+                  onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.boxShadow = '0 18px 40px -16px rgba(15,39,71,.16)'; el.style.transform = 'translateY(-3px)'; }}
+                  onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.boxShadow = 'none'; el.style.transform = 'none'; }}
                 >
-                  <span style={{ width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg, ${C.primary}1a, ${C.accent}1a)`, display: 'grid', placeItems: 'center' }}>
-                    <f.icon size={24} color={C.primary} />
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 52, height: 52, borderRadius: 999, background: f.tint, color: f.color, marginBottom: 16 }}>
+                    <f.icon size={24} />
                   </span>
-                  <h3 style={{ fontSize: 18, fontWeight: 700, marginTop: 18 }}>{f.title}</h3>
-                  <p style={{ color: C.muted, fontSize: 14.5, lineHeight: 1.6, marginTop: 8 }}>{f.body}</p>
-                </motion.div>
+                  <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 700, color: C.ink }}>{f.title}</h3>
+                  <p style={{ margin: '8px 0 0', fontSize: 13.5, lineHeight: 1.6, color: C.muted }}>{f.text}</p>
+                </div>
               </Reveal>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── Why StockBolt (comparison) ──────────────────────────────────── */}
-      <section id="why" style={{ paddingTop: 40, paddingBottom: 80 }}>
-        <div className="mx-auto px-5 md:px-8" style={{ maxWidth: 920 }}>
+      {/* ── Industries ──────────────────────────────────────────────────── */}
+      <section id="industries" style={{ paddingTop: 50, paddingBottom: 70 }}>
+        <div className="mx-auto grid items-center gap-10 px-5 md:px-8 lg:grid-cols-[1fr_1.4fr]" style={{ maxWidth: 1240 }}>
           <Reveal>
-            <h2 style={{ textAlign: 'center', fontSize: 'clamp(28px, 4vw, 42px)', fontWeight: 800, letterSpacing: '-.025em' }}>Why auto parts businesses choose StockBolt</h2>
+            <Kicker>Built for Every Auto Parts Business</Kicker>
+            <H2>One Solution.<br />Many Possibilities.</H2>
+            <p style={{ margin: '16px 0 0', fontSize: 15, lineHeight: 1.7, color: C.muted, maxWidth: 380 }}>
+              Whether you're a parts store, distributor, importer, workshop or online seller, StockBolt fits your business perfectly.
+            </p>
           </Reveal>
           <Reveal delay={0.1}>
-            <div style={{ marginTop: 40, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 24, overflow: 'hidden', boxShadow: '0 20px 50px -25px rgba(15,23,42,.2)' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr', background: 'rgba(248,250,252,.8)', borderBottom: `1px solid ${C.border}` }}>
-                <div style={{ padding: '16px 20px', fontWeight: 700, fontSize: 14 }}>Feature</div>
-                <div style={{ padding: '16px 12px', fontWeight: 800, fontSize: 14, textAlign: 'center', color: C.primary }}>StockBolt</div>
-                <div style={{ padding: '16px 12px', fontWeight: 700, fontSize: 14, textAlign: 'center', color: C.muted }}>Zoho</div>
+            <div style={{ position: 'relative' }}>
+              <div aria-hidden="true" style={{ position: 'absolute', top: -30, insetInlineEnd: -20, width: 260, height: 260, borderRadius: '50%', background: 'radial-gradient(circle, rgba(37,99,235,.10), transparent 70%)' }} />
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6" style={{ position: 'relative' }}>
+                {INDUSTRIES.map((ind) => (
+                  <div key={ind.label} style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 14, padding: '18px 10px', textAlign: 'center' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, borderRadius: 12, background: '#EAF1FE', color: C.blue, marginBottom: 10 }}>
+                      <ind.icon size={21} />
+                    </span>
+                    <p style={{ margin: 0, fontSize: 12, fontWeight: 600, lineHeight: 1.35, color: C.text }}>{ind.label}</p>
+                  </div>
+                ))}
               </div>
-              {COMPARE.map((row, i) => (
-                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr', borderTop: i ? `1px solid ${C.border}` : 'none' }}>
-                  <div style={{ padding: '15px 20px', fontSize: 14.5, color: C.text }}>{row[0]}</div>
-                  <div style={{ padding: '15px 12px', display: 'grid', placeItems: 'center' }}>
-                    {row[1] === true ? <Check size={20} color="#16a34a" /> : <span style={{ fontSize: 13, color: C.muted }}>{String(row[1])}</span>}
-                  </div>
-                  <div style={{ padding: '15px 12px', display: 'grid', placeItems: 'center' }}>
-                    {row[2] === false ? <X size={19} color="#dc2626" /> : row[2] === true ? <Check size={20} color="#16a34a" /> : <span style={{ fontSize: 13, color: C.muted }}>{String(row[2])}</span>}
-                  </div>
-                </div>
-              ))}
             </div>
-            <p style={{ textAlign: 'center', fontSize: 12.5, color: C.muted, marginTop: 14 }}>Comparison based on publicly available information.</p>
           </Reveal>
         </div>
       </section>
 
-      {/* ── Use cases ───────────────────────────────────────────────────── */}
-      <section style={{ paddingTop: 20, paddingBottom: 80 }}>
-        <div className="mx-auto px-5 md:px-8" style={{ maxWidth: 1100 }}>
-          <div className="grid gap-5 md:grid-cols-3">
-            {USE_CASES.map((u, i) => (
-              <Reveal key={u.title} delay={i * 0.08}>
-                <div style={{ height: '100%', background: '#fff', border: `1px solid ${C.border}`, borderRadius: 24, padding: 28, boxShadow: '0 1px 2px rgba(15,23,42,.04)' }}>
-                  <span style={{ width: 46, height: 46, borderRadius: 13, background: GRAD, display: 'grid', placeItems: 'center', boxShadow: '0 8px 18px -6px rgba(109,40,217,.5)' }}>
-                    <u.icon size={22} color="#fff" />
-                  </span>
-                  <h3 style={{ fontSize: 19, fontWeight: 700, marginTop: 18 }}>{u.title}</h3>
-                  <p style={{ color: C.muted, fontSize: 15, marginTop: 8, lineHeight: 1.6 }}>{u.body}</p>
-                </div>
-              </Reveal>
+      {/* ── Stats band ──────────────────────────────────────────────────── */}
+      <section className="px-5 md:px-8">
+        <Reveal className="mx-auto" style={{ maxWidth: 1240 }}>
+          <div className="grid grid-cols-2 gap-8 lg:grid-cols-4" style={{ background: C.navy, borderRadius: 24, padding: '38px 30px' }}>
+            {STATS.map((s) => (
+              <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 14, justifyContent: 'center' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 46, height: 46, borderRadius: 999, background: 'rgba(255,255,255,.10)', color: s.tint, flexShrink: 0 }}>
+                  <s.icon size={22} />
+                </span>
+                <span>
+                  <span style={{ display: 'block', fontSize: 24, fontWeight: 800, color: '#fff', lineHeight: 1.1 }}>{s.value}</span>
+                  <span style={{ display: 'block', fontSize: 12.5, color: 'rgba(255,255,255,.65)' }}>{s.label}</span>
+                </span>
+              </div>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* ── Social proof strip ──────────────────────────────────────────── */}
-      <section style={{ paddingBottom: 70 }}>
-        <div className="mx-auto px-5 md:px-8" style={{ maxWidth: 1100 }}>
-          <Reveal>
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4" style={{ background: GRAD, borderRadius: 28, padding: '36px 28px', boxShadow: '0 30px 60px -25px rgba(109,40,217,.5)' }}>
-              {PROOF.map(p => (
-                <div key={p.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 10, color: '#fff' }}>
-                  <span style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(255,255,255,.18)', display: 'grid', placeItems: 'center' }}><p.icon size={22} color="#fff" /></span>
-                  <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4, opacity: .95 }}>{p.label}</span>
-                </div>
-              ))}
-            </div>
-          </Reveal>
-        </div>
+        </Reveal>
       </section>
 
       {/* ── Pricing ─────────────────────────────────────────────────────── */}
-      <section id="pricing" style={{ paddingTop: 40, paddingBottom: 90 }}>
-        <div className="mx-auto px-5 md:px-8" style={{ maxWidth: 720 }}>
-          <Reveal>
-            <div style={{ textAlign: 'center', background: 'rgba(255,255,255,.7)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', border: `1px solid ${C.border}`, borderRadius: 28, padding: '52px 32px', boxShadow: '0 20px 50px -25px rgba(15,23,42,.2)' }}>
-              <span className="inline-flex items-center gap-2 rounded-full px-3 py-1.5" style={{ background: `${C.primary}12`, color: C.primary, fontSize: 13, fontWeight: 700 }}><Wallet size={14} /> Pricing</span>
-              <h2 style={{ fontSize: 'clamp(28px, 4vw, 40px)', fontWeight: 800, letterSpacing: '-.025em', marginTop: 18 }}>Pricing Coming Soon</h2>
-              <p style={{ color: C.muted, fontSize: 17, lineHeight: 1.6, marginTop: 14 }}>
-                StockBolt is currently <strong style={{ color: C.text }}>free during launch</strong>.<br />Monthly and yearly plans are coming soon.
-              </p>
-              <Link to="/register" className="inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold text-white transition-transform hover:-translate-y-0.5" style={{ background: GRAD, marginTop: 28, boxShadow: '0 14px 30px -8px rgba(109,40,217,.55)' }}>
-                Get Early Access <ArrowRight size={18} />
+      <section id="pricing" className="px-5 md:px-8" style={{ paddingTop: 60, paddingBottom: 30 }}>
+        <Reveal className="mx-auto" style={{ maxWidth: 1240 }}>
+          <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 24, padding: '36px 34px' }}>
+            <div className="flex flex-wrap items-start justify-between gap-6">
+              <div>
+                <Kicker>Simple &amp; Transparent</Kicker>
+                <H2>Start Free. Upgrade Anytime.</H2>
+              </div>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {TRIAL_CHECKS.map((c) => (
+                  <li key={c} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, fontWeight: 600, color: C.text }}>
+                    <CheckCircle2 size={16} color={C.teal} /> {c}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="mt-7 flex flex-wrap items-center justify-between gap-6" style={{ background: '#F8FBFF', border: `1px solid ${C.border}`, borderRadius: 18, padding: '24px 28px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 54, height: 54, borderRadius: 999, background: '#EAF1FE', color: C.blue }}>
+                  <Rocket size={25} />
+                </span>
+                <span>
+                  <span style={{ display: 'block', fontSize: 19, fontWeight: 800, color: C.ink }}>365-Day Free Trial</span>
+                  <span style={{ display: 'block', fontSize: 13.5, color: C.muted }}>All features. Full access.</span>
+                </span>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <span style={{ fontSize: 15, fontWeight: 700, color: C.ink, verticalAlign: 'top' }}>AED</span>
+                <span style={{ fontSize: 42, fontWeight: 800, color: C.ink, lineHeight: 1, marginInlineStart: 6 }}>0</span>
+                <span style={{ display: 'block', fontSize: 12.5, color: C.muted, marginTop: 2 }}>No credit card required</span>
+              </div>
+              <Link to="/register" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '13px 26px', borderRadius: 12, background: C.blue, color: '#fff', fontSize: 15, fontWeight: 700, textDecoration: 'none', boxShadow: '0 12px 26px -10px rgba(37,99,235,.55)' }}>
+                Start Free Trial <ArrowRight size={17} />
               </Link>
             </div>
-          </Reveal>
-        </div>
-      </section>
-
-      {/* ── FAQ ─────────────────────────────────────────────────────────── */}
-      <section id="faq" style={{ paddingBottom: 90 }}>
-        <div className="mx-auto px-5 md:px-8" style={{ maxWidth: 760 }}>
-          <Reveal>
-            <h2 style={{ textAlign: 'center', fontSize: 'clamp(28px, 4vw, 40px)', fontWeight: 800, letterSpacing: '-.025em', marginBottom: 36 }}>Frequently asked questions</h2>
-          </Reveal>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {FAQS.map((f, i) => {
-              const open = faqOpen === i;
-              return (
-                <Reveal key={i} delay={i * 0.04}>
-                  <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 18, overflow: 'hidden' }}>
-                    <button onClick={() => setFaqOpen(open ? null : i)} className="flex w-full items-center justify-between gap-4 text-left" style={{ padding: '18px 22px', cursor: 'pointer', background: 'transparent', border: 'none' }}>
-                      <span style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{f.q}</span>
-                      <ChevronDown size={20} color={C.muted} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .25s', flexShrink: 0 }} />
-                    </button>
-                    <motion.div initial={false} animate={{ height: open ? 'auto' : 0, opacity: open ? 1 : 0 }} transition={{ duration: 0.28, ease: 'easeInOut' }} style={{ overflow: 'hidden' }}>
-                      <p style={{ padding: '0 22px 20px', color: C.muted, fontSize: 15, lineHeight: 1.65 }}>{f.a}</p>
-                    </motion.div>
-                  </div>
-                </Reveal>
-              );
-            })}
           </div>
-        </div>
+        </Reveal>
       </section>
 
-      {/* ── Final CTA ───────────────────────────────────────────────────── */}
-      <section style={{ paddingBottom: 90 }}>
-        <div className="mx-auto px-5 md:px-8" style={{ maxWidth: 1100 }}>
-          <Reveal>
-            <div style={{ position: 'relative', textAlign: 'center', background: GRAD, borderRadius: 32, padding: 'clamp(48px, 7vw, 84px) 28px', overflow: 'hidden', boxShadow: '0 40px 80px -30px rgba(109,40,217,.55)' }}>
-              <div aria-hidden style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 30% 20%, rgba(255,255,255,.18), transparent 50%)' }} />
-              <h2 style={{ position: 'relative', fontSize: 'clamp(28px, 4.5vw, 46px)', fontWeight: 800, color: '#fff', letterSpacing: '-.025em', lineHeight: 1.1 }}>
-                Run your entire parts business from one system.
-              </h2>
-              <p style={{ position: 'relative', color: 'rgba(255,255,255,.9)', fontSize: 18, lineHeight: 1.6, marginTop: 18, maxWidth: 600, marginInline: 'auto' }}>
-                Inventory, accounting, customers and sales — built specifically for auto parts businesses.
-              </p>
-              <div className="flex flex-wrap items-center justify-center gap-3" style={{ position: 'relative', marginTop: 32 }}>
-                <Link to="/register" className="inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold transition-transform hover:-translate-y-0.5" style={{ background: '#fff', color: C.primary, boxShadow: '0 12px 28px -8px rgba(0,0,0,.3)' }}>
-                  Start Free <ArrowRight size={18} />
-                </Link>
-                <a href="mailto:sales@stockbolt.com?subject=StockBolt%20Demo" className="inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold text-white transition-colors" style={{ border: '1px solid rgba(255,255,255,.5)' }}>
-                  Book Demo
-                </a>
-              </div>
+      {/* ── CTA band ────────────────────────────────────────────────────── */}
+      <section className="px-5 md:px-8" style={{ paddingTop: 30, paddingBottom: 70 }}>
+        <Reveal className="mx-auto" style={{ maxWidth: 1240 }}>
+          <div className="flex flex-wrap items-center justify-between gap-8" style={{ background: `linear-gradient(100deg, ${C.navy} 0%, #0E4A64 55%, ${C.green} 130%)`, borderRadius: 24, padding: '40px 38px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 20, minWidth: 0 }}>
+              <span className="hidden sm:inline-flex" style={{ alignItems: 'center', justifyContent: 'center', width: 74, height: 74, borderRadius: 999, background: 'rgba(255,255,255,.10)', flexShrink: 0 }}>
+                <BrandMark size={42} color={C.green} />
+              </span>
+              <span>
+                <span style={{ display: 'block', fontSize: 'clamp(22px, 2.6vw, 28px)', fontWeight: 800, color: '#fff', letterSpacing: '-.01em', lineHeight: 1.25 }}>
+                  Ready to Transform<br />Your Auto Parts Business?
+                </span>
+                <span style={{ display: 'block', marginTop: 8, fontSize: 14, color: 'rgba(255,255,255,.75)', maxWidth: 430 }}>
+                  Join the businesses already using StockBolt to simplify operations and grow faster.
+                </span>
+              </span>
             </div>
-          </Reveal>
-        </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+              <Link to="/register" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '13px 24px', borderRadius: 12, background: '#fff', color: C.navy, fontSize: 15, fontWeight: 700, textDecoration: 'none' }}>
+                Start 365-Day Free Trial <ArrowRight size={17} />
+              </Link>
+              <a href={DEMO_MAILTO} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '13px 22px', borderRadius: 12, border: '1px solid rgba(255,255,255,.4)', color: '#fff', fontSize: 15, fontWeight: 600, textDecoration: 'none' }}>
+                <PlayCircle size={17} /> Book a Demo
+              </a>
+            </div>
+          </div>
+        </Reveal>
       </section>
 
       {/* ── Footer ──────────────────────────────────────────────────────── */}
-      <footer style={{ borderTop: `1px solid ${C.border}`, background: '#fff' }}>
-        <div className="mx-auto grid gap-8 px-5 md:px-8 md:grid-cols-2" style={{ maxWidth: 1100, paddingTop: 48, paddingBottom: 40 }}>
+      <footer style={{ background: '#fff', borderTop: `1px solid ${C.border}` }}>
+        <div className="mx-auto grid gap-10 px-5 md:px-8 md:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1.3fr]" style={{ maxWidth: 1240, paddingTop: 52, paddingBottom: 40 }}>
           <div>
-            <BrandLogo mark={28} text={15} />
-            <p style={{ color: C.text, fontSize: 15, fontWeight: 600, marginTop: 16 }}>Inventory. Accounting. Sales.</p>
-            <p style={{ color: C.muted, fontSize: 14, marginTop: 6, maxWidth: 320, lineHeight: 1.6 }}>Made for modern auto parts businesses.</p>
+            <BrandRow text={14} />
+            <p style={{ margin: '14px 0 0', fontSize: 13.5, lineHeight: 1.6, color: C.muted, maxWidth: 220 }}>
+              The complete ERP solution for auto parts businesses.
+            </p>
           </div>
-          <div className="flex gap-16 md:justify-end" style={{ fontSize: 14 }}>
-            <div>
-              <div style={{ fontWeight: 700, marginBottom: 12 }}>Product</div>
-              <ul style={{ display: 'flex', flexDirection: 'column', gap: 9, color: C.muted }}>
-                <li><a href="#features" className="hover:text-slate-900">Features</a></li>
-                <li><a href="#pricing" className="hover:text-slate-900">Pricing</a></li>
-                <li><a href="mailto:sales@stockbolt.com" className="hover:text-slate-900">Contact</a></li>
-                <li><Link to="/privacy" className="hover:text-slate-900">Privacy Policy</Link></li>
+          {([
+            ['Product', [
+              ['Features', '#features'], ['Modules', '#features'], ['Pricing', '#pricing'],
+            ]],
+            ['Company', [
+              ['About Us', DEMO_MAILTO], ['Partners', DEMO_MAILTO], ['Contact Us', DEMO_MAILTO],
+            ]],
+            ['Resources', [
+              ['Documentation', 'mailto:support@stockbolt.com'], ['Help Center', 'mailto:support@stockbolt.com'], ['Book a Demo', DEMO_MAILTO],
+            ]],
+          ] as [string, [string, string][]][]).map(([title, links]) => (
+            <div key={title} style={{ fontSize: 13.5 }}>
+              <p style={{ margin: '0 0 12px', fontWeight: 700, color: C.ink }}>{title}</p>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 9 }}>
+                {links.map(([label, href]) => (
+                  <li key={label}>
+                    <a href={href} style={{ color: C.muted, textDecoration: 'none' }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = C.ink; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = C.muted; }}
+                    >{label}</a>
+                  </li>
+                ))}
               </ul>
             </div>
-            <div>
-              <div style={{ fontWeight: 700, marginBottom: 12 }}>Account</div>
-              <ul style={{ display: 'flex', flexDirection: 'column', gap: 9, color: C.muted }}>
-                <li><Link to="/register" className="hover:text-slate-900">Start Free</Link></li>
-                <li><Link to="/login" className="hover:text-slate-900">Sign in</Link></li>
-              </ul>
-            </div>
+          ))}
+          <div style={{ fontSize: 13.5 }}>
+            <p style={{ margin: '0 0 12px', fontWeight: 700, color: C.ink }}>Stay Updated</p>
+            <p style={{ margin: '0 0 12px', color: C.muted }}>Subscribe to get the latest updates and insights.</p>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                window.location.href = `mailto:sales@stockbolt.com?subject=Subscribe%20to%20StockBolt%20updates&body=${encodeURIComponent(newsletterEmail)}`;
+              }}
+              style={{ display: 'flex', gap: 0 }}
+            >
+              <input
+                type="email"
+                required
+                value={newsletterEmail}
+                onChange={(e) => setNewsletterEmail(e.target.value)}
+                placeholder="Enter your email"
+                style={{ flex: 1, minWidth: 0, height: 42, border: `1px solid ${C.border}`, borderStartStartRadius: 10, borderEndStartRadius: 10, borderStartEndRadius: 0, borderEndEndRadius: 0, padding: '0 12px', fontSize: 13.5, outline: 'none', background: '#F8FBFF', color: C.ink }}
+              />
+              <button type="submit" aria-label="Subscribe" style={{ height: 42, width: 46, border: 'none', borderStartEndRadius: 10, borderEndEndRadius: 10, background: C.teal, color: '#fff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Send size={16} />
+              </button>
+            </form>
           </div>
         </div>
         <div style={{ borderTop: `1px solid ${C.border}` }}>
-          <div className="mx-auto px-5 md:px-8" style={{ maxWidth: 1100, padding: '18px 0', fontSize: 13, color: C.muted, textAlign: 'center' }}>
-            © {new Date().getFullYear()} StockBolt ERP. All rights reserved.
+          <div className="mx-auto flex flex-wrap items-center justify-between gap-3 px-5 md:px-8" style={{ maxWidth: 1240, paddingTop: 18, paddingBottom: 18, fontSize: 12.5, color: C.muted }}>
+            <span>© {new Date().getFullYear()} StockBolt. All rights reserved.</span>
+            <span style={{ display: 'flex', gap: 22 }}>
+              <a href={DEMO_MAILTO} style={{ color: C.muted, textDecoration: 'none' }}>Privacy Policy</a>
+              <a href={DEMO_MAILTO} style={{ color: C.muted, textDecoration: 'none' }}>Terms of Service</a>
+            </span>
           </div>
         </div>
       </footer>
