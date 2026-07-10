@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
@@ -18,13 +18,15 @@ export default function PeriodLockPage() {
     queryKey: ['company', company_id],
     queryFn: () => getAdapter().companies.getById(company_id!),
     enabled: !!company_id,
-    select: (c) => {
-      if (c && (c as any).period_lock_date !== undefined) {
-        setLockDate((c as any).period_lock_date ?? '');
-      }
-      return c;
-    },
   });
+
+  // Prefill the date input from the loaded company. Must be an effect —
+  // setting state inside the query's `select` ran during render and
+  // infinite-looped once the app shell began observing the same query.
+  const loadedLock = (company as any)?.period_lock_date as string | null | undefined;
+  useEffect(() => {
+    if (loadedLock !== undefined) setLockDate(loadedLock ?? '');
+  }, [loadedLock]);
 
   const saveMutation = useMutation({
     mutationFn: () => getAdapter().accounting.setPeriodLock(company_id!, lockDate || null),

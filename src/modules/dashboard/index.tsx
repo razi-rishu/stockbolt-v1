@@ -575,28 +575,6 @@ export default function DashboardPage() {
           </div>
 
           <SalesTrendChart data={trendData} mode={period === 'today' ? 'week' : period} />
-
-          {/* Period totals */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginTop: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#f5f3ff', borderRadius: '12px', padding: '12px 14px' }}>
-              <div style={{ height: '36px', width: '36px', flexShrink: 0, borderRadius: '10px', background: '#fff', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <WalletIcon />
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: '12px', color: theme.inkMuted }}>Total Sales (excl. VAT)</div>
-                <div style={{ fontSize: '15px', fontWeight: 800, color: theme.ink, fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(ps.sales, currency)}</div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#ecfdf5', borderRadius: '12px', padding: '12px 14px' }}>
-              <div style={{ height: '36px', width: '36px', flexShrink: 0, borderRadius: '10px', background: '#fff', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <CartIcon />
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: '12px', color: theme.inkMuted }}>Total Purchases (excl. VAT)</div>
-                <div style={{ fontSize: '15px', fontWeight: 800, color: theme.ink, fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(ps.purchases, currency)}</div>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Recent Inventory (1/3) */}

@@ -20,24 +20,23 @@ their free year, and creates the `webhook_logs` + `subscription_payments` tables
    - Name: `StockBolt` → Create.
 3. Copy the **Client ID** and **Secret** — you'll paste them into Vercel in Step 4.
 
-## Step 2 — Create the product + 3 billing plans
+## Step 2 — Create the product + 3 billing plans (run the script)
 
-Easiest way: PayPal dashboard → **Pay & Get Paid → Subscriptions → Subscription plans**
-(or from developer.paypal.com the same section on the sandbox account).
+PayPal's dashboard UI for plans keeps moving around, so use the ready-made script instead —
+it creates the product + all three plans through PayPal's API and prints everything you need:
 
-1. **Create product**: Name `StockBolt Professional`, type *Software*, category *Software*.
-2. Create **three plans** under that product (all USD, auto-billing on):
+```powershell
+cd E:\stockbolt_clean\stockbolt-v1
+.\scripts\paypal-create-plans.ps1          # sandbox
+.\scripts\paypal-create-plans.ps1 -Live    # live (later, with live keys)
+```
 
-   | Plan name | Billing cycle | Price |
-   |---|---|---|
-   | StockBolt Monthly    | every 1 month  | **$21.00**  |
-   | StockBolt 6 Months   | every 6 months | **$105.00** |
-   | StockBolt Yearly     | every 12 months| **$200.00** |
+Paste the Client ID + Secret from Step 1 when asked. It creates:
+`StockBolt Monthly $21` · `StockBolt 6 Months $105` · `StockBolt Yearly $200` (USD, renew
+until cancelled) and prints the three plan IDs **plus the exact SQL for Step 3**.
 
-   > Do **NOT** add a trial inside the PayPal plans — the free year is handled by StockBolt
-   > itself (customers only reach PayPal when they choose to subscribe).
-
-3. Each plan gets an ID that looks like `P-1AB23456CD789012EF`. Copy all three.
+> No trial inside the PayPal plans — the free year is handled by StockBolt itself.
+> Run it only once per mode (each run creates new plans).
 
 ## Step 3 — Tell StockBolt the plan IDs
 
@@ -71,7 +70,9 @@ Then **redeploy** (Deployments → ⋯ → Redeploy) so the functions pick them 
 
 ## Step 5 — Register the webhook
 
-1. developer.paypal.com → **Apps & Credentials** → open your `StockBolt` app → **Webhooks → Add webhook**.
+1. developer.paypal.com → make sure the **Sandbox/Live toggle** matches the mode you're setting up
+   → **Apps & Credentials** → click the `StockBolt` **app name** → scroll down to **Webhooks → Add webhook**.
+   *(Not the "Manage Webhooks" button under "NVP/SOAP API apps" — that's a different, legacy system.)*
 2. Webhook URL: `https://stockbolt-v1.vercel.app/api/paypal/webhook`
 3. Tick these events:
    - Billing subscription activated

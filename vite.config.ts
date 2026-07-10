@@ -22,4 +22,20 @@ export default defineConfig({
     port: 5173,
     open: false,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Split rarely-changing vendor libraries into their own chunks so
+        // returning browsers keep them cached across deploys — only the
+        // (much smaller) app chunk changes when we ship. Route pages are
+        // already lazy; recharts/xlsx/framer-motion split naturally.
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-supabase': ['@supabase/supabase-js'],
+          'vendor-state': ['@tanstack/react-query', 'zustand'],
+          'vendor-i18n': ['i18next', 'react-i18next'],
+        },
+      },
+    },
+  },
 });

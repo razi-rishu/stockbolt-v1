@@ -48,8 +48,10 @@ coverage
 supabase/.branches
 supabase/.temp
 
-# Claude Code working directory
-.claude/
+# Claude Code working directory — ignored except the project skills,
+# which are part of the repo (they teach future sessions how StockBolt works)
+.claude/*
+!.claude/skills/
 
 # Ignore corrupt ghost files from bad shell copy commands
 supabase/migrations/*&&*
