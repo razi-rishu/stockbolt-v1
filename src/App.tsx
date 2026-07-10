@@ -315,6 +315,12 @@ function AppRoutes() {
               <Route path="/reports/stock-valuation"            element={<StockValuationPage />} />
 
               {/* Sales */}
+              {/* Phase 46b — creating an invoice needs the full screen (the
+                  line-item grid gets crushed in the master-detail pane), so
+                  /new renders standalone; viewing an existing invoice stays
+                  in the list + preview workspace. Static "new" outranks the
+                  nested ":id" match. */}
+              <Route path="/sales/invoices/new" element={<KeyedInvoiceEditor />} />
               <Route path="/sales/invoices" element={<InvoicesPage />}>
                 <Route index element={<div className="flex items-center justify-center rounded-card border border-border-subtle p-12 text-center text-sm text-ink-tertiary">Select an invoice to view it here.</div>} />
                 <Route path=":id" element={<KeyedInvoiceEditor />} />

@@ -57,6 +57,8 @@ export default function CreditNoteEditorPage() {
   const [reason,       setReason]       = useState<string>('return');
   const [restock,      setRestock]      = useState(true);
   const [notes,        setNotes]        = useState('');
+  // Phase 46 — null = automatic rounding from Settings; a string = manual.
+  const [roundOffOverride, setRoundOffOverride] = useState<string | null>(null);
   const [lines,        setLines]        = useState<LineItem[]>([]);
   const [voidReason,   setVoidReason]   = useState('');
   const [showVoidDlg,  setShowVoidDlg]  = useState(false);
@@ -106,6 +108,8 @@ export default function CreditNoteEditorPage() {
       setReason(existing.reason ?? 'return');
       setRestock(existing.restock);
       setNotes(existing.notes ?? '');
+      // Freeze the stored round-off on edit; "Auto" re-rounds on demand.
+      setRoundOffOverride(String(Number((existing as { round_off_amount?: number }).round_off_amount ?? 0)));
     }
   }, [existing]);
   useEffect(() => {
@@ -157,9 +161,14 @@ export default function CreditNoteEditorPage() {
     return { subtotal: acc.subtotal + c.line_subtotal + c.discount_amount, discount: acc.discount + c.discount_amount, tax: acc.tax + c.tax_amount, total: acc.total + c.line_total };
   }, { subtotal: 0, discount: 0, tax: 0, total: 0 });
   // Phase 46 — round the credit total like invoices, so refunds match what
-  // the customer actually paid on a rounded invoice.
+  // the customer actually paid on a rounded invoice. Auto from Settings;
+  // typing a value (±1.00) overrides it manually.
   const roundingStep = useCompanyRoundingStep();
-  const { round_off: roundOff, rounded_total: roundedTotal } = applyRoundOff(totals.total, roundingStep);
+  const autoRoundOff = applyRoundOff(totals.total, roundingStep).round_off;
+  const roundOff     = roundOffOverride !== null
+    ? Math.max(-1, Math.min(1, parseFloat(roundOffOverride) || 0))
+    : autoRoundOff;
+  const roundedTotal = +(totals.total + roundOff).toFixed(2);
 
   function buildItems(): CreditNoteItemInsert[] {
     return lines.map((l, i) => {
@@ -200,7 +209,7 @@ export default function CreditNoteEditorPage() {
         subtotal:          totals.subtotal,
         discount_amount:   totals.discount,
         tax_amount:        totals.tax,
-        round_off_amount:  +roundOff.toFixed(2),
+        ...(roundOff !== 0 ? { round_off_amount: +roundOff.toFixed(2) } : {}),
         total_amount:      +roundedTotal.toFixed(2),
         notes:             notes || undefined,
         status:            'draft' as const,
@@ -473,9 +482,23 @@ export default function CreditNoteEditorPage() {
         <div className="flex justify-end px-4 py-3 border-t border-border-subtle gap-6 text-sm">
           <span className="text-ink-tertiary">{t('common.subtotal')}: <strong>{fmt(totals.subtotal - totals.discount)}</strong></span>
           <span className="text-ink-tertiary">{t('common.tax')}: <strong>{fmt(totals.tax)}</strong></span>
-          {roundOff !== 0 && (
-            <span className="text-ink-secondary">{t('sales.round_off')}: {roundOff > 0 ? '+' : '−'}{fmt(Math.abs(roundOff))}</span>
-          )}
+          <span className="flex items-center gap-2 text-ink-secondary">
+            {t('sales.round_off')}:
+            <input
+              type="number" step="0.01" min="-1" max="1"
+              value={roundOffOverride !== null ? roundOffOverride : String(roundOff)}
+              onChange={e => setRoundOffOverride(e.target.value)}
+              title="Automatic from Settings; type a value (±1.00) to round manually"
+              className="h-7 w-24 rounded border border-border-subtle px-2 text-end font-mono text-sm"
+            />
+            {roundOffOverride !== null && (
+              <button type="button" onClick={() => setRoundOffOverride(null)}
+                title="Return to automatic rounding from Settings → Company Settings"
+                className="rounded-full border border-border-subtle px-2 py-0.5 text-[10px] font-semibold text-brand-600 hover:bg-brand-50">
+                {t('sales.round_off_auto')}
+              </button>
+            )}
+          </span>
           <span className="text-ink-primary font-bold">{t('common.total')}: {fmt(roundedTotal)}</span>
         </div>
       </div>

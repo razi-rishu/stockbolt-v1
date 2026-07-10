@@ -413,7 +413,7 @@ export default function VendorBillEditorPage() {
       currency: header.currency, exchange_rate: 1,
       prices_inclusive: pricesInclusive,
       subtotal: +subtotal.toFixed(2), discount_amount: +discountTotal.toFixed(2),
-      tax_amount: +taxTotal.toFixed(2), round_off_amount: +roundOff.toFixed(2), total_amount: totalWithLanded,
+      tax_amount: +taxTotal.toFixed(2), ...(roundOff !== 0 ? { round_off_amount: +roundOff.toFixed(2) } : {}), total_amount: totalWithLanded,
       landed_cost_total: +landedCost.toFixed(2),
       status: 'draft' as const,
       linked_grn_id: header.linked_grn_id || null,

@@ -878,6 +878,7 @@
     "discount": "Discount",
     "vat": "VAT",
     "round_off": "Round Off",
+    "round_off_auto": "Auto",
     "open_invoices": "Open Invoices",
     "error_contact_required": "Customer is required.",
     "error_no_lines": "At least one line item is required.",

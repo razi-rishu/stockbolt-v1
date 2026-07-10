@@ -189,7 +189,7 @@ export default function DebitNoteEditorPage() {
         subtotal:         totals.subtotal,
         discount_amount:  totals.discount,
         tax_amount:       totals.tax,
-        round_off_amount: +roundOff.toFixed(2),
+        ...(roundOff !== 0 ? { round_off_amount: +roundOff.toFixed(2) } : {}),
         total_amount:     roundedTotal,
         notes:            notes || undefined,
         status:           'draft' as const,

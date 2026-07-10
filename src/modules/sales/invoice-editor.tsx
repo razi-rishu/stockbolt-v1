@@ -235,6 +235,9 @@ export default function InvoiceEditorPage() {
         currency:       existing.currency,
       });
       setPricesInclusive(existing.prices_inclusive ?? false);
+      // Freeze the stored round-off when editing so opening an old invoice
+      // never silently changes its total — "Auto" re-rounds on demand.
+      setRoundOffOverride(String(Number((existing as { round_off_amount?: number }).round_off_amount ?? 0)));
     }
   }, [existing]);
 
@@ -275,9 +278,15 @@ export default function InvoiceEditorPage() {
   const taxTotal      = lines.reduce((s, l) => s + l.tax_amount, 0);
   const grandTotal    = lines.reduce((s, l) => s + l.line_total, 0);
   // Phase 46 — round the grand total to the company's cash step (0.25/0.50/1).
-  // The difference is stored on the invoice and posts to 5900 Round Off.
+  // Automatic from Settings by default; typing a value overrides it manually
+  // (±1.00). The difference is stored on the invoice and posts to 5900.
   const roundingStep  = useCompanyRoundingStep();
-  const { round_off: roundOff, rounded_total: roundedTotal } = applyRoundOff(grandTotal, roundingStep);
+  const autoRoundOff  = applyRoundOff(grandTotal, roundingStep).round_off;
+  const [roundOffOverride, setRoundOffOverride] = useState<string | null>(null);
+  const roundOff      = roundOffOverride !== null
+    ? Math.max(-1, Math.min(1, parseFloat(roundOffOverride) || 0))
+    : autoRoundOff;
+  const roundedTotal  = +(grandTotal + roundOff).toFixed(2);
 
   // ── Credit limit check ───────────────────────────────────────────────────
   // Fetch the customer's open invoices to compute current outstanding.
@@ -422,7 +431,9 @@ export default function InvoiceEditorPage() {
         subtotal:        +subtotal.toFixed(2),
         discount_amount: +discountTotal.toFixed(2),
         tax_amount:      +taxTotal.toFixed(2),
-        round_off_amount: +roundOff.toFixed(2),
+        // Omit when zero so saves keep working until the phase46 migration
+        // adds the column.
+        ...(roundOff !== 0 ? { round_off_amount: +roundOff.toFixed(2) } : {}),
         total_amount:    +roundedTotal.toFixed(2),
         status:          'draft' as const,
         source_quote_id: null,
@@ -510,7 +521,9 @@ export default function InvoiceEditorPage() {
         subtotal:        +subtotal.toFixed(2),
         discount_amount: +discountTotal.toFixed(2),
         tax_amount:      +taxTotal.toFixed(2),
-        round_off_amount: +roundOff.toFixed(2),
+        // Omit when zero so saves keep working until the phase46 migration
+        // adds the column.
+        ...(roundOff !== 0 ? { round_off_amount: +roundOff.toFixed(2) } : {}),
         total_amount:    +roundedTotal.toFixed(2),
         status:          'confirmed' as const,
         source_quote_id: existing!.source_quote_id,
@@ -1252,12 +1265,28 @@ export default function InvoiceEditorPage() {
                 <span className="font-mono">{fmt(taxTotal)}</span>
               </div>
             )}
-            {roundOff !== 0 && (
-              <div className="flex justify-between text-ink-secondary">
-                <span>{t('sales.round_off')}</span>
-                <span className="font-mono">{roundOff > 0 ? '+' : '−'}{fmt(Math.abs(roundOff))}</span>
-              </div>
-            )}
+            <div className="flex items-center justify-between text-ink-secondary">
+              <span className="flex items-center gap-2">
+                {t('sales.round_off')}
+                {roundOffOverride !== null && (
+                  <button
+                    type="button"
+                    onClick={() => { setRoundOffOverride(null); setDirty(true); }}
+                    title="Return to automatic rounding from Settings → Company Settings"
+                    className="rounded-full border border-border-subtle px-2 py-0.5 text-[10px] font-semibold text-brand-600 hover:bg-brand-50"
+                  >
+                    {t('sales.round_off_auto')}
+                  </button>
+                )}
+              </span>
+              <input
+                type="number" step="0.01" min="-1" max="1"
+                value={roundOffOverride !== null ? roundOffOverride : String(roundOff)}
+                onChange={e => { setRoundOffOverride(e.target.value); setDirty(true); }}
+                title="Automatic from Settings; type a value (±1.00) to round manually"
+                className="h-7 w-24 rounded border border-border-subtle px-2 text-end font-mono text-sm"
+              />
+            </div>
             <div className="flex justify-between border-t border-border-subtle pt-2.5 mt-1 text-base font-semibold text-ink-primary">
               <span>Grand Total</span>
               <span className="font-mono">{header.currency} {fmt(roundedTotal)}</span>

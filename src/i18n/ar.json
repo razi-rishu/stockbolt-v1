@@ -888,6 +888,8 @@
     "subtotal": "المجموع الفرعي",
     "discount": "الخصم",
     "vat": "ضريبة القيمة المضافة",
+    "round_off": "التقريب",
+    "round_off_auto": "تلقائي",
     "open_invoices": "الفواتير المفتوحة",
     "error_contact_required": "العميل مطلوب.",
     "error_no_lines": "يجب إضافة بند واحد على الأقل.",
