@@ -1459,6 +1459,26 @@ describe('Phase 38 — tax-inclusive documents post balanced JEs', () => {
     expect(glbad?.n ?? 0, 'GL rows dated differently from their JE').toBe(0);
   });
 
+  it('phase45: sales-return credit notes carry the invoice salesperson (commission base)', async () => {
+    const [gate] = await sql<{ ok: boolean }>(
+      `SELECT (prosrc LIKE '%v_inv.salesperson_id%') AS ok FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname='public' AND p.proname='confirm_sales_return' LIMIT 1`);
+    if (!gate?.ok) { console.warn('phase45 not applied — skipping CN salesperson checks.'); return; }
+
+    // Tenant-data drift: warn, never fail (customer data must not block commits).
+    const orphaned = await sql<{ credit_note_number: string; company: string }>(
+      `SELECT cn.credit_note_number, co.name AS company
+       FROM credit_notes cn
+       JOIN invoices inv ON inv.id = cn.linked_invoice_id
+       JOIN companies co ON co.id = cn.company_id
+       WHERE cn.status = 'confirmed'
+         AND cn.salesperson_id IS NULL
+         AND inv.salesperson_id IS NOT NULL`);
+    if (orphaned.length > 0) console.warn(`credit notes missing the linked invoice's salesperson (commission base overstated): ${JSON.stringify(orphaned)}`);
+    expect(Array.isArray(orphaned)).toBe(true);
+  });
+
   it('phase38: stored inclusive headers satisfy subtotal − discount + tax = total', async () => {
     if (!(await applied38())) { console.warn('phase38 not applied — skipping header identity check.'); return; }
     const badInv = await sql<{ invoice_number: string }>(

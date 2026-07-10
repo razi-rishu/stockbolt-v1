@@ -1152,10 +1152,17 @@ export interface SalesBySalespersonLine {
   salesperson_id: string | null;
   salesperson_name: string;
   invoice_count: number;
+  /** Confirmed invoices minus confirmed credit notes, excl. VAT. */
   net_sales: number;
+  /** Confirmed credit notes attributed to this salesperson, excl. VAT. */
+  returns_total: number;
   gross_profit: number;
   gp_pct: number;
   avg_invoice_value: number;
+  /** From the salespeople master; null for the Unassigned bucket. */
+  commission_pct: number | null;
+  /** net_sales × commission_pct / 100, floored at 0. */
+  commission: number;
 }
 
 export interface SalesTrendLine {

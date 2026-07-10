@@ -184,6 +184,9 @@ export default function CreditNoteEditorPage() {
         credit_note_number: isNew ? await getAdapter().creditNotes.getNextNumber(company_id!) : existing!.credit_note_number,
         contact_id:        contactId,
         linked_invoice_id: linkedInvId || undefined,
+        // Inherit the salesperson from the linked invoice so returns reduce
+        // the right person's commission base (Sales by Salesperson report).
+        salesperson_id:    (linkedInvId ? invoices.find(i => i.id === linkedInvId)?.salesperson_id : existing?.salesperson_id) ?? undefined,
         date,
         reason:            reason as 'return' | 'rebate' | 'price_correction' | 'damage' | 'bad_debt',
         restock,

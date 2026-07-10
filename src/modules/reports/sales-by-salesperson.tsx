@@ -44,32 +44,54 @@ export default function SalesBySalespersonPage() {
       </div>
 
       {rows.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-border bg-surface-card shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-subtle">
-              <tr>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('reports.salesperson')}</th>
-                <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.invoice_count')}</th>
-                <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.net_sales')}</th>
-                <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.gross_profit')}</th>
-                <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.gp_pct')}</th>
-                <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.avg_invoice')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {rows.map(r => (
-                <tr key={r.salesperson_id ?? 'unassigned'} className="hover:bg-surface-subtle/50">
-                  <td className="px-4 py-2 text-ink-primary font-medium">{r.salesperson_name}</td>
-                  <td className="px-4 py-2 text-right text-ink-secondary">{r.invoice_count}</td>
-                  <td className="px-4 py-2 text-right text-ink-primary font-medium">{fmt(r.net_sales)}</td>
-                  <td className="px-4 py-2 text-right text-emerald-700 font-medium">{fmt(r.gross_profit)}</td>
-                  <td className="px-4 py-2 text-right text-ink-secondary">{r.gp_pct.toFixed(1)}%</td>
-                  <td className="px-4 py-2 text-right text-ink-secondary">{fmt(r.avg_invoice_value)}</td>
+        <>
+          <div className="overflow-x-auto rounded-lg border border-border bg-surface-card shadow-sm">
+            <table className="w-full text-sm">
+              <thead className="bg-surface-subtle">
+                <tr>
+                  <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('reports.salesperson')}</th>
+                  <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.invoice_count')}</th>
+                  <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.returns')}</th>
+                  <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.net_sales')}</th>
+                  <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.gross_profit')}</th>
+                  <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.gp_pct')}</th>
+                  <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.avg_invoice')}</th>
+                  <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.commission_pct')}</th>
+                  <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.commission')}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {rows.map(r => (
+                  <tr key={r.salesperson_id ?? 'unassigned'} className="hover:bg-surface-subtle/50">
+                    <td className="px-4 py-2 text-ink-primary font-medium">{r.salesperson_name}</td>
+                    <td className="px-4 py-2 text-right text-ink-secondary">{r.invoice_count}</td>
+                    <td className="px-4 py-2 text-right text-danger-600">{r.returns_total > 0 ? `−${fmt(r.returns_total)}` : '—'}</td>
+                    <td className="px-4 py-2 text-right text-ink-primary font-medium">{fmt(r.net_sales)}</td>
+                    <td className="px-4 py-2 text-right text-emerald-700 font-medium">{fmt(r.gross_profit)}</td>
+                    <td className="px-4 py-2 text-right text-ink-secondary">{r.gp_pct.toFixed(1)}%</td>
+                    <td className="px-4 py-2 text-right text-ink-secondary">{fmt(r.avg_invoice_value)}</td>
+                    <td className="px-4 py-2 text-right text-ink-secondary">{r.commission_pct != null ? `${r.commission_pct.toFixed(1)}%` : '—'}</td>
+                    <td className="px-4 py-2 text-right font-semibold text-brand-600">{r.commission_pct != null ? fmt(r.commission) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="border-t-2 border-border bg-surface-subtle">
+                <tr>
+                  <td className="px-4 py-2 font-semibold text-ink-primary">{t('common.total')}</td>
+                  <td className="px-4 py-2 text-right font-semibold text-ink-primary">{rows.reduce((s, r) => s + r.invoice_count, 0)}</td>
+                  <td className="px-4 py-2 text-right font-semibold text-danger-600">{fmt(rows.reduce((s, r) => s + r.returns_total, 0))}</td>
+                  <td className="px-4 py-2 text-right font-semibold text-ink-primary">{fmt(rows.reduce((s, r) => s + r.net_sales, 0))}</td>
+                  <td className="px-4 py-2 text-right font-semibold text-emerald-700">{fmt(rows.reduce((s, r) => s + r.gross_profit, 0))}</td>
+                  <td className="px-4 py-2" />
+                  <td className="px-4 py-2" />
+                  <td className="px-4 py-2" />
+                  <td className="px-4 py-2 text-right font-semibold text-brand-600">{fmt(rows.reduce((s, r) => s + r.commission, 0))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <p className="text-xs text-ink-tertiary">{t('reports.commission_note')}</p>
+        </>
       )}
     </div>
   );

@@ -2841,31 +2841,73 @@ export function createSupabaseAdapter(
       },
 
       async getSalesBySalesperson(company_id, from, to): Promise<SalesBySalespersonLine[]> {
-        // Phase 12.16: salesperson_id now FKs to salespeople (not profiles).
-        // Join salespeople(name) instead of profiles(full_name).
+        // Phase 45 — salesperson ↔ commission wiring:
+        //  • Net sales use the GL-authoritative header figure total − tax
+        //    (correct for tax-inclusive pricing and header discounts, per
+        //    the phase 38 doctrine) instead of re-deriving from line prices.
+        //  • Confirmed credit notes are deducted from the salesperson's net
+        //    sales, so returns shrink the commission base.
+        //  • commission_pct from the salespeople master × the net-of-returns
+        //    base = the commission column (floored at 0).
+        // (Phase 12.16: salesperson_id FKs to salespeople, not profiles.)
+        type SpJoin = { name: string; commission_pct: number | null } | null;
         const { data, error } = await client
           .from('invoices')
-          .select('id, salesperson_id, subtotal, salespeople(name), invoice_items(quantity, unit_price, discount_percent, cost_at_sale)')
+          .select('id, salesperson_id, total_amount, tax_amount, salespeople(name, commission_pct), invoice_items(quantity, cost_at_sale)')
           .eq('company_id', company_id)
           .eq('status', 'confirmed')
           .gte('date', from).lte('date', to);
         assertNoError(error, 'getSalesBySalesperson');
-        const by: Record<string, { name: string; count: number; sales: number; cogs: number }> = {};
-        for (const inv of data ?? []) {
-          const spId = inv.salesperson_id ?? 'unassigned';
-          const sp = inv.salespeople as unknown as { name: string } | null;
-          if (!by[spId]) by[spId] = { name: sp?.name ?? 'Unassigned', count: 0, sales: 0, cogs: 0 };
-          by[spId].count += 1;
-          const items = (inv.invoice_items as unknown as { quantity: number; unit_price: number; discount_percent: number; cost_at_sale: number | null }[] | null) ?? [];
-          for (const it of items) {
-            const net = Number(it.quantity) * Number(it.unit_price) * (1 - Number(it.discount_percent ?? 0) / 100);
-            by[spId].sales += net;
-            by[spId].cogs += Number(it.cost_at_sale ?? 0) * Number(it.quantity);
+
+        const { data: cns, error: cnErr } = await client
+          .from('credit_notes')
+          .select('salesperson_id, total_amount, tax_amount, salespeople(name, commission_pct)')
+          .eq('company_id', company_id)
+          .eq('status', 'confirmed')
+          .gte('date', from).lte('date', to);
+        assertNoError(cnErr, 'getSalesBySalesperson.creditNotes');
+
+        type Acc = { name: string; pct: number | null; count: number; sales: number; returns: number; cogs: number };
+        const by: Record<string, Acc> = {};
+        const bucket = (spId: string | null, sp: SpJoin): Acc => {
+          const key = spId ?? 'unassigned';
+          if (!by[key]) {
+            by[key] = {
+              name: sp?.name ?? 'Unassigned',
+              pct: sp ? Number(sp.commission_pct ?? 0) : null,
+              count: 0, sales: 0, returns: 0, cogs: 0,
+            };
           }
+          return by[key];
+        };
+
+        for (const inv of data ?? []) {
+          const b = bucket(inv.salesperson_id, inv.salespeople as unknown as SpJoin);
+          b.count += 1;
+          b.sales += Number(inv.total_amount ?? 0) - Number(inv.tax_amount ?? 0);
+          const items = (inv.invoice_items as unknown as { quantity: number; cost_at_sale: number | null }[] | null) ?? [];
+          for (const it of items) b.cogs += Number(it.cost_at_sale ?? 0) * Number(it.quantity);
         }
+        for (const cn of cns ?? []) {
+          const b = bucket(cn.salesperson_id, cn.salespeople as unknown as SpJoin);
+          b.returns += Number(cn.total_amount ?? 0) - Number(cn.tax_amount ?? 0);
+        }
+
         return Object.entries(by).map(([id, b]) => {
-          const gp = b.sales - b.cogs;
-          return { salesperson_id: id === 'unassigned' ? null : id, salesperson_name: b.name, invoice_count: b.count, net_sales: b.sales, gross_profit: gp, gp_pct: b.sales > 0 ? Math.round(gp / b.sales * 1000) / 10 : 0, avg_invoice_value: b.count > 0 ? Math.round(b.sales / b.count * 100) / 100 : 0 };
+          const net = b.sales - b.returns;
+          const gp = net - b.cogs;
+          return {
+            salesperson_id: id === 'unassigned' ? null : id,
+            salesperson_name: b.name,
+            invoice_count: b.count,
+            net_sales: Math.round(net * 100) / 100,
+            returns_total: Math.round(b.returns * 100) / 100,
+            gross_profit: Math.round(gp * 100) / 100,
+            gp_pct: net > 0 ? Math.round(gp / net * 1000) / 10 : 0,
+            avg_invoice_value: b.count > 0 ? Math.round(b.sales / b.count * 100) / 100 : 0,
+            commission_pct: b.pct,
+            commission: b.pct != null ? Math.max(0, Math.round(net * b.pct) / 100) : 0,
+          };
         }).sort((a, b) => b.net_sales - a.net_sales);
       },
 
