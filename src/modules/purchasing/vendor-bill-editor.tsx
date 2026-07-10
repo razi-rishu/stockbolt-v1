@@ -193,6 +193,8 @@ export default function VendorBillEditorPage() {
   const confirmLeave = useUnsavedChangesGuard(dirty);
   // Phase 14.17 — tax-inclusive/exclusive toggle
   const [pricesInclusive, setPricesInclusive] = useState(false);
+  // Phase 46 — manual round-off so the bill matches the supplier's paper total.
+  const [roundOffInput, setRoundOffInput] = useState('0');
 
   useEffect(() => {
     if (existing) {
@@ -208,6 +210,7 @@ export default function VendorBillEditorPage() {
         landed_cost_total: String((existing as { landed_cost_total?: number }).landed_cost_total ?? 0),
       });
       setPricesInclusive((existing as { prices_inclusive?: boolean }).prices_inclusive ?? false);
+      setRoundOffInput(String((existing as { round_off_amount?: number }).round_off_amount ?? 0));
     }
   }, [existing]);
 
@@ -285,6 +288,9 @@ export default function VendorBillEditorPage() {
   const discountTotal = lines.reduce((s, l) => s + l.discount_amount, 0);
   const taxTotal      = lines.reduce((s, l) => s + l.tax_amount, 0);
   const grandTotal    = lines.reduce((s, l) => s + l.line_total, 0);
+  // Phase 46 — manual round-off so the entered bill matches the supplier's
+  // rounded paper total exactly (posts to 5900). Clamped to ±1.00.
+  const roundOff = Math.max(-1, Math.min(1, parseFloat(roundOffInput) || 0));
 
   // ── Supplier insight panel data ──────────────────────────────────────────
   // Pulls in once the supplier is picked. Same shape as the invoice
@@ -398,7 +404,7 @@ export default function VendorBillEditorPage() {
     }
 
     const billNum = isNew ? await getAdapter().vendorBills.getNextNumber(company_id!) : existing!.bill_number;
-    const totalWithLanded = +(grandTotal + landedCost).toFixed(2);
+    const totalWithLanded = +(grandTotal + landedCost + roundOff).toFixed(2);
     const row = {
       company_id: company_id!, bill_number: billNum,
       supplier_bill_number: header.supplier_bill_number || null,
@@ -407,7 +413,7 @@ export default function VendorBillEditorPage() {
       currency: header.currency, exchange_rate: 1,
       prices_inclusive: pricesInclusive,
       subtotal: +subtotal.toFixed(2), discount_amount: +discountTotal.toFixed(2),
-      tax_amount: +taxTotal.toFixed(2), total_amount: totalWithLanded,
+      tax_amount: +taxTotal.toFixed(2), round_off_amount: +roundOff.toFixed(2), total_amount: totalWithLanded,
       landed_cost_total: +landedCost.toFixed(2),
       status: 'draft' as const,
       linked_grn_id: header.linked_grn_id || null,
@@ -989,9 +995,21 @@ export default function VendorBillEditorPage() {
                 <span className="font-mono">{fmt(landedCost)}</span>
               </div>
             )}
+            <div className="flex items-center justify-between text-ink-secondary">
+              <span title="Adjust so the total matches the supplier's printed bill exactly (±1.00). Posts to 5900 Round Off.">
+                {t('sales.round_off')}
+              </span>
+              <input
+                type="number" step="0.01" min="-1" max="1"
+                value={roundOffInput}
+                disabled={!canEdit}
+                onChange={e => { setRoundOffInput(e.target.value); setDirty(true); }}
+                className="h-7 w-24 rounded border border-border-subtle px-2 text-end font-mono text-sm"
+              />
+            </div>
             <div className="flex justify-between border-t border-border-subtle pt-2.5 mt-1 text-base font-semibold text-ink-primary">
               <span>Grand Total</span>
-              <span className="font-mono">{header.currency} {fmt(grandTotal + landedCost)}</span>
+              <span className="font-mono">{header.currency} {fmt(grandTotal + landedCost + roundOff)}</span>
             </div>
             {(() => {
               // Paid / Balance Due only for existing confirmed bills.
@@ -1002,7 +1020,7 @@ export default function VendorBillEditorPage() {
               // paid = what has already been paid (DB total minus DB outstanding).
               const paid       = Number(thisBill.total_amount ?? 0) - outstanding;
               // balanceDue = live grand total minus what's already paid.
-              const balanceDue = (grandTotal + landedCost) - paid;
+              const balanceDue = (grandTotal + landedCost + roundOff) - paid;
               return (
                 <>
                   <div className="flex justify-between text-ink-secondary border-t border-border-subtle pt-2.5">

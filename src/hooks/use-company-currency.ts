@@ -63,6 +63,17 @@ export function useCompanyCountry(): string | null {
 }
 
 /**
+ * useCompanyRoundingStep — Phase 46. The company's cash-rounding step for
+ * document grand totals (0 = off; 0.25 / 0.50 / 1.00). Shares the cached
+ * ['company', company_id] query. Returns 0 until the migration is applied
+ * or while loading, so rounding is always a safe no-op by default.
+ */
+export function useCompanyRoundingStep(): number {
+  const company = useCompany();
+  return Number((company as { rounding_step?: number } | null)?.rounding_step ?? 0);
+}
+
+/**
  * useCompany — the full active-tenant company row (name, logo_url, currency,
  * country_code, fiscal_year_start, …). Shares the same cached
  * ['company', company_id] query as the currency/country hooks, so it's a free

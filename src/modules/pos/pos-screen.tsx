@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
-import { useCompanyCountry } from '@/hooks/use-company-currency';
+import { useCompanyCountry, useCompanyRoundingStep } from '@/hooks/use-company-currency';
+import { applyRoundOff } from '@/core/sales/invoice-calc';
 import { defaultTaxRate as countryStdTaxRate } from '@/lib/locale';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
@@ -275,6 +276,10 @@ export default function POSScreen() {
   // ── Totals ────────────────────────────────────────────────────────────────────
   const cartLines: POSCartLineResult[] = cart.map(calcPOSLine);
   const totals = calcPOSTotals(cartLines);
+  // Phase 46 — mirror the server-side cash rounding so the display matches
+  // what confirm_pos_sale will actually charge.
+  const roundingStep = useCompanyRoundingStep();
+  const { round_off: roundOff, rounded_total: roundedTotal } = applyRoundOff(totals.total_amount, roundingStep);
 
   const customerOpts = [
     { value: '', label: t('pos.select_customer') },
@@ -402,8 +407,13 @@ export default function POSScreen() {
               <span>{t('pos.tax')}</span><span>{fmt(totals.tax_amount)}</span>
             </div>
           )}
+          {roundOff !== 0 && (
+            <div className="flex justify-between text-ink-secondary">
+              <span>{t('sales.round_off')}</span><span>{roundOff > 0 ? '+' : '−'}{fmt(Math.abs(roundOff))}</span>
+            </div>
+          )}
           <div className="flex justify-between font-bold text-ink-primary text-base border-t border-border-subtle pt-2 mt-1">
-            <span>{t('pos.total')}</span><span>{fmt(totals.total_amount)}</span>
+            <span>{t('pos.total')}</span><span>{fmt(roundedTotal)}</span>
           </div>
         </div>
 

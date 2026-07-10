@@ -270,6 +270,7 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
         {row('Subtotal', money(data.subtotal))}
         {!!data.discount_total && data.discount_total > 0 && row('Discount', `(${num(data.discount_total)})`)}
         {row(tax.taxName, money(data.tax_total))}
+        {!!data.round_off && data.round_off !== 0 && row('Round Off', `${data.round_off > 0 ? '+' : '−'}${num(Math.abs(data.round_off))}`)}
         {!!data.shipping_total && data.shipping_total > 0 && row('Shipping', money(data.shipping_total))}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, padding: '8px 12px', borderRadius: 6, background: C.accent, color: '#fff', fontWeight: 800, fontSize: baseFont * 1.05 }}>
           <span>TOTAL {cur}</span>

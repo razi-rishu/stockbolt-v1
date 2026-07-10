@@ -1479,17 +1479,55 @@ describe('Phase 38 — tax-inclusive documents post balanced JEs', () => {
     expect(Array.isArray(orphaned)).toBe(true);
   });
 
-  it('phase38: stored inclusive headers satisfy subtotal − discount + tax = total', async () => {
+  it('phase38: stored inclusive headers satisfy subtotal − discount + tax (+ round_off) = total', async () => {
     if (!(await applied38())) { console.warn('phase38 not applied — skipping header identity check.'); return; }
+    // Phase 46 extends the identity with round_off_amount once its column exists.
+    const [has46] = await sql<{ ok: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM information_schema.columns
+         WHERE table_schema='public' AND table_name='invoices' AND column_name='round_off_amount') AS ok`);
+    const ro = has46?.ok ? ' + round_off_amount' : '';
     const badInv = await sql<{ invoice_number: string }>(
       `SELECT invoice_number FROM invoices
        WHERE COALESCE(prices_inclusive, false) AND status <> 'draft'
-         AND ABS((subtotal - discount_amount + tax_amount) - total_amount) > 0.02`);
+         AND ABS((subtotal - discount_amount + tax_amount${ro}) - total_amount) > 0.02`);
     expect(badInv, `inclusive invoices violating the header identity: ${JSON.stringify(badInv)}`).toEqual([]);
     const badBill = await sql<{ bill_number: string }>(
       `SELECT bill_number FROM vendor_bills
        WHERE COALESCE(prices_inclusive, false) AND status <> 'draft'
-         AND ABS((subtotal - discount_amount + tax_amount) - total_amount) > 0.02`);
+         AND ABS((subtotal - discount_amount + tax_amount${ro}) - total_amount) > 0.02`);
     expect(badBill, `inclusive bills violating the header identity: ${JSON.stringify(badBill)}`).toEqual([]);
+  });
+
+  it('phase46: round-off posts to 5900 and keeps the header identity', async () => {
+    const [gate] = await sql<{ ok: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM information_schema.columns
+         WHERE table_schema='public' AND table_name='invoices' AND column_name='round_off_amount') AS ok`);
+    if (!gate?.ok) { console.warn('phase46 not applied — skipping round-off checks.'); return; }
+
+    // All six posting functions must carry the 5900 round-off leg.
+    const missing = await sql<{ proname: string }>(
+      `SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public'
+         AND p.proname IN ('confirm_invoice','edit_invoice','confirm_pos_sale',
+                           'confirm_vendor_bill','confirm_credit_note','confirm_debit_note')
+         AND p.prosrc NOT LIKE '%ensure_round_off_account%'`);
+    expect(missing, `posting functions missing the 5900 round-off leg: ${JSON.stringify(missing)}`).toEqual([]);
+
+    // Rounded documents (only ever created by phase46 code) must satisfy
+    // subtotal − discount + tax + round_off = total.
+    const badRounded = await sql<{ invoice_number: string }>(
+      `SELECT invoice_number FROM invoices
+       WHERE status <> 'draft' AND round_off_amount <> 0
+         AND ABS((subtotal - discount_amount + tax_amount + round_off_amount) - total_amount) > 0.02`);
+    expect(badRounded, `rounded invoices violating the extended identity: ${JSON.stringify(badRounded)}`).toEqual([]);
+
+    // Every non-zero round-off on a confirmed doc has a matching 5900 GL row.
+    const orphans = await sql<{ invoice_number: string }>(
+      `SELECT i.invoice_number FROM invoices i
+       WHERE i.status = 'confirmed' AND i.round_off_amount <> 0
+         AND NOT EXISTS (
+           SELECT 1 FROM general_ledger gl
+           WHERE gl.related_doc_id = i.id AND gl.account_code = '5900')`);
+    expect(orphans, `confirmed rounded invoices without a 5900 GL row: ${JSON.stringify(orphans)}`).toEqual([]);
   });
 });

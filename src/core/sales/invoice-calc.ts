@@ -64,6 +64,16 @@ export function calcHeaderTotals(lines: LineResult[]): HeaderTotals {
   return { subtotal, discount_amount: discount, tax_amount: tax, total_amount: total };
 }
 
+// ── Phase 46 — Round Off ─────────────────────────────────────────────────────
+// Rounds a grand total to the company's cash step (0.25 / 0.50 / 1.00).
+// The difference posts to account 5900 and the header identity becomes
+// subtotal − discount + tax + round_off = total. step <= 0 means off.
+export function applyRoundOff(total: number, step: number): { round_off: number; rounded_total: number } {
+  if (!step || step <= 0) return { round_off: 0, rounded_total: total };
+  const rounded = round2(Math.round(total / step) * step);
+  return { round_off: round2(rounded - total), rounded_total: rounded };
+}
+
 // AR Aging bucketing (days past due_date as of as_of_date)
 export type AgingBucket = 'current' | '31_60' | '61_90' | 'over_90';
 

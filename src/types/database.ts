@@ -465,6 +465,7 @@ export type Database = {
           name_ar: string | null
           mol_establishment_id: string | null
           period_lock_date: string | null
+          rounding_step: number
           wps_routing_code: string | null
           phone: string | null
           prices_inclusive_of_tax: boolean
@@ -493,6 +494,7 @@ export type Database = {
           name_ar?: string | null
           mol_establishment_id?: string | null
           period_lock_date?: string | null
+          rounding_step?: number
           wps_routing_code?: string | null
           phone?: string | null
           prices_inclusive_of_tax?: boolean
@@ -521,6 +523,7 @@ export type Database = {
           name_ar?: string | null
           mol_establishment_id?: string | null
           period_lock_date?: string | null
+          rounding_step?: number
           wps_routing_code?: string | null
           phone?: string | null
           prices_inclusive_of_tax?: boolean
@@ -742,6 +745,7 @@ export type Database = {
           status: string
           subtotal: number
           tax_amount: number
+          round_off_amount: number
           total_amount: number
           updated_at: string
           warehouse_id: string | null
@@ -764,6 +768,7 @@ export type Database = {
           status?: string
           subtotal?: number
           tax_amount?: number
+          round_off_amount?: number
           total_amount?: number
           updated_at?: string
           warehouse_id?: string | null
@@ -786,6 +791,7 @@ export type Database = {
           status?: string
           subtotal?: number
           tax_amount?: number
+          round_off_amount?: number
           total_amount?: number
           updated_at?: string
           warehouse_id?: string | null
@@ -927,6 +933,7 @@ export type Database = {
           subtotal: number
           supplier_id: string
           tax_amount: number
+          round_off_amount: number
           total_amount: number
           updated_at: string
           warehouse_id: string | null
@@ -947,6 +954,7 @@ export type Database = {
           subtotal?: number
           supplier_id: string
           tax_amount?: number
+          round_off_amount?: number
           total_amount?: number
           updated_at?: string
           warehouse_id?: string | null
@@ -967,6 +975,7 @@ export type Database = {
           subtotal?: number
           supplier_id?: string
           tax_amount?: number
+          round_off_amount?: number
           total_amount?: number
           updated_at?: string
           warehouse_id?: string | null
@@ -1760,6 +1769,7 @@ export type Database = {
           status: string
           subtotal: number
           tax_amount: number
+          round_off_amount: number
           terms: string | null
           terms_ar: string | null
           total_amount: number
@@ -1792,6 +1802,7 @@ export type Database = {
           status?: string
           subtotal?: number
           tax_amount?: number
+          round_off_amount?: number
           terms?: string | null
           terms_ar?: string | null
           total_amount?: number
@@ -1824,6 +1835,7 @@ export type Database = {
           status?: string
           subtotal?: number
           tax_amount?: number
+          round_off_amount?: number
           terms?: string | null
           terms_ar?: string | null
           total_amount?: number
@@ -3619,6 +3631,7 @@ export type Database = {
           status: string
           subtotal: number
           tax_amount: number
+          round_off_amount: number
           terms: string | null
           terms_ar: string | null
           total_amount: number
@@ -3644,6 +3657,7 @@ export type Database = {
           status?: string
           subtotal?: number
           tax_amount?: number
+          round_off_amount?: number
           terms?: string | null
           terms_ar?: string | null
           total_amount?: number
@@ -3669,6 +3683,7 @@ export type Database = {
           status?: string
           subtotal?: number
           tax_amount?: number
+          round_off_amount?: number
           terms?: string | null
           terms_ar?: string | null
           total_amount?: number
@@ -4321,6 +4336,7 @@ export type Database = {
           supplier_bill_number: string | null
           supplier_id: string
           tax_amount: number
+          round_off_amount: number
           total_amount: number
           updated_at: string
           void_reason: string | null
@@ -4346,6 +4362,7 @@ export type Database = {
           supplier_bill_number?: string | null
           supplier_id: string
           tax_amount?: number
+          round_off_amount?: number
           total_amount?: number
           updated_at?: string
           void_reason?: string | null
@@ -4371,6 +4388,7 @@ export type Database = {
           supplier_bill_number?: string | null
           supplier_id?: string
           tax_amount?: number
+          round_off_amount?: number
           total_amount?: number
           updated_at?: string
           void_reason?: string | null

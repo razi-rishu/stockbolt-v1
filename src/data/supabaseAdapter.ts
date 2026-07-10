@@ -2853,7 +2853,7 @@ export function createSupabaseAdapter(
         type SpJoin = { name: string; commission_pct: number | null } | null;
         const { data, error } = await client
           .from('invoices')
-          .select('id, salesperson_id, total_amount, tax_amount, salespeople(name, commission_pct), invoice_items(quantity, cost_at_sale)')
+          .select('id, salesperson_id, total_amount, tax_amount, round_off_amount, salespeople(name, commission_pct), invoice_items(quantity, cost_at_sale)')
           .eq('company_id', company_id)
           .eq('status', 'confirmed')
           .gte('date', from).lte('date', to);
@@ -2861,7 +2861,7 @@ export function createSupabaseAdapter(
 
         const { data: cns, error: cnErr } = await client
           .from('credit_notes')
-          .select('salesperson_id, total_amount, tax_amount, salespeople(name, commission_pct)')
+          .select('salesperson_id, total_amount, tax_amount, round_off_amount, salespeople(name, commission_pct)')
           .eq('company_id', company_id)
           .eq('status', 'confirmed')
           .gte('date', from).lte('date', to);
@@ -2884,13 +2884,13 @@ export function createSupabaseAdapter(
         for (const inv of data ?? []) {
           const b = bucket(inv.salesperson_id, inv.salespeople as unknown as SpJoin);
           b.count += 1;
-          b.sales += Number(inv.total_amount ?? 0) - Number(inv.tax_amount ?? 0);
+          b.sales += Number(inv.total_amount ?? 0) - Number(inv.tax_amount ?? 0) - Number((inv as { round_off_amount?: number }).round_off_amount ?? 0);
           const items = (inv.invoice_items as unknown as { quantity: number; cost_at_sale: number | null }[] | null) ?? [];
           for (const it of items) b.cogs += Number(it.cost_at_sale ?? 0) * Number(it.quantity);
         }
         for (const cn of cns ?? []) {
           const b = bucket(cn.salesperson_id, cn.salespeople as unknown as SpJoin);
-          b.returns += Number(cn.total_amount ?? 0) - Number(cn.tax_amount ?? 0);
+          b.returns += Number(cn.total_amount ?? 0) - Number(cn.tax_amount ?? 0) - Number((cn as { round_off_amount?: number }).round_off_amount ?? 0);
         }
 
         return Object.entries(by).map(([id, b]) => {
@@ -3409,22 +3409,38 @@ export function createSupabaseAdapter(
         // One paged fetch per document type covers every KPI period AND all
         // three trend charts (7-day, daily-this-month, monthly-this-year).
         // Amounts are net of VAT (total − tax) so "Revenue (excl. VAT)" is true.
-        type FlowRow = { date: string; total_amount: number; tax_amount: number | null };
+        type FlowRow = { date: string; total_amount: number; tax_amount: number | null; round_off_amount?: number | null };
         const fetchFlows = async (table: 'invoices' | 'vendor_bills'): Promise<FlowRow[]> => {
           const out: FlowRow[] = [];
           const page = 1000;
+          // Phase 46 — round_off_amount arrives with the phase46 migration;
+          // fall back to the old column list so the dashboard keeps working
+          // until it's applied.
+          let cols = 'date, total_amount, tax_amount, round_off_amount';
           for (let i = 0; i < 25; i++) {
-            const { data, error } = await client
+            let { data, error } = await client
               .from(table)
-              .select('date, total_amount, tax_amount')
+              .select(cols)
               .eq('company_id', company_id)
               .eq('status', 'confirmed')
               .gte('date', prevYearStart)
               .lte('date', today)
               .order('date', { ascending: true })
               .range(i * page, (i + 1) * page - 1);
+            if (error && /round_off_amount/i.test(error.message ?? '')) {
+              cols = 'date, total_amount, tax_amount';
+              ({ data, error } = await client
+                .from(table)
+                .select(cols)
+                .eq('company_id', company_id)
+                .eq('status', 'confirmed')
+                .gte('date', prevYearStart)
+                .lte('date', today)
+                .order('date', { ascending: true })
+                .range(i * page, (i + 1) * page - 1));
+            }
             assertNoError(error, 'reports.getOwnerDashboard');
-            out.push(...((data ?? []) as FlowRow[]));
+            out.push(...((data ?? []) as unknown as FlowRow[]));
             if ((data ?? []).length < page) return out;
           }
           console.warn(`getOwnerDashboard: ${table} fetch capped at 25k rows — period totals may be understated`);
@@ -3504,8 +3520,9 @@ export function createSupabaseAdapter(
             .order('created_at', { ascending: false }).limit(5),
         ]);
 
-        // Net revenue / purchases per period (total − tax so figures are excl. VAT).
-        const net = (r: FlowRow) => Number(r.total_amount ?? 0) - Number(r.tax_amount ?? 0);
+        // Net revenue / purchases per period (total − tax − round-off so
+        // figures are excl. VAT and exclude the 5900 rounding difference).
+        const net = (r: FlowRow) => Number(r.total_amount ?? 0) - Number(r.tax_amount ?? 0) - Number(r.round_off_amount ?? 0);
         const sumRange = (rows: FlowRow[], from: string, to: string) =>
           rows.reduce((s, r) => (r.date >= from && r.date <= to ? s + net(r) : s), 0);
 

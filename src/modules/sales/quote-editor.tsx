@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { useCompanyCurrency, useCompanyCountry } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useCompanyCountry, useCompanyRoundingStep } from '@/hooks/use-company-currency';
 import { defaultTaxRate } from '@/lib/locale';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
@@ -20,7 +20,7 @@ import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { quoteToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type { SalesQuoteRow, SalesQuoteItemInsert, SalesQuoteItemRow, ContactRow, ProductRow, TaxRateRow, Company } from '@/data/adapter';
-import { calcLine as _calcLine } from '@/core/sales/invoice-calc';
+import { calcLine as _calcLine, applyRoundOff } from '@/core/sales/invoice-calc';
 
 interface LineRow {
   _key: string;
@@ -142,6 +142,10 @@ export default function QuoteEditorPage() {
   const discountTotal = lines.reduce((s, l) => s + l.discount_amount, 0);
   const taxTotal      = lines.reduce((s, l) => s + l.tax_amount, 0);
   const grandTotal    = lines.reduce((s, l) => s + l.line_total, 0);
+  // Phase 46 — display quote totals with the company's cash rounding so the
+  // quote matches the invoice it will become.
+  const roundingStep  = useCompanyRoundingStep();
+  const { round_off: roundOff, rounded_total: roundedTotal } = applyRoundOff(grandTotal, roundingStep);
 
   // ── Credit limit check (same logic as invoice editor) ───────────────────
   // Quotes don't post AR so they don't change outstanding, but flagging an
@@ -156,7 +160,7 @@ export default function QuoteEditorPage() {
   const creditLimit      = Number(selectedCustomer?.credit_limit ?? 0);
   const currentOutstanding = openCustomerInvoices
     .reduce((s, inv) => s + Number(inv.outstanding ?? 0), 0);
-  const projectedOutstanding = currentOutstanding + grandTotal;
+  const projectedOutstanding = currentOutstanding + roundedTotal;
   const creditOverage        = projectedOutstanding - creditLimit;
   const overCreditLimit      = creditLimit > 0 && creditOverage > 0.005;
 
@@ -217,7 +221,7 @@ export default function QuoteEditorPage() {
       if (!header.contact_id) throw new Error(t('sales.error_contact_required'));
       if (!header.salesperson_id) throw new Error('Salesperson is required');
       const quoteNum = isNew ? await getAdapter().salesQuotes.getNextNumber(company_id!) : existing!.quote_number;
-      const row = { company_id: company_id!, quote_number: quoteNum, contact_id: header.contact_id, salesperson_id: header.salesperson_id, date: header.date, expiry_date: header.expiry_date || null, reference: header.reference || null, price_level_id: null, currency: header.currency, exchange_rate: 1, prices_inclusive: false, subtotal: +subtotal.toFixed(2), discount_amount: +discountTotal.toFixed(2), tax_amount: +taxTotal.toFixed(2), total_amount: +grandTotal.toFixed(2), status: isNew ? 'draft' : existing!.status, invoiced_amount: existing?.invoiced_amount ?? 0, terms: null, terms_ar: null, notes: header.notes || null };
+      const row = { company_id: company_id!, quote_number: quoteNum, contact_id: header.contact_id, salesperson_id: header.salesperson_id, date: header.date, expiry_date: header.expiry_date || null, reference: header.reference || null, price_level_id: null, currency: header.currency, exchange_rate: 1, prices_inclusive: false, subtotal: +subtotal.toFixed(2), discount_amount: +discountTotal.toFixed(2), tax_amount: +taxTotal.toFixed(2), round_off_amount: +roundOff.toFixed(2), total_amount: +roundedTotal.toFixed(2), status: isNew ? 'draft' : existing!.status, invoiced_amount: existing?.invoiced_amount ?? 0, terms: null, terms_ar: null, notes: header.notes || null };
       if (isNew) return getAdapter().salesQuotes.create(row, buildItems());
       await getAdapter().salesQuotes.update(id!, row, buildItems());
       return null;
@@ -356,7 +360,7 @@ export default function QuoteEditorPage() {
             <strong>{selectedCustomer.name}</strong>'s credit limit is{' '}
             <span className="font-mono">{header.currency} {fmt(creditLimit)}</span>.
             Current outstanding: <span className="font-mono">{fmt(currentOutstanding)}</span>.
-            After this quote ({fmt(grandTotal)}), outstanding would be{' '}
+            After this quote ({fmt(roundedTotal)}), outstanding would be{' '}
             <span className="font-mono font-semibold">{fmt(projectedOutstanding)}</span>{' '}
             — over by <span className="font-mono font-semibold">{fmt(creditOverage)}</span>.
           </p>
@@ -471,7 +475,10 @@ export default function QuoteEditorPage() {
             <div className="flex justify-between text-ink-secondary"><span>{t('sales.subtotal')}</span><span className="font-mono">{fmt(subtotal)}</span></div>
             {discountTotal > 0 && <div className="flex justify-between text-ink-secondary"><span>{t('sales.discount')}</span><span className="font-mono text-red-600">−{fmt(discountTotal)}</span></div>}
             {taxTotal > 0 && <div className="flex justify-between text-ink-secondary"><span>{t('sales.vat')}</span><span className="font-mono">{fmt(taxTotal)}</span></div>}
-            <div className="flex justify-between border-t border-border-subtle pt-1.5 font-semibold text-ink-primary"><span>{t('sales.total_amount')}</span><span className="font-mono">{header.currency} {fmt(grandTotal)}</span></div>
+            {roundOff !== 0 && (
+              <div className="flex justify-between text-ink-secondary"><span>{t('sales.round_off')}</span><span className="font-mono">{roundOff > 0 ? '+' : '−'}{fmt(Math.abs(roundOff))}</span></div>
+            )}
+            <div className="flex justify-between border-t border-border-subtle pt-1.5 font-semibold text-ink-primary"><span>{t('sales.total_amount')}</span><span className="font-mono">{header.currency} {fmt(roundedTotal)}</span></div>
           </div>
         </div>
       </div>

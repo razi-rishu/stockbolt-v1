@@ -53,6 +53,8 @@ export default function DebitNoteEditorPage() {
   const [date,         setDate]         = useState(today());
   const [reason,       setReason]       = useState('return');
   const [notes,        setNotes]        = useState('');
+  // Phase 46 — manual round-off so the note matches the supplier's paper figure.
+  const [roundOffInput, setRoundOffInput] = useState('0');
   const [lines,        setLines]        = useState<LineItem[]>([]);
   const [voidReason,   setVoidReason]   = useState('');
   const [showVoidDlg,  setShowVoidDlg]  = useState(false);
@@ -99,6 +101,7 @@ export default function DebitNoteEditorPage() {
       setDate(existing.date);
       setReason(existing.reason ?? 'return');
       setNotes(existing.notes ?? '');
+      setRoundOffInput(String((existing as { round_off_amount?: number }).round_off_amount ?? 0));
     }
   }, [existing]);
 
@@ -148,6 +151,9 @@ export default function DebitNoteEditorPage() {
     const c = calcLine(l);
     return { subtotal: acc.subtotal + c.line_subtotal + c.discount_amount, discount: acc.discount + c.discount_amount, tax: acc.tax + c.tax_amount, total: acc.total + c.line_total };
   }, { subtotal: 0, discount: 0, tax: 0, total: 0 });
+  // Phase 46 — clamped ±1.00; posts to 5900 Round Off.
+  const roundOff = Math.max(-1, Math.min(1, parseFloat(roundOffInput) || 0));
+  const roundedTotal = +(totals.total + roundOff).toFixed(2);
 
   function buildItems(): DebitNoteItemInsert[] {
     return lines.map((l, i) => {
@@ -183,7 +189,8 @@ export default function DebitNoteEditorPage() {
         subtotal:         totals.subtotal,
         discount_amount:  totals.discount,
         tax_amount:       totals.tax,
-        total_amount:     totals.total,
+        round_off_amount: +roundOff.toFixed(2),
+        total_amount:     roundedTotal,
         notes:            notes || undefined,
         status:           'draft' as const,
       };
@@ -440,7 +447,17 @@ export default function DebitNoteEditorPage() {
         <div className="flex justify-end px-4 py-3 border-t border-border-subtle gap-6 text-sm">
           <span className="text-ink-tertiary">{t('common.subtotal')}: <strong>{fmt(totals.subtotal - totals.discount)}</strong></span>
           <span className="text-ink-tertiary">{t('common.tax')}: <strong>{fmt(totals.tax)}</strong></span>
-          <span className="text-ink-primary font-bold">{t('common.total')}: {fmt(totals.total)}</span>
+          <span className="flex items-center gap-2 text-ink-secondary">
+            {t('sales.round_off')}:
+            <input
+              type="number" step="0.01" min="-1" max="1"
+              value={roundOffInput}
+              disabled={!isDraft}
+              onChange={e => setRoundOffInput(e.target.value)}
+              className="h-7 w-24 rounded border border-border-subtle px-2 text-end font-mono text-sm"
+            />
+          </span>
+          <span className="text-ink-primary font-bold">{t('common.total')}: {fmt(roundedTotal)}</span>
         </div>
       </div>
 

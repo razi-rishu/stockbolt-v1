@@ -94,6 +94,9 @@ export function TaxInvoiceTemplate({ data, qrSrc }: TaxInvoiceTemplateProps) {
             <TotalLine label="Discount"           amount={-data.discount_total} />
           )}
           <TotalLine label={`${tax.taxName} (${(data.tax_total / Math.max(data.subtotal, 1) * 100).toFixed(0)}%)`} amount={data.tax_total} />
+          {!!data.round_off && data.round_off !== 0 && (
+            <TotalLine label="Round Off"          amount={data.round_off} />
+          )}
           {!!data.shipping_total && data.shipping_total > 0 && (
             <TotalLine label="Shipping"           amount={data.shipping_total} />
           )}

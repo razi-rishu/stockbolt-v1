@@ -6,7 +6,8 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useShortcutAction } from '@/keyboard/use-shortcut-action';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
-import { useCompanyCurrency, useCompanyCountry } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useCompanyCountry, useCompanyRoundingStep } from '@/hooks/use-company-currency';
+import { applyRoundOff } from '@/core/sales/invoice-calc';
 import { defaultTaxRate } from '@/lib/locale';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
@@ -273,6 +274,10 @@ export default function InvoiceEditorPage() {
   const discountTotal = lines.reduce((s, l) => s + l.discount_amount, 0);
   const taxTotal      = lines.reduce((s, l) => s + l.tax_amount, 0);
   const grandTotal    = lines.reduce((s, l) => s + l.line_total, 0);
+  // Phase 46 — round the grand total to the company's cash step (0.25/0.50/1).
+  // The difference is stored on the invoice and posts to 5900 Round Off.
+  const roundingStep  = useCompanyRoundingStep();
+  const { round_off: roundOff, rounded_total: roundedTotal } = applyRoundOff(grandTotal, roundingStep);
 
   // ── Credit limit check ───────────────────────────────────────────────────
   // Fetch the customer's open invoices to compute current outstanding.
@@ -291,7 +296,7 @@ export default function InvoiceEditorPage() {
   const currentOutstanding = openCustomerInvoices
     .filter(inv => inv.id !== id)  // exclude this draft if it's already in the list
     .reduce((s, inv) => s + Number(inv.outstanding ?? 0), 0);
-  const projectedOutstanding = currentOutstanding + grandTotal;
+  const projectedOutstanding = currentOutstanding + roundedTotal;
   const creditOverage        = projectedOutstanding - creditLimit;
   const overCreditLimit      = creditLimit > 0 && creditOverage > 0.005;
 
@@ -417,7 +422,8 @@ export default function InvoiceEditorPage() {
         subtotal:        +subtotal.toFixed(2),
         discount_amount: +discountTotal.toFixed(2),
         tax_amount:      +taxTotal.toFixed(2),
-        total_amount:    +grandTotal.toFixed(2),
+        round_off_amount: +roundOff.toFixed(2),
+        total_amount:    +roundedTotal.toFixed(2),
         status:          'draft' as const,
         source_quote_id: null,
         source_order_id: null,
@@ -504,7 +510,8 @@ export default function InvoiceEditorPage() {
         subtotal:        +subtotal.toFixed(2),
         discount_amount: +discountTotal.toFixed(2),
         tax_amount:      +taxTotal.toFixed(2),
-        total_amount:    +grandTotal.toFixed(2),
+        round_off_amount: +roundOff.toFixed(2),
+        total_amount:    +roundedTotal.toFixed(2),
         status:          'confirmed' as const,
         source_quote_id: existing!.source_quote_id,
         source_order_id: existing!.source_order_id,
@@ -869,7 +876,7 @@ export default function InvoiceEditorPage() {
             <strong>{selectedCustomer.name}</strong>'s credit limit is{' '}
             <span className="font-mono">{header.currency} {fmt(creditLimit)}</span>.
             Current outstanding: <span className="font-mono">{fmt(currentOutstanding)}</span>.
-            After this invoice ({fmt(grandTotal)}), outstanding will be{' '}
+            After this invoice ({fmt(roundedTotal)}), outstanding will be{' '}
             <span className="font-mono font-semibold">{fmt(projectedOutstanding)}</span>{' '}
             — over by <span className="font-mono font-semibold">{fmt(creditOverage)}</span>.
           </p>
@@ -1245,9 +1252,15 @@ export default function InvoiceEditorPage() {
                 <span className="font-mono">{fmt(taxTotal)}</span>
               </div>
             )}
+            {roundOff !== 0 && (
+              <div className="flex justify-between text-ink-secondary">
+                <span>{t('sales.round_off')}</span>
+                <span className="font-mono">{roundOff > 0 ? '+' : '−'}{fmt(Math.abs(roundOff))}</span>
+              </div>
+            )}
             <div className="flex justify-between border-t border-border-subtle pt-2.5 mt-1 text-base font-semibold text-ink-primary">
               <span>Grand Total</span>
-              <span className="font-mono">{header.currency} {fmt(grandTotal)}</span>
+              <span className="font-mono">{header.currency} {fmt(roundedTotal)}</span>
             </div>
             {(() => {
               // Paid amount + balance: only meaningful for an existing
@@ -1261,7 +1274,7 @@ export default function InvoiceEditorPage() {
               const paid       = Number(thisInv.total_amount ?? 0) - outstanding;
               // balanceDue = live grand total minus what's already paid.
               // This stays correct even when line items are edited before saving.
-              const balanceDue = grandTotal - paid;
+              const balanceDue = roundedTotal - paid;
               return (
                 <>
                   <div className="flex justify-between text-ink-secondary border-t border-border-subtle pt-2.5">

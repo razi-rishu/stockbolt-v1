@@ -5,7 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
-import { useCompanyCurrency, useCompanyCountry } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useCompanyCountry, useCompanyRoundingStep } from '@/hooks/use-company-currency';
+import { applyRoundOff } from '@/core/sales/invoice-calc';
 import { defaultTaxRate } from '@/lib/locale';
 import { Button } from '@/ui/button';
 import { SearchableSelect } from '@/ui/searchable-select';
@@ -155,6 +156,10 @@ export default function CreditNoteEditorPage() {
     const c = calcLine(l);
     return { subtotal: acc.subtotal + c.line_subtotal + c.discount_amount, discount: acc.discount + c.discount_amount, tax: acc.tax + c.tax_amount, total: acc.total + c.line_total };
   }, { subtotal: 0, discount: 0, tax: 0, total: 0 });
+  // Phase 46 — round the credit total like invoices, so refunds match what
+  // the customer actually paid on a rounded invoice.
+  const roundingStep = useCompanyRoundingStep();
+  const { round_off: roundOff, rounded_total: roundedTotal } = applyRoundOff(totals.total, roundingStep);
 
   function buildItems(): CreditNoteItemInsert[] {
     return lines.map((l, i) => {
@@ -195,7 +200,8 @@ export default function CreditNoteEditorPage() {
         subtotal:          totals.subtotal,
         discount_amount:   totals.discount,
         tax_amount:        totals.tax,
-        total_amount:      totals.total,
+        round_off_amount:  +roundOff.toFixed(2),
+        total_amount:      +roundedTotal.toFixed(2),
         notes:             notes || undefined,
         status:            'draft' as const,
       };
@@ -467,7 +473,10 @@ export default function CreditNoteEditorPage() {
         <div className="flex justify-end px-4 py-3 border-t border-border-subtle gap-6 text-sm">
           <span className="text-ink-tertiary">{t('common.subtotal')}: <strong>{fmt(totals.subtotal - totals.discount)}</strong></span>
           <span className="text-ink-tertiary">{t('common.tax')}: <strong>{fmt(totals.tax)}</strong></span>
-          <span className="text-ink-primary font-bold">{t('common.total')}: {fmt(totals.total)}</span>
+          {roundOff !== 0 && (
+            <span className="text-ink-secondary">{t('sales.round_off')}: {roundOff > 0 ? '+' : '−'}{fmt(Math.abs(roundOff))}</span>
+          )}
+          <span className="text-ink-primary font-bold">{t('common.total')}: {fmt(roundedTotal)}</span>
         </div>
       </div>
 

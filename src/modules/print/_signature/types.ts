@@ -107,6 +107,8 @@ export interface DocumentData {
   subtotal:       number;
   discount_total?:number;
   tax_total:      number;
+  /** Phase 46 — cash rounding on the grand total (may be negative). */
+  round_off?:     number;
   shipping_total?:number;
   grand_total:    number;
   paid_amount?:   number;            // for invoices

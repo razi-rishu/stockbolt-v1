@@ -27,6 +27,7 @@ const schema = z.object({
   tax_id:            z.string(),
   prices_inclusive_of_tax: z.boolean(),
   allow_negative_stock: z.boolean(),
+  rounding_step: z.enum(['0', '0.25', '0.5', '1']),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -69,6 +70,7 @@ export default function CompanySettingsPage() {
         tax_id: company.tax_id ?? '',
         prices_inclusive_of_tax: company.prices_inclusive_of_tax,
         allow_negative_stock: (company as { allow_negative_stock?: boolean }).allow_negative_stock ?? false,
+        rounding_step: String(Number((company as { rounding_step?: number }).rounding_step ?? 0)) as FormValues['rounding_step'],
       });
       setLogoUrl(company.logo_url);
     }
@@ -90,6 +92,8 @@ export default function CompanySettingsPage() {
         prices_inclusive_of_tax: values.prices_inclusive_of_tax,
         // Phase 30 — not yet in generated DB types; cast like setPeriodLock.
         allow_negative_stock: values.allow_negative_stock,
+        // Phase 46 — cash rounding step for document grand totals.
+        rounding_step: parseFloat(values.rounding_step),
       } as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['company', company_id] });
@@ -296,6 +300,26 @@ export default function CompanySettingsPage() {
                 <span className="block text-ink-primary">{t('settings.company.allow_backorders')}</span>
                 <span className="block text-xs text-ink-tertiary">{t('settings.company.allow_backorders_hint')}</span>
               </span>
+            </label>
+          </div>
+        </Card>
+
+        {/* Phase 46 — cash rounding for document grand totals */}
+        <Card>
+          <div className="flex flex-col gap-4">
+            <h2 className="text-base font-semibold text-ink-primary">{t('settings.company.rounding_section')}</h2>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-ink-primary">{t('settings.company.rounding_step')}</span>
+              <span className="text-xs text-ink-tertiary">{t('settings.company.rounding_step_hint')}</span>
+              <select
+                {...register('rounding_step')}
+                className="mt-1 h-9 w-56 rounded-lg border border-border-subtle bg-white px-2 text-sm text-ink-primary"
+              >
+                <option value="0">{t('settings.company.rounding_off')}</option>
+                <option value="0.25">0.25</option>
+                <option value="0.5">0.50</option>
+                <option value="1">1.00</option>
+              </select>
             </label>
           </div>
         </Card>
