@@ -1405,6 +1405,28 @@ export type VendorBillInsert = Omit<Tables['vendor_bills']['Insert'], 'id' | 'cr
 export type VendorBillUpdate = Tables['vendor_bills']['Update'];
 export type VendorBillItemInsert = Omit<Tables['vendor_bill_items']['Insert'], 'id' | 'created_at'> & { coa_account_id?: string | null };
 
+// Phase 47 — itemized landed costs (freight, customs, insurance…). Standalone
+// types (table not yet in generated database types).
+export interface VendorBillLandedCostRow {
+  id: string;
+  company_id: string;
+  bill_id: string;
+  label: string;
+  amount: number;
+  credit_account_id: string;
+  contact_id: string | null;
+  sort_order: number;
+  created_at: string;
+}
+export interface VendorBillLandedCostInsert {
+  company_id: string;
+  label: string;
+  amount: number;
+  credit_account_id: string;
+  contact_id?: string | null;
+  sort_order?: number;
+}
+
 // Phase 5 RPC result types
 export interface GRNConfirmResult {
   grn_id: string;
@@ -1544,8 +1566,10 @@ export interface VendorBillsAPI {
   list(company_id: string, status?: string): Promise<VendorBillRow[]>;
   getById(id: string): Promise<VendorBillRow | null>;
   getItems(bill_id: string): Promise<VendorBillItemRow[]>;
-  create(row: VendorBillInsert, items: VendorBillItemInsert[]): Promise<VendorBillRow>;
-  update(id: string, row: VendorBillUpdate, items: VendorBillItemInsert[]): Promise<void>;
+  /** Phase 47 — itemized landed-cost lines for a bill. */
+  getLandedCosts(bill_id: string): Promise<VendorBillLandedCostRow[]>;
+  create(row: VendorBillInsert, items: VendorBillItemInsert[], landedCosts?: VendorBillLandedCostInsert[]): Promise<VendorBillRow>;
+  update(id: string, row: VendorBillUpdate, items: VendorBillItemInsert[], landedCosts?: VendorBillLandedCostInsert[]): Promise<void>;
   confirm(bill_id: string): Promise<BillConfirmResult>;
   /**
    * Re-open a CONFIRMED bill for editing: reverses its JE + stock rows and

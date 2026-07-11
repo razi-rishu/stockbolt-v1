@@ -3894,7 +3894,14 @@ export function createSupabaseAdapter(
         assertNoError(error, 'vendorBills.getItems');
         return (data ?? []) as VendorBillItemRow[];
       },
-      async create(row, items) {
+      async getLandedCosts(bill_id) {
+        // Table arrives with the phase47 migration — degrade to empty until then.
+        const { data, error } = await (client.from as any)('vendor_bill_landed_costs')
+          .select('*').eq('bill_id', bill_id).order('sort_order');
+        if (error) return [] as any;
+        return (data ?? []) as any;
+      },
+      async create(row, items, landedCosts) {
         const { data, error } = await client.from('vendor_bills').insert(row).select().single();
         assertNoError(error, 'vendorBills.create');
         const bill = data as VendorBillRow;
@@ -3902,15 +3909,27 @@ export function createSupabaseAdapter(
           const { error: iErr } = await client.from('vendor_bill_items').insert(items.map(i => ({ ...i, bill_id: bill.id })));
           assertNoError(iErr, 'vendorBills.create items');
         }
+        if (landedCosts && landedCosts.length > 0) {
+          const { error: lErr } = await (client.from as any)('vendor_bill_landed_costs')
+            .insert(landedCosts.map((l, i) => ({ ...l, bill_id: bill.id, sort_order: l.sort_order ?? i })));
+          assertNoError(lErr, 'vendorBills.create landedCosts');
+        }
         return bill;
       },
-      async update(id, row, items) {
+      async update(id, row, items, landedCosts) {
         const { error } = await client.from('vendor_bills').update(row).eq('id', id);
         assertNoError(error, 'vendorBills.update');
         await client.from('vendor_bill_items').delete().eq('bill_id', id);
         if (items.length > 0) {
           const { error: iErr } = await client.from('vendor_bill_items').insert(items.map(i => ({ ...i, bill_id: id })));
           assertNoError(iErr, 'vendorBills.update items');
+        }
+        // Landed costs: replace wholesale (same pattern as items).
+        await (client.from as any)('vendor_bill_landed_costs').delete().eq('bill_id', id);
+        if (landedCosts && landedCosts.length > 0) {
+          const { error: lErr } = await (client.from as any)('vendor_bill_landed_costs')
+            .insert(landedCosts.map((l, i) => ({ ...l, bill_id: id, sort_order: l.sort_order ?? i })));
+          assertNoError(lErr, 'vendorBills.update landedCosts');
         }
       },
       async confirm(bill_id) {

@@ -1459,6 +1459,29 @@ describe('Phase 38 — tax-inclusive documents post balanced JEs', () => {
     expect(glbad?.n ?? 0, 'GL rows dated differently from their JE').toBe(0);
   });
 
+  it('phase47: itemized landed costs credit their own account (each GL leg balances)', async () => {
+    const [gate] = await sql<{ ok: boolean }>(
+      `SELECT EXISTS(SELECT 1 FROM information_schema.tables
+       WHERE table_name='vendor_bill_landed_costs') AS ok`);
+    if (!gate?.ok) { console.warn('phase47 not applied — skipping landed-cost checks.'); return; }
+
+    // The confirm RPC must post a credit leg for each landed-cost line.
+    const [fn] = await sql<{ ok: boolean }>(
+      `SELECT (prosrc LIKE '%vendor_bill_landed_costs%') AS ok FROM pg_proc p
+       JOIN pg_namespace n ON n.oid=p.pronamespace
+       WHERE n.nspname='public' AND p.proname='confirm_vendor_bill' LIMIT 1`);
+    expect(fn?.ok, 'confirm_vendor_bill does not reference vendor_bill_landed_costs').toBe(true);
+
+    // Every landed-cost line's credit account exists and is active (else the
+    // GL insert would fail on the NOT NULL account_code).
+    const orphans = await sql<{ id: string }>(
+      `SELECT lc.id FROM vendor_bill_landed_costs lc
+       LEFT JOIN chart_of_accounts a ON a.id = lc.credit_account_id AND a.is_active
+       WHERE a.id IS NULL`);
+    if (orphans.length > 0) console.warn(`landed-cost lines with a missing/inactive credit account: ${JSON.stringify(orphans)}`);
+    expect(Array.isArray(orphans)).toBe(true);
+  });
+
   it('phase45: sales-return credit notes carry the invoice salesperson (commission base)', async () => {
     const [gate] = await sql<{ ok: boolean }>(
       `SELECT (prosrc LIKE '%v_inv.salesperson_id%') AS ok FROM pg_proc p

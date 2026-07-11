@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>StockBolt — Your Code Folder Guide</title>
+<style>
+  :root{
+    --ink:#1e293b; --soft:#475569; --faint:#64748b;
+    --indigo:#4f46e5; --indigo-tint:#eef2ff; --indigo-line:#c7d2fe;
+    --green:#16a34a; --green-tint:#f0fdf4; --green-line:#bbf7d0;
+    --red:#dc2626; --red-tint:#fef2f2; --red-line:#fecaca;
+    --amber-tint:#fffbeb; --amber-line:#fde68a;
+    --line:#e2e8f0; --paper:#ffffff; --muted:#f8fafc;
+  }
+  *{box-sizing:border-box}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink); background:#f1f5f9; line-height:1.6;
+    margin:0; padding:32px 16px;
+  }
+  .page{max-width:840px; margin:0 auto; background:var(--paper);
+    padding:48px 56px; border-radius:14px; box-shadow:0 8px 30px rgba(15,23,42,.08);}
+  h1{color:var(--indigo); font-size:30px; margin:0 0 4px;}
+  .sub{color:var(--faint); font-size:15px; margin:0 0 28px;}
+  h2{color:var(--indigo); font-size:21px; margin:38px 0 12px; padding-bottom:6px; border-bottom:2px solid var(--indigo-tint);}
+  h3{font-size:16px; margin:22px 0 8px; color:var(--ink);}
+  p{margin:10px 0;}
+  code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; font-size:13px;
+    background:var(--muted); border:1px solid var(--line); border-radius:5px; padding:1px 5px;}
+  table{width:100%; border-collapse:collapse; margin:14px 0; font-size:14px;}
+  th,td{border:1px solid var(--line); padding:8px 11px; text-align:left; vertical-align:top;}
+  th{background:var(--indigo-tint); color:#3730a3; font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:.03em;}
+  tbody tr:nth-child(even){background:var(--muted);}
+  td b{color:var(--ink);}
+  .tree{background:#0f172a; color:#e2e8f0; border-radius:10px; padding:18px 22px;
+    font-family:"SFMono-Regular",Consolas,monospace; font-size:13px; line-height:1.85; white-space:pre; overflow-x:auto;}
+  .tree .f{color:#fbbf24;} .tree .c{color:#64748b;} .tree .h{color:#a5b4fc;}
+  .callout{border-radius:10px; padding:14px 18px; margin:16px 0; border-left:5px solid;}
+  .tip{background:var(--indigo-tint); border-color:var(--indigo);}
+  .safe{background:var(--green-tint); border-color:var(--green);}
+  .danger{background:var(--red-tint); border-color:var(--red);}
+  .callout p{margin:6px 0;}
+  .ex{border:1px solid var(--line); border-radius:10px; overflow:hidden; margin:16px 0;}
+  .ex .cap{background:var(--muted); padding:9px 14px; font-weight:700; font-size:14px; border-bottom:1px solid var(--line);}
+  .ex .body{padding:14px;}
+  pre{margin:0; font-family:"SFMono-Regular",Consolas,monospace; font-size:12.5px; line-height:1.6;
+    border-radius:8px; padding:12px 14px; white-space:pre; overflow-x:auto;}
+  pre.before{background:var(--red-tint); border:1px solid var(--red-line);}
+  pre.after{background:var(--green-tint); border:1px solid var(--green-line);}
+  .lbl{display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px; margin-bottom:6px;}
+  .lbl.r{background:#fee2e2; color:#991b1b;} .lbl.g{background:#dcfce7; color:#166534;}
+  .pill{display:inline-block; background:var(--indigo); color:#fff; font-size:11px; font-weight:700;
+    border-radius:20px; padding:2px 10px; vertical-align:middle;}
+  .pdf-banner{max-width:840px; margin:0 auto 18px; background:var(--indigo); color:#fff;
+    padding:12px 20px; border-radius:10px; font-size:14px; display:flex; gap:10px; align-items:center;}
+  .pdf-banner kbd{background:rgba(255,255,255,.22); border-radius:5px; padding:1px 7px; font-family:inherit; font-weight:700;}
+  .diagram{margin:18px 0; text-align:center;}
+  .foot{margin-top:40px; padding-top:16px; border-top:1px solid var(--line); color:var(--faint); font-size:13px;}
+  .key{display:inline-block; background:#f1f5f9; border:1px solid #cbd5e1; border-bottom-width:2px;
+    border-radius:5px; padding:0 7px; font-size:12px; font-family:monospace; font-weight:700; color:#334155;}
+  @media print{
+    body{background:#fff; padding:0;}
+    .page{box-shadow:none; border-radius:0; padding:0 8px; max-width:100%;}
+    .pdf-banner{display:none;}
+    h2{page-break-after:avoid;}
+    .ex,.callout,table,.diagram,.tree{page-break-inside:avoid;}
+  }
+</style>
+</head>
+<body>
+
+<div class="pdf-banner">
+  📄 <span>To save this as a <b>PDF</b>: press <kbd>Ctrl</kbd> + <kbd>P</kbd>, then choose <b>“Save as PDF”</b> as the printer. This blue bar won’t appear in the PDF.</span>
+</div>
+
+<div class="page">
+
+  <h1>StockBolt — Your Code Folder Guide</h1>
+  <p class="sub">A plain-English map of where everything lives, so you always know where to go. Made for re-checking anytime.</p>
+
+  <div class="callout tip">
+    <p><b>The one sentence to remember:</b> to change a feature, open <code>src/modules/&lt;that&nbsp;area&gt;/</code>. Everything else is supporting cast.</p>
+  </div>
+
+  <!-- ───────────────────────── BIG IDEA: 3 LAYERS ───────────────────────── -->
+  <h2>1. The big idea — your app is 3 layers</h2>
+  <p>Everything you’d ever edit lives inside one folder: <code>src</code> (short for “source code”). Inside it, picture <b>3 stacked layers</b>:</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 640 330" width="100%" style="max-width:640px" xmlns="http://www.w3.org/2000/svg">
+      <!-- layer 1 -->
+      <rect x="40" y="20" width="560" height="70" rx="12" fill="#eef2ff" stroke="#6366f1" stroke-width="2"/>
+      <text x="70" y="50" font-size="18" font-weight="700" fill="#3730a3" font-family="sans-serif">📁 modules/</text>
+      <text x="70" y="74" font-size="14" fill="#475569" font-family="sans-serif">Your actual screens — Sales, Reports, Settings… (you’ll be here 90% of the time)</text>
+      <!-- layer 2 -->
+      <rect x="40" y="105" width="560" height="70" rx="12" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="2"/>
+      <text x="70" y="135" font-size="18" font-weight="700" fill="#5b21b6" font-family="sans-serif">📁 components/</text>
+      <text x="70" y="159" font-size="14" fill="#475569" font-family="sans-serif">Shared pieces reused on many screens — the top bar, search box, pickers</text>
+      <!-- layer 3 -->
+      <rect x="40" y="190" width="560" height="70" rx="12" fill="#ecfeff" stroke="#06b6d4" stroke-width="2"/>
+      <text x="70" y="220" font-size="18" font-weight="700" fill="#155e75" font-family="sans-serif">📁 ui/</text>
+      <text x="70" y="244" font-size="14" fill="#475569" font-family="sans-serif">The Lego bricks — buttons, tables, inputs, and your colours</text>
+      <!-- engine room -->
+      <rect x="40" y="278" width="560" height="38" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="5 4"/>
+      <text x="320" y="302" font-size="13" fill="#64748b" font-family="sans-serif" text-anchor="middle">⚙️  data/ · store/ · hooks/ · lib/  — the engine room (you’ll rarely touch this)</text>
+    </svg>
+  </div>
+
+  <!-- ───────────────────────── THE TREE ───────────────────────── -->
+  <h2>2. The folder tree (a picture of it)</h2>
+  <div class="tree"><span class="c">src/</span>
+ ├─ <span class="f">modules/</span>      <span class="c">← your screens (the big one)</span>
+ ├─ <span class="f">components/</span>   <span class="c">← shared pieces (top bar, pickers…)</span>
+ ├─ <span class="f">ui/</span>           <span class="c">← buttons, tables, colours</span>
+ ├─ <span class="f">i18n/</span>         <span class="c">← all on-screen wording (English + Arabic)</span>
+ ├─ <span class="f">data/</span>         <span class="c">← talks to the database</span>
+ ├─ <span class="f">store/</span>        <span class="c">← remembers who’s logged in</span>
+ ├─ <span class="f">hooks/ lib/ core/</span> <span class="c">← reusable logic helpers</span>
+ ├─ <span class="f">types/</span>        <span class="c">← shapes of your data</span>
+ ├─ <span class="h">App.tsx</span>       <span class="c">← the master list of all pages + their web addresses</span>
+ └─ <span class="h">main.tsx</span>      <span class="c">← boots the app (almost never touched)</span></div>
+
+  <!-- ───────────────────────── MODULES TABLE ───────────────────────── -->
+  <h2>3. Inside <code>modules/</code> — your screens</h2>
+  <p>Each folder is one business area:</p>
+  <table>
+    <thead><tr><th style="width:34%">Folder</th><th>What it is</th></tr></thead>
+    <tbody>
+      <tr><td><b>sales</b></td><td>Invoices, quotes, receipts, credit notes, sales returns</td></tr>
+      <tr><td><b>purchasing</b></td><td>Purchase orders, vendor bills, <b>expenses</b>, debit notes, GRN</td></tr>
+      <tr><td><b>inventory</b></td><td>Stock ledger, stock movements, valuation</td></tr>
+      <tr><td><b>catalog</b></td><td>Products, categories, brands (your item master)</td></tr>
+      <tr><td><b>contacts</b></td><td>Customers &amp; suppliers</td></tr>
+      <tr><td><b>reports</b></td><td>P&amp;L, Balance Sheet, Trial Balance, VAT, aging — all reports</td></tr>
+      <tr><td><b>accounting</b></td><td>Chart of Accounts, journal entries, general ledger</td></tr>
+      <tr><td><b>banking</b></td><td>Bank accounts, transfers, reconciliation, cheques (PDC)</td></tr>
+      <tr><td><b>pos</b></td><td>Point of Sale (counter sales)</td></tr>
+      <tr><td><b>payroll</b></td><td>Employees, salaries, WPS</td></tr>
+      <tr><td><b>settings</b></td><td>All settings pages (company, tax, warehouses, users…)</td></tr>
+      <tr><td><b>dashboard</b></td><td>The home screen</td></tr>
+      <tr><td><b>onboarding / auth</b></td><td>First-time company setup + login / sign-up</td></tr>
+      <tr><td><b>print</b></td><td>The PDF invoice / receipt template look</td></tr>
+      <tr><td class="c">admin · marketing · design-system</td><td>Behind-the-scenes / dev pages — you can ignore these</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ───────────────────────── COMPONENTS TABLE ───────────────────────── -->
+  <h2>4. Inside <code>components/</code> — shared pieces</h2>
+  <table>
+    <thead><tr><th style="width:38%">File</th><th>What it is</th></tr></thead>
+    <tbody>
+      <tr><td><b>app-layout.tsx</b></td><td>The frame around every page: top bar, gear, menus <span class="pill">you edited this</span></td></tr>
+      <tr><td><b>company-avatar.tsx</b></td><td>Your company logo / initials circle</td></tr>
+      <tr><td><b>contact-picker.tsx</b></td><td>The “choose a customer / supplier” dropdown</td></tr>
+      <tr><td><b>smart-entity-search.tsx</b></td><td>The global search box</td></tr>
+      <tr><td><b>notifications-bell.tsx</b></td><td>The 🔔 bell</td></tr>
+      <tr><td><b>language-toggle.tsx</b></td><td>The EN / AR switch</td></tr>
+      <tr><td><b>unsaved-nav-guard.tsx</b></td><td>The “you have unsaved changes” warning</td></tr>
+      <tr><td><b>require-auth / -onboarded / -permission</b></td><td>“Gates” — decide who is allowed to see a page</td></tr>
+      <tr><td><b>quick-create/</b></td><td>The little “add a product / contact on the fly” popups</td></tr>
+      <tr><td><b>error-boundary.tsx</b></td><td>A safety net that catches crashes</td></tr>
+      <tr><td class="c">activity-log · accounting-preview</td><td>Activity-log + journal-entry preview widgets</td></tr>
+    </tbody>
+  </table>
+
+  <h3>And <code>ui/</code> — the building blocks</h3>
+  <p><code>button</code>, <code>table</code>, <code>input</code>, <code>select</code>, <code>modal</code>, <code>card</code>, <code>badge</code>, <code>tabs</code>, and <code>theme.ts</code> (your colours). Editing one of these restyles the <b>whole app at once</b>.</p>
+
+  <!-- ───────────────────────── CHEAT SHEET ───────────────────────── -->
+  <h2>5. “I want to change ___ → go here” cheat sheet</h2>
+  <table>
+    <thead><tr><th style="width:50%">You want to change…</th><th>Go to…</th></tr></thead>
+    <tbody>
+      <tr><td>Wording / text on screen (incl. Arabic)</td><td><code>src/i18n/en.json</code> <span class="c">(+ ar.json)</span> — <b>easiest &amp; safest</b></td></tr>
+      <tr><td>The top bar / gear / menus</td><td><code>src/components/app-layout.tsx</code></td></tr>
+      <tr><td>An invoice or quote screen</td><td><code>src/modules/sales/</code></td></tr>
+      <tr><td>A report</td><td><code>src/modules/reports/</code></td></tr>
+      <tr><td>The products screen</td><td><code>src/modules/catalog/</code></td></tr>
+      <tr><td>Settings pages</td><td><code>src/modules/settings/</code></td></tr>
+      <tr><td>The home dashboard</td><td><code>src/modules/dashboard/</code></td></tr>
+      <tr><td>Colours / buttons everywhere</td><td><code>src/ui/theme.ts</code>, <code>src/ui/button.tsx</code></td></tr>
+      <tr><td>A page’s web address (URL)</td><td><code>src/App.tsx</code></td></tr>
+    </tbody>
+  </table>
+
+  <!-- ───────────────────────── WORKED EXAMPLES ───────────────────────── -->
+  <h2>6. Worked examples (with before → after)</h2>
+
+  <h3>Example A — Add a row to the Settings gear menu</h3>
+  <p>File: <code>src/components/app-layout.tsx</code> → find <code>const settings</code>.</p>
+  <div class="ex"><div class="body">
+    <span class="lbl r">BEFORE</span>
+<pre class="before">const settings: NavItem[] = [
+  { to: '/settings/company', label: 'Company' },
+];</pre>
+    <div style="height:8px"></div>
+    <span class="lbl g">AFTER — one new line added</span>
+<pre class="after">const settings: NavItem[] = [
+  { to: '/settings/company', label: 'Company' },
+  { to: '/settings/users',   label: 'Users &amp; Roles' },
+];</pre>
+  </div></div>
+
+  <h3>Example B — Change a word anywhere in the app</h3>
+  <p>File: <code>src/i18n/en.json</code>. Change only the text on the <b>right</b> of the colon.</p>
+  <div class="ex"><div class="body">
+    <span class="lbl r">BEFORE</span>
+<pre class="before">"save": "Save"</pre>
+    <div style="height:8px"></div>
+    <span class="lbl g">AFTER</span>
+<pre class="after">"save": "Save changes"</pre>
+  </div></div>
+
+  <h3>Example C — Make the gear open Settings directly (what you just did!)</h3>
+  <div class="diagram">
+    <svg viewBox="0 0 640 150" width="100%" style="max-width:560px" xmlns="http://www.w3.org/2000/svg">
+      <!-- top bar -->
+      <rect x="20" y="20" width="600" height="46" rx="10" fill="#1e1b4b"/>
+      <text x="40" y="48" font-size="13" fill="#c7d2fe" font-family="sans-serif">StockBolt   Dashboard   Sales   Inventory   …</text>
+      <circle cx="565" cy="43" r="16" fill="#4f46e5"/>
+      <text x="565" y="48" font-size="15" fill="#fff" font-family="sans-serif" text-anchor="middle">⚙</text>
+      <!-- arrow -->
+      <line x1="565" y1="66" x2="565" y2="100" stroke="#4f46e5" stroke-width="2.5"/>
+      <polygon points="565,112 559,100 571,100" fill="#4f46e5"/>
+      <!-- settings page box -->
+      <rect x="430" y="112" width="190" height="30" rx="8" fill="#eef2ff" stroke="#6366f1" stroke-width="1.5"/>
+      <text x="525" y="132" font-size="13" fill="#3730a3" font-family="sans-serif" text-anchor="middle">→ Settings page opens</text>
+    </svg>
+  </div>
+  <div class="ex"><div class="body">
+    <span class="lbl r">BEFORE — a button that opens a menu</span>
+<pre class="before">&lt;button onClick={() =&gt; setOpen(!open)}&gt;
+  &lt;CogIcon /&gt;
+&lt;/button&gt;
+{open &amp;&amp; ( ...the dropdown menu... )}</pre>
+    <div style="height:8px"></div>
+    <span class="lbl g">AFTER — a plain link straight to Settings</span>
+<pre class="after">&lt;Link to="/settings"&gt;
+  &lt;CogIcon /&gt;
+&lt;/Link&gt;</pre>
+  </div></div>
+
+  <!-- ───────────────────────── HOW TO EDIT ───────────────────────── -->
+  <h2>7. How to edit a file safely (the 4 keys)</h2>
+  <table>
+    <thead><tr><th style="width:30%">Step</th><th>Do this</th></tr></thead>
+    <tbody>
+      <tr><td><b>Open a file</b></td><td>Press <span class="key">Ctrl</span> + <span class="key">P</span>, type the file name (e.g. <code>app-layout</code>), press Enter</td></tr>
+      <tr><td><b>Find the spot</b></td><td>Press <span class="key">Ctrl</span> + <span class="key">F</span>, type what you’re looking for (e.g. <code>const settings</code>)</td></tr>
+      <tr><td><b>Save</b></td><td>Press <span class="key">Ctrl</span> + <span class="key">S</span> — the app reloads by itself</td></tr>
+      <tr><td><b>Undo a mistake</b></td><td>Press <span class="key">Ctrl</span> + <span class="key">Z</span> a few times to go back</td></tr>
+    </tbody>
+  </table>
+  <div class="callout tip">
+    <p>🔢 <b>Your live safety gauge:</b> the bottom-left of the editor shows an error count. As long as it says <b>0</b> after you save, your code is structurally fine. If a number appears, press <span class="key">Ctrl</span>+<span class="key">Z</span> until it’s 0 again.</p>
+  </div>
+
+  <!-- ───────────────────────── SAFETY ───────────────────────── -->
+  <h2>8. The golden safety rule</h2>
+  <div class="callout safe">
+    <p>🟢 <b>Safe to poke:</b> <code>modules/</code>, <code>components/</code>, <code>ui/</code>, <code>i18n/</code>. These only <b>draw what you see</b>. The worst that can happen is a typo your editor flags instantly — and Undo fixes it. They can <b>never</b> corrupt invoices, stock, or accounting.</p>
+  </div>
+  <div class="callout danger">
+    <p>🔴 <b>Be careful — ask first:</b> anything under <code>supabase/migrations/</code> (your database) and the accounting / posting logic. Those touch <b>real money &amp; stock</b>. When in doubt, don’t change them alone.</p>
+  </div>
+
+  <div class="foot">
+    <p><b>StockBolt v1</b> — folder guide for the builder. Open this file anytime by double-clicking it. To turn it into a PDF: <span class="key">Ctrl</span>+<span class="key">P</span> → “Save as PDF”.</p>
+  </div>
+
+</div>
+</body>
+</html>

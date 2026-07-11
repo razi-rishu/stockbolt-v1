@@ -304,6 +304,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       list:          () => notImplemented('vendorBills.list'),
       getById:       () => notImplemented('vendorBills.getById'),
       getItems:      () => notImplemented('vendorBills.getItems'),
+      getLandedCosts: () => notImplemented('vendorBills.getLandedCosts'),
       create:        () => notImplemented('vendorBills.create'),
       update:        () => notImplemented('vendorBills.update'),
       confirm:       () => notImplemented('vendorBills.confirm'),

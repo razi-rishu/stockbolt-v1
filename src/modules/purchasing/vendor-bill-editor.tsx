@@ -22,8 +22,16 @@ import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocT
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { vendorBillToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
-import type { VendorBillRow, VendorBillItemInsert, ContactRow, ProductRow, TaxRateRow, CoaRow } from '@/data/adapter';
+import type { VendorBillRow, VendorBillItemInsert, VendorBillLandedCostInsert, ContactRow, ProductRow, TaxRateRow, CoaRow } from '@/data/adapter';
 import { calcPurchaseLine as _calc } from '@/core/purchasing/purchase-calc';
+
+// Phase 47 — an itemized landed-cost line (freight, customs, insurance…).
+interface LandedCostLine {
+  _key: string;
+  label: string;
+  amount: string;
+  credit_account_id: string;   // bank / cash / liability / a party's AP
+}
 
 interface LineRow {
   _key: string;
@@ -125,6 +133,12 @@ export default function VendorBillEditorPage() {
     queryFn: () => getAdapter().vendorBills.getItems(id!),
     enabled: !isNew && !!id,
   });
+  // Phase 47 — existing landed-cost lines for a saved bill.
+  const { data: existingLanded = [] } = useQuery({
+    queryKey: ['vendor_bill_landed', id],
+    queryFn: () => getAdapter().vendorBills.getLandedCosts(id!),
+    enabled: !isNew && !!id,
+  });
   // Phase 14.03 — company for view-mode template rendering.
   const { data: companyRow } = useQuery({
     queryKey: ['company', company_id],
@@ -147,6 +161,13 @@ export default function VendorBillEditorPage() {
   // for direct stock receipts without a product, or 5xxx/6xxx for true expenses.
   const accountOpts = coaAccounts.filter(a =>
     a.is_active && (a.type === 'asset' || a.type === 'cogs' || a.type === 'expense')
+  );
+
+  // Phase 47 — accounts a landed cost can be CREDITED to: a bank/cash account
+  // (paid at clearing), or a liability (a payable you settle later — customs,
+  // freight forwarder…). Assets (bank/cash) + liabilities only.
+  const landedCreditOpts = coaAccounts.filter(a =>
+    a.is_active && (a.type === 'asset' || a.type === 'liability')
   );
 
   // Look up an account by id (for the inline label when product is selected)
@@ -178,6 +199,9 @@ export default function VendorBillEditorPage() {
     landed_cost_total: '0',          // Phase 12.17 — freight + duty + customs
   });
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
+  // Phase 47 — itemized landed costs (freight, customs, insurance…), each
+  // credited to its own account. Sum drives the inventory allocation.
+  const [landedCosts, setLandedCosts] = useState<LandedCostLine[]>([]);
   const [error, setError] = useState<string | null>(null);
   // Phase 14.03 — view-first for saved bills. Renders the Signature
   // template by default; user clicks Edit to drop into the existing
@@ -260,6 +284,18 @@ export default function VendorBillEditorPage() {
       }));
     }
   }, [existingItems]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Phase 47 — populate landed-cost rows for a saved bill.
+  useEffect(() => {
+    if (existingLanded.length > 0) {
+      setLandedCosts(existingLanded.map(l => ({
+        _key: newKey(),
+        label: l.label,
+        amount: String(l.amount),
+        credit_account_id: l.credit_account_id,
+      })));
+    }
+  }, [existingLanded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pre-fill from GRN
   useEffect(() => {
@@ -387,16 +423,26 @@ export default function VendorBillEditorPage() {
     } as unknown as VendorBillItemInsert));
   }
 
-  const landedCost = parseFloat(header.landed_cost_total) || 0;
+  // Phase 47 — landed cost is the sum of the itemized lines.
+  const landedCost = landedCosts.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
+  const addLanded = () => { setLandedCosts(prev => [...prev, { _key: `lc${++_k}`, label: '', amount: '0', credit_account_id: '' }]); setDirty(true); };
+  const removeLanded = (key: string) => { setLandedCosts(prev => prev.filter(l => l._key !== key)); setDirty(true); };
+  const updateLanded = (key: string, patch: Partial<LandedCostLine>) => { setLandedCosts(prev => prev.map(l => l._key === key ? { ...l, ...patch } : l)); setDirty(true); };
 
   // Persist the current header + grid lines as a DRAFT. Shared by both
   // "Save" and "Confirm" so confirming never posts stale DB items —
   // whatever is on screen is written first. Returns the bill id.
   async function persistDraft(): Promise<string> {
     if (!header.supplier_id) throw new Error(t('purchasing.error_supplier_required'));
-    if (landedCost < 0) throw new Error('Landed cost cannot be negative');
+    // Phase 47 — validate landed-cost lines.
     if (landedCost > 0 && header.linked_grn_id) {
       throw new Error('Landed cost is not allowed on GRN-linked bills. Post freight separately.');
+    }
+    for (const l of landedCosts) {
+      const amt = parseFloat(l.amount) || 0;
+      if (amt < 0) throw new Error('Landed cost cannot be negative');
+      if (amt > 0 && !l.credit_account_id) throw new Error(`Pick a "paid from / owed to" account for landed cost "${l.label || 'unnamed'}"`);
+      if (amt > 0 && !l.label.trim()) throw new Error('Give each landed-cost line a name (e.g. Freight, Customs)');
     }
     const productLinesWithoutWh = lines.filter(l => l.product_id && !l.warehouse_id);
     if (!header.linked_grn_id && productLinesWithoutWh.length > 0) {
@@ -404,7 +450,10 @@ export default function VendorBillEditorPage() {
     }
 
     const billNum = isNew ? await getAdapter().vendorBills.getNextNumber(company_id!) : existing!.bill_number;
-    const totalWithLanded = +(grandTotal + landedCost + roundOff).toFixed(2);
+    // Phase 47 — total_amount is the SUPPLIER's invoice only (goods + tax +
+    // round-off). Landed costs are separate credits, not part of what we owe
+    // this supplier, so they are NOT added here.
+    const supplierTotal = +(grandTotal + roundOff).toFixed(2);
     const row = {
       company_id: company_id!, bill_number: billNum,
       supplier_bill_number: header.supplier_bill_number || null,
@@ -413,18 +462,27 @@ export default function VendorBillEditorPage() {
       currency: header.currency, exchange_rate: 1,
       prices_inclusive: pricesInclusive,
       subtotal: +subtotal.toFixed(2), discount_amount: +discountTotal.toFixed(2),
-      tax_amount: +taxTotal.toFixed(2), ...(roundOff !== 0 ? { round_off_amount: +roundOff.toFixed(2) } : {}), total_amount: totalWithLanded,
+      tax_amount: +taxTotal.toFixed(2), ...(roundOff !== 0 ? { round_off_amount: +roundOff.toFixed(2) } : {}), total_amount: supplierTotal,
       landed_cost_total: +landedCost.toFixed(2),
       status: 'draft' as const,
       linked_grn_id: header.linked_grn_id || null,
       void_reason: null, voided_at: null, voided_by: null,
       notes: header.notes || null,
     };
+    const landedRows: VendorBillLandedCostInsert[] = landedCosts
+      .filter(l => (parseFloat(l.amount) || 0) > 0)
+      .map((l, i) => ({
+        company_id: company_id!,
+        label: l.label.trim() || 'Landed cost',
+        amount: +(parseFloat(l.amount) || 0).toFixed(2),
+        credit_account_id: l.credit_account_id,
+        sort_order: i,
+      }));
     if (isNew) {
-      const created = await getAdapter().vendorBills.create(row as unknown as Parameters<ReturnType<typeof getAdapter>['vendorBills']['create']>[0], buildItems());
+      const created = await getAdapter().vendorBills.create(row as unknown as Parameters<ReturnType<typeof getAdapter>['vendorBills']['create']>[0], buildItems(), landedRows);
       return created.id;
     }
-    await getAdapter().vendorBills.update(id!, row as unknown as Parameters<ReturnType<typeof getAdapter>['vendorBills']['update']>[1], buildItems());
+    await getAdapter().vendorBills.update(id!, row as unknown as Parameters<ReturnType<typeof getAdapter>['vendorBills']['update']>[1], buildItems(), landedRows);
     return id!;
   }
 
@@ -751,18 +809,57 @@ export default function VendorBillEditorPage() {
             disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, reference: e.target.value }))} />
           <Select label={t('purchasing.currency')} options={currencyOptions(header.currency)} value={header.currency}
             disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, currency: e.target.value }))} />
-          {/* Landed cost — freight + duty + customs + insurance.
-               Only allowed on standalone bills (RPC enforces). */}
-          {!header.linked_grn_id && (
-            <Input
-              label="Landed cost (freight/duty)"
-              type="number" min="0" step="0.01"
-              value={header.landed_cost_total}
-              disabled={!canEdit}
-              onChange={e => setHeader(h => ({ ...h, landed_cost_total: e.target.value }))}
-            />
-          )}
         </div>
+
+        {/* Phase 47 — itemized landed costs (freight, customs, insurance…).
+             Each adds to inventory (allocated across goods by value) and is
+             credited to its own account. Standalone bills only. */}
+        {!header.linked_grn_id && (
+          <div className="mt-4 rounded-lg border border-border-subtle bg-surface-subtle/40 p-3">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">{t('purchasing.landed_costs')}</span>
+              {canEdit && (
+                <button type="button" onClick={addLanded} className="text-xs font-semibold text-brand-600 hover:underline">
+                  + {t('purchasing.add_landed_cost')}
+                </button>
+              )}
+            </div>
+            <p className="mb-2 text-[11px] text-ink-tertiary">{t('purchasing.landed_costs_hint')}</p>
+            {landedCosts.length === 0 ? (
+              <p className="py-1 text-xs text-ink-tertiary">{t('purchasing.no_landed_costs')}</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {landedCosts.map(l => (
+                  <div key={l._key} className="grid grid-cols-[1fr_110px_1.3fr_auto] items-center gap-2">
+                    <input
+                      placeholder={t('purchasing.landed_label_ph')}
+                      value={l.label} disabled={!canEdit}
+                      onChange={e => updateLanded(l._key, { label: e.target.value })}
+                      className="h-9 rounded border border-border-subtle px-2 text-sm"
+                    />
+                    <input
+                      type="number" min="0" step="0.01" placeholder="0.00"
+                      value={l.amount} disabled={!canEdit}
+                      onChange={e => updateLanded(l._key, { amount: e.target.value })}
+                      className="h-9 rounded border border-border-subtle px-2 text-end font-mono text-sm"
+                    />
+                    <SearchableSelect
+                      value={l.credit_account_id}
+                      disabled={!canEdit}
+                      onChange={v => updateLanded(l._key, { credit_account_id: v })}
+                      placeholder={t('purchasing.landed_account_ph')}
+                      options={landedCreditOpts.map(a => ({ value: a.id, label: `${a.code} · ${a.name}` }))}
+                    />
+                    {canEdit && (
+                      <button type="button" onClick={() => removeLanded(l._key)}
+                        className="px-2 text-ink-tertiary hover:text-red-600" aria-label="Remove">✕</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {header.linked_grn_id && (
           <p className="mt-2 text-xs text-ink-tertiary">{t('purchasing.linked_grn')}: {header.linked_grn_id}</p>
         )}
@@ -989,12 +1086,6 @@ export default function VendorBillEditorPage() {
                 <span className="font-mono">{fmt(taxTotal)}</span>
               </div>
             )}
-            {landedCost > 0 && (
-              <div className="flex justify-between text-ink-secondary">
-                <span>Landed cost</span>
-                <span className="font-mono">{fmt(landedCost)}</span>
-              </div>
-            )}
             <div className="flex items-center justify-between text-ink-secondary">
               <span title="Adjust so the total matches the supplier's printed bill exactly (±1.00). Posts to 5900 Round Off.">
                 {t('sales.round_off')}
@@ -1007,10 +1098,24 @@ export default function VendorBillEditorPage() {
                 className="h-7 w-24 rounded border border-border-subtle px-2 text-end font-mono text-sm"
               />
             </div>
+            {/* Phase 47 — the supplier's bill total (what we owe THEM). Landed
+                costs are paid to other parties, so they sit below. */}
             <div className="flex justify-between border-t border-border-subtle pt-2.5 mt-1 text-base font-semibold text-ink-primary">
-              <span>Grand Total</span>
-              <span className="font-mono">{header.currency} {fmt(grandTotal + landedCost + roundOff)}</span>
+              <span>{t('purchasing.supplier_total')}</span>
+              <span className="font-mono">{header.currency} {fmt(grandTotal + roundOff)}</span>
             </div>
+            {landedCost > 0 && (
+              <>
+                <div className="flex justify-between text-ink-secondary">
+                  <span>{t('purchasing.landed_costs')} <span className="text-ink-tertiary">({t('purchasing.paid_separately')})</span></span>
+                  <span className="font-mono">{fmt(landedCost)}</span>
+                </div>
+                <div className="flex justify-between text-xs text-ink-tertiary">
+                  <span>{t('purchasing.total_landed_value')}</span>
+                  <span className="font-mono">{header.currency} {fmt(grandTotal + roundOff + landedCost)}</span>
+                </div>
+              </>
+            )}
             {(() => {
               // Paid / Balance Due only for existing confirmed bills.
               if (isNew || !id) return null;
@@ -1019,8 +1124,9 @@ export default function VendorBillEditorPage() {
               const outstanding = Number(thisBill.outstanding ?? 0);
               // paid = what has already been paid (DB total minus DB outstanding).
               const paid       = Number(thisBill.total_amount ?? 0) - outstanding;
-              // balanceDue = live grand total minus what's already paid.
-              const balanceDue = (grandTotal + landedCost + roundOff) - paid;
+              // balanceDue = what we owe THIS supplier (goods + tax + round-off,
+              // landed excluded — phase 47) minus what's already paid.
+              const balanceDue = (grandTotal + roundOff) - paid;
               return (
                 <>
                   <div className="flex justify-between text-ink-secondary border-t border-border-subtle pt-2.5">
