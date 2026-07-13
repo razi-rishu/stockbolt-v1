@@ -1,11 +1,11 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Input } from '@/ui/input';
-import { Button } from '@/ui/button';
 import { DocLink } from '@/ui/doc-link';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
+import { ReportActions } from '@/ui/report-actions';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -22,28 +22,42 @@ function fmtSigned(n: number) {
   return fmt(n);
 }
 
-function todayIso() { return new Date().toISOString().slice(0, 10); }
-
 export default function ARAgingPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
-  const [asOf, setAsOf] = useState(todayIso);
-  const [trigger, setTrigger] = useState(0);
+  // Phase 46b — as-of picker: only `.to` matters; a past-period preset
+  // resolves to that period's end date. Default = today (This Month → today).
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.report.ar-aging.period', 'this_month');
+  const asOf = to;
 
   const { data: ar, isLoading, error } = useQuery({
-    queryKey: ['ar_aging', company_id, asOf, trigger],
+    queryKey: ['ar_aging', company_id, asOf],
     queryFn: () => getAdapter().reports.getARAgingReport(company_id!, asOf),
-    enabled: !!company_id && trigger > 0,
+    enabled: !!company_id,
   });
+
+  const exportRows: Record<string, unknown>[] = (ar?.buckets ?? []).map(b => ({
+    Customer: b.contact_name,
+    Current: b.current.toFixed(2),
+    '31-60': b.days_31_60.toFixed(2),
+    '61-90': b.days_61_90.toFixed(2),
+    '>90': b.over_90.toFixed(2),
+    Total: b.total.toFixed(2),
+    Advance: b.advance_credit.toFixed(2),
+    'Net Due': b.net_due.toFixed(2),
+  }));
+  const exportHeaders = ['Customer', 'Current', '31-60', '61-90', '>90', 'Total', 'Advance', 'Net Due'];
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-ink-primary">{t('reports.ar_aging_title')}</h1>
-
-      <div className="flex items-center gap-3 rounded-card border border-border-subtle bg-surface-card px-5 py-3">
-        <Input type="date" label={t('reports.as_of_date')} value={asOf} onChange={e => setAsOf(e.target.value)} />
-        <div className="mt-5">
-          <Button size="sm" onClick={() => setTrigger(n => n + 1)}>{t('reports.run')}</Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.ar_aging_title')}</h1>
+        <div data-print-hide className="flex flex-wrap items-center gap-2">
+          <PeriodPicker
+            mode="asOf" preset={preset} from={from} to={to}
+            onPresetChange={setPreset} onCustomRange={setCustomRange}
+          />
+          <ReportActions rows={exportRows} headers={exportHeaders} filename={`ar-aging-${asOf}`} disabled={!ar} />
         </div>
       </div>
 

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { ReportActions } from '@/ui/report-actions';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -15,9 +16,27 @@ export default function ReorderReportPage() {
     enabled: !!company_id,
   });
 
+  const exportRows: Record<string, unknown>[] = rows.map(r => {
+    const shortage = Math.max(0, r.min_stock_level - r.qty_on_hand);
+    return {
+      Product: r.product_name,
+      SKU: r.sku ?? '',
+      Warehouse: r.warehouse_name,
+      'Qty On Hand': r.qty_on_hand,
+      'Min Stock': r.min_stock_level,
+      Shortage: shortage,
+      'Unit Cost': r.unit_cost != null ? r.unit_cost.toFixed(2) : '',
+      'Reorder Value': (shortage * (r.unit_cost ?? 0)).toFixed(2),
+    };
+  });
+  const exportHeaders = ['Product', 'SKU', 'Warehouse', 'Qty On Hand', 'Min Stock', 'Shortage', 'Unit Cost', 'Reorder Value'];
+
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-ink-primary">{t('reports.reorder')}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.reorder')}</h1>
+        <ReportActions rows={exportRows} headers={exportHeaders} filename="reorder-report" disabled={rows.length === 0} />
+      </div>
       <p className="text-sm text-ink-tertiary">{t('reports.reorder_desc')}</p>
 
       {isLoading ? (

@@ -1,9 +1,13 @@
 import { useState, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
-import { PageHeader, Panel } from '@/ui/primitives';
+import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
+import { ReportActions } from '@/ui/report-actions';
 import type { CashFlowStatement } from '@/data/adapter';
 
 function fmt(n: number, parens = false) {
@@ -80,43 +84,52 @@ function CashSection({
 
 export default function CashFlowPage() {
   const { t } = useTranslation();
-  const adapter = getAdapter();
   const company_id = useAuthStore(s => s.company_id);
 
-  const today = new Date().toISOString().slice(0, 10);
-  const [from, setFrom]   = useState(today.slice(0, 4) + '-01-01');
-  const [to, setTo]       = useState(today);
-  const [data, setData]   = useState<CashFlowStatement | null>(null);
-  const [loading, setLoading] = useState(false);
+  // Phase 46b — range period picker; preset clicks auto-run. Default this year.
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.report.cash-flow.period', 'this_year');
 
-  const run = async () => {
-    if (!company_id) return;
-    setLoading(true);
-    try { setData(await adapter.reports.getCashFlow(company_id, from, to)); }
-    catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  };
+  const { data, isLoading: loading } = useQuery<CashFlowStatement>({
+    queryKey: ['cash_flow', company_id, from, to],
+    queryFn: () => getAdapter().reports.getCashFlow(company_id!, from, to),
+    enabled: !!company_id,
+  });
+
+  const exportRows: Record<string, unknown>[] = [];
+  if (data) {
+    const push = (section: string, label: string, amount: number) =>
+      exportRows.push({ Section: section, Line: label, Amount: amount.toFixed(2) });
+    push('Operating', 'Net Profit', data.net_profit);
+    for (const s of data.operating_adjustments) push('Operating', s.label, s.amount);
+    for (const s of data.working_capital_changes) push('Operating (Working Capital)', s.label, s.amount);
+    push('Operating', 'Net Cash from Operating', data.net_operating);
+    for (const s of data.investing_activities) push('Investing', s.label, s.amount);
+    push('Investing', 'Net Cash from Investing', data.net_investing);
+    for (const s of data.financing_activities) push('Financing', s.label, s.amount);
+    push('Financing', 'Net Cash from Financing', data.net_financing);
+    push('Summary', 'Net Increase in Cash', data.net_increase);
+    push('Summary', 'Opening Cash', data.opening_cash);
+    push('Summary', 'Closing Cash', data.closing_cash);
+  }
+  const exportHeaders = ['Section', 'Line', 'Amount'];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader title={t('reports.cash_flow')} subtitle={data ? `${data.period_start} — ${data.period_end}` : `${from} — ${to}`} />
+      <PageHeader
+        title={t('reports.cash_flow')}
+        subtitle={data ? `${data.period_start} — ${data.period_end}` : `${from} — ${to}`}
+        actions={
+          <div data-print-hide style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <PeriodPicker
+              mode="range" preset={preset} from={from} to={to}
+              onPresetChange={setPreset} onCustomRange={setCustomRange}
+            />
+            <ReportActions rows={exportRows} headers={exportHeaders} filename={`cash-flow-${from}_${to}`} disabled={!data} />
+          </div>
+        }
+      />
 
-      <Panel icon="📅" title="Period" compact>
-        <span style={{ fontSize: '12px', color: theme.inkMuted, fontWeight: 500 }}>{t('common.date_from')}</span>
-        <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-          style={{ height: '32px', padding: '0 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', background: '#fff', color: theme.ink, outline: 'none' }} />
-        <span style={{ fontSize: '12px', color: theme.inkMuted, fontWeight: 500 }}>{t('common.date_to')}</span>
-        <input type="date" value={to} onChange={e => setTo(e.target.value)}
-          style={{ height: '32px', padding: '0 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', background: '#fff', color: theme.ink, outline: 'none' }} />
-        <button onClick={run} disabled={loading} style={{
-          height: '32px', padding: '0 16px',
-          background: theme.brand, color: '#fff', border: 'none',
-          borderRadius: '7px', fontSize: '13px', fontWeight: 600,
-          cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1,
-        }}>
-          {loading ? t('common.loading') : t('common.run')}
-        </button>
-      </Panel>
+      {loading && !data && <p style={{ fontSize: '13px', color: theme.inkMuted, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>}
 
       {data && (
         <div style={{

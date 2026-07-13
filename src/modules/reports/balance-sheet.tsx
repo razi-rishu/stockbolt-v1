@@ -4,17 +4,17 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
-import { PageHeader, Panel } from '@/ui/primitives';
+import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
+import { ReportActions } from '@/ui/report-actions';
 import type { BalanceSheetLine, ControlAccountContactLine } from '@/data/adapter';
 import { CONTROL_ACCOUNTS } from './_shared/control-account-drilldown';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
-
-function todayIso() { return new Date().toISOString().slice(0, 10); }
 
 /**
  * Per-contact drill-down adapted for the 2-column Balance Sheet shape
@@ -224,8 +224,9 @@ export default function BalanceSheetPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const navigate = useNavigate();
-  const [asOf, setAsOf] = useState(todayIso);
-  const [trigger, setTrigger] = useState(0);
+  // Phase 46b — as-of period picker (only `.to` matters). Auto-runs on preset.
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.report.balance-sheet.period', 'this_month');
+  const asOf = to;
   // Phase 12.24 — same per-contact drill-down pattern as TB.
   const [expandedCodes, setExpandedCodes] = useState<Set<string>>(new Set());
 
@@ -243,25 +244,39 @@ export default function BalanceSheetPage() {
   }
 
   const { data: bs, isLoading, error } = useQuery({
-    queryKey: ['balance_sheet', company_id, asOf, trigger],
+    queryKey: ['balance_sheet', company_id, asOf],
     queryFn: () => getAdapter().reports.getBalanceSheet(company_id!, asOf),
-    enabled: !!company_id && trigger > 0,
+    enabled: !!company_id,
   });
 
   const balanced = bs ? Math.abs(bs.total_assets - bs.total_liabilities - bs.total_equity) < 0.02 : true;
 
+  const exportRows: Record<string, unknown>[] = (bs?.lines ?? []).map((l: BalanceSheetLine) => ({
+    Section: l.account_type === 'asset' ? (l.sub_type === 'fixed' ? 'Fixed Assets' : 'Current Assets')
+           : l.account_type === 'liability' ? (l.sub_type === 'long_term' ? 'Long-term Liabilities' : 'Current Liabilities')
+           : 'Equity',
+    Code: l.account_code,
+    Account: l.account_name,
+    Balance: l.balance.toFixed(2),
+  }));
+  const exportHeaders = ['Section', 'Code', 'Account', 'Balance'];
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader title={t('reports.bs_title')} subtitle={`As of ${asOf}`} />
-
-      <Panel icon="📅" title="Period" compact>
-        <span style={{ fontSize: '12px', color: theme.inkMuted, fontWeight: 500 }}>{t('reports.as_of_date')}</span>
-        <input
-          type="date" value={asOf} onChange={e => setAsOf(e.target.value)}
-          style={{ height: '32px', padding: '0 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', background: '#fff', color: theme.ink, outline: 'none' }}
-        />
-        <Button size="sm" onClick={() => { setTrigger(n => n + 1); setExpandedCodes(new Set()); }}>{t('reports.run')}</Button>
-      </Panel>
+      <PageHeader
+        title={t('reports.bs_title')}
+        subtitle={`As of ${asOf}`}
+        actions={
+          <div data-print-hide style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <PeriodPicker
+              mode="asOf" preset={preset} from={from} to={to}
+              onPresetChange={(p) => { setPreset(p); setExpandedCodes(new Set()); }}
+              onCustomRange={(f, tt) => { setCustomRange(f, tt); setExpandedCodes(new Set()); }}
+            />
+            <ReportActions rows={exportRows} headers={exportHeaders} filename={`balance-sheet-${asOf}`} disabled={!bs} />
+          </div>
+        }
+      />
 
       {isLoading && <p style={{ fontSize: '13px', color: theme.inkMuted, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>}
       {error && <p style={{ fontSize: '13px', color: theme.danger }}>{String(error)}</p>}

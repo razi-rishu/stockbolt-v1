@@ -80,12 +80,15 @@ export default function SignatureTemplateGallery() {
         }
       />
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'minmax(0, 1fr) 260px',
-        gap: '20px',
-        alignItems: 'flex-start',
-      }}>
+      <div
+        className="signature-print-scope"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) 260px',
+          gap: '20px',
+          alignItems: 'flex-start',
+        }}
+      >
         {/* ── Live preview ── */}
         <div
           className="signature-canvas"
@@ -119,7 +122,7 @@ export default function SignatureTemplateGallery() {
 
         {/* ── Right-hand control rail (hidden when printing) ── */}
         <aside
-          data-no-print="true"
+          data-print-hide
           style={{
             display: 'flex', flexDirection: 'column', gap: '14px',
             position: 'sticky', top: '20px',

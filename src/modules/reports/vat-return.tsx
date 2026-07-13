@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
-import { PageHeader, Panel } from '@/ui/primitives';
+import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
+import { ReportActions } from '@/ui/report-actions';
 import type { VATReturn, VATReturnRegionRow } from '@/data/adapter';
 
 function fmt(n: number) {
@@ -12,24 +15,25 @@ function fmt(n: number) {
 
 export default function VATReturnPage() {
   const { t } = useTranslation();
-  const adapter = getAdapter();
   const company_id = useAuthStore(s => s.company_id);
 
-  const today = new Date().toISOString().slice(0, 10);
-  const qStart = today.slice(0, 7).replace(/-\d+$/, '') + '-' + String(Math.floor((parseInt(today.slice(5, 7)) - 1) / 3) * 3 + 1).padStart(2, '0') + '-01';
+  // Phase 46b — range picker. GCC VAT quarters are fixed to the calendar, so
+  // "This Quarter" (calendar) is exactly right here. Default = this quarter.
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.report.vat-return.period', 'this_quarter');
 
-  const [from, setFrom]   = useState(qStart);
-  const [to, setTo]       = useState(today);
-  const [data, setData]   = useState<VATReturn | null>(null);
-  const [loading, setLoading] = useState(false);
+  const { data, isLoading: loading } = useQuery<VATReturn>({
+    queryKey: ['vat_return', company_id, from, to],
+    queryFn: () => getAdapter().reports.getVATReturn(company_id!, from, to),
+    enabled: !!company_id,
+  });
 
-  const run = async () => {
-    if (!company_id) return;
-    setLoading(true);
-    try { setData(await adapter.reports.getVATReturn(company_id, from, to)); }
-    catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  };
+  const exportRows: Record<string, unknown>[] = [];
+  if (data) {
+    for (const b of data.output_boxes) exportRows.push({ Section: 'VAT on Sales', Box: b.box, Description: b.label, 'Taxable Amount': b.taxable_amount.toFixed(2), 'VAT Amount': b.vat_amount.toFixed(2) });
+    for (const b of data.input_boxes) exportRows.push({ Section: 'VAT on Expenses', Box: b.box, Description: b.label, 'Taxable Amount': b.taxable_amount.toFixed(2), 'VAT Amount': b.vat_amount.toFixed(2) });
+    exportRows.push({ Section: 'Summary', Box: '', Description: 'Net VAT Payable', 'Taxable Amount': '', 'VAT Amount': data.net_vat_payable.toFixed(2) });
+  }
+  const exportHeaders = ['Section', 'Box', 'Description', 'Taxable Amount', 'VAT Amount'];
 
   const Section = ({ title, boxes, total, totalLabel }: { title: string; boxes: VATReturn['output_boxes']; total: number; totalLabel: string }) => (
     <div style={{
@@ -118,24 +122,21 @@ export default function VATReturnPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader title={t('reports.vat_return')} subtitle={data ? `${data.period_start} — ${data.period_end}` : `${from} — ${to}`} />
+      <PageHeader
+        title={t('reports.vat_return')}
+        subtitle={data ? `${data.period_start} — ${data.period_end}` : `${from} — ${to}`}
+        actions={
+          <div data-print-hide style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <PeriodPicker
+              mode="range" preset={preset} from={from} to={to}
+              onPresetChange={setPreset} onCustomRange={setCustomRange}
+            />
+            <ReportActions rows={exportRows} headers={exportHeaders} filename={`vat-return-${from}_${to}`} disabled={!data} />
+          </div>
+        }
+      />
 
-      <Panel icon="📅" title="Period" compact>
-        <span style={{ fontSize: '12px', color: theme.inkMuted, fontWeight: 500 }}>{t('reports.period_start')}</span>
-        <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-          style={{ height: '32px', padding: '0 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', background: '#fff', color: theme.ink, outline: 'none' }} />
-        <span style={{ fontSize: '12px', color: theme.inkMuted, fontWeight: 500 }}>{t('reports.period_end')}</span>
-        <input type="date" value={to} onChange={e => setTo(e.target.value)}
-          style={{ height: '32px', padding: '0 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', background: '#fff', color: theme.ink, outline: 'none' }} />
-        <button onClick={run} disabled={loading} style={{
-          height: '32px', padding: '0 16px',
-          background: theme.brand, color: '#fff', border: 'none',
-          borderRadius: '7px', fontSize: '13px', fontWeight: 600,
-          cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1,
-        }}>
-          {loading ? t('common.loading') : t('common.run')}
-        </button>
-      </Panel>
+      {loading && !data && <p style={{ fontSize: '13px', color: theme.inkMuted, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>}
 
       {data && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: '16px' }}>

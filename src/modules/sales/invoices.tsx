@@ -115,14 +115,13 @@ export default function InvoicesPage() {
   const countOverdue = allRows.filter(i => i.status === 'confirmed' && i.due_date && i.due_date < today).length;
   const currency = allRows[0]?.currency ?? 'AED';
 
-  const statCard = (label: string, value: string, valueColor: string, sub: string, dotColor: string) => (
-    <div style={{ background: '#fff', border: '1px solid #e4e4e7', borderRadius: '12px', padding: '12px 16px', flex: 1, boxShadow: '0 1px 2px rgba(9,9,11,.05)' }}>
-      <div style={{ fontSize: '10px', fontWeight: 700, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: '5px' }}>{label}</div>
-      <div style={{ fontSize: '18px', fontWeight: 800, color: valueColor, letterSpacing: '-.5px', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</div>
-      <div style={{ fontSize: '11px', color: '#a1a1aa', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
-        {sub}
-      </div>
+  // A single-line stat segment inside the slim strip below — label, value
+  // and sub-count share one row instead of stacking across three.
+  const statSegment = (label: string, value: string, valueColor: string, sub: string) => (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', padding: '10px 16px', flex: 1, minWidth: 0 }}>
+      <span style={{ fontSize: '10px', fontWeight: 700, color: theme.inkFaint, textTransform: 'uppercase', letterSpacing: '.07em', whiteSpace: 'nowrap' }}>{label}</span>
+      <span style={{ fontSize: '15px', fontWeight: 800, color: valueColor, letterSpacing: '-.3px', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</span>
+      <span style={{ fontSize: '11px', color: theme.inkFaint, whiteSpace: 'nowrap', marginInlineStart: 'auto' }}>{sub}</span>
     </div>
   );
 
@@ -138,10 +137,13 @@ export default function InvoicesPage() {
         }
       />
 
+      {/* Slim single-line strip (was two full stat cards ~70-90px tall each,
+          stacked label/value/sub — pushed the list too far down). */}
       {!isLoading && allRows.length > 0 && (
-        <div style={{ display: 'flex', gap: '10px' }}>
-          {statCard('Outstanding', `${currency} ${fmt(totalOutstanding)}`, '#09090b', `${countConfirmed} confirmed`, '#7c3aed')}
-          {statCard('Overdue', `${currency} ${fmt(totalOverdue)}`, '#dc2626', `${countOverdue} past due`, '#dc2626')}
+        <div style={{ display: 'flex', background: theme.card, border: `1px solid ${theme.border}`, borderRadius: '10px', boxShadow: theme.shadowSm }}>
+          {statSegment('Outstanding', `${currency} ${fmt(totalOutstanding)}`, theme.ink, `${countConfirmed} confirmed`)}
+          <div style={{ width: '1px', background: theme.border }} />
+          {statSegment('Overdue', `${currency} ${fmt(totalOverdue)}`, theme.danger, `${countOverdue} past due`)}
         </div>
       )}
 
@@ -153,9 +155,8 @@ export default function InvoicesPage() {
             search={search}
             onSearch={setSearch}
             searchPlaceholder={t('sales.search_invoices') || 'Search invoice # or customer…'}
-            dateFrom={dateFrom}
+            storageKey="stockbolt.list.invoices.period"
             onDateFrom={setDateFrom}
-            dateTo={dateTo}
             onDateTo={setDateTo}
           />
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -163,7 +164,7 @@ export default function InvoicesPage() {
               <FilterPill key={s} label={s === '' ? t('common.all') : s.charAt(0).toUpperCase() + s.slice(1)} active={statusFilter === s} onClick={() => setStatusFilter(s)} />
             ))}
           </div>
-          <div className="bg-white" style={{ border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm, maxHeight: '68vh', overflowY: 'auto' }}>
+          <div className="bg-white" style={{ border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm, maxHeight: '78vh', overflowY: 'auto', overscrollBehavior: 'contain' }}>
             {isLoading ? (
               <p style={{ fontSize: '13px', color: theme.inkFaint, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>
             ) : filtered.length === 0 ? (
@@ -202,9 +203,14 @@ export default function InvoicesPage() {
           </div>
         </aside>
 
-        {/* RIGHT — detail / editor (only once an invoice is opened) */}
+        {/* RIGHT — document preview (only once an invoice is opened).
+            Its own scroll box (overscroll-contain) so scrolling the template
+            moves only this pane, not the whole page or the left list. */}
         {selectedId && (
-          <div className="min-w-0 flex-1">
+          <div
+            className="min-w-0 flex-1"
+            style={{ maxHeight: '82vh', overflowY: 'auto', overscrollBehavior: 'contain' }}
+          >
             <Outlet />
           </div>
         )}

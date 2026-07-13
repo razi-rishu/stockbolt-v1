@@ -1,42 +1,49 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Input } from '@/ui/input';
-import { Button } from '@/ui/button';
 import { DocLink } from '@/ui/doc-link';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
+import { ReportActions } from '@/ui/report-actions';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function todayIso() { return new Date().toISOString().slice(0, 10); }
-
 export default function StockValuationPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
-  const [asOf, setAsOf] = useState(todayIso);
-  const [trigger, setTrigger] = useState(0);
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.report.stock-valuation.period', 'this_month');
+  const asOf = to;
 
-  const { data: sv, isLoading, error } = useQuery({
-    queryKey: ['stock_valuation', company_id, asOf, trigger],
+  const { data: sv, isFetching, error } = useQuery({
+    queryKey: ['stock_valuation', company_id, asOf],
     queryFn: () => getAdapter().reports.getStockValuation(company_id!, asOf),
-    enabled: !!company_id && trigger > 0,
+    enabled: !!company_id,
   });
+
+  const exportRows: Record<string, unknown>[] = (sv?.lines ?? []).map(l => ({
+    Code: l.product_code,
+    Product: l.product_name,
+    Warehouse: l.warehouse_name,
+    Qty: l.quantity,
+    'Unit Cost': l.unit_cost.toFixed(2),
+    'Total Value': l.total_value.toFixed(2),
+  }));
+  const exportHeaders = ['Code', 'Product', 'Warehouse', 'Qty', 'Unit Cost', 'Total Value'];
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-ink-primary">{t('reports.stock_valuation_title')}</h1>
-
-      <div className="flex items-center gap-3 rounded-card border border-border-subtle bg-surface-card px-5 py-3">
-        <Input type="date" label={t('reports.as_of_date')} value={asOf} onChange={e => setAsOf(e.target.value)} />
-        <div className="mt-5">
-          <Button size="sm" onClick={() => setTrigger(n => n + 1)}>{t('reports.run')}</Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.stock_valuation_title')}</h1>
+        <div data-print-hide className="flex flex-wrap items-center gap-2">
+          <PeriodPicker mode="asOf" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+          <ReportActions rows={exportRows} headers={exportHeaders} filename={`stock-valuation-${asOf}`} disabled={!sv || sv.lines.length === 0} />
         </div>
       </div>
 
-      {isLoading && <p className="text-sm text-ink-secondary">{t('common.loading')}</p>}
+      {isFetching && !sv && <p className="text-sm text-ink-secondary">{t('common.loading')}</p>}
       {error && <p className="text-sm text-red-600">{String(error)}</p>}
 
       {sv && sv.lines.length === 0 && (

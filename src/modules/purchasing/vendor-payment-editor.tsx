@@ -427,9 +427,9 @@ export default function VendorPaymentEditorPage() {
       invoices: allBills.map(b => ({ id: b.id, bill_number: b.bill_number, date: b.date as unknown as string, total_amount: b.total_amount })),
     });
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
+      <div className="signature-print-scope" style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
         <div
-          data-no-print="true"
+          data-print-hide
           style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
         >
           <button onClick={() => { if (confirmLeave()) navigate('/purchasing/payments'); }} style={{

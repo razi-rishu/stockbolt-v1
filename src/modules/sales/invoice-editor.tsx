@@ -99,7 +99,13 @@ export default function InvoiceEditorPage() {
   // Phase 14.14k — invalidate all books-downstream caches (TB, BS, GL, aging,
   // statements, dashboard, stock ledger, etc.) after any GL-touching mutation.
   const invalidateBooks = useInvalidateBooks();
-  const isNew = id === 'new';
+  // The standalone /sales/invoices/new route carries no :id param (id is
+  // undefined there), so treat a missing id as "new" too — not just the
+  // literal 'new'. Real invoices always have a UUID id.
+  const isNew = !id || id === 'new';
+  // Phase 47b — /sales/invoices/:id/edit renders standalone (full page). The
+  // nested :id route (inside the list workspace) is the read-only view.
+  const isEditRoute = location.pathname.endsWith('/edit');
 
   // ── Reference data ───────────────────────────────────────────────────────
   const { data: contacts = [] } = useQuery<ContactRow[]>({
@@ -195,7 +201,9 @@ export default function InvoiceEditorPage() {
   // Phase 14.03 — view-first for saved invoices. Renders the Signature
   // template by default; user clicks Edit to drop into the existing
   // editor. New invoices skip this entirely (you're already editing).
-  const [viewMode, setViewMode] = useState(!isNew);
+  // View-first for saved invoices, EXCEPT on the /edit route which is the
+  // dedicated full-page editor (opens straight into the form).
+  const [viewMode, setViewMode] = useState(!isNew && !isEditRoute);
 
   // Clone seed — a Duplicate action navigates to /sales/invoices/new with the
   // source invoice's header + lines in router state. Seed once per navigation,
@@ -238,8 +246,11 @@ export default function InvoiceEditorPage() {
       // Freeze the stored round-off when editing so opening an old invoice
       // never silently changes its total — "Auto" re-rounds on demand.
       setRoundOffOverride(String(Number((existing as { round_off_amount?: number }).round_off_amount ?? 0)));
+      // On the full-page /edit route, a confirmed invoice opens straight into
+      // the reverse-&-repost edit form (not the read-only view).
+      if (isEditRoute && existing.status === 'confirmed') setEditMode(true);
     }
-  }, [existing]);
+  }, [existing, isEditRoute]);
 
   // Auto-select the first warehouse when none is chosen yet and warehouses have loaded.
   // Covers both new invoices and existing drafts saved without a warehouse.
@@ -475,7 +486,9 @@ export default function InvoiceEditorPage() {
         qc.invalidateQueries({ queryKey: ['invoice_items', id] });
         setEditMode(false);
       }
-      navigate('/sales/invoices');
+      // After editing an existing invoice, drop back into its read-only view
+      // (the split workspace). A brand-new invoice goes to the list.
+      navigate(isNew ? '/sales/invoices' : `/sales/invoices/${id}`);
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -546,6 +559,8 @@ export default function InvoiceEditorPage() {
       qc.invalidateQueries({ queryKey: ['invoices', company_id] });
       qc.invalidateQueries({ queryKey: ['invoice', id] });
       qc.invalidateQueries({ queryKey: ['invoice_items', id] });
+      // Return to the read-only view after a reverse-&-repost edit.
+      navigate(`/sales/invoices/${id}`);
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -643,10 +658,10 @@ export default function InvoiceEditorPage() {
       paidAmount: appliedMap[existing.id] ?? 0,
     });
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
+      <div className="signature-print-scope" style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
         {/* Top action bar (hidden when printing) */}
         <div
-          data-no-print="true"
+          data-print-hide
           style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
         >
           <button onClick={() => { if (confirmLeave()) navigate('/sales/invoices'); }} style={{
@@ -659,15 +674,17 @@ export default function InvoiceEditorPage() {
           </h1>
           {statusPill(status)}
           <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+            {/* Edit opens the full-page editor (/edit) — the read-only view
+                stays in the split workspace; save returns here. */}
             {canEdit && (
-              <Button size="sm" onClick={() => setViewMode(false)}>
+              <Button size="sm" onClick={() => navigate(`/sales/invoices/${existing.id}/edit`)}>
                 ✎ {t('common.edit') || 'Edit'}
               </Button>
             )}
             {isConfirmed && !editMode && (
               <Button
                 variant="ghost" size="sm"
-                onClick={() => { setEditMode(true); setViewMode(false); }}
+                onClick={() => navigate(`/sales/invoices/${existing.id}/edit`)}
               >{t('sales.edit_invoice') || 'Edit invoice'}</Button>
             )}
             <Button
@@ -745,10 +762,10 @@ export default function InvoiceEditorPage() {
         </h1>
         {!isNew && statusPill(status)}
         <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
-          {/* Phase 14.03 — flip back into the template view for saved
+          {/* Back to the read-only view (the split workspace) for saved
                invoices. Hidden on brand-new ones (nothing saved to view). */}
           {!isNew && existing && existing.status !== 'draft' && (
-            <Button variant="ghost" size="sm" onClick={() => setViewMode(true)}>
+            <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate(`/sales/invoices/${existing.id}`); }}>
               {t('common.view') || 'View'}
             </Button>
           )}
@@ -802,7 +819,7 @@ export default function InvoiceEditorPage() {
                change", which is what they expect. */}
           {editMode && isConfirmed && (
             <>
-              <Button variant="ghost" size="sm" onClick={() => { setEditMode(false); }}>
+              <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate(`/sales/invoices/${id}`); }}>
                 {t('common.cancel')}
               </Button>
               <Button size="sm" onClick={() => { setError(null); editRepostMutation.mutate(); }} disabled={editRepostMutation.isPending}>

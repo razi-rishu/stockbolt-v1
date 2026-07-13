@@ -8,6 +8,8 @@ import { Button } from '@/ui/button';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
 import { StatusBadge } from '@/ui/status-badge';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
 import type { SalesQuoteRow, ContactRow } from '@/data/adapter';
 
 function fmt(n: number) {
@@ -19,11 +21,18 @@ export default function QuotesPage() {
   const { company_id } = useAuthStore();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  // Phase 47c — period filter (default All time = show every quote).
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.quotes.period', 'all_time');
 
-  const { data: quotes = [], isLoading } = useQuery({
+  const { data: allQuotes = [], isLoading } = useQuery({
     queryKey: ['sales_quotes', company_id],
     queryFn: () => getAdapter().salesQuotes.list(company_id!),
     enabled: !!company_id,
+  });
+  const quotes = (allQuotes as SalesQuoteRow[]).filter(q => {
+    if (from && (q.date as string) < from) return false;
+    if (to && (q.date as string) > to) return false;
+    return true;
   });
 
   const { data: customers = [] } = useQuery<ContactRow[]>({
@@ -48,9 +57,12 @@ export default function QuotesPage() {
         title={t('sales.quotes_title')}
         subtitle={`${quotes.length} ${quotes.length === 1 ? 'quote' : 'quotes'}`}
         actions={
-          <Button size="sm" onClick={() => navigate('/sales/quotes/new')}>
-            + {t('sales.new_quote')}
-          </Button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+            <Button size="sm" onClick={() => navigate('/sales/quotes/new')}>
+              + {t('sales.new_quote')}
+            </Button>
+          </div>
         }
       />
 

@@ -24,19 +24,13 @@ import { formatDate } from '@/lib/locale';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
-import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
 import type { WarehouseRow } from '@/data/adapter';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function todayIso() { return new Date().toISOString().slice(0, 10); }
-function monthsAgoIso(n: number) {
-  const d = new Date();
-  d.setMonth(d.getMonth() - n);
-  return d.toISOString().slice(0, 10);
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -73,8 +67,11 @@ export function ProductStockTab({
   companyId, productId,
 }: { companyId: string; productId: string }) {
   const navigate = useNavigate();
-  const [dateFrom, setDateFrom] = useState(monthsAgoIso(12));
-  const [dateTo,   setDateTo]   = useState(todayIso);
+  // Phase 47c — preset period picker (replaces raw From/To). This feeds a
+  // server query that requires date bounds, so no "All time" here; default
+  // = this year (year-to-date movement).
+  const { preset, from: dateFrom, to: dateTo, setPreset, setCustomRange } =
+    usePeriodPicker('stockbolt.tab.product-stock.period', 'this_year');
   const [warehouseId, setWarehouseId] = useState('');
   const [hideReversed, setHideReversed] = useState(true);
 
@@ -154,10 +151,15 @@ export function ProductStockTab({
 
       {/* ── Filters ──────────────────────────────────────────────────── */}
       <div className="rounded-card border border-border-subtle bg-surface-card p-4">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <Input label="From" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-          <Input label="To"   type="date" value={dateTo}   onChange={e => setDateTo(e.target.value)} />
-          <Select label="Warehouse" options={warehouseOpts} value={warehouseId} onChange={e => setWarehouseId(e.target.value)} />
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-ink-secondary">Period</label>
+            <PeriodPicker
+              mode="range" preset={preset} from={dateFrom} to={dateTo}
+              onPresetChange={setPreset} onCustomRange={setCustomRange}
+            />
+          </div>
+          <div className="min-w-[200px] flex-1"><Select label="Warehouse" options={warehouseOpts} value={warehouseId} onChange={e => setWarehouseId(e.target.value)} /></div>
         </div>
         <label className="mt-3 flex cursor-pointer select-none items-center gap-2 text-sm text-ink-secondary">
           <input

@@ -4,9 +4,11 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
-import { PageHeader, Panel } from '@/ui/primitives';
+import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
+import { ReportActions } from '@/ui/report-actions';
 import type { TrialBalance, TrialBalanceLine } from '@/data/adapter';
 import { ControlAccountDrillDown, CONTROL_ACCOUNTS } from './_shared/control-account-drilldown';
 
@@ -23,8 +25,9 @@ export default function TrialBalancePage() {
   const { company_id } = useAuthStore();
   const navigate = useNavigate();
 
-  const [asOfDate, setAsOfDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [queryDate, setQueryDate] = useState<string | null>(null);
+  // Phase 46b — as-of period picker (only `.to` matters). Auto-runs on preset.
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.report.trial-balance.period', 'this_month');
+  const asOf = to;
   // Phase 12.24 — set of account codes whose per-contact drill-down is open.
   const [expandedCodes, setExpandedCodes] = useState<Set<string>>(new Set());
 
@@ -39,22 +42,15 @@ export default function TrialBalancePage() {
   // Drill-down: clicking the account code opens the General Ledger for that
   // account. Clicking the rest of the row expands the per-contact view.
   function openLedgerForAccount(code: string) {
-    if (!queryDate) return;
-    const yearStart = queryDate.slice(0, 4) + '-01-01';
-    navigate(`/accounting/general-ledger?code=${encodeURIComponent(code)}&from=${yearStart}&to=${queryDate}`);
+    const yearStart = asOf.slice(0, 4) + '-01-01';
+    navigate(`/accounting/general-ledger?code=${encodeURIComponent(code)}&from=${yearStart}&to=${asOf}`);
   }
 
   const { data, isFetching } = useQuery<TrialBalance>({
-    queryKey: ['trial_balance', company_id, queryDate],
-    queryFn: () => getAdapter().accounting.getTrialBalance(company_id!, queryDate!),
-    enabled: !!company_id && !!queryDate,
+    queryKey: ['trial_balance', company_id, asOf],
+    queryFn: () => getAdapter().accounting.getTrialBalance(company_id!, asOf),
+    enabled: !!company_id,
   });
-
-  function handleRun(e: React.FormEvent) {
-    e.preventDefault();
-    setQueryDate(asOfDate);
-    setExpandedCodes(new Set()); // collapse all when re-running
-  }
 
   // Group lines by account type
   const grouped: Record<string, TrialBalanceLine[]> = {};
@@ -66,19 +62,31 @@ export default function TrialBalancePage() {
 
   const isBalanced = data ? Math.abs(data.total_debit - data.total_credit) <= 0.01 : true;
 
+  const exportRows: Record<string, unknown>[] = (data?.lines ?? []).map(l => ({
+    Code: l.account_code,
+    Account: l.account_name,
+    Type: l.account_type,
+    Debit: (l.debit ?? 0).toFixed(2),
+    Credit: (l.credit ?? 0).toFixed(2),
+  }));
+  const exportHeaders = ['Code', 'Account', 'Type', 'Debit', 'Credit'];
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader title={t('reports.trial_balance')} subtitle={data ? `As of ${data.as_of_date}` : 'Pick a date and Run'} />
-
-      {/* Filter panel */}
-      <Panel icon="📅" title="Period" compact>
-        <form onSubmit={handleRun} style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '12px', color: theme.inkMuted, fontWeight: 500 }}>{t('reports.as_of_date')}</span>
-          <input type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)}
-            style={{ height: '32px', padding: '0 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', background: '#fff', color: theme.ink, outline: 'none' }} />
-          <Button type="submit" size="sm">{t('reports.run')}</Button>
-        </form>
-      </Panel>
+      <PageHeader
+        title={t('reports.trial_balance')}
+        subtitle={data ? `As of ${data.as_of_date}` : ''}
+        actions={
+          <div data-print-hide style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <PeriodPicker
+              mode="asOf" preset={preset} from={from} to={to}
+              onPresetChange={(p) => { setPreset(p); setExpandedCodes(new Set()); }}
+              onCustomRange={(f, tt) => { setCustomRange(f, tt); setExpandedCodes(new Set()); }}
+            />
+            <ReportActions rows={exportRows} headers={exportHeaders} filename={`trial-balance-${asOf}`} disabled={!data} />
+          </div>
+        }
+      />
 
       {isFetching && <p style={{ fontSize: '13px', color: theme.inkMuted, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>}
 
@@ -176,11 +184,11 @@ export default function TrialBalancePage() {
                             <td className="px-4 py-2.5 font-mono" style={{ textAlign: 'end', color: theme.ink }}>{line.debit > 0 ? fmt(line.debit) : ''}</td>
                             <td className="px-4 py-2.5 font-mono" style={{ textAlign: 'end', color: theme.ink }}>{line.credit > 0 ? fmt(line.credit) : ''}</td>
                           </tr>
-                          {isControl && isExpanded && queryDate && company_id && (
+                          {isControl && isExpanded && company_id && (
                             <ControlAccountDrillDown
                               companyId={company_id}
                               accountCode={line.account_code}
-                              asOfDate={queryDate}
+                              asOfDate={asOf}
                               colSpan={5}
                               labelColSpan={2}
                             />

@@ -5,12 +5,13 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Button } from '@/ui/button';
 import { PageHeader, Panel } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
 import { DocLink } from '@/ui/doc-link';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
 import type { ProductRow, WarehouseRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -34,9 +35,6 @@ export default function StockLedgerPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
 
-  const today = new Date().toISOString().slice(0, 10);
-  const firstOfMonth = today.slice(0, 7) + '-01';
-
   // Phase 12.25 — accept ?product=<id> on the URL so the product detail
   // page's "Open in Stock Ledger →" link can deep-link with the filter
   // pre-applied AND auto-run.
@@ -45,8 +43,11 @@ export default function StockLedgerPage() {
 
   const [productId, setProductId] = useState(initialProductId);
   const [warehouseId, setWarehouseId] = useState('');
-  const [dateFrom, setDateFrom] = useState(firstOfMonth);
-  const [dateTo, setDateTo] = useState(today);
+  // Phase 47c — preset period picker (replaces raw From/To). Default this month
+  // (= the page's previous firstOfMonth→today default). Like the other filters,
+  // changing the period requires a Run click, so the heavy query stays gated.
+  const { preset, from: dateFrom, to: dateTo, setPreset, setCustomRange } =
+    usePeriodPicker('stockbolt.list.stock-ledger.period', 'this_month');
   // Default ON: show only entries that contribute to current stock — hides
   // both halves of any void/edit-reversal pair so the user sees a clean
   // state instead of the raw audit log. Toggle OFF for the full history.
@@ -102,10 +103,14 @@ export default function StockLedgerPage() {
             onChange={e => { setProductId(e.target.value); setSubmitted(false); }} />
           <Select label={t('inventory.warehouse')} options={warehouseOpts} value={warehouseId}
             onChange={e => { setWarehouseId(e.target.value); setSubmitted(false); }} />
-          <Input label={t('inventory.date_from')} type="date" value={dateFrom}
-            onChange={e => { setDateFrom(e.target.value); setSubmitted(false); }} />
-          <Input label={t('inventory.date_to')} type="date" value={dateTo}
-            onChange={e => { setDateTo(e.target.value); setSubmitted(false); }} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 500, color: theme.inkMuted }}>{t('reports.period') || 'Period'}</label>
+            <PeriodPicker
+              mode="range" preset={preset} from={dateFrom} to={dateTo}
+              onPresetChange={(p) => { setPreset(p); setSubmitted(false); }}
+              onCustomRange={(f, tt) => { setCustomRange(f, tt); setSubmitted(false); }}
+            />
+          </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none', fontSize: '13px', color: theme.inkMuted }}>

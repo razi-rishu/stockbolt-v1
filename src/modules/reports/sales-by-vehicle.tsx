@@ -1,48 +1,47 @@
-import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
-import type { SalesByVehicleLine } from '@/data/adapter';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
+import { ReportActions } from '@/ui/report-actions';
 
 function fmt(n: number) { return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
 
 export default function SalesByVehiclePage() {
   const { t } = useTranslation();
-  const adapter = getAdapter();
   const company_id = useAuthStore(s => s.company_id);
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.report.sales-by-vehicle.period', 'this_month');
 
-  const today = new Date().toISOString().slice(0, 10);
-  const [from, setFrom]     = useState(today.slice(0, 7) + '-01');
-  const [to, setTo]         = useState(today);
-  const [rows, setRows]     = useState<SalesByVehicleLine[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { data, isFetching } = useQuery({
+    queryKey: ['sales_by_vehicle', company_id, from, to],
+    queryFn: () => getAdapter().reports.getSalesByVehicle(company_id!, from, to),
+    enabled: !!company_id,
+  });
+  const rows = data ?? [];
 
-  const run = async () => {
-    if (!company_id) return;
-    setLoading(true);
-    try { setRows(await adapter.reports.getSalesByVehicle(company_id, from, to)); }
-    catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  };
+  const exportRows: Record<string, unknown>[] = rows.map(r => ({
+    Make: r.make_name,
+    Model: r.model_name ?? 'All',
+    'Qty Sold': r.qty,
+    Revenue: r.revenue.toFixed(2),
+    'Gross Profit': r.gross_profit.toFixed(2),
+  }));
+  const exportHeaders = ['Make', 'Model', 'Qty Sold', 'Revenue', 'Gross Profit'];
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-ink-primary">{t('reports.sales_by_vehicle')}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.sales_by_vehicle')}</h1>
+        <div data-print-hide className="flex flex-wrap items-center gap-2">
+          <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+          <ReportActions rows={exportRows} headers={exportHeaders} filename={`sales-by-vehicle-${from}_${to}`} disabled={rows.length === 0} />
+        </div>
+      </div>
       <p className="text-xs text-ink-tertiary">{t('reports.sales_by_vehicle_note')}</p>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface-card p-4">
-        <div>
-          <label className="block text-xs text-ink-secondary mb-1">{t('common.date_from')}</label>
-          <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="input-field h-9 text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs text-ink-secondary mb-1">{t('common.date_to')}</label>
-          <input type="date" value={to} onChange={e => setTo(e.target.value)} className="input-field h-9 text-sm" />
-        </div>
-        <button onClick={run} disabled={loading} className="btn-primary h-9 px-4 text-sm">
-          {loading ? t('common.loading') : t('common.run')}
-        </button>
-      </div>
+      {isFetching && rows.length === 0 && <p className="text-sm text-ink-secondary">{t('common.loading')}</p>}
+      {!isFetching && rows.length === 0 && <p className="text-sm text-ink-tertiary">{t('reports.no_data')}</p>}
 
       {rows.length > 0 && (
         <div className="overflow-x-auto rounded-lg border border-border bg-surface-card shadow-sm">

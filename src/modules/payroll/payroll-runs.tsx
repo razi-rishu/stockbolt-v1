@@ -15,6 +15,8 @@ import { Button } from '@/ui/button';
 import { Modal } from '@/ui/modal';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
 import type { PayrollRunRow, PayrollRunItemInsert, EmployeeRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -37,11 +39,18 @@ export default function PayrollRunsPage() {
   const [year, setYear]   = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [error, setError] = useState<string | null>(null);
+  // Phase 47c — period filter (default All time = show every run).
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.payroll-runs.period', 'all_time');
 
-  const { data: runs = [], isLoading } = useQuery<PayrollRunRow[]>({
+  const { data: allRuns = [], isLoading } = useQuery<PayrollRunRow[]>({
     queryKey: ['payroll_runs', company_id],
     queryFn: () => getAdapter().payroll.listRuns(company_id!),
     enabled: !!company_id,
+  });
+  const runs = allRuns.filter(r => {
+    if (from && (r.date as string) < from) return false;
+    if (to && (r.date as string) > to) return false;
+    return true;
   });
 
   const { data: employees = [] } = useQuery<EmployeeRow[]>({
@@ -88,7 +97,12 @@ export default function PayrollRunsPage() {
       <PageHeader
         title="Payroll Runs"
         subtitle="One run per month — confirm posts salaries to the books, pay settles them from the bank"
-        actions={<Button size="sm" onClick={() => { setError(null); setNewOpen(true); }}>+ New Run</Button>}
+        actions={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+            <Button size="sm" onClick={() => { setError(null); setNewOpen(true); }}>+ New Run</Button>
+          </div>
+        }
       />
 
       {isLoading ? (

@@ -4,9 +4,11 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
-import { PageHeader, Panel } from '@/ui/primitives';
+import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
+import { ReportActions } from '@/ui/report-actions';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -70,43 +72,54 @@ function PLSection({ title, total, totalLabel, paren = false, children }: {
   );
 }
 
-function todayIso() { return new Date().toISOString().slice(0, 10); }
-function firstOfMonthIso() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
-}
-
 export default function ProfitLossPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const navigate = useNavigate();
-  const [from, setFrom] = useState(firstOfMonthIso);
-  const [to, setTo]     = useState(todayIso);
-  const [trigger, setTrigger] = useState(0);
+  // Phase 46b — preset period picker. Preset clicks auto-run; default = this month.
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.report.profit-loss.period', 'this_month');
 
   function openLedger(code: string) {
     navigate(`/accounting/general-ledger?code=${encodeURIComponent(code)}&from=${from}&to=${to}`);
   }
 
   const { data: pl, isLoading, error } = useQuery({
-    queryKey: ['pl', company_id, from, to, trigger],
+    queryKey: ['pl', company_id, from, to],
     queryFn: () => getAdapter().reports.getProfitAndLoss(company_id!, from, to),
-    enabled: !!company_id && trigger > 0,
+    enabled: !!company_id,
   });
+
+  // Phase 46b — flatten the P&L into rows for Excel export (Section column
+  // preserves the grouping that the collapsible UI can't carry into a sheet).
+  const exportRows: Record<string, unknown>[] = [];
+  if (pl) {
+    const push = (section: string, code: string, name: string, amount: number) =>
+      exportRows.push({ Section: section, 'Account Code': code, Account: name, Amount: amount.toFixed(2) });
+    const isDirect = (l: typeof pl.lines[number]) => l.sub_type !== 'indirect';
+    for (const l of pl.lines.filter(l => l.account_type === 'income'  &&  isDirect(l))) push('Revenue', l.account_code, l.account_name, l.amount);
+    for (const l of pl.lines.filter(l => l.account_type === 'expense' &&  isDirect(l))) push('COGS', l.account_code, l.account_name, -l.amount);
+    push('Totals', '', 'Gross Profit', pl.gross_profit);
+    for (const l of pl.lines.filter(l => l.account_type === 'income'  && !isDirect(l))) push('Other Income', l.account_code, l.account_name, l.amount);
+    for (const l of pl.lines.filter(l => l.account_type === 'expense' && !isDirect(l))) push('Operating Expenses', l.account_code, l.account_name, -l.amount);
+    push('Totals', '', 'Net Profit', pl.net_profit);
+  }
+  const exportHeaders = ['Section', 'Account Code', 'Account', 'Amount'];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader title={t('reports.pl_title')} subtitle={`${from} — ${to}`} />
-
-      <Panel icon="📅" title="Period" compact>
-        <span style={{ fontSize: '12px', color: theme.inkMuted, fontWeight: 500 }}>{t('reports.from')}</span>
-        <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-          style={{ height: '32px', padding: '0 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', background: '#fff', color: theme.ink, outline: 'none' }} />
-        <span style={{ fontSize: '12px', color: theme.inkMuted, fontWeight: 500 }}>{t('reports.to')}</span>
-        <input type="date" value={to} onChange={e => setTo(e.target.value)}
-          style={{ height: '32px', padding: '0 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: '7px', background: '#fff', color: theme.ink, outline: 'none' }} />
-        <Button size="sm" onClick={() => setTrigger(n => n + 1)}>{t('reports.run')}</Button>
-      </Panel>
+      <PageHeader
+        title={t('reports.pl_title')}
+        subtitle={`${from} — ${to}`}
+        actions={
+          <div data-print-hide style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <PeriodPicker
+              mode="range" preset={preset} from={from} to={to}
+              onPresetChange={setPreset} onCustomRange={setCustomRange}
+            />
+            <ReportActions rows={exportRows} headers={exportHeaders} filename={`profit-loss-${from}_${to}`} disabled={!pl} />
+          </div>
+        }
+      />
 
       {isLoading && <p style={{ fontSize: '13px', color: theme.inkMuted, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>}
       {error && <p style={{ fontSize: '13px', color: theme.danger }}>{String(error)}</p>}

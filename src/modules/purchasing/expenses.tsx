@@ -24,6 +24,8 @@ import { Button } from '@/ui/button';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
 import { StatusBadge } from '@/ui/status-badge';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
 import type { ExpenseRow, CoaRow } from '@/data/adapter';
 
 const fmt = (n: number) =>
@@ -76,6 +78,8 @@ export default function ExpensesPage() {
   const navigate = useNavigate();
   const currency = useCompanyCurrency();
   const [filter, setFilter] = useState<Filter>('all');
+  // Phase 47c — period filter (default All time = show every expense).
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.expenses.period', 'all_time');
 
   const { data: expenses = [], isLoading } = useQuery<ExpenseRow[]>({
     queryKey: ['expenses', company_id],
@@ -144,13 +148,17 @@ export default function ExpensesPage() {
   }, [categoryRows, coa]);
 
   const filtered = useMemo(() => {
-    if (filter === 'all') return expenses;
+    let rows = expenses;
+    if (from) rows = rows.filter(e => (e.date as unknown as string) >= from);
+    if (to)   rows = rows.filter(e => (e.date as unknown as string) <= to);
     if (filter === 'this_month') {
       const month = new Date().toISOString().slice(0, 7);
-      return expenses.filter(e => (e.date as unknown as string).startsWith(month));
+      rows = rows.filter(e => (e.date as unknown as string).startsWith(month));
+    } else if (filter !== 'all') {
+      rows = rows.filter(e => e.status === filter);
     }
-    return expenses.filter(e => e.status === filter);
-  }, [expenses, filter]);
+    return rows;
+  }, [expenses, filter, from, to]);
 
   const catShades = [theme.brand, '#8b5cf6', '#a78bfa', '#c4b5fd'];
 
@@ -160,9 +168,12 @@ export default function ExpensesPage() {
         title={t('banking.expenses_title')}
         subtitle={`${expenses.length} ${expenses.length === 1 ? 'expense' : 'expenses'}`}
         actions={
-          <Link to="/purchasing/expenses/new">
-            <Button>+ New expense</Button>
-          </Link>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+            <Link to="/purchasing/expenses/new">
+              <Button>+ New expense</Button>
+            </Link>
+          </div>
         }
       />
 

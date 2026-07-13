@@ -8,6 +8,8 @@ import { Button } from '@/ui/button';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
 import { StatusBadge } from '@/ui/status-badge';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
 import type { CreditNoteRow, ContactRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -16,11 +18,18 @@ export default function CreditNotesPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const navigate = useNavigate();
+  // Phase 47c — period filter (default All time = show every credit note).
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.credit-notes.period', 'all_time');
 
-  const { data: notes = [], isLoading } = useQuery<CreditNoteRow[]>({
+  const { data: allNotes = [], isLoading } = useQuery<CreditNoteRow[]>({
     queryKey: ['credit_notes', company_id],
     queryFn:  () => getAdapter().creditNotes.list(company_id!),
     enabled:  !!company_id,
+  });
+  const notes = allNotes.filter(cn => {
+    if (from && (cn.date as string) < from) return false;
+    if (to && (cn.date as string) > to) return false;
+    return true;
   });
 
   const { data: customers = [] } = useQuery<ContactRow[]>({
@@ -36,7 +45,10 @@ export default function CreditNotesPage() {
         title={t('returns.credit_notes_title')}
         subtitle={t('returns.credit_notes_desc')}
         actions={
-          <Link to="/sales/credit-notes/new"><Button>+ {t('returns.new_credit_note')}</Button></Link>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+            <Link to="/sales/credit-notes/new"><Button>+ {t('returns.new_credit_note')}</Button></Link>
+          </div>
         }
       />
 

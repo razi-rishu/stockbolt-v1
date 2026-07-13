@@ -8,6 +8,8 @@ import { Button } from '@/ui/button';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
 import { StatusBadge } from '@/ui/status-badge';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
 import type { DebitNoteRow, ContactRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -16,11 +18,18 @@ export default function DebitNotesPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const navigate = useNavigate();
+  // Phase 47c — period filter (default All time = show every debit note).
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.debit-notes.period', 'all_time');
 
-  const { data: notes = [], isLoading } = useQuery<DebitNoteRow[]>({
+  const { data: allNotes = [], isLoading } = useQuery<DebitNoteRow[]>({
     queryKey: ['debit_notes', company_id],
     queryFn:  () => getAdapter().debitNotes.list(company_id!),
     enabled:  !!company_id,
+  });
+  const notes = allNotes.filter(dn => {
+    if (from && (dn.date as string) < from) return false;
+    if (to && (dn.date as string) > to) return false;
+    return true;
   });
   const { data: suppliers = [] } = useQuery<ContactRow[]>({
     queryKey: ['contacts', company_id, 'supplier'],
@@ -35,7 +44,10 @@ export default function DebitNotesPage() {
         title={t('returns.debit_notes_title')}
         subtitle={t('returns.debit_notes_desc')}
         actions={
-          <Link to="/purchasing/debit-notes/new"><Button>+ {t('returns.new_debit_note')}</Button></Link>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+            <Link to="/purchasing/debit-notes/new"><Button>+ {t('returns.new_debit_note')}</Button></Link>
+          </div>
         }
       />
 

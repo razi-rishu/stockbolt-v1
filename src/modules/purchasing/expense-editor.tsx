@@ -491,9 +491,9 @@ export default function ExpenseEditorPage() {
       bankAccounts,
     });
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
+      <div className="signature-print-scope" style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
         <div
-          data-no-print="true"
+          data-print-hide
           style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
         >
           <button onClick={() => { if (confirmLeave()) navigate('/purchasing/expenses'); }} style={{

@@ -8,17 +8,26 @@ import { Button } from '@/ui/button';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
 import { StatusBadge } from '@/ui/status-badge';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
 import type { SalesReturnRow, InvoiceRow, ContactRow } from '@/data/adapter';
 
 export default function SalesReturnsPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const navigate = useNavigate();
+  // Phase 47c — period filter (default All time = show every return).
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.sales-returns.period', 'all_time');
 
-  const { data: returns = [], isLoading } = useQuery<SalesReturnRow[]>({
+  const { data: allReturns = [], isLoading } = useQuery<SalesReturnRow[]>({
     queryKey: ['sales_returns', company_id],
     queryFn:  () => getAdapter().salesReturns.list(company_id!),
     enabled:  !!company_id,
+  });
+  const returns = allReturns.filter(sr => {
+    if (from && (sr.date as string) < from) return false;
+    if (to && (sr.date as string) > to) return false;
+    return true;
   });
 
   // sales_returns has no contact FK — the customer comes via the linked
@@ -42,7 +51,10 @@ export default function SalesReturnsPage() {
         title={t('returns.sales_returns_title')}
         subtitle={t('returns.sales_returns_desc')}
         actions={
-          <Link to="/sales/returns/new"><Button>+ {t('returns.new_return')}</Button></Link>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+            <Link to="/sales/returns/new"><Button>+ {t('returns.new_return')}</Button></Link>
+          </div>
         }
       />
 

@@ -6,8 +6,9 @@ import { useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
-import { Input } from '@/ui/input';
 import { DocLink } from '@/ui/doc-link';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
 import type { LedgerEntry, CoaRow } from '@/data/adapter';
 
 function fmt(n: number) {
@@ -48,35 +49,34 @@ export default function GeneralLedgerPage() {
   const { company_id } = useAuthStore();
   const [searchParams] = useSearchParams();
 
-  const today = new Date().toISOString().slice(0, 10);
-  const firstOfYear = today.slice(0, 4) + '-01-01';
+  // Phase 47c — preset period picker (replaces raw From/To). Default this_year
+  // (= the page's previous firstOfYear→today default). A Trial-Balance drill-down
+  // URL (?from&to) seeds an exact custom range so the drilled period is preserved.
+  const { preset, from, to, setPreset, setCustomRange } =
+    usePeriodPicker('stockbolt.list.general-ledger.period', 'this_year');
 
   // URL params (set by Trial Balance drill-down) take precedence as initial state.
   const initialCode = searchParams.get('code') ?? '';
-  const initialFrom = searchParams.get('from') ?? firstOfYear;
-  const initialTo   = searchParams.get('to')   ?? today;
-
   const [accountCode, setAccountCode] = useState(initialCode);
-  const [from, setFrom] = useState(initialFrom);
-  const [to, setTo] = useState(initialTo);
   const [query, setQuery] = useState<{ code: string; from: string; to: string } | null>(
-    initialCode ? { code: initialCode, from: initialFrom, to: initialTo } : null,
+    initialCode
+      ? { code: initialCode, from: searchParams.get('from') ?? from, to: searchParams.get('to') ?? to }
+      : null,
   );
   // Default ON — hides the original reversed entry and its void counterpart,
   // so the ledger shows only the "net" history (no noise from edit/void pairs).
   const [hideReversed, setHideReversed] = useState(true);
 
   // If the URL params change after mount (e.g. user navigates from TB again with a different account),
-  // re-run the query without requiring a manual click.
+  // re-run the query without requiring a manual click, seeding the picker with the drilled range.
   useEffect(() => {
     const code = searchParams.get('code');
     const f = searchParams.get('from');
     const t2 = searchParams.get('to');
     if (code) {
       setAccountCode(code);
-      if (f) setFrom(f);
-      if (t2) setTo(t2);
-      setQuery({ code, from: f ?? firstOfYear, to: t2 ?? today });
+      if (f && t2) setCustomRange(f, t2);
+      setQuery({ code, from: f ?? from, to: t2 ?? to });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -145,12 +145,11 @@ export default function GeneralLedgerPage() {
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.from')}</label>
-          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-36" />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.to')}</label>
-          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-36" />
+          <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('reports.period') || 'Period'}</label>
+          <PeriodPicker
+            mode="range" preset={preset} from={from} to={to}
+            onPresetChange={setPreset} onCustomRange={setCustomRange}
+          />
         </div>
         <Button type="submit" size="sm">{t('accounting.view_ledger')}</Button>
       </form>

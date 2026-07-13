@@ -1,29 +1,24 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
 import { DocLink } from '@/ui/doc-link';
-import type { AuditLogLine } from '@/data/adapter';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
+import { ReportActions } from '@/ui/report-actions';
 
 export default function AuditLogPage() {
   const { t } = useTranslation();
-  const adapter = getAdapter();
   const company_id = useAuthStore(s => s.company_id);
-
-  const today = new Date().toISOString().slice(0, 10);
-  const [from, setFrom]   = useState(today.slice(0, 7) + '-01');
-  const [to, setTo]       = useState(today);
-  const [rows, setRows]   = useState<AuditLogLine[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.report.audit-log.period', 'this_month');
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const run = async () => {
-    if (!company_id) return;
-    setLoading(true);
-    try { setRows(await adapter.reports.getAuditLog(company_id, { from, to, limit: 500 })); }
-    catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  };
+  const { data: rows = [], isFetching } = useQuery({
+    queryKey: ['audit_log', company_id, from, to],
+    queryFn: () => getAdapter().reports.getAuditLog(company_id!, { from, to, limit: 500 }),
+    enabled: !!company_id,
+  });
 
   const actionColor = (action: string) => {
     if (action.includes('create') || action.includes('insert')) return 'bg-emerald-100 text-emerald-800';
@@ -32,23 +27,27 @@ export default function AuditLogPage() {
     return 'bg-surface-subtle text-ink-secondary';
   };
 
+  const exportRows: Record<string, unknown>[] = rows.map(r => ({
+    Timestamp: new Date(r.created_at).toLocaleString(),
+    User: r.user_email,
+    Action: r.action,
+    Entity: r.entity_type,
+    'Entity ID': r.entity_id,
+  }));
+  const exportHeaders = ['Timestamp', 'User', 'Action', 'Entity', 'Entity ID'];
+
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-ink-primary">{t('reports.audit_log')}</h1>
-
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface-card p-4">
-        <div>
-          <label className="block text-xs text-ink-secondary mb-1">{t('common.date_from')}</label>
-          <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="input-field h-9 text-sm" />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.audit_log')}</h1>
+        <div data-print-hide className="flex flex-wrap items-center gap-2">
+          <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+          <ReportActions rows={exportRows} headers={exportHeaders} filename={`audit-log-${from}_${to}`} disabled={rows.length === 0} />
         </div>
-        <div>
-          <label className="block text-xs text-ink-secondary mb-1">{t('common.date_to')}</label>
-          <input type="date" value={to} onChange={e => setTo(e.target.value)} className="input-field h-9 text-sm" />
-        </div>
-        <button onClick={run} disabled={loading} className="btn-primary h-9 px-4 text-sm">
-          {loading ? t('common.loading') : t('common.run')}
-        </button>
       </div>
+
+      {isFetching && rows.length === 0 && <p className="text-sm text-ink-secondary">{t('common.loading')}</p>}
+      {!isFetching && rows.length === 0 && <p className="text-sm text-ink-tertiary">{t('reports.no_data')}</p>}
 
       {rows.length > 0 && (
         <div className="overflow-x-auto rounded-lg border border-border bg-surface-card shadow-sm">
@@ -65,8 +64,8 @@ export default function AuditLogPage() {
             </thead>
             <tbody className="divide-y divide-border">
               {rows.map(r => (
-                <>
-                  <tr key={r.id} className="hover:bg-surface-subtle/50">
+                <Fragment key={r.id}>
+                  <tr className="hover:bg-surface-subtle/50">
                     <td className="px-4 py-2 text-ink-secondary text-xs whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</td>
                     <td className="px-4 py-2 text-ink-secondary text-xs truncate max-w-[160px]">{r.user_email}</td>
                     <td className="px-4 py-2">
@@ -83,7 +82,7 @@ export default function AuditLogPage() {
                     </td>
                   </tr>
                   {expanded === r.id && (
-                    <tr key={r.id + '-detail'}>
+                    <tr>
                       <td colSpan={6} className="px-4 py-2 bg-surface-subtle">
                         <div className="grid grid-cols-2 gap-4 text-xs">
                           {r.old_values && (
@@ -102,7 +101,7 @@ export default function AuditLogPage() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>

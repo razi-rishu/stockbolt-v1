@@ -6,6 +6,8 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { StatusBadge } from '@/ui/status-badge';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
 import type { BankTransferRow, BankAccountRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -13,11 +15,18 @@ const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2,
 export default function BankTransfersPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
+  // Phase 47c — period filter (default All time = show every transfer).
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.bank-transfers.period', 'all_time');
 
-  const { data: transfers = [], isLoading } = useQuery<BankTransferRow[]>({
+  const { data: allTransfers = [], isLoading } = useQuery<BankTransferRow[]>({
     queryKey: ['bank_transfers', company_id],
     queryFn:  () => getAdapter().bankTransfers.list(company_id!),
     enabled:  !!company_id,
+  });
+  const transfers = allTransfers.filter(tr => {
+    if (from && (tr.date as string) < from) return false;
+    if (to && (tr.date as string) > to) return false;
+    return true;
   });
 
   const { data: bankAccounts = [] } = useQuery<BankAccountRow[]>({
@@ -29,14 +38,17 @@ export default function BankTransfersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-ink-primary">{t('banking.transfers_title')}</h1>
           <p className="text-sm text-ink-tertiary mt-1">{t('banking.transfers_desc')}</p>
         </div>
-        <Link to="/banking/transfers/new">
-          <Button variant="primary">{t('banking.new_transfer')}</Button>
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+          <Link to="/banking/transfers/new">
+            <Button variant="primary">{t('banking.new_transfer')}</Button>
+          </Link>
+        </div>
       </div>
 
       <div className="bg-white border border-border-subtle rounded-lg overflow-hidden">

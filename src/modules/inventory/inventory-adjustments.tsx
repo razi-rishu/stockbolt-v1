@@ -6,6 +6,8 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Badge } from '@/ui/badge';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
 import type { InventoryAdjustmentRow, WarehouseRow } from '@/data/adapter';
 
 const statusColor: Record<string, string> = {
@@ -16,11 +18,18 @@ export default function InventoryAdjustmentsPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const navigate = useNavigate();
+  // Phase 47c — period filter (default All time = show every adjustment).
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.inventory-adjustments.period', 'all_time');
 
-  const { data: adjustments = [], isLoading } = useQuery<InventoryAdjustmentRow[]>({
+  const { data: allAdjustments = [], isLoading } = useQuery<InventoryAdjustmentRow[]>({
     queryKey: ['inventory_adjustments', company_id],
     queryFn: () => getAdapter().inventoryAdjustments.list(company_id!),
     enabled: !!company_id,
+  });
+  const adjustments = allAdjustments.filter(adj => {
+    if (from && (adj.date as string) < from) return false;
+    if (to && (adj.date as string) > to) return false;
+    return true;
   });
 
   const { data: warehouses = [] } = useQuery<WarehouseRow[]>({
@@ -32,9 +41,12 @@ export default function InventoryAdjustmentsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-ink-primary">{t('inventory.adjustments_title')}</h1>
-        <Button size="sm" onClick={() => navigate('/inventory/adjustments/new')}>{t('inventory.new_adjustment')}</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+          <Button size="sm" onClick={() => navigate('/inventory/adjustments/new')}>{t('inventory.new_adjustment')}</Button>
+        </div>
       </div>
       {isLoading ? (
         <div className="py-12 text-center text-sm text-ink-tertiary">{t('common.loading')}</div>

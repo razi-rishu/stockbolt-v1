@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
+import { ReportActions } from '@/ui/report-actions';
 import type { OutstandingPOLine } from '@/data/adapter';
 
 function fmt(n: number) { return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
@@ -21,9 +22,23 @@ export default function OutstandingPOsPage() {
 
   const totPending = rows.reduce((s, r) => s + r.pending_value, 0);
 
+  const exportRows: Record<string, unknown>[] = rows.map(r => ({
+    PO: r.po_number,
+    Supplier: r.supplier_name,
+    Date: r.date,
+    'Expected Delivery': r.expected_delivery ?? '',
+    Total: r.total.toFixed(2),
+    Received: r.received_value.toFixed(2),
+    Pending: r.pending_value.toFixed(2),
+  }));
+  const exportHeaders = ['PO', 'Supplier', 'Date', 'Expected Delivery', 'Total', 'Received', 'Pending'];
+
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-ink-primary">{t('reports.outstanding_pos')}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.outstanding_pos')}</h1>
+        <ReportActions rows={exportRows} headers={exportHeaders} filename="outstanding-pos" disabled={rows.length === 0} />
+      </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-20">

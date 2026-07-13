@@ -10,6 +10,8 @@ import { Badge } from '@/ui/badge';
 import { Pagination, paginate } from '@/ui/pagination';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
 import type { PurchaseOrderRow, ContactRow } from '@/data/adapter';
 
 const PAGE_SIZE = 50;
@@ -26,11 +28,18 @@ export default function PurchaseOrdersPage() {
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
   const [converting, setConverting] = useState<string | null>(null);
+  // Phase 47c — period filter (default All time = show every PO).
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.purchase-orders.period', 'all_time');
 
-  const { data: orders = [], isLoading } = useQuery<PurchaseOrderRow[]>({
+  const { data: allOrders = [], isLoading } = useQuery<PurchaseOrderRow[]>({
     queryKey: ['purchase_orders', company_id],
     queryFn: () => getAdapter().purchaseOrders.list(company_id!),
     enabled: !!company_id,
+  });
+  const orders = allOrders.filter(po => {
+    if (from && (po.date as string) < from) return false;
+    if (to && (po.date as string) > to) return false;
+    return true;
   });
   const { data: suppliers = [] } = useQuery<ContactRow[]>({
     queryKey: ['contacts', company_id, 'supplier'],
@@ -57,7 +66,16 @@ export default function PurchaseOrdersPage() {
       <PageHeader
         title={t('purchasing.po_title')}
         subtitle={`${orders.length} ${orders.length === 1 ? 'order' : 'orders'}`}
-        actions={<Button size="sm" onClick={() => navigate('/purchasing/orders/new')}>+ {t('purchasing.new_po')}</Button>}
+        actions={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <PeriodPicker
+              mode="range" allowAllTime preset={preset} from={from} to={to}
+              onPresetChange={(p) => { setPreset(p); setPage(1); }}
+              onCustomRange={(f, tt) => { setCustomRange(f, tt); setPage(1); }}
+            />
+            <Button size="sm" onClick={() => navigate('/purchasing/orders/new')}>+ {t('purchasing.new_po')}</Button>
+          </div>
+        }
       />
       {isLoading ? (
         <div style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>{t('common.loading')}</div>

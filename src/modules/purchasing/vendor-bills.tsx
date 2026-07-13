@@ -120,9 +120,8 @@ export default function VendorBillsPage() {
             search={search}
             onSearch={(v) => { setSearch(v); setPage(1); }}
             searchPlaceholder={t('purchasing.search_bills') || 'Search bill # or supplier…'}
-            dateFrom={dateFrom}
+            storageKey="stockbolt.list.vendor-bills.period"
             onDateFrom={(v) => { setDateFrom(v); setPage(1); }}
-            dateTo={dateTo}
             onDateTo={(v) => { setDateTo(v); setPage(1); }}
           />
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>

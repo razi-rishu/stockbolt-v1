@@ -430,7 +430,7 @@ export function PeriodFilter({
 // ── ActionShelf — floating top-right actions ────────────────────────────────
 export function ActionShelf({ children }: { children: ReactNode }) {
   return (
-    <div data-no-print="true" style={{
+    <div data-print-hide style={{
       display: 'flex', gap: '8px', alignItems: 'center',
     }}>
       {children}

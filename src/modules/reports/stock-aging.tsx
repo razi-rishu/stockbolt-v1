@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { ReportActions } from '@/ui/report-actions';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -32,9 +33,25 @@ export default function StockAgingReportPage() {
     return acc;
   }, {} as Record<string, number>);
 
+  const exportRows: Record<string, unknown>[] = rows.map(r => ({
+    Product: r.product_name,
+    SKU: r.sku ?? '',
+    Warehouse: r.warehouse_name,
+    'Qty On Hand': r.qty_on_hand,
+    'Unit Cost': r.unit_cost != null ? r.unit_cost.toFixed(2) : '',
+    'Stock Value': r.stock_value != null ? r.stock_value.toFixed(2) : '',
+    'Last Movement': r.last_movement_date ? (r.last_movement_date as string) : '',
+    'Days Idle': r.days_idle,
+    'Aging Bucket': BUCKET_LABELS[r.aging_bucket] ?? r.aging_bucket,
+  }));
+  const exportHeaders = ['Product', 'SKU', 'Warehouse', 'Qty On Hand', 'Unit Cost', 'Stock Value', 'Last Movement', 'Days Idle', 'Aging Bucket'];
+
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-ink-primary">{t('reports.stock_aging')}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.stock_aging')}</h1>
+        <ReportActions rows={exportRows} headers={exportHeaders} filename="stock-aging" disabled={rows.length === 0} />
+      </div>
 
       {/* Bucket summary cards */}
       {rows.length > 0 && (

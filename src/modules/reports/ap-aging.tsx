@@ -1,37 +1,52 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Input } from '@/ui/input';
-import { Button } from '@/ui/button';
 import { DocLink } from '@/ui/doc-link';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
+import { ReportActions } from '@/ui/report-actions';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function APAgingPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
-  const [asOf, setAsOf] = useState(new Date().toISOString().slice(0, 10));
-  const [triggered, setTriggered] = useState(false);
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.report.ap-aging.period', 'this_month');
+  const asOf = to;
 
-  const { data, isLoading } = useQuery({
+  const { data, isFetching } = useQuery({
     queryKey: ['ap_aging', company_id, asOf],
     queryFn: () => getAdapter().reports.getAPAgingReport(company_id!, asOf),
-    enabled: triggered && !!company_id,
+    enabled: !!company_id,
   });
+
+  const exportRows: Record<string, unknown>[] = (data?.buckets ?? []).map(b => ({
+    Supplier: b.contact_name,
+    Current: b.current.toFixed(2),
+    '31-60': b.days_31_60.toFixed(2),
+    '61-90': b.days_61_90.toFixed(2),
+    '>90': b.over_90.toFixed(2),
+    Total: b.total.toFixed(2),
+  }));
+  const exportHeaders = ['Supplier', 'Current', '31-60', '61-90', '>90', 'Total'];
 
   return (
     <div className="space-y-5">
-      <h1 className="text-xl font-semibold text-ink-primary">{t('reports.ap_aging')}</h1>
-      <div className="flex items-end gap-3">
-        <Input label={t('reports.as_of_date')} type="date" value={asOf} onChange={e => setAsOf(e.target.value)} />
-        <Button size="sm" onClick={() => setTriggered(true)}>{t('reports.run')}</Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.ap_aging')}</h1>
+        <div data-print-hide className="flex flex-wrap items-center gap-2">
+          <PeriodPicker mode="asOf" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+          <ReportActions rows={exportRows} headers={exportHeaders} filename={`ap-aging-${asOf}`} disabled={!data} />
+        </div>
       </div>
 
-      {isLoading && <div className="text-sm text-ink-tertiary">{t('common.loading')}</div>}
+      {isFetching && !data && <div className="text-sm text-ink-tertiary">{t('common.loading')}</div>}
       {data && (
         <div className="rounded-card border border-border-subtle bg-surface-card overflow-x-auto">
+          <div className="border-b border-border-subtle px-5 py-3 text-sm text-ink-secondary">
+            {t('reports.as_of_date')}: {asOf}
+          </div>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary text-xs">

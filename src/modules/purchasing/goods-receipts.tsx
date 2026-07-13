@@ -6,6 +6,8 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Badge } from '@/ui/badge';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
 import type { GoodsReceiptRow, ContactRow } from '@/data/adapter';
 
 const statusColor: Record<string, string> = {
@@ -16,11 +18,18 @@ export default function GoodsReceiptsPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const navigate = useNavigate();
+  // Phase 47c — period filter (default All time = show every GRN).
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.goods-receipts.period', 'all_time');
 
-  const { data: grns = [], isLoading } = useQuery<GoodsReceiptRow[]>({
+  const { data: allGrns = [], isLoading } = useQuery<GoodsReceiptRow[]>({
     queryKey: ['goods_receipts', company_id],
     queryFn: () => getAdapter().goodsReceipts.list(company_id!),
     enabled: !!company_id,
+  });
+  const grns = allGrns.filter(grn => {
+    if (from && (grn.date as string) < from) return false;
+    if (to && (grn.date as string) > to) return false;
+    return true;
   });
   const { data: suppliers = [] } = useQuery<ContactRow[]>({
     queryKey: ['contacts', company_id, 'supplier'],
@@ -31,9 +40,12 @@ export default function GoodsReceiptsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-ink-primary">{t('purchasing.grn_title')}</h1>
-        <Button size="sm" onClick={() => navigate('/purchasing/grns/new')}>{t('purchasing.new_grn')}</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+          <Button size="sm" onClick={() => navigate('/purchasing/grns/new')}>{t('purchasing.new_grn')}</Button>
+        </div>
       </div>
       {isLoading ? (
         <div className="py-12 text-center text-sm text-ink-tertiary">{t('common.loading')}</div>

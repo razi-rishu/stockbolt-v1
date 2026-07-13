@@ -40,7 +40,20 @@
 
 /* ────────────────────────────────────────────────────────────────────
  * Print — strip everything except the document
- * ──────────────────────────────────────────────────────────────────── */
+ * ────────────────────────────────────────────────────────────────────
+ * IMPORTANT: every rule below is scoped under .signature-print-scope.
+ * This file is a side-effect import in 12 lazy-loaded editor chunks
+ * (invoice/bill/quote/etc.). Vite does not unload a lazy chunk's CSS on
+ * route change, so once ANY of those editors has been opened in a
+ * session, this stylesheet stays active app-wide for the rest of the
+ * session. An earlier version of this rule set used bare `body *`
+ * with no scoping ancestor — the very next print anywhere else in the
+ * app (a report, Settings, another tab) rendered blank, because
+ * `body * { visibility:hidden }` fired with no `.signature-page` on
+ * the page to re-reveal. Scoping every selector under
+ * `.signature-print-scope` (added to each of those 12 editors' view
+ * root) means the rule set can only ever affect a page that actually
+ * opts into it. */
 
 @media print {
   /* A4 paper, no system-imposed margins (we render our own inside the page) */
@@ -49,25 +62,24 @@
     margin: 0;
   }
 
-  /* Force background-colour printing on every browser engine. */
-  html, body, * {
+  /* Force background-colour printing on every browser engine, scoped to
+   * the document itself rather than the whole page. */
+  .signature-print-scope,
+  .signature-print-scope * {
     -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
   }
 
-  /* Step 1 — hide everything visually but keep the DOM intact. */
-  html, body {
-    margin: 0 !important;
-    padding: 0 !important;
-    background: #FFFFFF !important;
-  }
-  body * {
+  /* Step 1 — hide everything inside the scope wrapper visually but keep
+   * the DOM intact. Scoped selector (not bare `body *`) so this can
+   * never affect a page that doesn't render this wrapper. */
+  .signature-print-scope * {
     visibility: hidden !important;
   }
 
   /* Step 2 — make the signature-page subtree visible again. */
-  .signature-page,
-  .signature-page * {
+  .signature-print-scope .signature-page,
+  .signature-print-scope .signature-page * {
     visibility: visible !important;
   }
 
@@ -75,7 +87,7 @@
    * transforms (e.g. the gallery zoom slider) and shadows. The position:
    * absolute escapes parent layout so the page lands at paper 0,0
    * regardless of any wrapper padding. */
-  .signature-page {
+  .signature-print-scope .signature-page {
     position: absolute !important;
     left: 0 !important;
     top: 0 !important;
@@ -86,20 +98,23 @@
     min-height: 297mm !important;
     page-break-after: always;
   }
-  .signature-page:last-child {
+  .signature-print-scope .signature-page:last-child {
     page-break-after: auto;
   }
 
   /* Step 4 — kill the zoom wrapper transform specifically. (Doing this
    * with a targeted class instead of a wildcard avoids stripping the
    * page's own styling.) */
-  .signature-zoom-wrap {
+  .signature-print-scope .signature-zoom-wrap {
     transform: none !important;
     width: auto !important;
   }
 
-  /* Belt + braces — anything the consumer flags explicitly is hidden. */
-  [data-no-print="true"] {
+  /* Belt + braces — anything the consumer flags explicitly is hidden.
+   * data-print-hide is the one functioning attribute app-wide (see
+   * src/index.css); kept global (not scoped) since AppLayout's own
+   * sidebar/header markers must work everywhere, not just here. */
+  [data-print-hide] {
     display: none !important;
   }
 }

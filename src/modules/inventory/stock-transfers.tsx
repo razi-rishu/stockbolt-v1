@@ -6,6 +6,8 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Badge } from '@/ui/badge';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
 import type { StockTransferRow, WarehouseRow } from '@/data/adapter';
 
 const statusColor: Record<string, string> = {
@@ -16,11 +18,18 @@ export default function StockTransfersPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const navigate = useNavigate();
+  // Phase 47c — period filter (default All time = show every transfer).
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.stock-transfers.period', 'all_time');
 
-  const { data: transfers = [], isLoading } = useQuery<StockTransferRow[]>({
+  const { data: allTransfers = [], isLoading } = useQuery<StockTransferRow[]>({
     queryKey: ['stock_transfers', company_id],
     queryFn: () => getAdapter().stockTransfers.list(company_id!),
     enabled: !!company_id,
+  });
+  const transfers = allTransfers.filter(tr => {
+    if (from && (tr.date as string) < from) return false;
+    if (to && (tr.date as string) > to) return false;
+    return true;
   });
 
   const { data: warehouses = [] } = useQuery<WarehouseRow[]>({
@@ -32,9 +41,12 @@ export default function StockTransfersPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-ink-primary">{t('inventory.transfers_title')}</h1>
-        <Button size="sm" onClick={() => navigate('/inventory/transfers/new')}>{t('inventory.new_transfer')}</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+          <Button size="sm" onClick={() => navigate('/inventory/transfers/new')}>{t('inventory.new_transfer')}</Button>
+        </div>
       </div>
       {isLoading ? (
         <div className="py-12 text-center text-sm text-ink-tertiary">{t('common.loading')}</div>

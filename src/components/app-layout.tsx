@@ -613,15 +613,19 @@ export function AppLayout({ children }: AppLayoutProps) {
   return (
     <div className="flex h-screen bg-surface-page">
       {/* ── Desktop sidebar ───────────────────────────────────────────── */}
+      {/* data-print-hide: the only functioning print-hide attribute app-wide
+          (see src/index.css @media print). Without this, any in-app
+          window.print() call — including a report's own Print button —
+          prints the sidebar/topbar chrome along with the content. */}
       {!sidebarHidden && (
-        <aside className="hidden w-[236px] shrink-0 border-e border-border-subtle bg-surface-card lg:block">
+        <aside data-print-hide className="hidden w-[236px] shrink-0 border-e border-border-subtle bg-surface-card lg:block">
           {sidebarContent}
         </aside>
       )}
 
       {/* ── Mobile drawer ─────────────────────────────────────────────── */}
       {drawerOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div data-print-hide className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/40" onClick={() => setDrawerOpen(false)} />
           <aside className="absolute start-0 top-0 h-full w-[280px] border-e border-border-subtle bg-surface-card shadow-xl">
             <button
@@ -639,7 +643,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       {/* ── Main column ───────────────────────────────────────────────── */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="z-30 flex h-16 shrink-0 items-center gap-3 border-b border-border-subtle bg-surface-card px-4 lg:px-6">
+        <header data-print-hide className="z-30 flex h-16 shrink-0 items-center gap-3 border-b border-border-subtle bg-surface-card px-4 lg:px-6">
           {/* Hamburger — opens the drawer on mobile, collapses the sidebar on desktop */}
           <button
             type="button"

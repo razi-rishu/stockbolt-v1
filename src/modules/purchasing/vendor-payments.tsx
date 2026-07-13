@@ -6,6 +6,8 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { Badge } from '@/ui/badge';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
 import type { PaymentRow, ContactRow } from '@/data/adapter';
 
 const statusColor: Record<string, string> = { draft: 'muted', confirmed: 'success', void: 'danger' };
@@ -44,11 +46,18 @@ export default function VendorPaymentsPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const navigate = useNavigate();
+  // Phase 47c — period filter (default All time = show every vendor payment).
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.vendor-payments.period', 'all_time');
 
-  const { data: payments = [], isLoading } = useQuery<PaymentWithAlloc[]>({
+  const { data: allPayments = [], isLoading } = useQuery<PaymentWithAlloc[]>({
     queryKey: ['vendor_payments', company_id],
     queryFn: () => getAdapter().vendorPayments.list(company_id!) as Promise<PaymentWithAlloc[]>,
     enabled: !!company_id,
+  });
+  const payments = allPayments.filter(pmt => {
+    if (from && (pmt.date as string) < from) return false;
+    if (to && (pmt.date as string) > to) return false;
+    return true;
   });
 
   const { data: suppliers = [] } = useQuery<ContactRow[]>({
@@ -68,9 +77,12 @@ export default function VendorPaymentsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-ink-primary">{t('purchasing.vp_title')}</h1>
-        <Button size="sm" onClick={() => navigate('/purchasing/payments/new')}>{t('purchasing.new_vp')}</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+          <Button size="sm" onClick={() => navigate('/purchasing/payments/new')}>{t('purchasing.new_vp')}</Button>
+        </div>
       </div>
       {isLoading ? (
         <div className="py-12 text-center text-sm text-ink-tertiary">{t('common.loading')}</div>

@@ -202,9 +202,9 @@ export default function SalesReturnEditorPage() {
       linkedInvoiceNumber: linkedInv?.invoice_number ?? null,
     });
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
+      <div className="signature-print-scope" style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
         <div
-          data-no-print="true"
+          data-print-hide
           style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
         >
           <button onClick={() => navigate('/sales/returns')} style={{
@@ -261,7 +261,7 @@ export default function SalesReturnEditorPage() {
           </div>
         </div>
         {(confirmMutation.error || voidMutation.error) && (
-          <div data-no-print="true" style={{ color: '#b91c1c', fontSize: '13px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px' }}>
+          <div data-print-hide style={{ color: '#b91c1c', fontSize: '13px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px' }}>
             {String((confirmMutation.error as Error)?.message || (voidMutation.error as Error)?.message || confirmMutation.error || voidMutation.error)}
           </div>
         )}

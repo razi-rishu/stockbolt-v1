@@ -1,58 +1,61 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
-import type { SalesTrendLine } from '@/data/adapter';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
+import { ReportActions } from '@/ui/report-actions';
 
 function fmt(n: number) { return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
 
 export default function SalesTrendPage() {
   const { t } = useTranslation();
-  const adapter = getAdapter();
   const company_id = useAuthStore(s => s.company_id);
-
-  const today = new Date().toISOString().slice(0, 10);
-  const [from, setFrom]     = useState(today.slice(0, 7) + '-01');
-  const [to, setTo]         = useState(today);
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.report.sales-trend.period', 'this_month');
   const [bucket, setBucket] = useState<'day' | 'week' | 'month'>('day');
-  const [rows, setRows]     = useState<SalesTrendLine[]>([]);
-  const [loading, setLoading] = useState(false);
 
-  const run = async () => {
-    if (!company_id) return;
-    setLoading(true);
-    try { setRows(await adapter.reports.getSalesTrend(company_id, from, to, bucket)); }
-    catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  };
+  const { data, isFetching } = useQuery({
+    queryKey: ['sales_trend', company_id, from, to, bucket],
+    queryFn: () => getAdapter().reports.getSalesTrend(company_id!, from, to, bucket),
+    enabled: !!company_id,
+  });
+  const rows = data ?? [];
 
   const maxAmt = Math.max(...rows.map(r => r.net_sales), 1);
 
+  const exportRows: Record<string, unknown>[] = rows.map(r => ({
+    Period: r.bucket,
+    'Invoice Count': r.invoice_count,
+    'Gross Sales': r.gross_sales.toFixed(2),
+    Returns: r.returns.toFixed(2),
+    'Net Sales': r.net_sales.toFixed(2),
+    'Gross Profit': r.gross_profit.toFixed(2),
+  }));
+  const exportHeaders = ['Period', 'Invoice Count', 'Gross Sales', 'Returns', 'Net Sales', 'Gross Profit'];
+
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-ink-primary">{t('reports.sales_trend')}</h1>
-
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface-card p-4">
-        <div>
-          <label className="block text-xs text-ink-secondary mb-1">{t('common.date_from')}</label>
-          <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="input-field h-9 text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs text-ink-secondary mb-1">{t('common.date_to')}</label>
-          <input type="date" value={to} onChange={e => setTo(e.target.value)} className="input-field h-9 text-sm" />
-        </div>
-        <div>
-          <label className="block text-xs text-ink-secondary mb-1">{t('reports.bucket')}</label>
-          <select value={bucket} onChange={e => setBucket(e.target.value as 'day' | 'week' | 'month')} className="input-field h-9 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.sales_trend')}</h1>
+        <div data-print-hide className="flex flex-wrap items-center gap-2">
+          <select
+            value={bucket}
+            onChange={e => setBucket(e.target.value as 'day' | 'week' | 'month')}
+            className="h-[30px] rounded-lg border border-border-subtle bg-white px-2.5 text-xs font-semibold text-ink-secondary outline-none focus:border-brand-400"
+            title={t('reports.bucket')}
+          >
             <option value="day">{t('reports.bucket_day')}</option>
             <option value="week">{t('reports.bucket_week')}</option>
             <option value="month">{t('reports.bucket_month')}</option>
           </select>
+          <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+          <ReportActions rows={exportRows} headers={exportHeaders} filename={`sales-trend-${from}_${to}`} disabled={rows.length === 0} />
         </div>
-        <button onClick={run} disabled={loading} className="btn-primary h-9 px-4 text-sm">
-          {loading ? t('common.loading') : t('common.run')}
-        </button>
       </div>
+
+      {isFetching && rows.length === 0 && <p className="text-sm text-ink-secondary">{t('common.loading')}</p>}
+      {!isFetching && rows.length === 0 && <p className="text-sm text-ink-tertiary">{t('reports.no_data')}</p>}
 
       {rows.length > 0 && (
         <>

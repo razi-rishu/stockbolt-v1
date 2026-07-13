@@ -1,49 +1,48 @@
-import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
-import type { PurchasesBySupplierLine } from '@/data/adapter';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
+import { ReportActions } from '@/ui/report-actions';
 
 function fmt(n: number) { return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
 
 export default function PurchasesBySupplierPage() {
   const { t } = useTranslation();
-  const adapter = getAdapter();
   const company_id = useAuthStore(s => s.company_id);
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.report.purchases-by-supplier.period', 'this_month');
 
-  const today = new Date().toISOString().slice(0, 10);
-  const [from, setFrom]     = useState(today.slice(0, 7) + '-01');
-  const [to, setTo]         = useState(today);
-  const [rows, setRows]     = useState<PurchasesBySupplierLine[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const run = async () => {
-    if (!company_id) return;
-    setLoading(true);
-    try { setRows(await adapter.reports.getPurchasesBySupplier(company_id, from, to)); }
-    catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  };
+  const { data, isFetching } = useQuery({
+    queryKey: ['purchases_by_supplier', company_id, from, to],
+    queryFn: () => getAdapter().reports.getPurchasesBySupplier(company_id!, from, to),
+    enabled: !!company_id,
+  });
+  const rows = data ?? [];
 
   const totNet = rows.reduce((s, r) => s + r.net_purchases, 0);
 
+  const exportRows: Record<string, unknown>[] = rows.map(r => ({
+    Supplier: r.contact_name,
+    'Bill Count': r.bill_count,
+    'Gross Purchases': r.gross_purchases.toFixed(2),
+    'Net Purchases': r.net_purchases.toFixed(2),
+    '% of Total': r.pct_of_total.toFixed(1),
+  }));
+  const exportHeaders = ['Supplier', 'Bill Count', 'Gross Purchases', 'Net Purchases', '% of Total'];
+
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-ink-primary">{t('reports.purchases_by_supplier')}</h1>
-
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface-card p-4">
-        <div>
-          <label className="block text-xs text-ink-secondary mb-1">{t('common.date_from')}</label>
-          <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="input-field h-9 text-sm" />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.purchases_by_supplier')}</h1>
+        <div data-print-hide className="flex flex-wrap items-center gap-2">
+          <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+          <ReportActions rows={exportRows} headers={exportHeaders} filename={`purchases-by-supplier-${from}_${to}`} disabled={rows.length === 0} />
         </div>
-        <div>
-          <label className="block text-xs text-ink-secondary mb-1">{t('common.date_to')}</label>
-          <input type="date" value={to} onChange={e => setTo(e.target.value)} className="input-field h-9 text-sm" />
-        </div>
-        <button onClick={run} disabled={loading} className="btn-primary h-9 px-4 text-sm">
-          {loading ? t('common.loading') : t('common.run')}
-        </button>
       </div>
+
+      {isFetching && rows.length === 0 && <p className="text-sm text-ink-secondary">{t('common.loading')}</p>}
+      {!isFetching && rows.length === 0 && <p className="text-sm text-ink-tertiary">{t('reports.no_data')}</p>}
 
       {rows.length > 0 && (
         <div className="overflow-x-auto rounded-lg border border-border bg-surface-card shadow-sm">

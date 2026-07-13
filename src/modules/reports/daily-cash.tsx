@@ -1,8 +1,10 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
+import { ReportActions } from '@/ui/report-actions';
 import type { DailyCashLine } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -10,10 +12,10 @@ const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2,
 export default function DailyCashPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
-  const today = new Date().toISOString().slice(0, 10);
-  const [reportDate, setReportDate] = useState(today);
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.report.daily-cash.period', 'today');
+  const reportDate = to;
 
-  const { data: lines = [], isLoading, isFetching } = useQuery<DailyCashLine[]>({
+  const { data: lines = [], isFetching } = useQuery<DailyCashLine[]>({
     queryKey: ['report_daily_cash', company_id, reportDate],
     queryFn:  () => getAdapter().reports.dailyCash(company_id!, reportDate),
     enabled:  !!company_id,
@@ -23,20 +25,26 @@ export default function DailyCashPage() {
   const totalOut = lines.reduce((s, l) => s + l.total_out, 0);
   const netFlow  = totalIn - totalOut;
 
+  const exportRows: Record<string, unknown>[] = lines.map(l => ({
+    'Account Code': l.account_code,
+    'Account Name': l.account_name,
+    'Opening Balance': l.opening_balance.toFixed(2),
+    'Total In': l.total_in.toFixed(2),
+    'Total Out': l.total_out.toFixed(2),
+    'Closing Balance': l.closing_balance.toFixed(2),
+  }));
+  const exportHeaders = ['Account Code', 'Account Name', 'Opening Balance', 'Total In', 'Total Out', 'Closing Balance'];
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-ink-primary">{t('reports.daily_cash_title')}</h1>
           <p className="text-sm text-ink-tertiary mt-1">{t('reports.daily_cash_desc')}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <input
-            type="date"
-            value={reportDate}
-            onChange={e => setReportDate(e.target.value)}
-            className="h-9 rounded-md border border-border-strong px-3 text-sm"
-          />
+        <div data-print-hide className="flex flex-wrap items-center gap-2">
+          <PeriodPicker mode="asOf" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+          <ReportActions rows={exportRows} headers={exportHeaders} filename={`daily-cash-${reportDate}`} disabled={lines.length === 0} />
         </div>
       </div>
 
@@ -57,7 +65,7 @@ export default function DailyCashPage() {
       </div>
 
       <div className="bg-white border border-border-subtle rounded-lg overflow-hidden">
-        {isLoading || isFetching ? (
+        {isFetching && lines.length === 0 ? (
           <p className="p-8 text-center text-sm text-ink-tertiary">{t('common.loading')}</p>
         ) : lines.length === 0 ? (
           <p className="p-8 text-center text-ink-tertiary">{t('reports.no_data')}</p>

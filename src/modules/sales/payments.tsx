@@ -10,6 +10,8 @@ import { Pagination, paginate } from '@/ui/pagination';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
 import { StatusBadge } from '@/ui/status-badge';
+import { usePeriodPicker } from '@/hooks/use-period-picker';
+import { PeriodPicker } from '@/ui/period-picker';
 import type { PaymentRow, ContactRow } from '@/data/adapter';
 
 const PAGE_SIZE = 50;
@@ -64,11 +66,18 @@ export default function PaymentsPage() {
   const { company_id } = useAuthStore();
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
+  // Phase 47c — period filter (default All time = show every receipt).
+  const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.receipts.period', 'all_time');
 
-  const { data: allPayments = [], isLoading } = useQuery({
+  const { data: allPaymentsRaw = [], isLoading } = useQuery({
     queryKey: ['payments', company_id],
     queryFn: () => getAdapter().payments.list(company_id!, 'inbound'),
     enabled: !!company_id,
+  });
+  const allPayments = (allPaymentsRaw as PaymentWithAlloc[]).filter(p => {
+    if (from && (p.date as string) < from) return false;
+    if (to && (p.date as string) > to) return false;
+    return true;
   });
 
   const { data: reconciledIds = [] } = useQuery({
@@ -93,9 +102,16 @@ export default function PaymentsPage() {
         title={t('payments.title')}
         subtitle={`${allPayments.length} ${allPayments.length === 1 ? 'receipt' : 'receipts'}`}
         actions={
-          <Button size="sm" onClick={() => navigate('/sales/payments/new')}>
-            + {t('payments.new_payment')}
-          </Button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <PeriodPicker
+              mode="range" allowAllTime preset={preset} from={from} to={to}
+              onPresetChange={(p) => { setPreset(p); setPage(1); }}
+              onCustomRange={(f, tt) => { setCustomRange(f, tt); setPage(1); }}
+            />
+            <Button size="sm" onClick={() => navigate('/sales/payments/new')}>
+              + {t('payments.new_payment')}
+            </Button>
+          </div>
         }
       />
 
