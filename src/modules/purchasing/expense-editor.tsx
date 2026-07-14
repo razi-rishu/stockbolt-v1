@@ -66,6 +66,7 @@ import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { useHasPermission } from '@/hooks/use-permissions';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
+import { BackButton } from '@/ui/back-button';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { ContactPicker } from '@/components/contact-picker';
 import { CoaQuickCreate } from '@/components/quick-create/coa-quick-create';
@@ -496,11 +497,7 @@ export default function ExpenseEditorPage() {
           data-print-hide
           style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
         >
-          <button onClick={() => { if (confirmLeave()) navigate('/purchasing/expenses'); }} style={{
-            background: 'transparent', border: 'none', cursor: 'pointer',
-            fontSize: '13px', color: theme.inkMuted,
-          }}>← Expenses</button>
-          <span style={{ color: theme.inkFaint }}>/</span>
+          <BackButton to="/purchasing/expenses" label="Expenses" confirm={confirmLeave} />
           <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>
             {expense.expense_number}
           </h1>
@@ -540,11 +537,7 @@ export default function ExpenseEditorPage() {
     }}>
       {/* Top crumb + actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-        <button
-          onClick={() => { if (confirmLeave()) navigate('/purchasing/expenses'); }}
-          style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '13px', color: theme.inkMuted }}
-        >← Expenses</button>
-        <span style={{ color: theme.inkFaint }}>/</span>
+        <BackButton to="/purchasing/expenses" label="Expenses" confirm={confirmLeave} />
         <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>
           {isNew ? 'New expense' : (expense?.expense_number ?? '…')}
         </h1>

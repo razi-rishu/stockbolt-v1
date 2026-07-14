@@ -23,6 +23,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
+import { BackButton } from '@/ui/back-button';
 import { Tabs } from '@/ui/tabs';
 import { theme } from '@/ui/theme';
 import { StatusBadge } from '@/ui/status-badge';
@@ -297,9 +298,7 @@ export default function SupplierDetailPage() {
     <div className="space-y-6 pb-16">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
-        <button onClick={() => navigate('/contacts/suppliers')} className="text-sm text-ink-secondary hover:text-ink-primary">
-          ← {t('nav.suppliers')}
-        </button>
+        <BackButton to="/contacts/suppliers" label={t('nav.suppliers')} />
         <span className="text-ink-tertiary">/</span>
         <h1 className="text-xl font-semibold text-ink-primary">{contact?.name ?? '…'}</h1>
         {contact?.name_ar && <span dir="rtl" className="text-sm text-ink-secondary">({contact.name_ar})</span>}

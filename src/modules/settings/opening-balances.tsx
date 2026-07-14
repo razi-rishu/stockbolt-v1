@@ -37,6 +37,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
+import { BackButton } from '@/ui/back-button';
 import { Tabs } from '@/ui/tabs';
 import { buildCoaTreeOptions, coaOptionLabel } from '@/core/seeds/coa-tree';
 import type {
@@ -929,10 +930,7 @@ export default function OpeningBalancesPage() {
     <div className="space-y-6 pb-16">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
-        <button
-          onClick={() => navigate('/settings')}
-          className="text-sm text-ink-secondary hover:text-ink-primary"
-        >← Settings</button>
+        <BackButton to="/settings" label="Settings" />
         <span className="text-ink-tertiary">/</span>
         <h1 className="text-xl font-semibold text-ink-primary">Opening Balances</h1>
         <span className="rounded-pill bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">Migration</span>

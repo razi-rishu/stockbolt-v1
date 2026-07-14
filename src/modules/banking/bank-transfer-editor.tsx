@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
+import { BackButton } from '@/ui/back-button';
 import type { BankAccountRow, BankTransferRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -127,6 +128,7 @@ export default function BankTransferEditorPage() {
 
   return (
     <div className="space-y-6 max-w-2xl">
+      <BackButton to="/banking/transfers" label={t('banking.transfers_title')} />
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-ink-primary">
           {isNew ? t('banking.new_transfer') : (transfer?.transfer_number ?? t('banking.new_transfer'))}

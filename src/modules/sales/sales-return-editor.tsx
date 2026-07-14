@@ -6,6 +6,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Button } from '@/ui/button';
+import { BackButton } from '@/ui/back-button';
 import { SearchableSelect } from '@/ui/searchable-select';
 // Phase 14.04 — Signature template view mode for saved sales returns.
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
@@ -207,11 +208,7 @@ export default function SalesReturnEditorPage() {
           data-print-hide
           style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
         >
-          <button onClick={() => navigate('/sales/returns')} style={{
-            background: 'transparent', border: 'none', cursor: 'pointer',
-            fontSize: '13px', color: '#64748b',
-          }}>← {t('returns.sales_returns_title') || 'Sales Returns'}</button>
-          <span style={{ color: '#94a3b8' }}>/</span>
+          <BackButton to="/sales/returns" label={t('returns.sales_returns_title') || 'Sales Returns'} />
           <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
             {existing.return_number}
           </h1>

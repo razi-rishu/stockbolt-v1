@@ -8,6 +8,7 @@ import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Button } from '@/ui/button';
+import { BackButton } from '@/ui/back-button';
 import { Modal } from '@/ui/modal';
 import { SearchableSelect } from '@/ui/searchable-select';
 import type { ProductRow, WarehouseRow, StockTransferItemInsert } from '@/data/adapter';
@@ -154,6 +155,7 @@ export default function TransferEditorPage() {
 
   return (
     <div className="space-y-6 pb-16">
+      <BackButton to="/inventory/transfers" label={t('inventory.transfers_title')} />
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-ink-primary">
           {isNew ? t('inventory.new_transfer') : (existing?.transfer_number ?? t('inventory.transfer_details'))}

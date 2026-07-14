@@ -8,6 +8,7 @@ import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Button } from '@/ui/button';
+import { BackButton } from '@/ui/back-button';
 import { Modal } from '@/ui/modal';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { calcAdjustmentLine } from '@/core/inventory/inventory-calc';
@@ -180,6 +181,7 @@ export default function AdjustmentEditorPage() {
 
   return (
     <div className="space-y-6 pb-16">
+      <BackButton to="/inventory/adjustments" label={t('inventory.adjustments_title')} />
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-ink-primary">
           {isNew ? t('inventory.new_adjustment') : (existing?.adjustment_number ?? t('inventory.adjustment_details'))}

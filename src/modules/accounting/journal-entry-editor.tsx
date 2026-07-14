@@ -9,6 +9,7 @@ import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { postJournalEntry, reverseJournalEntry, JournalValidationError } from '@/core/gl/posting-engine';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
+import { BackButton } from '@/ui/back-button';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { buildCoaTreeOptions, coaOptionLabel } from '@/core/seeds/coa-tree';
@@ -223,9 +224,7 @@ export default function JournalEntryEditorPage() {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3">
-          <button onClick={() => { if (confirmLeave()) navigate('/accounting/journal-entries'); }} className="text-sm text-brand-600 hover:underline">
-            ← {t('accounting.je_title')}
-          </button>
+          <BackButton to="/accounting/journal-entries" label={t('accounting.je_title')} confirm={confirmLeave} />
         </div>
         <div className="rounded-card border border-border-subtle bg-surface-card p-5 space-y-3">
           <div className="flex items-start justify-between">
@@ -314,9 +313,7 @@ export default function JournalEntryEditorPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <button onClick={() => { if (confirmLeave()) navigate('/accounting/journal-entries'); }} className="text-sm text-brand-600 hover:underline">
-          ← {t('accounting.je_title')}
-        </button>
+        <BackButton to="/accounting/journal-entries" label={t('accounting.je_title')} confirm={confirmLeave} />
       </div>
       <h1 className="text-xl font-semibold text-ink-primary">{t('accounting.new_je')}</h1>
 

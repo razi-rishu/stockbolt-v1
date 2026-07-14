@@ -8,6 +8,7 @@ import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
+import { BackButton } from '@/ui/back-button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { ContactPicker } from '@/components/contact-picker';
@@ -592,11 +593,7 @@ export default function PaymentEditorPage() {
           data-print-hide
           style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
         >
-          <button onClick={() => { if (confirmLeave()) navigate('/sales/payments'); }} style={{
-            background: 'transparent', border: 'none', cursor: 'pointer',
-            fontSize: '13px', color: theme.inkMuted,
-          }}>← {t('payments.title')}</button>
-          <span style={{ color: theme.inkFaint }}>/</span>
+          <BackButton to="/sales/payments" label={t('payments.title')} confirm={confirmLeave} />
           <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>
             {existing.payment_number}
           </h1>
@@ -659,11 +656,7 @@ export default function PaymentEditorPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '64px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-        <button onClick={() => { if (confirmLeave()) navigate('/sales/payments'); }} style={{
-          background: 'transparent', border: 'none', cursor: 'pointer',
-          fontSize: '13px', color: theme.inkMuted,
-        }}>← {t('payments.title')}</button>
-        <span style={{ color: theme.inkFaint }}>/</span>
+        <BackButton to="/sales/payments" label={t('payments.title')} confirm={confirmLeave} />
         <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>
           {isNew ? t('payments.new_payment') : existing?.payment_number ?? '…'}
         </h1>

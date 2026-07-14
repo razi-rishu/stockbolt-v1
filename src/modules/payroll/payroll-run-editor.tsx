@@ -19,6 +19,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Button } from '@/ui/button';
+import { BackButton } from '@/ui/back-button';
 import { Modal } from '@/ui/modal';
 import { theme } from '@/ui/theme';
 import { buildSif, downloadSif, type SifResult } from './wps-sif';
@@ -192,10 +193,7 @@ export default function PayrollRunEditorPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '48px' }}>
       {/* ── Header ───────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-        <button onClick={() => navigate('/payroll/runs')} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '13px', color: '#64748b' }}>
-          ← Payroll Runs
-        </button>
-        <span style={{ color: '#94a3b8' }}>/</span>
+        <BackButton to="/payroll/runs" label="Payroll Runs" />
         <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: theme.ink }}>
           {run.run_number} — {MONTHS[run.period_month - 1]} {run.period_year}
         </h1>

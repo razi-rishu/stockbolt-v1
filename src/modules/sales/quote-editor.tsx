@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency, useCompanyCountry, useCompanyRoundingStep } from '@/hooks/use-company-currency';
 import { defaultTaxRate } from '@/lib/locale';
 import { Button } from '@/ui/button';
+import { BackButton } from '@/ui/back-button';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { Select } from '@/ui/select';
@@ -274,11 +275,7 @@ export default function QuoteEditorPage() {
           data-print-hide
           style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
         >
-          <button onClick={() => { if (confirmLeave()) navigate('/sales/quotes'); }} style={{
-            background: 'transparent', border: 'none', cursor: 'pointer',
-            fontSize: '13px', color: '#64748b',
-          }}>← {t('sales.quotes_title')}</button>
-          <span style={{ color: '#94a3b8' }}>/</span>
+          <BackButton to="/sales/quotes" label={t('sales.quotes_title')} confirm={confirmLeave} />
           <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
             {existing.quote_number}
           </h1>
@@ -320,8 +317,7 @@ export default function QuoteEditorPage() {
   return (
     <div className="space-y-6 pb-16">
       <div className="flex items-center gap-3">
-        <button onClick={() => { if (confirmLeave()) navigate('/sales/quotes'); }} className="text-sm text-ink-secondary hover:text-ink-primary">← {t('sales.quotes_title')}</button>
-        <span className="text-ink-tertiary">/</span>
+        <BackButton to="/sales/quotes" label={t('sales.quotes_title')} confirm={confirmLeave} />
         <h1 className="text-xl font-semibold text-ink-primary">{isNew ? t('sales.new_quote') : existing?.quote_number ?? '…'}</h1>
         {!isNew && <span className="rounded-pill bg-gray-100 px-2.5 py-0.5 text-xs capitalize text-gray-600">{existing?.status}</span>}
         <div className="ms-auto flex gap-2">

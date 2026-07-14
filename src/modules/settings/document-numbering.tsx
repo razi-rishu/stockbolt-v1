@@ -11,10 +11,10 @@
  */
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
+import { BackButton } from '@/ui/back-button';
 import { theme } from '@/ui/theme';
 import type { DocumentSequenceRow } from '@/data/adapter';
 
@@ -74,7 +74,6 @@ const inputCls = 'h-8 rounded-card border border-border-subtle bg-surface-card p
 
 export default function DocumentNumberingPage() {
   const { company_id } = useAuthStore();
-  const navigate = useNavigate();
   const qc = useQueryClient();
   const [drafts, setDrafts] = useState<Record<string, RowDraft>>({});
   const [savedPrefix, setSavedPrefix] = useState<string | null>(null);
@@ -128,7 +127,7 @@ export default function DocumentNumberingPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '980px' }}>
       <div className="flex flex-wrap items-center gap-3">
-        <button onClick={() => navigate('/settings')} className="text-sm text-ink-secondary hover:text-ink-primary">← Settings</button>
+        <BackButton to="/settings" label="Settings" />
         <span className="text-ink-tertiary">/</span>
         <h1 className="text-xl font-semibold text-ink-primary">Document Numbering</h1>
       </div>

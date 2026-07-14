@@ -8,6 +8,7 @@ import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { useCompanyCurrency, useCompanyCountry } from '@/hooks/use-company-currency';
 import { defaultTaxRate } from '@/lib/locale';
 import { Button } from '@/ui/button';
+import { BackButton } from '@/ui/back-button';
 import { SearchableSelect } from '@/ui/searchable-select';
 // Phase 14.04 — Signature template view mode for saved debit notes.
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
@@ -263,11 +264,7 @@ export default function DebitNoteEditorPage() {
           data-print-hide
           style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
         >
-          <button onClick={() => navigate('/purchasing/debit-notes')} style={{
-            background: 'transparent', border: 'none', cursor: 'pointer',
-            fontSize: '13px', color: '#64748b',
-          }}>← {t('returns.debit_notes_title') || 'Debit Notes'}</button>
-          <span style={{ color: '#94a3b8' }}>/</span>
+          <BackButton to="/purchasing/debit-notes" label={t('returns.debit_notes_title') || 'Debit Notes'} />
           <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
             {existing.debit_note_number}
           </h1>

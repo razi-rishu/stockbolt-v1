@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
+import { BackButton } from '@/ui/back-button';
 import { Input } from '@/ui/input';
 import { Textarea } from '@/ui/textarea';
 import { Select } from '@/ui/select';
@@ -253,12 +254,7 @@ export default function ProductDetailPage() {
       {/* ── Page header ─────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <button
-            onClick={() => navigate('/products')}
-            style={{ fontSize: '12px', color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left', display: 'flex', alignItems: 'center', gap: '4px' }}
-          >
-            ← {t('products.back')}
-          </button>
+          <BackButton to="/products" label={t('products.back')} />
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', lineHeight: 1.2 }}>
               {product?.name ?? t('common.loading')}

@@ -44,6 +44,42 @@
   box-shadow: var(--glass-shadow-hover);
 }
 
+/* ── Back button — shared frosted-glass "go back" pill (Phase 48) ──────────── */
+.sb-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  max-width: 220px;
+  padding: 0 15px 0 11px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  color: #475569;                       /* slate-600 */
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  user-select: none;
+  transition: transform .18s cubic-bezier(.2,.7,.3,1), box-shadow .18s ease, color .18s ease, background .18s ease;
+}
+.sb-back-btn:hover {
+  color: #6d28d9;                       /* violet-700 */
+  background: rgba(255, 255, 255, 0.80);
+  transform: translateY(-1px);
+  box-shadow: var(--glass-shadow-hover), 0 6px 18px rgba(124, 58, 237, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+.sb-back-btn:active { transform: translateY(0) scale(.98); }
+.sb-back-btn:focus-visible { outline: 2px solid rgba(124, 58, 237, .5); outline-offset: 2px; }
+.sb-back-btn svg { width: 16px; height: 16px; flex-shrink: 0; transition: transform .18s cubic-bezier(.2,.7,.3,1); }
+.sb-back-btn:hover svg { transform: translateX(-3px); }
+[dir="rtl"] .sb-back-btn svg { transform: scaleX(-1); }
+[dir="rtl"] .sb-back-btn:hover svg { transform: scaleX(-1) translateX(-3px); }
+
 /*
  * Phase 12.36 — design-system uplift for legacy `.rounded-card` containers.
  *

@@ -11,6 +11,7 @@ import { applyRoundOff } from '@/core/sales/invoice-calc';
 import { defaultTaxRate } from '@/lib/locale';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
+import { BackButton } from '@/ui/back-button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Modal } from '@/ui/modal';
@@ -664,11 +665,7 @@ export default function InvoiceEditorPage() {
           data-print-hide
           style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
         >
-          <button onClick={() => { if (confirmLeave()) navigate('/sales/invoices'); }} style={{
-            background: 'transparent', border: 'none', cursor: 'pointer',
-            fontSize: '13px', color: '#64748b',
-          }}>← {t('sales.invoices_title')}</button>
-          <span style={{ color: '#94a3b8' }}>/</span>
+          <BackButton to="/sales/invoices" label={t('sales.invoices_title')} confirm={confirmLeave} />
           <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
             {existing.invoice_number}
           </h1>
@@ -752,11 +749,7 @@ export default function InvoiceEditorPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '64px' }}>
       {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-        <button onClick={() => { if (confirmLeave()) navigate('/sales/invoices'); }} style={{
-          background: 'transparent', border: 'none', cursor: 'pointer',
-          fontSize: '13px', color: '#64748b',
-        }}>← {t('sales.invoices_title')}</button>
-        <span style={{ color: '#94a3b8' }}>/</span>
+        <BackButton to="/sales/invoices" label={t('sales.invoices_title')} confirm={confirmLeave} />
         <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
           {isNew ? t('sales.new_invoice') : existing?.invoice_number ?? '…'}
         </h1>

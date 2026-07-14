@@ -9,6 +9,7 @@ import { useCompanyCurrency, useCompanyCountry, useCompanyRoundingStep } from '@
 import { applyRoundOff } from '@/core/sales/invoice-calc';
 import { defaultTaxRate } from '@/lib/locale';
 import { Button } from '@/ui/button';
+import { BackButton } from '@/ui/back-button';
 import { SearchableSelect } from '@/ui/searchable-select';
 // Phase 14.04 — Signature template view mode for saved credit notes.
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
@@ -283,11 +284,7 @@ export default function CreditNoteEditorPage() {
           data-print-hide
           style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
         >
-          <button onClick={() => navigate('/sales/credit-notes')} style={{
-            background: 'transparent', border: 'none', cursor: 'pointer',
-            fontSize: '13px', color: '#64748b',
-          }}>← {t('returns.credit_notes_title') || 'Credit Notes'}</button>
-          <span style={{ color: '#94a3b8' }}>/</span>
+          <BackButton to="/sales/credit-notes" label={t('returns.credit_notes_title') || 'Credit Notes'} />
           <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
             {existing.credit_note_number}
           </h1>

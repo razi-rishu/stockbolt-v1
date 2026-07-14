@@ -19,6 +19,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
+import { BackButton } from '@/ui/back-button';
 import {
   downloadCSV, downloadXLSX, readPickedFile, type RawRow,
 } from './_io';
@@ -303,9 +304,7 @@ export default function ImportExportHub() {
   return (
     <div className="space-y-6 pb-16">
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/settings')} className="text-sm text-ink-secondary hover:text-ink-primary">
-          ← Settings
-        </button>
+        <BackButton to="/settings" label="Settings" />
         <span className="text-ink-tertiary">/</span>
         <h1 className="text-xl font-semibold text-ink-primary">Import / Export</h1>
       </div>
