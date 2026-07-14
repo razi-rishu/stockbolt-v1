@@ -9,6 +9,12 @@ export function createSelfHostedAdapter(): DataAdapter {
   };
 
   return {
+    apiKeys: {
+      hasApiAccess: () => notImplemented('apiKeys.hasApiAccess'),
+      list:         () => notImplemented('apiKeys.list'),
+      create:       () => notImplemented('apiKeys.create'),
+      revoke:       () => notImplemented('apiKeys.revoke'),
+    },
     auth: {
       signUp: () => notImplemented('auth.signUp'),
       signIn: () => notImplemented('auth.signIn'),

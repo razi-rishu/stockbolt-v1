@@ -45,6 +45,7 @@ const ExchangeRatesPage  = lazy(() => import('@/modules/settings/exchange-rates'
 const OpeningBalancesPage = lazy(() => import('@/modules/settings/opening-balances'));
 const DocumentNumberingPage = lazy(() => import('@/modules/settings/document-numbering'));
 const ImportExportPage    = lazy(() => import('@/modules/settings/import-export'));
+const DeveloperSettingsPage = lazy(() => import('@/modules/settings/developer'));
 const CategoriesPage     = lazy(() => import('@/modules/catalog/categories'));
 const BrandsPage         = lazy(() => import('@/modules/catalog/brands'));
 const VehicleMakesPage   = lazy(() => import('@/modules/catalog/vehicle-makes'));
@@ -267,6 +268,9 @@ function AppRoutes() {
                   <Route path="import-export"    element={<ImportExportPage />} />
                   <Route path="users" element={<RequirePermission perm="users.manage" />}>
                     <Route index element={<UsersRolesPage />} />
+                  </Route>
+                  <Route path="developer" element={<RequirePermission perm="settings.write" />}>
+                    <Route index element={<DeveloperSettingsPage />} />
                   </Route>
                 </Route>
                 {/* Catalog masters + admin tools — authenticated; writes still RLS-gated */}

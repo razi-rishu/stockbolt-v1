@@ -3,6 +3,7 @@ import type { Database, Json } from '@/types/database';
 import { normalizeSettings, DEFAULT_TEMPLATE_SETTINGS } from '@/modules/print/engine/types';
 import type {
   DataAdapter, Company, Profile, AppRole, CompanyInviteRow, PendingInvite, RoleRow,
+  ApiKeyRow, ApiScope,
   CoaRow, CoaInsert, TaxRateInsert, PaymentMethodInsert, UnitInsert,
   WarehouseInsert, BankAccountInsert, CompanyUpdate, OnboardingRpcInput,
   CategoryRow, CategoryInsert, CategoryUpdate,
@@ -102,6 +103,40 @@ export function createSupabaseAdapter(
   const rpcAny = (fn: string, args: Record<string, unknown>) =>
     (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)(fn, args);
   return {
+    // ── Phase 49 — Public API keys (per-company) ────────────────────────────
+    apiKeys: {
+      async hasApiAccess() {
+        const { data, error } = await rpcAny('company_has_api_access', {});
+        assertNoError(error as Error | null, 'apiKeys.hasApiAccess');
+        return Boolean(data);
+      },
+      async list() {
+        const { data, error } = await rpcAny('list_api_keys', {});
+        assertNoError(error as Error | null, 'apiKeys.list');
+        return (data ?? []) as ApiKeyRow[];
+      },
+      async create(name: string, scopes: ApiScope[]) {
+        // Secret + hash are generated in the browser; the DB only ever sees the hash.
+        const bytes = crypto.getRandomValues(new Uint8Array(24));
+        const toHex = (arr: Uint8Array) => Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
+        const apiKey = `sk_live_${toHex(bytes)}`;
+        const digestBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(apiKey));
+        const keyHash = toHex(new Uint8Array(digestBuf));
+        const { data, error } = await rpcAny('create_api_key', {
+          p_name: name,
+          p_scopes: scopes,
+          p_key_prefix: apiKey.slice(0, 16),
+          p_key_hash: keyHash,
+        });
+        assertNoError(error as Error | null, 'apiKeys.create');
+        const row = (Array.isArray(data) ? data[0] : data) as { id?: string } | null;
+        return { id: (row?.id ?? '') as string, api_key: apiKey };
+      },
+      async revoke(id: string) {
+        const { error } = await rpcAny('revoke_api_key', { p_id: id });
+        assertNoError(error as Error | null, 'apiKeys.revoke');
+      },
+    },
     // ── Phase 31 — SaaS subscription & billing (M1/M2) ──────────────────────
     billing: {
       async getSubscription() {

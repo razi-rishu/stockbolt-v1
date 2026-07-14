@@ -72,6 +72,12 @@ export const SETTINGS_SECTIONS: SettingsNavSection[] = [
     ],
   },
   {
+    title: 'Developer',
+    items: [
+      { to: '/settings/developer', icon: '🔌', title: 'Developer & API', desc: 'API keys to connect your store or other software to StockBolt.' },
+    ],
+  },
+  {
     title: 'System & Admin',
     items: [
       { to: '/settings/system-health', icon: '✅', title: 'System Health',      desc: 'Runs invariant checks (TB balance, AR matches, stock matches GL).' },

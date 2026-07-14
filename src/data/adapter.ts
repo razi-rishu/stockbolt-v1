@@ -2102,12 +2102,36 @@ export interface PDCChequesAPI {
 }
 
 // ── Root adapter ──────────────────────────────────────────────────────────────
+// ── Public API keys (Phase 49) ──────────────────────────────────────────────
+export type ApiScope = 'read' | 'write:contacts' | 'write:orders';
+export interface ApiKeyRow {
+  id: string;
+  name: string;
+  key_prefix: string;      // shown in the UI, e.g. sk_live_ab12cd34
+  scopes: string[];
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  expires_at: string | null;
+}
+export interface ApiKeysAPI {
+  /** Whether the company's plan includes API access (paid gate). */
+  hasApiAccess(): Promise<boolean>;
+  /** Keys for the current company — never returns the secret. */
+  list(): Promise<ApiKeyRow[]>;
+  /** Generates the secret in the browser; returns the raw key ONCE (store it now). */
+  create(name: string, scopes: ApiScope[]): Promise<{ id: string; api_key: string }>;
+  /** Soft-revoke a key (keeps the row for audit). */
+  revoke(id: string): Promise<void>;
+}
+
 export interface DataAdapter {
   auth: AuthAPI;
   companies: CompaniesAPI;
   printTemplates: PrintTemplatesAPI;
   profiles: ProfilesAPI;
   users: UsersAPI;
+  apiKeys: ApiKeysAPI;
   onboarding: OnboardingAPI;
   // Phase 2
   categories: CategoriesAPI;

@@ -1554,3 +1554,48 @@ describe('Phase 38 — tax-inclusive documents post balanced JEs', () => {
     expect(orphans, `confirmed rounded invoices without a 5900 GL row: ${JSON.stringify(orphans)}`).toEqual([]);
   });
 });
+
+describe('Phase 49 — Public API foundation', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ present: boolean }>(`SELECT to_regclass('public.api_keys') IS NOT NULL AS present`);
+    return r[0]?.present === true;
+  }
+
+  it('phase49: api_keys/api_request_log tables + management RPCs exist (soft until applied)', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ phase49 not applied yet — run supabase/migrations/20260714000001_phase49_api_keys_foundation.sql');
+      return;
+    }
+    const log = await sql<{ present: boolean }>(`SELECT to_regclass('public.api_request_log') IS NOT NULL AS present`);
+    expect(log[0]?.present).toBe(true);
+
+    const fns = await sql<{ proname: string }>(
+      `SELECT proname FROM pg_proc WHERE proname IN
+         ('create_api_key','list_api_keys','revoke_api_key','company_has_api_access')`);
+    expect(fns.map(f => f.proname).sort()).toEqual(
+      ['company_has_api_access', 'create_api_key', 'list_api_keys', 'revoke_api_key']);
+
+    // Only a hash is stored — never the raw secret.
+    const cols = (await sql<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+         WHERE table_schema='public' AND table_name='api_keys'`)).map(c => c.column_name);
+    expect(cols).toContain('key_hash');
+    expect(cols).not.toContain('key');
+    expect(cols).not.toContain('secret');
+
+    // RLS on (deny-by-default; all access via SECURITY DEFINER RPCs).
+    const rls = await sql<{ relrowsecurity: boolean }>(
+      `SELECT relrowsecurity FROM pg_class WHERE oid = 'public.api_keys'::regclass`);
+    expect(rls[0]?.relrowsecurity).toBe(true);
+  });
+
+  it('phase49: Professional plan includes the api_access feature (warn-only)', async () => {
+    if (!(await applied())) return;
+    const rows = await sql<{ has: boolean }>(
+      `SELECT COALESCE((features->>'api_access')::boolean, false) AS has
+         FROM public.subscription_plans WHERE code = 'professional'`);
+    if (!rows[0]?.has) {
+      console.warn('⚠ professional plan missing api_access flag — key creation will be blocked until set');
+    }
+  });
+});
