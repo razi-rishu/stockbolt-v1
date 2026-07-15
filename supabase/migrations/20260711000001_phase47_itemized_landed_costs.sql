@@ -42,13 +42,21 @@ COMMENT ON TABLE public.vendor_bill_landed_costs IS
 
 ALTER TABLE public.vendor_bill_landed_costs ENABLE ROW LEVEL SECURITY;
 
+-- Idempotent: CREATE POLICY has no IF NOT EXISTS, so a re-run of this file
+-- aborted here ("policy vblc_read already exists") and rolled back the whole
+-- script — including the confirm_vendor_bill replacement below. Drop-then-
+-- create so this migration can always be safely re-applied.
+DROP POLICY IF EXISTS vblc_read   ON public.vendor_bill_landed_costs;
 CREATE POLICY vblc_read ON public.vendor_bill_landed_costs
   FOR SELECT USING (company_id IN (SELECT company_id FROM public.profiles WHERE id = auth.uid()));
+DROP POLICY IF EXISTS vblc_insert ON public.vendor_bill_landed_costs;
 CREATE POLICY vblc_insert ON public.vendor_bill_landed_costs
   FOR INSERT WITH CHECK (company_id IN (SELECT company_id FROM public.profiles WHERE id = auth.uid()));
+DROP POLICY IF EXISTS vblc_update ON public.vendor_bill_landed_costs;
 CREATE POLICY vblc_update ON public.vendor_bill_landed_costs
   FOR UPDATE USING (company_id IN (SELECT company_id FROM public.profiles WHERE id = auth.uid()))
              WITH CHECK (company_id IN (SELECT company_id FROM public.profiles WHERE id = auth.uid()));
+DROP POLICY IF EXISTS vblc_delete ON public.vendor_bill_landed_costs;
 CREATE POLICY vblc_delete ON public.vendor_bill_landed_costs
   FOR DELETE USING (company_id IN (SELECT company_id FROM public.profiles WHERE id = auth.uid()));
 
