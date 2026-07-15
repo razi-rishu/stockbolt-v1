@@ -1589,6 +1589,26 @@ describe('Phase 49 — Public API foundation', () => {
     expect(rls[0]?.relrowsecurity).toBe(true);
   });
 
+  it('phase50: api_current_stock RPC exists and is service-role-only (soft until applied)', async () => {
+    const fns = await sql<{ proname: string }>(
+      `SELECT proname FROM pg_proc WHERE proname = 'api_current_stock'`);
+    if (fns.length === 0) {
+      console.warn('⚠ phase50 not applied yet — run supabase/migrations/20260715000001_phase50_api_stock_rpc.sql');
+      return;
+    }
+    // Neither anon nor authenticated may execute it — only service_role (the
+    // Edge Function). Otherwise any logged-in user could pass an arbitrary
+    // company_id and read another tenant's stock quantities.
+    const grants = await sql<{ grantee: string }>(
+      `SELECT grantee FROM information_schema.routine_privileges
+        WHERE routine_schema='public' AND routine_name='api_current_stock'
+          AND privilege_type='EXECUTE'`);
+    const grantees = grants.map(g => g.grantee);
+    expect(grantees).not.toContain('anon');
+    expect(grantees).not.toContain('authenticated');
+    expect(grantees).toContain('service_role');
+  });
+
   it('phase49: Professional plan includes the api_access feature (warn-only)', async () => {
     if (!(await applied())) return;
     const rows = await sql<{ has: boolean }>(
