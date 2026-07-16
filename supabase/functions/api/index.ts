@@ -401,6 +401,206 @@ async function updateContact(key: ApiKey, id: string, req: Request): Promise<Res
   return json(200, { data });
 }
 
+// ── writes: orders → DRAFT invoice (Phase 4 — scope write:orders) ──────────
+// The agreed model: an external order lands as an UNPOSTED draft invoice —
+// no GL, no stock, no VAT until a human clicks Confirm in the app. Pricing
+// and tax are recomputed from StockBolt's own catalog; whatever prices the
+// caller sends are IGNORED (a buggy or compromised store can't underprice).
+// Idempotency: external_ref is the caller's order id — if an invoice with
+// that reference already exists, we return it instead of creating another,
+// so network retries can never duplicate an order.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+interface OrderItemInput { product_id?: string; sku?: string; quantity: number; description?: string }
+
+async function createOrder(key: ApiKey, req: Request): Promise<Response> {
+  const body = await readJsonBody(req);
+  if (body instanceof Response) return body;
+
+  // 1. external_ref — the idempotency key.
+  const ref = typeof body.external_ref === 'string' ? body.external_ref.trim() : '';
+  if (!ref) return err(400, 'bad_request', 'external_ref is required — your own order id, e.g. "SHOP-1001". Retries with the same ref never create duplicates.');
+  if (ref.length > 100) return err(400, 'bad_request', 'external_ref exceeds 100 characters.');
+
+  const { data: existing } = await supabase.from('invoices')
+    .select('id, invoice_number, status, total_amount, currency')
+    .eq('company_id', key.company_id).eq('reference', ref)
+    .limit(1).maybeSingle();
+  if (existing) {
+    return json(200, {
+      data: {
+        invoice_id: existing.id, invoice_number: existing.invoice_number,
+        status: existing.status, total_amount: Number(existing.total_amount),
+        currency: existing.currency, external_ref: ref, deduplicated: true,
+      },
+    });
+  }
+
+  // 2. Resolve the customer: {id} or {email [, name, phone]} (match-or-create).
+  const cust = body.customer;
+  if (typeof cust !== 'object' || cust === null || Array.isArray(cust)) {
+    return err(400, 'bad_request', 'customer is required: { "id": "…" } or { "email": "…", "name": "…" }.');
+  }
+  const c = cust as Record<string, unknown>;
+  let contactId: string | null = null;
+  let customerCreated = false;
+
+  if (typeof c.id === 'string') {
+    if (!UUID_RE.test(c.id)) return err(400, 'bad_request', 'customer.id must be a UUID.');
+    const { data: row } = await supabase.from('contacts').select('id, type, is_active')
+      .eq('company_id', key.company_id).eq('id', c.id).maybeSingle();
+    if (!row) return err(404, 'not_found', 'customer.id does not exist.');
+    if (!row.is_active) return err(400, 'bad_request', 'This customer is inactive.');
+    if (row.type === 'supplier') return err(400, 'bad_request', 'This contact is a supplier, not a customer.');
+    contactId = row.id as string;
+  } else if (typeof c.email === 'string' && EMAIL_RE.test(c.email.trim())) {
+    const email = c.email.trim();
+    contactId = await findByEmail(key.company_id, email);
+    if (!contactId) {
+      const name = typeof c.name === 'string' ? c.name.trim() : '';
+      if (!name) return err(400, 'bad_request', 'No customer with this email exists — provide customer.name to create one.');
+      const { data: co } = await supabase.from('companies').select('base_currency').eq('id', key.company_id).maybeSingle();
+      const { data: created, error: cerr } = await supabase.from('contacts')
+        .insert({
+          company_id: key.company_id, name, type: 'customer', email,
+          phone: typeof c.phone === 'string' ? c.phone.trim() || null : null,
+          currency: (co as { base_currency?: string } | null)?.base_currency ?? 'AED',
+          is_active: true,
+        })
+        .select('id').single();
+      if (cerr) return err(500, 'internal', 'Customer creation failed.');
+      contactId = created.id as string;
+      customerCreated = true;
+    }
+  } else {
+    return err(400, 'bad_request', 'customer must contain a valid id or email.');
+  }
+
+  // 3. Items — product references + quantities only; prices come from us.
+  if (!Array.isArray(body.items) || body.items.length === 0) return err(400, 'bad_request', 'items must be a non-empty array.');
+  if (body.items.length > 100) return err(400, 'bad_request', 'items exceeds 100 lines.');
+  const items: OrderItemInput[] = [];
+  for (let i = 0; i < body.items.length; i++) {
+    const raw = body.items[i];
+    if (typeof raw !== 'object' || raw === null) return err(400, 'bad_request', `items[${i}] must be an object.`);
+    const it = raw as Record<string, unknown>;
+    const qty = Number(it.quantity);
+    if (!Number.isFinite(qty) || qty <= 0 || qty > 100000) return err(400, 'bad_request', `items[${i}].quantity must be a number between 0 and 100000.`);
+    const hasId = typeof it.product_id === 'string' && UUID_RE.test(it.product_id);
+    const hasSku = typeof it.sku === 'string' && (it.sku as string).trim() !== '';
+    if (!hasId && !hasSku) return err(400, 'bad_request', `items[${i}] needs product_id or sku.`);
+    items.push({
+      product_id: hasId ? (it.product_id as string) : undefined,
+      sku: hasSku ? (it.sku as string).trim() : undefined,
+      quantity: Math.round(qty * 1000) / 1000,
+      description: typeof it.description === 'string' ? (it.description as string).trim().slice(0, 500) : undefined,
+    });
+  }
+
+  // Resolve all referenced products in one query (company-scoped).
+  const ids = items.filter((i) => i.product_id).map((i) => i.product_id as string);
+  const skus = items.filter((i) => !i.product_id).map((i) => i.sku as string);
+  const ors: string[] = [];
+  if (ids.length) ors.push(`id.in.(${ids.join(',')})`);
+  if (skus.length) ors.push(`sku.in.(${skus.map((s) => `"${s.replace(/"/g, '')}"`).join(',')})`);
+  const { data: prods, error: perr } = await supabase.from('products')
+    .select('id, sku, name, selling_price, tax_category, is_active')
+    .eq('company_id', key.company_id)
+    .or(ors.join(','));
+  if (perr) return err(500, 'internal', 'Product lookup failed.');
+  const byId = new Map((prods ?? []).map((p) => [p.id as string, p]));
+  const bySku = new Map((prods ?? []).map((p) => [(p.sku as string).toLowerCase(), p]));
+
+  // 4. Company tax context: standard rate = seeded active tax_rates row
+  //    matching the country default (IN → 18, GCC → 5) — same rule as the app.
+  const { data: co } = await supabase.from('companies')
+    .select('base_currency, country_code').eq('id', key.company_id).maybeSingle();
+  const currency = (co as { base_currency?: string } | null)?.base_currency ?? 'AED';
+  const target = ((co as { country_code?: string } | null)?.country_code ?? '').toUpperCase() === 'IN' ? 18 : 5;
+  const { data: rates } = await supabase.from('tax_rates')
+    .select('rate, is_active').eq('company_id', key.company_id).eq('is_active', true);
+  const stdRate = (rates ?? []).some((r) => Number(r.rate) === target) ? target : 0;
+
+  // 5. Build lines — OUR prices, OUR tax.
+  const lines: Record<string, unknown>[] = [];
+  let subtotal = 0, taxTotal = 0;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    const p = it.product_id ? byId.get(it.product_id) : bySku.get((it.sku as string).toLowerCase());
+    if (!p) return err(400, 'bad_request', `items[${i}]: product ${it.product_id ?? it.sku} not found.`);
+    if (!p.is_active) return err(400, 'bad_request', `items[${i}]: product ${p.sku} is inactive.`);
+    const rate = p.tax_category === 'standard' ? stdRate : 0;
+    const lineSubtotal = round2(Number(p.selling_price) * it.quantity);
+    const lineTax = round2(lineSubtotal * rate / 100);
+    subtotal = round2(subtotal + lineSubtotal);
+    taxTotal = round2(taxTotal + lineTax);
+    lines.push({
+      product_id: p.id,
+      description: it.description ?? (p.name as string),
+      quantity: it.quantity,
+      unit_price: Number(p.selling_price),
+      discount_percent: 0, discount_amount: 0,
+      tax_category: p.tax_category, tax_rate: rate, tax_amount: lineTax,
+      line_subtotal: lineSubtotal, line_total: round2(lineSubtotal + lineTax),
+      sort_order: i,
+    });
+  }
+  const total = round2(subtotal + taxTotal);
+
+  // 6. Header: official number series, today's date, due date from the
+  //    customer's payment terms. Draft = inert (no GL / stock / VAT).
+  const { data: invNum, error: numErr } = await supabase.rpc('get_next_document_number', {
+    p_company_id: key.company_id, p_prefix: 'INV',
+  });
+  if (numErr || !invNum) return err(500, 'internal', 'Could not allocate an invoice number.');
+
+  const { data: contact } = await supabase.from('contacts')
+    .select('name, payment_terms_days').eq('id', contactId).maybeSingle();
+  const today = new Date().toISOString().slice(0, 10);
+  const terms = Number((contact as { payment_terms_days?: number } | null)?.payment_terms_days ?? 0);
+  const due = terms > 0 ? new Date(Date.now() + terms * 86400000).toISOString().slice(0, 10) : null;
+
+  const { data: inv, error: ierr } = await supabase.from('invoices')
+    .insert({
+      company_id: key.company_id, invoice_number: invNum as string,
+      contact_id: contactId, date: today, due_date: due, reference: ref,
+      currency, exchange_rate: 1, prices_inclusive: false,
+      subtotal, discount_amount: 0, tax_amount: taxTotal, total_amount: total,
+      status: 'draft', sale_channel: 'standard',
+      notes: typeof body.notes === 'string' ? (body.notes as string).trim().slice(0, 1000) || null : null,
+    })
+    .select('id, invoice_number').single();
+  if (ierr) return err(500, 'internal', 'Invoice creation failed.');
+
+  const { error: liErr } = await supabase.from('invoice_items')
+    .insert(lines.map((l) => ({ ...l, invoice_id: inv.id })));
+  if (liErr) {
+    // No cross-request transactions over PostgREST — roll back the draft
+    // header by hand (safe: a draft has no GL/stock footprint).
+    await supabase.from('invoices').delete().eq('id', inv.id);
+    return err(500, 'internal', 'Order lines could not be saved; the draft was rolled back.');
+  }
+
+  return json(201, {
+    data: {
+      invoice_id: inv.id,
+      invoice_number: inv.invoice_number,
+      status: 'draft',
+      external_ref: ref,
+      customer: { id: contactId, name: (contact as { name?: string } | null)?.name ?? null, created: customerCreated },
+      currency, subtotal, tax_amount: taxTotal, total_amount: total,
+      items: lines.map((l) => ({
+        sku: (byId.get(l.product_id as string)?.sku as string | undefined) ?? null,
+        description: l.description, quantity: l.quantity, unit_price: l.unit_price,
+        tax_amount: l.tax_amount, line_total: l.line_total,
+      })),
+      deduplicated: false,
+      note: 'Created as a DRAFT — review and Confirm it in StockBolt to post stock, VAT and the ledger.',
+    },
+  });
+}
+
 // ── router ──────────────────────────────────────────────────────────────────
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -423,7 +623,7 @@ async function route(req: Request, key: ApiKey, path: string, url: URL): Promise
     return requireScope(key, 'write:contacts') ?? updateContact(key, contact[1], req);
   }
   if (path === '/v1/orders' && method === 'POST') {
-    return err(501, 'not_implemented', 'Order creation arrives in the next version of the API.');
+    return requireScope(key, 'write:orders') ?? createOrder(key, req);
   }
 
   // Reads.
