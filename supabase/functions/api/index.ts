@@ -266,12 +266,170 @@ async function getInvoice(key: ApiKey, id: string): Promise<Response> {
   });
 }
 
+// ── writes: contacts (Phase 3 — scope write:contacts) ──────────────────────
+// Field allow-lists. Deliberately NOT writable via API: credit_limit and
+// price levels (risk controls the merchant sets in-app), code, company_id.
+// currency is create-only — changing it under existing documents is unsafe.
+const CONTACT_CREATE_FIELDS = [
+  'name', 'name_ar', 'type', 'email', 'phone', 'mobile', 'tax_id', 'currency',
+  'address_street', 'address_city', 'address_state', 'address_country', 'address_postal',
+  'contact_person_name', 'contact_person_phone', 'contact_person_email',
+  'payment_terms_days', 'notes',
+];
+const CONTACT_PATCH_FIELDS = [...CONTACT_CREATE_FIELDS.filter((f) => f !== 'currency'), 'is_active'];
+const CONTACT_RETURN_COLS =
+  'id, code, name, type, email, phone, mobile, currency, tax_id, address_street, address_city, address_country, credit_limit, payment_terms_days, is_active, created_at, updated_at';
+
+const EMAIL_RE = /^\S+@\S+\.\S+$/;
+
+async function readJsonBody(req: Request): Promise<Record<string, unknown> | Response> {
+  let body: unknown;
+  try { body = await req.json(); } catch { return err(400, 'bad_request', 'Body must be valid JSON.'); }
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return err(400, 'bad_request', 'Body must be a JSON object.');
+  }
+  return body as Record<string, unknown>;
+}
+
+/** Validate + trim the writable fields. Strict: unknown keys are a 400 so
+ *  integrators catch typos instead of silently losing data. */
+function pickContactFields(body: Record<string, unknown>, allowed: string[]): Record<string, unknown> | Response {
+  const unknown = Object.keys(body).filter((k) => !allowed.includes(k));
+  if (unknown.length > 0) {
+    return err(400, 'bad_request', `Unknown field(s): ${unknown.join(', ')}. Writable: ${allowed.join(', ')}.`);
+  }
+  const out: Record<string, unknown> = {};
+  for (const k of allowed) {
+    if (!(k in body)) continue;
+    const v = body[k];
+    if (k === 'payment_terms_days') {
+      const n = Number(v);
+      if (!Number.isInteger(n) || n < 0 || n > 730) return err(400, 'bad_request', 'payment_terms_days must be an integer between 0 and 730.');
+      out[k] = n;
+    } else if (k === 'is_active') {
+      if (typeof v !== 'boolean') return err(400, 'bad_request', 'is_active must be true or false.');
+      out[k] = v;
+    } else if (v === null) {
+      out[k] = null;
+    } else if (typeof v === 'string') {
+      const s = v.trim();
+      if (s.length > 500) return err(400, 'bad_request', `${k} exceeds 500 characters.`);
+      out[k] = s === '' ? null : s;
+    } else {
+      return err(400, 'bad_request', `${k} must be a string${k === 'payment_terms_days' ? '' : ' or null'}.`);
+    }
+  }
+  if (typeof out.type === 'string' && !['customer', 'supplier', 'both'].includes(out.type as string)) {
+    return err(400, 'bad_request', "type must be 'customer', 'supplier' or 'both'.");
+  }
+  if (typeof out.email === 'string' && !EMAIL_RE.test(out.email as string)) {
+    return err(400, 'bad_request', 'email is not a valid address.');
+  }
+  return out;
+}
+
+/** Case-insensitive same-company email match (dedupe guard). */
+async function findByEmail(companyId: string, email: string, excludeId?: string): Promise<string | null> {
+  let q = supabase.from('contacts').select('id')
+    .eq('company_id', companyId)
+    .ilike('email', likeEscape(email))
+    .limit(1);
+  if (excludeId) q = q.neq('id', excludeId);
+  const { data } = await q;
+  return (data?.[0]?.id as string | undefined) ?? null;
+}
+
+async function createContact(key: ApiKey, req: Request): Promise<Response> {
+  const body = await readJsonBody(req);
+  if (body instanceof Response) return body;
+  const fields = pickContactFields(body, CONTACT_CREATE_FIELDS);
+  if (fields instanceof Response) return fields;
+
+  if (typeof fields.name !== 'string' || fields.name === null || fields.name === '') {
+    return err(400, 'bad_request', 'name is required.');
+  }
+  if (!fields.type) fields.type = 'customer';
+
+  // Duplicate guard: one contact per email per company. 409 carries the
+  // existing id so the integrator can PATCH instead (also makes naive
+  // create-retries safe).
+  if (typeof fields.email === 'string') {
+    const existing = await findByEmail(key.company_id, fields.email);
+    if (existing) return json(409, { error: { code: 'conflict', message: 'A contact with this email already exists.', existing_id: existing } });
+  }
+
+  if (typeof fields.currency === 'string') {
+    if (!/^[A-Z]{3}$/.test(fields.currency as string)) return err(400, 'bad_request', 'currency must be a 3-letter code, e.g. AED.');
+  } else {
+    const { data: co } = await supabase.from('companies').select('base_currency').eq('id', key.company_id).maybeSingle();
+    fields.currency = (co as { base_currency?: string } | null)?.base_currency ?? 'AED';
+  }
+
+  const { data, error } = await supabase.from('contacts')
+    .insert({ ...fields, company_id: key.company_id, is_active: true })
+    .select(CONTACT_RETURN_COLS)
+    .single();
+  if (error) return err(500, 'internal', 'Insert failed.');
+  return json(201, { data });
+}
+
+async function updateContact(key: ApiKey, id: string, req: Request): Promise<Response> {
+  const body = await readJsonBody(req);
+  if (body instanceof Response) return body;
+  const fields = pickContactFields(body, CONTACT_PATCH_FIELDS);
+  if (fields instanceof Response) return fields;
+  if (Object.keys(fields).length === 0) return err(400, 'bad_request', 'No writable fields in body.');
+  if ('name' in fields && (fields.name === null || fields.name === '')) {
+    return err(400, 'bad_request', 'name cannot be empty.');
+  }
+
+  const { data: existing } = await supabase.from('contacts').select('id')
+    .eq('company_id', key.company_id).eq('id', id).maybeSingle();
+  if (!existing) return err(404, 'not_found', 'Contact not found.');
+
+  if (typeof fields.email === 'string') {
+    const dupe = await findByEmail(key.company_id, fields.email, id);
+    if (dupe) return json(409, { error: { code: 'conflict', message: 'Another contact already uses this email.', existing_id: dupe } });
+  }
+
+  const { data, error } = await supabase.from('contacts')
+    .update(fields)
+    .eq('company_id', key.company_id).eq('id', id)
+    .select(CONTACT_RETURN_COLS)
+    .single();
+  if (error) return err(500, 'internal', 'Update failed.');
+  return json(200, { data });
+}
+
 // ── router ──────────────────────────────────────────────────────────────────
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+function requireScope(key: ApiKey, scope: string): Response | null {
+  return key.scopes.includes(scope)
+    ? null
+    : err(403, 'forbidden', `This key lacks the '${scope}' scope.`);
+}
+
 async function route(req: Request, key: ApiKey, path: string, url: URL): Promise<Response> {
-  if (req.method !== 'GET') return err(405, 'method_not_allowed', 'This phase of the API is read-only; writes arrive in the next version.');
-  if (!key.scopes.includes('read')) return err(403, 'forbidden', "This key lacks the 'read' scope.");
+  const method = req.method;
+
+  // Writes (Phase 3): contacts.
+  if (path === '/v1/contacts' && method === 'POST') {
+    return requireScope(key, 'write:contacts') ?? createContact(key, req);
+  }
+  const contact = path.match(/^\/v1\/contacts\/([^/]+)$/);
+  if (contact && method === 'PATCH') {
+    if (!UUID.test(contact[1])) return err(400, 'bad_request', 'Contact id must be a UUID.');
+    return requireScope(key, 'write:contacts') ?? updateContact(key, contact[1], req);
+  }
+  if (path === '/v1/orders' && method === 'POST') {
+    return err(501, 'not_implemented', 'Order creation arrives in the next version of the API.');
+  }
+
+  // Reads.
+  if (method !== 'GET') return err(405, 'method_not_allowed', `${method} is not supported on ${path}.`);
+  const readGate = requireScope(key, 'read');
+  if (readGate) return readGate;
 
   if (path === '/v1/me') return getMe(key);
   if (path === '/v1/products') return listProducts(key, url);
