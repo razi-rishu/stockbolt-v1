@@ -16,7 +16,6 @@ import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Modal } from '@/ui/modal';
 import { SearchableSelect } from '@/ui/searchable-select';
-import { currencyOptions } from '@/lib/currencies';
 import { AddNewButton } from '@/ui/add-new-button';
 import { SmartEntitySearch, highlightMatch } from '@/components/smart-entity-search';
 import { ContactPicker } from '@/components/contact-picker';
@@ -969,12 +968,12 @@ export default function InvoiceEditorPage() {
             disabled={!canEdit || isVoid}
             onChange={e => setHeader(h => ({ ...h, reference: e.target.value }))}
           />
-          <Select
+          {/* C2 — document currency locked to the company base currency; the
+              posting engine does not yet convert (see docs/MULTICURRENCY_AUDIT.md). */}
+          <Input
             label={t('sales.currency')}
-            options={currencyOptions(header.currency)}
             value={header.currency}
-            disabled={!canEdit || isVoid}
-            onChange={e => setHeader(h => ({ ...h, currency: e.target.value }))}
+            disabled
           />
         </div>
         <div className="mt-3">

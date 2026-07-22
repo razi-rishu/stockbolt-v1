@@ -10,8 +10,6 @@ import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
-import { Select } from '@/ui/select';
-import { currencyOptions } from '@/lib/currencies';
 import { ContactPicker } from '@/components/contact-picker';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
@@ -409,7 +407,9 @@ export default function QuoteEditorPage() {
           <Input label={t('sales.date')} type="date" required value={header.date} disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, date: e.target.value }))} />
           <Input label={t('sales.expiry_date')} type="date" value={header.expiry_date} disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, expiry_date: e.target.value }))} />
           <Input label={t('sales.reference')} value={header.reference} disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, reference: e.target.value }))} />
-          <Select label={t('sales.currency')} options={currencyOptions(header.currency)} value={header.currency} disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, currency: e.target.value }))} />
+          {/* C2 — document currency locked to the company base currency; the
+              posting engine does not yet convert (see docs/MULTICURRENCY_AUDIT.md). */}
+          <Input label={t('sales.currency')} value={header.currency} disabled />
         </div>
         <div className="mt-3">
           <Input label={t('sales.notes')} value={header.notes} disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, notes: e.target.value }))} />

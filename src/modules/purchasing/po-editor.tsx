@@ -12,7 +12,6 @@ import { BackButton } from '@/ui/back-button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { SearchableSelect } from '@/ui/searchable-select';
-import { currencyOptions } from '@/lib/currencies';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 // Phase 14.04 — Signature template view mode for saved POs.
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
@@ -402,8 +401,9 @@ export default function POEditorPage() {
             disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, expected_delivery_date: e.target.value }))} />
           <Input label={t('purchasing.reference')} value={header.reference}
             disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, reference: e.target.value }))} />
-          <Select label={t('purchasing.currency')} options={currencyOptions(header.currency)} value={header.currency}
-            disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, currency: e.target.value }))} />
+          {/* C2 — document currency locked to the company base currency; the
+              posting engine does not yet convert (see docs/MULTICURRENCY_AUDIT.md). */}
+          <Input label={t('purchasing.currency')} value={header.currency} disabled />
         </div>
         <div className="mt-3">
           <Input label={t('purchasing.notes')} value={header.notes}
