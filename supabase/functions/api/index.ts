@@ -515,19 +515,32 @@ async function createOrder(key: ApiKey, req: Request): Promise<Response> {
     });
   }
 
-  // Resolve all referenced products in one query (company-scoped).
+  // Resolve all referenced products, company-scoped. M3: parameterized .in()
+  // queries instead of a string-built .or() filter — supabase-js escapes each
+  // value, so a sku with special characters can no longer perturb the filter.
+  // Partitioning is unchanged: an item with a product_id resolves by id,
+  // otherwise by sku.
   const ids = items.filter((i) => i.product_id).map((i) => i.product_id as string);
   const skus = items.filter((i) => !i.product_id).map((i) => i.sku as string);
-  const ors: string[] = [];
-  if (ids.length) ors.push(`id.in.(${ids.join(',')})`);
-  if (skus.length) ors.push(`sku.in.(${skus.map((s) => `"${s.replace(/"/g, '')}"`).join(',')})`);
-  const { data: prods, error: perr } = await supabase.from('products')
-    .select('id, sku, name, selling_price, tax_category, is_active')
-    .eq('company_id', key.company_id)
-    .or(ors.join(','));
-  if (perr) return err(500, 'internal', 'Product lookup failed.');
-  const byId = new Map((prods ?? []).map((p) => [p.id as string, p]));
-  const bySku = new Map((prods ?? []).map((p) => [(p.sku as string).toLowerCase(), p]));
+  const prods: Record<string, unknown>[] = [];
+  if (ids.length) {
+    const { data, error: e } = await supabase.from('products')
+      .select('id, sku, name, selling_price, tax_category, is_active')
+      .eq('company_id', key.company_id)
+      .in('id', ids);
+    if (e) return err(500, 'internal', 'Product lookup failed.');
+    if (data) prods.push(...(data as Record<string, unknown>[]));
+  }
+  if (skus.length) {
+    const { data, error: e } = await supabase.from('products')
+      .select('id, sku, name, selling_price, tax_category, is_active')
+      .eq('company_id', key.company_id)
+      .in('sku', skus);
+    if (e) return err(500, 'internal', 'Product lookup failed.');
+    if (data) prods.push(...(data as Record<string, unknown>[]));
+  }
+  const byId = new Map(prods.map((p) => [p.id as string, p]));
+  const bySku = new Map(prods.map((p) => [(p.sku as string).toLowerCase(), p]));
 
   // 4. Company tax context: standard rate = seeded active tax_rates row
   //    matching the country default (IN → 18, GCC → 5) — same rule as the app.

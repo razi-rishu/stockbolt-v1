@@ -1,0 +1,104 @@
+================================================================================
+StockBolt ERP — Audit M3: Implementation Result
+Parameterize the order endpoint's product lookup (remove string-built .or()).
+================================================================================
+Audit cycle date: 2026-07-19   |   Implemented: 2026-07-24
+Scope:  M3 — replace the string-interpolated .or() product-resolution filter in
+        createOrder() with parameterized .in('id', ids) + .in('sku', skus),
+        merging results while preserving id-or-sku behaviour. NO change to
+        validation, company scoping, draft creation, or any logic outside product
+        resolution.
+Status: IMPLEMENTED. Edge-only change (no migration). Not committed (owner
+        commits/pushes). Effective after a separate Edge Function deploy.
+================================================================================
+
+
+FILES CHANGED
+--------------------------------------------------------------------------------
+  M  supabase/functions/api/index.ts   (createOrder product-resolution block only;
+                                         +24 / -11)
+  No migration, no src/ (app) code, no DB change.
+
+
+IMPLEMENTATION EXPLANATION
+--------------------------------------------------------------------------------
+  BEFORE (string-built filter, escaping only "):
+     const ors: string[] = [];
+     if (ids.length)  ors.push(`id.in.(${ids.join(',')})`);
+     if (skus.length) ors.push(`sku.in.(${skus.map(s => `"${s.replace(/"/g,'')}"`).join(',')})`);
+     supabase.from('products').select(...).eq('company_id', key.company_id).or(ors.join(','));
+
+  AFTER (two parameterized .in() queries, merged):
+     const prods: Record<string, unknown>[] = [];
+     if (ids.length) {
+       .from('products').select(...).eq('company_id', key.company_id).in('id', ids)
+       -> on error 500; else prods.push(...data)
+     }
+     if (skus.length) {
+       .from('products').select(...).eq('company_id', key.company_id).in('sku', skus)
+       -> on error 500; else prods.push(...data)
+     }
+     const byId  = new Map(prods.map(p => [p.id as string, p]));
+     const bySku = new Map(prods.map(p => [(p.sku as string).toLowerCase(), p]));
+
+  Key points:
+   * supabase-js `.in(col, array)` builds the `in.(...)` filter and escapes each
+     value itself — no string interpolation, no quote-strip. A sku containing `,`,
+     `)`, `"`, or `\` can no longer perturb the filter or be silently corrupted.
+   * The id-OR-sku partitioning is UNCHANGED: `ids` = items with a product_id,
+     `skus` = items without one (resolved by sku). Downstream still does
+     `it.product_id ? byId.get(...) : bySku.get(...)`.
+   * Behaviour preserved: the two result sets are merged into the SAME byId/bySku
+     maps as before; if a product happens to match in both sets, the Map keys
+     dedupe it — no double-counting. The empty side is skipped.
+   * The select columns, the parameterized `.eq('company_id', key.company_id)`
+     scope, the 500-on-lookup-error, validation, tax/line building, and draft
+     creation are all IDENTICAL to before.
+
+  Out of scope (untouched, per instruction): item validation (product_id UUID
+  check, sku trim, qty bounds), company scoping, draft-invoice creation, and every
+  other part of createOrder.
+
+
+WHY THIS IS SAFE / IN SCOPE
+--------------------------------------------------------------------------------
+  * The only change is HOW products are looked up; WHICH products resolve (by id
+    or sku, within the company) is unchanged.
+  * No new DB object, no migration, no app code. Edge-only.
+  * Removes the injection surface AND the special-character corruption in one move.
+
+
+ROLLBACK PLAN
+--------------------------------------------------------------------------------
+  Additive-behaviour, no data/schema: revert supabase/functions/api/index.ts and
+  redeploy the Edge Function. Nothing else to undo.
+
+
+VERIFICATION CHECKLIST
+--------------------------------------------------------------------------------
+  Done now (pre-deploy):
+    [PASS] The string-built .or()/quote-strip is gone; no `ors` reference remains
+           (grep) — the Deno file has no dangling symbol.
+    [PASS] Parameterized `.in('id', ids)` and `.in('sku', skus)` are present, each
+           still `.eq('company_id', key.company_id)`.
+    [PASS] byId/bySku maps and downstream resolution unchanged; partitioning
+           (ids = with product_id, skus = without) unchanged.
+    [PASS] Scope: only supabase/functions/api/index.ts changed (no migration, no
+           src/, no DB) — git status/diff.
+    [NOTE] The Edge Function is Deno (outside the app tsconfig), so `npm run
+           typecheck` does not cover it; verified by inspection.
+
+  After the owner deploys (supabase functions deploy api):
+    [ ] POST /v1/orders with a normal multi-item order (some by product_id, some
+        by sku) -> resolves the same products and creates the draft as before.
+    [ ] POST /v1/orders with a sku containing `,` / `)` / `"` / `\` -> resolves the
+        matching product if one exists, else a clean 400 "product not found";
+        never a 500 or a wrong-product match (the injection/corruption is closed).
+    [ ] An unknown sku still returns 400 "product ... not found".
+
+
+STATUS: M3 implemented — order-endpoint product lookup now uses parameterized
+.in() queries instead of a string-built .or() filter, preserving id-or-sku
+behaviour. Edge-only, no migration, no app code. Not committed (owner commits +
+pushes); effective after `supabase functions deploy api`. Stop after M3.
+================================================================================
