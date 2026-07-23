@@ -1942,9 +1942,15 @@ export function createSupabaseAdapter(
         // Note: chart_of_accounts.type uses values 'asset','liability','equity','income','expense'
         // (per the CHECK constraint). Earlier code mistakenly read account_type/'revenue';
         // fixed here to use real column names.
+        // AC-1.0: exclude year-end-close JE legs. The close entry (dated at the
+        // fiscal year-end) debits/credits income & expense accounts to zero them
+        // into Retained Earnings; if it were counted, a closed year's P&L — whose
+        // range spans the year-end — would net to ~zero. (The Balance Sheet must
+        // INCLUDE the close JE, since it moves earnings into equity, so the
+        // exclusion lives here in the P&L, not in the shared GL fetch.)
         const { data, error } = await client
           .from('general_ledger')
-          .select('account_code, debit, credit, chart_of_accounts!inner(name, type, sub_type)')
+          .select('account_code, debit, credit, chart_of_accounts!inner(name, type, sub_type), journal_entries(source_type)')
           .eq('company_id', company_id)
           .gte('date', from)
           .lte('date', to);
@@ -1952,6 +1958,9 @@ export function createSupabaseAdapter(
 
         const byCode: Record<string, { name: string; type: string; sub_type: string | null; debit: number; credit: number }> = {};
         for (const row of data ?? []) {
+          // AC-1.0: skip year-end-close JE legs (see the select comment above).
+          const je = row.journal_entries as unknown as { source_type: string } | null;
+          if (je?.source_type === 'year_end_close') continue;
           const coa = row.chart_of_accounts as unknown as { name: string; type: string; sub_type: string | null };
           if (!['income', 'expense'].includes(coa.type)) continue;
           if (!byCode[row.account_code]) {
