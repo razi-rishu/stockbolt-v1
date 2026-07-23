@@ -1,0 +1,107 @@
+================================================================================
+StockBolt ERP — Audit M1, Phase P1: Implementation Result
+Add Strict-Transport-Security (HSTS) + Permissions-Policy response headers.
+================================================================================
+Audit cycle date: 2026-07-19   |   Implemented: 2026-07-23
+Scope:  M1-P1 ONLY — (1) Strict-Transport-Security, (2) Permissions-Policy.
+        NO CSP (deferred to M1-P2), NO application code, NO HTML, NO Supabase
+        config, NO authentication change.
+Status: IMPLEMENTED + JSON-validated. Not committed (owner commits/pushes).
+        Takes effect on the next Vercel deploy.
+================================================================================
+
+
+FILES CHANGED
+--------------------------------------------------------------------------------
+  M  vercel.json   (+2 header lines in the "/(.*)" headers block; the only file)
+  No src/, no index.html, no Supabase config, no auth, no DB.
+
+
+IMPLEMENTATION EXPLANATION
+--------------------------------------------------------------------------------
+  Two headers were appended to the existing global ("/(.*)") headers block in
+  vercel.json (alongside the current X-Content-Type-Options / X-Frame-Options /
+  Referrer-Policy):
+
+    Strict-Transport-Security: max-age=63072000; includeSubDomains
+      - Instructs browsers to use HTTPS only for this host (and subdomains) for
+        2 years. Matches the approved analysis (§14).
+      - `preload` is DELIBERATELY OMITTED — preload is a hard-to-reverse,
+        domain-wide commitment; it can be added later once the domain is
+        confirmed ready.
+      - `includeSubDomains` ASSUMES every subdomain of the production domain is
+        served over HTTPS. On Vercel-hosted domains this holds. If the production
+        domain has (or later adds) an HTTP subdomain, drop `includeSubDomains`.
+
+    Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+      - Disables these powerful browser features site-wide (empty allowlist).
+      - Verified UNUSED so nothing breaks: no getUserMedia/BarcodeDetector in the
+        app (the barcode scanner is a keyboard-wedge device, not camera-based);
+        PayPal is a server-side redirect, not the Payment Request API.
+      - usb / serial / bluetooth were left at their defaults (NOT disabled) so the
+        scanner/printer hardware feature is unaffected regardless of how it talks
+        to devices.
+
+  CSP was NOT added (out of M1-P1 scope) — it is the report-only-first rollout in
+  M1-P2.
+
+
+WHY THIS IS SAFE / IN SCOPE
+--------------------------------------------------------------------------------
+  * Pure edge/config change in one file; no application behaviour, HTML, Supabase,
+    or auth touched.
+  * Both headers are additive to the existing block; the three current headers are
+    unchanged.
+  * Permissions-Policy only disables verified-unused features, so no functionality
+    is affected. HSTS only enforces HTTPS, which the site already uses (Vercel is
+    HTTPS-only).
+
+
+ROLLBACK PLAN
+--------------------------------------------------------------------------------
+  * Config only, no data/schema: revert vercel.json (remove the two lines) and the
+    next Vercel deploy restores the prior headers.
+  * CAVEAT — HSTS is the least client-reversible header: once a browser has cached
+    `max-age`, it will refuse plain HTTP for this host for up to 2 years even after
+    the header is removed. This is safe here (the site is HTTPS-only), but it means
+    "rollback" stops NEW HSTS caching; it cannot un-set HSTS already cached in
+    visitors' browsers until their max-age expires. `preload` was omitted precisely
+    to keep this reversible.
+  * Permissions-Policy is fully reversible (no client-side persistence).
+
+
+POST-IMPLEMENTATION VERIFICATION CHECKLIST
+--------------------------------------------------------------------------------
+  Done now (pre-deploy):
+    [PASS] vercel.json is valid JSON (parsed).
+    [PASS] The "/(.*)" block now lists: X-Content-Type-Options, X-Frame-Options,
+           Referrer-Policy, Strict-Transport-Security, Permissions-Policy.
+    [PASS] HSTS value = "max-age=63072000; includeSubDomains" (no preload).
+    [PASS] Permissions-Policy value = "camera=(), microphone=(), geolocation=(),
+           payment=()".
+    [PASS] NO Content-Security-Policy header present (correctly deferred).
+    [PASS] Scope: only vercel.json changed (no src/, HTML, Supabase, auth, DB).
+
+  After the owner pushes + Vercel deploys (headers apply at the edge):
+    [ ] curl -sI https://<prod-domain>/ | grep -iE "strict-transport|permissions-policy"
+        -> both headers present with the values above.
+    [ ] Load the app and confirm normal operation — fonts render, images load,
+        the barcode scanner + printing + PayPal redirect all still work (none use
+        the disabled features, so no change is expected).
+    [ ] (Optional) securityheaders.com / Mozilla Observatory shows the two new
+        headers.
+
+
+NOT INCLUDED (deferred)
+--------------------------------------------------------------------------------
+  * M1-P2 — Content-Security-Policy, rolled out report-only first (the app-shaped
+    policy: style-src 'unsafe-inline' + Google Fonts, connect/img Supabase origin,
+    script-src 'self'), then promoted to enforcing.
+  * HSTS `preload` (after a domain-readiness decision).
+  * A post-deploy header-presence smoke check (ties to H5 CI).
+
+
+STATUS: M1-P1 implemented — HSTS + Permissions-Policy added to vercel.json,
+JSON-validated. No CSP, app code, HTML, Supabase, or auth change. Effective on
+the next Vercel deploy. Not committed (owner commits + pushes). Stop after M1-P1.
+================================================================================
