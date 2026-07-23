@@ -1,0 +1,56 @@
+# StockBolt CI — staging-independent gate (Audit H5, staging-independent portion).
+#
+# Runs on every pull request to main and every push to main. Provides an
+# INDEPENDENT, automated pre-deploy check that a change typechecks and builds,
+# so a type error or broken build is caught by a system that does not depend on
+# a developer remembering to run anything locally.
+#
+# Deliberately NOT here yet (each tracked as its own follow-up):
+#   * npm run lint — the repo currently has pre-existing lint errors; add lint as
+#     a required step AFTER a dedicated lint-cleanup task (H5 must not modify app
+#     code to fix them).
+#   * a test job (npm run test:regressions) — needs a NON-production Supabase
+#     target (Audit H4 staging), which is deferred. That is why this workflow
+#     uses NO secrets and touches NO database.
+#
+# This workflow needs no secrets and connects to no external service.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same branch/PR to save Actions minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: the job only needs to read the checked-out code.
+permissions:
+  contents: read
+
+jobs:
+  typecheck-build:
+    name: typecheck + build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build

@@ -1,0 +1,112 @@
+================================================================================
+StockBolt ERP — Audit H5 (staging-independent portion): Implementation Result
+Add a GitHub Actions CI gate: npm ci -> typecheck -> build. No lint, no tests.
+================================================================================
+Audit cycle date: 2026-07-19   |   Implemented: 2026-07-23
+Scope:  H5 staging-independent CI ONLY. No test job, no Supabase, no secrets, no
+        application-code change, no database change, no deployment-config change
+        beyond adding the workflow. Lint deliberately OMITTED (owner decision —
+        see below). The test-in-CI job remains deferred with H4 (staging).
+Status: IMPLEMENTED + locally verified green. Not committed (owner commits/pushes).
+================================================================================
+
+
+FILES CHANGED
+--------------------------------------------------------------------------------
+  NEW  .github/workflows/ci.yml        (the entire change — one file)
+  No src/ file, no vercel.json, no package.json, no database object, no other
+  deployment config touched.
+
+
+WORKFLOW EXPLANATION
+--------------------------------------------------------------------------------
+  name: CI
+  Triggers:
+    * push to `main`              — runs on every commit that lands on the deploy
+                                    branch (in parallel with Vercel's deploy).
+    * pull_request targeting main — runs on every PR before merge.
+  Concurrency:
+    * group ci-<ref>, cancel-in-progress: true — a newer push cancels the older
+      run on the same branch/PR to save Actions minutes.
+  Permissions:
+    * contents: read — least privilege; the job only reads the checked-out code.
+  Job `typecheck-build` (ubuntu-latest):
+    1. actions/checkout@v4
+    2. actions/setup-node@v4  (node 20, cache: npm)  — Node 20 LTS satisfies the
+       repo's engines ">=18"; npm cache keyed off package-lock.json.
+    3. npm ci            — clean, lockfile-exact install (package-lock.json present).
+    4. npm run typecheck — `tsc --noEmit`, strict typecheck of src + tests.
+    5. npm run build     — `tsc -b && vite build`, the production build.
+
+  What it gives you:
+    * An INDEPENDENT, automated gate that a change typechecks and builds — one
+      that does not depend on the developer running anything locally, and that
+      shows a pass/fail status on each push/PR. It can later be made a REQUIRED
+      status check to block deploy (that wiring is out of this scope).
+
+  What it deliberately does NOT do (and why):
+    * NO lint step. `npm run lint` currently reports 328 pre-existing errors;
+      fixing them is application-code work outside H5. Per owner decision, lint is
+      omitted now and will be added as a REQUIRED step after a separate
+      lint-cleanup task. (Not made "non-blocking" either — the owner did not want
+      a green CI that silently ignores lint.)
+    * NO test job. `npm run test:regressions` touches a live Supabase DB; running
+      it in CI needs a NON-production target (Audit H4 staging), which is
+      deferred. Adding it now would either hit production or need the prod secret
+      — both unwanted. Hence NO secrets are referenced anywhere in the workflow.
+    * NO change to Vercel / deploy config. "Deploy only on passing checks"
+      (branch protection / required checks) is a separate, later step.
+
+
+WHY THIS IS SAFE / IN SCOPE
+--------------------------------------------------------------------------------
+  * Additive: one new file under .github/workflows/. Changes no app, DB, or
+    deploy behaviour on its own.
+  * No secrets, no database, no external service — cannot leak or mutate anything.
+  * All three steps are verified green locally before delivery (see checklist),
+    so the pipeline is green on first run, not red.
+
+
+ROLLBACK PLAN
+--------------------------------------------------------------------------------
+  Delete the workflow file:
+      git rm .github/workflows/ci.yml     (or delete .github/workflows/ci.yml and
+      remove the now-empty .github/workflows and .github dirs)
+  That fully removes CI; nothing else is affected. No app, DB, deploy, or data
+  change to undo. Reversible with zero risk.
+
+
+POST-IMPLEMENTATION VERIFICATION CHECKLIST
+--------------------------------------------------------------------------------
+  Local equivalents of each CI step (run 2026-07-23 — the pipeline mirrors these):
+    [PASS] npm ci prerequisite: package-lock.json present.
+    [PASS] npm run typecheck -> exit 0 (tsc --noEmit clean).
+    [PASS] npm run build     -> exit 0 (tsc -b && vite build; ~28s; no env/secrets
+           needed — VITE_* vars absent at build is fine, they resolve at runtime).
+  Workflow hygiene:
+    [PASS] No `secrets.` reference anywhere in ci.yml (grep) — needs no secrets.
+    [PASS] No Supabase/DB connection referenced.
+    [PASS] Only .github/workflows/ci.yml added; git status shows no other change
+           in scope (no src/, no vercel.json, no package.json).
+  After the owner pushes (confirmed on GitHub, not locally):
+    [ ] The "CI / typecheck + build" check appears on the commit/PR and runs.
+    [ ] It completes GREEN (npm ci, typecheck, build all pass on ubuntu-latest).
+    [ ] (Optional, later / out of scope) make it a REQUIRED status check so a red
+        CI blocks the Vercel deploy — this is the H5 "deploy on passing checks"
+        step, to be done separately.
+
+
+NOT INCLUDED (tracked for later)
+--------------------------------------------------------------------------------
+  * Lint-cleanup task -> then add `npm run lint` as a required CI step.
+  * H4 staging -> then add a `test:regressions` CI job against staging (with
+    staging keys as CI secrets, never prod).
+  * "Deploy only on passing checks" wiring (branch protection / Vercel required
+    checks).
+
+
+STATUS: Staging-independent H5 CI implemented and locally verified green. One new
+workflow file; no app, DB, secret, or deploy-config change. Lint and the test job
+intentionally deferred per scope. Not committed (owner commits + pushes). Stop
+after this implementation.
+================================================================================
