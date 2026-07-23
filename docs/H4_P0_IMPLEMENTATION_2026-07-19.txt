@@ -1,0 +1,114 @@
+================================================================================
+StockBolt ERP — Audit H4, Phase P0: Implementation Result
+Safety net: block prod mutation from test suites + read-only residue monitor
+================================================================================
+Audit cycle date: 2026-07-19   |   Implemented: 2026-07-23
+Scope:  P0 ONLY. Test-harness changes only — NO application code (src/), NO
+        database schema, NO migration, NO production data change. P1–P7 NOT done.
+Status: IMPLEMENTED + VERIFIED (see §5). Not committed (owner commits/pushes).
+================================================================================
+
+
+1. CODE CHANGES
+--------------------------------------------------------------------------------
+  (A) GUARD — refuse to run mutating suites against production.
+      New shared helper `tests/integration/_env-guard.ts`:
+        export const PROD_PROJECT_REF = 'gzpkuaioibqrdppjdbwz';
+        export function projectRefFromUrl(url): string | null   // parses <ref>.supabase.co
+        export function assertNotProductionTarget(url): void     // throws if ref === PROD_PROJECT_REF
+      Wired as the FIRST statement of each mutating suite's beforeAll (before any
+      createUser / onboarding / insert):
+        beforeAll(async () => {
+          assertNotProductionTarget(SUPABASE_URL);   // H4 P0
+          ...
+        });
+      Applied to the three suites that create/delete real users+companies:
+      phase0-rls, phase1-verification, phase2-verification. (phase3–12 do not
+      mutate — verified by grep — so they are not guarded.)
+
+  (B) RESIDUE MONITOR — read-only, warn-only, appended to regressions.test.ts:
+        describe('H4 P0 — orphaned test artifacts on production (warn-only)') {
+          it('reports leftover @stockbolt.test users and "Phase N Test" companies') {
+            count auth.users WHERE email LIKE '%@stockbolt.test'
+            count public.companies WHERE name LIKE 'Phase % Test %'
+            if any -> console.warn(list); assert the monitor RAN (not that count=0)
+          }
+        }
+      It only SELECTs; it never mutates. Warn-only (same idiom as the existing E1
+      drift check) so pre-existing residue does not block the commit gate.
+
+
+2. FILES MODIFIED
+--------------------------------------------------------------------------------
+  NEW   tests/integration/_env-guard.ts                       (guard helper)
+  EDIT  tests/integration/phase0-rls.test.ts                  (+import, +guard call)
+  EDIT  tests/integration/phase1-verification.test.ts         (+import, +guard call)
+  EDIT  tests/integration/phase2-verification.test.ts         (+import, +guard call)
+  EDIT  tests/integration/regressions.test.ts                 (+residue monitor describe)
+  No src/ file, no migration, no database object, no prod data touched.
+
+
+3. WHY EACH CHANGE IS NEEDED
+--------------------------------------------------------------------------------
+  * _env-guard.ts + the three beforeAll calls: the mutating phase suites create
+    and hard-delete real auth users and companies. With only a production target
+    configured (H4), running them writes to a live customer DB. The guard makes
+    them abort BEFORE the first write, converting a silent footgun into a loud,
+    safe failure until a staging target exists (roadmap P3). Centralised in one
+    helper so P4/P5 and any future mutating suite reuse the same check.
+  * Residue monitor: teardown is best-effort; a crash before afterAll leaves
+    orphaned test users/companies on prod. The monitor makes those orphans
+    VISIBLE on every read-only run (pre-commit) without blocking commits. It is
+    read-only, matching the "surface, don't act" rule for production data.
+
+
+4. ROLLBACK
+--------------------------------------------------------------------------------
+  Pure code, no DB/data to undo. Either:
+    * git revert the P0 commit; or
+    * manually: delete tests/integration/_env-guard.ts; remove the
+      `assertNotProductionTarget(...)` line + its import from phase0/1/2; remove
+      the "H4 P0 — orphaned test artifacts" describe block from regressions.test.ts.
+  Reverting restores the prior behaviour (mutating suites run against whatever
+  .env.local targets; no residue monitor). No production impact either way.
+
+
+5. POST-IMPLEMENTATION VERIFICATION  (run 2026-07-23 — results below)
+--------------------------------------------------------------------------------
+  [PASS] Read-only suite still green + monitor active:
+         `npm run test:regressions` -> 92 passed (was 91; +1 = the monitor).
+         Monitor warned: "⚠ [H4 P0] Orphaned test artifacts on production:
+         0 auth user(s) @stockbolt.test, 2 company(ies) [Phase 1 Test Auto Parts,
+         Phase 2 Test Auto]." — i.e. it correctly SURFACES real residue.
+  [PASS] Guard blocks a mutating suite before any write:
+         `npm run test:phase0` -> Suite FAILED in beforeAll with
+         "[H4 P0 guard] Refusing to run a MUTATING test suite against the
+         PRODUCTION Supabase project (gzpkuaioibqrdppjdbwz)." 6 tests skipped,
+         2.3s. No `createUser` reached -> NO production write occurred.
+  [PASS] No production data changed by this work (guard prevents writes; monitor
+         is read-only; no migration).
+  [PASS] Scope respected: only tests/ changed (git status), no src/, no DB.
+
+  Checklist to re-run any time:
+    1. `npm run test:regressions` -> 92 passed; monitor line printed.
+    2. `npm run test:phase0` (and phase1, phase2) -> fails fast with the H4 P0
+       guard message; NO createUser in the output.
+    3. `git status` -> only the 5 files in §2 (plus docs), nothing under src/.
+
+
+6. ACTION ITEM FOR THE OWNER (not part of P0 — do not let me touch prod data)
+--------------------------------------------------------------------------------
+  The monitor found 2 pre-existing orphaned test companies on production:
+      "Phase 1 Test Auto Parts", "Phase 2 Test Auto"
+  (0 orphaned auth users — those were cleaned up). These are leftovers from an
+  earlier phase1/phase2 run whose company teardown did not complete. Once you
+  confirm they are test data (they are — created by the phase suites), delete
+  them by hand in the Supabase dashboard. I did NOT delete them (P0 scope
+  forbids modifying production data). The monitor will go quiet once they are
+  removed.
+
+
+STATUS: P0 implemented and verified. Test-harness only; no src/, DB, migration,
+or prod-data change. P1–P7 not started. Not committed (owner commits + pushes).
+Stop after P0.
+================================================================================

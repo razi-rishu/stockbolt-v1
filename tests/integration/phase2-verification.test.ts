@@ -18,6 +18,7 @@ import { resolve } from 'node:path';
 import type { Database } from '../../src/types/database';
 import { createSupabaseAdapter } from '../../src/data/supabaseAdapter';
 import { runOnboarding, type WizardData } from '../../src/core/onboarding';
+import { assertNotProductionTarget } from './_env-guard';
 
 dotenv.config({ path: resolve(process.cwd(), '.env.local') });
 
@@ -49,6 +50,8 @@ let productId: string;
 let supplierId: string;
 
 beforeAll(async () => {
+  // H4 P0: refuse to create/delete real users+companies against production.
+  assertNotProductionTarget(SUPABASE_URL);
   // 1. Create pre-confirmed test user
   const { data: created, error: createErr } = await adminClient.auth.admin.createUser({
     email: TEST_EMAIL,

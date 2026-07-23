@@ -22,6 +22,7 @@ import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 import type { Database } from '@/types/database';
+import { assertNotProductionTarget } from './_env-guard';
 
 // Load .env.local explicitly (Vitest runs in Node, no Vite env loading).
 dotenv.config({ path: resolve(process.cwd(), '.env.local') });
@@ -109,6 +110,8 @@ describe('Phase 0 — RLS multi-tenant isolation', () => {
   let B: Tenant;
 
   beforeAll(async () => {
+    // H4 P0: refuse to create/delete real users+companies against production.
+    assertNotProductionTarget(SUPABASE_URL);
     A = await provisionTenant('A');
     B = await provisionTenant('B');
   });

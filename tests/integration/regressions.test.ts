@@ -1619,3 +1619,36 @@ describe('Phase 49 — Public API foundation', () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// H4 · Phase P0 — orphaned test-artifact residue monitor (READ-ONLY, warn-only)
+// ─────────────────────────────────────────────────────────────────────────
+// The phase0–2 suites create tagged test users (…@stockbolt.test) and companies
+// ("Phase N Test …") and delete them in afterAll. If a run crashes before
+// teardown, orphans remain on production. This monitor SURFACES them so they can
+// be removed by hand. It only reads; it never mutates. Warn-only (same idiom as
+// the E1 drift check) so pre-existing residue does not block the commit gate.
+describe('H4 P0 — orphaned test artifacts on production (warn-only)', () => {
+  it('reports leftover @stockbolt.test users and "Phase N Test" companies', async () => {
+    const [users]     = await sql<{ n: number }>(
+      `SELECT count(*)::int AS n FROM auth.users WHERE email LIKE '%@stockbolt.test'`);
+    const [companies] = await sql<{ n: number }>(
+      `SELECT count(*)::int AS n FROM public.companies WHERE name LIKE 'Phase % Test %'`);
+    const uN = users?.n ?? 0;
+    const cN = companies?.n ?? 0;
+
+    if (uN > 0 || cN > 0) {
+      const names = await sql<{ name: string }>(
+        `SELECT name FROM public.companies WHERE name LIKE 'Phase % Test %' ORDER BY name`);
+      console.warn(
+        `⚠ [H4 P0] Orphaned test artifacts on production: ${uN} auth user(s) ` +
+        `@stockbolt.test, ${cN} company(ies) [${names.map(x => x.name).join(', ')}]. ` +
+        `A prior phase0–2 run did not fully clean up. Remove them by hand once ` +
+        `confirmed they are test data (never delete a real tenant).`);
+    }
+
+    // Warn-only: assert the monitor ran and returned counts, not that they are 0.
+    expect(Number.isInteger(uN)).toBe(true);
+    expect(Number.isInteger(cN)).toBe(true);
+  });
+});
