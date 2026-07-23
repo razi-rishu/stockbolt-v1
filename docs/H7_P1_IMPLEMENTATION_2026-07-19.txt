@@ -1,0 +1,132 @@
+================================================================================
+StockBolt ERP — Audit H7, Phase P1: Implementation Result
+Enforce the public-API paid entitlement PER REQUEST (deny lapsed tenants).
+================================================================================
+Audit cycle date: 2026-07-19   |   Implemented: 2026-07-23
+Scope:  H7-P1 ONLY — (1) add a company_id-parameterized entitlement check,
+        (2) call it from authenticate() after resolving the key, (3) deny
+        requests from companies without current API entitlement. NO caching, NO
+        key auto-revoke, NO key-creation change, NO UI change, NO subscription-
+        logic change, NO business logic outside API authentication.
+Status: IMPLEMENTED. Migration delivered for hand-apply; Edge change needs a
+        separate function deploy. Not committed (owner commits/pushes).
+================================================================================
+
+
+FILES CHANGED
+--------------------------------------------------------------------------------
+  NEW  supabase/migrations/20260723000001_phase54_h7_api_entitlement_per_request.sql
+       -> company_has_api_access(p_company_id uuid) : boolean  (parameterized)
+  M    supabase/functions/api/index.ts   (+13 lines in authenticate())
+  No src/ (app) file, no UI, no key-creation RPC, no subscription logic, no DB
+  schema/data change.
+
+
+IMPLEMENTATION EXPLANATION
+--------------------------------------------------------------------------------
+  1. NEW parameterized entitlement helper (migration, hand-applied):
+       public.company_has_api_access(p_company_id uuid) RETURNS boolean
+     Applies the SAME rule as the existing zero-arg version (single source of
+     truth): an active/trialing OR grandfathered subscription on a plan whose
+     features.api_access = true — but keyed by the ARGUMENT, not auth.uid().
+     WHY a new overload: the zero-arg company_has_api_access() resolves the
+     company via current_user_company_id() = profiles WHERE id = auth.uid(); the
+     Edge Function authenticates by API key (service_role, no user JWT), so
+     auth.uid() is NULL and the zero-arg helper would return false for EVERYONE.
+     SECURITY: SECURITY DEFINER, search_path pinned; EXECUTE revoked from
+     PUBLIC/anon/authenticated and granted ONLY to service_role (it takes an
+     arbitrary company_id and must not let a tenant probe another's entitlement).
+     The zero-arg function is left untouched.
+
+  2. authenticate() (supabase/functions/api/index.ts) — after the key is resolved
+     and its revoked/expired checks pass, it now calls:
+        supabase.rpc('company_has_api_access', { p_company_id: data.company_id })
+     and:
+        - on rpc error   -> 500 internal ("Entitlement check failed.")
+        - if not entitled -> 402 payment_required
+                             ("API access is not included in this company's
+                              current plan.")
+        - else            -> returns the ApiKey as before.
+     This closes the per-request gap: a key minted while entitled is now rejected
+     once its company's entitlement lapses (trial ends, downgrade, cancel),
+     without touching or revoking the key itself.
+
+  What was deliberately NOT done (per scope):
+     * No caching — the check runs on every request (one rpc round-trip).
+     * No auto-revoke / expiry of api_keys on downgrade.
+     * No change to create_api_key, the Developer UI, or subscription logic.
+     * No change to any app (src/) code.
+
+
+WHY THIS IS SAFE / IN SCOPE
+--------------------------------------------------------------------------------
+  * Additive: one new SQL function + a 13-line guard in authenticate(). No
+    existing object is altered (the zero-arg helper, create_api_key, UI, and
+    subscription tables are untouched).
+  * Verified read-only before delivery: the entitlement query returns TRUE for
+    the one live key's company (so the existing integration keeps working) and
+    FALSE for a non-entitled company id.
+  * The only behaviour change is that a NON-entitled company's requests now get
+    402 instead of 200 — exactly the intended fix.
+
+
+ROLLBACK PLAN
+--------------------------------------------------------------------------------
+  Additive/reversible, no data touched:
+    * Edge change: revert supabase/functions/api/index.ts (remove the 13-line
+      block) and redeploy the function.
+    * Migration: DROP FUNCTION IF EXISTS public.company_has_api_access(uuid);
+      (nothing else depends on the overload).
+  Reverting restores the prior key-only authentication. No tenant data changes.
+
+
+HOW TO APPLY (owner) — TWO steps, order matters
+--------------------------------------------------------------------------------
+  Apply the MIGRATION FIRST, then deploy the function (so the function never calls
+  a helper that doesn't exist yet):
+    1. Supabase SQL Editor (project gzpkuaioibqrdppjdbwz): paste + run the whole
+       migration file 20260723000001_phase54_h7_api_entitlement_per_request.sql.
+       Expect success; it is additive + idempotent.
+    2. Deploy the Edge Function so the authenticate() change goes live:
+         supabase functions deploy api
+       (Vercel deploys only the FRONTEND; the Supabase Edge Function is separate.)
+  If the function is deployed before the migration, entitled requests would 500
+  ("Entitlement check failed.") until the migration is applied — hence order.
+
+
+POST-IMPLEMENTATION VERIFICATION CHECKLIST
+--------------------------------------------------------------------------------
+  Done now (read-only, pre-apply):
+    [PASS] Entitlement query validated live: TRUE for the existing key's company,
+           FALSE for a non-entitled/nonexistent company id.
+    [PASS] err() supports err(402, 'payment_required', msg) (signature
+           err(status:number, code:string, message:string)).
+    [PASS] Scope: only the Edge function + the new migration changed; no src/,
+           UI, key-creation, or subscription-logic file touched (git status).
+    [PASS] The existing live key's company is entitled -> the change will NOT
+           break the one active key.
+
+  After the owner applies the migration + deploys the function:
+    [ ] An API call with a key on an ENTITLED company -> still 200 (guards against
+        the JWT-helper trap — entitled keys must NOT be wrongly denied).
+    [ ] Set a test company's subscription to a non-entitled state (e.g. status
+        'canceled', non-grandfathered) and call with its key -> 402
+        payment_required. (Best done against a non-prod copy — H4.)
+    [ ] company_has_api_access(uuid) is EXECUTE-granted to service_role only
+        (not anon/authenticated).
+
+
+NOT INCLUDED (deferred — per scope / analysis)
+--------------------------------------------------------------------------------
+  * Per-company entitlement caching (~60s) to avoid a lookup per request.
+  * Auto-revoke / expire api_keys on downgrade/cancel (defense-in-depth).
+  * A behavioural API regression test (entitled -> 200, de-entitled -> 402);
+    best under H4 staging.
+
+
+STATUS: H7-P1 implemented — parameterized entitlement helper (migration) +
+per-request check in authenticate() returning 402 for lapsed tenants. No caching,
+no key revoke, no UI/creation/subscription change, no app code. Migration awaits
+hand-apply; Edge change awaits a separate function deploy (apply migration
+FIRST). Not committed (owner commits + pushes). Stop after H7-P1.
+================================================================================

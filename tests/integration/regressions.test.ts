@@ -1569,8 +1569,11 @@ describe('Phase 49 — Public API foundation', () => {
     const log = await sql<{ present: boolean }>(`SELECT to_regclass('public.api_request_log') IS NOT NULL AS present`);
     expect(log[0]?.present).toBe(true);
 
+    // DISTINCT: company_has_api_access now has two overloads (zero-arg + the
+    // H7-P1 company_id-parameterized one), so dedup by name — the tripwire checks
+    // that the four management function NAMES exist, regardless of overloads.
     const fns = await sql<{ proname: string }>(
-      `SELECT proname FROM pg_proc WHERE proname IN
+      `SELECT DISTINCT proname FROM pg_proc WHERE proname IN
          ('create_api_key','list_api_keys','revoke_api_key','company_has_api_access')`);
     expect(fns.map(f => f.proname).sort()).toEqual(
       ['company_has_api_access', 'create_api_key', 'list_api_keys', 'revoke_api_key']);

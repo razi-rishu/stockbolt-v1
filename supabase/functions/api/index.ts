@@ -93,6 +93,19 @@ async function authenticate(req: Request): Promise<ApiKey | Response> {
   if (error) return err(500, 'internal', 'Key lookup failed.');
   if (!data || data.revoked_at) return err(401, 'unauthorized', 'Invalid or revoked API key.');
   if (data.expires_at && new Date(data.expires_at) < new Date()) return err(401, 'unauthorized', 'API key has expired.');
+
+  // H7-P1: enforce the paid API entitlement PER REQUEST. The key was minted while
+  // the company was entitled, but entitlement can lapse (trial ends, downgrade,
+  // cancel) without the key being revoked — so re-check for THIS key's company on
+  // every request. Uses the company_id-parameterized helper; the zero-arg
+  // company_has_api_access() is auth.uid()-scoped and unusable in this API-key
+  // context (it would deny everyone).
+  const { data: entitled, error: entErr } = await supabase.rpc('company_has_api_access', {
+    p_company_id: data.company_id,
+  });
+  if (entErr) return err(500, 'internal', 'Entitlement check failed.');
+  if (!entitled) return err(402, 'payment_required', "API access is not included in this company's current plan.");
+
   return { id: data.id, company_id: data.company_id, scopes: data.scopes ?? [] };
 }
 
