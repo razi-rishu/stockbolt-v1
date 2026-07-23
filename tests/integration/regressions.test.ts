@@ -1655,3 +1655,50 @@ describe('H4 P0 — orphaned test artifacts on production (warn-only)', () => {
     expect(Number.isInteger(cN)).toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// AC-1.1 — Fiscal year close engine (structural tripwire, soft until applied)
+// ─────────────────────────────────────────────────────────────────────────
+// Behavioural close/reopen tests (T1–T13) need a writable test tenant and land
+// in AC-1.3 under staging. This locks the DB structure: the lifecycle table with
+// its status CHECK + unique(company_id, fiscal_year), the two RPCs, and that the
+// RPCs are not anon-executable. Soft-skips until phase56 is applied.
+describe('AC-1.1 — fiscal year close engine (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ present: boolean }>(
+      `SELECT to_regclass('public.fiscal_year_closes') IS NOT NULL AS present`);
+    return r[0]?.present === true;
+  }
+
+  it('phase56: fiscal_year_closes + close/reopen RPCs exist with the right guards', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ AC-1.1 not applied yet — run supabase/migrations/20260724000002_phase56_ac1_1_fiscal_year_close.sql');
+      return;
+    }
+    // status CHECK carries draft/closed/reopened
+    const chk = await sql<{ def: string }>(
+      `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+        WHERE conrelid='public.fiscal_year_closes'::regclass AND contype='c'`);
+    expect(chk.some(c => /draft/.test(c.def) && /closed/.test(c.def) && /reopened/.test(c.def))).toBe(true);
+
+    // unique(company_id, fiscal_year) — the idempotency backbone
+    const uq = await sql<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_indexes
+        WHERE schemaname='public' AND tablename='fiscal_year_closes'
+          AND indexdef ILIKE '%UNIQUE%' AND indexdef ILIKE '%company_id%' AND indexdef ILIKE '%fiscal_year%'`);
+    expect(uq[0]?.n ?? 0).toBeGreaterThan(0);
+
+    // both RPCs exist
+    const fns = await sql<{ proname: string }>(
+      `SELECT proname FROM pg_proc WHERE proname IN ('close_fiscal_year','reopen_fiscal_year')`);
+    expect(fns.map(f => f.proname).sort()).toEqual(['close_fiscal_year', 'reopen_fiscal_year']);
+
+    // RPCs are permission-gated and NOT executable by anon
+    const grants = await sql<{ grantee: string }>(
+      `SELECT grantee FROM information_schema.routine_privileges
+        WHERE routine_schema='public'
+          AND routine_name IN ('close_fiscal_year','reopen_fiscal_year')
+          AND privilege_type='EXECUTE'`);
+    expect(grants.map(g => g.grantee)).not.toContain('anon');
+  });
+});
