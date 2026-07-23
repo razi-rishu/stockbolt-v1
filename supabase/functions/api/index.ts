@@ -110,13 +110,17 @@ async function authenticate(req: Request): Promise<ApiKey | Response> {
 }
 
 async function rateLimited(key: ApiKey): Promise<boolean> {
-  const since = new Date(Date.now() - 60_000).toISOString();
-  const { count } = await supabase
-    .from('api_request_log')
-    .select('id', { count: 'exact', head: true })
-    .eq('api_key_id', key.id)
-    .gte('created_at', since);
-  return (count ?? 0) >= RATE_LIMIT_PER_MIN;
+  // M2-P1: atomic per-key/per-minute counter (fixes the read-count race). The RPC
+  // increments THIS minute's bucket and returns whether the new count exceeds the
+  // limit, serialized by the DB across concurrent requests + Edge instances.
+  const { data, error } = await supabase.rpc('api_rate_increment', {
+    p_api_key_id: key.id,
+    p_limit: RATE_LIMIT_PER_MIN,
+  });
+  // On RPC error, KEEP the prior behaviour (bounded fail-open: allow). The
+  // fail-closed decision is deferred (M2-P2) and will be made configurable.
+  if (error) return false;
+  return data === true;
 }
 
 // ── endpoints ───────────────────────────────────────────────────────────────

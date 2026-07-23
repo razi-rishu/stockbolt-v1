@@ -1,0 +1,131 @@
+================================================================================
+StockBolt ERP — Audit M2, Phase P1: Implementation Result
+Atomic per-key/per-minute rate counter (fixes the read-count race).
+================================================================================
+Audit cycle date: 2026-07-19   |   Implemented: 2026-07-24
+Scope:  M2-P1 ONLY — (1) atomic per-key/per-minute counter table, (2) increment
+        RPC, (3) replace api_request_log counting with the RPC. NO bucket pruning,
+        NO auto-delete, NO change to api_request_log, fail-closed NOT decided.
+        On RPC failure: KEEP current bounded fail-open (allow) — configurable later.
+Status: IMPLEMENTED. Migration delivered for hand-apply; Edge change needs a
+        separate function deploy. Not committed (owner commits/pushes).
+================================================================================
+
+
+FILES CHANGED
+--------------------------------------------------------------------------------
+  NEW  supabase/migrations/20260724000001_phase55_m2_api_rate_atomic_counter.sql
+       -> table api_rate_buckets + function api_rate_increment(uuid, integer)
+  M    supabase/functions/api/index.ts   (rateLimited() body only)
+  No src/ (app) file. api_request_log table + its metering insert are UNCHANGED.
+
+
+IMPLEMENTATION EXPLANATION
+--------------------------------------------------------------------------------
+  1. Counter table (migration): public.api_rate_buckets(api_key_id, bucket, n),
+     PK (api_key_id, bucket). One row per key per wall-clock minute; the PK is the
+     ON CONFLICT target for an atomic upsert-increment. FK -> api_keys ON DELETE
+     CASCADE. RLS ENABLED with NO policy (internal counter — no client access; the
+     DEFINER RPC + service_role bypass RLS).
+
+  2. Increment RPC (migration): public.api_rate_increment(p_api_key_id, p_limit)
+     RETURNS boolean, SECURITY DEFINER, search_path pinned:
+        INSERT INTO api_rate_buckets (api_key_id, bucket, n)
+          VALUES (p_api_key_id, date_trunc('minute', now()), 1)
+        ON CONFLICT (api_key_id, bucket) DO UPDATE SET n = n + 1
+        RETURNING n INTO v_n;
+        RETURN v_n > p_limit;
+     The DB serializes the upsert, so concurrent requests (and multiple Edge
+     instances) each get a distinct incremented n — the burst race is fixed.
+     EXECUTE revoked from PUBLIC/anon/authenticated; granted ONLY to service_role.
+
+  3. Edge rateLimited() (index.ts): replaced the api_request_log COUNT query with
+        const { data, error } = await supabase.rpc('api_rate_increment',
+          { p_api_key_id: key.id, p_limit: RATE_LIMIT_PER_MIN });
+        if (error) return false;      // bounded fail-open — UNCHANGED behaviour
+        return data === true;
+     The limit value (RATE_LIMIT_PER_MIN = 120) still lives in the Edge and is
+     passed to the RPC. On RPC error the request is ALLOWED (same as the old
+     count-error path) — the fail-closed decision is deferred (M2-P2) and the
+     `if (error) return false` line is the single place a future config toggle
+     would flip it.
+
+  Explicitly per scope:
+   * NO pruning / auto-delete — api_rate_buckets grows (one row/key/minute) until
+     M2-P2 adds pruning. Documented, deliberate.
+   * api_request_log UNCHANGED — still the metering/audit log, still inserted
+     post-response for every request (incl. 429s). It is simply no longer the
+     rate source.
+   * Fail-open preserved on RPC error (bounded fail-open), as instructed.
+
+  Semantics note: this is a FIXED 1-minute window (date_trunc('minute')) vs the
+  prior sliding 60s window — the standard atomic approach; a fixed window can
+  allow up to ~2x at a boundary (acceptable for a courtesy throttle).
+
+
+WHY THIS IS SAFE / IN SCOPE
+--------------------------------------------------------------------------------
+  * Additive: a new table + function + a rateLimited() body swap. No existing
+    object altered (api_keys, api_request_log, subscriptions untouched).
+  * The counter is internal (RLS-locked, service_role-only RPC).
+  * On any RPC error the API behaves exactly as before (allow) — so a not-yet-
+    applied migration or a DB blip cannot break the API (it just isn't throttled).
+
+
+ROLLBACK PLAN
+--------------------------------------------------------------------------------
+  Additive/reversible, no data touched:
+    * Edge: revert supabase/functions/api/index.ts (restore the count query) and
+      redeploy the function.
+    * DB:  DROP FUNCTION IF EXISTS public.api_rate_increment(uuid, integer);
+           DROP TABLE    IF EXISTS public.api_rate_buckets;
+  api_request_log and all tenant data are untouched.
+
+
+HOW TO APPLY (owner) — migration FIRST, then deploy
+--------------------------------------------------------------------------------
+  1. Supabase SQL Editor (project gzpkuaioibqrdppjdbwz): run the whole migration
+     20260724000001_phase55_m2_api_rate_atomic_counter.sql (additive, idempotent).
+  2. Deploy the Edge Function: supabase functions deploy api  (Vercel deploys the
+     frontend only). Order matters only nominally: if the function is deployed
+     first, the RPC call errors -> bounded fail-open -> API works but is
+     un-throttled until the migration lands.
+
+
+POST-IMPLEMENTATION VERIFICATION CHECKLIST
+--------------------------------------------------------------------------------
+  Done now (pre-apply):
+    [PASS] Scope: only the Edge function + the new migration changed; no src/,
+           and api_request_log (table + metering insert) unchanged (git diff).
+    [PASS] Edge rateLimited() calls api_rate_increment and preserves bounded
+           fail-open on error (if (error) return false).
+    [PASS] Migration is additive (CREATE TABLE IF NOT EXISTS / CREATE OR REPLACE
+           FUNCTION), counter RLS-enabled, RPC granted service_role-only.
+    [NOTE] The migration is not applied yet, so the RPC/table could not be
+           exercised live; verified by inspection. (The atomic upsert-increment is
+           a standard pattern; ON CONFLICT target matches the PK.)
+
+  After the owner applies the migration + deploys the function:
+    [ ] api_rate_increment(uuid,int) and api_rate_buckets exist; RPC is
+        EXECUTE-granted to service_role only.
+    [ ] Normal API calls (< 120/min) succeed; api_rate_buckets shows a row for the
+        key with n incrementing within the minute.
+    [ ] A burst of > 120 requests in one minute for a key -> the excess get 429
+        (the race no longer lets a burst through). Best under a load harness (H4).
+    [ ] api_request_log still logs every request (metering unaffected).
+    [ ] NOTE: api_rate_buckets grows unpruned — pruning is M2-P2.
+
+
+NOT INCLUDED (deferred — per scope)
+--------------------------------------------------------------------------------
+  * M2-P2 — bucket pruning / auto-delete (prune-in-RPC, pg_cron, or TTL).
+  * The fail-closed vs bounded-fail-open decision (made configurable later).
+  * A behavioural burst/concurrency regression test (needs a load harness / H4).
+
+
+STATUS: M2-P1 implemented — atomic api_rate_buckets counter + api_rate_increment
+RPC; rateLimited() now increments atomically instead of counting api_request_log,
+keeping bounded fail-open on error. No pruning, no api_request_log change, no app
+code. Migration awaits hand-apply; Edge awaits a separate deploy (migration
+FIRST). Not committed (owner commits + pushes). Stop after M2-P1.
+================================================================================
