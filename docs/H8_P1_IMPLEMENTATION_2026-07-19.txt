@@ -1,0 +1,123 @@
+================================================================================
+StockBolt ERP — Audit H8, Phase P1: Implementation Result
+Import upload guards: size cap + MIME validation, reject BEFORE XLSX.read().
+================================================================================
+Audit cycle date: 2026-07-19   |   Implemented: 2026-07-23
+Scope:  H8-P1 ONLY — (1) max upload size for Excel imports, (2) stricter
+        MIME/type validation in addition to the extension check, (3) reject
+        invalid files before XLSX.read() runs. NO library swap, NO Web Worker,
+        NO npm audit fix, NO dependency update, NO export change, NO DB change.
+Status: IMPLEMENTED + typecheck-verified. Not committed (owner commits/pushes).
+================================================================================
+
+
+FILES CHANGED
+--------------------------------------------------------------------------------
+  M  src/lib/io-export.ts   (+66 / -10 — the only file changed)
+  Nothing else: no dependency, no export function, no DB, no other module.
+
+
+IMPLEMENTATION EXPLANATION
+--------------------------------------------------------------------------------
+  The single choke point for ALL spreadsheet imports is `readPickedFile(file)` —
+  it is the only caller of `parseXLSX` (which calls the vulnerable `XLSX.read`),
+  so guarding it protects the entire Excel-import surface in one place. The
+  function was rewritten to validate three things and return an error result
+  BEFORE any `file.text()` / `file.arrayBuffer()` / `parseXLSX` runs:
+
+    Guard 1 — Extension allow-list (unchanged behaviour, now an explicit
+      up-front reject): ext must be one of csv / txt / xlsx / xls.
+
+    Guard 2 — Size cap (NEW): new exported constant
+        export const MAX_IMPORT_BYTES = 10 * 1024 * 1024;   // 10 MB
+      Rejects a file whose `size` exceeds the cap, and also rejects a 0-byte
+      file. This runs before the file is read into memory, so an oversized or
+      crafted workbook can no longer reach the main-thread parser (kills the
+      trivially-triggerable xlsx ReDoS / memory-DoS leg). 10 MB comfortably
+      covers real ERP imports (products, contacts, opening balances).
+
+    Guard 3 — MIME validation IN ADDITION to the extension (NEW): a per-extension
+      allow-list of concrete MIME types (ALLOWED_MIME). `file.type` is
+      unreliable, so unknown/generic types ('' and application/octet-stream) are
+      TOLERATED (fall back to the extension) and never used to reject; only a
+      CONCRETE reported type that contradicts the extension is rejected
+      (e.g. an .xlsx reported as text/html, or a .csv reported as
+      application/zip). This is stricter than an extension-only check without
+      false-rejecting legitimate uploads whose browser MIME is blank.
+
+  Only after all three guards pass does the function read the file and parse
+  (CSV via PapaParse, XLSX via parseXLSX -> XLSX.read). Rejections return the
+  existing ParseResult error shape ({ rows:[], headers:[], errors:[msg] }), so
+  the Import UI surfaces the message through its normal error path — no UI change
+  needed.
+
+  What was deliberately NOT touched (per scope):
+    * parseXLSX / XLSX.read internals — unchanged (library swap is P1c, deferred).
+    * No Web Worker (P1b, deferred).
+    * Export path (stringifyXLSX / downloadXLSX / downloadCSV / XLSX.write) —
+      untouched (git diff shows no export function changed).
+    * No dependency / package.json / lockfile change; no `npm audit fix`.
+    * No database or posting code.
+
+
+WHY THIS IS SAFE / IN SCOPE
+--------------------------------------------------------------------------------
+  * One presentational/data-layer file; pure input validation before parsing.
+  * Valid files behave exactly as before (same routing, same parse, same result).
+  * Invalid files (too big, empty, wrong concrete MIME, unsupported ext) get a
+    clear error and are NOT parsed — closing the easy DoS vector and adding a
+    hygiene layer before the known-vulnerable XLSX.read.
+  * No secrets, no network, no DB, no export behaviour affected.
+
+
+ROLLBACK PLAN
+--------------------------------------------------------------------------------
+  Pure code, no data/schema. Either:
+    * git revert the H8-P1 commit; or
+    * git checkout -- src/lib/io-export.ts to restore the prior readPickedFile
+      (extension-only, no size/MIME guard).
+  Reverting restores the previous behaviour exactly. No production impact either
+  way — nothing outside this one file changed.
+
+
+POST-IMPLEMENTATION VERIFICATION CHECKLIST
+--------------------------------------------------------------------------------
+  Automated (run 2026-07-23):
+    [PASS] npm run typecheck -> exit 0 (strict TS; the new guards compile).
+    [PASS] git diff --stat -> only src/lib/io-export.ts changed (+66/-10).
+    [PASS] No export/parse function signature changed (git diff grep:
+           stringifyXLSX / downloadXLSX / downloadCSV / parseXLSX / XLSX.write
+           untouched).
+    [PASS] No dependency/package.json/lockfile change; no npm audit fix run.
+
+  Code-inspection invariants (verifiable by reading readPickedFile):
+    [PASS] All three guards return BEFORE file.text() / file.arrayBuffer() /
+           parseXLSX — i.e. an invalid file never reaches XLSX.read().
+    [PASS] Unknown/blank MIME is tolerated (no false-reject of legit blank-type
+           uploads); only a contradicting concrete MIME is rejected.
+
+  Manual browser check (recommended — the Import screen is auth-gated, so this
+  was not driven headlessly here):
+    [ ] Settings -> Import/Export: pick a > 10 MB .xlsx -> "File is too large …"
+        error, no parse/hang.
+    [ ] Pick a 0-byte file -> "File is empty."
+    [ ] Rename a .png to .xlsx (browser reports image/png) -> rejected by MIME
+        ("… does not match a .xlsx file").
+    [ ] Import a normal small .xlsx and .csv -> parses and imports as before.
+    [ ] Export (download .xlsx / .csv) still works (unchanged path).
+
+
+NOT INCLUDED (deferred, per scope / analysis)
+--------------------------------------------------------------------------------
+  * P1b — parse in a Web Worker (contain any remaining ReDoS to a worker thread).
+  * P1c — replace the vulnerable npm `xlsx` build (SheetJS-hosted ≥0.20.x or
+    exceljs) — the only thing that clears the HIGH advisory.
+  * A regression test locking the guard (recommended follow-up; not in P1 scope).
+  * ws bump + dev-tooling advisories — separate, lower-urgency items.
+
+
+STATUS: H8-P1 implemented (upload size cap + MIME validation, reject before
+XLSX.read) and typecheck-verified. One file changed; no library, worker,
+dependency, export, or DB change. Not committed (owner commits + pushes). Stop
+after H8-P1.
+================================================================================

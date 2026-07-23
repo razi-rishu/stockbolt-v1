@@ -140,20 +140,76 @@ export async function downloadXLSX(
   downloadBlob(buf, filename, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }
 
+// ── Import upload guards (Audit H8-P1) ───────────────────────────────────────
+/** Hard cap on import upload size. A crafted or oversized spreadsheet can hang
+ *  the main-thread SheetJS parser (the xlsx HIGH ReDoS / memory-DoS advisory),
+ *  so files are rejected BEFORE they are read into memory or XLSX.read() runs.
+ *  10 MB comfortably covers real ERP imports (products, contacts, openings). */
+export const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
+
+/** Extensions the importer accepts (CSV/TXT text path, XLSX/XLS binary path). */
+const SUPPORTED_EXT = new Set(['csv', 'txt', 'xlsx', 'xls']);
+
+/** Concrete MIME types a browser may report per extension. `file.type` is
+ *  unreliable (often '' or a generic type), so unknown/generic types fall back
+ *  to the extension and are NOT rejected — only a concrete type that clearly
+ *  contradicts the extension is rejected. Stricter than an extension-only check
+ *  without false-rejecting legitimate uploads. */
+const ALLOWED_MIME: Record<string, Set<string>> = {
+  csv:  new Set(['text/csv', 'application/csv', 'text/plain', 'application/vnd.ms-excel']),
+  txt:  new Set(['text/plain', 'text/csv']),
+  xlsx: new Set([
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel',
+    'application/zip',
+    'application/x-zip-compressed',
+  ]),
+  xls:  new Set(['application/vnd.ms-excel']),
+};
+
+/** Types browsers emit when they cannot classify a file — always tolerated
+ *  (we fall back to the extension); never used to reject. */
+const GENERIC_MIME = new Set(['', 'application/octet-stream']);
+
+function rejected(message: string): { format: 'csv'; result: ParseResult } {
+  return { format: 'csv', result: { rows: [], headers: [], errors: [message] } };
+}
+
 /** Read a File picked from <input type="file"> as text (for CSV) or
- *  ArrayBuffer (for XLSX), chosen by extension. */
+ *  ArrayBuffer (for XLSX), chosen by extension. Audit H8-P1: validate the
+ *  extension, size, and MIME type and reject invalid files BEFORE any read or
+ *  parse (i.e. before parseXLSX -> XLSX.read). */
 export async function readPickedFile(file: File): Promise<{ format: 'csv' | 'xlsx'; result: ParseResult }> {
-  const ext = file.name.toLowerCase().split('.').pop();
+  const ext = file.name.toLowerCase().split('.').pop() ?? '';
+
+  // Guard 1 — supported extension (as before, now an explicit up-front reject).
+  if (!SUPPORTED_EXT.has(ext)) {
+    return rejected(`Unsupported file type: .${ext}. Use .csv or .xlsx.`);
+  }
+
+  // Guard 2 — reject empty and oversized files BEFORE reading them into memory.
+  if (file.size === 0) {
+    return rejected('File is empty.');
+  }
+  if (file.size > MAX_IMPORT_BYTES) {
+    const maxMb = (MAX_IMPORT_BYTES / (1024 * 1024)).toFixed(0);
+    const gotMb = (file.size / (1024 * 1024)).toFixed(1);
+    return rejected(`File is too large (${gotMb} MB). Maximum import size is ${maxMb} MB.`);
+  }
+
+  // Guard 3 — MIME check IN ADDITION to the extension: reject only a concrete
+  // reported type that contradicts the extension; tolerate '' / generic types.
+  const type = (file.type || '').toLowerCase();
+  if (type && !GENERIC_MIME.has(type) && !ALLOWED_MIME[ext]?.has(type)) {
+    return rejected(`File content type "${file.type}" does not match a .${ext} file.`);
+  }
+
+  // Guards passed — now, and only now, read + parse.
   if (ext === 'csv' || ext === 'txt') {
     const text = await file.text();
     return { format: 'csv', result: parseCSV(text) };
   }
-  if (ext === 'xlsx' || ext === 'xls') {
-    const buf = await file.arrayBuffer();
-    return { format: 'xlsx', result: await parseXLSX(buf) };
-  }
-  return {
-    format: 'csv',
-    result: { rows: [], headers: [], errors: [`Unsupported file type: .${ext}. Use .csv or .xlsx.`] },
-  };
+  // ext is 'xlsx' | 'xls'
+  const buf = await file.arrayBuffer();
+  return { format: 'xlsx', result: await parseXLSX(buf) };
 }
