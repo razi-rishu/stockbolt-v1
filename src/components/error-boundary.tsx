@@ -3,6 +3,7 @@
  * Wraps the entire app so an uncaught error in one module doesn't blank the screen.
  */
 import { Component, type ReactNode, type ErrorInfo } from 'react';
+import { reportError } from '@/lib/error-reporting';
 
 interface Props {
   children: ReactNode;
@@ -25,8 +26,10 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    // In production you'd send this to an error-tracking service (Sentry, etc.)
-    console.error('[ErrorBoundary]', error, info.componentStack);
+    // H6-P1: route through the central error reporter (the single plug point for
+    // an external tracker). The default reporter still console.errors, so local
+    // dev visibility is unchanged; the componentStack is attached as context.
+    reportError(error, 'react', { componentStack: info.componentStack });
   }
 
   handleReset = () => {

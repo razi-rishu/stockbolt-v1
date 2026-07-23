@@ -643,6 +643,24 @@ async function route(req: Request, key: ApiKey, path: string, url: URL): Promise
   return err(404, 'not_found', `No route for ${path}. See /v1/me, /v1/products, /v1/contacts, /v1/invoices.`);
 }
 
+/**
+ * H6-P1: central Edge error reporter. Emits a structured, stack-carrying line to
+ * the Supabase Edge function logs instead of discarding the exception. This is
+ * the single seam where an external error tracker (Sentry, etc.) would capture(e)
+ * once configured. Never throws — reporting must not mask the original failure.
+ */
+function reportEdgeError(e: unknown, context: Record<string, unknown>): void {
+  try {
+    const detail =
+      e instanceof Error
+        ? { name: e.name, message: e.message, stack: e.stack }
+        : { value: String(e) };
+    console.error('[api-error]', JSON.stringify({ ...context, error: detail }));
+  } catch {
+    // ignore — never let reporting throw
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
 
@@ -661,7 +679,10 @@ Deno.serve(async (req) => {
   let res: Response;
   try {
     res = await route(req, auth, path, url);
-  } catch (_e) {
+  } catch (e) {
+    // H6-P1: report the exception (stack -> Edge function logs / future tracker)
+    // instead of swallowing it, then still return a safe generic 500.
+    reportEdgeError(e, { method: req.method, path, company_id: auth.company_id });
     res = err(500, 'internal', 'Unexpected error.');
   }
 

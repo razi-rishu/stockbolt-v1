@@ -1,0 +1,142 @@
+================================================================================
+StockBolt ERP — Audit H6, Phase P1: Implementation Result
+Error reporting: centralize browser errors + stop swallowing the Edge exception.
+================================================================================
+Audit cycle date: 2026-07-19   |   Implemented: 2026-07-23
+Scope:  H6-P1 ONLY — (1) browser error tracking, (2) report from ErrorBoundary,
+        (3) Edge Function error reporting, (4) stop swallowing the top-level Edge
+        exception. NO uptime monitor, NO health endpoint, NO external monitor
+        configured, NO DR docs, NO PITR, NO restore drill, NO business-logic or
+        DB-schema change.
+Status: IMPLEMENTED + typecheck/build-verified. Not committed (owner commits).
+
+Scope reconciliation (stated): items (1)/(3) say "add error tracking/reporting"
+while the DON'T list says "do not configure external monitors". These are
+reconciled by building the error-reporting LAYER in code (a central reporter +
+global handlers + un-swallowed Edge catch) WITHOUT wiring an external service.
+An external tracker (Sentry, etc.) is NOT configured; a single plug point is left
+so one can be added later. No new dependency, DSN, secret, or account is added.
+================================================================================
+
+
+FILES CHANGED
+--------------------------------------------------------------------------------
+  NEW  src/lib/error-reporting.ts              (central browser reporter + seam)
+  M    src/main.tsx                            (install global handlers at startup)
+  M    src/components/error-boundary.tsx       (report React errors via the seam)
+  M    supabase/functions/api/index.ts         (add reportEdgeError; stop swallow)
+  Nothing else: no dependency, no migration, no adapter (src/data), no module
+  (src/modules), no DB schema, no export/business logic.
+
+
+IMPLEMENTATION EXPLANATION
+--------------------------------------------------------------------------------
+  BROWSER (items 1 + 2):
+   * src/lib/error-reporting.ts — one seam for client errors:
+       - reportError(error, source, context)   — never throws.
+       - defaultReporter                        — structured console.error
+                                                  (keeps local dev visibility).
+       - setErrorReporter(next)                 — PLUG POINT to install an
+                                                  external tracker later without
+                                                  touching any call site.
+       - installGlobalErrorHandlers()           — idempotent; adds window 'error'
+                                                  and 'unhandledrejection'
+                                                  listeners, capturing the errors
+                                                  React cannot see (async code,
+                                                  event handlers, rejected
+                                                  promises) that previously
+                                                  vanished entirely.
+   * src/main.tsx — calls installGlobalErrorHandlers() at startup, before render,
+     so early errors are captured.
+   * src/components/error-boundary.tsx — componentDidCatch now calls
+     reportError(error, 'react', { componentStack }) instead of a bare
+     console.error TODO. Fallback UI is unchanged.
+
+  EDGE (items 3 + 4):
+   * supabase/functions/api/index.ts — added reportEdgeError(e, context): a
+     structured, stack-carrying console.error (captured by the Supabase Edge
+     function logs), and the SINGLE seam where an external tracker would
+     capture(e) later. The top-level handler changed from `catch (_e) { ...swallow }`
+     to `catch (e) { reportEdgeError(e, {method, path, company_id}); return 500 }`
+     — the exception is now reported (with its stack) rather than discarded, and
+     the response is still a safe generic 500. (This also resolves the
+     `'_e' is defined but never used` lint finding from H8.)
+
+  What was deliberately NOT done (per scope):
+   * No Sentry/Datadog SDK, DSN, account, or secret — no external monitor
+     configured. setErrorReporter is the seam for that later.
+   * No uptime monitor, no health endpoint, no DR doc, no PITR, no restore drill.
+   * No business-logic or DB-schema change; api_request_log insert unchanged.
+
+
+WHY THIS IS SAFE / IN SCOPE
+--------------------------------------------------------------------------------
+  * Additive: one new file + three small wirings; no behaviour of the accounting/
+    inventory/API business paths changes.
+  * The default reporter still console.errors, so nothing that worked before is
+    lost; the NEW capability is capturing previously-invisible errors (client
+    global handlers) and previously-DISCARDED errors (Edge catch).
+  * No external service, secret, or dependency; nothing to leak or misconfigure.
+  * Edge behaviour on error is unchanged from the caller's view (still a 500) —
+    only the internal handling changed from "discard" to "report".
+
+
+ROLLBACK PLAN
+--------------------------------------------------------------------------------
+  Pure code, no data/schema/dependency. Either:
+    * git revert the H6-P1 commit; or
+    * manually: delete src/lib/error-reporting.ts; remove the
+      installGlobalErrorHandlers import+call from main.tsx; restore
+      error-boundary.tsx's console.error; restore the Edge catch to `catch (_e)`
+      and remove reportEdgeError.
+  No production impact to undo. The Edge change only takes effect once the Edge
+  Function is redeployed (see checklist), so reverting before deploy is a no-op
+  on the live function.
+
+
+POST-IMPLEMENTATION VERIFICATION CHECKLIST
+--------------------------------------------------------------------------------
+  Automated (run 2026-07-23):
+    [PASS] npm run typecheck -> exit 0 (src changes typecheck under strict TS).
+    [PASS] npm run build     -> exit 0 (~25s; new module + wiring bundle cleanly).
+    [PASS] Scope: only src/lib/error-reporting.ts (new) + main.tsx +
+           error-boundary.tsx + supabase/functions/api/index.ts changed. No
+           migration/adapter/module/DB file modified (git status).
+
+  Code-inspection invariants:
+    [PASS] Edge catch no longer swallows: `catch (e)` reports via reportEdgeError
+           BEFORE returning the 500; reportEdgeError never throws.
+    [PASS] ErrorBoundary routes through reportError; fallback UI unchanged.
+    [PASS] Global handlers installed once at startup; idempotent; window-guarded.
+    [PASS] No external SDK/DSN/secret added.
+
+  Manual browser check (recommended — most of this is auth-gated / runtime):
+    [ ] Trigger a React render error -> fallback UI shows AND console shows
+        `[error:react]` with a componentStack.
+    [ ] Throw in an async handler / reject a promise unhandled -> console shows
+        `[error:window.onerror]` or `[error:unhandledrejection]` (previously
+        nothing was logged centrally).
+
+  Edge Function check (requires a separate deploy — NOT auto-deployed by Vercel):
+    [ ] Deploy the api Edge Function (supabase functions deploy api) so the change
+        goes live. Vercel deploys the FRONTEND only; the Supabase Edge Function is
+        deployed separately.
+    [ ] Force a handler error -> the Supabase Edge function logs show an
+        `[api-error]` line with the method/path/company_id + stack (previously the
+        exception was discarded); the client still receives a generic 500.
+
+
+NOT INCLUDED (deferred — later H6 sub-phases / separate items)
+--------------------------------------------------------------------------------
+  * Configure an external error tracker (Sentry) via setErrorReporter + DSN.
+  * Uptime monitoring, health endpoint.
+  * Backup/PITR confirmation, restore drill, DISASTER_RECOVERY.md (RPO/RTO).
+  * A regression/lint check locking "Edge no longer swallows _e".
+
+
+STATUS: H6-P1 implemented (central browser error reporting + global handlers,
+ErrorBoundary reporting, Edge error reporting, Edge exception no longer
+swallowed) and typecheck/build-verified. No external monitor, DR, dependency,
+business-logic, or DB change. Edge change requires a separate function deploy to
+go live. Not committed (owner commits + pushes). Stop after H6-P1.
+================================================================================
