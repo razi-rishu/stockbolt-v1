@@ -677,6 +677,26 @@ export interface AccountingAPI {
   getTrialBalance(company_id: string, as_of_date: string): Promise<TrialBalance>;
   getLedgerEntries(company_id: string, account_code: string, from: string, to: string): Promise<LedgerEntry[]>;
   setPeriodLock(company_id: string, lock_date: string | null): Promise<void>;
+
+  // ── AC-1.2: Year-End Close ──────────────────────────────────────────────
+  /**
+   * The earliest fiscal year that is ready to close (ended, not yet closed,
+   * with every prior year already closed). null = nothing to close (no ended
+   * activity yet, or every ended year is already closed). Read-only.
+   */
+  getNextCloseableFiscalYear(company_id: string): Promise<number | null>;
+  /**
+   * Read-only preview of what closing `fiscal_year` would do. Reuses the P&L
+   * aggregation (which already excludes prior close entries) so the numbers
+   * match the Profit & Loss report to the cent. Posts nothing.
+   */
+  previewYearEndClose(company_id: string, fiscal_year: number): Promise<YearEndClosePreview>;
+  /** Every fiscal-year-close lifecycle row for the company, newest year first. */
+  listFiscalYearCloses(company_id: string): Promise<FiscalYearClose[]>;
+  /** Posts the closing journal entry and locks the period (RPC close_fiscal_year). */
+  closeFiscalYear(fiscal_year: number): Promise<YearEndCloseResult>;
+  /** Reverses the closing entry and rolls the lock back (RPC reopen_fiscal_year). LIFO only. */
+  reopenFiscalYear(fiscal_year: number): Promise<YearEndReopenResult>;
 }
 
 export interface StockLedgerAPI {
@@ -815,6 +835,80 @@ export interface ProfitAndLoss {
   /** = gross_profit + other_income − operating_expenses */
   net_profit: number;
   lines: ProfitAndLossLine[];
+}
+
+// ── AC-1.2: Year-End Close ────────────────────────────────────────────────────
+/** A row of the fiscal_year_closes lifecycle table (phase56 migration). */
+export interface FiscalYearClose {
+  id: string;
+  company_id: string;
+  fiscal_year: number;
+  fiscal_year_start: string;
+  fiscal_year_end: string;
+  status: 'draft' | 'closed' | 'reopened';
+  je_id: string | null;
+  net_income: number;
+  retained_earnings_code: string;
+  prior_lock_date: string | null;
+  created_at: string | null;
+  created_by: string | null;
+  closed_at: string | null;
+  closed_by: string | null;
+  reopened_at: string | null;
+  reopened_by: string | null;
+  updated_at: string | null;
+}
+
+/** One leg of the previewed closing journal entry. */
+export interface YearEndCloseLine {
+  account_code: string;
+  account_name: string;
+  /** 'income' | 'expense' | 'equity' (the Retained Earnings leg) */
+  account_type: string;
+  debit: number;
+  credit: number;
+}
+
+/** Read-only projection of a year-end close (no posting). */
+export interface YearEndClosePreview {
+  fiscal_year: number;
+  fiscal_year_start: string;
+  fiscal_year_end: string;
+  total_income: number;
+  total_expenses: number;
+  /** = total_income − total_expenses; matches P&L net profit. */
+  net_income: number;
+  income_account_count: number;
+  expense_account_count: number;
+  /** income legs + expense legs + Retained Earnings leg (0 when no activity). */
+  journal_line_count: number;
+  retained_earnings_code: string;
+  /** null when the RE account (3100) is not in the Chart of Accounts. */
+  retained_earnings_name: string | null;
+  /** The period lock date after the close = GREATEST(current lock, fy_end). */
+  period_lock_after: string;
+  current_lock_date: string | null;
+  /** false when the year has no income/expense activity — closing posts no JE. */
+  has_activity: boolean;
+  /** The closing entry legs (income/expense zeroing + the RE leg), balanced. */
+  lines: YearEndCloseLine[];
+}
+
+/** Result of close_fiscal_year(). */
+export interface YearEndCloseResult {
+  fiscal_year: number;
+  status: string;
+  net_income: number;
+  journal_entry_id: string | null;
+  entry_number: string | null;
+  fiscal_year_end: string;
+}
+
+/** Result of reopen_fiscal_year(). */
+export interface YearEndReopenResult {
+  fiscal_year: number;
+  status: string;
+  reversal: unknown;
 }
 
 export interface BalanceSheetLine {

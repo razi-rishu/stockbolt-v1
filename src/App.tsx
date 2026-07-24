@@ -61,6 +61,7 @@ const JournalEntriesPage = lazy(() => import('@/modules/accounting/journal-entri
 const JEEditorPage       = lazy(() => import('@/modules/accounting/journal-entry-editor'));
 const GeneralLedgerPage  = lazy(() => import('@/modules/accounting/general-ledger'));
 const PeriodLockPage     = lazy(() => import('@/modules/accounting/period-lock'));
+const YearEndClosePage   = lazy(() => import('@/modules/accounting/year-end-close'));
 
 // Reports
 const TrialBalancePage       = lazy(() => import('@/modules/reports/trial-balance'));
@@ -309,6 +310,7 @@ function AppRoutes() {
                 <Route path="/accounting/journal-entries"          element={<JournalEntriesPage />} />
                 <Route path="/accounting/general-ledger"           element={<GeneralLedgerPage />} />
                 <Route path="/accounting/period-lock"              element={<PeriodLockPage />} />
+                <Route path="/accounting/year-end-close"           element={<YearEndClosePage />} />
               </Route>
 
               {/* Reports */}

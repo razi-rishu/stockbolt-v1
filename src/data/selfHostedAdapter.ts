@@ -189,6 +189,11 @@ export function createSelfHostedAdapter(): DataAdapter {
       getTrialBalance:   () => notImplemented('accounting.getTrialBalance'),
       getLedgerEntries:  () => notImplemented('accounting.getLedgerEntries'),
       setPeriodLock:     () => notImplemented('accounting.setPeriodLock'),
+      getNextCloseableFiscalYear: () => notImplemented('accounting.getNextCloseableFiscalYear'),
+      previewYearEndClose:        () => notImplemented('accounting.previewYearEndClose'),
+      listFiscalYearCloses:       () => notImplemented('accounting.listFiscalYearCloses'),
+      closeFiscalYear:            () => notImplemented('accounting.closeFiscalYear'),
+      reopenFiscalYear:           () => notImplemented('accounting.reopenFiscalYear'),
     },
     stockLedger: {
       postMovement:       () => notImplemented('stockLedger.postMovement'),

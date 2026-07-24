@@ -25,6 +25,7 @@ import type {
   BankAccountRow, TaxRateRow,
   InvoiceConfirmResult, PaymentConfirmResult, ApplyAdvanceResult,
   ProfitAndLoss, ProfitAndLossLine,
+  FiscalYearClose, YearEndClosePreview, YearEndCloseLine, YearEndCloseResult, YearEndReopenResult,
   BalanceSheet, BalanceSheetLine,
   ARAgingReport, ARAgingBucket,
   CustomerStatement, CustomerStatementLine,
@@ -93,6 +94,19 @@ function assertNoError(error: { message: string } | null, context: string): void
     );
   }
   throw new SupabaseDataError(`${context}: ${msg}`);
+}
+
+/**
+ * True when the error is "this table/relation doesn't exist yet" — i.e. an
+ * additive migration hasn't been hand-applied. Lets read paths degrade to an
+ * empty result instead of white-screening a page whose backing table is
+ * pending apply (e.g. AC-1.2's fiscal_year_closes before phase56). Postgres
+ * reports 42P01; PostgREST reports PGRST205 ("... in the schema cache").
+ */
+function isMissingRelation(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  if (error.code === '42P01' || error.code === 'PGRST205' || error.code === 'PGRST106') return true;
+  return /does not exist|schema cache/i.test(error.message || '');
 }
 
 export function createSupabaseAdapter(
@@ -1223,6 +1237,172 @@ export function createSupabaseAdapter(
       async setPeriodLock(company_id, lock_date): Promise<void> {
         const { error } = await client.from('companies').update({ period_lock_date: lock_date } as any).eq('id', company_id);
         assertNoError(error, 'accounting.setPeriodLock');
+      },
+
+      // ── AC-1.2: Year-End Close ───────────────────────────────────────────
+      async listFiscalYearCloses(company_id): Promise<FiscalYearClose[]> {
+        const { data, error } = await client
+          .from('fiscal_year_closes' as any)
+          .select('*')
+          .eq('company_id', company_id)
+          .order('fiscal_year', { ascending: false });
+        if (error) {
+          // phase56 migration not yet applied → no closes to show, not a crash.
+          if (isMissingRelation(error)) return [];
+          throw new SupabaseDataError(`accounting.listFiscalYearCloses: ${error.message}`);
+        }
+        return (data ?? []) as unknown as FiscalYearClose[];
+      },
+
+      async getNextCloseableFiscalYear(company_id): Promise<number | null> {
+        // Fiscal-year boundary (month/day) comes from companies.fiscal_year_start.
+        const { data: company, error: cErr } = await client
+          .from('companies').select('fiscal_year_start').eq('id', company_id).maybeSingle();
+        assertNoError(cErr, 'accounting.getNextCloseableFiscalYear:company');
+        const fyStartRaw = (company as any)?.fiscal_year_start as string | null | undefined;
+        if (!fyStartRaw) return null;
+        const boundary = new Date(fyStartRaw);
+        const month = boundary.getUTCMonth();   // 0-based
+        const day   = boundary.getUTCDate();
+
+        // Earliest GL activity → the earliest fiscal year that could ever close.
+        const { data: firstRows, error: gErr } = await client
+          .from('general_ledger').select('date').eq('company_id', company_id)
+          .order('date', { ascending: true }).limit(1);
+        assertNoError(gErr, 'accounting.getNextCloseableFiscalYear:firstGL');
+        const firstDate = (firstRows as any)?.[0]?.date as string | undefined;
+        if (!firstDate) return null;   // no activity → nothing to close
+
+        const fyOf = (isoDate: string): number => {
+          const d = new Date(isoDate);
+          const boundaryThisYear = Date.UTC(d.getUTCFullYear(), month, day);
+          return d.getTime() >= boundaryThisYear ? d.getUTCFullYear() : d.getUTCFullYear() - 1;
+        };
+        const fyEnd = (fy: number): string => {
+          const end = new Date(Date.UTC(fy + 1, month, day));
+          end.setUTCDate(end.getUTCDate() - 1);
+          return end.toISOString().slice(0, 10);
+        };
+
+        // Which years are already closed (empty set if the table isn't applied yet).
+        const { data: closesData, error: clErr } = await client
+          .from('fiscal_year_closes' as any).select('fiscal_year, status').eq('company_id', company_id);
+        const closed = new Set<number>();
+        if (clErr) {
+          if (!isMissingRelation(clErr)) throw new SupabaseDataError(`accounting.getNextCloseableFiscalYear:closes: ${clErr.message}`);
+        } else {
+          for (const r of (closesData ?? []) as any[]) if (r.status === 'closed') closed.add(Number(r.fiscal_year));
+        }
+
+        const earliestFY = fyOf(firstDate);
+        const today = new Date().toISOString().slice(0, 10);
+        // Walk forward from the earliest active year; the first ended, un-closed
+        // year is the next to close (its priors are already closed because we
+        // skip closed years in order). Matches the RPC's sequential guard.
+        for (let fy = earliestFY; fyEnd(fy) <= today; fy++) {
+          if (!closed.has(fy)) return fy;
+        }
+        return null;   // every ended year already closed
+      },
+
+      async previewYearEndClose(company_id, fiscal_year): Promise<YearEndClosePreview> {
+        const { data: company, error: cErr } = await client
+          .from('companies').select('fiscal_year_start, period_lock_date').eq('id', company_id).maybeSingle();
+        assertNoError(cErr, 'accounting.previewYearEndClose:company');
+        const fyStartRaw = (company as any)?.fiscal_year_start as string | null | undefined;
+        const currentLock = ((company as any)?.period_lock_date as string | null | undefined) ?? null;
+        const boundary = new Date(fyStartRaw ?? `${fiscal_year}-01-01`);
+        const month = boundary.getUTCMonth();
+        const day   = boundary.getUTCDate();
+        const fyStart = new Date(Date.UTC(fiscal_year, month, day)).toISOString().slice(0, 10);
+        const fyEndDate = new Date(Date.UTC(fiscal_year + 1, month, day));
+        fyEndDate.setUTCDate(fyEndDate.getUTCDate() - 1);
+        const fyEnd = fyEndDate.toISOString().slice(0, 10);
+
+        // Same aggregation as both the P&L report and the close RPC: income +
+        // expense GL in the window, EXCLUDING prior year-end-close legs. Parity
+        // by construction — the preview total equals the P&L net profit, and
+        // the legs equal what close_fiscal_year() will post.
+        const { data, error } = await client
+          .from('general_ledger')
+          .select('account_code, debit, credit, chart_of_accounts!inner(name, type), journal_entries(source_type)')
+          .eq('company_id', company_id)
+          .gte('date', fyStart)
+          .lte('date', fyEnd);
+        assertNoError(error, 'accounting.previewYearEndClose');
+
+        const byCode: Record<string, { name: string; type: string; debit: number; credit: number }> = {};
+        for (const row of data ?? []) {
+          const je = row.journal_entries as unknown as { source_type: string } | null;
+          if (je?.source_type === 'year_end_close') continue;
+          const coa = row.chart_of_accounts as unknown as { name: string; type: string };
+          if (!['income', 'expense'].includes(coa.type)) continue;
+          if (!byCode[row.account_code]) byCode[row.account_code] = { name: coa.name, type: coa.type, debit: 0, credit: 0 };
+          byCode[row.account_code].debit  += Number(row.debit);
+          byCode[row.account_code].credit += Number(row.credit);
+        }
+
+        const round2 = (n: number) => Math.round(n * 100) / 100;
+        const lines: YearEndCloseLine[] = [];
+        let totalIncome = 0, totalExpenses = 0, incomeCount = 0, expenseCount = 0;
+        for (const [code, v] of Object.entries(byCode)) {
+          if (v.type === 'income') totalIncome  += (v.credit - v.debit);   // income normal = credit
+          else                     totalExpenses += (v.debit - v.credit);   // expense normal = debit
+          // Close leg zeroes the account by reversing its net balance.
+          const dr = round2(Math.max(v.credit - v.debit, 0));   // clear a credit balance (income)
+          const cr = round2(Math.max(v.debit - v.credit, 0));   // clear a debit balance (expense)
+          if (dr === 0 && cr === 0) continue;                    // net-zero account → no leg
+          if (v.type === 'income') incomeCount++; else expenseCount++;
+          lines.push({ account_code: code, account_name: v.name, account_type: v.type, debit: dr, credit: cr });
+        }
+        totalIncome = round2(totalIncome);
+        totalExpenses = round2(totalExpenses);
+        const netIncome = round2(totalIncome - totalExpenses);
+
+        // Retained Earnings (3100) — the receiving equity account.
+        const { data: reAcct } = await client
+          .from('chart_of_accounts').select('name').eq('company_id', company_id).eq('code', '3100').maybeSingle();
+        const reName = (reAcct as any)?.name ?? null;
+
+        const hasActivity = lines.length > 0;
+        // RE leg: profit → credit RE; loss → debit RE; exactly zero → no leg.
+        if (hasActivity && netIncome > 0) {
+          lines.push({ account_code: '3100', account_name: reName ?? 'Retained Earnings', account_type: 'equity', debit: 0, credit: netIncome });
+        } else if (hasActivity && netIncome < 0) {
+          lines.push({ account_code: '3100', account_name: reName ?? 'Retained Earnings', account_type: 'equity', debit: round2(-netIncome), credit: 0 });
+        }
+
+        const periodLockAfter = currentLock && currentLock > fyEnd ? currentLock : fyEnd;
+
+        return {
+          fiscal_year,
+          fiscal_year_start: fyStart,
+          fiscal_year_end: fyEnd,
+          total_income: totalIncome,
+          total_expenses: totalExpenses,
+          net_income: netIncome,
+          income_account_count: incomeCount,
+          expense_account_count: expenseCount,
+          journal_line_count: hasActivity ? lines.length : 0,
+          retained_earnings_code: '3100',
+          retained_earnings_name: reName,
+          period_lock_after: periodLockAfter,
+          current_lock_date: currentLock,
+          has_activity: hasActivity,
+          lines,
+        };
+      },
+
+      async closeFiscalYear(fiscal_year): Promise<YearEndCloseResult> {
+        const { data, error } = await client.rpc('close_fiscal_year' as any, { p_fiscal_year: fiscal_year } as any);
+        if (error) throw new SupabaseDataError(`accounting.closeFiscalYear: ${error.message}`);
+        return data as unknown as YearEndCloseResult;
+      },
+
+      async reopenFiscalYear(fiscal_year): Promise<YearEndReopenResult> {
+        const { data, error } = await client.rpc('reopen_fiscal_year' as any, { p_fiscal_year: fiscal_year } as any);
+        if (error) throw new SupabaseDataError(`accounting.reopenFiscalYear: ${error.message}`);
+        return data as unknown as YearEndReopenResult;
       },
     },
 
