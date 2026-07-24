@@ -1,0 +1,128 @@
+================================================================================
+StockBolt — AC-2A  Comparative Statements: pure logic layer
+IMPLEMENTATION DELIVERY (stop-before-commit review package)
+Created: 2026-07-24
+================================================================================
+
+STATUS: Implemented + verified. NOT committed. Awaiting review before commit.
+
+SCOPE (AC-2A only): the pure, UI-free logic + unit tests. No report page was
+touched, no adapter method added, no DB/schema/posting change. AC-2B (wiring the
+Compare toggle + comparative columns into the three report pages) is separate.
+
+Delivered per request:
+  - useComparativePeriods (hook)
+  - mergeComparativeProfitAndLoss
+  - mergeComparativeBalanceSheet
+  - mergeComparativeTrialBalance
+  - comparison types
+  - unit tests
+  - safe percentage-variance rule (— / New / normal)
+
+
+--------------------------------------------------------------------------------
+1. FILES CHANGED  (all NEW — additive only)
+--------------------------------------------------------------------------------
+NEW  src/lib/comparative.ts
+     Pure logic + types (no React, no data access):
+       Types:   CompareBasis, ComparativeRange, ComparativeAsOf, ComparativeValue,
+                ComparativeLine, ComparativeTBLine, ComparativePL, ComparativeBS,
+                ComparativeTB
+       Dates:   shiftMonthsISO / shiftYearsISO (day-clamped), fiscalYearStartOnOrBefore,
+                fiscalYearWindow, resolveComparativeRange (P&L; fiscal-aware Year),
+                resolveComparativeAsOf (BS/TB)
+       Variance: computeVariance, variancePct, formatVariancePct, makeValue
+       Merges:  mergeComparativeProfitAndLoss, mergeComparativeBalanceSheet,
+                mergeComparativeTrialBalance
+
+NEW  src/hooks/use-comparative-periods.ts
+     useComparativePeriods — thin React wrapper over the pure resolvers. Owns the
+     per-report "compare on/off" + basis state (persisted to localStorage) and,
+     given the current period from usePeriodPicker, returns the resolved
+     { range } (P&L) and { asOf } (BS/TB) pairs. Does NOT fetch and contains NO
+     accounting logic — each report page (AC-2B) fires its two existing report
+     queries using these windows, so the current-period query reuses its cache.
+
+NEW  tests/unit/comparative.test.ts
+     27 unit tests (vitest, node env, NO database).
+
+No existing file was modified.
+
+
+--------------------------------------------------------------------------------
+2. THE SAFE PERCENTAGE-VARIANCE RULE
+--------------------------------------------------------------------------------
+formatVariancePct(current, previous):
+   previous 0 AND current 0     → "—"
+   previous 0 AND current ≠ 0   → "New"
+   otherwise                    → signed %, e.g. "+20.0%", "−20.0%", "0.0%"
+                                  (computed over |previous| so a negative base
+                                   reads intuitively)
+The numeric field variance_pct is null when previous is 0 (stored by the merge);
+the display string comes from formatVariancePct. Both are covered by tests.
+
+
+--------------------------------------------------------------------------------
+3. UNIT TEST RESULTS  — 27 / 27 PASSING
+--------------------------------------------------------------------------------
+Command: npx vitest run tests/unit/comparative.test.ts
+Result:  Test Files 1 passed (1) · Tests 27 passed (27) · ~28ms · no DB
+
+Coverage:
+  • formatVariancePct — the three states + negative-base case.
+  • computeVariance / variancePct (null on 0) / makeValue — incl. 3.03 vs 3.00
+    cents precision.
+  • shiftMonthsISO / shiftYearsISO — day clamping (Mar 31 → Feb 28; leap →
+    Feb 29; Feb 29 → Feb 28 across a year).
+  • fiscalYearStartOnOrBefore / fiscalYearWindow.
+  • resolveComparativeRange — month/quarter/custom × previous_period /
+    previous_year; fiscal-aware Year (Apr-1 re-anchors to fiscal YTD; Jan-1 ==
+    calendar; no fiscal start = no re-anchor; last_year = full prior fiscal year).
+  • resolveComparativeAsOf — period-length shift; prior-year default for custom;
+    previous_year.
+  • mergeComparativeProfitAndLoss / BalanceSheet / TrialBalance — join by code;
+    account only in current (previous 0 → "New"); account only in previous
+    (appears, appended last); identical periods → zero variance; TB signed
+    Difference; totals.
+
+
+--------------------------------------------------------------------------------
+4. VERIFICATION SUMMARY
+--------------------------------------------------------------------------------
+  tsc --noEmit .......... 0 errors (whole project).
+  unit tests ............ 27/27, 28ms, no database, no network.
+  UI .................... none rendered — this increment has no UI surface.
+  Integration/prod ...... untouched (not run; not relevant to pure logic).
+
+Reuse / integrity: no accounting logic is duplicated — the merges only subtract
+(variance) and divide (variance %); every figure will come verbatim from the
+existing report engine when AC-2B wires the two calls. year_end_close exclusion,
+MAC, BS __CPE__ fold, TB balancing are all inherited unchanged.
+
+
+--------------------------------------------------------------------------------
+5. NOTES / MINOR DEVIATIONS FROM SPEC
+--------------------------------------------------------------------------------
+(a) Comparative TYPES live in src/lib/comparative.ts (co-located with the merges)
+    rather than in adapter.ts (which the spec floated). They are presentation
+    shapes produced by the merges; co-locating keeps the feature cohesive and
+    touches fewer files. Trivial to relocate to adapter.ts if preferred.
+(b) The hook itself is NOT unit-tested — testing a React hook needs a renderer /
+    jsdom that isn't configured (vitest env = node). It is a thin state wrapper;
+    all logic it delegates to (the pure resolvers) is fully covered. AC-2B's
+    browser verification exercises the hook end-to-end.
+
+
+--------------------------------------------------------------------------------
+6. ROLLBACK PLAN
+--------------------------------------------------------------------------------
+Delete the three new files:
+    src/lib/comparative.ts
+    src/hooks/use-comparative-periods.ts
+    tests/unit/comparative.test.ts
+Nothing imports them yet (no UI wired), so removal is clean and instant. No DB,
+schema, adapter, or posting changes to undo.
+
+================================================================================
+END — awaiting review before commit.
+================================================================================
