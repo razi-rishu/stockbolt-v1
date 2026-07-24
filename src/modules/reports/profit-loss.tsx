@@ -9,6 +9,11 @@ import { theme } from '@/ui/theme';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
+import { useComparativePeriods } from '@/hooks/use-comparative-periods';
+import { CompareToggle } from '@/ui/compare-toggle';
+import { mergeComparativeProfitAndLoss, formatVariancePct } from '@/lib/comparative';
+import { ComparativeHead, ComparativeSection, ComparativeAccountRow, VarianceCells } from './_shared/variance';
+import type { Company } from '@/data/adapter';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -79,15 +84,40 @@ export default function ProfitLossPage() {
   // Phase 46b — preset period picker. Preset clicks auto-run; default = this month.
   const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.report.profit-loss.period', 'this_month');
 
+  // AC-2B — company (for fiscal-aware Year comparison). Cached app-wide.
+  const { data: company } = useQuery<Company | null>({
+    queryKey: ['company', company_id],
+    queryFn: () => getAdapter().companies.getById(company_id!),
+    enabled: !!company_id,
+  });
+
+  const cmp = useComparativePeriods({
+    storageKey: 'stockbolt.report.profit-loss.compare',
+    preset, current: { from, to },
+    fiscalYearStart: (company as any)?.fiscal_year_start ?? null,
+  });
+  // Off-compare, the current window IS the picker range → query key unchanged.
+  const curFrom = cmp.compareOn ? cmp.range.current.from : from;
+  const curTo   = cmp.compareOn ? cmp.range.current.to   : to;
+
   function openLedger(code: string) {
-    navigate(`/accounting/general-ledger?code=${encodeURIComponent(code)}&from=${from}&to=${to}`);
+    navigate(`/accounting/general-ledger?code=${encodeURIComponent(code)}&from=${curFrom}&to=${curTo}`);
   }
 
   const { data: pl, isLoading, error } = useQuery({
-    queryKey: ['pl', company_id, from, to],
-    queryFn: () => getAdapter().reports.getProfitAndLoss(company_id!, from, to),
+    queryKey: ['pl', company_id, curFrom, curTo],
+    queryFn: () => getAdapter().reports.getProfitAndLoss(company_id!, curFrom, curTo),
     enabled: !!company_id,
   });
+
+  // Previous-period query (only while comparing). Reuses the same adapter method.
+  const { data: plPrev } = useQuery({
+    queryKey: ['pl', company_id, cmp.range.previous.from, cmp.range.previous.to],
+    queryFn: () => getAdapter().reports.getProfitAndLoss(company_id!, cmp.range.previous.from, cmp.range.previous.to),
+    enabled: !!company_id && cmp.compareOn,
+  });
+
+  const comparative = cmp.compareOn && pl && plPrev ? mergeComparativeProfitAndLoss(pl, plPrev) : null;
 
   // Phase 46b — flatten the P&L into rows for Excel export (Section column
   // preserves the grouping that the collapsible UI can't carry into a sheet).
@@ -105,26 +135,55 @@ export default function ProfitLossPage() {
   }
   const exportHeaders = ['Section', 'Account Code', 'Account', 'Amount'];
 
+  // Comparative export overrides the single-period rows while compare is on.
+  let finalRows = exportRows;
+  let finalHeaders = exportHeaders;
+  let exportName = `profit-loss-${curFrom}_${curTo}`;
+  if (comparative) {
+    const rows: Record<string, unknown>[] = [];
+    const isDir = (l: typeof comparative.lines[number]) => l.sub_type !== 'indirect';
+    const pushC = (section: string, l: typeof comparative.lines[number]) => rows.push({
+      Section: section, 'Account Code': l.account_code, Account: l.account_name,
+      Current: l.current.toFixed(2), Previous: l.previous.toFixed(2),
+      Variance: l.variance.toFixed(2), 'Variance %': formatVariancePct(l.current, l.previous),
+    });
+    for (const l of comparative.lines.filter(l => l.account_type === 'income'  &&  isDir(l))) pushC('Revenue', l);
+    for (const l of comparative.lines.filter(l => l.account_type === 'expense' &&  isDir(l))) pushC('COGS', l);
+    for (const l of comparative.lines.filter(l => l.account_type === 'income'  && !isDir(l))) pushC('Other Income', l);
+    for (const l of comparative.lines.filter(l => l.account_type === 'expense' && !isDir(l))) pushC('Operating Expenses', l);
+    const nv = comparative.net_profit;
+    rows.push({ Section: 'Totals', 'Account Code': '', Account: 'Net Profit',
+      Current: nv.current.toFixed(2), Previous: nv.previous.toFixed(2),
+      Variance: nv.variance.toFixed(2), 'Variance %': formatVariancePct(nv.current, nv.previous) });
+    finalRows = rows;
+    finalHeaders = ['Section', 'Account Code', 'Account', 'Current', 'Previous', 'Variance', 'Variance %'];
+    exportName = `profit-loss-comparative-${curFrom}_${curTo}`;
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <PageHeader
         title={t('reports.pl_title')}
-        subtitle={`${from} — ${to}`}
+        subtitle={cmp.compareOn
+          ? `${curFrom} — ${curTo}  ·  vs  ${cmp.range.previous.from} — ${cmp.range.previous.to}`
+          : `${from} — ${to}`}
         actions={
           <div data-print-hide style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <PeriodPicker
               mode="range" preset={preset} from={from} to={to}
               onPresetChange={setPreset} onCustomRange={setCustomRange}
             />
-            <ReportActions rows={exportRows} headers={exportHeaders} filename={`profit-loss-${from}_${to}`} disabled={!pl} />
+            <CompareToggle on={cmp.compareOn} basis={cmp.basis} onToggle={cmp.setCompareOn} onBasis={cmp.setBasis} />
+            <ReportActions rows={finalRows} headers={finalHeaders} filename={exportName} disabled={cmp.compareOn ? !comparative : !pl} />
           </div>
         }
       />
 
       {isLoading && <p style={{ fontSize: '13px', color: theme.inkMuted, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>}
+      {cmp.compareOn && pl && !comparative && !error && <p style={{ fontSize: '13px', color: theme.inkMuted, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>}
       {error && <p style={{ fontSize: '13px', color: theme.danger }}>{String(error)}</p>}
 
-      {pl && (() => {
+      {!cmp.compareOn && pl && (() => {
         // NULL sub_type defaults to 'direct' (matches adapter) so legacy
         // accounts still appear above Gross Profit rather than disappearing.
         const isDirect = (l: typeof pl.lines[number]) => l.sub_type !== 'indirect';
@@ -284,6 +343,64 @@ export default function ProfitLossPage() {
             </tbody>
           </table>
         </div>
+        );
+      })()}
+
+      {comparative && (() => {
+        const c = comparative;
+        const isDirect = (l: typeof c.lines[number]) => l.sub_type !== 'indirect';
+        const directIncome  = c.lines.filter(l => l.account_type === 'income'  &&  isDirect(l));
+        const directExpense = c.lines.filter(l => l.account_type === 'expense' &&  isDirect(l));
+        const otherIncome   = c.lines.filter(l => l.account_type === 'income'  && !isDirect(l));
+        const operatingExp  = c.lines.filter(l => l.account_type === 'expense' && !isDirect(l));
+        const emptyRow = (label: string) => (
+          <tr style={{ borderTop: '1px solid #f1f5f9' }}>
+            <td className="px-5 py-2" style={{ color: theme.inkFaint, fontSize: '13px' }}>{label}</td>
+            <td colSpan={4} className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.inkFaint, fontSize: '13px' }}>—</td>
+          </tr>
+        );
+        const rows = (ls: typeof c.lines) => ls.map(l => (
+          <ComparativeAccountRow key={l.account_code} code={l.account_code} name={l.account_name} v={l} onNavigate={openLedger} />
+        ));
+        return (
+          <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm, overflow: 'hidden' }}>
+            <div style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}`, padding: '12px 20px' }}>
+              <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>{t('reports.pl_title')} — comparative</p>
+              <p style={{ margin: '2px 0 0', fontSize: '12px', color: theme.inkMuted }}>
+                {curFrom} — {curTo}  ·  vs  {cmp.range.previous.from} — {cmp.range.previous.to}
+              </p>
+              <p style={{ margin: '4px 0 0', fontSize: '11px', color: theme.inkFaint }}>
+                Click any account row to drill into its General Ledger. Click section headers to collapse/expand.
+              </p>
+            </div>
+            <table className="w-full text-sm">
+              <ComparativeHead firstLabel="Account" />
+              <tbody>
+                <ComparativeSection title="Revenue (Direct Income)" total={c.revenue} totalLabel={t('reports.total_revenue')}>
+                  {directIncome.length ? rows(directIncome) : emptyRow('No revenue accounts')}
+                </ComparativeSection>
+                <ComparativeSection title="Cost of Goods Sold (Direct Expense)" total={c.cogs} totalLabel="Total COGS">
+                  {directExpense.length ? rows(directExpense) : emptyRow('No direct expenses')}
+                </ComparativeSection>
+                <tr style={{ background: theme.brandSoft, borderTop: `2px solid ${theme.border}`, borderBottom: `2px solid ${theme.border}`, fontWeight: 700 }}>
+                  <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>{t('reports.gross_profit')}</td>
+                  <VarianceCells v={c.gross_profit} emphasize />
+                </tr>
+                {otherIncome.length > 0 && (
+                  <ComparativeSection title="Other Income (Indirect)" total={c.other_income} totalLabel="Total Other Income">
+                    {rows(otherIncome)}
+                  </ComparativeSection>
+                )}
+                <ComparativeSection title="Operating Expenses (Indirect)" total={c.operating_expenses} totalLabel="Total Operating Expenses">
+                  {operatingExp.length ? rows(operatingExp) : emptyRow('No operating expenses')}
+                </ComparativeSection>
+                <tr style={{ borderTop: `2px solid ${theme.border}`, background: c.net_profit.current < 0 ? '#fef2f2' : '#f0fdf4', fontWeight: 700 }}>
+                  <td className="px-5 py-3" style={{ color: theme.ink, fontSize: '14px' }}>{t('reports.net_profit')}</td>
+                  <VarianceCells v={c.net_profit} emphasize />
+                </tr>
+              </tbody>
+            </table>
+          </div>
         );
       })()}
     </div>

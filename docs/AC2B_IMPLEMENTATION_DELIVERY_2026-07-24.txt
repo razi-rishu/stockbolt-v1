@@ -1,0 +1,117 @@
+================================================================================
+StockBolt — AC-2B  Comparative Statements: UI integration
+IMPLEMENTATION DELIVERY (stop-before-commit review package)
+Created: 2026-07-24
+================================================================================
+
+STATUS: Implemented + verified (build/typecheck/tests). NOT committed. Awaiting
+review before commit.
+
+SCOPE (AC-2B only): wire the "Compare with previous period" toggle into the three
+report pages, using the AC-2A logic layer, adding Previous / Variance / Variance%
+columns (Difference for Trial Balance), and reusing the existing print/export.
+
+DID NOT TOUCH (as required): accounting calculations, adapter APIs, database,
+schema, posting logic. Every figure comes verbatim from the existing report
+engine (getProfitAndLoss / getBalanceSheet / getTrialBalance); the comparative
+view only subtracts (variance) and divides (variance %).
+
+
+--------------------------------------------------------------------------------
+1. FILES CHANGED
+--------------------------------------------------------------------------------
+NEW  src/ui/compare-toggle.tsx
+     <CompareToggle> — the "Compare" checkbox + basis selector (Previous period /
+     Same period last year). Presentational; data-print-hide.
+
+NEW  src/modules/reports/_shared/variance.tsx
+     Shared comparative rendering for P&L + Balance Sheet (same column shape):
+     fmtNum, fmtVar, <VarianceCells>, <ComparativeHead>, <ComparativeSection>
+     (collapsible), <ComparativeAccountRow> (drill-down preserved).
+
+MOD  src/modules/reports/profit-loss.tsx
+     + company query (fiscal-aware Year) + useComparativePeriods + a previous-
+       period query (enabled only while comparing) + mergeComparativeProfitAndLoss.
+     + <CompareToggle> in the action bar; comparative Excel rows; dual-period
+       subtitle. The existing single-period table is gated behind !compareOn and
+       is otherwise unchanged; a new comparative table renders when compareOn.
+
+MOD  src/modules/reports/balance-sheet.tsx
+     Same pattern (as-of previous), mergeComparativeBalanceSheet; comparative
+     table with Assets/Liabilities/Equity sections + totals.
+
+MOD  src/modules/reports/trial-balance.tsx
+     Same pattern (as-of previous), mergeComparativeTrialBalance; comparative
+     table grouped by type with Current Dr/Cr · Previous Dr/Cr · Difference, and
+     a per-period balanced footer.
+
+No other files changed. No new adapter method, no DB/schema/posting change.
+
+
+--------------------------------------------------------------------------------
+2. HOW IT WORKS (reuse + no-regression)
+--------------------------------------------------------------------------------
+  • The CURRENT-period query keeps the SAME queryKey the report already used
+    (['pl'|'balance_sheet'|'trial_balance', company_id, …]) so, off-compare, the
+    key + fetch are byte-for-byte unchanged. Off-compare, curFrom/curTo == the
+    picker range, the export rows == the old export rows, and the subtitle ==
+    the old subtitle → the single-period view is functionally identical.
+  • Turning Compare on fires ONE extra query (the previous period) via the same
+    adapter method, then merges client-side (AC-2A). Fiscal-aware Year comparison
+    re-anchors the current window (only in compare mode).
+  • Variance coloring: neutral account rows; bottom-line totals (Gross/Net
+    Profit, Total Assets/Liabilities/Equity, TB Difference) colored green/red
+    with ▲/▼. Variance % uses the AC-2A rule (— / New / signed %).
+  • Print = existing window.print() (+ data-print-hide chrome). Excel = existing
+    ReportActions/downloadXLSX with comparative columns. "PDF" = browser
+    Print → Save as PDF (no new engine), per the approved spec.
+
+
+--------------------------------------------------------------------------------
+3. VERIFICATION
+--------------------------------------------------------------------------------
+  tsc --noEmit .......... 0 errors (whole project). [fixed one type: secOf now
+                          accepts the optional sub_type from ComparativeLine]
+  npm run build ......... GREEN (~34s), all chunks emitted.
+  AC-2A unit tests ...... 27/27 (npx vitest run tests/unit/comparative.test.ts) —
+                          the merge/variance/resolver logic remains locked.
+  Off-compare parity .... the existing tables are gated behind !compareOn and the
+                          off-path inputs (query key, export rows, subtitle,
+                          drill-down range) are unchanged → no single-period
+                          regression. Backed by typecheck + build.
+
+  Browser (comparative UI) — NOT captured. The report pages sit behind Supabase
+  auth; no live-tenant credentials are available to me (and entering credentials
+  is out of scope), so I could not drive the authenticated pages to screenshot
+  the toggle + comparative columns. The numeric logic is unit-tested (AC-2A) and
+  the wiring typechecks + builds; the on-screen rendering itself was reviewed in
+  code, not in a running browser. Offer: a static HTML mockup with sample numbers
+  on request.
+
+
+--------------------------------------------------------------------------------
+4. REGRESSION RESULTS
+--------------------------------------------------------------------------------
+  npm run test:regressions → 98/98 passing (~44s), no change (this is a pure UI
+  change; the structural/DB suite is unaffected). Warn-only tenant notes
+  unchanged (E1 drift on IMBD123; 2 orphan test companies).
+
+
+--------------------------------------------------------------------------------
+5. ROLLBACK PLAN
+--------------------------------------------------------------------------------
+Presentation-only; zero data risk.
+  • Revert the three report pages to their previous revision:
+      git checkout -- src/modules/reports/profit-loss.tsx \
+                      src/modules/reports/balance-sheet.tsx \
+                      src/modules/reports/trial-balance.tsx
+  • Delete the two new UI files:
+      src/ui/compare-toggle.tsx
+      src/modules/reports/_shared/variance.tsx
+  • (AC-2A logic in src/lib/comparative.ts + the hook can stay — harmless when
+    unused — or be removed too.)
+No DB, schema, adapter, or posting changes to undo.
+
+================================================================================
+END — awaiting review before commit.
+================================================================================

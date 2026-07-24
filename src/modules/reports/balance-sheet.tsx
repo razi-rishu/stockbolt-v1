@@ -9,7 +9,11 @@ import { theme } from '@/ui/theme';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
-import type { BalanceSheetLine, ControlAccountContactLine } from '@/data/adapter';
+import { useComparativePeriods } from '@/hooks/use-comparative-periods';
+import { CompareToggle } from '@/ui/compare-toggle';
+import { mergeComparativeBalanceSheet, formatVariancePct, makeValue } from '@/lib/comparative';
+import { ComparativeHead, ComparativeSection, ComparativeAccountRow, VarianceCells } from './_shared/variance';
+import type { BalanceSheetLine, ControlAccountContactLine, Company } from '@/data/adapter';
 import { CONTROL_ACCOUNTS } from './_shared/control-account-drilldown';
 
 function fmt(n: number) {
@@ -230,6 +234,18 @@ export default function BalanceSheetPage() {
   // Phase 12.24 — same per-contact drill-down pattern as TB.
   const [expandedCodes, setExpandedCodes] = useState<Set<string>>(new Set());
 
+  // AC-2B — company (fiscal-aware Year comparison) + comparison controls.
+  const { data: company } = useQuery<Company | null>({
+    queryKey: ['company', company_id],
+    queryFn: () => getAdapter().companies.getById(company_id!),
+    enabled: !!company_id,
+  });
+  const cmp = useComparativePeriods({
+    storageKey: 'stockbolt.report.balance-sheet.compare',
+    preset, current: { from, to },
+    fiscalYearStart: (company as any)?.fiscal_year_start ?? null,
+  });
+
   function toggleExpand(code: string) {
     setExpandedCodes(prev => {
       const next = new Set(prev);
@@ -249,23 +265,44 @@ export default function BalanceSheetPage() {
     enabled: !!company_id,
   });
 
+  // Previous as-of query (only while comparing). Reuses the same adapter method.
+  const { data: bsPrev } = useQuery({
+    queryKey: ['balance_sheet', company_id, cmp.asOf.previous],
+    queryFn: () => getAdapter().reports.getBalanceSheet(company_id!, cmp.asOf.previous),
+    enabled: !!company_id && cmp.compareOn,
+  });
+  const comparative = cmp.compareOn && bs && bsPrev ? mergeComparativeBalanceSheet(bs, bsPrev) : null;
+
   const balanced = bs ? Math.abs(bs.total_assets - bs.total_liabilities - bs.total_equity) < 0.02 : true;
 
+  const secOf = (l: { account_type: string; sub_type?: string | null }) =>
+    l.account_type === 'asset' ? (l.sub_type === 'fixed' ? 'Fixed Assets' : 'Current Assets')
+    : l.account_type === 'liability' ? (l.sub_type === 'long_term' ? 'Long-term Liabilities' : 'Current Liabilities')
+    : 'Equity';
   const exportRows: Record<string, unknown>[] = (bs?.lines ?? []).map((l: BalanceSheetLine) => ({
-    Section: l.account_type === 'asset' ? (l.sub_type === 'fixed' ? 'Fixed Assets' : 'Current Assets')
-           : l.account_type === 'liability' ? (l.sub_type === 'long_term' ? 'Long-term Liabilities' : 'Current Liabilities')
-           : 'Equity',
-    Code: l.account_code,
-    Account: l.account_name,
-    Balance: l.balance.toFixed(2),
+    Section: secOf(l), Code: l.account_code, Account: l.account_name, Balance: l.balance.toFixed(2),
   }));
   const exportHeaders = ['Section', 'Code', 'Account', 'Balance'];
+
+  // Comparative export overrides the single-period rows while compare is on.
+  let finalRows = exportRows;
+  let finalHeaders = exportHeaders;
+  let exportName = `balance-sheet-${asOf}`;
+  if (comparative) {
+    finalRows = comparative.lines.map((l) => ({
+      Section: secOf(l), Code: l.account_code, Account: l.account_name,
+      Current: l.current.toFixed(2), Previous: l.previous.toFixed(2),
+      Variance: l.variance.toFixed(2), 'Variance %': formatVariancePct(l.current, l.previous),
+    }));
+    finalHeaders = ['Section', 'Code', 'Account', 'Current', 'Previous', 'Variance', 'Variance %'];
+    exportName = `balance-sheet-comparative-${asOf}`;
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <PageHeader
         title={t('reports.bs_title')}
-        subtitle={`As of ${asOf}`}
+        subtitle={cmp.compareOn ? `As of ${asOf}  ·  vs  ${cmp.asOf.previous}` : `As of ${asOf}`}
         actions={
           <div data-print-hide style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <PeriodPicker
@@ -273,7 +310,8 @@ export default function BalanceSheetPage() {
               onPresetChange={(p) => { setPreset(p); setExpandedCodes(new Set()); }}
               onCustomRange={(f, tt) => { setCustomRange(f, tt); setExpandedCodes(new Set()); }}
             />
-            <ReportActions rows={exportRows} headers={exportHeaders} filename={`balance-sheet-${asOf}`} disabled={!bs} />
+            <CompareToggle on={cmp.compareOn} basis={cmp.basis} onToggle={cmp.setCompareOn} onBasis={cmp.setBasis} />
+            <ReportActions rows={finalRows} headers={finalHeaders} filename={exportName} disabled={cmp.compareOn ? !comparative : !bs} />
           </div>
         }
       />
@@ -281,7 +319,7 @@ export default function BalanceSheetPage() {
       {isLoading && <p style={{ fontSize: '13px', color: theme.inkMuted, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>}
       {error && <p style={{ fontSize: '13px', color: theme.danger }}>{String(error)}</p>}
 
-      {bs && company_id && (() => {
+      {!cmp.compareOn && bs && company_id && (() => {
         // NULL sub_type defaults to 'current' — matches the adapter logic.
         const isCurrentAsset = (l: BalanceSheetLine) => l.account_type === 'asset' && l.sub_type !== 'fixed';
         const isFixedAsset   = (l: BalanceSheetLine) => l.account_type === 'asset' && l.sub_type === 'fixed';
@@ -468,6 +506,68 @@ export default function BalanceSheetPage() {
               )}
             </div>
           </>
+        );
+      })()}
+
+      {comparative && company_id && (() => {
+        const c = comparative;
+        const curAssets = c.lines.filter(l => l.account_type === 'asset' && l.sub_type !== 'fixed');
+        const fixedAssets = c.lines.filter(l => l.account_type === 'asset' && l.sub_type === 'fixed');
+        const curLiab = c.lines.filter(l => l.account_type === 'liability' && l.sub_type !== 'long_term');
+        const ltLiab = c.lines.filter(l => l.account_type === 'liability' && l.sub_type === 'long_term');
+        const equity = c.lines.filter(l => l.account_type === 'equity');
+        const rows = (ls: typeof c.lines) => ls.map(l => (
+          <ComparativeAccountRow key={l.account_code} code={l.account_code} name={l.account_name} v={l} onNavigate={openLedger} />
+        ));
+        const emptyRow = (label: string) => (
+          <tr style={{ borderTop: '1px solid #f1f5f9' }}>
+            <td className="px-5 py-2" style={{ color: theme.inkFaint, fontSize: '13px' }}>{label}</td>
+            <td colSpan={4} className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.inkFaint, fontSize: '13px' }}>—</td>
+          </tr>
+        );
+        const banner = (label: string, bg: string, color: string) => (
+          <tr><td colSpan={5} className="px-5 py-3" style={{ background: bg, fontSize: '13px', fontWeight: 800, color, letterSpacing: '.06em' }}>{label}</td></tr>
+        );
+        const totalRow = (label: string, v: typeof c.total_assets, bg: string, color: string, border: string) => (
+          <tr style={{ background: bg, borderTop: `2px solid ${border}`, fontWeight: 700 }}>
+            <td className="px-5 py-3" style={{ color, fontSize: '14px' }}>{label}</td>
+            <VarianceCells v={v} emphasize />
+          </tr>
+        );
+        const leValue = makeValue(c.total_liabilities.current + c.total_equity.current, c.total_liabilities.previous + c.total_equity.previous);
+        return (
+          <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm, overflow: 'hidden' }}>
+            <div style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}`, padding: '12px 20px' }}>
+              <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>{t('reports.bs_title')} — comparative</p>
+              <p style={{ margin: '2px 0 0', fontSize: '12px', color: theme.inkMuted }}>As of {asOf}  ·  vs  {cmp.asOf.previous}</p>
+              <p style={{ margin: '4px 0 0', fontSize: '11px', color: theme.inkFaint }}>Click any account row to open its General Ledger.</p>
+            </div>
+            <table className="w-full text-sm">
+              <ComparativeHead firstLabel="Account" />
+              <tbody>
+                {banner('ASSETS', theme.brandSoft, theme.brandSoftText)}
+                <ComparativeSection title="Current Assets" total={c.current_assets} totalLabel="Total Current Assets">
+                  {curAssets.length ? rows(curAssets) : emptyRow('No current assets')}
+                </ComparativeSection>
+                <ComparativeSection title="Fixed Assets" total={c.fixed_assets} totalLabel="Total Fixed Assets">
+                  {fixedAssets.length ? rows(fixedAssets) : emptyRow('No fixed assets')}
+                </ComparativeSection>
+                {totalRow(t('reports.total_assets'), c.total_assets, theme.brandSoft, theme.brandSoftText, theme.brand)}
+                {banner('LIABILITIES', '#fef2f2', '#b91c1c')}
+                <ComparativeSection title="Current Liabilities" total={c.current_liabilities} totalLabel="Total Current Liabilities">
+                  {curLiab.length ? rows(curLiab) : emptyRow('No current liabilities')}
+                </ComparativeSection>
+                <ComparativeSection title="Long-term Liabilities" total={c.long_term_liabilities} totalLabel="Total Long-term Liabilities">
+                  {ltLiab.length ? rows(ltLiab) : emptyRow('No long-term liabilities')}
+                </ComparativeSection>
+                {totalRow(t('reports.total_liabilities'), c.total_liabilities, '#fef2f2', '#b91c1c', '#fecaca')}
+                {banner('EQUITY', theme.purpleSoft, theme.purple)}
+                {equity.length ? rows(equity) : emptyRow('No equity accounts')}
+                {totalRow(t('reports.total_equity'), c.total_equity, theme.purpleSoft, theme.purple, theme.purpleBorder)}
+                {totalRow('Total Liabilities + Equity', leValue, theme.panelHead, theme.ink, theme.border)}
+              </tbody>
+            </table>
+          </div>
         );
       })()}
     </div>

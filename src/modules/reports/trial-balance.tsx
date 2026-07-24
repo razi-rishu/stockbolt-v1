@@ -9,8 +9,15 @@ import { theme } from '@/ui/theme';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
-import type { TrialBalance, TrialBalanceLine } from '@/data/adapter';
+import { useComparativePeriods } from '@/hooks/use-comparative-periods';
+import { CompareToggle } from '@/ui/compare-toggle';
+import { mergeComparativeTrialBalance } from '@/lib/comparative';
+import type { TrialBalance, TrialBalanceLine, Company } from '@/data/adapter';
 import { ControlAccountDrillDown, CONTROL_ACCOUNTS } from './_shared/control-account-drilldown';
+
+function fmtVar(n: number): string {
+  return n < 0 ? `(${fmt(-n)})` : fmt(n);
+}
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -30,6 +37,18 @@ export default function TrialBalancePage() {
   const asOf = to;
   // Phase 12.24 — set of account codes whose per-contact drill-down is open.
   const [expandedCodes, setExpandedCodes] = useState<Set<string>>(new Set());
+
+  // AC-2B — company (fiscal-aware Year comparison) + comparison controls.
+  const { data: company } = useQuery<Company | null>({
+    queryKey: ['company', company_id],
+    queryFn: () => getAdapter().companies.getById(company_id!),
+    enabled: !!company_id,
+  });
+  const cmp = useComparativePeriods({
+    storageKey: 'stockbolt.report.trial-balance.compare',
+    preset, current: { from, to },
+    fiscalYearStart: (company as any)?.fiscal_year_start ?? null,
+  });
 
   function toggleExpand(code: string) {
     setExpandedCodes(prev => {
@@ -52,6 +71,14 @@ export default function TrialBalancePage() {
     enabled: !!company_id,
   });
 
+  // Previous as-of query (only while comparing). Reuses the same adapter method.
+  const { data: dataPrev } = useQuery<TrialBalance>({
+    queryKey: ['trial_balance', company_id, cmp.asOf.previous],
+    queryFn: () => getAdapter().accounting.getTrialBalance(company_id!, cmp.asOf.previous),
+    enabled: !!company_id && cmp.compareOn,
+  });
+  const comparative = cmp.compareOn && data && dataPrev ? mergeComparativeTrialBalance(data, dataPrev) : null;
+
   // Group lines by account type
   const grouped: Record<string, TrialBalanceLine[]> = {};
   for (const line of data?.lines ?? []) {
@@ -71,11 +98,26 @@ export default function TrialBalancePage() {
   }));
   const exportHeaders = ['Code', 'Account', 'Type', 'Debit', 'Credit'];
 
+  // Comparative export overrides the single-period rows while compare is on.
+  let finalRows = exportRows;
+  let finalHeaders = exportHeaders;
+  let exportName = `trial-balance-${asOf}`;
+  if (comparative) {
+    finalRows = comparative.lines.map((l) => ({
+      Code: l.account_code, Account: l.account_name, Type: l.account_type,
+      'Current Dr': l.current_debit.toFixed(2), 'Current Cr': l.current_credit.toFixed(2),
+      'Previous Dr': l.previous_debit.toFixed(2), 'Previous Cr': l.previous_credit.toFixed(2),
+      Difference: l.difference.toFixed(2),
+    }));
+    finalHeaders = ['Code', 'Account', 'Type', 'Current Dr', 'Current Cr', 'Previous Dr', 'Previous Cr', 'Difference'];
+    exportName = `trial-balance-comparative-${asOf}`;
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <PageHeader
         title={t('reports.trial_balance')}
-        subtitle={data ? `As of ${data.as_of_date}` : ''}
+        subtitle={cmp.compareOn ? `As of ${asOf}  ·  vs  ${cmp.asOf.previous}` : (data ? `As of ${data.as_of_date}` : '')}
         actions={
           <div data-print-hide style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <PeriodPicker
@@ -83,14 +125,19 @@ export default function TrialBalancePage() {
               onPresetChange={(p) => { setPreset(p); setExpandedCodes(new Set()); }}
               onCustomRange={(f, tt) => { setCustomRange(f, tt); setExpandedCodes(new Set()); }}
             />
-            <ReportActions rows={exportRows} headers={exportHeaders} filename={`trial-balance-${asOf}`} disabled={!data} />
+            <CompareToggle on={cmp.compareOn} basis={cmp.basis} onToggle={cmp.setCompareOn} onBasis={cmp.setBasis} />
+            <ReportActions rows={finalRows} headers={finalHeaders} filename={exportName} disabled={cmp.compareOn ? !comparative : !data} />
           </div>
         }
       />
 
       {isFetching && <p style={{ fontSize: '13px', color: theme.inkMuted, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>}
 
-      {data && !isFetching && (
+      {cmp.compareOn && data && !comparative && !isFetching && (
+        <p style={{ fontSize: '13px', color: theme.inkMuted, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>
+      )}
+
+      {!cmp.compareOn && data && !isFetching && (
         <div style={{
           background: theme.card,
           border: `1px solid ${theme.border}`,
@@ -221,6 +268,68 @@ export default function TrialBalancePage() {
           )}
         </div>
       )}
+
+      {comparative && (() => {
+        const c = comparative;
+        const grouped: Record<string, typeof c.lines> = {};
+        for (const l of c.lines) { (grouped[l.account_type] ||= []).push(l); }
+        const types = TYPE_ORDER.filter((t2) => grouped[t2]?.length > 0);
+        const curBal = Math.abs(c.total_debit.current - c.total_credit.current) <= 0.01;
+        const prevBal = Math.abs(c.total_debit.previous - c.total_credit.previous) <= 0.01;
+        const th = (label: string, align: 'start' | 'end') => (
+          <th key={label} className="px-4 py-3" style={{ fontSize: '11px', fontWeight: 600, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.06em', textAlign: align, whiteSpace: 'nowrap' }}>{label}</th>
+        );
+        const num = (n: number, muted?: boolean) => (
+          <td className="px-4 py-2.5 font-mono" style={{ textAlign: 'end', color: muted ? theme.inkMuted : theme.ink, fontSize: '13px' }}>{n > 0 ? fmt(n) : ''}</td>
+        );
+        return (
+          <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm, overflow: 'hidden' }}>
+            <div style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}`, padding: '12px 16px' }}>
+              <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>{t('reports.trial_balance')} — comparative</p>
+              <p style={{ margin: '2px 0 0', fontSize: '12px', color: theme.inkMuted }}>As of {asOf}  ·  vs  {cmp.asOf.previous}</p>
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
+                  {th('Code', 'start')}{th('Account', 'start')}{th('Type', 'start')}
+                  {th('Current Dr', 'end')}{th('Current Cr', 'end')}{th('Previous Dr', 'end')}{th('Previous Cr', 'end')}{th('Difference', 'end')}
+                </tr>
+              </thead>
+              <tbody>
+                {types.flatMap((type) => [
+                  <tr key={`h-${type}`}>
+                    <td colSpan={8} className="px-4 py-2" style={{ background: '#f1f5f9', fontSize: '11px', fontWeight: 700, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.08em' }}>
+                      {t(`accounting.type_${type}`)}
+                    </td>
+                  </tr>,
+                  ...grouped[type].map((l) => (
+                    <tr key={l.account_code} style={{ borderTop: '1px solid #f1f5f9' }}>
+                      <td className="px-4 py-2.5 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>{l.account_code}</td>
+                      <td className="px-4 py-2.5" style={{ color: theme.ink, fontSize: '13px' }}>{l.account_name}</td>
+                      <td className="px-4 py-2.5" style={{ color: theme.inkMuted, fontSize: '13px', textTransform: 'capitalize' }}>{l.account_type}</td>
+                      {num(l.current_debit)}{num(l.current_credit)}
+                      {num(l.previous_debit, true)}{num(l.previous_credit, true)}
+                      <td className="px-4 py-2.5 font-mono" style={{ textAlign: 'end', fontSize: '13px', color: Math.abs(l.difference) < 0.005 ? theme.inkFaint : (l.difference < 0 ? '#dc2626' : '#15803d') }}>
+                        {Math.abs(l.difference) < 0.005 ? '—' : fmtVar(l.difference)}
+                      </td>
+                    </tr>
+                  )),
+                ])}
+              </tbody>
+              <tfoot>
+                <tr style={{ borderTop: `2px solid ${theme.border}`, background: theme.panelHead, fontWeight: 700 }}>
+                  <td colSpan={3} className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px' }}>{t('accounting.total')}</td>
+                  <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: curBal ? '#15803d' : '#dc2626' }}>{fmt(c.total_debit.current)}</td>
+                  <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: curBal ? '#15803d' : '#dc2626' }}>{fmt(c.total_credit.current)}</td>
+                  <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: prevBal ? '#15803d' : '#dc2626' }}>{fmt(c.total_debit.previous)}</td>
+                  <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: prevBal ? '#15803d' : '#dc2626' }}>{fmt(c.total_credit.previous)}</td>
+                  <td className="px-4 py-3" />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        );
+      })()}
     </div>
   );
 }
