@@ -26,6 +26,7 @@
     "test:phase11": "vitest run tests/integration/phase11-verification.test.ts",
     "test:phase12": "vitest run tests/integration/phase12-verification.test.ts",
     "test:regressions": "vitest run tests/integration/regressions.test.ts",
+    "test:year-end-close": "vitest run tests/integration/year-end-close-verification.test.ts",
     "prepare": "husky"
   },
   "dependencies": {
