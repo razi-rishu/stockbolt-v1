@@ -1,0 +1,306 @@
+================================================================================
+StockBolt — AC-1.3  Year-End Close: behavioural test analysis
+ANALYSIS ONLY — no tests written. Awaiting approval on scope + path.
+Created: 2026-07-24
+================================================================================
+
+GOAL
+  Determine exactly which behavioural tests are required to lock the fiscal
+  year close workflow (close / reopen), and where they can run given the
+  current tooling. Review done against LIVE artifacts, not assumptions.
+
+VERDICT (one line)
+  The full behavioural battery (14 scenarios below) is well-defined and worth
+  writing — but it CANNOT run in the enforced pre-commit suite, and CANNOT run
+  against production at all. It needs an authenticated scratch tenant, which the
+  H4 P0 guard restricts to a STAGING project that does not exist yet (INFRA-1).
+  A smaller Tier-A layer (structural markers + read-only invariants) CAN be
+  added to the enforced suite today and is recommended regardless.
+
+
+--------------------------------------------------------------------------------
+1. WHAT EXISTS TODAY (reviewed, not assumed)
+--------------------------------------------------------------------------------
+A) Enforced gate: tests/integration/regressions.test.ts
+   - One Vitest file, ~93 checks, wired into the husky pre-commit hook, ~35s.
+   - Runs LIVE against PRODUCTION (.env.local -> ref gzpkuaioibqrdppjdbwz),
+     SERVICE ROLE only, via a read-only helper:
+        sql<T>(query) -> admin.rpc('_regression_test_query', { p_sql })
+     This wraps "SELECT ... " — it READS. It does not create/post/reverse.
+   - Two conventions: (1) soft-skip until a migration is applied; (2) tenant-
+     data checks warn, never fail. Hard expect() is reserved for structural
+     invariants true for every tenant.
+   - Already contains the AC-1.1 STRUCTURAL tripwire (soft-skips until phase56):
+     status CHECK has draft/closed/reopened; unique(company_id,fiscal_year);
+     both RPCs exist; RPCs not anon-executable.
+
+B) The mutating-tenant pattern: phase0 / phase1 / phase2-verification.test.ts
+   - These DO the real thing: adminClient.auth.admin.createUser -> sign in with
+     the anon key (real JWT) -> runOnboarding/complete_onboarding (scratch
+     company) -> assert -> afterAll deletes company + user.
+   - They are NOT wired into the pre-commit hook (orphaned; run by hand).
+   - CRUCIAL: each calls assertNotProductionTarget(SUPABASE_URL) FIRST
+     (tests/integration/_env-guard.ts). That guard THROWS if the target ref ==
+     the production ref. So these suites REFUSE to run until a staging project
+     is configured. Today there is no staging project -> they cannot run.
+   - Teardown hygiene is already imperfect: two orphan companies ("Phase 1 Test
+     Auto Parts", "Phase 2 Test Auto") remain on production from earlier runs —
+     a scratch company that posted documents can fail companies.delete() if GL/
+     JE child rows are not cascade-deleted. AC-1.3 Tier B must handle this.
+
+C) verify_invariants(company_id, as_of_date)  [migration phase12.07]
+   - SECURITY INVOKER; returns a JSONB array of 10 checks:
+       A1 Trial Balance balances (sum debit == sum credit)
+       A4 Balance Sheet balances (Assets == Liab + Equity + Income - Expense)
+       B1 AR aging == 1200 ; B2 AP aging == 2100
+       E1 stock valuation == 1300
+       ADV_CUST 2400 never DR ; ADV_VEND 1400 never CR
+       D4 GRN accrual == 2150 ; G2 cash >= 0
+       JE_BAL every JE internally balanced AND header==body
+   - Companion find_malformed_jes(company_id) drills into JE_BAL failures.
+   - Called from the System Health page + scripts/db-health-check.sql. It is
+     NOT called by the regression suite today.
+   - Relevance to close: A1, A4, JE_BAL remain valid AFTER a year-end close —
+     the close JE is balanced (A1/JE_BAL) and moves Income-Expense into Equity
+     (RE), leaving A4's RHS unchanged. So verify_invariants is the natural
+     "known-good oracle" to assert against after every close/reopen.
+   - Gap: verify_invariants has NO close-specific invariant (e.g. "closed years'
+     income/expense net to zero", "RE moved by Σ net_income"). Optional to add
+     later (a migration), out of scope for this test task.
+
+
+--------------------------------------------------------------------------------
+2. THE HARD CONSTRAINT (why close tests can't go in the enforced suite)
+--------------------------------------------------------------------------------
+close_fiscal_year / reopen_fiscal_year both begin with:
+    v_user_id := auth.uid();  v_company_id := current_user_company_id();
+    IF v_user_id IS NULL OR v_company_id IS NULL THEN RAISE ... 42501;
+    PERFORM auth_require('accounting.write');
+
+Under the enforced suite (service role, no JWT) auth.uid() is NULL -> the RPC
+raises "Not signed in to a company" before doing anything. Therefore the
+enforced suite CANNOT drive close/reopen end-to-end. Proving the numbers
+requires an AUTHENTICATED session in a company -> the phase0-2 pattern -> which
+the H4 guard restricts to a non-production (staging) target.
+
+Net: behavioural close tests are gated on standing up staging (roadmap INFRA-1,
+currently deferred). This matches what the AC-1.1 spec already said ("T1-T13
+land in AC-1.3 under a writable test tenant / H4 staging").
+
+
+--------------------------------------------------------------------------------
+3. TWO TEST TIERS
+--------------------------------------------------------------------------------
+TIER A — structural markers + read-only invariants (regressions.test.ts)
+   Runs today, pre-commit-gated, read-only on prod. Locks the SHAPE of the
+   engine and validates any real closed-year data that exists. Does NOT run the
+   RPC, so it cannot prove a fresh close computes correctly — it catches a
+   dropped guard or corrupted post-close data, not a "3.00 vs 0.03" arithmetic
+   error in a scenario that has never been posted.
+
+TIER B — behavioural (new file, phase0-2 pattern, guarded)
+   The real numeric proof: seed -> close -> assert exact GL -> reopen -> assert
+   net-zero -> re-close. Uses createUser + onboarding + the authenticated RPCs +
+   verify_invariants as oracle + teardown. BLOCKED on staging by design; can be
+   WRITTEN now (ready the day staging lands, and executable documentation of
+   expected behaviour), but will refuse-to-run on prod like phase0-2.
+
+
+--------------------------------------------------------------------------------
+4. REQUIRED BEHAVIOURAL TESTS (the 14 requested + edge cases)
+   For each: setup -> exact assertions. All are TIER B unless noted.
+   Oracle shorthand: VI = verify_invariants(scratch, as_of) all pass.
+--------------------------------------------------------------------------------
+T1  PROFIT YEAR CLOSE
+    Seed income > expense in FY. close_fiscal_year(FY).
+    Assert: result.status='closed', net_income > 0; a year_end_close JE dated
+    fiscal_year_end exists; it Cr 3100 = net_income; every income/expense
+    account with FY activity has an offsetting leg that zeroes it; JE
+    total_debit == total_credit; fiscal_year_closes row status='closed', je_id
+    set, net_income matches; period_lock_date == fye; VI.
+
+T2  LOSS YEAR CLOSE
+    Seed expense > income. close. Assert net_income < 0; Dr 3100 = |loss|;
+    same balance + VI checks.
+
+T3  ZERO-ACTIVITY YEAR
+    No income/expense in FY. close. Assert status='closed', je_id IS NULL, NO
+    year_end_close JE created, net_income 0, period_lock advanced to fye; VI.
+
+T4  SEQUENTIAL CLOSING
+    Two FYs both with activity. Closing FY(N) while FY(N-1) is open+active must
+    RAISE "Close fiscal year N-1 first". Close FY(N-1) then FY(N) succeeds.
+    Variant: FY(N-1) with NO P&L activity -> FY(N) close allowed without it
+    (the "no activity" branch of the sequential guard).
+
+T5  LIFO REOPEN
+    Close FY(N-1) and FY(N). reopen FY(N-1) must RAISE "Reopen later fiscal
+    years first". reopen FY(N) then FY(N-1) succeeds.
+
+T6  REOPEN + RE-CLOSE
+    Close FY. reopen FY: assert status='reopened'; the close JE is reversed
+    (reversed_by_id set; reversal mirror dated fye; inherits source_type
+    'year_end_close'); period_lock_date rolled back to prior_lock_date.
+    Re-close FY: assert status='closed' again, a NEW je_id, net_income
+    recomputed, lock re-advanced to fye; VI after each step.
+
+T7  BALANCE SHEET CONTINUITY  (Retained Earnings roll-forward, part 1)
+    getBalanceSheet as-of fye BEFORE vs AFTER close. Assert: Assets unchanged;
+    total (Liabilities + Equity) unchanged; Retained Earnings (3100) increased
+    by exactly net_income; both sides still balance (A4). No discontinuity in
+    any control account.
+
+T8  TRIAL BALANCE BALANCING
+    After each close and each reopen: getTrialBalance balances AND VI.A1 passes
+    (sum debit == sum credit). The close JE must not unbalance the TB.
+
+T9  P&L EXCLUSION OF year_end_close   (APP-LAYER — see gap #1)
+    After close, getProfitAndLoss(FY window) == the pre-close net (non-zero).
+    Control: the same aggregation INCLUDING year_end_close nets to ~0 — proving
+    the exclusion (AC-1.0) is what keeps the closed year's P&L correct.
+
+T10 RETAINED EARNINGS ROLL-FORWARD  (part 2, multi-year)
+    Close FY1 (profit A) then FY2 (profit B). Assert 3100 moved by A+B;
+    SUM(fiscal_year_closes.net_income WHERE status='closed') == the RE movement
+    attributable to year_end_close JEs. Include a loss year to prove RE reduces.
+
+T11 PERIOD LOCK BEHAVIOUR
+    After close, posting a JE / confirming a document dated inside the closed
+    year is REJECTED (date <= period_lock_date). After reopen, the same post is
+    ALLOWED again (lock rolled back to prior_lock_date).
+
+T12 JOURNAL BALANCING
+    The close JE body debit == credit and header totals == body; VI.JE_BAL
+    passes and find_malformed_jes(scratch) returns none.
+
+T13 EDGE CASES
+    (a) Contra / ARCHIVED income or expense account with FY activity is still
+        zeroed (close builds legs by account_id, not filtered by is_active).
+    (b) RE 3100 missing -> close RAISES "Retained Earnings account 3100 not
+        found".
+    (c) FY not ended (fye > today) -> close RAISES "has not ended yet".
+    (d) Already closed -> close RAISES "already closed" (idempotency).
+    (e) Concurrent double-close of one FY -> unique(company_id,fiscal_year) +
+        FOR UPDATE -> exactly one succeeds, the other errors cleanly.
+    (f) Non-January fiscal_year_start (e.g. 1 Apr) -> window and fye computed
+        correctly; close/reopen still balance.
+    (g) Rounding: a many-line close still balances to the cent (net_income
+        residual leg exact).
+    (h) reopen when the close JE is already reversed -> skips the reversal but
+        still flips status to 'reopened'.
+
+T14 ROLLBACK SCENARIOS
+    (a) OPERATIONAL: reopen fully reverses — for every account (incl 3100) the
+        close JE + its reversal net to zero; RE returns to its pre-close value;
+        TB balances; VI.
+    (b) ATOMICITY: a close that raises mid-way (e.g. RE missing) leaves NO
+        partial JE and NO lock change (whole tx rolls back). Forceable via a
+        company without 3100.
+    (c) MIGRATION rollback (DROP funcs + table) is documented in the phase56
+        header; not exercised by a test (destructive) — noted, not automated.
+
+
+--------------------------------------------------------------------------------
+5. TIER-A ANALOGS THAT CAN LAND IN THE ENFORCED SUITE TODAY
+   (structural markers on the live RPC bodies + read-only invariants; all
+    soft-skip until phase56 is applied; tenant-data findings warn, never fail)
+--------------------------------------------------------------------------------
+Structural markers (pg_get_functiondef on the two RPCs) — a dropped guard fails:
+   - sequential guard present ("years must be closed in order")
+   - LIFO guard present ("Reopen later fiscal years first" / reverse order)
+   - RE fixed to 3100 + raise-if-missing
+   - net_income = SUM(credit - debit) over income/expense EXCLUDING
+     year_end_close
+   - period lock advanced via GREATEST(...) (never backward)
+   - reopen rolls lock to prior_lock_date BEFORE calling reverse_journal_entry
+   - close JE tagged source_type='year_end_close'
+   - both RPCs PERFORM auth_require('accounting.write')
+
+Read-only invariants over whatever closed data exists (meaningful once a real
+close exists; until then they no-op):
+   - every fiscal_year_closes row status='closed' with je_id -> that JE is
+     balanced (total_debit == total_credit; body nets zero)
+   - for each closed FY, income+expense GL in [fys,fye] INCLUDING year_end_close
+     nets to ~0 (proves the close zeroed them); EXCLUDING it == stored
+     net_income
+   - SUM(net_income WHERE status='closed') == RE (3100) movement from
+     year_end_close JEs (credit - debit)
+   - period_lock_date >= MAX(fiscal_year_end) over closed rows
+   - every status='reopened' row whose je_id is set -> that JE has
+     reversed_by_id (the close was reversed)
+   - at most one ACTIVE (non-reversed) year_end_close JE per (company,fiscal_year)
+   - no closed FY(N) while FY(N-1) is un-closed AND had P&L activity
+   - no reopened FY sitting below a still-closed later FY
+
+Also cheap and worth adding: a read-only check that calls verify_invariants for
+each company and WARNS on any failing invariant (does not fail the build) — a
+standing health probe that would catch a close (or anything) breaking A1/A4/
+JE_BAL on a real tenant.
+
+
+--------------------------------------------------------------------------------
+6. COVERAGE GAPS TO NAME EXPLICITLY
+--------------------------------------------------------------------------------
+GAP 1 — P&L exclusion (T9) is APP-LAYER. AC-1.0 lives in the TypeScript adapter
+        (supabaseAdapter.getProfitAndLoss), not in a DB function. The enforced
+        suite tests the DB, so there is NO DB tripwire that a future edit could
+        re-include year_end_close in the P&L. Tier A can partially cover it with
+        the read-only "including vs excluding" invariant above; full coverage
+        needs a Tier B adapter call.
+
+GAP 2 — verify_invariants has no close-specific invariant. It stays valid after
+        a close, but it will not, by itself, flag "a closed year's income was
+        not fully zeroed" or "RE moved by the wrong amount". Optional follow-up:
+        add a year-end-close invariant (new migration) so the always-on health
+        oracle covers it. Out of scope for the test task; flagged.
+
+GAP 3 — Teardown hygiene. The scratch-tenant pattern can orphan a company if it
+        posted documents and the delete is FK-blocked (this already happened —
+        2 orphan test companies). AC-1.3 Tier B teardown must delete children /
+        rely on cascade, and ideally reuse the H4-P0 orphan sweep already in the
+        suite.
+
+GAP 4 — No staging DB. Everything in Tier B is blocked on INFRA-1 (stand up a
+        staging Supabase project). This is the keystone dependency; without it,
+        Tier B tests are written-but-skipped.
+
+
+--------------------------------------------------------------------------------
+7. RECOMMENDED PATH (for your decision — nothing built yet)
+--------------------------------------------------------------------------------
+Option 1  (recommended)  TIER A NOW + TIER B WRITTEN-BUT-GUARDED
+   - Add the Tier-A structural markers + read-only invariants to
+     regressions.test.ts (extends the existing AC-1.1 tripwire; soft-skips until
+     phase56 applied; tenant data warns). Immediate, always-on protection.
+   - Add a new file tests/integration/year-end-close-verification.test.ts with
+     the full T1-T14 battery following the phase0-2 pattern, guarded by
+     assertNotProductionTarget. It refuses to run on prod (green skip) and turns
+     on automatically when a staging target is configured. Ready + documented
+     now; proven the day staging lands.
+
+Option 2   TIER A ONLY
+   - Ship only the structural/read-only layer now; defer the behavioural battery
+     entirely until staging exists. Least work; leaves the numeric correctness
+     of close/reopen unproven by automation (verified by hand for now).
+
+Option 3   TIER B ON PRODUCTION VIA CREATE-AND-TEARDOWN (NOT recommended)
+   - Drop the env guard for these tests and create+delete a scratch tenant on
+     production each run. This is exactly the pattern that already orphaned two
+     companies and that the H4-P0 finding flags. Fastest to "real" numbers, but
+     writes a year_end_close JE + moves a period lock on the live DB each run,
+     and risks residue. Only if you accept that trade-off explicitly.
+
+My recommendation: Option 1. It gives real protection immediately (Tier A) and
+banks the full behavioural battery so it is one staging-URL away from running —
+without ever touching a customer's books.
+
+
+--------------------------------------------------------------------------------
+8. WHAT I WILL NOT DO UNTIL YOU APPROVE
+--------------------------------------------------------------------------------
+   - Write any test (Tier A or Tier B).
+   - Add a year-end-close invariant to verify_invariants.
+   - Change the env guard or run any mutating suite against production.
+
+Waiting for: pick an option (1 / 2 / 3), and confirm scope.
+================================================================================

@@ -1702,3 +1702,214 @@ describe('AC-1.1 — fiscal year close engine (soft until applied)', () => {
     expect(grants.map(g => g.grantee)).not.toContain('anon');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// AC-1.3A — year-end close: guard markers + read-only invariants (soft-skip)
+// ─────────────────────────────────────────────────────────────────────────
+// Tier A of the close test plan (docs/AC1_3_CLOSE_TEST_ANALYSIS_2026-07-24.txt).
+// Two kinds of check, both gated on phase56 being applied:
+//   • STRUCTURAL markers (hard expect) — assert each guard is still present in
+//     the live RPC body. A future migration that drops a guard fails loudly.
+//   • DATA invariants (warn-only) — properties that must hold across any real
+//     closed-year data. They inspect tenant rows, so per convention they WARN
+//     and pass rather than block an unrelated commit. They no-op until a real
+//     close exists, and light up the moment one does.
+// Behavioural close/reopen (T1–T14) is Tier B — a separate, staging-only suite.
+describe('AC-1.3A — year-end close guards + invariants (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ present: boolean }>(
+      `SELECT to_regclass('public.fiscal_year_closes') IS NOT NULL AS present`);
+    return r[0]?.present === true;
+  }
+  async function closeSrc(): Promise<string> {
+    const r = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc WHERE proname = 'close_fiscal_year'`);
+    return r[0]?.src ?? '';
+  }
+  async function reopenSrc(): Promise<string> {
+    const r = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc WHERE proname = 'reopen_fiscal_year'`);
+    return r[0]?.src ?? '';
+  }
+
+  // ── Structural markers ────────────────────────────────────────────────────
+  it('phase56: close_fiscal_year keeps its guards (sequential, RE 3100, lock, exclusion, auth)', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ AC-1.3A not applied yet — run supabase/migrations/20260724000002_phase56_ac1_1_fiscal_year_close.sql');
+      return;
+    }
+    const src = await closeSrc();
+    expect(src, 'close_fiscal_year should exist').toBeTruthy();
+    // permission gate (reuses accounting.write)
+    expect(src.includes(`auth_require('accounting.write')`), 'auth_require(accounting.write) present').toBe(true);
+    // the year must have ended
+    expect(/has not ended yet/.test(src), 'year-not-ended guard present').toBe(true);
+    // idempotency: already-closed rejection
+    expect(/is already closed/.test(src), 'already-closed guard present').toBe(true);
+    // sequential guard — years closed in order
+    expect(/years must be closed in order/.test(src), 'sequential guard present').toBe(true);
+    // Retained Earnings fixed to 3100 + raise-if-missing
+    expect(/Retained Earnings account 3100 not found/.test(src), 'RE-missing guard present').toBe(true);
+    // net income excludes prior year_end_close legs
+    expect(src.includes(`<> 'year_end_close'`), 'year_end_close excluded from net income').toBe(true);
+    // close JE tagged as year_end_close
+    expect(src.includes(`'year_end_close'`), 'close JE tagged year_end_close').toBe(true);
+    // period lock advanced via GREATEST (never backward)
+    expect(src.includes('GREATEST(COALESCE(period_lock_date'), 'lock advances via GREATEST (never backward)').toBe(true);
+    // net income basis = SUM(credit - debit) over income/expense
+    expect(src.includes('SUM(gl.credit - gl.debit)'), 'net income = SUM(credit - debit)').toBe(true);
+  });
+
+  it('phase56: reopen_fiscal_year keeps LIFO + rolls the lock back BEFORE reversing', async () => {
+    if (!(await applied())) { console.warn('⚠ AC-1.3A not applied yet'); return; }
+    const src = await reopenSrc();
+    expect(src, 'reopen_fiscal_year should exist').toBeTruthy();
+    expect(src.includes(`auth_require('accounting.write')`), 'auth_require(accounting.write) present').toBe(true);
+    // must be closed to reopen
+    expect(/is not closed/.test(src), 'not-closed guard present').toBe(true);
+    // LIFO — cannot reopen under a still-closed later year
+    expect(/Reopen later fiscal years first/.test(src), 'LIFO guard present').toBe(true);
+    // rolls the lock back to prior_lock_date, and does so BEFORE reversing the
+    // close JE (reverse_journal_entry blocks on a locked voucher date)
+    const lockIdx = src.indexOf('prior_lock_date');
+    const revIdx  = src.indexOf('reverse_journal_entry');
+    expect(lockIdx, 'lock rollback present').toBeGreaterThan(-1);
+    expect(revIdx, 'reverse_journal_entry call present').toBeGreaterThan(-1);
+    expect(lockIdx, 'lock rollback must precede the JE reversal').toBeLessThan(revIdx);
+  });
+
+  // ── Read-only data invariants (warn-only; no-op until real closes exist) ───
+  it('phase56: closed-year JEs balance and zero out income/expense (warn-only)', async () => {
+    if (!(await applied())) { console.warn('⚠ AC-1.3A not applied yet'); return; }
+
+    // D1 — every closed row's close JE is internally balanced (dr == cr).
+    const unbalanced = await sql<{ company_id: string; fiscal_year: number; total_debit: number; total_credit: number }>(`
+      SELECT f.company_id, f.fiscal_year, je.total_debit, je.total_credit
+        FROM public.fiscal_year_closes f
+        JOIN public.journal_entries je ON je.id = f.je_id
+       WHERE f.status = 'closed' AND f.je_id IS NOT NULL
+         AND ABS(je.total_debit - je.total_credit) > 0.01`);
+    if (unbalanced.length) console.warn('⚠ [AC-1.3A/D1] unbalanced close JE(s):', JSON.stringify(unbalanced).slice(0, 500));
+
+    // D2 — a closed year's income+expense (INCLUDING the close JE) nets to ~0,
+    // proving the close zeroed every P&L account into Retained Earnings.
+    const residual = await sql<{ company_id: string; fiscal_year: number; residual: number }>(`
+      SELECT f.company_id, f.fiscal_year, COALESCE(SUM(gl.credit - gl.debit), 0) AS residual
+        FROM public.fiscal_year_closes f
+        JOIN public.general_ledger gl ON gl.company_id = f.company_id
+             AND gl.date BETWEEN f.fiscal_year_start AND f.fiscal_year_end
+        JOIN public.chart_of_accounts coa ON coa.id = gl.account_id
+       WHERE f.status = 'closed' AND coa.type IN ('income','expense')
+       GROUP BY f.company_id, f.fiscal_year
+      HAVING ABS(COALESCE(SUM(gl.credit - gl.debit), 0)) > 0.01`);
+    if (residual.length) console.warn('⚠ [AC-1.3A/D2] closed year with non-zero P&L residual:', JSON.stringify(residual).slice(0, 500));
+
+    // D9 — stored net_income == recomputed net (EXCLUDING year_end_close) i.e.
+    // the number the P&L shows for that year (AC-1.0 exclusion, DB-side proxy).
+    const niDrift = await sql<{ company_id: string; fiscal_year: number; net_income: number; ni_excl: number }>(`
+      SELECT f.company_id, f.fiscal_year, f.net_income, x.ni_excl
+        FROM public.fiscal_year_closes f
+        JOIN LATERAL (
+          SELECT COALESCE(SUM(gl.credit - gl.debit), 0) AS ni_excl
+            FROM public.general_ledger gl
+            JOIN public.journal_entries  je  ON je.id  = gl.journal_entry_id
+            JOIN public.chart_of_accounts coa ON coa.id = gl.account_id
+           WHERE gl.company_id = f.company_id
+             AND gl.date BETWEEN f.fiscal_year_start AND f.fiscal_year_end
+             AND coa.type IN ('income','expense')
+             AND je.source_type <> 'year_end_close'
+        ) x ON true
+       WHERE f.status = 'closed' AND ABS(f.net_income - x.ni_excl) > 0.01`);
+    if (niDrift.length) console.warn('⚠ [AC-1.3A/D9] stored net_income ≠ P&L recompute:', JSON.stringify(niDrift).slice(0, 500));
+
+    expect(true).toBe(true); // observed, not blocking (tenant data)
+  });
+
+  it('phase56: RE roll-forward, period lock, and reopen reversal hold (warn-only)', async () => {
+    if (!(await applied())) { console.warn('⚠ AC-1.3A not applied yet'); return; }
+
+    // D3 — Σ(closed net_income) == net movement on 3100 from ACTIVE close JEs
+    // (excludes reversal mirrors and reversed originals via the JE flags).
+    const reDrift = await sql<{ company_id: string; sum_ni: number; re_move: number }>(`
+      SELECT ni.company_id, ni.sum_ni, re.re_move
+        FROM (SELECT company_id, COALESCE(SUM(net_income), 0) AS sum_ni
+                FROM public.fiscal_year_closes WHERE status = 'closed' GROUP BY company_id) ni
+        JOIN (SELECT gl.company_id, COALESCE(SUM(gl.credit - gl.debit), 0) AS re_move
+                FROM public.general_ledger gl
+                JOIN public.journal_entries je ON je.id = gl.journal_entry_id
+               WHERE gl.account_code = '3100'
+                 AND je.source_type = 'year_end_close'
+                 AND je.reversal_of_id IS NULL
+                 AND je.reversed_by_id IS NULL
+               GROUP BY gl.company_id) re ON re.company_id = ni.company_id
+       WHERE ABS(ni.sum_ni - re.re_move) > 0.01`);
+    if (reDrift.length) console.warn('⚠ [AC-1.3A/D3] RE roll-forward ≠ Σ net_income:', JSON.stringify(reDrift).slice(0, 500));
+
+    // D4 — period_lock_date >= the latest closed fiscal_year_end.
+    const lockLag = await sql<{ company_id: string; max_fye: string; period_lock_date: string | null }>(`
+      SELECT f.company_id, MAX(f.fiscal_year_end) AS max_fye, c.period_lock_date
+        FROM public.fiscal_year_closes f
+        JOIN public.companies c ON c.id = f.company_id
+       WHERE f.status = 'closed'
+       GROUP BY f.company_id, c.period_lock_date
+      HAVING c.period_lock_date IS NULL OR c.period_lock_date < MAX(f.fiscal_year_end)`);
+    if (lockLag.length) console.warn('⚠ [AC-1.3A/D4] period lock behind latest closed year:', JSON.stringify(lockLag).slice(0, 500));
+
+    // D5 — every 'reopened' row whose je_id is set has that close JE reversed.
+    const notReversed = await sql<{ company_id: string; fiscal_year: number; je_id: string }>(`
+      SELECT f.company_id, f.fiscal_year, f.je_id
+        FROM public.fiscal_year_closes f
+        JOIN public.journal_entries je ON je.id = f.je_id
+       WHERE f.status = 'reopened' AND f.je_id IS NOT NULL
+         AND je.reversed_by_id IS NULL`);
+    if (notReversed.length) console.warn('⚠ [AC-1.3A/D5] reopened row with un-reversed close JE:', JSON.stringify(notReversed).slice(0, 500));
+
+    // D6 — at most one ACTIVE (non-reversed, non-mirror) close JE per company/FY.
+    const dupActive = await sql<{ company_id: string; fiscal_year: number; n: number }>(`
+      SELECT je.company_id, f.fiscal_year, COUNT(*)::int AS n
+        FROM public.journal_entries je
+        JOIN public.fiscal_year_closes f ON f.id = je.source_id
+       WHERE je.source_type = 'year_end_close'
+         AND je.reversal_of_id IS NULL AND je.reversed_by_id IS NULL
+       GROUP BY je.company_id, f.fiscal_year
+      HAVING COUNT(*) > 1`);
+    if (dupActive.length) console.warn('⚠ [AC-1.3A/D6] >1 active close JE for a fiscal year:', JSON.stringify(dupActive).slice(0, 500));
+
+    expect(true).toBe(true); // observed, not blocking (tenant data)
+  });
+
+  it('phase56: sequential + LIFO integrity across closed years (warn-only)', async () => {
+    if (!(await applied())) { console.warn('⚠ AC-1.3A not applied yet'); return; }
+
+    // D7 — no closed FY(N) whose prior FY(N-1) is un-closed AND had P&L activity.
+    const seqBreak = await sql<{ company_id: string; fiscal_year: number }>(`
+      SELECT f.company_id, f.fiscal_year
+        FROM public.fiscal_year_closes f
+       WHERE f.status = 'closed'
+         AND NOT EXISTS (SELECT 1 FROM public.fiscal_year_closes p
+                          WHERE p.company_id = f.company_id
+                            AND p.fiscal_year = f.fiscal_year - 1 AND p.status = 'closed')
+         AND EXISTS (
+           SELECT 1 FROM public.general_ledger gl
+             JOIN public.journal_entries  je  ON je.id  = gl.journal_entry_id
+             JOIN public.chart_of_accounts coa ON coa.id = gl.account_id
+            WHERE gl.company_id = f.company_id
+              AND gl.date BETWEEN (f.fiscal_year_start - INTERVAL '1 year')::date
+                              AND (f.fiscal_year_end   - INTERVAL '1 year')::date
+              AND coa.type IN ('income','expense')
+              AND je.source_type <> 'year_end_close')`);
+    if (seqBreak.length) console.warn('⚠ [AC-1.3A/D7] closed year with an un-closed active prior year:', JSON.stringify(seqBreak).slice(0, 500));
+
+    // D8 — no 'reopened' FY sitting below a still-closed later FY (LIFO).
+    const lifoBreak = await sql<{ company_id: string; fiscal_year: number }>(`
+      SELECT f.company_id, f.fiscal_year
+        FROM public.fiscal_year_closes f
+       WHERE f.status = 'reopened'
+         AND EXISTS (SELECT 1 FROM public.fiscal_year_closes h
+                      WHERE h.company_id = f.company_id
+                        AND h.fiscal_year > f.fiscal_year AND h.status = 'closed')`);
+    if (lifoBreak.length) console.warn('⚠ [AC-1.3A/D8] reopened year beneath a still-closed later year:', JSON.stringify(lifoBreak).slice(0, 500));
+
+    expect(true).toBe(true); // observed, not blocking (tenant data)
+  });
+});
