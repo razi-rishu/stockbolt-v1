@@ -1,0 +1,102 @@
+================================================================================
+StockBolt — AC-3C  VAT/GST Return: regression + behavioural verification
+IMPLEMENTATION DELIVERY (stop-before-commit review package)
+Created: 2026-07-24
+================================================================================
+
+STATUS: Implemented + verified. NOT committed. Awaiting review before commit.
+
+SCOPE (AC-3C): the regression layer for the tax-filing engine — structural
+tripwires + read-only invariants in the ENFORCED suite (soft-until-applied),
+plus a STAGING-GATED behavioural file→lock→reopen suite. Mirrors the AC-1.3A +
+AC-1.3B pattern. No product/schema/posting change.
+
+
+--------------------------------------------------------------------------------
+1. FILES CHANGED
+--------------------------------------------------------------------------------
+MOD  tests/integration/regressions.test.ts
+     + describe 'AC-3C — VAT/GST filing guards + invariants (soft until applied)'
+       = 4 tests (suite 98 → 102), all soft-skipping until phase57 is applied:
+       • STRUCTURAL (hard expect once applied):
+         - tax_filings shape: status CHECK (draft/filed/reopened), jurisdiction
+           CHECK (AE_VAT/IN_GST), UNIQUE(company_id,jurisdiction,period_start,
+           period_end), companies.tax_filing_frequency column, RPCs not anon.
+         - file_tax_return keeps its guards (auth.write, period-not-ended,
+           already-filed, GREATEST lock advance) AND writes NO ledger
+           (asserts the body does not INSERT into journal_entries/general_ledger
+           — the "filing is metadata-only / posting integrity" guarantee).
+         - reopen_tax_return keeps LIFO + restores prior_lock_date + reverses no JE.
+       • READ-ONLY invariants (warn-only, tenant-data convention):
+         - D1 every 'filed' period is covered by the lock (period_lock_date ≥
+           period_end); D2 net_payable = output − input in every snapshot;
+           D3 LIFO integrity (no 'reopened' period below a still-'filed' later one).
+
+NEW  tests/integration/tax-return-verification.test.ts
+     Staging-gated behavioural suite (assertNotProductionTarget in every scratch
+     setup — REFUSES to run on production). Seeds posted tax activity with manual
+     JEs, computes the return via getTaxReturn, and drives file/reopen:
+       G1 (UAE) — output/input/net from GL; reconciliation flags untied tax;
+                  filing snapshots the return, advances the lock to period_end,
+                  audits, and posts NO journal entry; re-file rejected.
+       G2 (UAE) — posting into the filed period is blocked by the lock; reopen
+                  restores the lock (+audit) and re-allows the post.
+       G3 (UAE) — LIFO reopen (can't reopen the earlier period while a later one
+                  is filed; reverse order works); future-period file rejected.
+       G4 (India) — CGST+SGST aggregate into output GST; files as IN_GST.
+
+MOD  package.json
+     + "test:tax-return": "vitest run tests/integration/tax-return-verification.test.ts"
+
+
+--------------------------------------------------------------------------------
+2. VERIFICATION
+--------------------------------------------------------------------------------
+  tsc --noEmit .......... 0 errors (whole project).
+  npm run build ......... GREEN (~40s).
+  npm run test:regressions → 102/102 passing. The 4 AC-3C structural tests
+       SOFT-SKIP (phase57 not applied on the target: "⚠ AC-3C not applied yet"),
+       exactly as designed — they light up when the migration lands.
+  Behavioural guard (run on prod) — npm run test:tax-return → all 4 suites
+       REFUSED by the H4 P0 guard (8 tests skipped), and a follow-up query
+       confirmed 0 'TAX Scratch' companies created. No production writes; guard
+       intact and un-weakened.
+
+  Not verified here: the behavioural ASSERTIONS never executed — they need a
+  staging Supabase project (and phase57 applied there). The suite is validated as
+  compiling + correctly guarded, not as passing. The tax box/period/reconcile
+  MATH is already locked by the AC-3A unit tests (tests/unit/tax-return.test.ts).
+
+
+--------------------------------------------------------------------------------
+3. REGRESSION IMPACT
+--------------------------------------------------------------------------------
+  Additive test-only change. The enforced suite grew 98 → 102 (all green; new
+  tests soft-skip until phase57). No product code, schema, or posting touched.
+  The behavioural file is not part of the pre-commit gate (like the year-end
+  close behavioural suite).
+
+
+--------------------------------------------------------------------------------
+4. ROLLBACK PLAN
+--------------------------------------------------------------------------------
+  • Remove the 'AC-3C …' describe block from tests/integration/regressions.test.ts.
+  • Delete tests/integration/tax-return-verification.test.ts.
+  • Remove the test:tax-return script from package.json.
+  Nothing else depends on these; no DB/schema/posting to undo.
+
+
+--------------------------------------------------------------------------------
+5. NOTES / ACTIVATION
+--------------------------------------------------------------------------------
+  • The AC-3C structural tripwires activate automatically once phase57 is applied
+    (they stop soft-skipping and assert the live file/reopen functions).
+  • The behavioural suite runs when the harness points at a non-prod (staging)
+    project with phase57 applied: npm run test:tax-return.
+  • A "reconciliation MATCHED" behavioural case (seeded via real invoices/bills
+    so GL == documents) is deferred — the AC-3A unit tests lock the reconcile()
+    math, and G1 already exercises the end-to-end MISMATCH-detection path.
+
+================================================================================
+END — awaiting review before commit.
+================================================================================

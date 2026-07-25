@@ -1913,3 +1913,116 @@ describe('AC-1.3A — year-end close guards + invariants (soft until applied)', 
     expect(true).toBe(true); // observed, not blocking (tenant data)
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// AC-3C — VAT/GST filing guards + invariants (soft-until-applied)
+// ─────────────────────────────────────────────────────────────────────────
+// Structural markers on the phase57 file/reopen RPCs + read-only invariants
+// over any real filed periods. Behavioural file→lock→reopen lives in the
+// staging-gated tests/integration/tax-return-verification.test.ts (AC-1.3B
+// pattern). Filing is metadata-only — a key guard here is that it writes NO GL.
+describe('AC-3C — VAT/GST filing guards + invariants (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ present: boolean }>(
+      `SELECT to_regclass('public.tax_filings') IS NOT NULL AS present`);
+    return r[0]?.present === true;
+  }
+  async function fileSrc(): Promise<string> {
+    const r = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc WHERE proname = 'file_tax_return'`);
+    return r[0]?.src ?? '';
+  }
+  async function reopenSrc(): Promise<string> {
+    const r = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc WHERE proname = 'reopen_tax_return'`);
+    return r[0]?.src ?? '';
+  }
+
+  it('phase57: tax_filings shape (status/jurisdiction CHECKs, unique period, column, RPCs not anon)', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ AC-3C not applied yet — run supabase/migrations/20260724000003_phase57_ac3_tax_filings.sql');
+      return;
+    }
+    const checks = await sql<{ def: string }>(
+      `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+        WHERE conrelid='public.tax_filings'::regclass AND contype='c'`);
+    const allc = checks.map(c => c.def).join(' | ');
+    expect(/draft/.test(allc) && /filed/.test(allc) && /reopened/.test(allc), 'status CHECK').toBe(true);
+    expect(/AE_VAT/.test(allc) && /IN_GST/.test(allc), 'jurisdiction CHECK').toBe(true);
+
+    const uq = await sql<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_indexes
+        WHERE schemaname='public' AND tablename='tax_filings'
+          AND indexdef ILIKE '%UNIQUE%' AND indexdef ILIKE '%company_id%'
+          AND indexdef ILIKE '%jurisdiction%' AND indexdef ILIKE '%period_start%'`);
+    expect(uq[0]?.n ?? 0).toBeGreaterThan(0);
+
+    const col = await sql<{ n: number }>(
+      `SELECT count(*)::int AS n FROM information_schema.columns
+        WHERE table_name='companies' AND column_name='tax_filing_frequency'`);
+    expect(col[0]?.n ?? 0).toBe(1);
+
+    const grants = await sql<{ grantee: string }>(
+      `SELECT grantee FROM information_schema.routine_privileges
+        WHERE routine_schema='public'
+          AND routine_name IN ('file_tax_return','reopen_tax_return')
+          AND privilege_type='EXECUTE'`);
+    expect(grants.map(g => g.grantee)).not.toContain('anon');
+  });
+
+  it('phase57: file_tax_return keeps its guards AND writes no ledger (metadata-only)', async () => {
+    if (!(await applied())) { console.warn('⚠ AC-3C not applied yet'); return; }
+    const src = await fileSrc();
+    expect(src, 'file_tax_return should exist').toBeTruthy();
+    expect(src.includes(`auth_require('accounting.write')`), 'auth gate present').toBe(true);
+    expect(/has not ended yet/.test(src), 'period-not-ended guard present').toBe(true);
+    expect(/already filed/.test(src), 'already-filed guard present').toBe(true);
+    expect(src.includes('GREATEST(COALESCE(period_lock_date'), 'lock advances via GREATEST').toBe(true);
+    // Filing must NOT touch the ledger — preserves posting integrity.
+    expect(/insert\s+into\s+public\.journal_entries/i.test(src), 'no journal_entries insert').toBe(false);
+    expect(/insert\s+into\s+public\.general_ledger/i.test(src), 'no general_ledger insert').toBe(false);
+  });
+
+  it('phase57: reopen_tax_return keeps LIFO + restores the prior lock, reverses no JE', async () => {
+    if (!(await applied())) { console.warn('⚠ AC-3C not applied yet'); return; }
+    const src = await reopenSrc();
+    expect(src, 'reopen_tax_return should exist').toBeTruthy();
+    expect(src.includes(`auth_require('accounting.write')`), 'auth gate present').toBe(true);
+    expect(/is not filed/.test(src), 'not-filed guard present').toBe(true);
+    expect(/reverse order|later tax periods/.test(src), 'LIFO guard present').toBe(true);
+    expect(src.includes('prior_lock_date'), 'restores prior lock').toBe(true);
+    expect(/reverse_journal_entry/i.test(src), 'reverses no JE (filing created none)').toBe(false);
+  });
+
+  it('phase57: filed periods are locked + snapshots self-consistent (warn-only)', async () => {
+    if (!(await applied())) { console.warn('⚠ AC-3C not applied yet'); return; }
+
+    // D1 — every 'filed' period is covered by the company lock (lock >= period_end).
+    const lockLag = await sql<{ company_id: string; period_end: string; period_lock_date: string | null }>(`
+      SELECT f.company_id, f.period_end, c.period_lock_date
+        FROM public.tax_filings f
+        JOIN public.companies c ON c.id = f.company_id
+       WHERE f.status = 'filed'
+         AND (c.period_lock_date IS NULL OR c.period_lock_date < f.period_end)`);
+    if (lockLag.length) console.warn('⚠ [AC-3C/D1] filed period not covered by the lock:', JSON.stringify(lockLag).slice(0, 500));
+
+    // D2 — snapshot integrity: net_payable = output_tax − input_tax.
+    const netDrift = await sql<{ company_id: string; period_start: string }>(`
+      SELECT company_id, period_start
+        FROM public.tax_filings
+       WHERE ABS(net_payable - (output_tax - input_tax)) > 0.01`);
+    if (netDrift.length) console.warn('⚠ [AC-3C/D2] net_payable ≠ output − input:', JSON.stringify(netDrift).slice(0, 500));
+
+    // D3 — LIFO integrity: no 'reopened' period below a still-'filed' later one.
+    const lifoBreak = await sql<{ company_id: string; period_end: string }>(`
+      SELECT f.company_id, f.period_end
+        FROM public.tax_filings f
+       WHERE f.status = 'reopened'
+         AND EXISTS (SELECT 1 FROM public.tax_filings h
+                      WHERE h.company_id = f.company_id AND h.jurisdiction = f.jurisdiction
+                        AND h.period_end > f.period_end AND h.status = 'filed')`);
+    if (lifoBreak.length) console.warn('⚠ [AC-3C/D3] reopened period beneath a still-filed later period:', JSON.stringify(lifoBreak).slice(0, 500));
+
+    expect(true).toBe(true); // observed, not blocking (tenant data)
+  });
+});
