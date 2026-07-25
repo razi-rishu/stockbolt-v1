@@ -177,6 +177,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
             { to: '/accounting/general-ledger', label: t('nav.general_ledger') },
             { to: '/accounting/period-lock', label: t('nav.period_lock') },
             { to: '/accounting/year-end-close', label: t('nav.year_end_close') },
+            { to: '/accounting/tax-return', label: t('nav.tax_return') },
           ],
         },
         {
