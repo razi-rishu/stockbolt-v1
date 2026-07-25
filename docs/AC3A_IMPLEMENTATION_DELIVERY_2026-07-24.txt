@@ -1,0 +1,135 @@
+================================================================================
+StockBolt — AC-3A  VAT/GST Return: data layer + engine
+IMPLEMENTATION DELIVERY (stop-before-commit review package)
+Created: 2026-07-24
+================================================================================
+
+STATUS: Implemented + verified (typecheck/build/unit/regressions). NOT committed.
+Migration NOT applied (hand-apply pending). Awaiting review before commit.
+
+SCOPE (AC-3A only): the migration + jurisdiction-aware getTaxReturn engine +
+adapter types/methods + unit tests. NO UI (that is AC-3B). NO regression
+tripwires yet (AC-3C).
+
+Architecture honoured:
+  • Reuses the existing tax/accounting engine — getTaxReturn only AGGREGATES
+    already-posted GL tax accounts and reuses the seedCOA/seedTaxRates account
+    config. It recomputes NO tax.
+  • NO posting-logic change — filing posts no journal entry; it snapshots the
+    return and advances the EXISTING companies.period_lock_date (the AC-1 lock
+    mechanism). Reopen restores prior_lock_date. No posting RPC/trigger changed.
+  • No duplicated accounting calculations. Existing getVATReturn left untouched
+    (the current VAT report keeps working).
+  • Minimal schema: one table + one column, additive, hand-applied.
+
+
+--------------------------------------------------------------------------------
+1. FILES CHANGED
+--------------------------------------------------------------------------------
+NEW  supabase/migrations/20260724000003_phase57_ac3_tax_filings.sql
+     • companies.tax_filing_frequency text CHECK ('monthly','quarterly') DEFAULT 'quarterly'
+     • tax_filings table (id, company_id, jurisdiction AE_VAT|IN_GST, period_type,
+       period_start/end, status draft|filed|reopened, output_tax/input_tax/
+       net_payable, boxes jsonb, reconciliation jsonb, reference_number,
+       prior_lock_date, audit fields), UNIQUE(company_id,jurisdiction,period_start,
+       period_end), (company_id,status) index, RLS read-only + grants.
+     • file_tax_return(...) — auth_require('accounting.write'); rejects future/
+       already-filed periods; upserts status='filed'; advances period_lock_date
+       via GREATEST (never backward); best-effort audit_logs. Posts NO JE.
+     • reopen_tax_return(p_filing_id) — LIFO guard; restores prior_lock_date;
+       status='reopened'; audit. Reverses NO JE (filing created none).
+     • Grants EXECUTE to authenticated; REVOKE from PUBLIC/anon.
+
+NEW  src/lib/tax-return.ts   (pure logic + types, no React/DB)
+     Types: TaxJurisdiction, FilingFrequency, FilingStatus, FilingPeriod,
+       ReconcileResult, TaxReconciliation, TaxReturnBox, TaxReturn, TaxFiling,
+       TaxFileResult, TaxReopenResult.
+     Pure fns: jurisdictionForCountry, jurisdictionLabel, taxAccountsFor,
+       taxAccountsForCountry, resolveFilingPeriod, netPayable, reconcile,
+       reconciliation.
+
+NEW  tests/unit/tax-return.test.ts   (12 unit tests, no DB)
+
+MOD  src/data/adapter.ts
+     + imports the tax types; + ReportsAPI.getTaxReturn; + AccountingAPI
+       {listTaxFilings, fileTaxReturn, reopenTaxReturn}; + FileTaxReturnInput type.
+
+MOD  src/data/supabaseAdapter.ts
+     + reports.getTaxReturn (jurisdiction-aware GL aggregation + GL-vs-documents
+       reconciliation) · + accounting.listTaxFilings (graceful if phase57 not
+       applied) · + accounting.fileTaxReturn / reopenTaxReturn (RPC wrappers).
+     + imports the pure helpers from '@/lib/tax-return'.
+
+MOD  src/data/selfHostedAdapter.ts
+     + notImplemented stubs: reports.getTaxReturn, accounting.listTaxFilings /
+       fileTaxReturn / reopenTaxReturn (interface conformance).
+
+
+--------------------------------------------------------------------------------
+2. THE ENGINE (getTaxReturn) — reuse, no recompute
+--------------------------------------------------------------------------------
+  • Jurisdiction from companies.country_code (IN → IN_GST; else AE_VAT).
+  • Tax accounts from the pure map (UAE: 2200 output / 1500 input; India:
+    2210/2220/2230 output, 1510/1520/1530 input/ITC) — the seedCOA/seedTaxRates
+    accounts, not new logic.
+  • output_tax = Σ(credit−debit) over output accounts; input_tax = Σ(debit−credit)
+    over input accounts — GL is posted-only by construction (drafts never post,
+    voids net to zero). net_payable = output − input.
+  • Reconciliation = GL tax movement vs tax carried on posted source documents
+    (Σ invoices.tax_amount − Σ credit_notes.tax_amount for output; Σ vendor_bills
+    − Σ debit_notes for input), confirmed docs only. Equal by construction unless
+    a manual JE hit a tax account or a document's posted tax ≠ its header.
+
+
+--------------------------------------------------------------------------------
+3. VERIFICATION
+--------------------------------------------------------------------------------
+  tsc --noEmit .......... 0 errors (whole project).
+  npm run build ......... GREEN (~22s).
+  Unit tests ............ 12/12 (npx vitest run tests/unit/tax-return.test.ts) —
+                          jurisdiction/account mapping, monthly/quarterly period
+                          math (incl. Feb leap/non-leap, quarter boundaries),
+                          netPayable, reconcile + reconciliation (matched/tol).
+
+  Not verified here: the migration is NOT applied on the DB I can reach, so the
+  RPCs (file/reopen) and the tax_filings queries are validated by SQL review +
+  typecheck only, not executed. listTaxFilings degrades gracefully (returns [])
+  until phase57 is applied. Behavioural file→lock→reopen is AC-3C (staging).
+
+
+--------------------------------------------------------------------------------
+4. REGRESSION IMPACT
+--------------------------------------------------------------------------------
+  npm run test:regressions → 98/98 passing (unchanged). AC-3A is additive:
+  existing getVATReturn + the current VAT report are untouched; no posting RPC,
+  trigger, or existing table semantics changed. No new tripwires added yet
+  (structural tripwires + read-only invariants + behavioural suite are AC-3C).
+
+
+--------------------------------------------------------------------------------
+5. ROLLBACK PLAN
+--------------------------------------------------------------------------------
+Code (pre-apply, nothing depends on it yet):
+  • delete src/lib/tax-return.ts, tests/unit/tax-return.test.ts, and the
+    migration file;
+  • revert the getTaxReturn/filing additions in adapter.ts, supabaseAdapter.ts,
+    selfHostedAdapter.ts.
+Database (only if the migration was applied):
+  DROP FUNCTION IF EXISTS public.reopen_tax_return(uuid);
+  DROP FUNCTION IF EXISTS public.file_tax_return(text,text,date,date,numeric,numeric,numeric,jsonb,jsonb,text);
+  DROP TABLE    IF EXISTS public.tax_filings;
+  ALTER TABLE   public.companies DROP COLUMN IF EXISTS tax_filing_frequency;
+(Reverse any filed period via reopen first if desired. Filing posts no GL, so
+there is nothing in the ledger to unwind.)
+
+
+--------------------------------------------------------------------------------
+6. ON YOUR SIDE (not blocking review)
+--------------------------------------------------------------------------------
+  • Apply supabase/migrations/20260724000003_phase57_ac3_tax_filings.sql by hand
+    (Supabase SQL editor) when ready — then the filing lifecycle goes live and
+    AC-3B (the Tax Return page) can file/reopen.
+
+================================================================================
+END — awaiting review before commit.
+================================================================================

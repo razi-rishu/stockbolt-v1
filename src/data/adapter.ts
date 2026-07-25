@@ -1,4 +1,5 @@
 import type { Database } from '@/types/database';
+import type { TaxReturn, TaxFiling, TaxFileResult, TaxReopenResult, TaxJurisdiction, FilingFrequency } from '@/lib/tax-return';
 
 type Tables = Database['public']['Tables'];
 
@@ -697,6 +698,28 @@ export interface AccountingAPI {
   closeFiscalYear(fiscal_year: number): Promise<YearEndCloseResult>;
   /** Reverses the closing entry and rolls the lock back (RPC reopen_fiscal_year). LIFO only. */
   reopenFiscalYear(fiscal_year: number): Promise<YearEndReopenResult>;
+
+  // ── AC-3: VAT/GST filing register ────────────────────────────────────────
+  /** Every tax-filing lifecycle row for the company, newest period first. */
+  listTaxFilings(company_id: string): Promise<TaxFiling[]>;
+  /** Snapshots the computed return and locks the period (RPC file_tax_return). Posts no JE. */
+  fileTaxReturn(input: FileTaxReturnInput): Promise<TaxFileResult>;
+  /** Rolls the lock back and re-opens the period (RPC reopen_tax_return). LIFO only. */
+  reopenTaxReturn(filing_id: string): Promise<TaxReopenResult>;
+}
+
+/** Payload for fileTaxReturn — the client passes the computed return snapshot. */
+export interface FileTaxReturnInput {
+  jurisdiction: TaxJurisdiction;
+  period_type: FilingFrequency;
+  period_start: string;
+  period_end: string;
+  output_tax: number;
+  input_tax: number;
+  net_payable: number;
+  boxes: unknown;
+  reconciliation: unknown;
+  reference?: string | null;
 }
 
 export interface StockLedgerAPI {
@@ -1184,6 +1207,12 @@ export interface ReportsAPI {
   getPurchasesByProduct(company_id: string, from: string, to: string): Promise<PurchasesByProductLine[]>;
   getOutstandingPOs(company_id: string): Promise<OutstandingPOLine[]>;
   getVATReturn(company_id: string, from: string, to: string): Promise<VATReturn>;
+  /**
+   * AC-3 — jurisdiction-aware tax return (UAE VAT / India GST) for a period.
+   * Read-only: aggregates the posted GL tax accounts (posted-only by
+   * construction) + reconciles against document-derived tax. Recomputes no tax.
+   */
+  getTaxReturn(company_id: string, from: string, to: string): Promise<TaxReturn>;
   getAuditLog(company_id: string, params: { from?: string; to?: string; limit?: number }): Promise<AuditLogLine[]>;
   /**
    * Audit log entries for a specific document (entity_type, entity_id).

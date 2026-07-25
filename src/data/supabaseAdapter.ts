@@ -26,6 +26,7 @@ import type {
   InvoiceConfirmResult, PaymentConfirmResult, ApplyAdvanceResult,
   ProfitAndLoss, ProfitAndLossLine,
   FiscalYearClose, YearEndClosePreview, YearEndCloseLine, YearEndCloseResult, YearEndReopenResult,
+  FileTaxReturnInput,
   BalanceSheet, BalanceSheetLine,
   ARAgingReport, ARAgingBucket,
   CustomerStatement, CustomerStatementLine,
@@ -70,6 +71,10 @@ import type {
   OwnerDashboard,
   InvariantResult,
 } from './adapter';
+import {
+  jurisdictionForCountry, taxAccountsFor, netPayable, reconciliation as buildReconciliation,
+  type TaxReturn, type TaxFiling, type TaxFileResult, type TaxReopenResult,
+} from '@/lib/tax-return';
 import { apAgingBucket } from '@/core/purchasing/purchase-calc';
 import { stockAgingDays, stockAgingBucket } from '@/core/inventory/inventory-calc';
 import { getSupabaseClient } from './supabase-client';
@@ -1403,6 +1408,44 @@ export function createSupabaseAdapter(
         const { data, error } = await client.rpc('reopen_fiscal_year' as any, { p_fiscal_year: fiscal_year } as any);
         if (error) throw new SupabaseDataError(`accounting.reopenFiscalYear: ${error.message}`);
         return data as unknown as YearEndReopenResult;
+      },
+
+      // ── AC-3: VAT/GST filing register ────────────────────────────────────
+      async listTaxFilings(company_id): Promise<TaxFiling[]> {
+        const { data, error } = await client
+          .from('tax_filings' as any)
+          .select('*')
+          .eq('company_id', company_id)
+          .order('period_start', { ascending: false });
+        if (error) {
+          // phase57 not applied yet → no filings, not a crash.
+          if (isMissingRelation(error)) return [];
+          throw new SupabaseDataError(`accounting.listTaxFilings: ${error.message}`);
+        }
+        return (data ?? []) as unknown as TaxFiling[];
+      },
+
+      async fileTaxReturn(input: FileTaxReturnInput): Promise<TaxFileResult> {
+        const { data, error } = await client.rpc('file_tax_return' as any, {
+          p_jurisdiction: input.jurisdiction,
+          p_period_type: input.period_type,
+          p_period_start: input.period_start,
+          p_period_end: input.period_end,
+          p_output_tax: input.output_tax,
+          p_input_tax: input.input_tax,
+          p_net_payable: input.net_payable,
+          p_boxes: input.boxes as any,
+          p_reconciliation: input.reconciliation as any,
+          p_reference: input.reference ?? null,
+        } as any);
+        if (error) throw new SupabaseDataError(`accounting.fileTaxReturn: ${error.message}`);
+        return data as unknown as TaxFileResult;
+      },
+
+      async reopenTaxReturn(filing_id): Promise<TaxReopenResult> {
+        const { data, error } = await client.rpc('reopen_tax_return' as any, { p_filing_id: filing_id } as any);
+        if (error) throw new SupabaseDataError(`accounting.reopenTaxReturn: ${error.message}`);
+        return data as unknown as TaxReopenResult;
       },
     },
 
@@ -3356,6 +3399,71 @@ export function createSupabaseAdapter(
           net_vat_payable: Math.max(0, totalOutputVAT) - Math.max(0, totalInputVAT),
           output_by_region: toRegionRows(outMap),
           input_by_region: toRegionRows(inMap),
+        };
+      },
+
+      async getTaxReturn(company_id, from, to): Promise<TaxReturn> {
+        // Jurisdiction + its posted tax accounts (reuse the seedCOA/seedTaxRates
+        // config). This recomputes NO tax — it only aggregates already-posted GL.
+        const { data: company } = await client
+          .from('companies').select('country_code').eq('id', company_id).maybeSingle();
+        const jurisdiction = jurisdictionForCountry((company as any)?.country_code);
+        const accounts = taxAccountsFor(jurisdiction);
+
+        // GL tax movement (posted-only by construction — GL holds confirmed docs,
+        // voids net to zero). output = Σ(credit − debit) over output accounts;
+        // input/ITC = Σ(debit − credit) over input accounts.
+        const sumGL = async (codes: string[], side: 'output' | 'input'): Promise<number> => {
+          const { data, error } = await client
+            .from('general_ledger').select('debit, credit')
+            .eq('company_id', company_id).in('account_code', codes)
+            .gte('date', from).lte('date', to);
+          assertNoError(error, 'getTaxReturn:gl');
+          return (data ?? []).reduce((s, r) => s + (side === 'output'
+            ? Number(r.credit) - Number(r.debit)
+            : Number(r.debit) - Number(r.credit)), 0);
+        };
+        const sumGLBase = async (code: string, side: 'output' | 'input'): Promise<number> => {
+          const { data, error } = await client
+            .from('general_ledger').select('debit, credit')
+            .eq('company_id', company_id).eq('account_code', code)
+            .gte('date', from).lte('date', to);
+          assertNoError(error, 'getTaxReturn:base');
+          return (data ?? []).reduce((s, r) => s + (side === 'output'
+            ? Number(r.credit) - Number(r.debit)
+            : Number(r.debit) - Number(r.credit)), 0);
+        };
+        const glOutput = await sumGL(accounts.output, 'output');
+        const glInput  = await sumGL(accounts.input,  'input');
+        const taxableSales    = await sumGLBase('4100', 'output');
+        const taxableExpenses = await sumGLBase('5100', 'input');
+
+        // Reconciliation: GL tax vs tax carried on posted source documents.
+        // Equal by construction unless a manual JE hit a tax account or a
+        // document's posted tax ≠ its header. Reuses document tax; recomputes none.
+        const sumDocTax = async (table: string, sign: 1 | -1): Promise<number> => {
+          const { data, error } = await (client.from(table as any) as any)
+            .select('tax_amount').eq('company_id', company_id).eq('status', 'confirmed')
+            .gte('date', from).lte('date', to);
+          if (error) {
+            if (isMissingRelation(error)) return 0;
+            throw new SupabaseDataError(`getTaxReturn:${table}: ${error.message}`);
+          }
+          return (data ?? []).reduce((s: number, r: any) => s + sign * Number(r.tax_amount ?? 0), 0);
+        };
+        const docOutput = (await sumDocTax('invoices', 1))      + (await sumDocTax('credit_notes', -1));
+        const docInput  = (await sumDocTax('vendor_bills', 1))  + (await sumDocTax('debit_notes', -1));
+
+        const outLabel = jurisdiction === 'IN_GST' ? 'Output GST (taxable outward supplies)' : 'Output VAT (standard-rated supplies)';
+        const inLabel  = jurisdiction === 'IN_GST' ? 'Input Tax Credit (ITC)' : 'Input VAT (standard-rated expenses)';
+
+        return {
+          jurisdiction, period_start: from, period_end: to,
+          output_tax: glOutput, input_tax: glInput,
+          net_payable: netPayable(glOutput, glInput),
+          output_boxes: [{ code: 'OUT', label: outLabel, taxable_amount: taxableSales,    tax_amount: glOutput }],
+          input_boxes:  [{ code: 'IN',  label: inLabel,  taxable_amount: taxableExpenses, tax_amount: glInput  }],
+          reconciliation: buildReconciliation(glOutput, docOutput, glInput, docInput),
         };
       },
 

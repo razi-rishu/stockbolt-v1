@@ -194,6 +194,9 @@ export function createSelfHostedAdapter(): DataAdapter {
       listFiscalYearCloses:       () => notImplemented('accounting.listFiscalYearCloses'),
       closeFiscalYear:            () => notImplemented('accounting.closeFiscalYear'),
       reopenFiscalYear:           () => notImplemented('accounting.reopenFiscalYear'),
+      listTaxFilings:             () => notImplemented('accounting.listTaxFilings'),
+      fileTaxReturn:              () => notImplemented('accounting.fileTaxReturn'),
+      reopenTaxReturn:            () => notImplemented('accounting.reopenTaxReturn'),
     },
     stockLedger: {
       postMovement:       () => notImplemented('stockLedger.postMovement'),
@@ -284,6 +287,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       getPurchasesByProduct:  () => notImplemented('reports.getPurchasesByProduct'),
       getOutstandingPOs:    () => notImplemented('reports.getOutstandingPOs'),
       getVATReturn:         () => notImplemented('reports.getVATReturn'),
+      getTaxReturn:         () => notImplemented('reports.getTaxReturn'),
       getAuditLog:          () => notImplemented('reports.getAuditLog'),
       getEntityAuditLog:    () => notImplemented('reports.getEntityAuditLog'),
       getReversalTrail:     () => notImplemented('reports.getReversalTrail'),
