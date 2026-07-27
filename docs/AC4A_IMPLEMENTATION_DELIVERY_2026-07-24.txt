@@ -1,0 +1,125 @@
+================================================================================
+StockBolt — AC-4A  E-invoice / tax classification metadata (foundation)
+IMPLEMENTATION DELIVERY (stop-before-commit review package)
+Created: 2026-07-24
+================================================================================
+
+STATUS: Implemented + verified. NOT committed. Migration NOT applied (hand-apply
+pending). Awaiting review before commit.
+
+SCOPE DELIVERED (safe foundation): migration (phase58) + the pure classification
+lib + unit tests + a soft-until-applied structural tripwire.
+
+SCOPE DEFERRED (deliberately — see §5): the entry-UI save-wiring + the adapter
+insert-type extension. Reason: wiring new columns into the CORE invoice editor's
+save path before phase58 is live would break ALL invoicing if a deploy ever
+precedes the migration. That blast radius is not acceptable for a live financial
+app, so the UI wiring waits until phase58 is confirmed applied.
+
+
+--------------------------------------------------------------------------------
+1. POSTING-SAFETY GATE (ran first, per the spec) — PASSED
+--------------------------------------------------------------------------------
+Queried the LIVE definitions: confirm_invoice, edit_invoice, confirm_pos_sale,
+confirm_vendor_bill read NEITHER tax_category NOR tax_treatment
+(reads_category=false, reads_treatment=false for all four). The new columns are
+therefore inert to the GL — posting integrity preserved by construction. This is
+also why a NEW tax_treatment column was added rather than overloading the
+existing tax_category.
+
+
+--------------------------------------------------------------------------------
+2. FILES CHANGED
+--------------------------------------------------------------------------------
+NEW  supabase/migrations/20260724000004_phase58_ac4a_einvoice_metadata.sql
+     6 additive columns (all nullable or constant-default → metadata-only, no
+     table rewrite, no existing row behaviour change):
+       invoice_items.tax_treatment  text NOT NULL DEFAULT 'standard'
+       products.default_tax_treatment text NULL
+       contacts.buyer_type          text NOT NULL DEFAULT 'registered'
+       contacts.place_of_supply_code text NULL   (India GST state code)
+       invoices.is_export           boolean NOT NULL DEFAULT false
+       invoices.place_of_supply_code text NULL
+     + 3 idempotent CHECK constraints. Reuses existing products.hsn_code,
+       contacts.tax_id, contacts.address_state, units_of_measure.code.
+
+NEW  src/lib/einvoice-metadata.ts   (pure logic + types, no React/DB)
+     TaxTreatment / BuyerType enums + guards; GST_STATE_CODES (38 states + 97/99)
+     + isValidStateCode/stateNameForCode; suggestBuyerType; resolveLineTreatment;
+     eInvoiceReadiness (jurisdiction-aware missing-field checker).
+
+NEW  tests/unit/einvoice-metadata.test.ts   (11 unit tests, no DB)
+
+MOD  tests/integration/regressions.test.ts
+     + 'AC-4A — e-invoice metadata (soft until applied)' = 2 tests (suite
+       102 → 104): structural (all 6 columns + 3 CHECKs exist) + read-only
+       invariant (tax_treatment values in the allowed set, warn-only).
+
+(No adapter method, no UI, no posting RPC touched.)
+
+
+--------------------------------------------------------------------------------
+3. VERIFICATION
+--------------------------------------------------------------------------------
+  posting-safety gate ... PASSED (no posting RPC reads the new/old category cols).
+  tsc --noEmit .......... 0 errors.
+  npm run build ......... GREEN (~24s).
+  unit tests ............ 11/11 (npx vitest run tests/unit/einvoice-metadata.test.ts).
+  npm run test:regressions → 104/104. The 2 AC-4A tripwires soft-skip
+       ("⚠ AC-4A not applied yet"), as designed (phase58 not applied here).
+
+
+--------------------------------------------------------------------------------
+4. REGRESSION IMPACT
+--------------------------------------------------------------------------------
+  Additive. Enforced suite 102 → 104 (green; new tests soft-skip until phase58).
+  The pure lib is not imported by any app path yet, so nothing renders/changes at
+  runtime. No posting/schema semantics of existing tables changed (columns are
+  additive, defaulted, and unread by posting).
+
+
+--------------------------------------------------------------------------------
+5. THE DEFERRED ENTRY-UI (important — your call on sequencing)
+--------------------------------------------------------------------------------
+The approved AC-4A scope listed "entry-UI fields". I have NOT wired them, on
+purpose, because the safe way to add columns the CORE invoice editor writes is:
+apply the migration FIRST, THEN ship the code. If the code deployed before
+phase58 were applied, every invoice/product/contact save that includes a new
+column would fail with "column does not exist" — taking down invoicing.
+
+Recommended sequence for the UI step (call it AC-4A.2):
+  1. You hand-apply phase58 on prod.
+  2. Then I wire the entry-UI (product default_tax_treatment + hsn; contact
+     buyer_type + place_of_supply; invoice per-line tax_treatment + header
+     is_export/place_of_supply) and extend the adapter insert types, sending the
+     new fields safely.
+This keeps the blast-radius change (core invoice editor) strictly after the
+schema is live. Say the word and I'll do AC-4A.2 once phase58 is applied — or,
+if you'd rather, I can wire it now guarded so unset fields are omitted from the
+payload (lower-risk but still assumes you apply phase58 before pushing).
+
+
+--------------------------------------------------------------------------------
+6. ROLLBACK PLAN
+--------------------------------------------------------------------------------
+Code (pre-apply): delete the migration + src/lib/einvoice-metadata.ts +
+tests/unit/einvoice-metadata.test.ts; remove the AC-4A block from
+regressions.test.ts.
+Database (only if applied):
+  ALTER TABLE public.invoice_items DROP COLUMN IF EXISTS tax_treatment;
+  ALTER TABLE public.products      DROP COLUMN IF EXISTS default_tax_treatment;
+  ALTER TABLE public.contacts      DROP COLUMN IF EXISTS place_of_supply_code, DROP COLUMN IF EXISTS buyer_type;
+  ALTER TABLE public.invoices      DROP COLUMN IF EXISTS is_export, DROP COLUMN IF EXISTS place_of_supply_code;
+No GL/posting to undo.
+
+
+--------------------------------------------------------------------------------
+7. ON YOUR SIDE
+--------------------------------------------------------------------------------
+  • Apply phase58 by hand when ready → the AC-4A tripwires go live AND it unblocks
+    the AC-4A.2 entry-UI + AC-4B formatters.
+  • This metadata also unblocks AC-3 full-fidelity (VAT201/GSTR box-splitting).
+
+================================================================================
+END — awaiting review before commit.
+================================================================================

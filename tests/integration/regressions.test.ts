@@ -2026,3 +2026,46 @@ describe('AC-3C — VAT/GST filing guards + invariants (soft until applied)', ()
     expect(true).toBe(true); // observed, not blocking (tenant data)
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// AC-4A — e-invoice / tax classification metadata (soft until applied)
+// ─────────────────────────────────────────────────────────────────────────
+// Structural tripwire that the phase58 metadata columns + CHECKs exist, and a
+// read-only invariant that tax_treatment values stay in the allowed set. The
+// classification logic itself is locked by tests/unit/einvoice-metadata.test.ts.
+describe('AC-4A — e-invoice metadata (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(
+      `SELECT count(*)::int AS n FROM information_schema.columns
+        WHERE table_name='invoice_items' AND column_name='tax_treatment'`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase58: classification columns + CHECKs exist across the four tables', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ AC-4A not applied yet — run supabase/migrations/20260724000004_phase58_ac4a_einvoice_metadata.sql');
+      return;
+    }
+    const cols = await sql<{ table_name: string; column_name: string }>(`
+      SELECT table_name, column_name FROM information_schema.columns
+       WHERE (table_name='invoice_items' AND column_name='tax_treatment')
+          OR (table_name='products'      AND column_name='default_tax_treatment')
+          OR (table_name='contacts'      AND column_name IN ('buyer_type','place_of_supply_code'))
+          OR (table_name='invoices'      AND column_name IN ('is_export','place_of_supply_code'))`);
+    expect(cols.length, 'all 6 metadata columns present').toBe(6);
+
+    const chk = await sql<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_constraint
+        WHERE conname IN ('invoice_items_tax_treatment_check','products_default_tax_treatment_check','contacts_buyer_type_check')`);
+    expect(chk[0]?.n ?? 0).toBe(3);
+  });
+
+  it('phase58: tax_treatment values stay in the allowed set (warn-only)', async () => {
+    if (!(await applied())) { console.warn('⚠ AC-4A not applied yet'); return; }
+    const bad = await sql<{ id: string; tax_treatment: string }>(`
+      SELECT id, tax_treatment FROM public.invoice_items
+       WHERE tax_treatment NOT IN ('standard','zero_rated','exempt','reverse_charge','export','out_of_scope')`);
+    if (bad.length) console.warn('⚠ [AC-4A] invoice_items with an unknown tax_treatment:', JSON.stringify(bad).slice(0, 500));
+    expect(true).toBe(true); // observed, not blocking (tenant data)
+  });
+});
