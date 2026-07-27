@@ -18,7 +18,7 @@ export type CategoryRow = Tables['categories']['Row'];
 export type BrandRow = Tables['brands']['Row'];
 export type VehicleMakeRow = Tables['vehicle_makes']['Row'];
 export type VehicleModelRow = Tables['vehicle_models']['Row'];
-export type ProductRow = Tables['products']['Row'];
+export type ProductRow = Tables['products']['Row'] & ProductEInvoiceFields;
 export type ProductCompatibilityRow = Tables['product_compatibility']['Row'] & CompatibilityVehicleFields;
 export type ProductSupplierCodeRow = Tables['product_supplier_codes']['Row'];
 // Phase 16 — structured geography. These columns are added by migration but
@@ -28,7 +28,14 @@ export interface ContactGeoFields {
   region_id?:    string | null;
   area_id?:      string | null;
 }
-export type ContactRow = Tables['contacts']['Row'] & ContactGeoFields;
+// Phase 58 (AC-4A) — e-invoice / tax-classification metadata. Same pattern as
+// the geo fields: the columns are live (migration applied) but not in the
+// generated Database types yet, so we intersect them onto the app-facing types.
+export interface ProductEInvoiceFields { default_tax_treatment?: string | null; }
+export interface ContactEInvoiceFields { buyer_type?: string | null; place_of_supply_code?: string | null; }
+export interface InvoiceEInvoiceFields { is_export?: boolean | null; place_of_supply_code?: string | null; }
+export interface InvoiceItemEInvoiceFields { tax_treatment?: string | null; }
+export type ContactRow = Tables['contacts']['Row'] & ContactGeoFields & ContactEInvoiceFields;
 export type PriceLevelRow = Tables['price_levels']['Row'];
 export type ProductPriceLevelRow = Tables['product_price_levels']['Row'];
 
@@ -103,12 +110,12 @@ export interface VehicleImportResult {
   rows: number; makes_created: number; models_created: number;
   generations_created: number; variants_created: number; engines_created: number;
 }
-export type ProductInsert = Omit<Tables['products']['Insert'], 'id' | 'created_at' | 'updated_at'>;
-export type ProductUpdate = Tables['products']['Update'];
+export type ProductInsert = Omit<Tables['products']['Insert'], 'id' | 'created_at' | 'updated_at'> & ProductEInvoiceFields;
+export type ProductUpdate = Tables['products']['Update'] & ProductEInvoiceFields;
 export type ProductCompatibilityInsert = Omit<Tables['product_compatibility']['Insert'], 'id' | 'created_at'> & CompatibilityVehicleFields;
 export type ProductSupplierCodeInsert = Omit<Tables['product_supplier_codes']['Insert'], 'id' | 'created_at' | 'updated_at'>;
-export type ContactInsert = Omit<Tables['contacts']['Insert'], 'id' | 'created_at' | 'updated_at'> & ContactGeoFields;
-export type ContactUpdate = Tables['contacts']['Update'] & ContactGeoFields;
+export type ContactInsert = Omit<Tables['contacts']['Insert'], 'id' | 'created_at' | 'updated_at'> & ContactGeoFields & ContactEInvoiceFields;
+export type ContactUpdate = Tables['contacts']['Update'] & ContactGeoFields & ContactEInvoiceFields;
 export type PriceLevelInsert = Omit<Tables['price_levels']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type PriceLevelUpdate = Tables['price_levels']['Update'];
 export type ProductPriceLevelInsert = Omit<Tables['product_price_levels']['Insert'], 'id' | 'created_at'>;
@@ -773,17 +780,17 @@ export interface StockLedgerAPI {
 }
 
 // ── Phase 4 row types ─────────────────────────────────────────────────────────
-export type InvoiceRow = Tables['invoices']['Row'];
-export type InvoiceItemRow = Tables['invoice_items']['Row'];
+export type InvoiceRow = Tables['invoices']['Row'] & InvoiceEInvoiceFields;
+export type InvoiceItemRow = Tables['invoice_items']['Row'] & InvoiceItemEInvoiceFields;
 export type SalesQuoteRow = Tables['sales_quotes']['Row'];
 export type SalesQuoteItemRow = Tables['sales_quote_items']['Row'];
 export type PaymentRow = Tables['payments']['Row'];
 export type PaymentAllocationRow = Tables['payment_allocations']['Row'];
 
 // Phase 4 insert / update types
-export type InvoiceInsert = Omit<Tables['invoices']['Insert'], 'id' | 'created_at' | 'updated_at'>;
-export type InvoiceUpdate = Tables['invoices']['Update'];
-export type InvoiceItemInsert = Omit<Tables['invoice_items']['Insert'], 'id' | 'created_at'>;
+export type InvoiceInsert = Omit<Tables['invoices']['Insert'], 'id' | 'created_at' | 'updated_at'> & InvoiceEInvoiceFields;
+export type InvoiceUpdate = Tables['invoices']['Update'] & InvoiceEInvoiceFields;
+export type InvoiceItemInsert = Omit<Tables['invoice_items']['Insert'], 'id' | 'created_at'> & InvoiceItemEInvoiceFields;
 export type SalesQuoteInsert = Omit<Tables['sales_quotes']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type SalesQuoteUpdate = Tables['sales_quotes']['Update'];
 export type SalesQuoteItemInsert = Omit<Tables['sales_quote_items']['Insert'], 'id' | 'created_at'>;

@@ -9,6 +9,7 @@ import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { useCompanyCurrency, useCompanyCountry, useCompanyRoundingStep } from '@/hooks/use-company-currency';
 import { applyRoundOff } from '@/core/sales/invoice-calc';
 import { defaultTaxRate } from '@/lib/locale';
+import { eInvoiceReadiness } from '@/lib/einvoice-metadata';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
@@ -55,6 +56,7 @@ interface InvHeader {
   reference: string;
   notes: string;
   currency: string;
+  is_export: boolean;   // Phase 58 (AC-4A) — export supply marker (e-invoice)
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -178,6 +180,7 @@ export default function InvoiceEditorPage() {
     reference: '',
     notes: '',
     currency: companyCurrency ?? 'AED',
+    is_export: false,
   };
   const [header, setHeader] = useState<InvHeader>(defaultHeader);
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
@@ -241,6 +244,7 @@ export default function InvoiceEditorPage() {
         reference:      existing.reference ?? '',
         notes:          existing.notes ?? '',
         currency:       existing.currency,
+        is_export:      (existing as { is_export?: boolean }).is_export ?? false,
       });
       setPricesInclusive(existing.prices_inclusive ?? false);
       // Freeze the stored round-off when editing so opening an old invoice
@@ -312,6 +316,23 @@ export default function InvoiceEditorPage() {
     enabled:  !!company_id && !!header.contact_id,
   });
   const selectedCustomer = contacts.find(c => c.id === header.contact_id);
+  // Phase 58 (AC-4A) — non-blocking e-invoice readiness hint. Pure/metadata only;
+  // it never gates saving or posting. Jurisdiction follows the supplier country.
+  const einvoiceHint = selectedCustomer
+    ? eInvoiceReadiness({
+        jurisdiction: companyCountry === 'IN' ? 'IN_GST' : 'AE_VAT',
+        is_export: header.is_export,
+        contact: {
+          tax_id: selectedCustomer.tax_id,
+          place_of_supply_code: selectedCustomer.place_of_supply_code,
+          buyer_type: selectedCustomer.buyer_type,
+        },
+        lines: lines.filter(l => l.product_id).map(l => {
+          const p = products.find(pp => pp.id === l.product_id);
+          return { hsn_code: (p as { hsn_code?: string | null } | undefined)?.hsn_code ?? null, description: l.description || p?.name };
+        }),
+      })
+    : null;
   const creditLimit      = Number(selectedCustomer?.credit_limit ?? 0);
   const currentOutstanding = openCustomerInvoices
     .filter(inv => inv.id !== id)  // exclude this draft if it's already in the list
@@ -439,6 +460,10 @@ export default function InvoiceEditorPage() {
         currency:        header.currency,
         exchange_rate:   1,
         prices_inclusive: pricesInclusive,
+        // Phase 58 (AC-4A) — e-invoice classification metadata (inert to the GL;
+        // no posting RPC reads these). Place of supply defaults from the customer.
+        is_export:       header.is_export,
+        place_of_supply_code: selectedCustomer?.place_of_supply_code ?? null,
         subtotal:        +subtotal.toFixed(2),
         discount_amount: +discountTotal.toFixed(2),
         tax_amount:      +taxTotal.toFixed(2),
@@ -531,6 +556,9 @@ export default function InvoiceEditorPage() {
         currency:        header.currency,
         exchange_rate:   1,
         prices_inclusive: pricesInclusive,
+        // Phase 58 (AC-4A) — e-invoice classification metadata (inert to the GL).
+        is_export:       header.is_export,
+        place_of_supply_code: selectedCustomer?.place_of_supply_code ?? null,
         subtotal:        +subtotal.toFixed(2),
         discount_amount: +discountTotal.toFixed(2),
         tax_amount:      +taxTotal.toFixed(2),
@@ -984,7 +1012,29 @@ export default function InvoiceEditorPage() {
             onChange={e => setHeader(h => ({ ...h, notes: e.target.value }))}
           />
         </div>
+        {/* Phase 58 (AC-4A) — export supply marker (e-invoice metadata). */}
+        <div className="mt-3">
+          <label className="inline-flex items-center gap-2 text-sm text-ink-secondary" style={{ cursor: canEdit && !isVoid ? 'pointer' : 'default' }}>
+            <input
+              type="checkbox"
+              checked={header.is_export}
+              disabled={!canEdit || isVoid}
+              onChange={e => { setHeader(h => ({ ...h, is_export: e.target.checked })); setDirty(true); }}
+            />
+            {t('sales.is_export')}
+          </label>
+        </div>
       </div>
+
+      {/* Phase 58 (AC-4A) — non-blocking e-invoice readiness hint. Never gates save. */}
+      {canEdit && !isVoid && einvoiceHint && !einvoiceHint.ready && einvoiceHint.missing.length > 0 && (
+        <div className="rounded-card border border-warning-500/40 bg-warning-50 px-4 py-3 text-sm text-warning-600">
+          <p className="mb-1 font-medium">{t('sales.einvoice_incomplete')}</p>
+          <ul className="list-inside list-disc text-xs text-warning-600/90">
+            {einvoiceHint.missing.map((m, i) => <li key={i}>{m}</li>)}
+          </ul>
+        </div>
+      )}
 
       {/* Line Items + Sticky Sidebar */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">

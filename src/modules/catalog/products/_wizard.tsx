@@ -29,6 +29,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency, useCompanyCountry } from '@/hooks/use-company-currency';
 import { defaultTaxRate } from '@/lib/locale';
+import { TAX_TREATMENTS } from '@/lib/einvoice-metadata';
 import type {
   BrandRow, CategoryRow, UnitRow, CoaRow,
   ContactRow, WarehouseRow,
@@ -64,6 +65,7 @@ interface WizardForm {
   // Step 2
   selling_price:       string;
   tax_category:        'standard' | 'zero_rated' | 'exempt';
+  default_tax_treatment: string;   // Phase 58 (AC-4A) — e-invoice supply treatment
   quality_tier:        '' | 'genuine' | 'oem' | 'premium' | 'economy';
   description:         string;
   purchase_account_id: string;
@@ -94,7 +96,7 @@ const initialForm: WizardForm = {
   name: '', name_ar: '', sku: '',
   brand_id: '', category_id: '', unit_id: '',
   oe_number: '', replacement_numbers: '', is_excise: false,
-  selling_price: '', tax_category: 'standard', quality_tier: '',
+  selling_price: '', tax_category: 'standard', default_tax_treatment: '', quality_tier: '',
   description: '', purchase_account_id: '',
   barcode: '', requires_serial: false,
   hsn_code: '', country_of_origin: '',
@@ -199,6 +201,7 @@ export function ProductWizard() {
         quality_tier: form.quality_tier ? (form.quality_tier as 'genuine' | 'oem' | 'premium' | 'economy') : null,
         selling_price: sellingPrice,
         tax_category: form.tax_category,
+        default_tax_treatment: form.default_tax_treatment || null,
         min_stock_level: minStock,
         max_stock_level: Number.isFinite(maxStock) ? maxStock : null,
         requires_serial: form.requires_serial,
@@ -656,6 +659,14 @@ function Step2({
               <option value="standard">Standard Rate [{stdRate}%]</option>
               <option value="zero_rated">Zero Rated</option>
               <option value="exempt">Exempt</option>
+            </Select>
+          </Field>
+          <Field label="E-invoice supply treatment">
+            <Select value={form.default_tax_treatment} onChange={(e) => set('default_tax_treatment', e.target.value)}>
+              <option value="">Auto (standard)</option>
+              {TAX_TREATMENTS.map((tr) => (
+                <option key={tr} value={tr}>{tr.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}</option>
+              ))}
             </Select>
           </Field>
         </Grid>

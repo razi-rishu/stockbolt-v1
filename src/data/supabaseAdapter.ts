@@ -856,12 +856,14 @@ export function createSupabaseAdapter(
         return data;
       },
       async create(row: ProductInsert): Promise<ProductRow> {
-        const { data, error } = await client.from('products').insert(row).select().single();
+        // default_tax_treatment (Phase 58) is live but may not be in the
+        // generated Insert type yet — cast through the row shape.
+        const { data, error } = await client.from('products').insert(row as Database['public']['Tables']['products']['Insert']).select().single();
         assertNoError(error, 'products.create');
         return data!;
       },
       async update(id, row: ProductUpdate) {
-        const { error } = await client.from('products').update(row).eq('id', id);
+        const { error } = await client.from('products').update(row as Database['public']['Tables']['products']['Update']).eq('id', id);
         assertNoError(error, 'products.update');
       },
       async remove(id) {
@@ -1791,16 +1793,18 @@ export function createSupabaseAdapter(
         return data ?? [];
       },
       async create(row: InvoiceInsert, items: InvoiceItemInsert[]): Promise<InvoiceRow> {
-        const { data: inv, error: invErr } = await client.from('invoices').insert(row).select().single();
+        // is_export / place_of_supply_code / tax_treatment (Phase 58) are live
+        // but may not be in the generated Insert types yet — cast through.
+        const { data: inv, error: invErr } = await client.from('invoices').insert(row as Database['public']['Tables']['invoices']['Insert']).select().single();
         assertNoError(invErr, 'invoices.create header');
         const itemsWithId = items.map((it, i) => ({ ...it, invoice_id: inv!.id, sort_order: i }));
-        const { error: itemsErr } = await client.from('invoice_items').insert(itemsWithId);
+        const { error: itemsErr } = await client.from('invoice_items').insert(itemsWithId as Database['public']['Tables']['invoice_items']['Insert'][]);
         assertNoError(itemsErr, 'invoices.create items');
         return inv!;
       },
       async update(id, row: InvoiceUpdate, items: InvoiceItemInsert[]): Promise<void> {
         // 1. Update invoice header
-        const { error: hErr } = await client.from('invoices').update(row).eq('id', id);
+        const { error: hErr } = await client.from('invoices').update(row as Database['public']['Tables']['invoices']['Update']).eq('id', id);
         assertNoError(hErr, 'invoices.update header');
 
         // 2. Clear deferred_cogs_queue rows for this invoice BEFORE deleting
@@ -1819,7 +1823,7 @@ export function createSupabaseAdapter(
         const { error: dErr } = await client.from('invoice_items').delete().eq('invoice_id', id);
         assertNoError(dErr, 'invoices.update delete items');
         const itemsWithId = items.map((it, i) => ({ ...it, invoice_id: id, sort_order: i }));
-        const { error: iErr } = await client.from('invoice_items').insert(itemsWithId);
+        const { error: iErr } = await client.from('invoice_items').insert(itemsWithId as Database['public']['Tables']['invoice_items']['Insert'][]);
         assertNoError(iErr, 'invoices.update insert items');
       },
       async confirm(invoice_id): Promise<InvoiceConfirmResult> {
@@ -1977,7 +1981,7 @@ export function createSupabaseAdapter(
           voided_at: null,
           voided_by: null,
         };
-        const { data: inv, error: invErr } = await client.from('invoices').insert(invRow).select().single();
+        const { data: inv, error: invErr } = await client.from('invoices').insert(invRow as Database['public']['Tables']['invoices']['Insert']).select().single();
         assertNoError(invErr, 'salesQuotes.convertToInvoice insert invoice');
 
         const invItems = (qItems ?? []).map((qi, i) => ({

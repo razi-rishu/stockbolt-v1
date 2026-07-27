@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { getAdapter } from '@/data/index';
+import { TAX_TREATMENTS } from '@/lib/einvoice-metadata';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
@@ -35,6 +36,8 @@ const schema = z.object({
   type:               z.enum(['goods', 'service']),
   selling_price:      z.coerce.number().min(0),
   tax_category:       z.enum(['standard', 'zero_rated', 'exempt']),
+  default_tax_treatment: z.string(),   // Phase 58 (AC-4A) — e-invoice supply treatment
+  hsn_code:           z.string(),       // Phase 58 (AC-4A) — India HSN/SAC classification
   min_stock_level:    z.coerce.number().min(0),
   requires_serial:    z.boolean(),
   is_active:          z.boolean(),
@@ -140,8 +143,10 @@ export default function ProductDetailPage() {
       type: (((product as { type?: string }).type === 'service') ? 'service' : 'goods') as 'goods' | 'service',
       selling_price: Number(product.selling_price),
       tax_category: product.tax_category as 'standard' | 'zero_rated' | 'exempt',
+      default_tax_treatment: product.default_tax_treatment ?? '',
+      hsn_code: (product as { hsn_code?: string | null }).hsn_code ?? '',
       min_stock_level: Number(product.min_stock_level), requires_serial: product.requires_serial, is_active: product.is_active, barcode: product.barcode ?? '',
-    } : { sku: '', name: '', name_ar: '', description: '', description_ar: '', oe_number: '', replacement_numbers: '', brand_id: null, category_id: null, unit_id: null, purchase_account_id: null, quality_tier: null, type: 'goods' as const, selling_price: 0, tax_category: 'standard', min_stock_level: 0, requires_serial: false, is_active: true, barcode: '' },
+    } : { sku: '', name: '', name_ar: '', description: '', description_ar: '', oe_number: '', replacement_numbers: '', brand_id: null, category_id: null, unit_id: null, purchase_account_id: null, quality_tier: null, type: 'goods' as const, selling_price: 0, tax_category: 'standard', default_tax_treatment: '', hsn_code: '', min_stock_level: 0, requires_serial: false, is_active: true, barcode: '' },
   });
 
   const saveMutation = useMutation({
@@ -157,6 +162,8 @@ export default function ProductDetailPage() {
         // Goods vs Service drives the posting engine (services never touch stock/COGS).
         type: values.type,
         selling_price: values.selling_price, tax_category: values.tax_category,
+        default_tax_treatment: values.default_tax_treatment || null,
+        hsn_code: values.hsn_code.trim() || null,
         min_stock_level: values.min_stock_level, requires_serial: values.requires_serial, is_active: values.is_active,
         barcode: values.barcode || null, image_urls: product?.image_urls ?? null,
         max_stock_level: null, weight_kg: null,
@@ -407,6 +414,16 @@ export default function ProductDetailPage() {
                   label={t('products.tax_category')}
                   options={TAX_OPTIONS.map((q) => ({ value: q, label: t(`products.tax_${q}`) }))}
                   {...register('tax_category')}
+                />
+                <Select
+                  label={t('products.default_tax_treatment')}
+                  options={[{ value: '', label: t('products.treatment_auto') }, ...TAX_TREATMENTS.map((tr) => ({ value: tr, label: t(`products.treatment_${tr}`) }))]}
+                  {...register('default_tax_treatment')}
+                />
+                <Input
+                  label={t('products.hsn_code')}
+                  placeholder="India GST classification"
+                  {...register('hsn_code')}
                 />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingTop: '2px' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#1e293b', userSelect: 'none' }}>

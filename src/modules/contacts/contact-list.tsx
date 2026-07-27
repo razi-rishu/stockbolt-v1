@@ -18,6 +18,7 @@ import { Pagination, paginate } from '@/ui/pagination';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
 import { ALL_CURRENCIES } from '@/lib/currencies';
+import { BUYER_TYPES, GST_STATE_CODES } from '@/lib/einvoice-metadata';
 import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { ContactRow } from '@/data/adapter';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
@@ -45,6 +46,8 @@ const schema = z.object({
   mobile:               z.string(),
   currency:             z.string().min(3),
   tax_id:               z.string(),
+  buyer_type:           z.string(),   // Phase 58 (AC-4A) — e-invoice buyer classification
+  place_of_supply_code: z.string(),   // Phase 58 (AC-4A) — India GST state code
   address_street:       z.string(),
   address_city:         z.string(),
   address_country:      z.string(),
@@ -96,7 +99,7 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
   const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('contact-list');
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
-    defaultValues: { name: '', name_ar: '', type: defaultType, email: '', phone: '', mobile: '', currency: defaultCurrency, tax_id: '', address_street: '', address_city: '', address_country: '', country_code: '', region_id: '', contact_person_name: '', contact_person_phone: '', credit_limit: 0, payment_terms_days: 0, payable_account_code: '2100', notes: '' },
+    defaultValues: { name: '', name_ar: '', type: defaultType, email: '', phone: '', mobile: '', currency: defaultCurrency, tax_id: '', buyer_type: 'registered', place_of_supply_code: '', address_street: '', address_city: '', address_country: '', country_code: '', region_id: '', contact_person_name: '', contact_person_phone: '', credit_limit: 0, payment_terms_days: 0, payable_account_code: '2100', notes: '' },
   });
   const watchedType = watch('type');
 
@@ -117,7 +120,7 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
 
   function openAdd() {
     setEditing(null);
-    reset({ name: '', name_ar: '', type: defaultType, email: '', phone: '', mobile: '', currency: defaultCurrency, tax_id: '', address_street: '', address_city: '', address_country: '', country_code: '', region_id: '', contact_person_name: '', contact_person_phone: '', credit_limit: 0, payment_terms_days: 0, payable_account_code: '2100', notes: '' });
+    reset({ name: '', name_ar: '', type: defaultType, email: '', phone: '', mobile: '', currency: defaultCurrency, tax_id: '', buyer_type: 'registered', place_of_supply_code: '', address_street: '', address_city: '', address_country: '', country_code: '', region_id: '', contact_person_name: '', contact_person_phone: '', credit_limit: 0, payment_terms_days: 0, payable_account_code: '2100', notes: '' });
     setOpen(true);
   }
 
@@ -127,6 +130,7 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
       name: row.name, name_ar: row.name_ar ?? '', type: row.type as 'customer' | 'supplier' | 'both',
       email: row.email ?? '', phone: row.phone ?? '', mobile: row.mobile ?? '',
       currency: row.currency, tax_id: row.tax_id ?? '',
+      buyer_type: row.buyer_type ?? 'registered', place_of_supply_code: row.place_of_supply_code ?? '',
       address_street: row.address_street ?? '', address_city: row.address_city ?? '', address_country: row.address_country ?? '',
       country_code: row.country_code ?? (row.address_country && row.address_country.length === 2 ? row.address_country.toUpperCase() : ''),
       region_id: row.region_id ?? '',
@@ -160,6 +164,8 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
         name: values.name, name_ar: values.name_ar || null,
         type: values.type, email: values.email || null, phone: values.phone || null, mobile: values.mobile || null,
         currency: values.currency, tax_id: values.tax_id || null,
+        buyer_type: values.buyer_type || 'registered',
+        place_of_supply_code: values.place_of_supply_code || null,
         address_street: values.address_street || null, address_city: values.address_city || null,
         address_country: values.country_code || values.address_country || null,
         country_code: values.country_code || null, region_id: values.region_id || null,
@@ -337,6 +343,36 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
             </div>
           </div>
           <Input label={t('contacts.tax_id')} {...register('tax_id')} />
+
+          {/* Phase 58 (AC-4A) — e-invoice buyer classification. Metadata only;
+              does not affect posting/GL. Place of supply is India GST-specific. */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('contacts.buyer_type')}</label>
+              <select
+                className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-2 text-sm text-ink-primary focus:outline-none focus:ring-1 focus:ring-brand-500"
+                {...register('buyer_type')}
+              >
+                {BUYER_TYPES.map((bt) => (
+                  <option key={bt} value={bt}>{t(`contacts.buyer_type_${bt}`)}</option>
+                ))}
+              </select>
+            </div>
+            {watchCountry === 'IN' && (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('contacts.place_of_supply')}</label>
+                <select
+                  className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-2 text-sm text-ink-primary focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  {...register('place_of_supply_code')}
+                >
+                  <option value="">{t('contacts.place_of_supply_select')}</option>
+                  {GST_STATE_CODES.map((s) => (
+                    <option key={s.code} value={s.code}>{s.code} — {s.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
 
           {/* Payable category — supplier-only. Bills for this supplier post
               to the chosen liability account (keeps rent / utilities out of
