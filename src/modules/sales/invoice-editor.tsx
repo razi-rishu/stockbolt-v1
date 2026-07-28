@@ -10,6 +10,7 @@ import { useCompanyCurrency, useCompanyCountry, useCompanyRoundingStep } from '@
 import { applyRoundOff } from '@/core/sales/invoice-calc';
 import { defaultTaxRate } from '@/lib/locale';
 import { eInvoiceReadiness } from '@/lib/einvoice-metadata';
+import { EInvoicePanel } from './einvoice-panel';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
@@ -762,6 +763,17 @@ export default function InvoiceEditorPage() {
             )}
           </div>
         </div>
+
+        {/* Phase 59 (AC-4D) — e-invoice status panel (screen only, never printed) */}
+        {isConfirmed && (
+          <div data-print-hide>
+            <EInvoicePanel
+              invoice={existing}
+              customer={contacts.find(c => c.id === existing.contact_id) ?? null}
+              products={products}
+            />
+          </div>
+        )}
 
         {/* The A4 document, floating on a slate canvas */}
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
