@@ -63,6 +63,7 @@ const GeneralLedgerPage  = lazy(() => import('@/modules/accounting/general-ledge
 const PeriodLockPage     = lazy(() => import('@/modules/accounting/period-lock'));
 const YearEndClosePage   = lazy(() => import('@/modules/accounting/year-end-close'));
 const TaxReturnPage      = lazy(() => import('@/modules/accounting/tax-return'));
+const FixedAssetsPage    = lazy(() => import('@/modules/accounting/fixed-assets'));
 
 // Reports
 const TrialBalancePage       = lazy(() => import('@/modules/reports/trial-balance'));
@@ -313,6 +314,7 @@ function AppRoutes() {
                 <Route path="/accounting/period-lock"              element={<PeriodLockPage />} />
                 <Route path="/accounting/year-end-close"           element={<YearEndClosePage />} />
                 <Route path="/accounting/tax-return"               element={<TaxReturnPage />} />
+                <Route path="/accounting/fixed-assets"             element={<FixedAssetsPage />} />
               </Route>
 
               {/* Reports */}
