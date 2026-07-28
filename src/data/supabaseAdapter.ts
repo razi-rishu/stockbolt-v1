@@ -22,6 +22,8 @@ import type {
   // Phase 4
   InvoiceRow, InvoiceInsert, InvoiceUpdate, InvoiceItemRow, InvoiceItemInsert,
   EInvoiceDocumentRow, RecordEInvoiceInput, MarkEInvoiceSubmittedInput, EInvoiceActionResult,
+  FixedAssetRow, FixedAssetInsert, FixedAssetUpdate, DepreciationEntryRow,
+  RunDepreciationResult, DisposeAssetInput, DisposeAssetResult, ReverseDepreciationResult,
   SalesQuoteRow, SalesQuoteInsert, SalesQuoteUpdate, SalesQuoteItemRow, SalesQuoteItemInsert,
   PaymentRow, PaymentInsert, PaymentAllocationRow, PaymentAllocationInsert,
   BankAccountRow, TaxRateRow,
@@ -1970,6 +1972,88 @@ export function createSupabaseAdapter(
         } as any);
         if (error) throw new SupabaseDataError(`eInvoices.cancel: ${error.message}`);
         return data as unknown as EInvoiceActionResult;
+      },
+    },
+
+    // ── AC-5A: Fixed assets + depreciation ────────────────────────────────
+    // Register CRUD via RLS (accounting.write); posting via SECURITY DEFINER
+    // RPCs. Reads degrade gracefully until phase60 is applied.
+    fixedAssets: {
+      async list(company_id): Promise<FixedAssetRow[]> {
+        const { data, error } = await client
+          .from('fixed_assets' as any)
+          .select('*')
+          .eq('company_id', company_id)
+          .order('acquisition_date', { ascending: false });
+        if (error) {
+          if (isMissingRelation(error)) return [];
+          throw new SupabaseDataError(`fixedAssets.list: ${error.message}`);
+        }
+        return (data ?? []) as unknown as FixedAssetRow[];
+      },
+
+      async getById(id): Promise<FixedAssetRow | null> {
+        const { data, error } = await client.from('fixed_assets' as any).select('*').eq('id', id).maybeSingle();
+        if (error) {
+          if (isMissingRelation(error)) return null;
+          throw new SupabaseDataError(`fixedAssets.getById: ${error.message}`);
+        }
+        return (data ?? null) as unknown as FixedAssetRow | null;
+      },
+
+      async create(company_id, row: FixedAssetInsert): Promise<FixedAssetRow> {
+        const { data, error } = await client
+          .from('fixed_assets' as any)
+          .insert({ company_id, ...row } as any)
+          .select().single();
+        assertNoError(error, 'fixedAssets.create');
+        return data as unknown as FixedAssetRow;
+      },
+
+      async update(id, row: FixedAssetUpdate): Promise<void> {
+        const { error } = await client.from('fixed_assets' as any).update(row as any).eq('id', id);
+        assertNoError(error, 'fixedAssets.update');
+      },
+
+      async remove(id): Promise<void> {
+        const { error } = await client.from('fixed_assets' as any).delete().eq('id', id);
+        assertNoError(error, 'fixedAssets.remove');
+      },
+
+      async listEntries(asset_id): Promise<DepreciationEntryRow[]> {
+        const { data, error } = await client
+          .from('depreciation_entries' as any)
+          .select('*')
+          .eq('asset_id', asset_id)
+          .order('period_end', { ascending: true });
+        if (error) {
+          if (isMissingRelation(error)) return [];
+          throw new SupabaseDataError(`fixedAssets.listEntries: ${error.message}`);
+        }
+        return (data ?? []) as unknown as DepreciationEntryRow[];
+      },
+
+      async runDepreciation(period_end): Promise<RunDepreciationResult> {
+        const { data, error } = await client.rpc('run_depreciation' as any, { p_period_end: period_end } as any);
+        if (error) throw new SupabaseDataError(`fixedAssets.runDepreciation: ${error.message}`);
+        return data as unknown as RunDepreciationResult;
+      },
+
+      async dispose(input: DisposeAssetInput): Promise<DisposeAssetResult> {
+        const { data, error } = await client.rpc('dispose_fixed_asset' as any, {
+          p_asset_id: input.asset_id,
+          p_disposal_date: input.disposal_date,
+          p_proceeds: input.proceeds,
+          p_proceeds_account_code: input.proceeds_account_code,
+        } as any);
+        if (error) throw new SupabaseDataError(`fixedAssets.dispose: ${error.message}`);
+        return data as unknown as DisposeAssetResult;
+      },
+
+      async reverseLast(asset_id): Promise<ReverseDepreciationResult> {
+        const { data, error } = await client.rpc('reverse_last_depreciation' as any, { p_asset_id: asset_id } as any);
+        if (error) throw new SupabaseDataError(`fixedAssets.reverseLast: ${error.message}`);
+        return data as unknown as ReverseDepreciationResult;
       },
     },
 

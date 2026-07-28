@@ -1145,6 +1145,83 @@ export interface EInvoicesAPI {
   cancel(document_id: string, reason?: string): Promise<EInvoiceActionResult>;
 }
 
+// ── AC-5A — fixed assets + depreciation ──────────────────────────────────────
+export type DepreciationMethodDb = 'straight_line' | 'reducing_balance';
+export type FixedAssetStatus = 'active' | 'disposed' | 'fully_depreciated';
+export interface FixedAssetRow {
+  id: string;
+  company_id: string;
+  asset_tag: string | null;
+  name: string;
+  category: string | null;
+  acquisition_date: string;
+  in_service_date: string;
+  cost: number;
+  salvage_value: number;
+  useful_life_months: number;
+  method: DepreciationMethodDb;
+  wdv_rate: number;
+  asset_account_code: string;
+  accum_dep_account_code: string;
+  expense_account_code: string;
+  accumulated_depreciation: number;
+  last_depreciated_period: string | null;
+  status: FixedAssetStatus;
+  disposal_date: string | null;
+  disposal_proceeds: number | null;
+  disposal_gain_loss: number | null;
+  disposal_je_id: string | null;
+  notes: string | null;
+  created_at: string;   created_by: string | null;
+  updated_at: string;
+}
+export interface FixedAssetInsert {
+  asset_tag?: string | null;
+  name: string;
+  category?: string | null;
+  acquisition_date: string;
+  in_service_date: string;
+  cost: number;
+  salvage_value: number;
+  useful_life_months: number;
+  method: DepreciationMethodDb;
+  wdv_rate: number;
+  asset_account_code: string;
+  accum_dep_account_code?: string;
+  expense_account_code?: string;
+  notes?: string | null;
+}
+export type FixedAssetUpdate = Partial<FixedAssetInsert>;
+export interface DepreciationEntryRow {
+  id: string;
+  company_id: string;
+  asset_id: string;
+  period_end: string;
+  charge: number;
+  book_value_after: number;
+  journal_entry_id: string | null;
+  reversed_at: string | null;
+  reversed_je_id: string | null;
+  created_at: string;
+}
+export interface RunDepreciationResult { entries_posted: number; total_charge: number; period_end: string }
+export interface DisposeAssetInput { asset_id: string; disposal_date: string; proceeds: number; proceeds_account_code: string }
+export interface DisposeAssetResult { journal_entry_id: string; gain_loss: number; status: string }
+export interface ReverseDepreciationResult { reversed_entry_id: string; journal_entry_id: string; charge: number }
+export interface FixedAssetsAPI {
+  list(company_id: string): Promise<FixedAssetRow[]>;
+  getById(id: string): Promise<FixedAssetRow | null>;
+  create(company_id: string, row: FixedAssetInsert): Promise<FixedAssetRow>;
+  update(id: string, row: FixedAssetUpdate): Promise<void>;
+  remove(id: string): Promise<void>;
+  listEntries(asset_id: string): Promise<DepreciationEntryRow[]>;
+  /** Post depreciation for every active asset up to the given month-end. */
+  runDepreciation(period_end: string): Promise<RunDepreciationResult>;
+  dispose(input: DisposeAssetInput): Promise<DisposeAssetResult>;
+  /** LIFO-reverse the latest depreciation entry (correction path). */
+  reverseLast(asset_id: string): Promise<ReverseDepreciationResult>;
+}
+
 export interface SalesQuotesAPI {
   list(company_id: string): Promise<SalesQuoteRow[]>;
   getById(id: string): Promise<SalesQuoteRow | null>;
@@ -2336,6 +2413,7 @@ export interface DataAdapter {
   // Phase 4
   invoices: InvoicesAPI;
   eInvoices: EInvoicesAPI;   // AC-4C — e-invoice document register
+  fixedAssets: FixedAssetsAPI;   // AC-5A — fixed assets + depreciation
   salesQuotes: SalesQuotesAPI;
   payments: PaymentsAPI;
   bankAccounts: BankAccountsAPI;

@@ -22,6 +22,13 @@ const ALL_ACCOUNTS: (AccountDef & { gcc_only?: true; india_only?: true })[] = [
   { code: '1510', name: 'Input CGST',                 name_ar: 'ضريبة CGST المدخلات',     type: 'asset', sub_type: 'current', india_only: true },
   { code: '1520', name: 'Input SGST',                 name_ar: 'ضريبة SGST المدخلات',     type: 'asset', sub_type: 'current', india_only: true },
   { code: '1530', name: 'Input IGST',                 name_ar: 'ضريبة IGST المدخلات',     type: 'asset', sub_type: 'current', india_only: true },
+  // Fixed assets (AC-5) — long-lived; net book value = cost − accumulated depreciation.
+  { code: '1710', name: 'Furniture & Fixtures',       name_ar: 'الأثاث والتجهيزات',       type: 'asset', sub_type: 'fixed' },
+  { code: '1720', name: 'Office Equipment',           name_ar: 'معدات المكتب',            type: 'asset', sub_type: 'fixed' },
+  { code: '1730', name: 'Motor Vehicles',             name_ar: 'المركبات',                type: 'asset', sub_type: 'fixed' },
+  { code: '1740', name: 'Computer Equipment',         name_ar: 'أجهزة الكمبيوتر',         type: 'asset', sub_type: 'fixed' },
+  { code: '1750', name: 'Plant & Machinery',          name_ar: 'الآلات والمعدات',         type: 'asset', sub_type: 'fixed' },
+  { code: '1790', name: 'Accumulated Depreciation',   name_ar: 'مجمع الإهلاك',            type: 'asset', sub_type: 'fixed' },
   // ── Liabilities — 'current' = due within 12 months; 'long_term' = beyond ─
   { code: '2100', name: 'Accounts Payable',            name_ar: 'حسابات الدفع',            type: 'liability', sub_type: 'current' },
   // Supplier payable categories (Lite, 2026-06-14) — rent/utility vendors
@@ -55,6 +62,7 @@ const ALL_ACCOUNTS: (AccountDef & { gcc_only?: true; india_only?: true })[] = [
   { code: '4100', name: 'Sales Revenue',               name_ar: 'إيرادات المبيعات',        type: 'income', sub_type: 'direct' },
   { code: '4150', name: 'Sales Discounts',             name_ar: 'خصومات المبيعات',         type: 'income', sub_type: 'direct' },
   { code: '4200', name: 'Other Income',                name_ar: 'إيرادات أخرى',            type: 'income', sub_type: 'indirect' },
+  { code: '4250', name: 'Gain on Asset Disposal',      name_ar: 'أرباح بيع الأصول',        type: 'income', sub_type: 'indirect' },
   { code: '4300', name: 'Inventory Gain',              name_ar: 'أرباح المخزون',           type: 'income', sub_type: 'indirect' },
   { code: '4400', name: 'Foreign Exchange Gain',       name_ar: 'أرباح فروق العملة',       type: 'income', sub_type: 'indirect' },
   // ── Direct expense / COGS (sits above Gross Profit) ───────────────────────
@@ -69,11 +77,13 @@ const ALL_ACCOUNTS: (AccountDef & { gcc_only?: true; india_only?: true })[] = [
   { code: '6500', name: 'General & Administrative',    name_ar: 'مصروفات عمومية وإدارية', type: 'expense', sub_type: 'indirect' },
   { code: '6600', name: 'Bank Charges',                name_ar: 'رسوم بنكية',              type: 'expense', sub_type: 'indirect' },
   { code: '6700', name: 'Inventory Loss',              name_ar: 'خسائر المخزون',           type: 'expense', sub_type: 'indirect' },
+  { code: '6750', name: 'Depreciation Expense',        name_ar: 'مصروف الإهلاك',           type: 'expense', sub_type: 'indirect' },
   { code: '6800', name: 'Bad Debts Expense',           name_ar: 'مصروف الديون المعدومة',   type: 'expense', sub_type: 'indirect' },
   // Phase 12.23 — post-sale cash discount given on customer receipt.
   // Hit by confirm_payment when the sum of allocations' discount_amount > 0.
   { code: '6850', name: 'Discount Allowed',            name_ar: 'الخصومات المسموح بها',    type: 'expense', sub_type: 'indirect' },
   { code: '6900', name: 'Foreign Exchange Loss',       name_ar: 'خسائر فروق العملة',       type: 'expense', sub_type: 'indirect' },
+  { code: '6910', name: 'Loss on Asset Disposal',      name_ar: 'خسائر بيع الأصول',        type: 'expense', sub_type: 'indirect' },
 ];
 
 function getAccountsForCountry(country_code: string): AccountDef[] {

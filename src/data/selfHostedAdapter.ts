@@ -242,6 +242,17 @@ export function createSelfHostedAdapter(): DataAdapter {
       markSubmitted:  () => notImplemented('eInvoices.markSubmitted'),
       cancel:         () => notImplemented('eInvoices.cancel'),
     },
+    fixedAssets: {
+      list:            () => notImplemented('fixedAssets.list'),
+      getById:         () => notImplemented('fixedAssets.getById'),
+      create:          () => notImplemented('fixedAssets.create'),
+      update:          () => notImplemented('fixedAssets.update'),
+      remove:          () => notImplemented('fixedAssets.remove'),
+      listEntries:     () => notImplemented('fixedAssets.listEntries'),
+      runDepreciation: () => notImplemented('fixedAssets.runDepreciation'),
+      dispose:         () => notImplemented('fixedAssets.dispose'),
+      reverseLast:     () => notImplemented('fixedAssets.reverseLast'),
+    },
     salesQuotes: {
       list:             () => notImplemented('salesQuotes.list'),
       getById:          () => notImplemented('salesQuotes.getById'),

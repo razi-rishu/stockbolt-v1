@@ -28,6 +28,7 @@
     "test:regressions": "vitest run tests/integration/regressions.test.ts",
     "test:year-end-close": "vitest run tests/integration/year-end-close-verification.test.ts",
     "test:tax-return": "vitest run tests/integration/tax-return-verification.test.ts",
+    "test:fixed-assets": "vitest run tests/integration/fixed-assets-verification.test.ts",
     "prepare": "husky"
   },
   "dependencies": {

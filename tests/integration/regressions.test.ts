@@ -2143,3 +2143,79 @@ describe('AC-4C — e-invoice document register (soft until applied)', () => {
     expect(true).toBe(true); // observed, not blocking (tenant data)
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// AC-5A — fixed assets + depreciation engine (soft until applied)
+// ─────────────────────────────────────────────────────────────────────────
+// Structural tripwire that phase60 created the tables + CoA + posting RPCs, and
+// that the RPCs compose post_journal_entry (never write general_ledger directly)
+// + are permission-gated. Data invariants tie the depreciation ledger to the
+// asset. Depreciation math itself is locked by tests/unit/depreciation.test.ts.
+describe('AC-5A — fixed assets + depreciation (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(
+      `SELECT count(*)::int AS n FROM information_schema.tables
+        WHERE table_schema='public' AND table_name='fixed_assets'`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase60: tables + CHECKs + unique period index + CoA accounts', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ AC-5A not applied yet — run supabase/migrations/20260728000002_phase60_ac5a_fixed_assets.sql');
+      return;
+    }
+    const chk = await sql<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_constraint
+        WHERE conrelid='public.fixed_assets'::regclass AND contype='c'`);
+    expect(chk[0]?.n ?? 0, 'method/status/cost/salvage CHECKs').toBeGreaterThanOrEqual(4);
+
+    const idx = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_indexes
+       WHERE schemaname='public' AND tablename='depreciation_entries'
+         AND indexname='depreciation_entries_asset_period_key'`);
+    expect(idx[0]?.n ?? 0, 'unique (asset, period) index').toBe(1);
+
+    // The seeded accounts exist for every company.
+    const missing = await sql<{ id: string; code: string }>(`
+      SELECT c.id, v.code FROM public.companies c
+      CROSS JOIN (VALUES ('1790'),('6750'),('4250'),('6910')) AS v(code)
+      WHERE NOT EXISTS (SELECT 1 FROM public.chart_of_accounts x WHERE x.company_id=c.id AND x.code=v.code)`);
+    expect(missing.length, 'depreciation/disposal accounts seeded for all companies').toBe(0);
+  });
+
+  it('phase60: posting RPCs compose post_journal_entry, write no GL directly, and are gated', async () => {
+    if (!(await applied())) { console.warn('⚠ AC-5A not applied yet'); return; }
+    for (const fn of ['run_depreciation', 'dispose_fixed_asset', 'reverse_last_depreciation']) {
+      const def = await sql<{ src: string }>(
+        `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+          WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+      expect(def.length, `${fn} exists`).toBe(1);
+      const src = def[0]!.src;
+      expect(src, `${fn} SECURITY DEFINER`).toMatch(/SECURITY DEFINER/i);
+      expect(src, `${fn} gates on accounting.write`).toMatch(/auth_require\('accounting\.write'\)/);
+      expect(src, `${fn} composes post_journal_entry`).toMatch(/post_journal_entry/);
+      expect(/insert\s+into\s+public\.general_ledger/i.test(src), `${fn} writes no general_ledger directly`).toBe(false);
+    }
+    const anonExec = await sql<{ proname: string }>(`
+      SELECT p.proname FROM pg_proc p
+       WHERE p.pronamespace='public'::regnamespace
+         AND p.proname IN ('run_depreciation','dispose_fixed_asset','reverse_last_depreciation')
+         AND has_function_privilege('anon', p.oid, 'EXECUTE')`);
+    expect(anonExec.length, 'no depreciation RPC executable by anon').toBe(0);
+  });
+
+  it('phase60: ledger ties to the asset — Σ charge = accumulated, ≤ depreciable base (warn-only)', async () => {
+    if (!(await applied())) { console.warn('⚠ AC-5A not applied yet'); return; }
+    const drift = await sql<{ id: string; accumulated_depreciation: number; ledger: number }>(`
+      SELECT fa.id, fa.accumulated_depreciation,
+             COALESCE((SELECT sum(de.charge) FROM public.depreciation_entries de
+                        WHERE de.asset_id = fa.id AND de.reversed_at IS NULL), 0) AS ledger
+      FROM public.fixed_assets fa
+      WHERE abs(fa.accumulated_depreciation
+                - COALESCE((SELECT sum(de.charge) FROM public.depreciation_entries de
+                             WHERE de.asset_id = fa.id AND de.reversed_at IS NULL), 0)) > 0.01
+         OR fa.accumulated_depreciation > (fa.cost - fa.salvage_value) + 0.01`);
+    if (drift.length) console.warn('⚠ [AC-5A] asset accumulated-depreciation drift vs ledger / over base:', JSON.stringify(drift).slice(0, 500));
+    expect(true).toBe(true); // observed, not blocking (tenant data)
+  });
+});
