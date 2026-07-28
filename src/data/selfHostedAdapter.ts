@@ -235,6 +235,13 @@ export function createSelfHostedAdapter(): DataAdapter {
       getNextNumber:   () => notImplemented('invoices.getNextNumber'),
       listOpenForContact: () => notImplemented('invoices.listOpenForContact'),
     },
+    eInvoices: {
+      getForInvoice:  () => notImplemented('eInvoices.getForInvoice'),
+      listForInvoice: () => notImplemented('eInvoices.listForInvoice'),
+      record:         () => notImplemented('eInvoices.record'),
+      markSubmitted:  () => notImplemented('eInvoices.markSubmitted'),
+      cancel:         () => notImplemented('eInvoices.cancel'),
+    },
     salesQuotes: {
       list:             () => notImplemented('salesQuotes.list'),
       getById:          () => notImplemented('salesQuotes.getById'),

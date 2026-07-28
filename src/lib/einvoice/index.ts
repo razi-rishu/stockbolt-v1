@@ -8,3 +8,4 @@
 export * from './canonical';
 export * from './india-gst';
 export * from './pint-ae';
+export * from './hash';

@@ -2069,3 +2069,77 @@ describe('AC-4A — e-invoice metadata (soft until applied)', () => {
     expect(true).toBe(true); // observed, not blocking (tenant data)
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// AC-4C — e-invoice document register (soft until applied)
+// ─────────────────────────────────────────────────────────────────────────
+// Structural tripwire that phase59 created the table + lifecycle RPCs, that the
+// RPCs are permission-gated (not anon), metadata-only (write no general_ledger),
+// and that the table is read-only to clients; plus a data invariant on status +
+// invoice linkage. The payload formatting itself is locked by the AC-4B unit
+// tests (tests/unit/einvoice-*.test.ts).
+describe('AC-4C — e-invoice document register (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(
+      `SELECT count(*)::int AS n FROM information_schema.tables
+        WHERE table_schema='public' AND table_name='e_invoice_documents'`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase59: table + CHECKs + active-unique index + read-only RLS', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ AC-4C not applied yet — run supabase/migrations/20260728000001_phase59_ac4c_einvoice_documents.sql');
+      return;
+    }
+    const chk = await sql<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_constraint
+        WHERE conrelid='public.e_invoice_documents'::regclass AND contype='c'`);
+    expect(chk[0]?.n ?? 0, 'jurisdiction/format/status CHECKs').toBeGreaterThanOrEqual(3);
+
+    const idx = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_indexes
+       WHERE schemaname='public' AND tablename='e_invoice_documents'
+         AND indexname='e_invoice_documents_active_per_invoice'`);
+    expect(idx[0]?.n ?? 0, 'active-per-invoice partial unique index').toBe(1);
+
+    const rls = await sql<{ relrowsecurity: boolean }>(
+      `SELECT relrowsecurity FROM pg_class WHERE oid='public.e_invoice_documents'::regclass`);
+    expect(rls[0]?.relrowsecurity, 'RLS enabled').toBe(true);
+
+    const ins = await sql<{ can: boolean }>(
+      `SELECT has_table_privilege('authenticated','public.e_invoice_documents','INSERT') AS can`);
+    expect(ins[0]?.can, 'authenticated cannot INSERT directly (writes via RPC only)').toBe(false);
+  });
+
+  it('phase59: lifecycle RPCs are SECURITY DEFINER, sales.write-gated, anon-locked, and write no GL', async () => {
+    if (!(await applied())) { console.warn('⚠ AC-4C not applied yet'); return; }
+    for (const fn of ['record_einvoice_document', 'mark_einvoice_submitted', 'cancel_einvoice_document']) {
+      const def = await sql<{ src: string }>(
+        `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+          WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+      expect(def.length, `${fn} exists`).toBe(1);
+      const src = def[0]!.src;
+      expect(src, `${fn} SECURITY DEFINER`).toMatch(/SECURITY DEFINER/i);
+      expect(src, `${fn} gates on sales.write`).toMatch(/auth_require\('sales\.write'\)/);
+      expect(/insert\s+into\s+public\.general_ledger/i.test(src), `${fn} writes no general_ledger`).toBe(false);
+    }
+    const anonExec = await sql<{ proname: string }>(`
+      SELECT p.proname FROM pg_proc p
+       WHERE p.pronamespace='public'::regnamespace
+         AND p.proname IN ('record_einvoice_document','mark_einvoice_submitted','cancel_einvoice_document')
+         AND has_function_privilege('anon', p.oid, 'EXECUTE')`);
+    expect(anonExec.length, 'no e-invoice RPC executable by anon').toBe(0);
+  });
+
+  it('phase59: documents reference confirmed invoices + valid status (warn-only)', async () => {
+    if (!(await applied())) { console.warn('⚠ AC-4C not applied yet'); return; }
+    const bad = await sql<{ id: string; status: string }>(`
+      SELECT d.id, d.status FROM public.e_invoice_documents d
+       LEFT JOIN public.invoices i ON i.id = d.invoice_id
+       WHERE d.status NOT IN ('generated','submitted','cancelled','superseded')
+          OR i.id IS NULL
+          OR (d.status IN ('generated','submitted') AND i.status <> 'confirmed')`);
+    if (bad.length) console.warn('⚠ [AC-4C] e-invoice docs with bad status or non-confirmed invoice:', JSON.stringify(bad).slice(0, 500));
+    expect(true).toBe(true); // observed, not blocking (tenant data)
+  });
+});

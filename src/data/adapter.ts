@@ -1090,6 +1090,61 @@ export interface InvoicesAPI {
   listOpenForContact(company_id: string, contact_id: string): Promise<OpenInvoice[]>;
 }
 
+// ── AC-4C — e-invoice document register (persistence for the AC-4B payloads) ──
+export type EInvoiceFormat = 'india_gst_json' | 'pint_ae_ubl';
+export type EInvoiceStatus = 'generated' | 'submitted' | 'cancelled' | 'superseded';
+export interface EInvoiceDocumentRow {
+  id: string;
+  company_id: string;
+  invoice_id: string;
+  jurisdiction: 'AE_VAT' | 'IN_GST';
+  format: EInvoiceFormat;
+  status: EInvoiceStatus;
+  payload: string;
+  content_hash: string;
+  irn: string | null;
+  ack_no: string | null;
+  ack_date: string | null;
+  qr_data: string | null;
+  reference_number: string | null;
+  error_message: string | null;
+  generated_at: string;            generated_by: string | null;
+  submitted_at: string | null;     submitted_by: string | null;
+  cancelled_at: string | null;     cancelled_by: string | null;   cancel_reason: string | null;
+  created_at: string;              updated_at: string;
+}
+export interface RecordEInvoiceInput {
+  invoice_id: string;
+  format: EInvoiceFormat;
+  jurisdiction: 'AE_VAT' | 'IN_GST';
+  payload: string;                 // the serialized AC-4B payload; the adapter hashes it
+}
+export interface MarkEInvoiceSubmittedInput {
+  document_id: string;
+  irn?: string | null;
+  ack_no?: string | null;
+  ack_date?: string | null;
+  qr_data?: string | null;
+  reference?: string | null;
+}
+export interface EInvoiceActionResult {
+  document_id: string;
+  status: EInvoiceStatus;
+  unchanged?: boolean;
+}
+export interface EInvoicesAPI {
+  /** The current (non-superseded, non-cancelled) e-invoice document, or null. */
+  getForInvoice(invoice_id: string): Promise<EInvoiceDocumentRow | null>;
+  /** Full history (newest first), incl. superseded/cancelled. */
+  listForInvoice(invoice_id: string): Promise<EInvoiceDocumentRow[]>;
+  /** Snapshot a client-generated payload for a confirmed invoice (hashes payload). */
+  record(input: RecordEInvoiceInput): Promise<EInvoiceActionResult>;
+  /** Record the manual government reference and mark the document submitted. */
+  markSubmitted(input: MarkEInvoiceSubmittedInput): Promise<EInvoiceActionResult>;
+  /** Cancel an active (generated or submitted) document. */
+  cancel(document_id: string, reason?: string): Promise<EInvoiceActionResult>;
+}
+
 export interface SalesQuotesAPI {
   list(company_id: string): Promise<SalesQuoteRow[]>;
   getById(id: string): Promise<SalesQuoteRow | null>;
@@ -2280,6 +2335,7 @@ export interface DataAdapter {
   stockLedger: StockLedgerAPI;
   // Phase 4
   invoices: InvoicesAPI;
+  eInvoices: EInvoicesAPI;   // AC-4C — e-invoice document register
   salesQuotes: SalesQuotesAPI;
   payments: PaymentsAPI;
   bankAccounts: BankAccountsAPI;

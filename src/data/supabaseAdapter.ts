@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database, Json } from '@/types/database';
 import { normalizeSettings, DEFAULT_TEMPLATE_SETTINGS } from '@/modules/print/engine/types';
+import { sha256Hex } from '@/lib/einvoice';   // AC-4C — content hash for e-invoice snapshots
 import type {
   DataAdapter, Company, Profile, AppRole, CompanyInviteRow, PendingInvite, RoleRow,
   ApiKeyRow, ApiScope,
@@ -20,6 +21,7 @@ import type {
   TrialBalance, LedgerEntry, StockLedgerRow, StockMovementPayload, StockBalance,
   // Phase 4
   InvoiceRow, InvoiceInsert, InvoiceUpdate, InvoiceItemRow, InvoiceItemInsert,
+  EInvoiceDocumentRow, RecordEInvoiceInput, MarkEInvoiceSubmittedInput, EInvoiceActionResult,
   SalesQuoteRow, SalesQuoteInsert, SalesQuoteUpdate, SalesQuoteItemRow, SalesQuoteItemInsert,
   PaymentRow, PaymentInsert, PaymentAllocationRow, PaymentAllocationInsert,
   BankAccountRow, TaxRateRow,
@@ -1900,6 +1902,74 @@ export function createSupabaseAdapter(
             outstanding: Number(r.total_amount) - (appliedById[r.id] ?? 0),
           }))
           .filter(r => r.outstanding > 0.005);
+      },
+    },
+
+    // ── AC-4C: e-invoice document register ────────────────────────────────
+    // Read-only table (RLS); all writes go through SECURITY DEFINER RPCs gated
+    // by sales.write. Reads degrade gracefully until phase59 is applied.
+    eInvoices: {
+      async getForInvoice(invoice_id): Promise<EInvoiceDocumentRow | null> {
+        const { data, error } = await client
+          .from('e_invoice_documents' as any)
+          .select('*')
+          .eq('invoice_id', invoice_id)
+          .not('status', 'in', '(superseded,cancelled)')
+          .order('generated_at', { ascending: false })
+          .limit(1);
+        if (error) {
+          if (isMissingRelation(error)) return null;
+          throw new SupabaseDataError(`eInvoices.getForInvoice: ${error.message}`);
+        }
+        return ((data ?? [])[0] ?? null) as unknown as EInvoiceDocumentRow | null;
+      },
+
+      async listForInvoice(invoice_id): Promise<EInvoiceDocumentRow[]> {
+        const { data, error } = await client
+          .from('e_invoice_documents' as any)
+          .select('*')
+          .eq('invoice_id', invoice_id)
+          .order('generated_at', { ascending: false });
+        if (error) {
+          if (isMissingRelation(error)) return [];
+          throw new SupabaseDataError(`eInvoices.listForInvoice: ${error.message}`);
+        }
+        return (data ?? []) as unknown as EInvoiceDocumentRow[];
+      },
+
+      async record(input: RecordEInvoiceInput): Promise<EInvoiceActionResult> {
+        const content_hash = await sha256Hex(input.payload);
+        const { data, error } = await client.rpc('record_einvoice_document' as any, {
+          p_invoice_id: input.invoice_id,
+          p_format: input.format,
+          p_jurisdiction: input.jurisdiction,
+          p_payload: input.payload,
+          p_content_hash: content_hash,
+        } as any);
+        if (error) throw new SupabaseDataError(`eInvoices.record: ${error.message}`);
+        return data as unknown as EInvoiceActionResult;
+      },
+
+      async markSubmitted(input: MarkEInvoiceSubmittedInput): Promise<EInvoiceActionResult> {
+        const { data, error } = await client.rpc('mark_einvoice_submitted' as any, {
+          p_document_id: input.document_id,
+          p_irn: input.irn ?? null,
+          p_ack_no: input.ack_no ?? null,
+          p_ack_date: input.ack_date ?? null,
+          p_qr_data: input.qr_data ?? null,
+          p_reference: input.reference ?? null,
+        } as any);
+        if (error) throw new SupabaseDataError(`eInvoices.markSubmitted: ${error.message}`);
+        return data as unknown as EInvoiceActionResult;
+      },
+
+      async cancel(document_id, reason): Promise<EInvoiceActionResult> {
+        const { data, error } = await client.rpc('cancel_einvoice_document' as any, {
+          p_document_id: document_id,
+          p_reason: reason ?? null,
+        } as any);
+        if (error) throw new SupabaseDataError(`eInvoices.cancel: ${error.message}`);
+        return data as unknown as EInvoiceActionResult;
       },
     },
 
