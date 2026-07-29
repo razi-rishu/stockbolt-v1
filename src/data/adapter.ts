@@ -1222,6 +1222,74 @@ export interface FixedAssetsAPI {
   reverseLast(asset_id: string): Promise<ReverseDepreciationResult>;
 }
 
+// ── AC-6A — prepaid / deferred-revenue / accrual schedules ───────────────────
+export type AmortizationKindDb = 'prepaid_expense' | 'deferred_revenue' | 'accrued_expense';
+export type AmortizationStatus = 'active' | 'completed' | 'cancelled';
+export interface AmortizationScheduleRow {
+  id: string;
+  company_id: string;
+  kind: AmortizationKindDb;
+  name: string;
+  reference: string | null;
+  contact_id: string | null;
+  bs_account_code: string;
+  pl_account_code: string;
+  total_amount: number;
+  periods: number;
+  start_date: string;
+  amortized_amount: number;
+  periods_posted: number;
+  last_period_end: string | null;
+  status: AmortizationStatus;
+  cancelled_at: string | null;  cancelled_by: string | null;  cancel_reason: string | null;
+  notes: string | null;
+  created_at: string;  created_by: string | null;
+  updated_at: string;
+}
+export interface AmortizationScheduleInsert {
+  kind: AmortizationKindDb;
+  name: string;
+  reference?: string | null;
+  contact_id?: string | null;
+  bs_account_code: string;
+  pl_account_code: string;
+  total_amount: number;
+  periods: number;
+  start_date: string;
+  notes?: string | null;
+}
+export type AmortizationScheduleUpdate = Partial<AmortizationScheduleInsert>;
+export interface AmortizationEntryRow {
+  id: string;
+  company_id: string;
+  schedule_id: string;
+  period_index: number;
+  period_end: string;
+  amount: number;
+  remaining_after: number;
+  journal_entry_id: string | null;
+  reversed_at: string | null;
+  reversed_je_id: string | null;
+  created_at: string;
+}
+export interface RunAmortizationResult { entries_posted: number; total_amount: number; period_end: string }
+export interface ReverseAmortizationResult { reversed_entry_id: string; journal_entry_id: string; amount: number }
+export interface CancelAmortizationResult { schedule_id: string; status: string; amortized_amount: number; remaining: number }
+export interface AmortizationAPI {
+  list(company_id: string): Promise<AmortizationScheduleRow[]>;
+  getById(id: string): Promise<AmortizationScheduleRow | null>;
+  create(company_id: string, row: AmortizationScheduleInsert): Promise<AmortizationScheduleRow>;
+  update(id: string, row: AmortizationScheduleUpdate): Promise<void>;
+  remove(id: string): Promise<void>;
+  listEntries(schedule_id: string): Promise<AmortizationEntryRow[]>;
+  /** Post every installment due up to the given month-end, across all schedules. */
+  run(period_end: string): Promise<RunAmortizationResult>;
+  /** LIFO-reverse the latest posted installment (correction path). */
+  reverseLast(schedule_id: string): Promise<ReverseAmortizationResult>;
+  /** Stop future postings; recognised amounts stay recognised. */
+  cancel(schedule_id: string, reason?: string): Promise<CancelAmortizationResult>;
+}
+
 export interface SalesQuotesAPI {
   list(company_id: string): Promise<SalesQuoteRow[]>;
   getById(id: string): Promise<SalesQuoteRow | null>;
@@ -2414,6 +2482,7 @@ export interface DataAdapter {
   invoices: InvoicesAPI;
   eInvoices: EInvoicesAPI;   // AC-4C — e-invoice document register
   fixedAssets: FixedAssetsAPI;   // AC-5A — fixed assets + depreciation
+  amortization: AmortizationAPI; // AC-6A — prepaid / deferred / accrual schedules
   salesQuotes: SalesQuotesAPI;
   payments: PaymentsAPI;
   bankAccounts: BankAccountsAPI;

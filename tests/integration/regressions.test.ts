@@ -2219,3 +2219,85 @@ describe('AC-5A — fixed assets + depreciation (soft until applied)', () => {
     expect(true).toBe(true); // observed, not blocking (tenant data)
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// AC-6A — prepaid / deferred-revenue / accrual schedules (soft until applied)
+// ─────────────────────────────────────────────────────────────────────────
+// Structural tripwire that phase61 created the tables + CoA + posting RPCs, and
+// that the RPCs compose post_journal_entry (never write general_ledger directly)
+// and are permission-gated. Data invariants tie the installment ledger to its
+// schedule. The split math is locked by tests/unit/amortization.test.ts.
+describe('AC-6A — amortization schedules (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(
+      `SELECT count(*)::int AS n FROM information_schema.tables
+        WHERE table_schema='public' AND table_name='amortization_schedules'`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase61: tables + CHECKs + unique period index + CoA accounts', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ AC-6A not applied yet — run supabase/migrations/20260729000001_phase61_ac6a_amortization.sql');
+      return;
+    }
+    const chk = await sql<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_constraint
+        WHERE conrelid='public.amortization_schedules'::regclass AND contype='c'`);
+    expect(chk[0]?.n ?? 0, 'kind/status/total/periods CHECKs').toBeGreaterThanOrEqual(4);
+
+    const idx = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_indexes
+       WHERE schemaname='public' AND tablename='amortization_entries'
+         AND indexname='amortization_entries_schedule_period_key'`);
+    expect(idx[0]?.n ?? 0, 'unique (schedule, period_index) index').toBe(1);
+
+    // 1410 Prepaid Expenses + 2500 Deferred Revenue seeded for every company.
+    const missing = await sql<{ id: string; code: string }>(`
+      SELECT c.id, v.code FROM public.companies c
+      CROSS JOIN (VALUES ('1410'),('2500')) AS v(code)
+      WHERE NOT EXISTS (SELECT 1 FROM public.chart_of_accounts x WHERE x.company_id=c.id AND x.code=v.code)`);
+    expect(missing.length, 'prepaid/deferred accounts seeded for all companies').toBe(0);
+  });
+
+  it('phase61: posting RPCs compose post_journal_entry, write no GL directly, and are gated', async () => {
+    if (!(await applied())) { console.warn('⚠ AC-6A not applied yet'); return; }
+    for (const fn of ['run_amortization', 'reverse_last_amortization', 'cancel_amortization_schedule']) {
+      const def = await sql<{ src: string }>(
+        `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+          WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+      expect(def.length, `${fn} exists`).toBe(1);
+      const src = def[0]!.src;
+      expect(src, `${fn} SECURITY DEFINER`).toMatch(/SECURITY DEFINER/i);
+      expect(src, `${fn} gates on accounting.write`).toMatch(/auth_require\('accounting\.write'\)/);
+      expect(/insert\s+into\s+public\.general_ledger/i.test(src), `${fn} writes no general_ledger directly`).toBe(false);
+    }
+    // Only the two posting RPCs need to compose the JE primitive; cancel posts nothing.
+    for (const fn of ['run_amortization', 'reverse_last_amortization']) {
+      const def = await sql<{ src: string }>(
+        `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+          WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+      expect(def[0]!.src, `${fn} composes post_journal_entry`).toMatch(/post_journal_entry/);
+    }
+    const anonExec = await sql<{ proname: string }>(`
+      SELECT p.proname FROM pg_proc p
+       WHERE p.pronamespace='public'::regnamespace
+         AND p.proname IN ('run_amortization','reverse_last_amortization','cancel_amortization_schedule')
+         AND has_function_privilege('anon', p.oid, 'EXECUTE')`);
+    expect(anonExec.length, 'no amortization RPC executable by anon').toBe(0);
+  });
+
+  it('phase61: ledger ties to its schedule — Σ installments = amortized ≤ total (warn-only)', async () => {
+    if (!(await applied())) { console.warn('⚠ AC-6A not applied yet'); return; }
+    const drift = await sql<{ id: string; amortized_amount: number; ledger: number }>(`
+      SELECT s.id, s.amortized_amount,
+             COALESCE((SELECT sum(e.amount) FROM public.amortization_entries e
+                        WHERE e.schedule_id = s.id AND e.reversed_at IS NULL), 0) AS ledger
+      FROM public.amortization_schedules s
+      WHERE abs(s.amortized_amount
+                - COALESCE((SELECT sum(e.amount) FROM public.amortization_entries e
+                             WHERE e.schedule_id = s.id AND e.reversed_at IS NULL), 0)) > 0.01
+         OR s.amortized_amount > s.total_amount + 0.01`);
+    if (drift.length) console.warn('⚠ [AC-6A] schedule amortized-amount drift vs ledger / over total:', JSON.stringify(drift).slice(0, 500));
+    expect(true).toBe(true); // observed, not blocking (tenant data)
+  });
+});

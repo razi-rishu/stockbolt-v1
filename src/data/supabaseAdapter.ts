@@ -24,6 +24,8 @@ import type {
   EInvoiceDocumentRow, RecordEInvoiceInput, MarkEInvoiceSubmittedInput, EInvoiceActionResult,
   FixedAssetRow, FixedAssetInsert, FixedAssetUpdate, DepreciationEntryRow,
   RunDepreciationResult, DisposeAssetInput, DisposeAssetResult, ReverseDepreciationResult,
+  AmortizationScheduleRow, AmortizationScheduleInsert, AmortizationScheduleUpdate,
+  AmortizationEntryRow, RunAmortizationResult, ReverseAmortizationResult, CancelAmortizationResult,
   SalesQuoteRow, SalesQuoteInsert, SalesQuoteUpdate, SalesQuoteItemRow, SalesQuoteItemInsert,
   PaymentRow, PaymentInsert, PaymentAllocationRow, PaymentAllocationInsert,
   BankAccountRow, TaxRateRow,
@@ -2054,6 +2056,85 @@ export function createSupabaseAdapter(
         const { data, error } = await client.rpc('reverse_last_depreciation' as any, { p_asset_id: asset_id } as any);
         if (error) throw new SupabaseDataError(`fixedAssets.reverseLast: ${error.message}`);
         return data as unknown as ReverseDepreciationResult;
+      },
+    },
+
+    // ── AC-6A: Prepaid / deferred-revenue / accrual schedules ─────────────
+    // Schedule CRUD via RLS (accounting.write); posting via SECURITY DEFINER
+    // RPCs. Reads degrade gracefully until phase61 is applied.
+    amortization: {
+      async list(company_id): Promise<AmortizationScheduleRow[]> {
+        const { data, error } = await client
+          .from('amortization_schedules' as any)
+          .select('*')
+          .eq('company_id', company_id)
+          .order('start_date', { ascending: false });
+        if (error) {
+          if (isMissingRelation(error)) return [];
+          throw new SupabaseDataError(`amortization.list: ${error.message}`);
+        }
+        return (data ?? []) as unknown as AmortizationScheduleRow[];
+      },
+
+      async getById(id): Promise<AmortizationScheduleRow | null> {
+        const { data, error } = await client.from('amortization_schedules' as any).select('*').eq('id', id).maybeSingle();
+        if (error) {
+          if (isMissingRelation(error)) return null;
+          throw new SupabaseDataError(`amortization.getById: ${error.message}`);
+        }
+        return (data ?? null) as unknown as AmortizationScheduleRow | null;
+      },
+
+      async create(company_id, row: AmortizationScheduleInsert): Promise<AmortizationScheduleRow> {
+        const { data, error } = await client
+          .from('amortization_schedules' as any)
+          .insert({ company_id, ...row } as any)
+          .select().single();
+        assertNoError(error, 'amortization.create');
+        return data as unknown as AmortizationScheduleRow;
+      },
+
+      async update(id, row: AmortizationScheduleUpdate): Promise<void> {
+        const { error } = await client.from('amortization_schedules' as any).update(row as any).eq('id', id);
+        assertNoError(error, 'amortization.update');
+      },
+
+      async remove(id): Promise<void> {
+        const { error } = await client.from('amortization_schedules' as any).delete().eq('id', id);
+        assertNoError(error, 'amortization.remove');
+      },
+
+      async listEntries(schedule_id): Promise<AmortizationEntryRow[]> {
+        const { data, error } = await client
+          .from('amortization_entries' as any)
+          .select('*')
+          .eq('schedule_id', schedule_id)
+          .order('period_index', { ascending: true });
+        if (error) {
+          if (isMissingRelation(error)) return [];
+          throw new SupabaseDataError(`amortization.listEntries: ${error.message}`);
+        }
+        return (data ?? []) as unknown as AmortizationEntryRow[];
+      },
+
+      async run(period_end): Promise<RunAmortizationResult> {
+        const { data, error } = await client.rpc('run_amortization' as any, { p_period_end: period_end } as any);
+        if (error) throw new SupabaseDataError(`amortization.run: ${error.message}`);
+        return data as unknown as RunAmortizationResult;
+      },
+
+      async reverseLast(schedule_id): Promise<ReverseAmortizationResult> {
+        const { data, error } = await client.rpc('reverse_last_amortization' as any, { p_schedule_id: schedule_id } as any);
+        if (error) throw new SupabaseDataError(`amortization.reverseLast: ${error.message}`);
+        return data as unknown as ReverseAmortizationResult;
+      },
+
+      async cancel(schedule_id, reason): Promise<CancelAmortizationResult> {
+        const { data, error } = await client.rpc('cancel_amortization_schedule' as any, {
+          p_schedule_id: schedule_id, p_reason: reason ?? null,
+        } as any);
+        if (error) throw new SupabaseDataError(`amortization.cancel: ${error.message}`);
+        return data as unknown as CancelAmortizationResult;
       },
     },
 

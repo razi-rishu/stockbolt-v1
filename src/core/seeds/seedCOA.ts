@@ -16,6 +16,8 @@ const ALL_ACCOUNTS: (AccountDef & { gcc_only?: true; india_only?: true })[] = [
   { code: '1260', name: 'Bounced Cheques',            name_ar: 'شيكات مرتجعة',            type: 'asset', sub_type: 'current' },
   { code: '1300', name: 'Inventory Asset',            name_ar: 'أصول المخزون',            type: 'asset', sub_type: 'current' },
   { code: '1400', name: 'Vendor Advances / Prepaid',  name_ar: 'سلف الموردين',            type: 'asset', sub_type: 'current' },
+  // AC-6 — prepayments amortized over time (distinct from 1400 vendor advances)
+  { code: '1410', name: 'Prepaid Expenses',           name_ar: 'مصروفات مدفوعة مقدمًا',   type: 'asset', sub_type: 'current' },
   // Payroll P1 (owner override 2026-06-13) — staff loan/advance recoveries
   { code: '1450', name: 'Employee Advances',          name_ar: 'سلف الموظفين',            type: 'asset', sub_type: 'current' },
   { code: '1500', name: 'Input VAT (Claimable)',       name_ar: 'ضريبة القيمة المضافة المدخلات', type: 'asset', sub_type: 'current', gcc_only: true },
@@ -46,6 +48,8 @@ const ALL_ACCOUNTS: (AccountDef & { gcc_only?: true; india_only?: true })[] = [
   { code: '2360', name: 'Gratuity Accrual',            name_ar: 'مخصص مكافأة نهاية الخدمة', type: 'liability', sub_type: 'current' },
   { code: '2400', name: 'Customer Advances',           name_ar: 'سلف العملاء',             type: 'liability', sub_type: 'current' },
   { code: '2450', name: 'PDC Payable (Vendor)',         name_ar: 'شيكات آجلة صادرة',       type: 'liability', sub_type: 'current' },
+  // AC-6 — revenue received up front, recognised over time (distinct from 2400)
+  { code: '2500', name: 'Deferred Revenue',             name_ar: 'إيرادات مؤجلة',          type: 'liability', sub_type: 'current' },
   // ── Equity ────────────────────────────────────────────────────────────────
   // 3010 — Phase 14.09. Contra account for the opening-balance wizard.
   // Every opening JE (AR / AP / customer credit / vendor credit) offsets
