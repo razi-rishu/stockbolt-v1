@@ -33,9 +33,17 @@ export interface ContactGeoFields {
 // generated Database types yet, so we intersect them onto the app-facing types.
 export interface ProductEInvoiceFields { default_tax_treatment?: string | null; }
 export interface ContactEInvoiceFields { buyer_type?: string | null; place_of_supply_code?: string | null; }
+// Phase 62 (AC-7A) — India TDS vendor configuration. Same intersection pattern:
+// the columns are live but not yet in the generated Database types.
+export interface ContactTdsFields {
+  pan?: string | null;
+  tds_section_code?: string | null;
+  tds_deductee_type?: string | null;
+  lower_deduction_rate?: number | null;
+}
 export interface InvoiceEInvoiceFields { is_export?: boolean | null; place_of_supply_code?: string | null; }
 export interface InvoiceItemEInvoiceFields { tax_treatment?: string | null; }
-export type ContactRow = Tables['contacts']['Row'] & ContactGeoFields & ContactEInvoiceFields;
+export type ContactRow = Tables['contacts']['Row'] & ContactGeoFields & ContactEInvoiceFields & ContactTdsFields;
 export type PriceLevelRow = Tables['price_levels']['Row'];
 export type ProductPriceLevelRow = Tables['product_price_levels']['Row'];
 
@@ -114,8 +122,8 @@ export type ProductInsert = Omit<Tables['products']['Insert'], 'id' | 'created_a
 export type ProductUpdate = Tables['products']['Update'] & ProductEInvoiceFields;
 export type ProductCompatibilityInsert = Omit<Tables['product_compatibility']['Insert'], 'id' | 'created_at'> & CompatibilityVehicleFields;
 export type ProductSupplierCodeInsert = Omit<Tables['product_supplier_codes']['Insert'], 'id' | 'created_at' | 'updated_at'>;
-export type ContactInsert = Omit<Tables['contacts']['Insert'], 'id' | 'created_at' | 'updated_at'> & ContactGeoFields & ContactEInvoiceFields;
-export type ContactUpdate = Tables['contacts']['Update'] & ContactGeoFields & ContactEInvoiceFields;
+export type ContactInsert = Omit<Tables['contacts']['Insert'], 'id' | 'created_at' | 'updated_at'> & ContactGeoFields & ContactEInvoiceFields & ContactTdsFields;
+export type ContactUpdate = Tables['contacts']['Update'] & ContactGeoFields & ContactEInvoiceFields & ContactTdsFields;
 export type PriceLevelInsert = Omit<Tables['price_levels']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type PriceLevelUpdate = Tables['price_levels']['Update'];
 export type ProductPriceLevelInsert = Omit<Tables['product_price_levels']['Insert'], 'id' | 'created_at'>;
@@ -1288,6 +1296,80 @@ export interface AmortizationAPI {
   reverseLast(schedule_id: string): Promise<ReverseAmortizationResult>;
   /** Stop future postings; recognised amounts stay recognised. */
   cancel(schedule_id: string, reason?: string): Promise<CancelAmortizationResult>;
+}
+
+// ── AC-7A — India TDS (withholding) ──────────────────────────────────────────
+export type TdsRateReasonDb = 'section' | 'no_pan_206aa' | 'certificate';
+export type TdsDeductionStatus = 'posted' | 'reversed';
+export interface TdsSectionRow {
+  id: string;
+  company_id: string;
+  code: string;
+  description: string;
+  rate_individual: number;
+  rate_other: number;
+  single_threshold: number;
+  annual_threshold: number;
+  effective_from: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+export interface TdsSectionInsert {
+  code: string;
+  description: string;
+  rate_individual: number;
+  rate_other: number;
+  single_threshold: number;
+  annual_threshold: number;
+  effective_from?: string;
+  is_active?: boolean;
+}
+export type TdsSectionUpdate = Partial<TdsSectionInsert>;
+export interface TdsDeductionRow {
+  id: string;
+  company_id: string;
+  vendor_bill_id: string;
+  contact_id: string;
+  section_code: string;
+  base_amount: number;
+  rate: number;
+  rate_reason: TdsRateReasonDb;
+  amount: number;
+  deduction_date: string;
+  ap_account_code: string;
+  tds_account_code: string;
+  journal_entry_id: string | null;
+  status: TdsDeductionStatus;
+  reversed_at: string | null;
+  reversed_by: string | null;
+  reversed_je_id: string | null;
+  notes: string | null;
+  created_at: string;
+  created_by: string | null;
+}
+export interface RecordTdsInput {
+  vendor_bill_id: string;
+  section_code: string;
+  base_amount: number;
+  rate: number;
+  deduction_date: string;
+  rate_reason?: TdsRateReasonDb;
+}
+export interface RecordTdsResult { deduction_id: string; amount: number; journal_entry_id: string; status: string }
+export interface ReverseTdsResult { deduction_id: string; status: string; journal_entry_id: string; amount: number }
+export interface TdsAPI {
+  listSections(company_id: string): Promise<TdsSectionRow[]>;
+  createSection(company_id: string, row: TdsSectionInsert): Promise<TdsSectionRow>;
+  updateSection(id: string, row: TdsSectionUpdate): Promise<void>;
+  removeSection(id: string): Promise<void>;
+  listDeductions(company_id: string, from?: string, to?: string): Promise<TdsDeductionRow[]>;
+  listDeductionsForBill(vendor_bill_id: string): Promise<TdsDeductionRow[]>;
+  /** Base already deducted against this vendor in the given window (threshold check). */
+  ytdBaseForContact(company_id: string, contact_id: string, from: string, to: string): Promise<number>;
+  /** Post Dr AP / Cr TDS Payable against a confirmed vendor bill. */
+  record(input: RecordTdsInput): Promise<RecordTdsResult>;
+  reverse(deduction_id: string): Promise<ReverseTdsResult>;
 }
 
 export interface SalesQuotesAPI {
@@ -2483,6 +2565,7 @@ export interface DataAdapter {
   eInvoices: EInvoicesAPI;   // AC-4C — e-invoice document register
   fixedAssets: FixedAssetsAPI;   // AC-5A — fixed assets + depreciation
   amortization: AmortizationAPI; // AC-6A — prepaid / deferred / accrual schedules
+  tds: TdsAPI;                   // AC-7A — India TDS (withholding)
   salesQuotes: SalesQuotesAPI;
   payments: PaymentsAPI;
   bankAccounts: BankAccountsAPI;

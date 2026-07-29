@@ -264,6 +264,17 @@ export function createSelfHostedAdapter(): DataAdapter {
       reverseLast: () => notImplemented('amortization.reverseLast'),
       cancel:      () => notImplemented('amortization.cancel'),
     },
+    tds: {
+      listSections:          () => notImplemented('tds.listSections'),
+      createSection:         () => notImplemented('tds.createSection'),
+      updateSection:         () => notImplemented('tds.updateSection'),
+      removeSection:         () => notImplemented('tds.removeSection'),
+      listDeductions:        () => notImplemented('tds.listDeductions'),
+      listDeductionsForBill: () => notImplemented('tds.listDeductionsForBill'),
+      ytdBaseForContact:     () => notImplemented('tds.ytdBaseForContact'),
+      record:                () => notImplemented('tds.record'),
+      reverse:               () => notImplemented('tds.reverse'),
+    },
     salesQuotes: {
       list:             () => notImplemented('salesQuotes.list'),
       getById:          () => notImplemented('salesQuotes.getById'),

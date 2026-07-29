@@ -50,6 +50,8 @@ const ALL_ACCOUNTS: (AccountDef & { gcc_only?: true; india_only?: true })[] = [
   { code: '2450', name: 'PDC Payable (Vendor)',         name_ar: 'شيكات آجلة صادرة',       type: 'liability', sub_type: 'current' },
   // AC-6 — revenue received up front, recognised over time (distinct from 2400)
   { code: '2500', name: 'Deferred Revenue',             name_ar: 'إيرادات مؤجلة',          type: 'liability', sub_type: 'current' },
+  // AC-7 — India TDS withheld from vendors, owed to the government
+  { code: '2320', name: 'TDS Payable',                  name_ar: 'ضريبة مستقطعة مستحقة',   type: 'liability', sub_type: 'current', india_only: true },
   // ── Equity ────────────────────────────────────────────────────────────────
   // 3010 — Phase 14.09. Contra account for the opening-balance wizard.
   // Every opening JE (AR / AP / customer credit / vendor credit) offsets

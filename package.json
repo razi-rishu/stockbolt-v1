@@ -30,6 +30,7 @@
     "test:tax-return": "vitest run tests/integration/tax-return-verification.test.ts",
     "test:fixed-assets": "vitest run tests/integration/fixed-assets-verification.test.ts",
     "test:amortization": "vitest run tests/integration/amortization-verification.test.ts",
+    "test:tds": "vitest run tests/integration/tds-verification.test.ts",
     "prepare": "husky"
   },
   "dependencies": {

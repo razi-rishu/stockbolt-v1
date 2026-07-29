@@ -26,6 +26,8 @@ import type {
   RunDepreciationResult, DisposeAssetInput, DisposeAssetResult, ReverseDepreciationResult,
   AmortizationScheduleRow, AmortizationScheduleInsert, AmortizationScheduleUpdate,
   AmortizationEntryRow, RunAmortizationResult, ReverseAmortizationResult, CancelAmortizationResult,
+  TdsSectionRow, TdsSectionInsert, TdsSectionUpdate, TdsDeductionRow,
+  RecordTdsInput, RecordTdsResult, ReverseTdsResult,
   SalesQuoteRow, SalesQuoteInsert, SalesQuoteUpdate, SalesQuoteItemRow, SalesQuoteItemInsert,
   PaymentRow, PaymentInsert, PaymentAllocationRow, PaymentAllocationInsert,
   BankAccountRow, TaxRateRow,
@@ -2135,6 +2137,103 @@ export function createSupabaseAdapter(
         } as any);
         if (error) throw new SupabaseDataError(`amortization.cancel: ${error.message}`);
         return data as unknown as CancelAmortizationResult;
+      },
+    },
+
+    // ── AC-7A: India TDS (withholding) ────────────────────────────────────
+    // Section master CRUD via RLS (accounting.write); deductions post through
+    // SECURITY DEFINER RPCs. Reads degrade gracefully until phase62 is applied.
+    tds: {
+      async listSections(company_id): Promise<TdsSectionRow[]> {
+        const { data, error } = await client
+          .from('tds_sections' as any)
+          .select('*')
+          .eq('company_id', company_id)
+          .order('code', { ascending: true });
+        if (error) {
+          if (isMissingRelation(error)) return [];
+          throw new SupabaseDataError(`tds.listSections: ${error.message}`);
+        }
+        return (data ?? []) as unknown as TdsSectionRow[];
+      },
+
+      async createSection(company_id, row: TdsSectionInsert): Promise<TdsSectionRow> {
+        const { data, error } = await client
+          .from('tds_sections' as any)
+          .insert({ company_id, ...row } as any)
+          .select().single();
+        assertNoError(error, 'tds.createSection');
+        return data as unknown as TdsSectionRow;
+      },
+
+      async updateSection(id, row: TdsSectionUpdate): Promise<void> {
+        const { error } = await client.from('tds_sections' as any).update(row as any).eq('id', id);
+        assertNoError(error, 'tds.updateSection');
+      },
+
+      async removeSection(id): Promise<void> {
+        const { error } = await client.from('tds_sections' as any).delete().eq('id', id);
+        assertNoError(error, 'tds.removeSection');
+      },
+
+      async listDeductions(company_id, from, to): Promise<TdsDeductionRow[]> {
+        // `as any` — a reassigned PostgREST builder collapses its generics.
+        let q = (client.from('tds_deductions' as any) as any)
+          .select('*').eq('company_id', company_id);
+        if (from) q = q.gte('deduction_date', from);
+        if (to)   q = q.lte('deduction_date', to);
+        const { data, error } = await q.order('deduction_date', { ascending: false });
+        if (error) {
+          if (isMissingRelation(error)) return [];
+          throw new SupabaseDataError(`tds.listDeductions: ${error.message}`);
+        }
+        return (data ?? []) as unknown as TdsDeductionRow[];
+      },
+
+      async listDeductionsForBill(vendor_bill_id): Promise<TdsDeductionRow[]> {
+        const { data, error } = await client
+          .from('tds_deductions' as any)
+          .select('*')
+          .eq('vendor_bill_id', vendor_bill_id)
+          .order('deduction_date', { ascending: true });
+        if (error) {
+          if (isMissingRelation(error)) return [];
+          throw new SupabaseDataError(`tds.listDeductionsForBill: ${error.message}`);
+        }
+        return (data ?? []) as unknown as TdsDeductionRow[];
+      },
+
+      async ytdBaseForContact(company_id, contact_id, from, to): Promise<number> {
+        const { data, error } = await (client.from('tds_deductions' as any) as any)
+          .select('base_amount')
+          .eq('company_id', company_id).eq('contact_id', contact_id).eq('status', 'posted')
+          .gte('deduction_date', from).lte('deduction_date', to);
+        if (error) {
+          if (isMissingRelation(error)) return 0;
+          throw new SupabaseDataError(`tds.ytdBaseForContact: ${error.message}`);
+        }
+        return (data ?? []).reduce((s: number, r: any) => s + Number(r.base_amount), 0);
+      },
+
+      async record(input: RecordTdsInput): Promise<RecordTdsResult> {
+        const { data, error } = await client.rpc('record_tds_deduction' as any, {
+          p_vendor_bill_id: input.vendor_bill_id,
+          p_section_code: input.section_code,
+          p_base_amount: input.base_amount,
+          p_rate: input.rate,
+          p_deduction_date: input.deduction_date,
+          p_rate_reason: input.rate_reason ?? 'section',
+        } as any);
+        if (error) throw new SupabaseDataError(`tds.record: ${error.message}`);
+        return data as unknown as RecordTdsResult;
+      },
+
+      async reverse(deduction_id): Promise<ReverseTdsResult> {
+        const { data, error } = await client.rpc('reverse_tds_deduction' as any, {
+          p_deduction_id: deduction_id,
+        } as any);
+        if (error) throw new SupabaseDataError(`tds.reverse: ${error.message}`);
+        return data as unknown as ReverseTdsResult;
       },
     },
 

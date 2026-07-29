@@ -2301,3 +2301,107 @@ describe('AC-6A — amortization schedules (soft until applied)', () => {
     expect(true).toBe(true); // observed, not blocking (tenant data)
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// AC-7A — India TDS / withholding (soft until applied)
+// ─────────────────────────────────────────────────────────────────────────
+// Structural tripwire that phase62 created the tables + India-gated CoA + the
+// posting RPCs, that the RPCs compose post_journal_entry (never write
+// general_ledger directly) and are permission-gated, and — critically — that
+// the two existing purchasing RPCs were NOT modified: TDS is a standalone
+// deduction document by design. Rate maths is locked by tests/unit/tds.test.ts.
+describe('AC-7A — India TDS (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(
+      `SELECT count(*)::int AS n FROM information_schema.tables
+        WHERE table_schema='public' AND table_name='tds_deductions'`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase62: tables + CHECKs + contacts TDS columns + India-gated 2320', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ AC-7A not applied yet — run supabase/migrations/20260729000002_phase62_ac7a_india_tds.sql');
+      return;
+    }
+    const chk = await sql<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_constraint
+        WHERE conrelid='public.tds_deductions'::regclass AND contype='c'`);
+    expect(chk[0]?.n ?? 0, 'rate/base/status/reason CHECKs').toBeGreaterThanOrEqual(4);
+
+    const cols = await sql<{ column_name: string }>(`
+      SELECT column_name FROM information_schema.columns
+       WHERE table_name='contacts'
+         AND column_name IN ('pan','tds_section_code','tds_deductee_type','lower_deduction_rate')`);
+    expect(cols.length, 'all 4 vendor TDS columns present').toBe(4);
+
+    // 2320 is India-only: present for IN companies, absent for the rest.
+    const missingIn = await sql<{ id: string }>(`
+      SELECT c.id FROM public.companies c
+      WHERE c.country_code = 'IN'
+        AND NOT EXISTS (SELECT 1 FROM public.chart_of_accounts x
+                         WHERE x.company_id=c.id AND x.code='2320')`);
+    expect(missingIn.length, '2320 seeded for every India company').toBe(0);
+
+    const leakedNonIn = await sql<{ id: string }>(`
+      SELECT c.id FROM public.companies c
+      JOIN public.chart_of_accounts x ON x.company_id=c.id AND x.code='2320'
+      WHERE c.country_code <> 'IN'`);
+    expect(leakedNonIn.length, '2320 NOT created for non-India companies').toBe(0);
+  });
+
+  it('phase62: TDS RPCs compose post_journal_entry, write no GL directly, and are gated', async () => {
+    if (!(await applied())) { console.warn('⚠ AC-7A not applied yet'); return; }
+    for (const fn of ['record_tds_deduction', 'reverse_tds_deduction']) {
+      const def = await sql<{ src: string }>(
+        `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+          WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+      expect(def.length, `${fn} exists`).toBe(1);
+      const src = def[0]!.src;
+      expect(src, `${fn} SECURITY DEFINER`).toMatch(/SECURITY DEFINER/i);
+      expect(src, `${fn} gates on accounting.write`).toMatch(/auth_require\('accounting\.write'\)/);
+      expect(src, `${fn} composes post_journal_entry`).toMatch(/post_journal_entry/);
+      expect(/insert\s+into\s+public\.general_ledger/i.test(src), `${fn} writes no general_ledger directly`).toBe(false);
+    }
+    const anonExec = await sql<{ proname: string }>(`
+      SELECT p.proname FROM pg_proc p
+       WHERE p.pronamespace='public'::regnamespace
+         AND p.proname IN ('record_tds_deduction','reverse_tds_deduction')
+         AND has_function_privilege('anon', p.oid, 'EXECUTE')`);
+    expect(anonExec.length, 'no TDS RPC executable by anon').toBe(0);
+  });
+
+  it('phase62: the purchasing engine was NOT modified for TDS (standalone by design)', async () => {
+    if (!(await applied())) { console.warn('⚠ AC-7A not applied yet'); return; }
+    // The whole point of the standalone-document design: these two RPCs must
+    // stay ignorant of TDS. If a future change starts withholding inside them,
+    // this fails loudly rather than silently double-deducting.
+    for (const fn of ['confirm_vendor_bill', 'confirm_vendor_payment']) {
+      const def = await sql<{ src: string }>(
+        `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+          WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+      if (def.length === 0) continue;
+      const src = def[0]!.src.toLowerCase();
+      expect(src.includes('tds'), `${fn} must not reference TDS`).toBe(false);
+      expect(src.includes("'2320'"), `${fn} must not touch the TDS Payable account`).toBe(false);
+    }
+  });
+
+  it('phase62: deductions tie to their bill and never exceed it (warn-only)', async () => {
+    if (!(await applied())) { console.warn('⚠ AC-7A not applied yet'); return; }
+    const bad = await sql<{ vendor_bill_id: string; deducted: number; total_amount: number }>(`
+      SELECT d.vendor_bill_id, sum(d.amount) AS deducted, max(b.total_amount) AS total_amount
+      FROM public.tds_deductions d
+      JOIN public.vendor_bills b ON b.id = d.vendor_bill_id
+      WHERE d.status = 'posted'
+      GROUP BY d.vendor_bill_id
+      HAVING sum(d.amount) > max(b.total_amount) + 0.01`);
+    if (bad.length) console.warn('⚠ [AC-7A] TDS deducted exceeds the bill total:', JSON.stringify(bad).slice(0, 500));
+
+    const orphan = await sql<{ id: string }>(`
+      SELECT d.id FROM public.tds_deductions d
+      LEFT JOIN public.vendor_bills b ON b.id = d.vendor_bill_id
+      WHERE b.id IS NULL`);
+    if (orphan.length) console.warn('⚠ [AC-7A] TDS deductions with no bill:', JSON.stringify(orphan).slice(0, 300));
+    expect(true).toBe(true); // observed, not blocking (tenant data)
+  });
+});
