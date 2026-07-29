@@ -179,6 +179,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
             { to: '/accounting/year-end-close', label: t('nav.year_end_close') },
             { to: '/accounting/tax-return', label: t('nav.tax_return') },
             { to: '/accounting/fixed-assets', label: t('nav.fixed_assets') },
+            { to: '/accounting/amortization', label: t('nav.amortization') },
           ],
         },
         {
