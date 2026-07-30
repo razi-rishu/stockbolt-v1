@@ -2405,3 +2405,96 @@ describe('AC-7A — India TDS (soft until applied)', () => {
     expect(true).toBe(true); // observed, not blocking (tenant data)
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// Phase 63 — deferred-COGS flush fix + stranded-value repair (soft until applied)
+// ─────────────────────────────────────────────────────────────────────────
+// Sell-before-buy defers COGS until the goods arrive. The flush used to price
+// off running_avg_cost, which the phase-29 valuation trigger zeroes in the same
+// transaction whenever a receipt lands cumulative stock exactly on zero — so
+// the row stayed 'pending' forever, the purchase value sat in 1300 with no
+// stock behind it, and COGS was understated. Nothing re-scanned pending rows,
+// so it never self-healed.
+//
+// These lock the fix: the flush must price off the arriving bill line, and the
+// repair RPC must exist and compose post_journal_entry. The data invariant is
+// the alarm that did not exist when this went unnoticed on live books.
+describe('Phase 63 — deferred-COGS flush (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_proc
+        WHERE proname='flush_stranded_deferred_cogs' AND pronamespace='public'::regnamespace`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase63: the flush prices off the arriving bill line, not the post-receipt average', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ Phase 63 not applied yet — run supabase/migrations/20260731000001_phase63_deferred_cogs_flush_fix.sql');
+      return;
+    }
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='confirm_vendor_bill' AND pronamespace='public'::regnamespace`);
+    expect(def.length, 'confirm_vendor_bill exists').toBe(1);
+    const src = def[0]!.src;
+
+    // The cost basis now comes from the stock_ledger row this bill just wrote.
+    expect(src, 'flush derives an arrived cost').toMatch(/v_arrived_cost/);
+    expect(src, 'flush uses the arrived cost as the basis').toMatch(/v_flush_mac\s*:=\s*COALESCE\(v_arrived_cost, 0\)/);
+    expect(src, 'arrived cost is read from this bill').toMatch(/sl\.related_doc_id\s*=\s*p_bill_id/);
+    // Partial coverage must never credit 1300 for units that have not arrived.
+    expect(src, 'per-product receipt capacity is tracked').toMatch(/v_consumed/);
+  });
+
+  it('phase63: repair RPC composes post_journal_entry, writes no GL directly, and is gated', async () => {
+    if (!(await applied())) { console.warn('⚠ Phase 63 not applied yet'); return; }
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='flush_stranded_deferred_cogs' AND pronamespace='public'::regnamespace`);
+    const src = def[0]!.src;
+    expect(src, 'SECURITY DEFINER').toMatch(/SECURITY DEFINER/i);
+    expect(src, 'gates on accounting.write').toMatch(/auth_require\('accounting\.write'\)/);
+    expect(src, 'composes post_journal_entry').toMatch(/post_journal_entry/);
+    expect(/insert\s+into\s+public\.general_ledger/i.test(src), 'writes no general_ledger directly').toBe(false);
+    expect(src, 'defaults to dry run').toMatch(/p_dry_run\s+boolean\s+DEFAULT\s+true/i);
+
+    const anonExec = await sql<{ proname: string }>(`
+      SELECT p.proname FROM pg_proc p
+       WHERE p.pronamespace='public'::regnamespace
+         AND p.proname='flush_stranded_deferred_cogs'
+         AND has_function_privilege('anon', p.oid, 'EXECUTE')`);
+    expect(anonExec.length, 'repair RPC not executable by anon').toBe(0);
+  });
+
+  it('phase63: no pending deferred-COGS row has a covering receipt (warn-only)', async () => {
+    // A pending row whose goods have demonstrably arrived is stranded value:
+    // 1300 holds the cost with no stock behind it and COGS is understated by
+    // the same amount. This is the alarm that was missing.
+    const stranded = await sql<{ company: string; product: string; quantity: number; amount: number }>(`
+      WITH arr AS (
+        SELECT sl.company_id, sl.product_id,
+               SUM(sl.quantity) AS qty,
+               ROUND(SUM(sl.quantity * sl.unit_cost) / NULLIF(SUM(sl.quantity), 0), 2) AS unit_cost
+        FROM public.stock_ledger sl
+        WHERE sl.direction = 1
+          AND sl.related_doc_type = 'vendor_bill'
+          AND sl.reversal_of_id IS NULL
+          AND NOT EXISTS (SELECT 1 FROM public.stock_ledger r WHERE r.reversal_of_id = sl.id)
+        GROUP BY 1, 2
+      )
+      SELECT c.name AS company, p.name AS product, d.quantity,
+             ROUND(d.quantity * a.unit_cost, 2) AS amount
+      FROM public.deferred_cogs_queue d
+      JOIN arr a            ON a.company_id = d.company_id AND a.product_id = d.product_id
+      JOIN public.products p ON p.id = d.product_id
+      JOIN public.companies c ON c.id = d.company_id
+      WHERE d.status = 'pending' AND a.unit_cost > 0 AND a.qty >= d.quantity`);
+    if (stranded.length) {
+      console.warn(
+        '⚠ [phase63] stranded deferred COGS — goods arrived but COGS never recognised;' +
+        ' run flush_stranded_deferred_cogs(false) to repair:',
+        JSON.stringify(stranded).slice(0, 600));
+    }
+    expect(true).toBe(true); // observed, not blocking (tenant data)
+  });
+});

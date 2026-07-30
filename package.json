@@ -31,6 +31,7 @@
     "test:fixed-assets": "vitest run tests/integration/fixed-assets-verification.test.ts",
     "test:amortization": "vitest run tests/integration/amortization-verification.test.ts",
     "test:tds": "vitest run tests/integration/tds-verification.test.ts",
+    "test:deferred-cogs": "vitest run tests/integration/deferred-cogs-verification.test.ts",
     "prepare": "husky"
   },
   "dependencies": {
