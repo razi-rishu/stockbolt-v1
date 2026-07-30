@@ -254,6 +254,8 @@ function useNavSections(t: (k: string) => string): NavSection[] {
           label: 'Inventory',
           items: [
             { to: '/reports/stock-valuation', label: t('nav.stock_valuation') },
+            { to: '/reports/fixed-asset-register', label: t('reports.far_title') },
+            { to: '/reports/depreciation-schedule', label: t('reports.ds_title') },
             { to: '/reports/stock-movement', label: t('reports.stock_movement') },
             { to: '/reports/slow-moving', label: t('reports.slow_moving') },
             { to: '/reports/reorder', label: t('reports.reorder') },

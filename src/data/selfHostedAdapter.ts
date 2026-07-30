@@ -249,6 +249,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       update:          () => notImplemented('fixedAssets.update'),
       remove:          () => notImplemented('fixedAssets.remove'),
       listEntries:     () => notImplemented('fixedAssets.listEntries'),
+      listEntriesForPeriod: () => notImplemented('fixedAssets.listEntriesForPeriod'),
       runDepreciation: () => notImplemented('fixedAssets.runDepreciation'),
       dispose:         () => notImplemented('fixedAssets.dispose'),
       reverseLast:     () => notImplemented('fixedAssets.reverseLast'),

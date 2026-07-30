@@ -2037,6 +2037,21 @@ export function createSupabaseAdapter(
         return (data ?? []) as unknown as DepreciationEntryRow[];
       },
 
+      async listEntriesForPeriod(company_id, from, to): Promise<DepreciationEntryRow[]> {
+        const { data, error } = await client
+          .from('depreciation_entries' as any)
+          .select('*')
+          .eq('company_id', company_id)
+          .gte('period_end', from)
+          .lte('period_end', to)
+          .order('period_end', { ascending: true });
+        if (error) {
+          if (isMissingRelation(error)) return [];
+          throw new SupabaseDataError(`fixedAssets.listEntriesForPeriod: ${error.message}`);
+        }
+        return (data ?? []) as unknown as DepreciationEntryRow[];
+      },
+
       async runDepreciation(period_end): Promise<RunDepreciationResult> {
         const { data, error } = await client.rpc('run_depreciation' as any, { p_period_end: period_end } as any);
         if (error) throw new SupabaseDataError(`fixedAssets.runDepreciation: ${error.message}`);

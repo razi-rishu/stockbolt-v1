@@ -1223,6 +1223,8 @@ export interface FixedAssetsAPI {
   update(id: string, row: FixedAssetUpdate): Promise<void>;
   remove(id: string): Promise<void>;
   listEntries(asset_id: string): Promise<DepreciationEntryRow[]>;
+  /** AC-5C — every posted charge in a window, across all assets (schedule report). */
+  listEntriesForPeriod(company_id: string, from: string, to: string): Promise<DepreciationEntryRow[]>;
   /** Post depreciation for every active asset up to the given month-end. */
   runDepreciation(period_end: string): Promise<RunDepreciationResult>;
   dispose(input: DisposeAssetInput): Promise<DisposeAssetResult>;

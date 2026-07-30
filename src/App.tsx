@@ -73,6 +73,8 @@ const ProfitLossPage         = lazy(() => import('@/modules/reports/profit-loss'
 const BalanceSheetPage       = lazy(() => import('@/modules/reports/balance-sheet'));
 const ARAgingPage            = lazy(() => import('@/modules/reports/ar-aging'));
 const StockValuationPage     = lazy(() => import('@/modules/reports/stock-valuation'));
+const FixedAssetRegisterPage = lazy(() => import('@/modules/reports/fixed-asset-register'));
+const DepreciationSchedulePage = lazy(() => import('@/modules/reports/depreciation-schedule'));
 
 // Sales
 const InvoicesPage       = lazy(() => import('@/modules/sales/invoices'));
@@ -327,6 +329,8 @@ function AppRoutes() {
               <Route path="/reports/balance-sheet"              element={<BalanceSheetPage />} />
               <Route path="/reports/ar-aging"                   element={<ARAgingPage />} />
               <Route path="/reports/stock-valuation"            element={<StockValuationPage />} />
+              <Route path="/reports/fixed-asset-register"       element={<FixedAssetRegisterPage />} />
+              <Route path="/reports/depreciation-schedule"      element={<DepreciationSchedulePage />} />
 
               {/* Sales */}
               {/* Phase 46b/47b — creating OR editing an invoice needs the full
