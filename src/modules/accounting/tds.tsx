@@ -1,14 +1,18 @@
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { hasPerm } from '@/lib/permissions';
 import { useCompanyCountry } from '@/hooks/use-company-currency';
 import { Select } from '@/ui/select';
+import { Input } from '@/ui/input';
+import { Button } from '@/ui/button';
+import { Modal } from '@/ui/modal';
 import { DocLink } from '@/ui/doc-link';
 import { ReportActions } from '@/ui/report-actions';
 import { indianFinancialYear, tdsQuarter } from '@/lib/tds';
-import type { ContactRow, TdsDeductionRow } from '@/data/adapter';
+import type { ContactRow, TdsDeductionRow, TdsSectionRow, TdsSectionInsert } from '@/data/adapter';
 
 /**
  * AC-7B — TDS register + Form 26Q summary (India only).
@@ -22,10 +26,24 @@ import type { ContactRow, TdsDeductionRow } from '@/data/adapter';
 const MONEY = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
+const emptySection: TdsSectionInsert = {
+  code: '', description: '',
+  rate_individual: 0, rate_other: 0,
+  single_threshold: 0, annual_threshold: 0,
+  is_active: true,
+};
+
 export default function TdsPage() {
   const { t } = useTranslation();
-  const { company_id } = useAuthStore();
+  const { company_id, role, permissions } = useAuthStore();
+  const qc = useQueryClient();
+  const canWrite = hasPerm(role, permissions, 'accounting.write');
   const country = useCompanyCountry();
+
+  const [showSections, setShowSections] = useState(false);
+  const [sectionForm, setSectionForm] = useState<TdsSectionInsert>(emptySection);
+  const [editingSection, setEditingSection] = useState<TdsSectionRow | null>(null);
+  const [sectionModal, setSectionModal] = useState(false);
 
   // Default to the current Indian financial year.
   const today = new Date().toISOString().slice(0, 10);
@@ -48,6 +66,49 @@ export default function TdsPage() {
   });
   const nameOf = (id: string) => contacts.find((c) => c.id === id)?.name ?? '—';
   const panOf  = (id: string) => contacts.find((c) => c.id === id)?.pan ?? '';
+
+  // ── Section rate master ────────────────────────────────────────────────────
+  // Rates change with each Finance Act, so they must be editable in-app rather
+  // than requiring a SQL update. Editing a rate affects FUTURE deductions only:
+  // posted rows store the rate they used.
+  const { data: sections = [] } = useQuery<TdsSectionRow[]>({
+    queryKey: ['tds_sections', company_id],
+    queryFn: () => getAdapter().tds.listSections(company_id!),
+    enabled: !!company_id,
+  });
+
+  const invalidateSections = () => qc.invalidateQueries({ queryKey: ['tds_sections', company_id] });
+
+  const saveSection = useMutation({
+    mutationFn: async () => {
+      const payload: TdsSectionInsert = {
+        ...sectionForm,
+        rate_individual: Number(sectionForm.rate_individual),
+        rate_other: Number(sectionForm.rate_other),
+        single_threshold: Number(sectionForm.single_threshold),
+        annual_threshold: Number(sectionForm.annual_threshold),
+      };
+      if (editingSection) await getAdapter().tds.updateSection(editingSection.id, payload);
+      else await getAdapter().tds.createSection(company_id!, payload);
+    },
+    onSuccess: () => { setSectionModal(false); invalidateSections(); },
+  });
+
+  const removeSection = useMutation({
+    mutationFn: (id: string) => getAdapter().tds.removeSection(id),
+    onSuccess: invalidateSections,
+  });
+
+  function openSection(s: TdsSectionRow | null) {
+    setEditingSection(s);
+    setSectionForm(s ? {
+      code: s.code, description: s.description,
+      rate_individual: Number(s.rate_individual), rate_other: Number(s.rate_other),
+      single_threshold: Number(s.single_threshold), annual_threshold: Number(s.annual_threshold),
+      effective_from: s.effective_from, is_active: s.is_active,
+    } : emptySection);
+    setSectionModal(true);
+  }
 
   const visible = useMemo(
     () => deductions.filter((d) => quarter === 'all' || tdsQuarter(d.deduction_date) === quarter),
@@ -170,6 +231,113 @@ export default function TdsPage() {
           </table>
         </div>
       </div>
+
+      {/* Section rate master — collapsible, since it is configuration not daily work */}
+      <div className="glass-card overflow-hidden" data-print-hide>
+        <button
+          className="flex w-full items-center justify-between px-4 py-3 text-start hover:bg-surface-subtle"
+          onClick={() => setShowSections((v) => !v)}
+        >
+          <span>
+            <span className="text-sm font-semibold text-ink-primary">{t('tds.sections_title')}</span>
+            <span className="ms-2 text-xs text-ink-tertiary">{t('tds.sections_count', { count: sections.length })}</span>
+          </span>
+          <span className="text-ink-tertiary">{showSections ? '▾' : '▸'}</span>
+        </button>
+
+        {showSections && (
+          <div className="border-t border-border-subtle">
+            <p className="px-4 py-2 text-xs text-warning-600">{t('tds.rates_disclaimer')}</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-surface-subtle text-xs uppercase tracking-wide text-ink-tertiary">
+                  <tr>
+                    <th className="px-4 py-2 text-start">{t('tds.col_section')}</th>
+                    <th className="px-4 py-2 text-start">{t('tds.col_description')}</th>
+                    <th className="px-4 py-2 text-end">{t('tds.col_rate_individual')}</th>
+                    <th className="px-4 py-2 text-end">{t('tds.col_rate_other')}</th>
+                    <th className="px-4 py-2 text-end">{t('tds.col_single_threshold')}</th>
+                    <th className="px-4 py-2 text-end">{t('tds.col_annual_threshold')}</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {sections.length === 0 && (
+                    <tr><td colSpan={7} className="px-4 py-6 text-center text-ink-tertiary">{t('tds.no_sections')}</td></tr>
+                  )}
+                  {sections.map((s) => (
+                    <tr key={s.id} className={`border-t border-border-subtle ${s.is_active ? '' : 'text-ink-tertiary'}`}>
+                      <td className="px-4 py-2 font-medium text-ink-primary">{s.code}</td>
+                      <td className="px-4 py-2 text-ink-secondary">{s.description}</td>
+                      <td className="px-4 py-2 text-end text-ink-secondary">{Number(s.rate_individual)}%</td>
+                      <td className="px-4 py-2 text-end text-ink-secondary">{Number(s.rate_other)}%</td>
+                      <td className="px-4 py-2 text-end text-ink-secondary">{MONEY(Number(s.single_threshold))}</td>
+                      <td className="px-4 py-2 text-end text-ink-secondary">{MONEY(Number(s.annual_threshold))}</td>
+                      <td className="px-4 py-2 text-end">
+                        {canWrite && (
+                          <>
+                            <button className="text-brand-600 hover:underline" onClick={() => openSection(s)}>
+                              {t('common.edit')}
+                            </button>
+                            <button className="ms-3 text-danger-600 hover:underline" onClick={() => removeSection.mutate(s.id)}>
+                              {t('common.delete')}
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {canWrite && (
+              <div className="px-4 py-3">
+                <Button size="sm" onClick={() => openSection(null)}>{t('tds.add_section')}</Button>
+              </div>
+            )}
+            {removeSection.error && (
+              <p className="px-4 pb-3 text-xs text-danger-600">{(removeSection.error as Error).message}</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Section add / edit */}
+      <Modal open={sectionModal} onClose={() => setSectionModal(false)}
+        title={editingSection ? t('tds.edit_section') : t('tds.add_section')} width="lg">
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Input label={t('tds.col_section')} required placeholder="194C"
+              value={sectionForm.code} onChange={(e) => setSectionForm({ ...sectionForm, code: e.target.value })} />
+            <Input label={t('tds.col_description')} required
+              value={sectionForm.description} onChange={(e) => setSectionForm({ ...sectionForm, description: e.target.value })} />
+            <Input label={t('tds.col_rate_individual')} type="number" step="0.001" min="0" max="100"
+              value={String(sectionForm.rate_individual)}
+              onChange={(e) => setSectionForm({ ...sectionForm, rate_individual: Number(e.target.value) })} />
+            <Input label={t('tds.col_rate_other')} type="number" step="0.001" min="0" max="100"
+              value={String(sectionForm.rate_other)}
+              onChange={(e) => setSectionForm({ ...sectionForm, rate_other: Number(e.target.value) })} />
+            <Input label={t('tds.col_single_threshold')} type="number" step="0.01" min="0"
+              value={String(sectionForm.single_threshold)}
+              onChange={(e) => setSectionForm({ ...sectionForm, single_threshold: Number(e.target.value) })} />
+            <Input label={t('tds.col_annual_threshold')} type="number" step="0.01" min="0"
+              value={String(sectionForm.annual_threshold)}
+              onChange={(e) => setSectionForm({ ...sectionForm, annual_threshold: Number(e.target.value) })} />
+          </div>
+          <p className="rounded-card bg-surface-subtle px-3 py-2 text-xs text-ink-secondary">
+            {t('tds.threshold_hint')}
+          </p>
+          <p className="text-xs text-ink-tertiary">{t('tds.edit_rate_note')}</p>
+          {saveSection.error && <p className="text-xs text-danger-600">{(saveSection.error as Error).message}</p>}
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button size="sm" variant="secondary" onClick={() => setSectionModal(false)}>{t('common.cancel')}</Button>
+          <Button size="sm" onClick={() => saveSection.mutate()}
+            disabled={saveSection.isPending || !sectionForm.code || !sectionForm.description}>
+            {t('common.save')}
+          </Button>
+        </div>
+      </Modal>
 
       {/* Deduction register */}
       <div className="glass-card overflow-hidden">

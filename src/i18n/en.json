@@ -1431,7 +1431,20 @@
     "no_pan_short": "no PAN",
     "f_fy": "Financial year",
     "f_quarter": "Quarter",
-    "all_quarters": "All quarters"
+    "all_quarters": "All quarters",
+    "sections_title": "TDS sections & rates",
+    "sections_count": "{{count}} configured",
+    "rates_disclaimer": "Rates are seeded with sensible defaults but change with each Finance Act — verify them against the current law before relying on them.",
+    "no_sections": "No sections configured.",
+    "add_section": "Add section",
+    "edit_section": "Edit section",
+    "col_description": "Description",
+    "col_rate_individual": "Individual / HUF",
+    "col_rate_other": "Company / other",
+    "col_single_threshold": "Single threshold",
+    "col_annual_threshold": "Annual threshold",
+    "threshold_hint": "A threshold of 0 means no exemption — always deduct. Otherwise TDS applies once either the single payment or the year's total crosses its threshold.",
+    "edit_rate_note": "Changing a rate affects future deductions only. Deductions already posted keep the rate they were calculated at."
   },
   "am": {
     "title": "Prepaid & Deferred",
