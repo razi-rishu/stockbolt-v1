@@ -27,7 +27,7 @@
  * explicitly:
  *     npm run test:deferred-cogs      (only meaningful against staging)
  *
- * Requires phase63 to be applied to the target database.
+ * Requires phase63 AND phase64 to be applied to the target database.
  *
  * Scenario coverage:
  *   D1  selling with no stock defers COGS — nothing hits 5100, queue row pending
@@ -38,6 +38,13 @@
  *   D6  landed cost is carried into the flushed COGS
  *   D7  flush_stranded_deferred_cogs dry-run reports a plan and posts nothing
  *   D8  the repair posts once and is idempotent on a second run
+ *   D9  (phase64) the flush costs the sale row, so the average is not inflated
+ *   D10 (phase64) the subledger repair backfills without touching the GL
+ *
+ * D9 is the one D1–D8 could not catch: those assert the GENERAL LEDGER, and the
+ * ledger was already right. The defect lived in the subledger — an uncosted sale
+ * row leaving the moving average too high, which then overcharges every later
+ * sale of that part.
  */
 
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
@@ -475,5 +482,110 @@ describe('Phase 63/G3 — flush_stranded_deferred_cogs repairs stranded rows', (
     expect(await glNet(s!.companyId, '5100'), 'no double post').toBeCloseTo(after5100, 2);
 
     await assertInvariants(s!.companyId, '2025-10-02');
+  }, 60_000);
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// G4 — Phase 64: the subledger must agree with the GL after a flush (D9, D10)
+// ════════════════════════════════════════════════════════════════════════════
+describe('Phase 64/G4 — flush writes the cost back to the subledger', () => {
+  let s: Scratch | null = null;
+  beforeAll(async () => { s = await createScratch(); }, 60_000);
+  afterAll(async () => { await destroyScratch(s); s = null; });
+
+  /** Subledger value the way E1 computes it: latest running_qty × MAC. */
+  async function subledgerValue(companyId: string): Promise<number> {
+    const { data } = await (admin.from('stock_ledger') as any)
+      .select('product_id, warehouse_id, running_qty, running_avg_cost, seq')
+      .eq('company_id', companyId).order('seq', { ascending: false });
+    const seen = new Set<string>();
+    let total = 0;
+    for (const r of (data ?? []) as any[]) {
+      const key = `${r.product_id}:${r.warehouse_id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      total += Number(r.running_qty) * Number(r.running_avg_cost);
+    }
+    return round2(total);
+  }
+
+  async function saleRow(companyId: string, productId: string): Promise<any> {
+    const { data } = await (admin.from('stock_ledger') as any)
+      .select('*').eq('company_id', companyId).eq('product_id', productId)
+      .eq('direction', -1).order('seq', { ascending: true });
+    return ((data ?? []) as any[]).filter((r) => !r.reversal_of_id).pop();
+  }
+
+  async function latestRow(companyId: string, productId: string): Promise<any> {
+    const { data } = await (admin.from('stock_ledger') as any)
+      .select('*').eq('company_id', companyId).eq('product_id', productId)
+      .order('seq', { ascending: false }).limit(1);
+    return ((data ?? []) as any[])[0];
+  }
+
+  it('D9: after a flush the sale row is costed and the average is not inflated', async () => {
+    // The IMBD123 shape: sell 1 with no stock, then receive 20 @ 200 and
+    // 10 @ 250. Correct end state is 29 on hand at 216.88 (6289.47 / 29),
+    // NOT 224.14 (6500 / 29) — the latter is what an uncosted sale row gives.
+    const pid = await makeProduct(s!);
+    await sell(s!, pid, 1, 400, '2025-11-01');
+    await buy(s!, pid, 20, 200, '2025-11-02');
+    await buy(s!, pid, 10, 250, '2025-11-03');
+
+    const sr = await saleRow(s!.companyId, pid);
+    expect(Number(sr.unit_cost), 'sale row was written back').toBeCloseTo(210.53, 2);
+    expect(Number(sr.total_cost)).toBeCloseTo(210.53, 2);
+
+    const last = await latestRow(s!.companyId, pid);
+    expect(Number(last.running_qty)).toBeCloseTo(29, 3);
+    expect(Number(last.running_avg_cost), 'average excludes the relieved sale').toBeCloseTo(216.88, 2);
+
+    // The whole point: subledger and GL must now agree (within rounding).
+    const gl = await glNet(s!.companyId, '1300');
+    expect(gl).toBeCloseTo(6289.47, 2);
+    expect(Math.abs(await subledgerValue(s!.companyId) - gl), 'subledger ties to GL').toBeLessThan(0.10);
+
+    await assertInvariants(s!.companyId, '2025-11-03');
+  }, 60_000);
+
+  it('D10: the repair backfills a historically flushed row without touching the GL', async () => {
+    const pid = await makeProduct(s!);
+    await sell(s!, pid, 2, 400, '2025-12-01');
+    await buy(s!, pid, 10, 50, '2025-12-02');
+
+    // Re-create the pre-phase-64 state: flushed in the GL, sale row still at 0.
+    const sr = await saleRow(s!.companyId, pid);
+    await (admin.from('stock_ledger') as any)
+      .update({ unit_cost: 0, total_cost: 0 }).eq('id', sr.id);
+    // `as any` — phase-29 helper, absent from the generated RPC types.
+    await admin.rpc('recompute_stock_valuation' as any, { p_company_id: s!.companyId } as any);
+
+    const glBefore = await glNet(s!.companyId, '1300');
+    const inflated = await latestRow(s!.companyId, pid);
+    expect(Number(inflated.running_avg_cost), 'average is inflated while uncosted').toBeCloseTo(50, 2);
+    expect(Math.abs(await subledgerValue(s!.companyId) - glBefore), 'subledger drifts').toBeGreaterThan(50);
+
+    // Dry run reports but changes nothing.
+    const { data: dry } = await s!.userClient.rpc('repair_flushed_cogs_subledger' as any, {} as any);
+    expect((dry as any).dry_run).toBe(true);
+    expect((dry as any).rows).toBeGreaterThanOrEqual(1);
+    expect(Number((await saleRow(s!.companyId, pid)).unit_cost), 'dry run posted nothing').toBeCloseTo(0, 2);
+
+    const { data: run, error } = await s!.userClient.rpc(
+      'repair_flushed_cogs_subledger' as any, { p_dry_run: false } as any);
+    expect(error, `repair error: ${error?.message}`).toBeFalsy();
+    expect((run as any).rows).toBeGreaterThanOrEqual(1);
+
+    // GL untouched — this repair may never move the books.
+    expect(await glNet(s!.companyId, '1300'), 'GL is unchanged').toBeCloseTo(glBefore, 2);
+    expect(Number((await saleRow(s!.companyId, pid)).unit_cost)).toBeCloseTo(50, 2);
+    expect(Math.abs(await subledgerValue(s!.companyId) - glBefore), 'subledger now ties').toBeLessThan(0.10);
+
+    // Idempotent: nothing left to claim.
+    const { data: again } = await s!.userClient.rpc(
+      'repair_flushed_cogs_subledger' as any, { p_dry_run: false } as any);
+    expect((again as any).rows, 'idempotent').toBe(0);
+
+    await assertInvariants(s!.companyId, '2025-12-02');
   }, 60_000);
 });

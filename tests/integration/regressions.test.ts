@@ -2498,3 +2498,88 @@ describe('Phase 63 — deferred-COGS flush (soft until applied)', () => {
     expect(true).toBe(true); // observed, not blocking (tenant data)
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// Phase 64 — deferred-COGS subledger write-back (soft until applied)
+// ─────────────────────────────────────────────────────────────────────────
+// Phase 63 made the flush post the right journal entry, but nothing wrote the
+// recognised cost back onto the stock_ledger row that recorded the sale. That
+// row stays at cost 0 forever, so the subledger never relieves the sale AND
+// every later moving average is computed off an inflated cumulative cost —
+// the error compounds into future sales rather than staying put.
+//
+// The valuation trigger is AFTER INSERT only, so an UPDATE does not re-derive
+// running_avg_cost; the engine must call recompute_stock_valuation explicitly.
+describe('Phase 64 — deferred-COGS subledger write-back (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_proc
+        WHERE proname='repair_flushed_cogs_subledger' AND pronamespace='public'::regnamespace`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase64: the flush writes the cost back to the sale row and re-derives the average', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ Phase 64 not applied yet — run supabase/migrations/20260731000002_phase64_deferred_cogs_subledger_writeback.sql');
+      return;
+    }
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='confirm_vendor_bill' AND pronamespace='public'::regnamespace`);
+    const src = def[0]!.src;
+    expect(src, 'locates the originating sale row').toMatch(/v_sale_row_id/);
+    expect(src, 'updates the sale row cost').toMatch(/UPDATE public\.stock_ledger[\s\S]{0,200}total_cost\s*=\s*ROUND\(quantity \* v_flush_mac, 2\)/);
+    expect(src, 'the INSERT-only trigger is compensated explicitly').toMatch(/recompute_stock_valuation/);
+    // Must stay keyed to THIS bill's flush, not blanket-update every zero-cost row.
+    expect(src, 'write-back is scoped to the deferred row').toMatch(/sl\.related_doc_id\s*=\s*v_def\.sale_invoice_id/);
+  });
+
+  it('phase64: the subledger repair is GL-neutral and permission-gated', async () => {
+    if (!(await applied())) { console.warn('⚠ Phase 64 not applied yet'); return; }
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='repair_flushed_cogs_subledger' AND pronamespace='public'::regnamespace`);
+    const src = def[0]!.src;
+    expect(src, 'SECURITY DEFINER').toMatch(/SECURITY DEFINER/i);
+    expect(src, 'gates on inventory.write').toMatch(/auth_require\('inventory\.write'\)/);
+    expect(src, 'defaults to dry run').toMatch(/p_dry_run\s+boolean\s+DEFAULT\s+true/i);
+    // The whole safety case for this repair is that it cannot move the books.
+    expect(/insert\s+into\s+public\.general_ledger/i.test(src), 'writes no general_ledger').toBe(false);
+    expect(/insert\s+into\s+public\.journal_entries/i.test(src), 'writes no journal_entries').toBe(false);
+    expect(/post_journal_entry/.test(src), 'posts nothing at all').toBe(false);
+
+    const anonExec = await sql<{ proname: string }>(`
+      SELECT p.proname FROM pg_proc p
+       WHERE p.pronamespace='public'::regnamespace
+         AND p.proname='repair_flushed_cogs_subledger'
+         AND has_function_privilege('anon', p.oid, 'EXECUTE')`);
+    expect(anonExec.length, 'repair not executable by anon').toBe(0);
+  });
+
+  it('phase64: no flushed deferred row leaves its sale relieved at zero cost (warn-only)', async () => {
+    const stale = await sql<{ company: string; product: string; quantity: number; value: number }>(`
+      SELECT c.name AS company, p.name AS product, d.quantity,
+             ROUND(d.quantity * d.flush_unit_cost, 2) AS value
+      FROM public.deferred_cogs_queue d
+      JOIN public.companies c ON c.id = d.company_id
+      JOIN public.products  p ON p.id = d.product_id
+      JOIN public.stock_ledger sl
+        ON sl.company_id       = d.company_id
+       AND sl.product_id       = d.product_id
+       AND sl.related_doc_type = 'invoice'
+       AND sl.related_doc_id   = d.sale_invoice_id
+       AND sl.direction        = -1
+       AND sl.reversal_of_id IS NULL
+       AND NOT EXISTS (SELECT 1 FROM public.stock_ledger r WHERE r.reversal_of_id = sl.id)
+      WHERE d.status = 'flushed'
+        AND COALESCE(d.flush_unit_cost, 0) > 0
+        AND sl.unit_cost = 0`);
+    if (stale.length) {
+      console.warn(
+        '⚠ [phase64] flushed COGS never written back to the sale row — subledger overstates' +
+        ' inventory and the moving average is inflated; run repair_flushed_cogs_subledger(false):',
+        JSON.stringify(stale).slice(0, 600));
+    }
+    expect(true).toBe(true); // observed, not blocking (tenant data)
+  });
+});
