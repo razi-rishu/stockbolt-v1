@@ -48,6 +48,10 @@ const schema = z.object({
   tax_id:               z.string(),
   buyer_type:           z.string(),   // Phase 58 (AC-4A) — e-invoice buyer classification
   place_of_supply_code: z.string(),   // Phase 58 (AC-4A) — India GST state code
+  pan:                  z.string(),   // Phase 62 (AC-7A) — India TDS vendor config
+  tds_section_code:     z.string(),
+  tds_deductee_type:    z.string(),
+  lower_deduction_rate: z.string(),   // '' = no §197 certificate
   address_street:       z.string(),
   address_city:         z.string(),
   address_country:      z.string(),
@@ -99,7 +103,7 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
   const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('contact-list');
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
-    defaultValues: { name: '', name_ar: '', type: defaultType, email: '', phone: '', mobile: '', currency: defaultCurrency, tax_id: '', buyer_type: 'registered', place_of_supply_code: '', address_street: '', address_city: '', address_country: '', country_code: '', region_id: '', contact_person_name: '', contact_person_phone: '', credit_limit: 0, payment_terms_days: 0, payable_account_code: '2100', notes: '' },
+    defaultValues: { name: '', name_ar: '', type: defaultType, email: '', phone: '', mobile: '', currency: defaultCurrency, tax_id: '', buyer_type: 'registered', place_of_supply_code: '', pan: '', tds_section_code: '', tds_deductee_type: 'other', lower_deduction_rate: '', address_street: '', address_city: '', address_country: '', country_code: '', region_id: '', contact_person_name: '', contact_person_phone: '', credit_limit: 0, payment_terms_days: 0, payable_account_code: '2100', notes: '' },
   });
   const watchedType = watch('type');
 
@@ -120,7 +124,7 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
 
   function openAdd() {
     setEditing(null);
-    reset({ name: '', name_ar: '', type: defaultType, email: '', phone: '', mobile: '', currency: defaultCurrency, tax_id: '', buyer_type: 'registered', place_of_supply_code: '', address_street: '', address_city: '', address_country: '', country_code: '', region_id: '', contact_person_name: '', contact_person_phone: '', credit_limit: 0, payment_terms_days: 0, payable_account_code: '2100', notes: '' });
+    reset({ name: '', name_ar: '', type: defaultType, email: '', phone: '', mobile: '', currency: defaultCurrency, tax_id: '', buyer_type: 'registered', place_of_supply_code: '', pan: '', tds_section_code: '', tds_deductee_type: 'other', lower_deduction_rate: '', address_street: '', address_city: '', address_country: '', country_code: '', region_id: '', contact_person_name: '', contact_person_phone: '', credit_limit: 0, payment_terms_days: 0, payable_account_code: '2100', notes: '' });
     setOpen(true);
   }
 
@@ -131,6 +135,10 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
       email: row.email ?? '', phone: row.phone ?? '', mobile: row.mobile ?? '',
       currency: row.currency, tax_id: row.tax_id ?? '',
       buyer_type: row.buyer_type ?? 'registered', place_of_supply_code: row.place_of_supply_code ?? '',
+      pan: row.pan ?? '', tds_section_code: row.tds_section_code ?? '',
+      tds_deductee_type: row.tds_deductee_type ?? 'other',
+      lower_deduction_rate: row.lower_deduction_rate === null || row.lower_deduction_rate === undefined
+        ? '' : String(row.lower_deduction_rate),
       address_street: row.address_street ?? '', address_city: row.address_city ?? '', address_country: row.address_country ?? '',
       country_code: row.country_code ?? (row.address_country && row.address_country.length === 2 ? row.address_country.toUpperCase() : ''),
       region_id: row.region_id ?? '',
@@ -166,6 +174,11 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
         currency: values.currency, tax_id: values.tax_id || null,
         buyer_type: values.buyer_type || 'registered',
         place_of_supply_code: values.place_of_supply_code || null,
+        // Phase 62 (AC-7A) — India TDS vendor configuration
+        pan: values.pan || null,
+        tds_section_code: values.tds_section_code || null,
+        tds_deductee_type: values.tds_deductee_type || 'other',
+        lower_deduction_rate: values.lower_deduction_rate === '' ? null : Number(values.lower_deduction_rate),
         address_street: values.address_street || null, address_city: values.address_city || null,
         address_country: values.country_code || values.address_country || null,
         country_code: values.country_code || null, region_id: values.region_id || null,
@@ -373,6 +386,34 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
               </div>
             )}
           </div>
+
+          {/* Phase 62 (AC-7B) — India TDS vendor config. Supplier-only, and only
+              when the contact's country is India. Drives the rate the deduction
+              panel proposes on a confirmed bill. */}
+          {watchCountry === 'IN' && (watchedType === 'supplier' || watchedType === 'both') && (
+            <div className="rounded-card border border-border-subtle p-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-tertiary">
+                {t('tds.vendor_config')}
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <Input label={t('tds.f_pan')} placeholder="ABCDE1234F" {...register('pan')} />
+                <Input label={t('tds.f_section_default')} placeholder="194C" {...register('tds_section_code')} />
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('tds.f_deductee_type')}</label>
+                  <select
+                    className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-2 text-sm text-ink-primary focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    {...register('tds_deductee_type')}
+                  >
+                    <option value="other">{t('tds.deductee_other')}</option>
+                    <option value="individual_huf">{t('tds.deductee_individual_huf')}</option>
+                  </select>
+                </div>
+                <Input label={t('tds.f_lower_rate')} type="number" step="0.001" min="0" max="100"
+                  placeholder={t('tds.f_lower_rate_ph')} {...register('lower_deduction_rate')} />
+              </div>
+              <p className="mt-2 text-xs text-ink-tertiary">{t('tds.no_pan_warning')}</p>
+            </div>
+          )}
 
           {/* Payable category — supplier-only. Bills for this supplier post
               to the chosen liability account (keeps rent / utilities out of

@@ -65,6 +65,7 @@ const YearEndClosePage   = lazy(() => import('@/modules/accounting/year-end-clos
 const TaxReturnPage      = lazy(() => import('@/modules/accounting/tax-return'));
 const FixedAssetsPage    = lazy(() => import('@/modules/accounting/fixed-assets'));
 const AmortizationPage   = lazy(() => import('@/modules/accounting/amortization'));
+const TdsPage            = lazy(() => import('@/modules/accounting/tds'));
 
 // Reports
 const TrialBalancePage       = lazy(() => import('@/modules/reports/trial-balance'));
@@ -317,6 +318,7 @@ function AppRoutes() {
                 <Route path="/accounting/tax-return"               element={<TaxReturnPage />} />
                 <Route path="/accounting/fixed-assets"             element={<FixedAssetsPage />} />
                 <Route path="/accounting/amortization"            element={<AmortizationPage />} />
+                <Route path="/accounting/tds"                     element={<TdsPage />} />
               </Route>
 
               {/* Reports */}

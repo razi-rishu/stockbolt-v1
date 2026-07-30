@@ -8,6 +8,7 @@ import { useShortcutAction } from '@/keyboard/use-shortcut-action';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { useCompanyCurrency, useCompanyCountry } from '@/hooks/use-company-currency';
 import { defaultTaxRate } from '@/lib/locale';
+import { TdsPanel } from './tds-panel';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
@@ -671,6 +672,14 @@ export default function VendorBillEditorPage() {
             )}
           </div>
         </div>
+        {/* Phase 62 (AC-7B) — India TDS deduction panel (screen only, never
+            printed). Self-hides when the tenant has no TDS sections. */}
+        {existing.status === 'confirmed' && (
+          <div data-print-hide>
+            <TdsPanel bill={existing} supplier={suppliers.find(s => s.id === existing.supplier_id) ?? null} />
+          </div>
+        )}
+
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
