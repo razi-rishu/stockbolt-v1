@@ -1,0 +1,399 @@
+================================================================================
+STOCKBOLT v1 — ACCOUNTING ASSESSMENT: COMPLETION REPORT
+================================================================================
+Period covered : 2026-07-24  ->  2026-07-31
+Source plan    : docs/ACCOUNTING_MODULE_ROADMAP_2026-07-24.md
+Commits        : 25 (177e864 .. 4fbe1b3), all on main
+Migrations     : 9 added (phase56 .. phase64); 153 total on disk
+Branch state   : main, 1 commit ahead of origin/main at time of writing
+
+--------------------------------------------------------------------------------
+0. EXECUTIVE SUMMARY
+--------------------------------------------------------------------------------
+The accounting roadmap (AC-1 through AC-7) is COMPLETE and committed. All
+migrations are applied to production. Every phase ships with structural
+regression tripwires that run against the live database on every commit.
+
+Two things are NOT done and both need owner action:
+
+  1. TWO DATA REPAIRS ARE STILL PENDING. The migrations that enable them are
+     applied, but the repairs themselves have not been run. Two live customers
+     currently carry known-wrong inventory figures (details in section 3).
+
+  2. NO BEHAVIOURAL SUITE HAS EVER BEEN EXECUTED. Six suites totalling ~50
+     scenarios are written and staging-gated. They have never run, because the
+     only configured Supabase target is production and they mutate data. This
+     is the single largest quality risk in everything below.
+
+What is proven today: the code exists, is shaped correctly, is permission-gated,
+composes the shared posting primitive, and its arithmetic is unit-tested.
+What is NOT proven: that these engines actually book correct entries end-to-end
+against a real database. That gap is why two live-data defects (section 2) were
+found by manual inspection rather than by the test suite.
+
+--------------------------------------------------------------------------------
+1. DELIVERED — THE ROADMAP (AC-1 .. AC-7)
+--------------------------------------------------------------------------------
+
+AC-1  YEAR-END CLOSE                                    [DONE]
+      Commits : 177e864, a5dd6b2, 0b8a41c, 70d6cb8, 3d779ab
+      Migration: 20260724000002_phase56_ac1_year_end_close.sql   [APPLIED]
+      Delivers : Hard fiscal-year close. Income/expense zeroed to Retained
+                 Earnings 3100, period locked, sequential-year enforcement,
+                 LIFO reopen that rolls the lock back BEFORE reversing.
+                 Year-end entries excluded from P&L so the closed year does
+                 not double-count.
+      Tests    : structural tripwires live; behavioural T1-T14 NOT RUN.
+      Open     : T13e (concurrency) deliberately unanswered — needs staging.
+
+AC-2  COMPARATIVE FINANCIAL STATEMENTS                  [DONE]
+      Commits : 4adb551, 4d9b7a8
+      Migration: none (read-only feature)
+      Delivers : Prior-period columns with variance and variance-% on Balance
+                 Sheet, Profit & Loss and Trial Balance. Comparative export
+                 replaces the single-period export while compare is on.
+      Files    : src/lib/comparative.ts, src/hooks/use-comparative-periods.ts,
+                 src/modules/reports/_shared/variance.tsx
+      Tests    : logic layer unit-tested. No DB surface to tripwire.
+
+AC-3  VAT / GST RETURN & FILING WORKFLOW                [DONE]
+      Commits : f4287c8, be82c1d, 08c1c4c
+      Migration: 20260724000003_phase57_ac3_tax_filings.sql       [APPLIED]
+      Delivers : Return computation, filing register, file -> lock -> reopen
+                 lifecycle. Filing is METADATA-ONLY: it writes no ledger and
+                 reverses no journal entry; it locks the period and snapshots
+                 the figures. LIFO reopen restores the prior lock.
+      Tests    : structural tripwires live; behavioural suite NOT RUN.
+      Note     : this migration silently failed to apply on the first attempt
+                 and was caught by a probe, not by the apply step. It was
+                 cleanly absent (zero of four objects), not half-applied.
+
+AC-4  E-INVOICING FOUNDATION                            [DONE]
+      Commits : 134a6ab (4A), f464170 (4A.2), f4dc88e (4B),
+                52b7803 (4C), 873615f (4D)
+      Migrations: 20260724000004_phase58_ac4a_einvoice_metadata.sql   [APPLIED]
+                  20260728000001_phase59_ac4c_einvoice_documents.sql  [APPLIED]
+      Delivers : Tax-treatment / buyer-type classification metadata and entry
+                 UI; a canonical e-invoice model; India GST (NIC JSON) and UAE
+                 PINT-AE (UBL) formatters with sha256 hashing; a document
+                 register with generated/submitted/cancelled/superseded
+                 lifecycle; a per-invoice status panel.
+      Files    : src/lib/einvoice/{canonical,india-gst,pint-ae,hash,from-invoice}.ts
+                 src/modules/sales/einvoice-panel.tsx
+      Tests    : structural tripwires live; formatter output unit-tested.
+      LEFT     : live GSP/ASP transmission and IRN-on-print are NOT built.
+                 This is a foundation, not a filing integration.
+
+AC-5  FIXED ASSETS + DEPRECIATION                       [DONE]
+      Commits : 3f3ee07 (5A engine), ebe1cbc (5B UI), 6ef140f (5C reports)
+      Migration: 20260728000002_phase60_ac5a_fixed_assets.sql      [APPLIED]
+      Delivers : Straight-line and reducing-balance (WDV), monthly, pro-rata by
+                 days, salvage-capped. Run / dispose / reverse-last RPCs, all
+                 composing post_journal_entry. CoA 1710-1750, 1790, 4250, 6750,
+                 6910. Register + depreciation-schedule reports.
+      Detail   : disposed assets are listed but excluded from register totals;
+                 reversed charges are struck through and excluded from schedule
+                 totals. Balance Sheet needed NO change — 1790 (asset/fixed,
+                 credit balance) already nets to NBV in the Fixed Assets
+                 section, verified before deciding not to touch it.
+      Tests    : structural tripwires live; behavioural F1-F10 NOT RUN.
+
+AC-6  PREPAID / DEFERRED REVENUE / ACCRUAL SCHEDULES    [DONE]
+      Commits : cbb6a38 (6A engine), b07fc80 (6B UI)
+      Migration: 20260729000001_phase61_ac6a_amortization.sql      [APPLIED]
+      Delivers : Schedule engine for prepaid expense, deferred revenue and
+                 accrued expense, each with its own GL direction. The FINAL
+                 installment absorbs the rounding remainder so the sum posted
+                 equals the total exactly. Run / reverse-last / cancel RPCs.
+                 CoA 1410 (prepaid), 2500 (deferred revenue).
+      UI       : "Prepaid & Deferred" page with a coverage warning against the
+                 trial balance (accruals excluded from that check by design).
+      Tests    : structural tripwires live; behavioural A1-A10 NOT RUN.
+      Note     : the roadmap claimed this "builds on the existing recurring-JE
+                 engine (exists)". That was FALSE — the recurring-JE feature is
+                 ~20 lines in the journal-entry editor that generate dates
+                 client-side and post all N immediately. No table, no RPC.
+                 AC-6 needed its own engine, and got one.
+
+AC-7  INDIA TDS / WITHHOLDING                           [DONE]
+      Commits : 53da5d8 (7A engine), 386fc99 (7B UI), 8f9f47d (7C rate master)
+      Migration: 20260729000002_phase62_ac7a_india_tds.sql         [APPLIED]
+      Delivers : Standalone deduction document (Dr AP / Cr 2320). Rate
+                 resolution precedence: s.197 certificate -> s.206AA no-PAN
+                 max(rate,20) -> section rate. Threshold checks, Indian FY and
+                 quarter helpers, Form 26Q summary, register, editable rate
+                 master. India-gated CoA 2320 and contact fields (pan,
+                 tds_section_code, tds_deductee_type, lower_deduction_rate).
+      DESIGN   : deliberately a standalone document so that confirm_vendor_bill
+                 and confirm_vendor_payment are NOT modified — those are the
+                 most entangled RPCs (PDC, reopen, edit paths) and behavioural
+                 coverage is thin. A tripwire FAILS LOUDLY if either RPC ever
+                 references TDS or account 2320.
+      Tests    : structural tripwires live; behavioural suite NOT RUN.
+      LEFT     : seeded rates should be checked against the current Finance Act.
+                 Rates are editable in-app and the UI carries a warning.
+
+--------------------------------------------------------------------------------
+2. DELIVERED — POST-ROADMAP DATA INTEGRITY (unplanned, found by inspection)
+--------------------------------------------------------------------------------
+While closing out AC-5C, production showed an inventory variance. Investigating
+it uncovered two linked defects in the deferred-COGS (sell-before-buy) path.
+Neither was caught by any test. Both are now fixed.
+
+PHASE 63  DEFERRED-COGS FLUSH NEVER FIRED               [DONE]
+      Commit   : 02a4fa2
+      Migration: 20260731000001_phase63_deferred_cogs_flush_fix.sql [APPLIED]
+      Root cause: TWO CONFLICTING DEFINITIONS OF MOVING-AVERAGE COST inside one
+                 transaction. confirm_vendor_bill floors negative stock
+                 (GREATEST(qty,0)) and computes the correct cost. But
+                 tg_recompute_stock_valuation (phase 29, AFTER INSERT FOR EACH
+                 STATEMENT) then recomputes the whole partition with an
+                 unfloored cc/cq and forces running_avg_cost to 0 whenever a
+                 receipt lands cumulative quantity exactly on zero. The flush
+                 re-read that 0, hit "IF v_flush_mac <= 0 THEN CONTINUE", and
+                 left the row 'pending' forever. Nothing re-scans pending rows,
+                 so it never self-healed.
+      Effect   : the purchase had already debited Inventory 1300, the sale never
+                 recognised COGS, and stock netted to zero — inventory
+                 overstated and COGS understated by the full purchase value,
+                 silently, on a live customer.
+      Fix      : price the flush off the ARRIVING BILL LINE (landed cost
+                 included) instead of the post-receipt average. The average is
+                 unavailable precisely when it is needed and is not the correct
+                 basis anyway — the units that arrived are the ones covering the
+                 backorder. Falls back to the running average only when the bill
+                 brought no stock for that product. Tracks per-product receipt
+                 capacity so partial coverage never credits 1300 for units that
+                 have not arrived.
+      NOT changed: recompute_stock_valuation and its trigger. Their "no stock,
+                 no average" rule is what the E1 health check measures against;
+                 changing it would ripple through every valuation surface. The
+                 fix removes the flush's DEPENDENCY on it instead.
+      Adds     : flush_stranded_deferred_cogs(p_dry_run DEFAULT true,
+                 p_post_date DEFAULT null) — composes post_journal_entry,
+                 gated on accounting.write, dry-run by default.
+
+PHASE 64  FLUSH NEVER WROTE BACK TO THE SUBLEDGER       [DONE]
+      Commit   : 4fbe1b3
+      Migration: 20260731000002_phase64_deferred_cogs_subledger_writeback.sql
+                                                                   [APPLIED]
+      Root cause: phase 63 posted the correct journal entry but nothing wrote
+                 the recognised cost back onto the stock_ledger row that
+                 recorded the sale. That row was written at MAC 0 and stayed at
+                 0 forever.
+      Effect   : (a) the subledger never relieves the sale, so it reports more
+                 inventory value than the GL; (b) worse, the moving average is
+                 then computed off an inflated cumulative cost, so EVERY FUTURE
+                 SALE of that part costs too much and the error compounds.
+                 IMBD123's BATTERY sat at 224.14 when the true average is
+                 216.88 — 7.26 per unit too high, permanently.
+      Fix      : write the cost back on flush, then call
+                 recompute_stock_valuation explicitly — the valuation trigger
+                 is AFTER INSERT ONLY, so an UPDATE does not re-derive the
+                 average. The unit_cost = 0 predicate self-sequences the match;
+                 one invoice can carry several rows for the same
+                 product+warehouse (observed up to 6 in live data), so a naive
+                 match would have costed the wrong row.
+      Adds     : repair_flushed_cogs_subledger(p_dry_run DEFAULT true) — reuses
+                 the flush_unit_cost ALREADY POSTED rather than re-pricing, so
+                 it is strictly GL-NEUTRAL: it touches no journal entry and no
+                 general_ledger row. Gated on inventory.write (not
+                 accounting.write) precisely because it posts nothing.
+      HONEST NOTE: phase 64 is a defect in phase 63, shipped hours earlier.
+                 Tests D1-D8 did not catch it because they all assert the
+                 GENERAL LEDGER, and the ledger was already correct — the
+                 defect lived in the subledger. D9 now covers exactly that.
+
+ALSO DIAGNOSED, NO ACTION NEEDED:
+      Al Noor's 22.12 inventory variance is NOT an error. Its exact cumulative
+      stock cost equals GL 1300 to the cent (1,902,073.56). The variance is
+      entirely the E1 health check's own reconstruction: it values stock as
+      running_qty x running_avg_cost, and the average is stored to 2 decimals.
+      On a 10,300-unit line that rounding is amplified to 36.00. The individual
+      drifts (+36.00, -20.00, +5.52, +0.60) sum to exactly 22.12.
+
+--------------------------------------------------------------------------------
+3. CURRENT STATE — WHAT IS PENDING RIGHT NOW
+--------------------------------------------------------------------------------
+
+MIGRATIONS  : ALL APPLIED. phase56 through phase64 are live and verified —
+              every structural tripwire is running against production rather
+              than soft-skipping.
+
+REPAIRS     : *** BOTH STILL PENDING — THIS IS THE OPEN ITEM ***
+
+  (a) IMBD123 — GL-neutral, safe, run this first:
+          select public.repair_flushed_cogs_subledger();      -- dry run
+          select public.repair_flushed_cogs_subledger(false); -- apply
+      Expect: rows 1, value 210.53 (BATTERY).
+      Effect: sale row costed at 210.53; MAC corrects 224.14 -> 216.88;
+              cumulative cost 6500.00 -> 6289.47, matching GL to the cent;
+              E1 drift 210.59 -> 0.05 (pure rounding).
+      This CANNOT move the trial balance.
+
+  (b) Pro_Parts — moves the P&L, review the dry run before applying:
+          select public.flush_stranded_deferred_cogs();       -- dry run
+          select public.flush_stranded_deferred_cogs(false);  -- apply
+      Expect: total 596.44 across two entries —
+              27.92 dated 2026-07-26 (BILL-1006, FEBEST Wheel Stud, 8 @ 3.49)
+              568.52 dated 2026-07-30 (BILL-1007: Inner CV 2 @ 163.10 = 326.20,
+                                                  Outer CV 2 @ 121.16 = 242.32)
+      Effect: Dr 5100 COGS 596.44 / Cr 1300 Inventory 596.44. Inventory goes to
+              0.00 matching the subledger. July 2026 P&L moves by 596.44.
+      Period lock on Pro_Parts is NULL, so nothing blocks this.
+
+  CONFIRMATION: after both, run `npm run test:regressions`. The phase63 and
+  phase64 warnings should fall silent. That silence is the proof.
+
+GIT         : 1 commit ahead of origin/main (phase64). Push is owner-run.
+
+--------------------------------------------------------------------------------
+4. WHAT IS LEFT — PRIORITISED
+--------------------------------------------------------------------------------
+
+P0  STAGING ENVIRONMENT (INFRA-1)
+    Six behavioural suites, ~50 scenarios, ZERO ever executed:
+        npm run test:year-end-close     (T1-T14)
+        npm run test:tax-return
+        npm run test:fixed-assets       (F1-F10)
+        npm run test:amortization       (A1-A10)
+        npm run test:tds
+        npm run test:deferred-cogs      (D1-D10)
+    All are guarded by assertNotProductionTarget() and REFUSE to run against
+    production. They need a non-prod Supabase project.
+    Runbook: docs/STAGING_SETUP.txt (replay 153 migrations, ~20-30 min).
+    WHY THIS IS P0: two live accounting defects were found this week by manual
+    inspection of production data, not by the test suite. Every engine above is
+    verified structurally and arithmetically but has never been watched booking
+    an entry. This is the difference between "the code is shaped right" and
+    "the books are right".
+
+P1  FINDINGS FROM THIS WEEK, NOT YET BUILT
+    1. Flush coverage gap. The deferred-COGS flush ONLY runs inside
+       confirm_vendor_bill. Stock arriving via GRN, stock adjustment, stock
+       transfer or opening balance never flushes a deferred row at all — same
+       bug class as phase 63, different door. repair_flushed_cogs_subledger and
+       flush_stranded_deferred_cogs are the manual remedies today.
+    2. recompute_stock_valuation(p_company_id) is SECURITY DEFINER and
+       executable by `authenticated`, and trusts a caller-supplied company id.
+       Not a data leak (it only rewrites derived columns from that tenant's own
+       rows) but it is a cross-tenant write primitive. Should derive the tenant
+       from current_user_company_id().
+    3. Negative MAC renders phantom inventory value. Al Noor's SHOCK shows
+       -180 units at -1866.67, which multiplies to +336,000 on valuation
+       reports — positive value for stock that does not exist.
+    4. E1 tolerance is a flat threshold; it should scale with quantity, or
+       large-volume tenants will always drift (see Al Noor above).
+
+P2  AC-4 COMPLETION (region-dependent, only if a tenant needs to file)
+    Live GSP/ASP transmission and IRN-on-print. The foundation, formatters and
+    register are built; the network integration is not.
+
+P3  SaaS / Doc 6 (M4+)
+    Billing page and admin dashboard exist (phase31, phase35, phase55).
+    Customer invoices, transactional emails and plan enforcement do not.
+
+P4  SECURITY / INFRA BACKLOG
+    docs/SECURITY_INFRA_BACKLOG_2026-07-24.md — 17 items, explicitly parked as
+    future-only. Audit Phase 1 is CLOSED; do not resume unprompted.
+
+P5  C8b — global search over vehicles / brands / categories / OE numbers.
+
+--------------------------------------------------------------------------------
+5. VERIFICATION — WHAT IS AND IS NOT PROVEN
+--------------------------------------------------------------------------------
+PROVEN, CONTINUOUSLY, ON EVERY COMMIT:
+  - npx tsc --noEmit clean
+  - npm run build green
+  - npm run test:regressions — 123/123 against the LIVE database, enforced by a
+    husky pre-commit hook that blocks the commit on failure
+  - Structural tripwires assert, from pg_get_functiondef, that each engine:
+      * exists with the expected tables, CHECKs and unique indexes
+      * is SECURITY DEFINER and gated on the right permission
+      * composes post_journal_entry rather than writing general_ledger directly
+      * is not executable by anon
+  - Pure arithmetic is unit-tested (depreciation, amortization installments and
+    remainder rule, TDS rate precedence, e-invoice formatters, comparatives)
+  - Read-only data invariants run against real tenant data and WARN (they do not
+    block, by convention, since tenant data is not the code's fault)
+
+NOT PROVEN:
+  - That any posting engine books a correct entry end-to-end. No behavioural
+    suite has executed. Structure is not behaviour.
+  - Concurrency behaviour anywhere (AC-1 T13e is the explicit example).
+  - Any multi-tenant interaction under load.
+
+--------------------------------------------------------------------------------
+6. CONVENTIONS HELD THROUGHOUT
+--------------------------------------------------------------------------------
+  - Migrations are additive and idempotent; code never runs DDL; the owner
+    applies every migration by hand.
+  - Posting RPCs are patched from the LIVE pg_get_functiondef, never from the
+    migration files, so an out-of-date file cannot silently revert production.
+  - New posting engines COMPOSE post_journal_entry (balance, period lock, JE
+    numbering, audit) rather than duplicating ledger logic. Tripwires enforce
+    this by asserting the RPC contains no direct general_ledger INSERT.
+  - Repairs default to DRY RUN.
+  - Behavioural suites are staging-gated and never wired into the pre-commit
+    hook.
+  - Commits only on explicit approval; the owner runs git push.
+
+================================================================================
+APPENDIX A — COMMITS (2026-07-24 .. 2026-07-31, newest first)
+================================================================================
+4fbe1b3  [Phase64] Deferred-COGS subledger write-back
+02a4fa2  [Phase63] Deferred-COGS flush fix + stranded-value repair
+6ef140f  reports(ac5): Fixed Asset Register + Depreciation Schedule (AC-5C)
+8f9f47d  accounting(ac7): editable TDS section rate master (AC-7C)
+386fc99  accounting(ac7): India TDS UI — deduct panel, register, 26Q summary
+53da5d8  accounting(ac7): India TDS engine — standalone deduction document
+b07fc80  accounting(ac6): Prepaid & Deferred UI — schedules, run, cancel, reverse
+cbb6a38  accounting(ac6): prepaid / deferred-revenue / accrual schedule engine
+ebe1cbc  accounting(ac5): Fixed Assets UI — register, depreciation run, disposal
+3f3ee07  accounting(ac5): fixed-asset register + depreciation posting engine
+873615f  accounting(ac4): per-invoice e-invoice status panel
+52b7803  accounting(ac4): e-invoice document register + lifecycle RPCs
+f4dc88e  accounting(ac4): canonical e-invoice model + IN GST / UAE PINT-AE
+f464170  accounting(ac4): wire e-invoice classification entry-UI
+134a6ab  accounting(ac4): e-invoice/tax classification metadata foundation
+08c1c4c  accounting(ac3): tax filing regression + behavioural suites
+be82c1d  accounting(ac3): VAT/GST tax return page
+f4287c8  accounting(ac3): VAT/GST return engine + filing register
+4d9b7a8  accounting(ac2): comparative financial statements UI
+4adb551  accounting(ac2): comparative statement logic layer
+3d779ab  accounting(ac1): staging-gated fiscal year close behavioural tests
+70d6cb8  accounting(ac1): structural year-end close regression checks
+0b8a41c  accounting(ac1): year-end close workflow UI
+a5dd6b2  accounting(ac1): implement fiscal year close engine
+177e864  accounting(ac1): exclude year-end close entries from profit and loss
+
+================================================================================
+APPENDIX B — MIGRATIONS ADDED (all APPLIED to production)
+================================================================================
+20260724000002_phase56_ac1_year_end_close.sql
+20260724000003_phase57_ac3_tax_filings.sql
+20260724000004_phase58_ac4a_einvoice_metadata.sql
+20260728000001_phase59_ac4c_einvoice_documents.sql
+20260728000002_phase60_ac5a_fixed_assets.sql
+20260729000001_phase61_ac6a_amortization.sql
+20260729000002_phase62_ac7a_india_tds.sql
+20260731000001_phase63_deferred_cogs_flush_fix.sql
+20260731000002_phase64_deferred_cogs_subledger_writeback.sql
+
+================================================================================
+APPENDIX C — NEW RPCs
+================================================================================
+close_fiscal_year / reopen_fiscal_year              (phase56, accounting.write)
+file_tax_return / reopen_tax_return                 (phase57, metadata-only)
+e-invoice document lifecycle RPCs                   (phase59, sales.write)
+run_depreciation / dispose_fixed_asset /
+  reverse_last_depreciation                         (phase60, accounting.write)
+run_amortization / reverse_last_amortization /
+  cancel_amortization_schedule                      (phase61, accounting.write)
+record_tds_deduction / reverse_tds_deduction        (phase62, accounting.write)
+flush_stranded_deferred_cogs                        (phase63, accounting.write)
+repair_flushed_cogs_subledger                       (phase64, inventory.write)
+
+================================================================================
+END OF REPORT
+================================================================================
