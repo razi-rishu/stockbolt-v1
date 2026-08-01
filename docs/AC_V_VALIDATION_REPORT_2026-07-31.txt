@@ -1,0 +1,279 @@
+================================================================================
+STOCKBOLT v1 — AC-V: VALIDATION & HARDENING
+INTERIM REPORT (AC-V4)
+================================================================================
+Date          : 2026-07-31
+Status        : INCOMPLETE — AC-V3 blocked, see section 6
+Commits       : 251e439 (AC-V1), 172313b (AC-V2)
+Target tested : PRODUCTION (gzpkuaioibqrdppjdbwz) — read-only
+
+--------------------------------------------------------------------------------
+0. NAMING CORRECTION (read this first)
+--------------------------------------------------------------------------------
+This work was requested as "finish AC-7". AC-7 in the roadmap is INDIA TDS /
+WITHHOLDING, and it was already complete before this phase began (commits
+53da5d8, 386fc99, 8f9f47d; migration phase62 applied and live).
+
+What was actually requested — validate every engine, verify posting integrity,
+invariants, permissions, period locking, reopen workflows, reporting, audit
+trail, exports, and absence of corruption — is not in the roadmap at all. It is
+recorded here as AC-V (Validation & Hardening) so the completion record stays
+accurate. AC-7 is not reopened by this document.
+
+--------------------------------------------------------------------------------
+1. WHAT WAS TESTED
+--------------------------------------------------------------------------------
+Method: read-only SQL sweeps against live production data across all 11 tenants,
+plus source-level inspection of every posting RPC via pg_get_functiondef. All
+findings were then encoded as regression tripwires so they cannot silently
+regress.
+
+Mapped against the ten stated priorities:
+
+  #   PRIORITY                        COVERAGE        HOW
+  --  ------------------------------  --------------  -------------------------
+  1   Engines end-to-end on staging   NOT TESTED      no staging exists
+  2   Posting integrity               FULL (static)   V-P1..V-P4
+  3   Accounting invariants           FULL            V-C3 / verify_invariants
+  4   Permissions                     FULL (static)   V-T1, V-T4, AC-V2
+  5   Period locking                  PARTIAL         structural only
+  6   Reopen workflows                NOT TESTED      requires mutation
+  7   Reporting consistency           FULL            B1/B2/E1 via invariants
+  8   Audit trail integrity           FULL            V-A1
+  9   Exports                         NOT TESTED      see section 5
+  10  No data corruption              FULL            V-C1, V-C2
+
+Six of ten fully covered, one partial, three not covered. The three gaps all
+share one cause: they require a database this session is allowed to mutate.
+
+--------------------------------------------------------------------------------
+2. WHAT PASSED
+--------------------------------------------------------------------------------
+Every check below was run against real production data and came back CLEAN.
+All are now hard assertions in tests/integration/regressions.test.ts.
+
+  POSTING INTEGRITY
+  V-P1  every journal entry has at least two GL lines            PASS
+  V-P2  no GL line orphaned (NULL or dangling journal_entry_id)  PASS
+  V-P3  JE header totals agree with their line sums              PASS
+  V-P4  every JE balances (debit = credit)                       PASS
+  V-P4  every account_code resolves in its own company's CoA     PASS
+
+  TENANT ISOLATION (DATA)
+  V-T1  no GL line uses another company's account                PASS
+  V-T1  no stock row uses another company's product              PASS
+  V-T1  no invoice uses another company's contact                PASS
+
+  AUDIT TRAIL
+  V-A1  audit_logs has no UPDATE or DELETE RLS policy            PASS
+
+  CORRUPTION SCAN
+  V-C1  invoice headers agree with line sums                     PASS
+  V-C1  vendor bill headers agree with line sums                 PASS
+  V-C2  no reversal points at a missing original                 PASS
+  V-C2  running_qty equals cumulative signed quantity            PASS
+
+  ACCOUNTING INVARIANTS (verify_invariants, all companies)
+  A1    Trial Balance balances                                   PASS
+  A4    Balance Sheet balances                                   PASS
+  B1    AR Aging = AR control account (1200)                     PASS
+  B2    AP Aging = AP control account (2100)                     PASS
+
+Trial balance nets to zero for EVERY tenant, and there is not a single
+unbalanced journal entry anywhere in the system. For a codebase where ~30 of 46
+GL-writing RPCs hand-roll their ledger inserts rather than composing
+post_journal_entry, that is a meaningful result — the je_must_balance trigger
+(phase38) is doing its job.
+
+Regression suite: 136/136, enforced by a pre-commit hook.
+
+--------------------------------------------------------------------------------
+3. WHAT FAILED
+--------------------------------------------------------------------------------
+
+F1  CROSS-TENANT DATA EXPOSURE — 7 functions          [MANDATORY] [FIXED, PENDING APPLY]
+    Seven SECURITY DEFINER functions accepted a p_company_id and never checked
+    it against the caller's own tenant. SECURITY DEFINER bypasses RLS, so any
+    authenticated user could pass another company's UUID and read or write that
+    tenant's data. Confirmed by reading the function bodies, not inferred.
+
+      search_contacts           READ   names, phones, emails, tax IDs, credit limits
+      search_products           READ   full catalog including selling prices
+      get_bank_recon            READ   bank ledger movements, running balance
+      get_daily_cash_report     READ   per-account cash in/out and balances
+      save_bank_reconciliation  WRITE  creates and locks a reconciliation
+      recompute_stock_valuation WRITE  rewrites derived cost columns
+      seed_default_tax_rates    WRITE  inserts tax rates
+
+    This is the most serious defect AC-V found. It is a confidentiality breach
+    across tenants in a multi-tenant SaaS, not merely a hardening gap.
+
+    FIXED in phase65 (commit 172313b). NOT YET APPLIED.
+
+F2  ACCOUNTING INVARIANT E1 FAILING — 2 tenants       [MANDATORY] [FIX BUILT, REPAIR NOT RUN]
+    verify_invariants reports E1 (Stock Valuation = Inventory 1300) failing for:
+      Pro_Parts   596.44   stranded deferred COGS (phase63)
+      IMBD123     210.53   flush never written back to subledger (phase64)
+    Both engines are fixed and applied; the DATA repairs have not been run.
+    Until they are, two live customers carry overstated inventory and
+    understated COGS. Pro_Parts additionally shows G2 (negative cash) —
+    informational only, not an error.
+
+F3  AUDIT LOG NOT TAMPER-PROOF AGAINST PRIVILEGED CODE [IMPORTANT] [NOT FIXED]
+    audit_logs has no UPDATE/DELETE RLS policy, so normal users cannot alter
+    history — that part is sound. But migration phase53
+    (20260722000002_phase53_h3_audit_logs_append_only.sql) was never applied, so
+    there is no trigger blocking SECURITY DEFINER functions or service_role from
+    rewriting audit rows.
+    NOTE A DISCREPANCY: project memory records audit finding H3 as "shipped".
+    It is not applied. The migration file is also untracked in git.
+
+--------------------------------------------------------------------------------
+4. CORRECTIONS TO EARLIER REPORTING
+--------------------------------------------------------------------------------
+Three claims made earlier in this engagement were wrong and are corrected here.
+
+  1. "Zero RPCs write general_ledger without composing post_journal_entry."
+     FALSE. The regex behind that check silently matched nothing. The true
+     figure is 46 RPCs writing general_ledger directly, ~30 of which do not
+     compose post_journal_entry — including close_fiscal_year (an AC-1 engine).
+     This is pre-existing legacy architecture, not a regression, and balance is
+     protected by the je_must_balance trigger. Triaged ENHANCEMENT / DEFER.
+
+  2. "Confirmed invoices with no journal entry" (10 documents).
+     FALSE POSITIVE. The filter required source_type='invoice'; those invoices
+     have been through edit/repost cycles and carry other source types. Each has
+     4–14 journal entries and 15–35 GL lines. No corruption.
+
+  3. "11 unpushed commits."
+     WRONG. origin/main had already been pushed to 02a4fa2. The count was being
+     incremented from a stale reading instead of re-checked.
+
+Also investigated and cleared: reset_company_data looked like the worst possible
+offender (SECURITY DEFINER, arbitrary company_id, destructive) but is correctly
+guarded — caller tenant, admin role, and an exact company-name confirmation. It
+was left untouched and is now locked by a tripwire.
+
+--------------------------------------------------------------------------------
+5. NOT TESTED — AND WHY
+--------------------------------------------------------------------------------
+PRIORITY 1  Engines end-to-end
+PRIORITY 6  Reopen workflows
+    Both require creating documents, posting them, reversing them and asserting
+    the resulting ledger. That means mutating a database. The only configured
+    target is production, and all six behavioural suites call
+    assertNotProductionTarget() and refuse to run against it. This guard is
+    correct and was not bypassed.
+
+PRIORITY 5  Period locking — PARTIAL
+    Verified structurally: the posting RPCs that check period_lock_date do so,
+    and the lock-setting paths (close_fiscal_year, file_tax_return) are intact.
+    NOT verified: that posting into a locked period is actually rejected at
+    runtime. Eleven RPCs do not check the lock at all — mostly opening-balance
+    and payroll paths where that may be intentional; this needs a behavioural
+    test to settle, not a source read. No company currently has a lock set, so
+    the question is untested in production data too.
+
+PRIORITY 9  Exports
+    The export path (downloadXLSX / downloadCSV) is TypeScript, not SQL, and its
+    correctness is about column/row alignment per report. A static sweep cannot
+    prove it. This needs either a unit test per report shape or manual
+    inspection. Deliberately not attempted rather than claimed.
+
+--------------------------------------------------------------------------------
+6. REMAINING MANDATORY ITEMS
+--------------------------------------------------------------------------------
+All three are owner actions. None can be performed from this session.
+
+  M1  APPLY phase65 — closes the cross-tenant exposure (F1).
+        supabase/migrations/20260731000003_phase65_acv2_cross_tenant_guards.sql
+
+  M2  RUN THE TWO DATA REPAIRS — clears E1 on both tenants (F2).
+        select public.repair_flushed_cogs_subledger();       -- dry run
+        select public.repair_flushed_cogs_subledger(false);  -- IMBD123, 210.53
+                                                             -- GL-NEUTRAL
+        select public.flush_stranded_deferred_cogs();        -- dry run
+        select public.flush_stranded_deferred_cogs(false);   -- Pro_Parts, 596.44
+                                                             -- MOVES JULY P&L
+  M3  CREATE A STAGING SUPABASE PROJECT — unblocks AC-V3.
+        Runbook: docs/STAGING_SETUP.txt (~10 min to create, then a 153-migration
+        replay). Without it, priorities 1 and 6 stay permanently unvalidated.
+
+Decision recorded for M3: deferring is a legitimate choice, but AC-V cannot be
+marked complete while it stands. A validation phase that never executed its
+validation is not finished, and this report will not say otherwise.
+
+--------------------------------------------------------------------------------
+7. PRODUCTION READINESS ASSESSMENT
+--------------------------------------------------------------------------------
+VERDICT: NOT READY FOR PRODUCTION SIGN-OFF.
+
+Three independent blockers, in severity order:
+
+  1. AN OPEN CROSS-TENANT DATA BREACH. Seven functions currently let any
+     authenticated user read another company's contacts, catalog, bank ledger
+     and cash position, and write to three of their tables. The fix is written,
+     committed and verified additive — but it is not applied. Until M1 is done,
+     this is live.
+
+  2. TWO CUSTOMERS HAVE KNOWN-WRONG BOOKS. Inventory overstated and COGS
+     understated by 596.44 (Pro_Parts) and 210.53 (IMBD123). The engines are
+     fixed; the historical data is not.
+
+  3. NO POSTING ENGINE HAS EVER BEEN VALIDATED END-TO-END. Six behavioural
+     suites, roughly 50 scenarios, zero executions.
+
+On (3), the evidence is not theoretical. Two live accounting defects were found
+during this engagement, both by manually inspecting production data, neither by
+the test suite:
+   - phase63: the deferred-COGS flush never fired, silently, for weeks.
+   - phase64: a defect in the phase63 fix itself, shipped hours earlier. Tests
+     D1–D8 could not catch it because they all assert the general ledger, and
+     the ledger was already correct — the defect lived in the subledger.
+The system's own tests have never once caught an accounting defect. Every one
+was found by hand. That is the honest state of assurance today.
+
+WHAT IS GENUINELY STRONG:
+  - The data is internally consistent. Every structural and corruption check
+    passed across all 11 tenants with zero exceptions.
+  - Trial balance nets to zero everywhere; no unbalanced journal entry exists.
+  - Structure, permissions and composition are continuously enforced by 136
+    tripwires against the live database, gated by a pre-commit hook.
+  - Migrations are additive, idempotent, hand-applied, and patched from live
+    function definitions rather than from files that may have drifted.
+
+The foundation is sound and the arithmetic is unit-tested. What is missing is
+proof that the engines behave correctly when actually run.
+
+--------------------------------------------------------------------------------
+8. COMPLETION PERCENTAGE
+--------------------------------------------------------------------------------
+A single number would be misleading here, so it is broken out.
+
+  ORIGINAL ACCOUNTING ROADMAP (AC-1 .. AC-7)              100%
+      All seven phases specified, built, committed, and their migrations
+      applied. AC-2 (comparative statements) included. Nothing outstanding.
+
+  POST-ROADMAP DATA-INTEGRITY WORK (phase63, phase64)     100% built
+                                                            0% repaired
+      Both engine fixes applied. Neither data repair has been run.
+
+  AC-V VALIDATION & HARDENING                              ~50%
+      AC-V1 static sweep          DONE
+      AC-V2 mandatory fixes       DONE (built; pending apply)
+      AC-V3 behavioural on staging BLOCKED — 0%
+      AC-V4 this report            INTERIM
+      By increment count this is 50%. By assurance value it is lower: AC-V3 is
+      where behaviour actually gets proven, and it has not started.
+
+  VALIDATION COVERAGE
+      Static / structural         100%
+      Behavioural / end-to-end      0%
+
+  PRODUCTION-READY                                        NOT YET
+      Gated on M1, M2, M3 above. M1 and M2 are minutes of work. M3 is the one
+      that changes the assurance picture.
+
+================================================================================
+END OF INTERIM REPORT
+================================================================================
