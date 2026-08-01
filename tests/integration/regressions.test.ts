@@ -2855,3 +2855,69 @@ describe('AC-V2 — cross-tenant guards (soft until applied)', () => {
     expect(src, 'reset_company_data requires name confirmation').toMatch(/p_confirmation/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// AC-V2b / phase66 — the subledger repair must be runnable (soft until applied)
+// ─────────────────────────────────────────────────────────────────────────
+// repair_flushed_cogs_subledger opened with auth_require('inventory.write').
+// auth_require -> has_perm reads auth.uid(); with no user session that is NULL,
+// so the call died with "forbidden". That is exactly the Supabase SQL editor
+// and service_role — and no UI calls it either, so the repair tool shipped in
+// phase64 was unreachable by anyone.
+//
+// A service-role path is safe here specifically because this function posts
+// nothing: service_role already bypasses RLS and can write stock_ledger
+// directly, so the gate protected nothing and blocked everything.
+describe('AC-V2b — runnable subledger repair (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_proc
+       WHERE proname='repair_flushed_cogs_subledger' AND pronamespace='public'::regnamespace
+         AND position('v_all_tenants' in pg_get_functiondef(oid)) > 0`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase66: service_role can run it, and the authenticated path is unchanged', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ AC-V2b not applied yet — run supabase/migrations/20260731000004_phase66_acv2b_runnable_subledger_repair.sql');
+      return;
+    }
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='repair_flushed_cogs_subledger' AND pronamespace='public'::regnamespace`);
+    const src = def[0]!.src;
+    expect(src, 'has a no-session branch').toMatch(/IF auth\.uid\(\) IS NULL THEN/);
+    // The authenticated path must still be gated — the carve-out is only for
+    // callers with no user session at all.
+    expect(src, 'still gates authenticated callers').toMatch(/auth_require\('inventory\.write'\)/);
+    expect(src, 'still scopes an authenticated caller to their own tenant')
+      .toMatch(/current_user_company_id\(\)/);
+  });
+
+  it('phase66: the repair is still GL-neutral', async () => {
+    if (!(await applied())) { console.warn('⚠ AC-V2b not applied yet'); return; }
+    // This is the entire safety case for letting service_role run it.
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='repair_flushed_cogs_subledger' AND pronamespace='public'::regnamespace`);
+    const src = def[0]!.src;
+    expect(/insert\s+into\s+public\.general_ledger/i.test(src), 'writes no general_ledger').toBe(false);
+    expect(/insert\s+into\s+public\.journal_entries/i.test(src), 'writes no journal_entries').toBe(false);
+    expect(/post_journal_entry/.test(src), 'posts nothing').toBe(false);
+  });
+
+  it('phase66: flush_stranded_deferred_cogs still composes the posting primitive', async () => {
+    // The OTHER repair deliberately did NOT get a service-role path: it posts
+    // journal entries, and post_journal_entry needs auth.uid() to resolve the
+    // company and stamp created_by. Relaxing that would weaken the one place
+    // balance and the period lock are centrally enforced. If a future change
+    // makes this function stop composing the primitive, that is a red flag.
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='flush_stranded_deferred_cogs' AND pronamespace='public'::regnamespace`);
+    if (def.length === 0) return;
+    const src = def[0]!.src;
+    expect(src, 'composes post_journal_entry').toMatch(/post_journal_entry/);
+    expect(/insert\s+into\s+public\.general_ledger/i.test(src), 'writes no general_ledger directly').toBe(false);
+  });
+});
