@@ -2583,3 +2583,190 @@ describe('Phase 64 — deferred-COGS subledger write-back (soft until applied)',
     expect(true).toBe(true); // observed, not blocking (tenant data)
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════
+// AC-V1 — Validation & Hardening: static integrity sweep
+// ═════════════════════════════════════════════════════════════════════════
+// These encode the checks from the AC-V1 validation pass so they cannot
+// silently regress. Everything asserted here was verified CLEAN against
+// production at the time of writing, EXCEPT the cross-tenant allowlist
+// (V-T4), which pins known debt so that a NEW offender fails loudly.
+//
+// Scope note: this is static / query-level validation. It proves the data is
+// internally consistent and the surface is shaped correctly. It does NOT
+// prove the engines post correctly end-to-end — only the staging-gated
+// behavioural suites can do that, and none has ever run.
+
+describe('AC-V1 — posting integrity', () => {
+  it('V-P1: every journal entry has at least two GL lines', async () => {
+    const bad = await sql<{ entry_number: string; lines: number }>(`
+      SELECT je.entry_number, count(gl.id)::int AS lines
+      FROM public.journal_entries je
+      LEFT JOIN public.general_ledger gl ON gl.journal_entry_id = je.id
+      GROUP BY je.id, je.entry_number HAVING count(gl.id) < 2 LIMIT 20`);
+    expect(bad, `single-legged JEs: ${JSON.stringify(bad).slice(0, 400)}`).toHaveLength(0);
+  });
+
+  it('V-P2: no GL line is orphaned from a journal entry', async () => {
+    const nullJe = await sql<{ n: number }>(
+      `SELECT count(*)::int AS n FROM public.general_ledger WHERE journal_entry_id IS NULL`);
+    expect(nullJe[0]?.n ?? 0, 'GL lines with NULL journal_entry_id').toBe(0);
+
+    const orphan = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM public.general_ledger gl
+      LEFT JOIN public.journal_entries je ON je.id = gl.journal_entry_id
+      WHERE gl.journal_entry_id IS NOT NULL AND je.id IS NULL`);
+    expect(orphan[0]?.n ?? 0, 'GL lines pointing at a missing JE').toBe(0);
+  });
+
+  it('V-P3: journal entry header totals agree with their line sums', async () => {
+    const bad = await sql<{ entry_number: string }>(`
+      SELECT je.entry_number FROM public.journal_entries je
+      JOIN public.general_ledger gl ON gl.journal_entry_id = je.id
+      GROUP BY je.id, je.entry_number, je.total_debit
+      HAVING ABS(je.total_debit - SUM(gl.debit)) > 0.01 LIMIT 20`);
+    expect(bad, `header/line mismatch: ${JSON.stringify(bad).slice(0, 400)}`).toHaveLength(0);
+  });
+
+  it('V-P4: every JE balances and every account_code resolves in its own CoA', async () => {
+    const unbalanced = await sql<{ entry_number: string }>(`
+      SELECT je.entry_number FROM public.journal_entries je
+      JOIN public.general_ledger gl ON gl.journal_entry_id = je.id
+      GROUP BY je.id, je.entry_number
+      HAVING ABS(SUM(gl.debit) - SUM(gl.credit)) > 0.01 LIMIT 20`);
+    expect(unbalanced, `unbalanced JEs: ${JSON.stringify(unbalanced).slice(0, 400)}`).toHaveLength(0);
+
+    const unknownCode = await sql<{ account_code: string }>(`
+      SELECT DISTINCT gl.account_code FROM public.general_ledger gl
+      WHERE NOT EXISTS (SELECT 1 FROM public.chart_of_accounts c
+                         WHERE c.company_id = gl.company_id AND c.code = gl.account_code)
+      LIMIT 20`);
+    expect(unknownCode, `account codes not in the company CoA: ${JSON.stringify(unknownCode)}`).toHaveLength(0);
+  });
+});
+
+describe('AC-V1 — tenant isolation', () => {
+  it('V-T1: no row references a parent belonging to a different company', async () => {
+    const glAcct = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM public.general_ledger gl
+      JOIN public.chart_of_accounts c ON c.id = gl.account_id
+      WHERE c.company_id <> gl.company_id`);
+    expect(glAcct[0]?.n ?? 0, 'GL line using another company account').toBe(0);
+
+    const stockProd = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM public.stock_ledger sl
+      JOIN public.products p ON p.id = sl.product_id
+      WHERE p.company_id <> sl.company_id`);
+    expect(stockProd[0]?.n ?? 0, 'stock row using another company product').toBe(0);
+
+    const invContact = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM public.invoices i
+      JOIN public.contacts ct ON ct.id = i.contact_id
+      WHERE ct.company_id <> i.company_id`);
+    expect(invContact[0]?.n ?? 0, 'invoice using another company contact').toBe(0);
+  });
+
+  it('V-T4: no NEW cross-tenant SECURITY DEFINER function appears', async () => {
+    // A SECURITY DEFINER function bypasses RLS. If it also accepts a
+    // company_id and never checks the caller's own tenant, any authenticated
+    // user can pass another company's UUID and read or write their data.
+    //
+    // These seven are KNOWN DEBT, found by the AC-V1 sweep and scheduled for
+    // AC-V2. The allowlist exists so the suite fails the moment an EIGHTH is
+    // introduced; AC-V2 shrinks it to zero and this becomes a plain
+    // "must be empty" assertion.
+    const KNOWN_UNGUARDED = [
+      'get_bank_recon',
+      'get_daily_cash_report',
+      'recompute_stock_valuation',
+      'save_bank_reconciliation',
+      'search_contacts',
+      'search_products',
+      'seed_default_tax_rates',
+    ];
+    const found = await sql<{ proname: string }>(`
+      SELECT p.proname FROM pg_proc p
+      WHERE p.pronamespace='public'::regnamespace AND p.prosecdef
+        AND pg_get_function_arguments(p.oid) ILIKE '%company_id%'
+        AND has_function_privilege('authenticated', p.oid, 'EXECUTE')
+        AND position('current_user_company_id' in pg_get_functiondef(p.oid)) = 0
+        AND position('FROM public.profiles' in pg_get_functiondef(p.oid)) = 0
+      ORDER BY 1`);
+    const names = found.map((r) => r.proname);
+    const novel = names.filter((n) => !KNOWN_UNGUARDED.includes(n));
+    expect(novel, `NEW unguarded cross-tenant SECURITY DEFINER function(s): ${JSON.stringify(novel)}`).toHaveLength(0);
+    if (names.length) {
+      console.warn(`⚠ [AC-V1] ${names.length} cross-tenant SECURITY DEFINER functions still unguarded (AC-V2): ${names.join(', ')}`);
+    }
+  });
+});
+
+describe('AC-V1 — audit trail + corruption scan', () => {
+  it('V-A1: audit_logs cannot be updated or deleted through RLS', async () => {
+    const mutable = await sql<{ polname: string }>(`
+      SELECT polname FROM pg_policy
+      WHERE polrelid='public.audit_logs'::regclass AND polcmd IN ('w','d')`);
+    expect(mutable, `audit_logs UPDATE/DELETE policies exist: ${JSON.stringify(mutable)}`).toHaveLength(0);
+
+    // phase53 would add a trigger that also blocks SECURITY DEFINER /
+    // service_role tampering. It is NOT applied — RLS is the only protection.
+    const trg = await sql<{ tgname: string }>(`
+      SELECT tgname FROM pg_trigger
+      WHERE tgrelid='public.audit_logs'::regclass AND NOT tgisinternal`);
+    if (trg.length === 0) {
+      console.warn('⚠ [AC-V1] audit_logs has no append-only trigger (phase53 not applied);' +
+                   ' RLS blocks normal users but not SECURITY DEFINER or service_role');
+    }
+  });
+
+  it('V-C1: document headers agree with their line sums', async () => {
+    const inv = await sql<{ invoice_number: string }>(`
+      SELECT i.invoice_number FROM public.invoices i
+      JOIN public.invoice_items ii ON ii.invoice_id = i.id
+      WHERE i.status <> 'void'
+      GROUP BY i.id, i.invoice_number, i.total_amount, i.round_off_amount, i.discount_amount
+      HAVING ABS(i.total_amount - COALESCE(i.round_off_amount,0)
+                 + COALESCE(i.discount_amount,0) - SUM(ii.line_total)) > 0.02 LIMIT 20`);
+    expect(inv, `invoice header/line mismatch: ${JSON.stringify(inv).slice(0, 400)}`).toHaveLength(0);
+
+    const bill = await sql<{ bill_number: string }>(`
+      SELECT b.bill_number FROM public.vendor_bills b
+      JOIN public.vendor_bill_items bi ON bi.bill_id = b.id
+      WHERE b.status <> 'void'
+      GROUP BY b.id, b.bill_number, b.total_amount, b.round_off_amount, b.discount_amount
+      HAVING ABS(b.total_amount - COALESCE(b.round_off_amount,0)
+                 + COALESCE(b.discount_amount,0) - SUM(bi.line_total)) > 0.02 LIMIT 20`);
+    expect(bill, `vendor bill header/line mismatch: ${JSON.stringify(bill).slice(0, 400)}`).toHaveLength(0);
+  });
+
+  it('V-C2: stock ledger is internally consistent', async () => {
+    const badReversal = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM public.stock_ledger sl
+      WHERE sl.reversal_of_id IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM public.stock_ledger o WHERE o.id = sl.reversal_of_id)`);
+    expect(badReversal[0]?.n ?? 0, 'reversal pointing at a missing original').toBe(0);
+
+    // running_qty must equal the cumulative signed quantity for its partition.
+    const drift = await sql<{ n: number }>(`
+      WITH cum AS (
+        SELECT running_qty,
+               SUM(direction*quantity) OVER (PARTITION BY company_id, product_id, warehouse_id
+                                              ORDER BY seq ROWS UNBOUNDED PRECEDING) AS calc
+        FROM public.stock_ledger)
+      SELECT count(*)::int AS n FROM cum WHERE ABS(running_qty - calc) > 0.001`);
+    expect(drift[0]?.n ?? 0, 'running_qty diverges from cumulative quantity').toBe(0);
+  });
+
+  it('V-C3: verify_invariants across every company (warn-only)', async () => {
+    const failing = await sql<{ company: string; invariant: string; check_name: string }>(`
+      SELECT c.name AS company, e->>'invariant' AS invariant, e->>'name' AS check_name
+      FROM public.companies c,
+           LATERAL jsonb_array_elements(public.verify_invariants(c.id, CURRENT_DATE)) e
+      WHERE (e->>'pass')::boolean = false
+      ORDER BY 1,2`);
+    if (failing.length) {
+      console.warn('⚠ [AC-V1] failing accounting invariants:', JSON.stringify(failing).slice(0, 600));
+    }
+    expect(true).toBe(true); // observed, not blocking (tenant data)
+  });
+});
