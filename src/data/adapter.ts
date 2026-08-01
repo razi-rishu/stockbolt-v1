@@ -1787,6 +1787,48 @@ export interface StockMismatch {
   difference: number;
 }
 
+/**
+ * AC-V2c — deferred-COGS repairs.
+ *
+ * Both RPCs default to a dry run and return the plan they WOULD apply, so the
+ * operator sees the exact numbers before anything is written.
+ */
+
+/** One journal entry the deferred-COGS flush repair would post. */
+export interface DeferredCogsRepairEntry {
+  bill_id: string;
+  date: string;
+  amount: number;
+  rows: number;
+}
+/** phase63 — flush_stranded_deferred_cogs. POSTS to the GL when applied. */
+export interface DeferredCogsRepairResult {
+  dry_run: boolean;
+  total: number;
+  entries: number;
+  entries_posted: number;
+  plan: DeferredCogsRepairEntry[];
+}
+
+/** One stock row the subledger repair would cost. */
+export interface SubledgerRepairLine {
+  company_id?: string | null;
+  queue_id: string;
+  stock_row_id: string;
+  product_id: string;
+  quantity: number;
+  unit_cost: number;
+  total_cost: number;
+}
+/** phase64/66 — repair_flushed_cogs_subledger. GL-NEUTRAL: posts nothing. */
+export interface SubledgerRepairResult {
+  dry_run: boolean;
+  all_tenants?: boolean;
+  rows: number;
+  value: number;
+  plan: SubledgerRepairLine[];
+}
+
 export interface SystemHealthAPI {
   check(company_id: string, as_of_date?: string): Promise<InvariantResult[]>;
   /** Lists the specific JEs that fail the JE_BAL invariant. */
@@ -1797,6 +1839,19 @@ export interface SystemHealthAPI {
   findArMismatches(company_id: string, as_of_date?: string): Promise<ArMismatch[]>;
   /** Per-product stock value drift table (for E1 failures). */
   findStockMismatches(company_id: string, as_of_date?: string): Promise<StockMismatch[]>;
+
+  /**
+   * AC-V2c — sell-before-buy repairs, scoped to the signed-in user's company.
+   *
+   * Both must run inside an authenticated session: the RPCs resolve the tenant
+   * from auth.uid(), and the flush repair composes post_journal_entry, which
+   * needs a real user to stamp created_by.
+   */
+
+  /** GL-neutral: costs sale rows whose value the GL already recognised. */
+  repairCogsSubledger(dry_run: boolean): Promise<SubledgerRepairResult>;
+  /** POSTS Dr 5100 / Cr 1300 when applied — moves the P&L. Preview first. */
+  repairStrandedDeferredCogs(dry_run: boolean): Promise<DeferredCogsRepairResult>;
 }
 
 // ── Phase 5 row types ─────────────────────────────────────────────────────────

@@ -1657,5 +1657,30 @@
     "show_salesperson": "Show salesperson name",
     "show_due_date": "Show due date",
     "show_bank_details": "Show bank details in footer"
+  },
+  "maint": {
+    "title": "Accounting Maintenance",
+    "subtitle": "Preview and apply corrections for sell-before-buy COGS. Run these when System Health reports E1.",
+    "preview": "Preview",
+    "apply": "Apply",
+    "total": "Total",
+    "nothing_to_do": "Nothing to repair — everything is already consistent.",
+    "no_permission": "You do not have permission to run this repair.",
+    "sub_title": "Cost uncosted sale rows (subledger)",
+    "sub_desc": "When a sale was made before the goods arrived, the COGS was recognised later in the general ledger but the stock row that recorded the sale kept a cost of zero. That leaves the subledger reporting more inventory than the ledger, and inflates the moving average for every later sale of the same part.",
+    "gl_neutral": "Safe: posts nothing. This cannot change your Trial Balance.",
+    "sub_applied": "Repaired {{rows}} stock row(s), {{value}} in total. Moving averages were re-derived.",
+    "col_product": "Product",
+    "col_qty": "Qty",
+    "col_unit_cost": "Unit cost",
+    "col_value": "Value",
+    "def_title": "Recognise stranded deferred COGS",
+    "def_desc": "Goods sold before they were purchased have arrived, but their cost was never recognised. Inventory is overstated and COGS understated by the amount below until this is posted.",
+    "posts_to_gl": "Caution: this posts journal entries (Dr 5100 COGS / Cr 1300 Inventory) and will move your Profit & Loss.",
+    "def_applied": "Posted {{entries}} journal entr(ies), {{total}} in total.",
+    "def_ack": "I have reviewed the entries above and want to post {{total}} to the general ledger.",
+    "col_date": "Posting date",
+    "col_rows": "Sales",
+    "col_amount": "Amount"
   }
 }

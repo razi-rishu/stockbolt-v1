@@ -5466,6 +5466,24 @@ export function createSupabaseAdapter(
         assertNoError(error as Error | null, 'systemHealth.findStockMismatches');
         return (data as import('./adapter').StockMismatch[]) ?? [];
       },
+
+      // ── AC-V2c — deferred-COGS repairs ────────────────────────────────────
+      // Both RPCs resolve the tenant from auth.uid(), so they only work inside
+      // a signed-in session — which is exactly why they need a UI rather than
+      // a SQL-editor command. Neither takes a company_id: passing one would
+      // reopen the cross-tenant hole phase65 just closed.
+      async repairCogsSubledger(dry_run): Promise<import('./adapter').SubledgerRepairResult> {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)
+          ('repair_flushed_cogs_subledger', { p_dry_run: dry_run });
+        assertNoError(error as Error | null, 'systemHealth.repairCogsSubledger');
+        return data as import('./adapter').SubledgerRepairResult;
+      },
+      async repairStrandedDeferredCogs(dry_run): Promise<import('./adapter').DeferredCogsRepairResult> {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)
+          ('flush_stranded_deferred_cogs', { p_dry_run: dry_run });
+        assertNoError(error as Error | null, 'systemHealth.repairStrandedDeferredCogs');
+        return data as import('./adapter').DeferredCogsRepairResult;
+      },
     },
 
     // ── Phase 12.12: Bank Reconciliation ──────────────────────────────────────

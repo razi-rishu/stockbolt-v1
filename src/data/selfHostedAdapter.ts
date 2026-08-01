@@ -486,6 +486,9 @@ export function createSelfHostedAdapter(): DataAdapter {
       repairVendorBillJE:  () => notImplemented('systemHealth.repairVendorBillJE'),
       findArMismatches:    () => notImplemented('systemHealth.findArMismatches'),
       findStockMismatches: () => notImplemented('systemHealth.findStockMismatches'),
+      // AC-V2c
+      repairCogsSubledger:        () => notImplemented('systemHealth.repairCogsSubledger'),
+      repairStrandedDeferredCogs: () => notImplemented('systemHealth.repairStrandedDeferredCogs'),
     },
     // Phase 12.12: Bank Reconciliation
     bankReconciliations: {

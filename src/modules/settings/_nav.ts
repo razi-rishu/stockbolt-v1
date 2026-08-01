@@ -81,6 +81,7 @@ export const SETTINGS_SECTIONS: SettingsNavSection[] = [
     title: 'System & Admin',
     items: [
       { to: '/settings/system-health', icon: '✅', title: 'System Health',      desc: 'Runs invariant checks (TB balance, AR matches, stock matches GL).' },
+      { to: '/settings/maintenance',   icon: '🛠️', title: 'Accounting Maintenance', desc: 'Preview and apply the sell-before-buy COGS repairs when System Health flags E1.' },
       { to: '/settings/audit-log',     icon: '📋', title: 'Audit Log',          desc: 'Read-only trail of who-did-what across the ERP.' },
       { to: '/settings/reset-data',    icon: '🧹', title: 'Reset Company Data', desc: 'Destructive admin operation — wipes transactions for QA cycles.' },
     ],

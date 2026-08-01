@@ -179,6 +179,7 @@ const AuditLogPage                    = lazy(() => import('@/modules/reports/aud
 const ReversalTrailPage               = lazy(() => import('@/modules/reports/reversal-trail'));
 const CashFlowPage                    = lazy(() => import('@/modules/reports/cash-flow'));
 const SystemHealthPage                = lazy(() => import('@/modules/settings/system-health'));
+const MaintenancePage                 = lazy(() => import('@/modules/settings/maintenance'));
 const ResetDataPage                   = lazy(() => import('@/modules/settings/reset-data'));
 const SalespeoplePage                 = lazy(() => import('@/modules/settings/salespeople'));
 const AdminDashboardPage              = lazy(() => import('@/modules/admin/admin-dashboard'));
@@ -288,6 +289,7 @@ function AppRoutes() {
                 <Route path="print"         element={<PrintSettingsPage />} />
                 <Route path="hardware"      element={<HardwareSettingsPage />} />
                 <Route path="system-health" element={<SystemHealthPage />} />
+                <Route path="maintenance"   element={<MaintenancePage />} />
                 <Route path="reset-data"    element={<ResetDataPage />} />
                 <Route path="audit-log"     element={<AuditLogPage />} />
                 {/* Accounting masters — require accounting.read */}
