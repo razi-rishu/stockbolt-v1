@@ -2770,3 +2770,88 @@ describe('AC-V1 — audit trail + corruption scan', () => {
     expect(true).toBe(true); // observed, not blocking (tenant data)
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// AC-V2 / phase65 — cross-tenant guards (soft until applied)
+// ─────────────────────────────────────────────────────────────────────────
+// Seven SECURITY DEFINER functions accepted a p_company_id and never checked
+// the caller's own tenant. Because SECURITY DEFINER bypasses RLS, any
+// authenticated user could pass another company's UUID and read or write that
+// tenant's data — contacts with phone/email/tax_id, the product catalog, bank
+// ledgers, cash reports, and three write paths.
+//
+// V-T4 above self-resolves once this is applied: the guarded functions start
+// matching on current_user_company_id and drop out of its detection query.
+// These tests are the positive assertion that the guard is actually there.
+describe('AC-V2 — cross-tenant guards (soft until applied)', () => {
+  const GUARDED = [
+    'get_bank_recon',
+    'get_daily_cash_report',
+    'recompute_stock_valuation',
+    'save_bank_reconciliation',
+    'search_contacts',
+    'search_products',
+    'seed_default_tax_rates',
+  ];
+
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_proc
+       WHERE proname='search_contacts' AND pronamespace='public'::regnamespace
+         AND position('cross-tenant access denied' in pg_get_functiondef(oid)) > 0`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase65: every listed function refuses a foreign company_id', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ AC-V2 not applied yet — run supabase/migrations/20260731000003_phase65_acv2_cross_tenant_guards.sql');
+      return;
+    }
+    for (const fn of GUARDED) {
+      const def = await sql<{ src: string }>(
+        `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+          WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+      expect(def.length, `${fn} exists`).toBe(1);
+      const src = def[0]!.src;
+      expect(src, `${fn} compares against the caller's own company`)
+        .toMatch(/p_company_id IS DISTINCT FROM public\.current_user_company_id\(\)/);
+      expect(src, `${fn} raises 42501 on a foreign tenant`)
+        .toMatch(/cross-tenant access denied/);
+      // A SECURITY DEFINER function with an unpinned search_path can be steered
+      // at objects in a schema the caller controls.
+      expect(src, `${fn} pins search_path`).toMatch(/SET search_path TO/);
+    }
+  });
+
+  it('phase65: the guard keeps its two carve-outs (service_role + onboarding)', async () => {
+    if (!(await applied())) { console.warn('⚠ AC-V2 not applied yet'); return; }
+    // Tightening the guard by dropping either condition would break real flows:
+    //   auth.uid() IS NULL              -> service_role, SQL editor, test harness
+    //   current_user_company_id() NULL  -> onboarding; seed_default_tax_rates runs
+    //                                     from a trigger on companies INSERT
+    //                                     before the profile is linked
+    for (const fn of GUARDED) {
+      const def = await sql<{ src: string }>(
+        `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+          WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+      const src = def[0]!.src;
+      expect(src, `${fn} exempts service_role`).toMatch(/auth\.uid\(\) IS NOT NULL/);
+      expect(src, `${fn} exempts a caller with no company yet`)
+        .toMatch(/public\.current_user_company_id\(\) IS NOT NULL/);
+    }
+  });
+
+  it('phase65: reset_company_data keeps its own stricter guard', async () => {
+    // Not touched by phase65 — it already validated tenant + admin role + an
+    // exact company-name confirmation. This locks that in so a future refactor
+    // cannot quietly downgrade the most destructive RPC in the system.
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='reset_company_data' AND pronamespace='public'::regnamespace`);
+    if (def.length === 0) return;
+    const src = def[0]!.src;
+    expect(src, 'reset_company_data checks the caller tenant').toMatch(/v_caller_co <> p_company_id/);
+    expect(src, 'reset_company_data requires admin').toMatch(/v_caller_role <> 'admin'/);
+    expect(src, 'reset_company_data requires name confirmation').toMatch(/p_confirmation/);
+  });
+});
