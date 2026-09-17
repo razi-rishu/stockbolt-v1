@@ -1682,5 +1682,24 @@
     "col_date": "Posting date",
     "col_rows": "Sales",
     "col_amount": "Amount"
+  },
+  "refund": {
+    "title_customer": "Refund advance to customer",
+    "title_vendor": "Record refund from supplier",
+    "intro_customer": "Give part or all of {{name}}'s advance back. Use this when they cancelled before an invoice was raised — no sales return is involved.",
+    "intro_vendor": "Record money {{name}} is sending back against an advance we paid them.",
+    "available": "Advance on file",
+    "amount": "Refund amount",
+    "over_available": "More than the advance on file ({{available}}).",
+    "date": "Date",
+    "paid_from": "Paid from",
+    "received_into": "Received into",
+    "choose_account": "Choose an account…",
+    "reference": "Reference",
+    "reference_ph": "Cheque no., transfer ref…",
+    "gl_hint_customer": "Posts Dr 2400 Customer Advances / Cr the selected account.",
+    "gl_hint_vendor": "Posts Dr the selected account / Cr 1400 Vendor Advances.",
+    "confirm": "Refund",
+    "refund_cta": "Refund"
   }
 }

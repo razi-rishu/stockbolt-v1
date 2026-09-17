@@ -300,6 +300,11 @@ export function createSelfHostedAdapter(): DataAdapter {
       deleteDraft:   () => notImplemented('payments.deleteDraft'),
       getNextNumber: () => notImplemented('payments.getNextNumber'),
       getAppliedMap: () => notImplemented('payments.getAppliedMap'),
+      // S2/S3
+      refundCustomerAdvance: () => notImplemented('payments.refundCustomerAdvance'),
+      refundVendorAdvance:   () => notImplemented('payments.refundVendorAdvance'),
+      voidCustomerRefund:    () => notImplemented('payments.voidCustomerRefund'),
+      voidVendorRefund:      () => notImplemented('payments.voidVendorRefund'),
     },
     reports: {
       getProfitAndLoss:      () => notImplemented('reports.getProfitAndLoss'),

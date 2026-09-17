@@ -15,7 +15,7 @@
  */
 import { useState, useMemo } from 'react';
 import { formatDate } from '@/lib/locale';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
@@ -23,6 +23,7 @@ import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
+import { RefundAdvanceModal } from './refund-advance-modal';
 import { Tabs } from '@/ui/tabs';
 import { theme } from '@/ui/theme';
 import { StatusBadge } from '@/ui/status-badge';
@@ -176,6 +177,9 @@ export default function CustomerDetailPage() {
   const [stmtFrom, setStmtFrom] = useState(monthsAgoIso(3));
   const [stmtTo, setStmtTo]     = useState(todayIso);
   const [tab, setTab] = useState<'overview' | 'docs' | 'stmt'>('overview');
+  // S4 — refund an advance back to the customer (no invoice, no sales return).
+  const [refundOpen, setRefundOpen] = useState(false);
+  const qc = useQueryClient();
   // Phase 12.52 — default ON: shows only entries that affect the
   // current balance. Toggle OFF to see the full audit trail with
   // voided invoices + their reversal counter-entries.
@@ -410,6 +414,30 @@ export default function CustomerDetailPage() {
                 Apply credit →
               </Button>
             )}
+            {/* S4 — the other thing you can do with credit on file: give it
+                back. Always offered, because a cancellation before any invoice
+                exists has no sales return to hang a refund off. */}
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setRefundOpen(true)}
+              title={t('refund.title_customer')}
+            >
+              {t('refund.refund_cta')}
+            </Button>
+            <RefundAdvanceModal
+              open={refundOpen}
+              onClose={() => setRefundOpen(false)}
+              onDone={() => {
+                void qc.invalidateQueries({ queryKey: ['advance_balance'] });
+                void qc.invalidateQueries({ queryKey: ['payments'] });
+              }}
+              side="customer"
+              contactId={id!}
+              contactName={contact?.name ?? ''}
+              available={advanceCredit}
+              currency={contact?.currency ?? companyCurrency}
+            />
             {applyTarget && !hasOpenInvoice && (
               <span className="text-xs text-emerald-700/80">
                 No open invoices — credit will apply to the next one raised.

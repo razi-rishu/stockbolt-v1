@@ -50,6 +50,11 @@ export const DOC_REGISTRY: Record<DocType, DocMeta> = {
 const ALIASES: Record<string, DocType> = {
   sales_invoice: 'invoice',
   payment:       'customer_payment',
+  // S2/S3 — refunds are payment rows, so they open the same detail page. The
+  // GL keeps them under their own source_type so a refund is never mistaken
+  // for a receipt when reading the ledger.
+  customer_refund: 'customer_payment',
+  vendor_refund:   'vendor_payment',
   grn:           'goods_receipt',
   po:            'purchase_order',
 };

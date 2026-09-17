@@ -1417,6 +1417,46 @@ export interface PaymentsAPI {
    * status (Paid / Partial / Unpaid) without N round-trips.
    */
   getAppliedMap(company_id: string, doc_type: 'invoice' | 'vendor_bill'): Promise<Record<string, number>>;
+
+  /**
+   * S2/S3 — refund part or all of a contact's advance balance.
+   *
+   * A refund is an ordinary payment row the schema already allowed, in the
+   * direction opposite to the original advance:
+   *   customer refund   outbound + advance  ->  Dr 2400 / Cr bank
+   *   vendor   refund   inbound  + advance  ->  Dr bank / Cr 1400
+   *
+   * Each creates the draft and confirms it in one call, deleting the draft if
+   * the confirm is rejected, so a half-made refund cannot linger. The amount is
+   * capped SERVER-SIDE at the contact's ledger balance — never trust the UI for
+   * that.
+   */
+  refundCustomerAdvance(input: RefundAdvanceInput): Promise<RefundResult>;
+  refundVendorAdvance(input: RefundAdvanceInput): Promise<RefundResult>;
+  /** Reverses the refund at its VOUCHER date and marks the payment void. */
+  voidCustomerRefund(payment_id: string, reason?: string): Promise<void>;
+  voidVendorRefund(payment_id: string, reason?: string): Promise<void>;
+}
+
+export interface RefundAdvanceInput {
+  company_id:      string;
+  contact_id:      string;
+  date:            string;
+  amount:          number;
+  currency:        string;
+  bank_account_id: string;
+  reference?:      string | null;
+  notes?:          string | null;
+}
+
+export interface RefundResult {
+  payment_id:       string;
+  payment_number:   string;
+  journal_entry_id: string;
+  entry_number:     string;
+  amount:           number;
+  /** The contact's remaining advance balance after the refund. */
+  advance_after:    number;
 }
 
 export interface BankAccountsAPI {

@@ -122,6 +122,65 @@ function isMissingRelation(error: { code?: string; message?: string } | null): b
   return /does not exist|schema cache/i.test(error.message || '');
 }
 
+/**
+ * S2/S3 — create a refund draft and confirm it as one action.
+ *
+ * A refund is a payment row in the direction opposite to the advance it gives
+ * back. The confirm RPC re-checks the party, the period lock and — the one that
+ * matters — caps the amount at the contact's LEDGER balance, so the figure the
+ * UI showed is never trusted. If it rejects, the draft is deleted rather than
+ * left in a list as a half-made refund.
+ *
+ * CRF / VRF get their own number series so a refund is never mistaken for a
+ * receipt (REC) or a vendor payment (VP) at a glance.
+ * get_next_document_number creates the series on first use.
+ */
+async function postRefund(
+  client: SupabaseClient<Database>,
+  input: import('./adapter').RefundAdvanceInput,
+  direction: 'inbound' | 'outbound',
+  rpc: 'confirm_customer_refund' | 'confirm_vendor_refund',
+  prefix: 'CRF' | 'VRF',
+  context: string,
+): Promise<import('./adapter').RefundResult> {
+  const rpcCall = client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+
+  const { data: num, error: numErr } = await rpcCall('get_next_document_number', {
+    p_company_id: input.company_id, p_prefix: prefix,
+  });
+  assertNoError(numErr as Error | null, `${context}.number`);
+
+  const { data: draft, error: createErr } = await (client.from('payments') as any)
+    .insert({
+      company_id:        input.company_id,
+      payment_number:    num as string,
+      type:              direction,
+      classification:    'advance',
+      contact_id:        input.contact_id,
+      date:              input.date,
+      amount:            input.amount,
+      currency:          input.currency,
+      exchange_rate:     1,
+      bank_account_id:   input.bank_account_id,
+      reference:         input.reference ?? null,
+      notes:             input.notes ?? null,
+      status:            'draft',
+      payment_method_id: null,
+    })
+    .select()
+    .single();
+  assertNoError(createErr as Error | null, `${context}.draft`);
+  const draftId = (draft as { id: string }).id;
+
+  const { data, error } = await rpcCall(rpc, { p_payment_id: draftId });
+  if (error) {
+    // Roll the draft back so a rejected refund leaves nothing behind.
+    await (client.from('payments') as any).delete().eq('id', draftId);
+    assertNoError(error as Error | null, context);
+  }
+  return data as import('./adapter').RefundResult;
+}
+
 export function createSupabaseAdapter(
   client: SupabaseClient<Database> = getSupabaseClient(),
 ): DataAdapter {
@@ -2379,11 +2438,23 @@ export function createSupabaseAdapter(
     // ── Phase 4: Payments ─────────────────────────────────────────────────
     payments: {
       async list(company_id, type?): Promise<PaymentRow[]> {
-        let q = client.from('payments').select('*').eq('company_id', company_id);
-        if (type) q = q.eq('type', type);
+        // S3 — direction alone no longer identifies the document. An inbound row
+        // can be a customer receipt OR a vendor refund, so filtering on type
+        // only would list supplier refunds among customer receipts. Join the
+        // contact and keep the matching party.
+        const party = type === 'inbound' ? ['customer', 'both']
+                    : type === 'outbound' ? ['supplier', 'both']
+                    : null;
+        let q = (client.from('payments') as any)
+          .select(party ? '*, contacts!inner(type)' : '*')
+          .eq('company_id', company_id);
+        if (type)  q = q.eq('type', type);
+        if (party) q = q.in('contacts.type', party);
         const { data, error } = await q.order('date', { ascending: false });
-        assertNoError(error, 'payments.list');
-        return data ?? [];
+        assertNoError(error as Error | null, 'payments.list');
+        // Drop the joined column so callers keep receiving a plain PaymentRow.
+        return ((data ?? []) as Array<PaymentRow & { contacts?: unknown }>)
+          .map(({ contacts: _drop, ...row }) => row as PaymentRow);
       },
       async getById(id): Promise<PaymentRow | null> {
         const { data, error } = await client.from('payments').select('*').eq('id', id).single();
@@ -2509,6 +2580,25 @@ export function createSupabaseAdapter(
           map[a.doc_id] = (map[a.doc_id] ?? 0) + Number(a.amount_applied) + Number(a.discount_amount ?? 0);
         }
         return map;
+      },
+
+      // ── S2/S3 — advance refunds ───────────────────────────────────────────
+      // Draft + confirm are one user action, so they are one call here.
+      async refundCustomerAdvance(input): Promise<import('./adapter').RefundResult> {
+        return postRefund(client, input, 'outbound', 'confirm_customer_refund', 'CRF', 'payments.refundCustomerAdvance');
+      },
+      async refundVendorAdvance(input): Promise<import('./adapter').RefundResult> {
+        return postRefund(client, input, 'inbound', 'confirm_vendor_refund', 'VRF', 'payments.refundVendorAdvance');
+      },
+      async voidCustomerRefund(payment_id, reason): Promise<void> {
+        const { error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ error: unknown }>)
+          ('void_customer_refund', { p_payment_id: payment_id, p_reason: reason ?? null });
+        assertNoError(error as Error | null, 'payments.voidCustomerRefund');
+      },
+      async voidVendorRefund(payment_id, reason): Promise<void> {
+        const { error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ error: unknown }>)
+          ('void_vendor_refund', { p_payment_id: payment_id, p_reason: reason ?? null });
+        assertNoError(error as Error | null, 'payments.voidVendorRefund');
       },
     },
 
@@ -4683,10 +4773,18 @@ export function createSupabaseAdapter(
     // ── Vendor Payments ───────────────────────────────────────────────────────
     vendorPayments: {
       async list(company_id) {
-        const { data, error } = await client.from('payments').select('*')
-          .eq('company_id', company_id).eq('type', 'outbound').order('date', { ascending: false });
-        assertNoError(error, 'vendorPayments.list');
-        return (data ?? []) as PaymentRow[];
+        // S3 — an outbound row can be a vendor payment OR a customer refund.
+        // Without the party join a customer refund would surface here and could
+        // be confirmed through the vendor engine, posting Dr 1400 for a customer.
+        const { data, error } = await (client.from('payments') as any)
+          .select('*, contacts!inner(type)')
+          .eq('company_id', company_id)
+          .eq('type', 'outbound')
+          .in('contacts.type', ['supplier', 'both'])
+          .order('date', { ascending: false });
+        assertNoError(error as Error | null, 'vendorPayments.list');
+        return ((data ?? []) as Array<PaymentRow & { contacts?: unknown }>)
+          .map(({ contacts: _drop, ...row }) => row as PaymentRow);
       },
       async getById(id) {
         const { data, error } = await client.from('payments').select('*').eq('id', id).single();

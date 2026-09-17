@@ -3087,20 +3087,36 @@ describe('S2 — customer refund (soft until applied)', () => {
     expect(src, 'refuses a bank-reconciled refund').toMatch(/reconciliation_id IS NOT NULL/);
   });
 
-  it('phase68: the existing payment engine was NOT modified for refunds', async () => {
+  it('phase68: the existing payment engine does not IMPLEMENT refunds', async () => {
     if (!(await applied())) { console.warn('⚠ S2 not applied yet'); return; }
-    // A refund is a standalone document, the same discipline used for TDS. If a
-    // future change starts refunding inside these, this fails loudly rather
-    // than silently double-counting against 2400.
-    for (const fn of ['confirm_payment', 'confirm_vendor_payment', 'void_payment',
-                      'reopen_payment', 'apply_advance']) {
+    // A refund is a standalone document, the same discipline used for TDS.
+    //
+    // This check is BEHAVIOURAL, not textual. The first version matched the
+    // substring 'customer_refund' and went red as soon as phase69 added a party
+    // guard whose error message names the refund RPC as a hint to the operator.
+    // Naming it is fine; calling it, or posting to the other side's advance
+    // account, is not — so assert those instead.
+    const srcOf = async (fn: string): Promise<string | null> => {
       const def = await sql<{ src: string }>(
         `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
           WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
-      if (def.length === 0) continue;
-      const src = def[0]!.src.toLowerCase();
-      expect(src.includes('customer_refund'), `${fn} must stay ignorant of refunds`).toBe(false);
+      return def.length ? def[0]!.src : null;
+    };
+
+    for (const fn of ['confirm_payment', 'confirm_vendor_payment', 'void_payment',
+                      'reopen_payment', 'apply_advance']) {
+      const src = await srcOf(fn);
+      if (src === null) continue;
+      expect(src, `${fn} must not invoke a refund RPC`)
+        .not.toMatch(/(PERFORM|SELECT)\s+public\.(confirm|void)_(customer|vendor)_refund/i);
     }
+
+    // Each payment engine owns exactly one advance control account. Touching
+    // the other side's would mean it had started handling the opposite party.
+    const cp = await srcOf('confirm_payment');
+    if (cp) expect(cp.includes("'1400'"), 'confirm_payment must not touch 1400 Vendor Advances').toBe(false);
+    const vp = await srcOf('confirm_vendor_payment');
+    if (vp) expect(vp.includes("'2400'"), 'confirm_vendor_payment must not touch 2400 Customer Advances').toBe(false);
   });
 
   it('phase68: DOUBLE ENTRY — every customer_refund journal entry balances', async () => {

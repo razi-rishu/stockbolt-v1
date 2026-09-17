@@ -16,13 +16,14 @@
  */
 import { useState, useMemo } from 'react';
 import { formatDate } from '@/lib/locale';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
+import { RefundAdvanceModal } from './refund-advance-modal';
 import { BackButton } from '@/ui/back-button';
 import { Tabs } from '@/ui/tabs';
 import { theme } from '@/ui/theme';
@@ -173,6 +174,9 @@ export default function SupplierDetailPage() {
   const [stmtFrom, setStmtFrom] = useState(monthsAgoIso(3));
   const [stmtTo, setStmtTo]     = useState(todayIso);
   const [tab, setTab] = useState<'overview' | 'docs' | 'stmt'>('overview');
+  // S4 — record money the supplier sends back against an advance we paid.
+  const [refundOpen, setRefundOpen] = useState(false);
+  const qc = useQueryClient();
   // Phase 14.07 — statement period preset, search, audit-trail toggle.
   const [stmtPreset, setStmtPreset] = useState<PeriodPreset>('last_90');
   const [stmtSearch, setStmtSearch] = useState('');
@@ -380,6 +384,29 @@ export default function SupplierDetailPage() {
                 Apply credit →
               </Button>
             )}
+            {/* S4 — mirror of the customer side: record the supplier returning
+                part of an advance we paid, with no bill to hang it off. */}
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setRefundOpen(true)}
+              title={t('refund.title_vendor')}
+            >
+              {t('refund.refund_cta')}
+            </Button>
+            <RefundAdvanceModal
+              open={refundOpen}
+              onClose={() => setRefundOpen(false)}
+              onDone={() => {
+                void qc.invalidateQueries({ queryKey: ['advance_balance'] });
+                void qc.invalidateQueries({ queryKey: ['payments'] });
+              }}
+              side="vendor"
+              contactId={id!}
+              contactName={contact?.name ?? ''}
+              available={vendorAdvance}
+              currency={contact?.currency ?? companyCurrency}
+            />
             {applyTarget && !hasOpenBill && (
               <span className="text-xs text-emerald-700/80">
                 No open bills — credit will apply to the next one received.
