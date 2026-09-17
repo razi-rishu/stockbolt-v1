@@ -472,6 +472,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       void:          () => notImplemented('salesReturns.void'),
       reopen:        () => notImplemented('salesReturns.reopen'),
       getNextNumber: () => notImplemented('salesReturns.getNextNumber'),
+      getReturnableLines: () => notImplemented('salesReturns.getReturnableLines'),
     },
     debitNotes: {
       list:          () => notImplemented('debitNotes.list'),

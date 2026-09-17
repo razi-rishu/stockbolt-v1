@@ -2343,7 +2343,26 @@ export type SalesReturnRow     = Tables['sales_returns']['Row'];
 export type SalesReturnItemRow = Tables['sales_return_items']['Row'];
 export type SalesReturnInsert  = Omit<Tables['sales_returns']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type SalesReturnUpdate  = Tables['sales_returns']['Update'];
-export type SalesReturnItemInsert = Omit<Tables['sales_return_items']['Insert'], 'id' | 'created_at'>;
+export type SalesReturnItemInsert = Omit<Tables['sales_return_items']['Insert'], 'id' | 'created_at'> & {
+  /** R2a — the invoice line this came from. Without it the return cannot be
+   *  priced, counted against what's already been returned, or even proven to
+   *  have been sold. Required in practice by confirm_sales_return. */
+  invoice_item_id?: string | null;
+};
+
+/**
+ * R2a — how much of one invoice line is still returnable.
+ * Backed by v_invoice_line_returnable, which counts CONFIRMED credit notes
+ * only: a draft has returned nothing and a void has been reversed.
+ */
+export interface ReturnableLine {
+  invoice_item_id: string;
+  invoice_id:      string;
+  product_id:      string | null;
+  qty_sold:        number;
+  qty_returned:    number;
+  qty_returnable:  number;
+}
 
 export type DebitNoteItemRow    = Tables['debit_note_items']['Row'];
 export type DebitNoteInsert     = Omit<Tables['debit_notes']['Insert'], 'id' | 'created_at' | 'updated_at'>;
@@ -2383,6 +2402,10 @@ export interface SalesReturnsAPI {
   getById(id: string): Promise<SalesReturnRow | null>;
   getItems(sales_return_id: string): Promise<SalesReturnItemRow[]>;
   create(row: SalesReturnInsert, items: SalesReturnItemInsert[]): Promise<SalesReturnRow>;
+  /** R2a — returnable quantity per line of the linked invoice. The importer
+   *  offers only what is left, and confirm_sales_return enforces the same
+   *  number server-side. */
+  getReturnableLines(invoice_id: string): Promise<ReturnableLine[]>;
   /** Phase 33 — post the return by generating + confirming a linked credit note (GL + restock). */
   confirm(id: string): Promise<{ credit_note_id: string; credit_note_number: string }>;
   void(id: string, reason?: string): Promise<void>;

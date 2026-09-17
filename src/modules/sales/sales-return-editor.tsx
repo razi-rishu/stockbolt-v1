@@ -13,16 +13,23 @@ import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocT
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { salesReturnToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
-import type { SalesReturnRow, SalesReturnItemRow, InvoiceRow, InvoiceItemRow, SalesReturnItemInsert, Company, ProductRow, ContactRow } from '@/data/adapter';
+import type { SalesReturnRow, SalesReturnItemRow, InvoiceRow, InvoiceItemRow, SalesReturnItemInsert, Company, ProductRow, ContactRow, ReturnableLine } from '@/data/adapter';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
 interface ReturnLine {
+  /** R2b — the invoice line this came from. confirm_sales_return refuses a
+   *  line without it: price, returned-to-date and "was this even sold?" all
+   *  depend on knowing the source line, not just the product. */
+  invoice_item_id:     string | null;
   product_id:          string | null;
   description:         string;
   qty_returned:        number;
   condition:           'resellable' | 'damaged';
   unit_cost:           number | null;
+  /** How much of that line is still returnable — display + input cap. The
+   *  server enforces the same number, so a stale figure cannot over-return. */
+  qty_returnable:      number;
 }
 
 export default function SalesReturnEditorPage() {
@@ -90,11 +97,17 @@ export default function SalesReturnEditorPage() {
   useEffect(() => {
     if (existingItems.length > 0) {
       setLines(existingItems.map(it => ({
+        // R2b — a saved row may predate phase 72 and carry no link. It stays
+        // null so the confirm guard surfaces it rather than the UI hiding it.
+        invoice_item_id: (it as { invoice_item_id?: string | null }).invoice_item_id ?? null,
         product_id:   it.product_id ?? null,
         description:  '',
         qty_returned: Number(it.qty_returned),
         condition:    (it.condition ?? 'resellable') as 'resellable' | 'damaged',
         unit_cost:    it.unit_cost !== undefined ? Number(it.unit_cost) : null,
+        // Already-saved lines consumed their own quantity, so add it back to
+        // show what this return may still claim.
+        qty_returnable: Number(it.qty_returned),
       })));
     }
   }, [existingItems]);
@@ -106,22 +119,38 @@ export default function SalesReturnEditorPage() {
     enabled:  !!invoiceId,
   });
 
+  // R2b — what is still returnable per line, straight from the same view the
+  // confirm-time guard reads, so the screen and the server always agree.
+  const { data: returnable = [] } = useQuery<ReturnableLine[]>({
+    queryKey: ['returnable_lines', invoiceId],
+    queryFn:  () => getAdapter().salesReturns.getReturnableLines(invoiceId),
+    enabled:  !!invoiceId,
+  });
+  const returnableById = new Map(returnable.map(r => [r.invoice_item_id, r]));
+
+  // R2b — import each invoice LINE (not each product), defaulting to what is
+  // still returnable rather than the full original quantity, and skipping
+  // lines already fully returned. Previously this pulled every line at full
+  // qty, so a second return could re-credit goods that had already come back.
   function importFromInvoice() {
     if (invItems.length === 0) return;
     setLines(invItems
       .filter(it => it.product_id)
       .map(it => ({
-        product_id:   it.product_id!,
-        description:  it.description ?? '',
-        qty_returned: Number(it.quantity),
-        condition:    'resellable' as const,
-        unit_cost:    it.cost_at_sale !== undefined ? Number(it.cost_at_sale) : null,
-      })));
+        invoice_item_id: it.id,
+        product_id:      it.product_id!,
+        description:     it.description ?? '',
+        qty_returned:    Number(returnableById.get(it.id)?.qty_returnable ?? it.quantity),
+        condition:       'resellable' as const,
+        unit_cost:       it.cost_at_sale !== undefined ? Number(it.cost_at_sale) : null,
+        qty_returnable:  Number(returnableById.get(it.id)?.qty_returnable ?? it.quantity),
+      }))
+      .filter(l => l.qty_returnable > 0));
   }
 
-  function addLine() {
-    setLines(prev => [...prev, { product_id: null, description: '', qty_returned: 1, condition: 'resellable', unit_cost: null }]);
-  }
+  // R2b — "Add line" is gone. A hand-typed line cannot name a source invoice
+  // line, so it could not be priced, counted, or proven to have been sold —
+  // confirm_sales_return now refuses it. Returns come from the invoice.
   function removeLine(i: number) {
     setLines(prev => prev.filter((_, idx) => idx !== i));
   }
@@ -141,6 +170,7 @@ export default function SalesReturnEditorPage() {
         status:       'draft' as const,
       };
       const items: SalesReturnItemInsert[] = lines.map(l => ({
+        invoice_item_id:     l.invoice_item_id,   // R2b
         product_id:          l.product_id ?? undefined,
         qty_returned:        l.qty_returned,
         condition:           l.condition,
@@ -337,12 +367,15 @@ export default function SalesReturnEditorPage() {
       <div className="glass-card overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
           <h2 className="text-sm font-semibold text-ink-primary">{t('returns.returned_items')}</h2>
-          {isDraft && <Button variant="secondary" onClick={addLine}>{t('returns.add_line')}</Button>}
+          {isDraft && invoiceId && lines.length === 0 && invItems.length > 0 && (
+            <span className="text-xs text-ink-tertiary">{t('returns.use_import')}</span>
+          )}
         </div>
         <table className="w-full text-sm">
           <thead className="bg-surface-muted">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-medium text-ink-tertiary">{t('common.description')}</th>
+              <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('returns.returnable')}</th>
               <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('returns.qty_returned')}</th>
               <th className="px-3 py-2 text-left text-xs font-medium text-ink-tertiary">{t('returns.condition')}</th>
               <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('returns.cost_at_sale')}</th>
@@ -357,10 +390,18 @@ export default function SalesReturnEditorPage() {
                     disabled={!isDraft} placeholder={t('common.description')}
                     className="w-full border border-border-strong rounded px-2 py-1 text-sm" />
                 </td>
+                <td className="px-3 py-2 text-right text-xs text-ink-secondary">
+                  {l.qty_returnable}
+                </td>
                 <td className="px-3 py-2">
-                  <input type="number" min="1" step="1" value={l.qty_returned}
+                  <input type="number" min="1" step="1" max={l.qty_returnable || undefined}
+                    value={l.qty_returned}
                     onChange={e => updateLine(i, 'qty_returned', Number(e.target.value))}
-                    disabled={!isDraft} className="w-24 border border-border-strong rounded px-2 py-1 text-sm text-right" />
+                    disabled={!isDraft}
+                    className={`w-24 border rounded px-2 py-1 text-sm text-right ${
+                      l.qty_returned > l.qty_returnable
+                        ? 'border-danger-500 text-danger-600'
+                        : 'border-border-strong'}`} />
                 </td>
                 <td className="px-3 py-2">
                   <select value={l.condition}

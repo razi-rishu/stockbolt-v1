@@ -3558,3 +3558,117 @@ describe('R2a — return line linkage (soft until applied)', () => {
     expect(true).toBe(true); // observed, not blocking (tenant data)
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// R2b / phase73 — the posting path uses the linkage (soft until applied)
+// ─────────────────────────────────────────────────────────────────────────
+// phase72 added the link; this makes confirm_sales_return and
+// confirm_credit_note read it. Three bugs close at once: pricing off the wrong
+// line when a product repeats on an invoice, a silent zero credit when the
+// product was never sold, and unlimited over-return.
+describe('R2b — return posting integrity (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_proc
+       WHERE proname='confirm_sales_return' AND pronamespace='public'::regnamespace
+         AND position('sri.invoice_item_id' in pg_get_functiondef(oid)) > 0`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase73: the price comes from the chosen LINE, not a product match', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ R2b not applied yet — run supabase/migrations/20260917000007_phase73_r2b_sales_return_integrity.sql');
+      return;
+    }
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='confirm_sales_return' AND pronamespace='public'::regnamespace`);
+    const src = def[0]!.src;
+    expect(src, 'joins the invoice line by id').toMatch(/ii\.id = sri\.invoice_item_id/);
+    // The old product match is what mis-priced INV-1012 (same pad kit at 83
+    // and 125 — it always took sort_order 0). It must be gone, not merely
+    // supplemented, or the wrong price could still win.
+    expect(/ORDER BY sort_order LIMIT 1/i.test(src), 'the product-match LATERAL is gone').toBe(false);
+    expect(src, 'carries the link onto the credit note line').toMatch(/invoice_item_id/);
+  });
+
+  it('phase73: all three guards are present', async () => {
+    if (!(await applied())) { console.warn('⚠ R2b not applied yet'); return; }
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='confirm_sales_return' AND pronamespace='public'::regnamespace`);
+    const src = def[0]!.src;
+    expect(src, 'G1 refuses a line with no source line')
+      .toMatch(/v_item\.invoice_item_id IS NULL/);
+    expect(src, 'G2 refuses a line from a different invoice')
+      .toMatch(/v_item\.inv_invoice_id IS DISTINCT FROM v_sr\.invoice_id/);
+    expect(src, 'G3 refuses over-return')
+      .toMatch(/v_item\.qty_returned > COALESCE\(v_item\.qty_returnable, 0\)/);
+  });
+
+  it('phase73: confirm_credit_note guards over-return independently', async () => {
+    if (!(await applied())) { console.warn('⚠ R2b not applied yet'); return; }
+    // A credit note can be raised directly, never passing through a sales
+    // return, so the guard must exist here too — and must only bind lines that
+    // name a source line, so a standalone goodwill credit still works.
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='confirm_credit_note' AND pronamespace='public'::regnamespace`);
+    const src = def[0]!.src;
+    expect(src, 'reads the returnable view').toMatch(/v_invoice_line_returnable/);
+    expect(src, 'only binds linked lines').toMatch(/cni\.invoice_item_id IS NOT NULL/);
+    expect(src, 'refuses above returnable').toMatch(/v_over\.quantity > COALESCE\(v_over\.qty_returnable, 0\)/);
+  });
+
+  it('phase73: DOUBLE ENTRY — neither RPC changed how it posts', async () => {
+    if (!(await applied())) { console.warn('⚠ R2b not applied yet'); return; }
+    // confirm_sales_return posts nothing at all (it builds a draft credit note;
+    // the credit note does the accounting). confirm_credit_note gained only a
+    // RAISE. Verified byte-identical by diff at build time — this is the
+    // standing canary. Change either number deliberately, never to go green.
+    const expected: Record<string, number> = {
+      confirm_sales_return: 0,
+      confirm_credit_note: 6,
+    };
+    for (const [fn, want] of Object.entries(expected)) {
+      const n = await sql<{ n: number }>(`
+        SELECT (length(pg_get_functiondef(oid))
+              - length(replace(pg_get_functiondef(oid), 'INSERT INTO public.general_ledger', '')))
+              / length('INSERT INTO public.general_ledger') AS n
+        FROM pg_proc WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+      expect(Number(n[0]?.n ?? 0), `${fn} GL leg count unchanged`).toBe(want);
+    }
+  });
+
+  it('phase73: no invoice line has been returned more than it was sold', async () => {
+    if (!(await applied())) { console.warn('⚠ R2b not applied yet'); return; }
+    // The outcome the guards exist to protect. Clean today; if this ever goes
+    // red, something posted around confirm_sales_return / confirm_credit_note.
+    const over = await sql<{ invoice_item_id: string; qty_sold: number; qty_returned: number }>(`
+      SELECT invoice_item_id, qty_sold, qty_returned
+      FROM public.v_invoice_line_returnable
+      WHERE qty_returned > qty_sold`);
+    expect(over, `over-returned invoice lines: ${JSON.stringify(over)}`).toHaveLength(0);
+  });
+
+  it('phase73: every confirmed credit-note line against an invoice names its line (warn-only)', async () => {
+    if (!(await applied())) { console.warn('⚠ R2b not applied yet'); return; }
+    // Rows created before phase72 may legitimately lack the link where the
+    // product appeared twice and the backfill refused to guess. Warn so they
+    // can be resolved by hand rather than blocking every commit.
+    const unlinked = await sql<{ credit_note_number: string; product_id: string }>(`
+      SELECT cn.credit_note_number, cni.product_id::text
+      FROM public.credit_note_items cni
+      JOIN public.credit_notes cn ON cn.id = cni.credit_note_id
+      WHERE cn.status = 'confirmed'
+        AND cn.linked_invoice_id IS NOT NULL
+        AND cni.product_id IS NOT NULL
+        AND cni.invoice_item_id IS NULL`);
+    if (unlinked.length) {
+      console.warn('⚠ [R2b] confirmed credit-note lines with no invoice line — returned-to-date' +
+                   ' cannot count them, so those invoice lines look more returnable than they are:',
+                   JSON.stringify(unlinked).slice(0, 400));
+    }
+    expect(true).toBe(true); // observed, not blocking (legacy tenant data)
+  });
+});

@@ -5427,7 +5427,11 @@ export function createSupabaseAdapter(
         const { data: sr, error: hErr } = await client.from('sales_returns').insert(row).select().single();
         assertNoError(hErr, 'salesReturns.create header');
         const itemsWithId = items.map(it => ({ ...it, sales_return_id: sr!.id }));
-        const { error: iErr } = await client.from('sales_return_items').insert(itemsWithId);
+        // R2b — invoice_item_id is a phase-72 column; the generated database.ts
+        // predates it, and supabase-js RejectExcessProperties refuses unknown
+        // keys. Same cast pattern used for the other post-generation columns.
+        const { error: iErr } = await client.from('sales_return_items')
+          .insert(itemsWithId as Database['public']['Tables']['sales_return_items']['Insert'][]);
         assertNoError(iErr, 'salesReturns.create items');
         return sr as SalesReturnRow;
       },
@@ -5443,6 +5447,15 @@ export function createSupabaseAdapter(
       async reopen(id) {
         const { error } = await rpcAny('reopen_sales_return', { p_sales_return_id: id });
         assertNoError(error as Error | null, 'salesReturns.reopen');
+      },
+      // R2a — what is still returnable on each line of an invoice. Reads the
+      // view rather than recomputing, so the UI and the confirm-time guard can
+      // never disagree about what is left.
+      async getReturnableLines(invoice_id: string): Promise<import('./adapter').ReturnableLine[]> {
+        const { data, error } = await (client.from('v_invoice_line_returnable' as any) as any)
+          .select('*').eq('invoice_id', invoice_id);
+        assertNoError(error as Error | null, 'salesReturns.getReturnableLines');
+        return (data ?? []) as import('./adapter').ReturnableLine[];
       },
       async getNextNumber(company_id): Promise<string> {
         const { data, error } = await client.rpc('get_next_document_number', {

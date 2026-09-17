@@ -1346,6 +1346,8 @@
     "date": "Date"
   },
   "returns": {
+    "returnable": "Returnable",
+    "use_import": "Use \"Import lines\" to pull the returnable lines from the invoice.",
     "sales_returns_title": "Sales Returns",
     "sales_returns_desc": "Record goods returned by customers.",
     "credit_notes_title": "Credit Notes",
