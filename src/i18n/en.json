@@ -4,6 +4,25 @@
     "tagline": "Auto Parts ERP"
   },
   "common": {
+    "apply": "Apply",
+    "clear": "Clear",
+    "default": "Default",
+    "customer": "Customer",
+    "description": "Description",
+    "discount": "Discount",
+    "notes": "Notes",
+    "qty": "Qty",
+    "reopen_warn": "Reopening reverses this document’s posting so it can be edited. Continue?",
+    "saving": "Saving…",
+    "select": "Select",
+    "subtotal": "Subtotal",
+    "supplier": "Supplier",
+    "tax": "Tax",
+    "unit_cost": "Unit cost",
+    "unit_price": "Unit price",
+    "void": "Void",
+    "void_confirm": "Void this document? Its posting will be reversed. This cannot be undone.",
+    "void_reason": "Reason for voiding",
     "save": "Save",
     "cancel": "Cancel",
     "done": "Done",
@@ -275,6 +294,9 @@
       "country": "Country"
     },
     "warehouses": {
+      "add": "Add warehouse",
+      "edit": "Edit warehouse",
+      "set_default": "Set as default",
       "title": "Warehouses",
       "singular": "Warehouse",
       "code": "Code",
@@ -289,6 +311,8 @@
       "cannot_delete_default": "Cannot delete the default warehouse."
     },
     "units": {
+      "add": "Add unit",
+      "edit": "Edit unit",
       "title": "Units of Measure",
       "singular": "Unit",
       "code": "Code",
@@ -297,6 +321,12 @@
       "empty": "No units yet."
     },
     "price_levels": {
+      "add": "Add price level",
+      "edit": "Edit price level",
+      "description": "Pricing tiers applied to customers — Retail, Wholesale, Trade.",
+      "markup": "Markup %",
+      "markup_hint": "Percentage added to the base selling price.",
+      "set_default": "Set as default",
       "title": "Price Levels",
       "singular": "Price Level",
       "name": "Name (English)",
@@ -456,6 +486,16 @@
     }
   },
   "products": {
+    "back": "Back",
+    "code": "Code",
+    "all_models": "All models",
+    "compatibility": "Compatibility",
+    "last_price": "Last price",
+    "replacement_hint": "Comma-separated part numbers this item can replace.",
+    "save_first": "Save the product first.",
+    "supplier_code": "Supplier code",
+    "vehicle_make": "Make",
+    "vehicle_model": "Model",
     "title": "Products",
     "singular": "Product",
     "sku": "SKU",
@@ -566,6 +606,7 @@
     "edit": "Edit Contact"
   },
   "accounting": {
+    "search_account": "Search account…",
     "party": "Party",
     "party_required": "Choose a party…",
     "party_warning": "Lines on {{accounts}} have no party. The account will move but the customer or supplier balance will not — they will disagree permanently. Set a party unless this is a deliberate aggregate entry.",
@@ -736,6 +777,7 @@
     "tr_reopen_success_body": "The tax period has been reopened and unlocked."
   },
   "reports": {
+    "date": "Date",
     "trial_balance": "Trial Balance",
     "as_of_date": "As of date",
     "as_of": "As of",
@@ -1169,6 +1211,8 @@
     "error_no_items": "At least one line item with quantity > 0 is required."
   },
   "purchasing": {
+    "bill": "Bill",
+    "type": "Type",
     "nav_title": "Purchasing",
     "po_title": "Purchase Orders",
     "grn_title": "Goods Receipts",
@@ -1346,6 +1390,9 @@
     "date": "Date"
   },
   "returns": {
+    "confirm": "Confirm return",
+    "confirm_post_warn": "Confirming creates and posts a credit note: the customer is credited, and stock marked resellable comes back into inventory. Continue?",
+    "void_warn": "Voiding reverses the credit note and the restock. Continue?",
     "returnable": "Returnable",
     "use_import": "Use \"Import lines\" to pull the returnable lines from the invoice.",
     "sales_returns_title": "Sales Returns",

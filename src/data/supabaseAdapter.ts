@@ -1886,6 +1886,31 @@ export function createSupabaseAdapter(
           .delete().eq('sale_invoice_id', id);
         assertNoError(dcqErr, 'invoices.update clear deferred_cogs_queue');
 
+        // R1 — phase72 put ON DELETE RESTRICT on the return links, so replacing
+        // items on an invoice that has been returned against is refused by the
+        // database. That is the correct outcome (you should not re-price a line
+        // someone has already sent back) but it surfaces as an opaque foreign-key
+        // error. Check first and say what actually happened.
+        //
+        // NOTE: do NOT "fix" this by clearing the links the way deferred_cogs_queue
+        // is cleared above. That queue is rebuilt by edit_invoice; these links are
+        // not, and nulling them would reset returned-to-date to zero and re-open
+        // unlimited over-return.
+        const { data: returnedLines } = await (client.from('credit_note_items') as any)
+          .select('invoice_item_id, credit_notes!inner(credit_note_number, status)')
+          .in('invoice_item_id',
+              (await client.from('invoice_items').select('id').eq('invoice_id', id))
+                .data?.map(r => r.id) ?? ['00000000-0000-0000-0000-000000000000'])
+          .eq('credit_notes.status', 'confirmed');
+        if (returnedLines && returnedLines.length > 0) {
+          const notes = [...new Set(returnedLines.map((r: { credit_notes?: { credit_note_number?: string } }) =>
+            r.credit_notes?.credit_note_number).filter(Boolean))];
+          throw new SupabaseDataError(
+            `This invoice has already been returned against${notes.length ? ` (${notes.join(', ')})` : ''}, ` +
+            `so its lines can no longer be edited. Void the credit note first if the return was wrong.`,
+          );
+        }
+
         // 3. Replace items
         const { error: dErr } = await client.from('invoice_items').delete().eq('invoice_id', id);
         assertNoError(dErr, 'invoices.update delete items');

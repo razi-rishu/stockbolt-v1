@@ -385,10 +385,13 @@ export default function SalesReturnEditorPage() {
           <tbody className="divide-y divide-border-subtle">
             {lines.map((l, i) => (
               <tr key={i}>
-                <td className="px-3 py-2">
-                  <input value={l.description} onChange={e => updateLine(i, 'description', e.target.value)}
-                    disabled={!isDraft} placeholder={t('common.description')}
-                    className="w-full border border-border-strong rounded px-2 py-1 text-sm" />
+                {/* R1 — read-only. sales_return_items has no description column,
+                    so anything typed here was silently discarded on save, and
+                    confirm_sales_return uses the INVOICE line's description for
+                    the credit note regardless. Showing it as editable was a lie.
+                    Free-text commentary belongs in the return's Notes field. */}
+                <td className="px-3 py-2 text-ink-secondary">
+                  {l.description || <span className="text-ink-tertiary">—</span>}
                 </td>
                 <td className="px-3 py-2 text-right text-xs text-ink-secondary">
                   {l.qty_returnable}
