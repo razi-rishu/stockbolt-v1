@@ -3884,3 +3884,180 @@ describe('R3a — purchase returns (soft until applied)', () => {
     expect(orphan, `confirmed purchase returns with no debit note: ${JSON.stringify(orphan)}`).toHaveLength(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R4a — damaged returns are written off, not left in COGS
+//
+// A damaged return credited the customer in full but did nothing at all to the
+// cost, so 5100 COGS kept cost with no matching revenue. Net profit was right,
+// which is why no invariant caught it for so long; gross margin was not.
+//
+// Phase 76 posts Dr 6700 Inventory Loss / Cr 5100 COGS for the damaged cost,
+// from an AFTER UPDATE OF status trigger — so that nothing which already posts
+// had to be reopened. The last two tests here are the ones that keep that
+// promise honest, and they run whether or not the migration is applied.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('R4a — damaged return write-off (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_trigger
+       WHERE tgname = 'sales_returns_writeoff' AND NOT tgisinternal`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase76: the hook and both functions exist', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ R4a not applied yet — run supabase/migrations/20260917000010_phase76_r4a_damaged_return_writeoff.sql');
+      return;
+    }
+    const fns = await sql<{ proname: string }>(`
+      SELECT proname FROM pg_proc
+       WHERE pronamespace = 'public'::regnamespace
+         AND proname IN ('post_sales_return_writeoff','reverse_sales_return_writeoff','_tg_sales_return_writeoff')
+       ORDER BY 1`);
+    expect(fns.map(f => f.proname), 'all three functions present')
+      .toEqual(['_tg_sales_return_writeoff', 'post_sales_return_writeoff', 'reverse_sales_return_writeoff']);
+
+    // AFTER UPDATE only, and only when the status actually moved: an
+    // updated_at touch must never post anything.
+    const tg = await sql<{ def: string }>(`
+      SELECT pg_get_triggerdef(oid) AS def FROM pg_trigger
+       WHERE tgname = 'sales_returns_writeoff' AND NOT tgisinternal`);
+    expect(tg[0]!.def, 'fires after, on status only').toMatch(/AFTER UPDATE OF status ON public\.sales_returns/);
+    expect(tg[0]!.def, 'only when status actually changed').toMatch(/WHEN \(old\.status IS DISTINCT FROM new\.status\)/i);
+  });
+
+  it('phase76: 6700 Inventory Loss is present and active for every company', async () => {
+    if (!(await applied())) { console.warn('⚠ R4a not applied yet'); return; }
+    // post_journal_entry refuses an inactive account, so a missing 6700 would
+    // turn into a failed confirm rather than a wrong number — but it would
+    // still be a failed confirm.
+    const missing = await sql<{ name: string }>(`
+      SELECT c.name FROM public.companies c
+       WHERE NOT EXISTS (
+         SELECT 1 FROM public.chart_of_accounts a
+          WHERE a.company_id = c.id AND a.code = '6700' AND a.is_active)`);
+    expect(missing, `companies with no active 6700: ${JSON.stringify(missing)}`).toHaveLength(0);
+  });
+
+  it('phase76: DOUBLE ENTRY — every write-off is two legs, balanced, 6700 against 5100', async () => {
+    if (!(await applied())) { console.warn('⚠ R4a not applied yet'); return; }
+    // Covers the reversal too: swapping debit and credit keeps it two legs,
+    // balanced, and still only those two accounts.
+    const bad = await sql<{ entry_number: string; td: number; tc: number; legs: number }>(`
+      SELECT je.entry_number,
+             SUM(gl.debit)  AS td,
+             SUM(gl.credit) AS tc,
+             count(*)::int  AS legs
+      FROM public.journal_entries je
+      JOIN public.general_ledger gl ON gl.journal_entry_id = je.id
+      WHERE je.source_type = 'sales_return_writeoff'
+      GROUP BY je.entry_number
+      HAVING SUM(gl.debit) <> SUM(gl.credit)
+          OR count(*) <> 2
+          OR SUM(CASE WHEN gl.account_code NOT IN ('6700','5100') THEN 1 ELSE 0 END) > 0`);
+    expect(bad, `malformed write-off entries: ${JSON.stringify(bad)}`).toHaveLength(0);
+  });
+
+  it('phase76: the posted amount equals the damaged cost of its return', async () => {
+    if (!(await applied())) { console.warn('⚠ R4a not applied yet'); return; }
+    const drift = await sql<{ return_number: string; posted: number; expected: number }>(`
+      SELECT sr.return_number, je.total_debit AS posted,
+             ROUND(COALESCE(SUM(sri.qty_returned * COALESCE(sri.unit_cost, 0)), 0), 2) AS expected
+      FROM public.journal_entries je
+      JOIN public.sales_returns sr ON sr.id = je.source_id
+      LEFT JOIN public.sales_return_items sri
+             ON sri.sales_return_id = sr.id AND sri.condition = 'damaged'
+      WHERE je.source_type    = 'sales_return_writeoff'
+        AND je.reversal_of_id IS NULL
+        AND je.reversed_by_id IS NULL
+      GROUP BY sr.return_number, je.total_debit
+      HAVING je.total_debit <> ROUND(COALESCE(SUM(sri.qty_returned * COALESCE(sri.unit_cost, 0)), 0), 2)`);
+    expect(drift, `write-offs that do not match their damaged cost: ${JSON.stringify(drift)}`).toHaveLength(0);
+  });
+
+  it('phase76: a live write-off only ever belongs to a confirmed return', async () => {
+    if (!(await applied())) { console.warn('⚠ R4a not applied yet'); return; }
+    // Void and reopen both reverse it. An unreversed write-off against a void
+    // or draft return would mean an expense with no document behind it.
+    const orphan = await sql<{ return_number: string; status: string }>(`
+      SELECT sr.return_number, sr.status
+      FROM public.journal_entries je
+      JOIN public.sales_returns sr ON sr.id = je.source_id
+      WHERE je.source_type    = 'sales_return_writeoff'
+        AND je.reversal_of_id IS NULL
+        AND je.reversed_by_id IS NULL
+        AND sr.status <> 'confirmed'`);
+    expect(orphan, `live write-offs on non-confirmed returns: ${JSON.stringify(orphan)}`).toHaveLength(0);
+  });
+
+  it('phase76: the write-off moves no goods', async () => {
+    if (!(await applied())) { console.warn('⚠ R4a not applied yet'); return; }
+    // Damaged stock is not back on the shelf. This is a reclassification
+    // between two expense accounts and nothing else — if it ever starts
+    // touching 1300 or the stock ledger, inventory would be overstated by
+    // the value of scrap.
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname = 'post_sales_return_writeoff' AND pronamespace = 'public'::regnamespace`);
+    const code = def[0]!.src.split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+    expect(/insert\s+into\s+public\.stock_ledger/i.test(code), 'writes no stock_ledger').toBe(false);
+    expect(/insert\s+into\s+public\.general_ledger/i.test(code), 'writes no general_ledger of its own').toBe(false);
+    expect(/'1300'/.test(code), 'never names inventory').toBe(false);
+    expect(code, 'composes the one posting primitive').toMatch(/public\.post_journal_entry/);
+  });
+
+  it('phase76: the reversal is dated at the original entry, never today', async () => {
+    if (!(await applied())) { console.warn('⚠ R4a not applied yet'); return; }
+    // Phase 43. A reversal posted at CURRENT_DATE lands in the wrong period
+    // and silently moves profit between months.
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname = 'reverse_sales_return_writeoff' AND pronamespace = 'public'::regnamespace`);
+    const code = def[0]!.src.split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+    expect(/CURRENT_DATE/i.test(code), 'does not date the reversal today').toBe(false);
+    expect(/public\.reverse_journal_entry/i.test(code), 'does not use the CURRENT_DATE reverser').toBe(false);
+    expect(code, 'mirrors at the original date').toMatch(/v_je\.date/);
+    expect(code, 'swaps the legs').toMatch(/v_gl\.credit,\s*v_gl\.debit/);
+
+    const wrongDate = await sql<{ entry_number: string }>(`
+      SELECT rev.entry_number
+      FROM public.journal_entries rev
+      JOIN public.journal_entries orig ON orig.id = rev.reversal_of_id
+      WHERE rev.source_type = 'sales_return_writeoff' AND rev.date <> orig.date`);
+    expect(wrongDate, `reversals not at the original date: ${JSON.stringify(wrongDate)}`).toHaveLength(0);
+  });
+
+  // ── The two that hold whether or not the migration is applied ────────────
+
+  it('phase76: confirm_credit_note stays ignorant of write-offs', async () => {
+    // It only ever sees cost_at_sale, never `condition`. A credit note raised
+    // directly — goodwill, a price adjustment — has no condition to read, so
+    // if the write-off ever migrated into this engine it would fire on
+    // documents that have no damaged goods behind them at all.
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname = 'confirm_credit_note' AND pronamespace = 'public'::regnamespace`);
+    const code = def[0]!.src.split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+    expect(/'6700'/.test(code), 'confirm_credit_note never posts 6700').toBe(false);
+    expect(/sales_return_writeoff/.test(code), 'confirm_credit_note knows nothing of write-offs').toBe(false);
+    expect(/\bcondition\b/.test(code), 'confirm_credit_note never reads condition').toBe(false);
+  });
+
+  it('phase76: the three sales-return RPCs were not reopened to do this', async () => {
+    // The whole reason for the trigger. If a later change moves the write-off
+    // into these functions, it has to be reconstructed from a migration file
+    // rather than from what is live — and one of the three will be forgotten,
+    // which is how an expense gets posted and never reversed.
+    for (const fn of ['confirm_sales_return', 'void_sales_return', 'reopen_sales_return']) {
+      const def = await sql<{ src: string }>(
+        `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+          WHERE proname = '${fn}' AND pronamespace = 'public'::regnamespace`);
+      expect(def.length, `${fn} exists`).toBe(1);
+      const code = def[0]!.src.split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+      expect(/'6700'/.test(code), `${fn} does not post 6700 itself`).toBe(false);
+      expect(/post_sales_return_writeoff|reverse_sales_return_writeoff/.test(code),
+        `${fn} does not call the write-off directly`).toBe(false);
+    }
+  });
+});
