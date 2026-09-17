@@ -2921,3 +2921,79 @@ describe('AC-V2b — runnable subledger repair (soft until applied)', () => {
     expect(/insert\s+into\s+public\.general_ledger/i.test(src), 'writes no general_ledger directly').toBe(false);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// S1 / phase67 — advance availability comes from the LEDGER (soft until applied)
+// ─────────────────────────────────────────────────────────────────────────
+// apply_advance / apply_vendor_advance sized the remaining advance from the
+// payment row alone (amount - already_applied). That is blind to refunds,
+// opening-balance credits, PDC advances and manual JEs that move the same
+// contact's advance account — so a refunded advance stayed fully applicable
+// and could drive a contact's 2400 to a debit balance.
+//
+// The fix bounds it by the contact's real ledger balance as well. It can only
+// ever REDUCE what is applicable, so it cannot break a valid application.
+describe('S1 — ledger-derived advance availability (soft until applied)', () => {
+  const FNS = ['apply_advance', 'apply_vendor_advance'];
+
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_proc
+       WHERE proname='apply_advance' AND pronamespace='public'::regnamespace
+         AND position('v_ledger_avail' in pg_get_functiondef(oid)) > 0`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase67: availability is bounded by the contact ledger balance', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ S1 not applied yet — run supabase/migrations/20260917000001_phase67_s1_ledger_derived_advance_availability.sql');
+      return;
+    }
+    for (const fn of FNS) {
+      const def = await sql<{ src: string }>(
+        `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+          WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+      expect(def.length, `${fn} exists`).toBe(1);
+      const src = def[0]!.src;
+      expect(src, `${fn} reads the contact ledger`).toMatch(/v_ledger_avail/);
+      expect(src, `${fn} keeps BOTH bounds via LEAST`).toMatch(/v_available\s*:=\s*LEAST\(/);
+      expect(src, `${fn} scopes the ledger read to the payment's contact`)
+        .toMatch(/gl\.contact_id\s*=\s*v_pmt\.contact_id/);
+    }
+    // Correct sign per account type, matching contacts.getAdvanceBalance.
+    const ca = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc WHERE proname='apply_advance' AND pronamespace='public'::regnamespace`);
+    expect(ca[0]!.src, '2400 is a liability — credit less debit').toMatch(/gl\.credit - gl\.debit/);
+    const va = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc WHERE proname='apply_vendor_advance' AND pronamespace='public'::regnamespace`);
+    expect(va[0]!.src, '1400 is an asset — debit less credit').toMatch(/gl\.debit - gl\.credit/);
+  });
+
+  it('phase67: DOUBLE ENTRY — each advance application still posts exactly two legs', async () => {
+    if (!(await applied())) { console.warn('⚠ S1 not applied yet'); return; }
+    // S1 changed a guard, never a posting. If either function ever grows or
+    // loses a leg, the entry stops being a clean Dr/Cr pair and this fails.
+    for (const fn of FNS) {
+      const n = await sql<{ n: number }>(`
+        SELECT (length(pg_get_functiondef(oid))
+              - length(replace(pg_get_functiondef(oid), 'INSERT INTO public.general_ledger', '')))
+              / length('INSERT INTO public.general_ledger') AS n
+        FROM pg_proc WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+      expect(Number(n[0]?.n ?? 0), `${fn} posts exactly 2 GL legs`).toBe(2);
+    }
+  });
+
+  it('DOUBLE ENTRY — je_must_balance is still a deferred constraint trigger', async () => {
+    // The structural guarantee that an unbalanced entry can never be committed,
+    // regardless of which RPC wrote it. Asserted here so it cannot be dropped
+    // or downgraded to a non-deferred / non-constraint trigger unnoticed.
+    const trg = await sql<{ def: string }>(`
+      SELECT pg_get_triggerdef(oid) AS def FROM pg_trigger
+       WHERE tgname='je_must_balance' AND NOT tgisinternal`);
+    expect(trg.length, 'je_must_balance exists').toBe(1);
+    const def = trg[0]!.def;
+    expect(def, 'is a CONSTRAINT trigger').toMatch(/CONSTRAINT TRIGGER/i);
+    expect(def, 'is DEFERRABLE so it checks at COMMIT').toMatch(/DEFERRABLE/i);
+    expect(def, 'guards general_ledger').toMatch(/ON public\.general_ledger/i);
+  });
+});
