@@ -3443,3 +3443,118 @@ describe('Phase 71 — view RLS (soft until applied)', () => {
     expect(bad, `tables with RLS disabled: ${JSON.stringify(bad)}`).toHaveLength(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// R2a / phase72 — line-level linkage for returns (soft until applied)
+// ─────────────────────────────────────────────────────────────────────────
+// Returns were linked at the header only, so a return line could not say which
+// invoice or bill line it came from. Three bugs followed: the wrong price when
+// a product repeats on one document (live on Pro_Parts INV-1012, same pad kit
+// at 83 and 125), unlimited over-return because nothing totalled prior
+// returns, and a silent zero credit when the product was never on the invoice.
+//
+// This increment only adds the link and the arithmetic. R2b/R2c wire the
+// guards into the posting RPCs.
+describe('R2a — return line linkage (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM information_schema.columns
+       WHERE table_schema='public' AND table_name='sales_return_items'
+         AND column_name='invoice_item_id'`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase72: the three links exist, are RESTRICT, and are indexed', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ R2a not applied yet — run supabase/migrations/20260917000006_phase72_r2a_return_line_linkage.sql');
+      return;
+    }
+    const cols = await sql<{ table_name: string; column_name: string }>(`
+      SELECT table_name, column_name FROM information_schema.columns
+       WHERE table_schema='public'
+         AND (   (table_name='sales_return_items' AND column_name='invoice_item_id')
+              OR (table_name='credit_note_items'  AND column_name='invoice_item_id')
+              OR (table_name='debit_note_items'   AND column_name='vendor_bill_item_id'))`);
+    expect(cols.length, 'all three linkage columns present').toBe(3);
+
+    // RESTRICT, not SET NULL: nulling a link would silently reset returned-to-
+    // date to zero and re-open unlimited over-return. Not CASCADE either —
+    // that would delete the return line itself.
+    const fks = await sql<{ conrelid: string; def: string }>(`
+      SELECT conrelid::regclass::text AS conrelid, pg_get_constraintdef(oid) AS def
+      FROM pg_constraint
+      WHERE contype='f'
+        AND conrelid IN ('public.sales_return_items'::regclass,
+                         'public.credit_note_items'::regclass,
+                         'public.debit_note_items'::regclass)
+        AND (pg_get_constraintdef(oid) ILIKE '%invoice_items(id)%'
+          OR pg_get_constraintdef(oid) ILIKE '%vendor_bill_items(id)%')`);
+    expect(fks.length, 'three foreign keys').toBe(3);
+    for (const fk of fks) {
+      expect(fk.def, `${fk.conrelid} link is ON DELETE RESTRICT`).toMatch(/ON DELETE RESTRICT/i);
+    }
+
+    const idx = await sql<{ indexname: string }>(`
+      SELECT indexname FROM pg_indexes WHERE schemaname='public'
+       AND indexname IN ('sales_return_items_invoice_item_idx',
+                         'credit_note_items_invoice_item_idx',
+                         'debit_note_items_bill_item_idx')`);
+    expect(idx.length, 'all three indexes present').toBe(3);
+  });
+
+  it('phase72: the returnable views exist and do NOT bypass RLS', async () => {
+    if (!(await applied())) { console.warn('⚠ R2a not applied yet'); return; }
+    // Same trap phase71 just closed on gl_active / stock_active: a view without
+    // security_invoker runs as its owner and exposes every tenant.
+    const views = await sql<{ relname: string; security_invoker: string; anon_can_read: boolean }>(`
+      SELECT c.relname,
+             COALESCE((SELECT option_value FROM pg_options_to_table(c.reloptions)
+                        WHERE option_name='security_invoker'), 'false') AS security_invoker,
+             has_table_privilege('anon', c.oid, 'SELECT') AS anon_can_read
+      FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+      WHERE n.nspname='public'
+        AND c.relname IN ('v_invoice_line_returnable','v_bill_line_returnable')
+      ORDER BY 1`);
+    expect(views.length, 'both returnable views exist').toBe(2);
+    for (const v of views) {
+      expect(v.security_invoker, `${v.relname} sets security_invoker`).toBe('true');
+      expect(v.anon_can_read, `${v.relname} not readable by anon`).toBe(false);
+    }
+  });
+
+  it('phase72: the backfill left nothing resolvable behind', async () => {
+    if (!(await applied())) { console.warn('⚠ R2a not applied yet'); return; }
+    // A row is only allowed to stay NULL when the source document genuinely has
+    // more than one candidate line — that ambiguity is what a human must settle.
+    // Anything with exactly one candidate should have been linked.
+    const missed = await sql<{ id: string }>(`
+      SELECT sri.id FROM public.sales_return_items sri
+      WHERE sri.invoice_item_id IS NULL AND sri.product_id IS NOT NULL
+        AND (SELECT count(*) FROM public.invoice_items ii
+             JOIN public.sales_returns sr ON sr.id = sri.sales_return_id
+             WHERE ii.invoice_id = sr.invoice_id AND ii.product_id = sri.product_id) = 1`);
+    expect(missed, `sales_return_items resolvable but left unlinked: ${JSON.stringify(missed)}`).toHaveLength(0);
+
+    const missedCn = await sql<{ id: string }>(`
+      SELECT cni.id FROM public.credit_note_items cni
+      WHERE cni.invoice_item_id IS NULL AND cni.product_id IS NOT NULL
+        AND (SELECT count(*) FROM public.invoice_items ii
+             JOIN public.credit_notes cn ON cn.id = cni.credit_note_id
+             WHERE ii.invoice_id = cn.linked_invoice_id AND ii.product_id = cni.product_id) = 1`);
+    expect(missedCn, `credit_note_items resolvable but left unlinked: ${JSON.stringify(missedCn)}`).toHaveLength(0);
+  });
+
+  it('phase72: returned-to-date never exceeds what was sold (warn-only)', async () => {
+    if (!(await applied())) { console.warn('⚠ R2a not applied yet'); return; }
+    // R2a only measures; R2b enforces. Until then this reports any line already
+    // over-returned under the old unguarded behaviour.
+    const over = await sql<{ invoice_item_id: string; qty_sold: number; qty_returned: number }>(`
+      SELECT invoice_item_id, qty_sold, qty_returned
+      FROM public.v_invoice_line_returnable
+      WHERE qty_returned > qty_sold`);
+    if (over.length) {
+      console.warn('⚠ [R2a] invoice lines already over-returned:', JSON.stringify(over).slice(0, 400));
+    }
+    expect(true).toBe(true); // observed, not blocking (tenant data)
+  });
+});
