@@ -3285,3 +3285,91 @@ describe('S3 — vendor refund + party guards (soft until applied)', () => {
     expect(true).toBe(true); // observed, not blocking (tenant data)
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// S6 / phase70 — B3: control accounts must name a party (soft until applied)
+// ─────────────────────────────────────────────────────────────────────────
+// 1200, 2100, 2400 and 1400 are control totals for sub-ledgers kept per
+// customer or supplier. A line on one of them with no contact moves the
+// control account while nobody's sub-ledger moves, and the two disagree from
+// then on.
+//
+// Nothing else catches it: the entry balances, je_must_balance is satisfied,
+// the trial balance nets to zero, and B1/B2 compare TOTALS which shift
+// together. Only attribution coverage exposes it — and verify_invariants,
+// though it referenced 2400 and 1400, was not contact-aware at all.
+describe('S6 — control-account attribution (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_proc
+       WHERE proname='verify_invariants' AND pronamespace='public'::regnamespace
+         AND position('v_unattributed' in pg_get_functiondef(oid)) > 0`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase70: verify_invariants reports B3 and is contact-aware', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ S6 not applied yet — run supabase/migrations/20260917000004_phase70_s6_control_account_attribution.sql');
+      return;
+    }
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='verify_invariants' AND pronamespace='public'::regnamespace`);
+    const src = def[0]!.src;
+    expect(src, 'declares the attribution counter').toMatch(/v_unattributed/);
+    expect(src, 'is contact-aware at last').toMatch(/contact_id IS NULL/);
+    expect(src, 'covers all four control accounts')
+      .toMatch(/account_code IN \('1200', '2100', '2400', '1400'\)/);
+    expect(src, 'reports it as B3').toMatch(/'invariant','B3'/);
+  });
+
+  it('phase70: no existing invariant was dropped', async () => {
+    if (!(await applied())) { console.warn('⚠ S6 not applied yet'); return; }
+    // phase70 only appends. If a future edit to this large function quietly
+    // loses one of the checks, that is a silent reduction in coverage.
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='verify_invariants' AND pronamespace='public'::regnamespace`);
+    const src = def[0]!.src;
+    for (const code of ['A1', 'A4', 'B1', 'B2', 'E1', 'D4', 'G2',
+                        'ADV_CUST', 'ADV_VEND', 'JE_BAL']) {
+      expect(src, `invariant ${code} still reported`).toContain(`'invariant','${code}'`);
+    }
+  });
+
+  it('phase70: B3 passes for every company (warn-only)', async () => {
+    // Warn, not fail — deliberately consistent with the editor. S5 lets an
+    // operator post an unattributed control-account line after a warning,
+    // because an aggregate opening entry legitimately has no single party.
+    // Hard-failing here would block every commit on a choice the UI permits.
+    const bad = await sql<{ company: string; account_code: string; lines: number }>(`
+      SELECT c.name AS company, gl.account_code, count(*)::int AS lines
+      FROM public.general_ledger gl
+      JOIN public.companies c ON c.id = gl.company_id
+      WHERE gl.account_code IN ('1200','2100','2400','1400')
+        AND gl.contact_id IS NULL
+      GROUP BY 1,2 ORDER BY 1,2`);
+    if (bad.length) {
+      console.warn(
+        '⚠ [phase70/B3] control-account lines with no party — the account has moved' +
+        ' but no customer or supplier balance did, so the two now disagree:',
+        JSON.stringify(bad).slice(0, 600));
+    }
+    expect(true).toBe(true); // observed, not blocking (tenant data)
+  });
+
+  it('phase70: the refund engines always attribute their control-account legs', async () => {
+    // The flip side of the warn-only stance above: an operator may choose to
+    // leave a party off, but an ENGINE never may. Every refund leg on 2400 or
+    // 1400 must name the contact, or the feature would be manufacturing the
+    // very drift B3 exists to detect.
+    const bad = await sql<{ entry_number: string; account_code: string }>(`
+      SELECT je.entry_number, gl.account_code
+      FROM public.journal_entries je
+      JOIN public.general_ledger gl ON gl.journal_entry_id = je.id
+      WHERE je.source_type IN ('customer_refund','vendor_refund')
+        AND gl.account_code IN ('2400','1400')
+        AND gl.contact_id IS NULL`);
+    expect(bad, `refund legs missing a contact: ${JSON.stringify(bad)}`).toHaveLength(0);
+  });
+});
