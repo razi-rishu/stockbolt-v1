@@ -13,7 +13,20 @@ import { BackButton } from '@/ui/back-button';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { buildCoaTreeOptions, coaOptionLabel } from '@/core/seeds/coa-tree';
-import type { JELine, JournalEntryRow, GeneralLedgerRow, CoaRow } from '@/data/adapter';
+import type { JELine, JournalEntryRow, GeneralLedgerRow, CoaRow, ContactRow } from '@/data/adapter';
+
+/**
+ * S5 — control accounts are per-party by nature. A line hitting one of these
+ * without a party still balances and still passes every invariant, but it
+ * moves the control account while the customer's or supplier's own sub-ledger
+ * stays put — the two then disagree permanently and nothing detects it.
+ */
+const CONTROL_ACCOUNTS: Record<string, string> = {
+  '1200': 'Accounts Receivable',
+  '2100': 'Accounts Payable',
+  '2400': 'Customer Advances',
+  '1400': 'Vendor Advances',
+};
 
 interface LineRow extends JELine {
   _key: number;
@@ -120,6 +133,24 @@ export default function JournalEntryEditorPage() {
   const accountOpts = buildCoaTreeOptions(coa.filter((a) => a.is_active))
     .map(({ row, depth }) => ({ value: row.code, label: coaOptionLabel(row, depth) }));
 
+  // S5 — the party for a line. general_ledger.contact_id and the posting
+  // primitive have always supported this; only the editor never offered it.
+  const { data: contacts = [] } = useQuery<ContactRow[]>({
+    queryKey: ['contacts', company_id],
+    queryFn: () => getAdapter().contacts.list(company_id!),
+    enabled: !!company_id,
+  });
+  const contactOpts = contacts
+    .filter((c) => c.is_active !== false)
+    .map((c) => ({ value: c.id, label: c.name }));
+
+  // Lines on a control account that name no party. Warned about, never
+  // blocked: an aggregate opening entry is a legitimate reason to leave it
+  // blank, and refusing to post would be worse than flagging it.
+  const unattributed = lines.filter(
+    (l) => CONTROL_ACCOUNTS[l.account_code] && !l.contact_id,
+  );
+
   const totalDebit  = lines.reduce((s, l) => s + (Number(l.debit)  || 0), 0);
   const totalCredit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
   const isBalanced  = Math.abs(totalDebit - totalCredit) <= 0.01 && totalDebit > 0;
@@ -150,6 +181,9 @@ export default function JournalEntryEditorPage() {
         ...l,
         debit: Number(l.debit) || 0,
         credit: Number(l.credit) || 0,
+        // S5 — an empty string would reach the RPC as ''::UUID and fail the
+        // cast. Send the key only when a party was actually chosen.
+        contact_id: l.contact_id || undefined,
       }));
       const adapter = getAdapter();
       // Post one journal entry per scheduled date. Sequential so each gets
@@ -336,6 +370,7 @@ export default function JournalEntryEditorPage() {
               <thead>
                 <tr className="border-b border-border-subtle text-xs text-ink-tertiary">
                   <th className="pb-2 text-start font-medium">{t('accounting.code')}</th>
+                  <th className="pb-2 text-start font-medium">{t('accounting.party')}</th>
                   <th className="pb-2 text-start font-medium">{t('accounting.line_desc')}</th>
                   <th className="pb-2 text-end font-medium">{t('accounting.debit')}</th>
                   <th className="pb-2 text-end font-medium">{t('accounting.credit')}</th>
@@ -356,6 +391,23 @@ export default function JournalEntryEditorPage() {
                         onChange={(v) => updateLine(line._key, 'account_code', v)}
                         placeholder={t('accounting.search_account') || 'Search account…'}
                         panelWidth={340}
+                      />
+                    </td>
+                    {/* S5 — who this line belongs to. Required in practice on a
+                        control account, optional everywhere else. */}
+                    <td className="py-1.5 pr-2 w-56">
+                      <SearchableSelect
+                        options={contactOpts}
+                        value={line.contact_id ?? ''}
+                        onChange={(v) => updateLine(line._key, 'contact_id', v)}
+                        placeholder={
+                          CONTROL_ACCOUNTS[line.account_code]
+                            ? (t('accounting.party_required') || 'Choose a party…')
+                            : (t('accounting.optional') || 'Optional')
+                        }
+                        panelWidth={300}
+                        className={CONTROL_ACCOUNTS[line.account_code] && !line.contact_id
+                          ? 'ring-1 ring-warning-500 rounded-input' : undefined}
                       />
                     </td>
                     <td className="py-1.5 pr-2">
@@ -401,7 +453,7 @@ export default function JournalEntryEditorPage() {
               </tbody>
               <tfoot>
                 <tr className="border-t border-border-subtle">
-                  <td colSpan={2} className="pt-2 text-xs text-ink-secondary">{t('accounting.total')}</td>
+                  <td colSpan={3} className="pt-2 text-xs text-ink-secondary">{t('accounting.total')}</td>
                   <td className={`pt-2 text-end font-mono text-sm font-semibold ${isBalanced ? 'text-green-600' : 'text-red-500'}`}>
                     {fmt(totalDebit)}
                   </td>
@@ -424,6 +476,17 @@ export default function JournalEntryEditorPage() {
 
           {!isBalanced && totalDebit > 0 && (
             <p className="text-xs text-red-500">{t('accounting.unbalanced_hint')}</p>
+          )}
+
+          {/* S5 — a warning, not a block. Posting is still allowed because an
+              aggregate opening entry legitimately has no single party; what is
+              not acceptable is doing it by accident. */}
+          {unattributed.length > 0 && (
+            <p className="text-xs text-warning-600">
+              {t('accounting.party_warning', {
+                accounts: [...new Set(unattributed.map(l => `${l.account_code} ${CONTROL_ACCOUNTS[l.account_code]}`))].join(', '),
+              })}
+            </p>
           )}
 
           {/* Recurring — one Post creates the whole schedule of entries. */}

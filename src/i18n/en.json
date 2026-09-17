@@ -566,6 +566,9 @@
     "edit": "Edit Contact"
   },
   "accounting": {
+    "party": "Party",
+    "party_required": "Choose a party…",
+    "party_warning": "Lines on {{accounts}} have no party. The account will move but the customer or supplier balance will not — they will disagree permanently. Set a party unless this is a deliberate aggregate entry.",
     "coa_title": "Chart of Accounts",
     "add_account": "Add Custom Account",
     "code": "Code",
