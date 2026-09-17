@@ -5493,6 +5493,64 @@ export function createSupabaseAdapter(
     },
 
     // ── Phase 9: Debit Notes ──────────────────────────────────────────────────
+    // ── R3 — Purchase Returns ───────────────────────────────────────────────
+    // purchase_returns is a phase-75 table, so it is absent from the generated
+    // types; `as any` on the builder is the same pattern used for every other
+    // post-generation table here.
+    purchaseReturns: {
+      async list(company_id): Promise<import('./adapter').PurchaseReturnRow[]> {
+        const { data, error } = await (client.from('purchase_returns' as any) as any)
+          .select('*').eq('company_id', company_id).order('date', { ascending: false });
+        assertNoError(error as Error | null, 'purchaseReturns.list');
+        return (data ?? []) as import('./adapter').PurchaseReturnRow[];
+      },
+      async getById(id): Promise<import('./adapter').PurchaseReturnRow | null> {
+        const { data, error } = await (client.from('purchase_returns' as any) as any)
+          .select('*').eq('id', id).single();
+        if ((error as { code?: string } | null)?.code === 'PGRST116') return null;
+        assertNoError(error as Error | null, 'purchaseReturns.getById');
+        return data as import('./adapter').PurchaseReturnRow;
+      },
+      async getItems(purchase_return_id): Promise<import('./adapter').PurchaseReturnItemRow[]> {
+        const { data, error } = await (client.from('purchase_return_items' as any) as any)
+          .select('*').eq('purchase_return_id', purchase_return_id).order('created_at');
+        assertNoError(error as Error | null, 'purchaseReturns.getItems');
+        return (data ?? []) as import('./adapter').PurchaseReturnItemRow[];
+      },
+      async create(row, items): Promise<import('./adapter').PurchaseReturnRow> {
+        const { data: pr, error: hErr } = await (client.from('purchase_returns' as any) as any)
+          .insert(row).select().single();
+        assertNoError(hErr as Error | null, 'purchaseReturns.create header');
+        const withId = items.map(it => ({ ...it, purchase_return_id: (pr as { id: string }).id }));
+        const { error: iErr } = await (client.from('purchase_return_items' as any) as any).insert(withId);
+        assertNoError(iErr as Error | null, 'purchaseReturns.create items');
+        return pr as import('./adapter').PurchaseReturnRow;
+      },
+      async confirm(id): Promise<{ debit_note_id: string; debit_note_number: string }> {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)
+          ('confirm_purchase_return', { p_purchase_return_id: id });
+        assertNoError(error as Error | null, 'purchaseReturns.confirm');
+        return data as { debit_note_id: string; debit_note_number: string };
+      },
+      async void(id, reason): Promise<void> {
+        const { error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ error: unknown }>)
+          ('void_purchase_return', { p_purchase_return_id: id, p_reason: reason ?? null });
+        assertNoError(error as Error | null, 'purchaseReturns.void');
+      },
+      async reopen(id): Promise<void> {
+        const { error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ error: unknown }>)
+          ('reopen_purchase_return', { p_purchase_return_id: id });
+        assertNoError(error as Error | null, 'purchaseReturns.reopen');
+      },
+      async getNextNumber(company_id): Promise<string> {
+        const { data, error } = await client.rpc('get_next_document_number', {
+          p_company_id: company_id, p_prefix: 'PR',
+        });
+        assertNoError(error, 'purchaseReturns.getNextNumber');
+        return data as string;
+      },
+    },
+
     debitNotes: {
       // R2c — what is still returnable on each line of a vendor bill. Reads the
       // same view confirm_debit_note checks, so screen and server agree.

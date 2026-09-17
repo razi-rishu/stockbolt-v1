@@ -11,6 +11,7 @@ import type { Permission } from '@/lib/permissions';
 
 export type DocType =
   | 'journal_entry' | 'invoice' | 'quote' | 'customer_payment' | 'credit_note' | 'sales_return'
+  | 'purchase_return'
   | 'vendor_bill' | 'vendor_payment' | 'purchase_order' | 'goods_receipt' | 'expense' | 'debit_note'
   | 'stock_transfer' | 'inventory_adjustment' | 'bank_transfer' | 'payroll_run'
   | 'customer' | 'supplier' | 'product';
@@ -28,6 +29,7 @@ export const DOC_REGISTRY: Record<DocType, DocMeta> = {
   customer_payment:     { route: (id) => `/sales/payments/${id}`,             label: 'Receipt',        perm: 'sales.read' },
   credit_note:          { route: (id) => `/sales/credit-notes/${id}`,         label: 'Credit Note',    perm: 'sales.read' },
   sales_return:         { route: (id) => `/sales/returns/${id}`,              label: 'Sales Return',   perm: 'sales.read' },
+  purchase_return:      { route: (id) => `/purchasing/returns/${id}`,         label: 'Purchase Return', perm: 'purchasing.read' },
   vendor_bill:          { route: (id) => `/purchasing/bills/${id}`,           label: 'Bill',           perm: 'purchasing.read' },
   vendor_payment:       { route: (id) => `/purchasing/payments/${id}`,        label: 'Payment',        perm: 'purchasing.read' },
   purchase_order:       { route: (id) => `/purchasing/orders/${id}`,          label: 'Purchase Order', perm: 'purchasing.read' },

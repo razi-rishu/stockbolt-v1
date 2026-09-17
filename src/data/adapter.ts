@@ -2433,6 +2433,62 @@ export interface SalesReturnsAPI {
   getNextNumber(company_id: string): Promise<string>;
 }
 
+// ── R3 — Purchase Returns ───────────────────────────────────────────────────
+// Hand-written rather than derived from Tables[...]: purchase_returns is a
+// phase-75 table and the generated database.ts predates it. Writing the shape
+// out is clearer than casting around a stale generated type.
+
+export interface PurchaseReturnRow {
+  id:             string;
+  company_id:     string;
+  return_number:  string;
+  bill_id:        string;
+  date:           string;
+  warehouse_id:   string | null;
+  /** Set once confirmed; the debit note is what actually posts. */
+  debit_note_id:  string | null;
+  reason:         string | null;
+  status:         'draft' | 'confirmed' | 'void';
+  notes:          string | null;
+  created_at:     string;
+  updated_at:     string;
+}
+
+export interface PurchaseReturnItemRow {
+  id:                   string;
+  purchase_return_id:   string;
+  /** The bill line this returns. confirm_purchase_return refuses without it. */
+  vendor_bill_item_id:  string | null;
+  product_id:           string | null;
+  qty_returned:         number;
+  condition:            'resellable' | 'damaged' | null;
+  restock_warehouse_id: string | null;
+  unit_cost:            number | null;
+  created_at:           string;
+}
+
+export type PurchaseReturnInsert =
+  Omit<PurchaseReturnRow, 'id' | 'created_at' | 'updated_at' | 'debit_note_id'> &
+  { debit_note_id?: string | null };
+
+export type PurchaseReturnItemInsert =
+  Omit<PurchaseReturnItemRow, 'id' | 'created_at' | 'purchase_return_id'> &
+  { purchase_return_id?: string };
+
+export interface PurchaseReturnsAPI {
+  list(company_id: string): Promise<PurchaseReturnRow[]>;
+  getById(id: string): Promise<PurchaseReturnRow | null>;
+  getItems(purchase_return_id: string): Promise<PurchaseReturnItemRow[]>;
+  create(row: PurchaseReturnInsert, items: PurchaseReturnItemInsert[]): Promise<PurchaseReturnRow>;
+  /** Builds a debit note and posts it through confirm_debit_note. */
+  confirm(id: string): Promise<{ debit_note_id: string; debit_note_number: string }>;
+  /** Reverses the debit note and marks the return void. */
+  void(id: string, reason?: string): Promise<void>;
+  /** Reverses the debit note and returns the document to draft. */
+  reopen(id: string): Promise<void>;
+  getNextNumber(company_id: string): Promise<string>;
+}
+
 export interface DebitNotesAPI {
   /** R2c — returnable quantity per line of a vendor bill. */
   getReturnableBillLines(bill_id: string): Promise<ReturnableBillLine[]>;
@@ -2730,6 +2786,7 @@ export interface DataAdapter {
   // Phase 9
   creditNotes: CreditNotesAPI;
   salesReturns: SalesReturnsAPI;
+  purchaseReturns: PurchaseReturnsAPI;
   debitNotes: DebitNotesAPI;
   // Phase 10
   systemHealth: SystemHealthAPI;

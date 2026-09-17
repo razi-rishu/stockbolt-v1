@@ -1390,6 +1390,15 @@
     "date": "Date"
   },
   "returns": {
+    "purchase_returns_title": "Purchase Returns",
+    "purchase_returns_desc": "Goods sent back to a supplier, with the reason and condition recorded.",
+    "new_purchase_return": "New purchase return",
+    "no_purchase_returns": "No purchase returns yet.",
+    "no_lines": "No lines yet.",
+    "damaged_in_transit": "Damaged in transit",
+    "over_shipment": "Over-shipment",
+    "confirm_purchase_post_warn": "Confirming creates and posts a debit note: the supplier is debited and the stock leaves inventory. Continue?",
+    "purchase_post_hint": "Confirming posts a debit note. The return itself records what went back and why; the debit note does the accounting.",
     "confirm": "Confirm return",
     "confirm_post_warn": "Confirming creates and posts a credit note: the customer is credited, and stock marked resellable comes back into inventory. Continue?",
     "void_warn": "Voiding reverses the credit note and the restock. Continue?",

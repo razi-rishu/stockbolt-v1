@@ -474,6 +474,16 @@ export function createSelfHostedAdapter(): DataAdapter {
       getNextNumber: () => notImplemented('salesReturns.getNextNumber'),
       getReturnableLines: () => notImplemented('salesReturns.getReturnableLines'),
     },
+    purchaseReturns: {
+      list:          () => notImplemented('purchaseReturns.list'),
+      getById:       () => notImplemented('purchaseReturns.getById'),
+      getItems:      () => notImplemented('purchaseReturns.getItems'),
+      create:        () => notImplemented('purchaseReturns.create'),
+      confirm:       () => notImplemented('purchaseReturns.confirm'),
+      void:          () => notImplemented('purchaseReturns.void'),
+      reopen:        () => notImplemented('purchaseReturns.reopen'),
+      getNextNumber: () => notImplemented('purchaseReturns.getNextNumber'),
+    },
     debitNotes: {
       getReturnableBillLines: () => notImplemented('debitNotes.getReturnableBillLines'),
       list:          () => notImplemented('debitNotes.list'),

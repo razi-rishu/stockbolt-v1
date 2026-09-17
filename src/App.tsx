@@ -157,6 +157,8 @@ const CreditNotesPage                 = lazy(() => import('@/modules/sales/credi
 const CreditNoteEditorPage            = lazy(() => import('@/modules/sales/credit-note-editor'));
 const SalesReturnsPage                = lazy(() => import('@/modules/sales/sales-returns'));
 const SalesReturnEditorPage           = lazy(() => import('@/modules/sales/sales-return-editor'));
+const PurchaseReturnsPage             = lazy(() => import('@/modules/purchasing/purchase-returns'));
+const PurchaseReturnEditorPage        = lazy(() => import('@/modules/purchasing/purchase-return-editor'));
 const DebitNotesPage                  = lazy(() => import('@/modules/purchasing/debit-notes'));
 const DebitNoteEditorPage             = lazy(() => import('@/modules/purchasing/debit-note-editor'));
 
@@ -424,6 +426,8 @@ function AppRoutes() {
               <Route path="/sales/returns"                      element={<SalesReturnsPage />} />
               <Route path="/sales/credit-notes/:id"             element={<CreditNoteEditorPage />} />
               <Route path="/sales/credit-notes"                 element={<CreditNotesPage />} />
+              <Route path="/purchasing/returns/:id"             element={<PurchaseReturnEditorPage />} />
+              <Route path="/purchasing/returns"                 element={<PurchaseReturnsPage />} />
               <Route path="/purchasing/debit-notes/:id"         element={<DebitNoteEditorPage />} />
               <Route path="/purchasing/debit-notes"             element={<DebitNotesPage />} />
 
