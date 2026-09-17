@@ -5469,6 +5469,14 @@ export function createSupabaseAdapter(
 
     // ── Phase 9: Debit Notes ──────────────────────────────────────────────────
     debitNotes: {
+      // R2c — what is still returnable on each line of a vendor bill. Reads the
+      // same view confirm_debit_note checks, so screen and server agree.
+      async getReturnableBillLines(bill_id: string): Promise<import('./adapter').ReturnableBillLine[]> {
+        const { data, error } = await (client.from('v_bill_line_returnable' as any) as any)
+          .select('*').eq('bill_id', bill_id);
+        assertNoError(error as Error | null, 'debitNotes.getReturnableBillLines');
+        return (data ?? []) as import('./adapter').ReturnableBillLine[];
+      },
       async list(company_id, params): Promise<DebitNoteRow[]> {
         let q = client.from('debit_notes').select('*').eq('company_id', company_id);
         if (params?.status)      q = q.eq('status', params.status);
@@ -5495,7 +5503,11 @@ export function createSupabaseAdapter(
         const { data: dn, error: hErr } = await client.from('debit_notes').insert(row).select().single();
         assertNoError(hErr, 'debitNotes.create header');
         const itemsWithId = items.map((it, i) => ({ ...it, debit_note_id: dn!.id, sort_order: i }));
-        const { error: iErr } = await client.from('debit_note_items').insert(itemsWithId);
+        // R2c — vendor_bill_item_id is a phase-72 column; the generated
+        // database.ts predates it and RejectExcessProperties refuses unknown
+        // keys. Same cast pattern as the other post-generation columns.
+        const { error: iErr } = await client.from('debit_note_items')
+          .insert(itemsWithId as Database['public']['Tables']['debit_note_items']['Insert'][]);
         assertNoError(iErr, 'debitNotes.create items');
         return dn as DebitNoteRow;
       },
@@ -5504,7 +5516,11 @@ export function createSupabaseAdapter(
         assertNoError(hErr, 'debitNotes.update header');
         await client.from('debit_note_items').delete().eq('debit_note_id', id);
         const itemsWithId = items.map((it, i) => ({ ...it, debit_note_id: id, sort_order: i }));
-        const { error: iErr } = await client.from('debit_note_items').insert(itemsWithId);
+        // R2c — vendor_bill_item_id is a phase-72 column; the generated
+        // database.ts predates it and RejectExcessProperties refuses unknown
+        // keys. Same cast pattern as the other post-generation columns.
+        const { error: iErr } = await client.from('debit_note_items')
+          .insert(itemsWithId as Database['public']['Tables']['debit_note_items']['Insert'][]);
         assertNoError(iErr, 'debitNotes.update items');
       },
       async confirm(id): Promise<DebitNoteConfirmResult> {

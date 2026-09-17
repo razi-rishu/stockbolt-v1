@@ -15,12 +15,18 @@ import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocT
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { debitNoteToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
-import type { DebitNoteRow, DebitNoteItemInsert, DebitNoteItemRow, ContactRow, VendorBillRow, VendorBillItemRow, Company, ProductRow } from '@/data/adapter';
+import type { DebitNoteRow, DebitNoteItemInsert, DebitNoteItemRow, ContactRow, VendorBillRow, VendorBillItemRow, Company, ProductRow, ReturnableBillLine } from '@/data/adapter';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt   = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 interface LineItem {
+  /** R2c — the bill line this returns, when there is one. Null is legitimate:
+   *  a debit note may carry a charge that was never on the bill, or have no
+   *  linked bill at all. Only linked lines are capped at what remains. */
+  vendor_bill_item_id: string | null;
+  /** Remaining returnable on that bill line; null when unlinked. */
+  qty_returnable:   number | null;
   product_id:       string | null;
   description:      string;
   quantity:         number;
@@ -109,6 +115,12 @@ export default function DebitNoteEditorPage() {
   useEffect(() => {
     if (existingItems.length > 0) {
       setLines(existingItems.map(it => ({
+        // R2c — a row saved before phase72 carries no link; it stays null and
+        // simply gets no returnable cap, which is correct for an unlinked line.
+        vendor_bill_item_id: (it as { vendor_bill_item_id?: string | null }).vendor_bill_item_id ?? null,
+        // Already-saved lines consumed their own quantity, so add it back to
+        // show what this note may still claim.
+        qty_returnable:   Number(it.quantity),
         product_id:       it.product_id ?? null,
         description:      it.description ?? '',
         quantity:         Number(it.quantity),
@@ -126,20 +138,35 @@ export default function DebitNoteEditorPage() {
     enabled:  !!linkedBillId,
   });
 
+  // R2c — how much of each bill line is still returnable, from the same view
+  // confirm_debit_note checks at post time.
+  const { data: billReturnable = [] } = useQuery<ReturnableBillLine[]>({
+    queryKey: ['returnable_bill_lines', linkedBillId],
+    queryFn:  () => getAdapter().debitNotes.getReturnableBillLines(linkedBillId),
+    enabled:  !!linkedBillId,
+  });
+  const billReturnableById = new Map(billReturnable.map(r => [r.vendor_bill_item_id, r]));
+
+  // Imports each bill LINE, defaulting to what is still returnable rather than
+  // the full billed quantity, and skipping lines already fully returned.
   function importFromBill() {
     if (billItems.length === 0) return;
     setLines(billItems.map(it => ({
+      vendor_bill_item_id: it.id,
+      qty_returnable:   Number(billReturnableById.get(it.id)?.qty_returnable ?? it.quantity),
       product_id:       it.product_id ?? null,
       description:      it.description ?? '',
-      quantity:         Number(it.quantity),
+      quantity:         Number(billReturnableById.get(it.id)?.qty_returnable ?? it.quantity),
       unit_cost:        Number(it.unit_cost),
       discount_percent: Number(it.discount_percent),
       tax_rate:         Number(it.tax_rate ?? 0),
-    })));
+    })).filter(l => (l.qty_returnable ?? 0) > 0));
   }
 
+  // Unlike the sales side, a hand-added line is still valid here — it just
+  // carries no bill link, so no returnable cap applies to it.
   function addLine() {
-    setLines(prev => [...prev, { product_id: null, description: '', quantity: 1, unit_cost: 0, discount_percent: 0, tax_rate: defaultTaxRate(companyCountry) }]);
+    setLines(prev => [...prev, { vendor_bill_item_id: null, qty_returnable: null, product_id: null, description: '', quantity: 1, unit_cost: 0, discount_percent: 0, tax_rate: defaultTaxRate(companyCountry) }]);
   }
   function removeLine(i: number) {
     setLines(prev => prev.filter((_, idx) => idx !== i));
@@ -160,6 +187,7 @@ export default function DebitNoteEditorPage() {
     return lines.map((l, i) => {
       const c = calcLine(l);
       return {
+        vendor_bill_item_id: l.vendor_bill_item_id,   // R2c
         product_id:       l.product_id ?? undefined,
         description:      l.description || undefined,
         quantity:         l.quantity,
@@ -407,9 +435,18 @@ export default function DebitNoteEditorPage() {
                         disabled={!isDraft} className="w-full border border-border-strong rounded px-2 py-1 text-sm" />
                     </td>
                     <td className="px-3 py-2">
-                      <input type="number" min="1" step="1" value={l.quantity}
+                      <input type="number" min="1" step="1"
+                        max={l.qty_returnable ?? undefined}
+                        value={l.quantity}
                         onChange={e => updateLine(i, 'quantity', Number(e.target.value))}
-                        disabled={!isDraft} className="w-24 border border-border-strong rounded px-2 py-1 text-sm text-right" />
+                        disabled={!isDraft}
+                        title={l.qty_returnable !== null
+                          ? `${l.qty_returnable} still returnable on this bill line`
+                          : undefined}
+                        className={`w-24 border rounded px-2 py-1 text-sm text-right ${
+                          l.qty_returnable !== null && l.quantity > l.qty_returnable
+                            ? 'border-danger-500 text-danger-600'
+                            : 'border-border-strong'}`} />
                     </td>
                     <td className="px-3 py-2">
                       <input type="number" min="0" step="0.01" value={l.unit_cost}

@@ -475,6 +475,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       getReturnableLines: () => notImplemented('salesReturns.getReturnableLines'),
     },
     debitNotes: {
+      getReturnableBillLines: () => notImplemented('debitNotes.getReturnableBillLines'),
       list:          () => notImplemented('debitNotes.list'),
       getById:       () => notImplemented('debitNotes.getById'),
       getItems:      () => notImplemented('debitNotes.getItems'),

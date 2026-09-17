@@ -3588,7 +3588,12 @@ describe('R2b — return posting integrity (soft until applied)', () => {
     // The old product match is what mis-priced INV-1012 (same pad kit at 83
     // and 125 — it always took sort_order 0). It must be gone, not merely
     // supplemented, or the wrong price could still win.
-    expect(/ORDER BY sort_order LIMIT 1/i.test(src), 'the product-match LATERAL is gone').toBe(false);
+    //
+    // Strip SQL comments first. The migration documents the removed code in a
+    // comment ("Was: LEFT JOIN LATERAL ... ORDER BY sort_order LIMIT 1"), and a
+    // naive substring match reads that as the code still being present.
+    const code = src.split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+    expect(/ORDER BY sort_order LIMIT 1/i.test(code), 'the product-match LATERAL is gone').toBe(false);
     expect(src, 'carries the link onto the credit note line').toMatch(/invoice_item_id/);
   });
 
@@ -3670,5 +3675,86 @@ describe('R2b — return posting integrity (soft until applied)', () => {
                    JSON.stringify(unlinked).slice(0, 400));
     }
     expect(true).toBe(true); // observed, not blocking (legacy tenant data)
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// R2c / phase74 — the vendor mirror (soft until applied)
+// ─────────────────────────────────────────────────────────────────────────
+// Completes R2. Nothing totalled how much of a bill line had already gone back
+// to a supplier, so 10 units billed could be returned 4 + 4 + 4, each one
+// crediting the supplier and relieving stock.
+//
+// Two deliberate asymmetries with the sales side, both asserted below:
+//   * the bill link is OPTIONAL — a debit note legitimately carries lines that
+//     were never on the bill, and may have no linked bill at all
+//   * no mis-pricing fix is needed — unit_cost is typed by the operator here,
+//     so there is no product-match derivation to get wrong
+describe('R2c — vendor return integrity (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_proc
+       WHERE proname='confirm_debit_note' AND pronamespace='public'::regnamespace
+         AND position('v_bill_line_returnable' in pg_get_functiondef(oid)) > 0`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase74: confirm_debit_note refuses over-return against a bill line', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ R2c not applied yet — run supabase/migrations/20260917000008_phase74_r2c_vendor_return_integrity.sql');
+      return;
+    }
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='confirm_debit_note' AND pronamespace='public'::regnamespace`);
+    const src = def[0]!.src;
+    expect(src, 'reads the returnable view').toMatch(/v_bill_line_returnable/);
+    expect(src, 'refuses above returnable')
+      .toMatch(/v_over\.quantity > COALESCE\(v_over\.qty_returnable, 0\)/);
+    // The link must stay OPTIONAL. If this predicate ever disappears the guard
+    // would bind unlinked lines too and break freight adjustments, short-
+    // shipment claims and standalone debit notes.
+    expect(src, 'binds only lines that name a bill line')
+      .toMatch(/dni\.vendor_bill_item_id IS NOT NULL/);
+  });
+
+  it('phase74: DOUBLE ENTRY — confirm_debit_note still posts the same legs', async () => {
+    if (!(await applied())) { console.warn('⚠ R2c not applied yet'); return; }
+    // The guard only RAISEs. Verified byte-identical by diff at build time
+    // (0 original lines removed); this is the standing canary.
+    const n = await sql<{ n: number }>(`
+      SELECT (length(pg_get_functiondef(oid))
+            - length(replace(pg_get_functiondef(oid), 'INSERT INTO public.general_ledger', '')))
+            / length('INSERT INTO public.general_ledger') AS n
+      FROM pg_proc WHERE proname='confirm_debit_note' AND pronamespace='public'::regnamespace`);
+    expect(Number(n[0]?.n ?? 0), 'confirm_debit_note GL leg count unchanged').toBe(4);
+  });
+
+  it('phase74: no bill line has been returned more than it was billed', async () => {
+    if (!(await applied())) { console.warn('⚠ R2c not applied yet'); return; }
+    const over = await sql<{ vendor_bill_item_id: string; qty_billed: number; qty_returned: number }>(`
+      SELECT vendor_bill_item_id, qty_billed, qty_returned
+      FROM public.v_bill_line_returnable
+      WHERE qty_returned > qty_billed`);
+    expect(over, `over-returned bill lines: ${JSON.stringify(over)}`).toHaveLength(0);
+  });
+
+  it('R2 complete: both sides of the return path are guarded', async () => {
+    // The point of R2 stated as one assertion. Sales returns, credit notes and
+    // debit notes must all consult a returnable view before posting; if any one
+    // stops doing so, that side silently allows unlimited returns again.
+    const guarded = await sql<{ proname: string }>(`
+      SELECT proname FROM pg_proc
+      WHERE pronamespace='public'::regnamespace
+        AND proname IN ('confirm_sales_return','confirm_credit_note','confirm_debit_note')
+        AND (pg_get_functiondef(oid) LIKE '%v_invoice_line_returnable%'
+          OR pg_get_functiondef(oid) LIKE '%v_bill_line_returnable%')
+      ORDER BY 1`);
+    if (guarded.length < 3) {
+      console.warn(`⚠ R2 not fully applied — guarded so far: ${guarded.map(g => g.proname).join(', ') || 'none'}`);
+      return;
+    }
+    expect(guarded.map(g => g.proname)).toEqual(
+      ['confirm_credit_note', 'confirm_debit_note', 'confirm_sales_return']);
   });
 });

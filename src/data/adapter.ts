@@ -2364,10 +2364,29 @@ export interface ReturnableLine {
   qty_returnable:  number;
 }
 
+/**
+ * R2c — how much of one vendor-bill line is still returnable.
+ * Backed by v_bill_line_returnable (CONFIRMED debit notes only).
+ */
+export interface ReturnableBillLine {
+  vendor_bill_item_id: string;
+  bill_id:             string;
+  product_id:          string | null;
+  qty_billed:          number;
+  qty_returned:        number;
+  qty_returnable:      number;
+}
+
 export type DebitNoteItemRow    = Tables['debit_note_items']['Row'];
 export type DebitNoteInsert     = Omit<Tables['debit_notes']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type DebitNoteUpdate     = Tables['debit_notes']['Update'];
-export type DebitNoteItemInsert = Omit<Tables['debit_note_items']['Insert'], 'id' | 'created_at'>;
+export type DebitNoteItemInsert = Omit<Tables['debit_note_items']['Insert'], 'id' | 'created_at'> & {
+  /** R2c — the bill line this returns, when there is one. OPTIONAL by design:
+   *  a debit note legitimately carries lines that were never on the bill (a
+   *  freight adjustment, a short-shipment claim) and may have no linked bill at
+   *  all. Lines that DO name one are capped at what remains returnable. */
+  vendor_bill_item_id?: string | null;
+};
 
 // Phase 9 RPC result types
 export interface CreditNoteConfirmResult {
@@ -2415,6 +2434,8 @@ export interface SalesReturnsAPI {
 }
 
 export interface DebitNotesAPI {
+  /** R2c — returnable quantity per line of a vendor bill. */
+  getReturnableBillLines(bill_id: string): Promise<ReturnableBillLine[]>;
   list(company_id: string, params?: { status?: string; supplier_id?: string; date_from?: string; date_to?: string }): Promise<DebitNoteRow[]>;
   getById(id: string): Promise<DebitNoteRow | null>;
   getItems(debit_note_id: string): Promise<DebitNoteItemRow[]>;
