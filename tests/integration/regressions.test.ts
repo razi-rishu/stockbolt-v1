@@ -3373,3 +3373,73 @@ describe('S6 — control-account attribution (soft until applied)', () => {
     expect(bad, `refund legs missing a contact: ${JSON.stringify(bad)}`).toHaveLength(0);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════
+// Phase 71 — views must not bypass RLS
+// ═════════════════════════════════════════════════════════════════════════
+// A Postgres view does NOT inherit row-level security from its base tables.
+// Without security_invoker it runs as the view OWNER, so RLS is bypassed
+// entirely. gl_active and stock_active were owned by postgres, had no
+// security_invoker, and were granted SELECT to anon — whose key ships in the
+// browser bundle. Confirmed with the anon key and no session: 336 GL rows and
+// 55 stock rows across 3 companies were readable, while the general_ledger
+// base table correctly returned 0.
+//
+// V-RLS1/2 are gated until phase71 is applied, because they describe the state
+// AFTER the fix. Once applied they are permanent, and a NEW unguarded view is
+// exactly the regression they exist to fail on. V-RLS3 runs unconditionally —
+// it already holds today.
+describe('Phase 71 — view RLS (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname='public' AND c.relname='gl_active'
+        AND COALESCE((SELECT option_value FROM pg_options_to_table(c.reloptions)
+                       WHERE option_name='security_invoker'), 'false') = 'true'`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('V-RLS1: every view in public sets security_invoker', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ CRITICAL — phase71 not applied: gl_active / stock_active still bypass RLS' +
+                   ' and are readable with the public anon key.' +
+                   ' Run supabase/migrations/20260917000005_phase71_view_rls_leak.sql');
+      return;
+    }
+    const bad = await sql<{ view_name: string }>(`
+      SELECT c.relname AS view_name
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relkind = 'v'
+        AND COALESCE((SELECT option_value FROM pg_options_to_table(c.reloptions)
+                       WHERE option_name = 'security_invoker'), 'false') <> 'true'
+      ORDER BY 1`);
+    expect(bad,
+      `views bypassing RLS (add "WITH (security_invoker = true)"): ${JSON.stringify(bad)}`,
+    ).toHaveLength(0);
+  });
+
+  it('V-RLS2: no view in public is readable by anon', async () => {
+    if (!(await applied())) { console.warn('⚠ phase71 not applied yet'); return; }
+    // anon's key is public. Anything it can SELECT is effectively world-readable
+    // unless RLS holds it back — and a view without security_invoker has no RLS.
+    const bad = await sql<{ view_name: string }>(`
+      SELECT c.relname AS view_name
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relkind IN ('v','m')
+        AND has_table_privilege('anon', c.oid, 'SELECT')
+      ORDER BY 1`);
+    expect(bad, `views readable by anon: ${JSON.stringify(bad)}`).toHaveLength(0);
+  });
+
+  it('V-RLS3: every table in public still has RLS enabled', async () => {
+    // The tables were never the problem — anon holds broad SELECT grants on them
+    // by the standard Supabase pattern, and RLS is what makes that safe. If RLS
+    // is ever switched off on one, those grants become a real exposure.
+    const bad = await sql<{ relname: string }>(`
+      SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relkind = 'r' AND NOT c.relrowsecurity
+      ORDER BY 1`);
+    expect(bad, `tables with RLS disabled: ${JSON.stringify(bad)}`).toHaveLength(0);
+  });
+});
