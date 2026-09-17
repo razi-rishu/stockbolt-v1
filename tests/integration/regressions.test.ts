@@ -3127,3 +3127,145 @@ describe('S2 — customer refund (soft until applied)', () => {
     expect(unattributed, `refund lines on 2400 with no contact: ${JSON.stringify(unattributed)}`).toHaveLength(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// S3 / phase69 — vendor refund + party guards (soft until applied)
+// ─────────────────────────────────────────────────────────────────────────
+// Once customer refunds existed, DIRECTION alone no longer identified a
+// document — both directions became shared:
+//
+//     out + advance -> vendor prepayment (Dr 1400) OR customer refund (Dr 2400)
+//     in  + advance -> customer receipt  (Cr 2400) OR vendor refund   (Cr 1400)
+//
+// confirm_vendor_payment had no party check, and the vendor payments list is a
+// plain .eq('type','outbound') with no party filter — so a customer refund
+// draft would show up there and post Dr 1400 for a customer.
+//
+// Direction + party is unambiguous, so each engine now refuses the wrong party.
+describe('S3 — vendor refund + party guards (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_proc
+       WHERE proname='confirm_vendor_refund' AND pronamespace='public'::regnamespace`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase69: vendor refund RPCs exist, are SECURITY DEFINER, gated, anon-locked', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ S3 not applied yet — run supabase/migrations/20260917000003_phase69_s3_vendor_refund_and_party_guards.sql');
+      return;
+    }
+    for (const fn of ['confirm_vendor_refund', 'void_vendor_refund']) {
+      const def = await sql<{ src: string }>(
+        `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+          WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+      expect(def.length, `${fn} exists`).toBe(1);
+      const src = def[0]!.src;
+      expect(src, `${fn} SECURITY DEFINER`).toMatch(/SECURITY DEFINER/i);
+      expect(src, `${fn} gates on accounting.write`).toMatch(/auth_require\('accounting\.write'\)/);
+    }
+    const anonExec = await sql<{ proname: string }>(`
+      SELECT p.proname FROM pg_proc p
+       WHERE p.pronamespace='public'::regnamespace
+         AND p.proname IN ('confirm_vendor_refund','void_vendor_refund')
+         AND has_function_privilege('anon', p.oid, 'EXECUTE')`);
+    expect(anonExec.length, 'no vendor-refund RPC executable by anon').toBe(0);
+  });
+
+  it('phase69: DOUBLE ENTRY — vendor refund posts through the primitive, Dr bank / Cr 1400', async () => {
+    if (!(await applied())) { console.warn('⚠ S3 not applied yet'); return; }
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='confirm_vendor_refund' AND pronamespace='public'::regnamespace`);
+    const src = def[0]!.src;
+    expect(src, 'composes post_journal_entry').toMatch(/post_journal_entry/);
+    expect(/insert\s+into\s+public\.general_ledger/i.test(src), 'writes no general_ledger directly').toBe(false);
+    expect(src, 'credits 1400 Vendor Advances').toMatch(/'account_code',\s*'1400'/);
+    expect(src, 'attributes the line to the contact').toMatch(/'contact_id',\s*v_pmt\.contact_id/);
+    // 1400 is an ASSET — money we hold with the supplier — so debit less credit.
+    expect(src, '1400 ceiling uses the asset sign').toMatch(/gl\.debit - gl\.credit/);
+    expect(src, 'refuses above the balance').toMatch(/v_amount > v_available/);
+    expect(src, 'requires the contact to be a supplier').toMatch(/v_contact\.type NOT IN \('supplier', 'both'\)/);
+  });
+
+  it('phase69: void_vendor_refund mirrors at the VOUCHER date, not today', async () => {
+    if (!(await applied())) { console.warn('⚠ S3 not applied yet'); return; }
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='void_vendor_refund' AND pronamespace='public'::regnamespace`);
+    const src = def[0]!.src;
+    expect(/reverse_journal_entry/.test(src), 'does not use the CURRENT_DATE reverser').toBe(false);
+    expect(src, 'swaps debit and credit per leg').toMatch(/v_gl\.credit,\s*v_gl\.debit/);
+    expect(src, 'reuses the original line date').toMatch(/v_gl\.date/);
+    expect(src, 'refuses a bank-reconciled refund').toMatch(/reconciliation_id IS NOT NULL/);
+  });
+
+  it('phase69: both payment engines refuse the wrong party', async () => {
+    if (!(await applied())) { console.warn('⚠ S3 not applied yet'); return; }
+    const cp = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc WHERE proname='confirm_payment' AND pronamespace='public'::regnamespace`);
+    expect(cp[0]!.src, 'confirm_payment requires a customer')
+      .toMatch(/v_contact_type NOT IN \('customer', 'both'\)/);
+    const vp = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc WHERE proname='confirm_vendor_payment' AND pronamespace='public'::regnamespace`);
+    expect(vp[0]!.src, 'confirm_vendor_payment requires a supplier')
+      .toMatch(/v_contact_type NOT IN \('supplier', 'both'\)/);
+  });
+
+  it('phase69: DOUBLE ENTRY — the patched engines still post the same legs', async () => {
+    if (!(await applied())) { console.warn('⚠ S3 not applied yet'); return; }
+    // phase69 added a guard to each of these and changed nothing else. Verified
+    // at build time by diff (0 original lines removed, GL blocks byte-identical);
+    // this is the standing canary. If a future change alters how many legs
+    // either engine posts, that is a posting change and must be reviewed as one
+    // — update these numbers deliberately, never to make the suite pass.
+    const expected: Record<string, number> = {
+      confirm_payment: 9,
+      confirm_vendor_payment: 4,
+    };
+    for (const [fn, want] of Object.entries(expected)) {
+      const n = await sql<{ n: number }>(`
+        SELECT (length(pg_get_functiondef(oid))
+              - length(replace(pg_get_functiondef(oid), 'INSERT INTO public.general_ledger', '')))
+              / length('INSERT INTO public.general_ledger') AS n
+        FROM pg_proc WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+      expect(Number(n[0]?.n ?? 0), `${fn} GL leg count unchanged`).toBe(want);
+    }
+  });
+
+  it('phase69: DOUBLE ENTRY — every vendor_refund entry balances and names the supplier', async () => {
+    const bad = await sql<{ entry_number: string }>(`
+      SELECT je.entry_number FROM public.journal_entries je
+      JOIN public.general_ledger gl ON gl.journal_entry_id = je.id
+      WHERE je.source_type = 'vendor_refund'
+      GROUP BY je.id, je.entry_number
+      HAVING ABS(SUM(gl.debit) - SUM(gl.credit)) > 0.01`);
+    expect(bad, `unbalanced vendor_refund JEs: ${JSON.stringify(bad)}`).toHaveLength(0);
+
+    const unattributed = await sql<{ entry_number: string }>(`
+      SELECT je.entry_number FROM public.journal_entries je
+      JOIN public.general_ledger gl ON gl.journal_entry_id = je.id
+      WHERE je.source_type = 'vendor_refund'
+        AND gl.account_code = '1400'
+        AND gl.contact_id IS NULL`);
+    expect(unattributed, `refund lines on 1400 with no contact: ${JSON.stringify(unattributed)}`).toHaveLength(0);
+  });
+
+  it('phase69: no payment has a party that contradicts its direction (warn-only)', async () => {
+    // The guards only bind at confirm time. This watches the stored data for
+    // anything that slipped in before them, or through another route.
+    const bad = await sql<{ type: string; contact_type: string; n: number }>(`
+      SELECT p.type, ct.type AS contact_type, count(*)::int AS n
+      FROM public.payments p JOIN public.contacts ct ON ct.id = p.contact_id
+      WHERE p.status <> 'void'
+        AND (   (p.type='inbound'  AND ct.type NOT IN ('customer','both'))
+             OR (p.type='outbound' AND ct.type NOT IN ('supplier','both')) )
+      GROUP BY 1,2`);
+    if (bad.length) {
+      console.warn('⚠ [phase69] payments whose party contradicts their direction —' +
+                   ' these may be refunds confirmed through the wrong engine:',
+                   JSON.stringify(bad).slice(0, 400));
+    }
+    expect(true).toBe(true); // observed, not blocking (tenant data)
+  });
+});
