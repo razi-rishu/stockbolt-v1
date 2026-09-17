@@ -2997,3 +2997,133 @@ describe('S1 — ledger-derived advance availability (soft until applied)', () =
     expect(def, 'guards general_ledger').toMatch(/ON public\.general_ledger/i);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// S2 / phase68 — customer refund of an advance (soft until applied)
+// ─────────────────────────────────────────────────────────────────────────
+// A customer prepays, cancels before any invoice exists, and wants part of it
+// back. There was no way to do that: a sales return needs an invoice and moves
+// stock, a manual JE cannot name the customer, and the payment layer splits by
+// DIRECTION (confirm_payment = inbound only, confirm_vendor_payment = outbound
+// only) so "money out, to a customer" had no home.
+//
+// The refund is an ordinary payments row the schema already allowed:
+// type='outbound', classification='advance'. No new table or column.
+describe('S2 — customer refund (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_proc
+       WHERE proname='confirm_customer_refund' AND pronamespace='public'::regnamespace`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase68: both RPCs exist, are SECURITY DEFINER, gated, and anon-locked', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ S2 not applied yet — run supabase/migrations/20260917000002_phase68_s2_customer_refund.sql');
+      return;
+    }
+    for (const fn of ['confirm_customer_refund', 'void_customer_refund']) {
+      const def = await sql<{ src: string }>(
+        `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+          WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+      expect(def.length, `${fn} exists`).toBe(1);
+      const src = def[0]!.src;
+      expect(src, `${fn} SECURITY DEFINER`).toMatch(/SECURITY DEFINER/i);
+      expect(src, `${fn} gates on accounting.write`).toMatch(/auth_require\('accounting\.write'\)/);
+      expect(src, `${fn} pins search_path`).toMatch(/SET search_path TO/);
+    }
+    const anonExec = await sql<{ proname: string }>(`
+      SELECT p.proname FROM pg_proc p
+       WHERE p.pronamespace='public'::regnamespace
+         AND p.proname IN ('confirm_customer_refund','void_customer_refund')
+         AND has_function_privilege('anon', p.oid, 'EXECUTE')`);
+    expect(anonExec.length, 'no refund RPC executable by anon').toBe(0);
+  });
+
+  it('phase68: DOUBLE ENTRY — the refund posts through post_journal_entry, never raw GL', async () => {
+    if (!(await applied())) { console.warn('⚠ S2 not applied yet'); return; }
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='confirm_customer_refund' AND pronamespace='public'::regnamespace`);
+    const src = def[0]!.src;
+    // Composing the primitive is what makes balance, period lock, JE numbering
+    // and the audit row impossible to get wrong here.
+    expect(src, 'composes post_journal_entry').toMatch(/post_journal_entry/);
+    expect(/insert\s+into\s+public\.general_ledger/i.test(src), 'writes no general_ledger directly').toBe(false);
+    expect(src, 'debits 2400 Customer Advances').toMatch(/'account_code',\s*'2400'/);
+    expect(src, 'attributes the line to the contact').toMatch(/'contact_id',\s*v_pmt\.contact_id/);
+  });
+
+  it('phase68: the refund cannot exceed the ledger balance, and targets a customer', async () => {
+    if (!(await applied())) { console.warn('⚠ S2 not applied yet'); return; }
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='confirm_customer_refund' AND pronamespace='public'::regnamespace`);
+    const src = def[0]!.src;
+    // The ceiling is read from the ledger, not the payment row — the same
+    // figure phase67 made apply_advance respect, so a refund plus a later
+    // application cannot together exceed what the customer holds.
+    expect(src, 'reads the contact ledger balance on 2400').toMatch(/gl\.account_code\s*=\s*'2400'/);
+    expect(src, 'scopes it to the contact').toMatch(/gl\.contact_id\s*=\s*v_pmt\.contact_id/);
+    expect(src, 'refuses above the balance').toMatch(/v_amount > v_available/);
+    // Refunding a supplier through this path would hit the wrong control account.
+    expect(src, 'requires the contact to be a customer').toMatch(/v_contact\.type NOT IN \('customer', 'both'\)/);
+    expect(src, 'requires a bank/cash account').toMatch(/bank_account_id IS NULL/);
+  });
+
+  it('phase68: void mirrors at the VOUCHER date, not today', async () => {
+    if (!(await applied())) { console.warn('⚠ S2 not applied yet'); return; }
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='void_customer_refund' AND pronamespace='public'::regnamespace`);
+    const src = def[0]!.src;
+    // phase43: reversals post at the voucher date. reverse_journal_entry posts
+    // at CURRENT_DATE, which would drop the correction into a different period
+    // from the refund it reverses — so it must NOT be used here.
+    expect(/reverse_journal_entry/.test(src), 'does not use the CURRENT_DATE reverser').toBe(false);
+    expect(src, 'mirrors each leg with debit and credit swapped').toMatch(/v_gl\.credit,\s*v_gl\.debit/);
+    expect(src, 'reuses the original line date').toMatch(/v_gl\.date/);
+    expect(src, 'links the reversal').toMatch(/reversal_of_id/);
+    expect(src, 'refuses a bank-reconciled refund').toMatch(/reconciliation_id IS NOT NULL/);
+  });
+
+  it('phase68: the existing payment engine was NOT modified for refunds', async () => {
+    if (!(await applied())) { console.warn('⚠ S2 not applied yet'); return; }
+    // A refund is a standalone document, the same discipline used for TDS. If a
+    // future change starts refunding inside these, this fails loudly rather
+    // than silently double-counting against 2400.
+    for (const fn of ['confirm_payment', 'confirm_vendor_payment', 'void_payment',
+                      'reopen_payment', 'apply_advance']) {
+      const def = await sql<{ src: string }>(
+        `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+          WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+      if (def.length === 0) continue;
+      const src = def[0]!.src.toLowerCase();
+      expect(src.includes('customer_refund'), `${fn} must stay ignorant of refunds`).toBe(false);
+    }
+  });
+
+  it('phase68: DOUBLE ENTRY — every customer_refund journal entry balances', async () => {
+    // Data invariant. Trivially true before the first refund exists, and it
+    // must stay true after. je_must_balance enforces this structurally; this
+    // asserts the outcome independently.
+    const bad = await sql<{ entry_number: string; dr: number; cr: number }>(`
+      SELECT je.entry_number, ROUND(SUM(gl.debit),2) AS dr, ROUND(SUM(gl.credit),2) AS cr
+      FROM public.journal_entries je
+      JOIN public.general_ledger gl ON gl.journal_entry_id = je.id
+      WHERE je.source_type = 'customer_refund'
+      GROUP BY je.id, je.entry_number
+      HAVING ABS(SUM(gl.debit) - SUM(gl.credit)) > 0.01`);
+    expect(bad, `unbalanced customer_refund JEs: ${JSON.stringify(bad)}`).toHaveLength(0);
+
+    // Every refund leg on a control account must name the customer, or 2400
+    // would diverge from the per-contact sub-ledger.
+    const unattributed = await sql<{ entry_number: string }>(`
+      SELECT je.entry_number FROM public.journal_entries je
+      JOIN public.general_ledger gl ON gl.journal_entry_id = je.id
+      WHERE je.source_type = 'customer_refund'
+        AND gl.account_code = '2400'
+        AND gl.contact_id IS NULL`);
+    expect(unattributed, `refund lines on 2400 with no contact: ${JSON.stringify(unattributed)}`).toHaveLength(0);
+  });
+});
