@@ -3758,3 +3758,129 @@ describe('R2c — vendor return integrity (soft until applied)', () => {
       ['confirm_credit_note', 'confirm_debit_note', 'confirm_sales_return']);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// R3a / phase75 — Purchase Returns document (soft until applied)
+// ─────────────────────────────────────────────────────────────────────────
+// Sales had a return document recording what came back, in what condition, to
+// which warehouse and why. Purchasing had none: sending goods back to a
+// supplier meant typing a debit note by hand, with no record of any of that.
+// The gap mattered more here, because a supplier claim needs evidence.
+//
+// The new document posts nothing itself — it builds a draft debit note and
+// hands it to confirm_debit_note, exactly as confirm_sales_return hands off to
+// confirm_credit_note. That is what keeps a second posting path from existing.
+describe('R3a — purchase returns (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM information_schema.tables
+       WHERE table_schema='public' AND table_name='purchase_returns'`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase75: both tables exist with the expected shape', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ R3a not applied yet — run supabase/migrations/20260917000009_phase75_r3a_purchase_returns.sql');
+      return;
+    }
+    const cons = await sql<{ conname: string; def: string }>(`
+      SELECT conname, pg_get_constraintdef(oid) AS def FROM pg_constraint
+      WHERE conrelid IN ('public.purchase_returns'::regclass,
+                         'public.purchase_return_items'::regclass)
+      ORDER BY conname`);
+    const defs = cons.map(c => c.def).join(' | ');
+    expect(defs, 'return number unique per company').toMatch(/UNIQUE \(company_id, return_number\)/);
+    expect(defs, 'status vocabulary').toMatch(/status = ANY \(ARRAY\['draft'::text, 'confirmed'::text, 'void'::text\]\)/);
+    // The reason vocabulary deliberately differs from the sales side: a
+    // customer changes their mind, a supplier ships the wrong or damaged part.
+    expect(defs, 'purchase-specific reasons').toMatch(/damaged_in_transit/);
+    expect(defs, 'purchase-specific reasons').toMatch(/over_shipment/);
+    // RESTRICT matches phase72: a bill line returned against must not be
+    // editable out from under the return.
+    expect(defs, 'bill line link is RESTRICT')
+      .toMatch(/FOREIGN KEY \(vendor_bill_item_id\) REFERENCES vendor_bill_items\(id\) ON DELETE RESTRICT/);
+  });
+
+  it('phase75: RLS is on, gated on purchasing.write, and anon cannot read', async () => {
+    if (!(await applied())) { console.warn('⚠ R3a not applied yet'); return; }
+    const rls = await sql<{ relname: string; relrowsecurity: boolean }>(`
+      SELECT relname, relrowsecurity FROM pg_class
+       WHERE relname IN ('purchase_returns','purchase_return_items') ORDER BY 1`);
+    expect(rls.length, 'both tables present').toBe(2);
+    for (const t of rls) expect(t.relrowsecurity, `${t.relname} has RLS enabled`).toBe(true);
+
+    const pols = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_policy
+       WHERE polrelid IN ('public.purchase_returns'::regclass,
+                          'public.purchase_return_items'::regclass)
+         AND pg_get_expr(COALESCE(polqual, polwithcheck), polrelid) LIKE '%purchasing.write%'`);
+    expect(Number(pols[0]?.n ?? 0), 'write policies gate on purchasing.write').toBeGreaterThanOrEqual(6);
+
+    const anon = await sql<{ relname: string }>(`
+      SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+       WHERE n.nspname='public' AND c.relname IN ('purchase_returns','purchase_return_items')
+         AND has_table_privilege('anon', c.oid, 'SELECT')`);
+    expect(anon, `readable by anon: ${JSON.stringify(anon)}`).toHaveLength(0);
+  });
+
+  it('phase75: DOUBLE ENTRY — the document posts nothing of its own', async () => {
+    if (!(await applied())) { console.warn('⚠ R3a not applied yet'); return; }
+    // The whole safety case. If any of these ever writes general_ledger itself,
+    // there would be two posting paths for a purchase return to keep in sync —
+    // which is exactly how the sales/purchase sides drifted apart originally.
+    for (const fn of ['confirm_purchase_return', 'void_purchase_return', 'reopen_purchase_return']) {
+      const def = await sql<{ src: string }>(
+        `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+          WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+      expect(def.length, `${fn} exists`).toBe(1);
+      const src = def[0]!.src;
+      expect(/insert\s+into\s+public\.general_ledger/i.test(src), `${fn} writes no general_ledger`).toBe(false);
+      expect(/insert\s+into\s+public\.stock_ledger/i.test(src), `${fn} writes no stock_ledger`).toBe(false);
+    }
+    const confirmSrc = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='confirm_purchase_return' AND pronamespace='public'::regnamespace`);
+    expect(confirmSrc[0]!.src, 'delegates posting to the debit-note engine')
+      .toMatch(/PERFORM public\.confirm_debit_note/);
+    const voidSrc = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='void_purchase_return' AND pronamespace='public'::regnamespace`);
+    expect(voidSrc[0]!.src, 'delegates reversal to the debit-note engine')
+      .toMatch(/PERFORM public\.void_debit_note/);
+  });
+
+  it('phase75: confirm carries the same three line guards as the sales side', async () => {
+    if (!(await applied())) { console.warn('⚠ R3a not applied yet'); return; }
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='confirm_purchase_return' AND pronamespace='public'::regnamespace`);
+    const src = def[0]!.src;
+    expect(src, 'prices from the chosen bill line').toMatch(/vbi\.id = pri\.vendor_bill_item_id/);
+    expect(src, 'G1 refuses a line with no source line').toMatch(/v_item\.vendor_bill_item_id IS NULL/);
+    expect(src, 'G2 refuses a line from a different bill')
+      .toMatch(/v_item\.bill_bill_id IS DISTINCT FROM v_pr\.bill_id/);
+    expect(src, 'G3 refuses over-return')
+      .toMatch(/v_item\.qty_returned > COALESCE\(v_item\.qty_returnable, 0\)/);
+    expect(src, 'carries the link onto the debit note line').toMatch(/vendor_bill_item_id/);
+  });
+
+  it('phase75: the three RPCs are not executable by anon', async () => {
+    if (!(await applied())) { console.warn('⚠ R3a not applied yet'); return; }
+    const anonExec = await sql<{ proname: string }>(`
+      SELECT p.proname FROM pg_proc p
+       WHERE p.pronamespace='public'::regnamespace
+         AND p.proname IN ('confirm_purchase_return','void_purchase_return','reopen_purchase_return')
+         AND has_function_privilege('anon', p.oid, 'EXECUTE')`);
+    expect(anonExec, `executable by anon: ${JSON.stringify(anonExec)}`).toHaveLength(0);
+  });
+
+  it('phase75: every confirmed purchase return has a debit note', async () => {
+    if (!(await applied())) { console.warn('⚠ R3a not applied yet'); return; }
+    // Confirmed with no debit note would mean stock went back to the supplier
+    // with nothing in the ledger to show for it.
+    const orphan = await sql<{ return_number: string }>(`
+      SELECT return_number FROM public.purchase_returns
+      WHERE status = 'confirmed' AND debit_note_id IS NULL`);
+    expect(orphan, `confirmed purchase returns with no debit note: ${JSON.stringify(orphan)}`).toHaveLength(0);
+  });
+});
