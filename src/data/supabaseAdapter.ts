@@ -5449,7 +5449,9 @@ export function createSupabaseAdapter(
         return (data ?? []) as SalesReturnItemRow[];
       },
       async create(row: SalesReturnInsert, items: SalesReturnItemInsert[]): Promise<SalesReturnRow> {
-        const { data: sr, error: hErr } = await client.from('sales_returns').insert(row).select().single();
+        const { data: sr, error: hErr } = await client.from('sales_returns')
+          .insert(row as Database['public']['Tables']['sales_returns']['Insert'])
+          .select().single();
         assertNoError(hErr, 'salesReturns.create header');
         const itemsWithId = items.map(it => ({ ...it, sales_return_id: sr!.id }));
         // R2b — invoice_item_id is a phase-72 column; the generated database.ts

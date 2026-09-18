@@ -46,6 +46,8 @@ export default function SalesReturnEditorPage() {
   const [date,         setDate]         = useState(today());
   const [reason,       setReason]       = useState('wrong_part');
   const [notes,        setNotes]        = useState('');
+  // R4b — kept out of the credit, entered inclusive of tax.
+  const [restockingFee, setRestockingFee] = useState(0);
   const [lines,        setLines]        = useState<ReturnLine[]>([]);
 
   const { data: invoices = [] } = useQuery<InvoiceRow[]>({
@@ -91,6 +93,7 @@ export default function SalesReturnEditorPage() {
       setDate(existing.date);
       setReason(existing.reason ?? 'wrong_part');
       setNotes(existing.notes ?? '');
+      setRestockingFee(Number(existing.restocking_fee ?? 0));
     }
   }, [existing]);
 
@@ -127,6 +130,19 @@ export default function SalesReturnEditorPage() {
     enabled:  !!invoiceId,
   });
   const returnableById = new Map(returnable.map(r => [r.invoice_item_id, r]));
+
+  // R4b — the fee is INCLUSIVE of tax at the rate of the invoice's
+  // highest-value line, which is how post_sales_return_fee splits it too: one
+  // side rounded, the other derived by subtraction so the two always sum to
+  // the fee. This is a preview — the server recomputes and is authoritative.
+  const feeTaxRate = [...invItems]
+    .sort((a, b) => Number(b.line_total ?? 0) - Number(a.line_total ?? 0)
+                 || Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0))
+    .map(it => Number(it.tax_rate ?? 0))[0] ?? 0;
+  const feeNet = feeTaxRate > 0
+    ? Math.round((restockingFee / (1 + feeTaxRate / 100)) * 100) / 100
+    : restockingFee;
+  const feeVat = Math.round((restockingFee - feeNet) * 100) / 100;
 
   // R2b — import each invoice LINE (not each product), defaulting to what is
   // still returnable rather than the full original quantity, and skipping
@@ -167,6 +183,11 @@ export default function SalesReturnEditorPage() {
         date,
         reason:       reason as 'wrong_part' | 'defective' | 'customer_changed_mind' | 'other',
         notes:        notes || undefined,
+        // R4b — the key is OMITTED when there is no fee, not sent as 0.
+        // Code ships before migrations are hand-applied, and PostgREST rejects
+        // an unknown column outright: sending it unconditionally would break
+        // every sales return created in the window before phase77 lands.
+        ...(restockingFee > 0 ? { restocking_fee: restockingFee } : {}),
         status:       'draft' as const,
       };
       const items: SalesReturnItemInsert[] = lines.map(l => ({
@@ -360,6 +381,31 @@ export default function SalesReturnEditorPage() {
           <label className="block text-sm font-medium text-ink-secondary mb-1">{t('common.notes')}</label>
           <input type="text" value={notes} onChange={e => setNotes(e.target.value)} disabled={!isDraft}
             className="w-full border border-border-strong rounded px-3 py-2 text-sm" />
+        </div>
+
+        {/* R4b — a fee kept out of the credit. The credit note still reverses
+            the sale in full, because that is what happened; this claws part
+            of it back as Other Income, so revenue, gross margin and the VAT
+            return all stay right. Editable only while creating: there is no
+            update path for a saved return's header. */}
+        <div>
+          <label className="block text-sm font-medium text-ink-secondary mb-1">{t('returns.restocking_fee')}</label>
+          <input
+            type="number" min="0" step="0.01" placeholder="0.00"
+            value={restockingFee || ''}
+            onChange={e => setRestockingFee(e.target.value ? Number(e.target.value) : 0)}
+            disabled={!isNew}
+            className="w-full border border-border-strong rounded px-3 py-2 text-sm" />
+          {restockingFee > 0 ? (
+            <p className="mt-1 text-xs text-ink-tertiary">
+              {feeTaxRate > 0
+                ? t('returns.fee_split', { net: feeNet.toFixed(2), vat: feeVat.toFixed(2), rate: feeTaxRate })
+                : t('returns.fee_no_tax', { net: feeNet.toFixed(2) })}
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-ink-tertiary">{t('returns.restocking_fee_hint')}</p>
+          )}
+          {!isNew && <p className="mt-1 text-xs text-ink-tertiary">{t('returns.fee_set_at_creation')}</p>}
         </div>
       </div>
 

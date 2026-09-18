@@ -2339,9 +2339,16 @@ export type CreditNoteInsert  = Omit<Tables['credit_notes']['Insert'], 'id' | 'c
 export type CreditNoteUpdate  = Tables['credit_notes']['Update'];
 export type CreditNoteItemInsert = Omit<Tables['credit_note_items']['Insert'], 'id' | 'created_at'>;
 
-export type SalesReturnRow     = Tables['sales_returns']['Row'];
+/** R4b — restocking_fee is a phase-77 column the generated database.ts
+ *  predates, so it is spelled out here rather than waiting on a regen. */
+export type SalesReturnRow     = Tables['sales_returns']['Row'] & { restocking_fee?: number | null };
 export type SalesReturnItemRow = Tables['sales_return_items']['Row'];
-export type SalesReturnInsert  = Omit<Tables['sales_returns']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+export type SalesReturnInsert  = Omit<Tables['sales_returns']['Insert'], 'id' | 'created_at' | 'updated_at'> & {
+  /** R4b — amount kept out of the credit, INCLUSIVE of tax. The credit note
+   *  still reverses the sale in full; post_sales_return_fee claws this back
+   *  as Dr 1200 / Cr 2200 + Cr 4200. */
+  restocking_fee?: number;
+};
 export type SalesReturnUpdate  = Tables['sales_returns']['Update'];
 export type SalesReturnItemInsert = Omit<Tables['sales_return_items']['Insert'], 'id' | 'created_at'> & {
   /** R2a — the invoice line this came from. Without it the return cannot be

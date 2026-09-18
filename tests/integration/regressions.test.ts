@@ -4061,3 +4061,204 @@ describe('R4a — damaged return write-off (soft until applied)', () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R4b — restocking fee
+//
+// Keeping part of a credit used to mean editing the credit note down, which
+// understated the revenue reversal and booked the fee as sales revenue. The
+// fee now posts separately: Dr 1200 / Cr 2200 + Cr 4200, inclusive of tax at
+// the rate of the invoice's highest-value line.
+//
+// The split is the delicate part. One side is rounded and the other derived by
+// subtraction, so the two always sum to the fee exactly — rounding both is how
+// a one-fils imbalance gets into a ledger.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('R4b — restocking fee (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM information_schema.columns
+       WHERE table_schema='public' AND table_name='sales_returns'
+         AND column_name='restocking_fee'`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase77: the column, its guard, the hook and both functions exist', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ R4b not applied yet — run supabase/migrations/20260918000001_phase77_r4b_restocking_fee.sql');
+      return;
+    }
+    const col = await sql<{ data_type: string; is_nullable: string; column_default: string }>(`
+      SELECT data_type, is_nullable, column_default FROM information_schema.columns
+       WHERE table_schema='public' AND table_name='sales_returns' AND column_name='restocking_fee'`);
+    expect(col[0]!.is_nullable, 'not nullable').toBe('NO');
+    expect(col[0]!.column_default, 'defaults to 0').toMatch(/^0/);
+
+    const chk = await sql<{ def: string }>(`
+      SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+       WHERE conrelid='public.sales_returns'::regclass
+         AND conname='sales_returns_restocking_fee_nonneg'`);
+    expect(chk[0]?.def, 'a negative fee is impossible').toMatch(/restocking_fee >= \(?0/);
+
+    const fns = await sql<{ proname: string }>(`
+      SELECT proname FROM pg_proc WHERE pronamespace='public'::regnamespace
+        AND proname IN ('post_sales_return_fee','reverse_sales_return_fee','_tg_sales_return_fee')
+      ORDER BY 1`);
+    expect(fns.map(f => f.proname), 'all three functions present')
+      .toEqual(['_tg_sales_return_fee', 'post_sales_return_fee', 'reverse_sales_return_fee']);
+
+    const tg = await sql<{ def: string }>(`
+      SELECT pg_get_triggerdef(oid) AS def FROM pg_trigger
+       WHERE tgname='sales_returns_fee' AND NOT tgisinternal`);
+    expect(tg[0]!.def, 'fires after, on status only').toMatch(/AFTER UPDATE OF status ON public\.sales_returns/);
+    expect(tg[0]!.def, 'only when status actually changed').toMatch(/WHEN \(old\.status IS DISTINCT FROM new\.status\)/i);
+  });
+
+  it('phase77: 4200 Other Income is present and active for every company', async () => {
+    if (!(await applied())) { console.warn('⚠ R4b not applied yet'); return; }
+    const missing = await sql<{ name: string }>(`
+      SELECT c.name FROM public.companies c
+       WHERE NOT EXISTS (
+         SELECT 1 FROM public.chart_of_accounts a
+          WHERE a.company_id = c.id AND a.code = '4200' AND a.is_active)`);
+    expect(missing, `companies with no active 4200: ${JSON.stringify(missing)}`).toHaveLength(0);
+  });
+
+  it('phase77: DOUBLE ENTRY — every fee entry balances and touches only 1200/4200/22xx', async () => {
+    if (!(await applied())) { console.warn('⚠ R4b not applied yet'); return; }
+    // Covers the reversal too, which mirrors the same three accounts.
+    const bad = await sql<{ entry_number: string; td: number; tc: number; legs: number }>(`
+      SELECT je.entry_number, SUM(gl.debit) AS td, SUM(gl.credit) AS tc, count(*)::int AS legs
+      FROM public.journal_entries je
+      JOIN public.general_ledger gl ON gl.journal_entry_id = je.id
+      WHERE je.source_type = 'sales_return_fee'
+      GROUP BY je.entry_number
+      HAVING SUM(gl.debit) <> SUM(gl.credit)
+          OR count(*) NOT BETWEEN 2 AND 3
+          OR SUM(CASE WHEN gl.account_code NOT IN ('1200','4200')
+                       AND gl.account_code NOT LIKE '22%' THEN 1 ELSE 0 END) > 0`);
+    expect(bad, `malformed fee entries: ${JSON.stringify(bad)}`).toHaveLength(0);
+  });
+
+  it('phase77: the fee charged equals the fee on the document', async () => {
+    if (!(await applied())) { console.warn('⚠ R4b not applied yet'); return; }
+    // Dr 1200 is the whole fee; the credits are the two halves of it. With the
+    // balance check above, this is what proves net + vat = fee exactly.
+    const drift = await sql<{ return_number: string; charged: number; stored: number }>(`
+      SELECT sr.return_number,
+             SUM(CASE WHEN gl.account_code = '1200' THEN gl.debit ELSE 0 END) AS charged,
+             sr.restocking_fee AS stored
+      FROM public.journal_entries je
+      JOIN public.general_ledger gl ON gl.journal_entry_id = je.id
+      JOIN public.sales_returns sr  ON sr.id = je.source_id
+      WHERE je.source_type    = 'sales_return_fee'
+        AND je.reversal_of_id IS NULL
+        AND je.reversed_by_id IS NULL
+      GROUP BY sr.return_number, sr.restocking_fee
+      HAVING SUM(CASE WHEN gl.account_code = '1200' THEN gl.debit ELSE 0 END) <> sr.restocking_fee`);
+    expect(drift, `fees that do not match the document: ${JSON.stringify(drift)}`).toHaveLength(0);
+  });
+
+  it('phase77: the receivable leg names the customer (B3)', async () => {
+    if (!(await applied())) { console.warn('⚠ R4b not applied yet'); return; }
+    // 1200 is a control account. A leg with no contact_id would make the AR
+    // control and the customer statement diverge by the fee.
+    const anon = await sql<{ entry_number: string }>(`
+      SELECT je.entry_number
+      FROM public.journal_entries je
+      JOIN public.general_ledger gl ON gl.journal_entry_id = je.id
+      WHERE je.source_type = 'sales_return_fee'
+        AND gl.account_code = '1200' AND gl.contact_id IS NULL`);
+    expect(anon, `unattributed 1200 legs: ${JSON.stringify(anon)}`).toHaveLength(0);
+  });
+
+  it('phase77: the fee never exceeds the credit it claws back', async () => {
+    if (!(await applied())) { console.warn('⚠ R4b not applied yet'); return; }
+    // A fee larger than the credit means the customer owes money for
+    // returning goods. The guard refuses it; this catches any path around it.
+    const over = await sql<{ return_number: string; fee: number; credit: number }>(`
+      SELECT sr.return_number, sr.restocking_fee AS fee, cn.total_amount AS credit
+      FROM public.sales_returns sr
+      JOIN public.credit_notes cn ON cn.id = sr.credit_note_id
+      WHERE sr.status = 'confirmed' AND sr.restocking_fee > cn.total_amount`);
+    expect(over, `fees larger than their credit: ${JSON.stringify(over)}`).toHaveLength(0);
+  });
+
+  it('phase77: a live fee only ever belongs to a confirmed return', async () => {
+    if (!(await applied())) { console.warn('⚠ R4b not applied yet'); return; }
+    const orphan = await sql<{ return_number: string; status: string }>(`
+      SELECT sr.return_number, sr.status
+      FROM public.journal_entries je
+      JOIN public.sales_returns sr ON sr.id = je.source_id
+      WHERE je.source_type    = 'sales_return_fee'
+        AND je.reversal_of_id IS NULL
+        AND je.reversed_by_id IS NULL
+        AND sr.status <> 'confirmed'`);
+    expect(orphan, `live fees on non-confirmed returns: ${JSON.stringify(orphan)}`).toHaveLength(0);
+  });
+
+  it('phase77: the reversal is dated at the original entry, never today', async () => {
+    if (!(await applied())) { console.warn('⚠ R4b not applied yet'); return; }
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='reverse_sales_return_fee' AND pronamespace='public'::regnamespace`);
+    const code = def[0]!.src.split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+    expect(/CURRENT_DATE/i.test(code), 'does not date the reversal today').toBe(false);
+    expect(/public\.reverse_journal_entry/i.test(code), 'does not use the CURRENT_DATE reverser').toBe(false);
+    expect(code, 'mirrors at the original date').toMatch(/v_je\.date/);
+    expect(code, 'swaps the legs').toMatch(/v_gl\.credit,\s*v_gl\.debit/);
+
+    const wrongDate = await sql<{ entry_number: string }>(`
+      SELECT rev.entry_number
+      FROM public.journal_entries rev
+      JOIN public.journal_entries orig ON orig.id = rev.reversal_of_id
+      WHERE rev.source_type = 'sales_return_fee' AND rev.date <> orig.date`);
+    expect(wrongDate, `reversals not at the original date: ${JSON.stringify(wrongDate)}`).toHaveLength(0);
+  });
+
+  it('phase77: the fee derives its split, never rounding both sides', async () => {
+    if (!(await applied())) { console.warn('⚠ R4b not applied yet'); return; }
+    // The one line that keeps the entry balanced. If someone "tidies" it into
+    // two independent ROUND()s, a 5% fee on certain amounts is a fils out and
+    // je_must_balance rejects the whole confirm.
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='post_sales_return_fee' AND pronamespace='public'::regnamespace`);
+    const code = def[0]!.src.split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+    expect(code, 'tax is derived by subtraction').toMatch(/v_vat\s*:=\s*v_fee\s*-\s*v_net/);
+    expect(code, 'composes the one posting primitive').toMatch(/public\.post_journal_entry/);
+    expect(/insert\s+into\s+public\.general_ledger/i.test(code), 'writes no general_ledger of its own').toBe(false);
+    expect(/insert\s+into\s+public\.stock_ledger/i.test(code), 'moves no goods').toBe(false);
+  });
+
+  // ── The two that hold whether or not the migration is applied ────────────
+
+  it('phase77: phase76 was not reopened to add this', async () => {
+    // Two independent triggers, each posting its own balanced entry. Folding
+    // them together would mean one function whose failure takes out both.
+    for (const fn of ['post_sales_return_writeoff', 'reverse_sales_return_writeoff', '_tg_sales_return_writeoff']) {
+      const def = await sql<{ src: string }>(
+        `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+          WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+      if (def.length === 0) continue;   // phase76 not applied yet
+      const code = def[0]!.src.split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+      expect(/restocking_fee|sales_return_fee/.test(code), `${fn} knows nothing of the fee`).toBe(false);
+    }
+  });
+
+  it('phase77: the posting engines stay ignorant of the fee', async () => {
+    // The fee is a separate charge alongside the credit note, not a discount
+    // inside it. If confirm_credit_note ever learned about restocking_fee it
+    // would start reducing the revenue reversal again — the exact bug this
+    // replaced.
+    for (const fn of ['confirm_credit_note', 'confirm_sales_return', 'void_sales_return', 'reopen_sales_return']) {
+      const def = await sql<{ src: string }>(
+        `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+          WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+      expect(def.length, `${fn} exists`).toBe(1);
+      const code = def[0]!.src.split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+      expect(/restocking_fee/.test(code), `${fn} does not read the fee`).toBe(false);
+      expect(/'4200'/.test(code), `${fn} does not post other income`).toBe(false);
+    }
+  });
+});
