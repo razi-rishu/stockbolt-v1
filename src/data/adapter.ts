@@ -2395,7 +2395,11 @@ export type SalesReturnInsert  = Omit<Tables['sales_returns']['Insert'], 'id' | 
    *  as Dr 1200 / Cr 2200 + Cr 4200. */
   restocking_fee?: number;
 };
-export type SalesReturnUpdate  = Tables['sales_returns']['Update'];
+export type SalesReturnUpdate  = Tables['sales_returns']['Update'] & {
+  /** R4b — as on SalesReturnInsert, a phase-77 column the generated types
+   *  predate. 0 clears a fee that an earlier save had entered. */
+  restocking_fee?: number | null;
+};
 export type SalesReturnItemInsert = Omit<Tables['sales_return_items']['Insert'], 'id' | 'created_at'> & {
   /** R2a — the invoice line this came from. Without it the return cannot be
    *  priced, counted against what's already been returned, or even proven to
@@ -2474,6 +2478,12 @@ export interface SalesReturnsAPI {
   getById(id: string): Promise<SalesReturnRow | null>;
   getItems(sales_return_id: string): Promise<SalesReturnItemRow[]>;
   create(row: SalesReturnInsert, items: SalesReturnItemInsert[]): Promise<SalesReturnRow>;
+  /** R5 — replace a DRAFT return's header + items in place. There was no
+   *  update path at all, so saving an already-saved draft called create()
+   *  again: a fresh return_number, a second document, and the original left
+   *  behind holding its old values. Refuses anything that is not a draft, and
+   *  never reissues return_number. */
+  update(id: string, row: SalesReturnUpdate, items: SalesReturnItemInsert[]): Promise<void>;
   /** R2a — returnable quantity per line of the linked invoice. The importer
    *  offers only what is left, and confirm_sales_return enforces the same
    *  number server-side. */

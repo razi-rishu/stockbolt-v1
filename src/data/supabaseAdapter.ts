@@ -72,7 +72,7 @@ import type {
   DailyCashLine, BankReconLine,
   // Phase 9
   CreditNoteRow, CreditNoteItemRow, CreditNoteInsert, CreditNoteUpdate, CreditNoteItemInsert,
-  SalesReturnRow, SalesReturnItemRow, SalesReturnInsert, SalesReturnItemInsert,
+  SalesReturnRow, SalesReturnItemRow, SalesReturnInsert, SalesReturnUpdate, SalesReturnItemInsert,
   DebitNoteRow, DebitNoteItemRow, DebitNoteInsert, DebitNoteUpdate, DebitNoteItemInsert,
   CreditNoteConfirmResult, DebitNoteConfirmResult,
   // Phase 10
@@ -5508,6 +5508,31 @@ export function createSupabaseAdapter(
           .insert(itemsWithId as Database['public']['Tables']['sales_return_items']['Insert'][]);
         assertNoError(iErr, 'salesReturns.create items');
         return sr as SalesReturnRow;
+      },
+      // R5 — edit a saved draft in place. The editor had only create(), so
+      // re-saving a draft minted a second return_number and orphaned the
+      // first row at its old values. return_number is deliberately NOT part
+      // of the update: the document keeps the identity it was saved with.
+      async update(id, row: SalesReturnUpdate, items: SalesReturnItemInsert[]): Promise<void> {
+        const { data: cur, error: sErr } = await client.from('sales_returns')
+          .select('status').eq('id', id).single();
+        assertNoError(sErr, 'salesReturns.update status');
+        if ((cur as { status?: string } | null)?.status !== 'draft') {
+          throw new Error('Only draft sales returns can be edited. Re-open a confirmed return first.');
+        }
+        // The status filter repeats the check inside the write itself, so a
+        // return confirmed between the read and the update is not overwritten.
+        const { error: hErr } = await client.from('sales_returns')
+          .update(row as Database['public']['Tables']['sales_returns']['Update'])
+          .eq('id', id).eq('status', 'draft');
+        assertNoError(hErr, 'salesReturns.update header');
+        const { error: dErr } = await client.from('sales_return_items')
+          .delete().eq('sales_return_id', id);
+        assertNoError(dErr, 'salesReturns.update clear items');
+        const itemsWithId = items.map(it => ({ ...it, sales_return_id: id }));
+        const { error: iErr } = await client.from('sales_return_items')
+          .insert(itemsWithId as Database['public']['Tables']['sales_return_items']['Insert'][]);
+        assertNoError(iErr, 'salesReturns.update items');
       },
       async confirm(id) {
         const { data, error } = await rpcAny('confirm_sales_return', { p_sales_return_id: id });

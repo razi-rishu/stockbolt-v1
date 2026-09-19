@@ -472,6 +472,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       getById:       () => notImplemented('salesReturns.getById'),
       getItems:      () => notImplemented('salesReturns.getItems'),
       create:        () => notImplemented('salesReturns.create'),
+      update:        () => notImplemented('salesReturns.update'),
       confirm:       () => notImplemented('salesReturns.confirm'),
       void:          () => notImplemented('salesReturns.void'),
       reopen:        () => notImplemented('salesReturns.reopen'),

@@ -3934,6 +3934,8 @@ describe('R4a — damaged return write-off (soft until applied)', () => {
       SELECT pg_get_triggerdef(oid) AS def FROM pg_trigger
        WHERE tgname = 'sales_returns_writeoff' AND NOT tgisinternal`);
     expect(tg[0]!.def, 'fires after, on status only').toMatch(/AFTER UPDATE OF status ON public\.sales_returns/);
+    // pg_get_triggerdef prints the WHEN expression inside its own parens, so
+    // the clause comes back doubled: WHEN ((old.status IS DISTINCT FROM ...)).
     expect(tg[0]!.def, 'only when status actually changed').toMatch(/WHEN \(+old\.status IS DISTINCT FROM new\.status\)+/i);
   });
 
@@ -4121,6 +4123,8 @@ describe('R4b — restocking fee (soft until applied)', () => {
       SELECT pg_get_triggerdef(oid) AS def FROM pg_trigger
        WHERE tgname='sales_returns_fee' AND NOT tgisinternal`);
     expect(tg[0]!.def, 'fires after, on status only').toMatch(/AFTER UPDATE OF status ON public\.sales_returns/);
+    // pg_get_triggerdef prints the WHEN expression inside its own parens, so
+    // the clause comes back doubled: WHEN ((old.status IS DISTINCT FROM ...)).
     expect(tg[0]!.def, 'only when status actually changed').toMatch(/WHEN \(+old\.status IS DISTINCT FROM new\.status\)+/i);
   });
 

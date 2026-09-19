@@ -176,14 +176,58 @@ export default function SalesReturnEditorPage() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const items: SalesReturnItemInsert[] = lines.map(l => ({
+        invoice_item_id:     l.invoice_item_id,   // R2b
+        product_id:          l.product_id ?? undefined,
+        qty_returned:        l.qty_returned,
+        condition:           l.condition,
+        unit_cost:           l.unit_cost ?? undefined,
+      } as SalesReturnItemInsert));
+      // R6b — must stay in step with sales_returns_reason_check (phase 79).
+      // R5 branched before those codes existed and hoisted this cast with the
+      // old four-value union; narrowing it back would make update() reject
+      // damaged_in_transit, ordered_in_error and warranty.
+      const reasonValue = reason as 'wrong_part' | 'defective' | 'customer_changed_mind'
+                                  | 'damaged_in_transit' | 'ordered_in_error' | 'warranty' | 'other';
+
+      // R5 — a saved draft is UPDATED, never re-created. This branch did not
+      // exist: every save called create() with a freshly minted return_number,
+      // so editing a saved draft produced a SECOND sales return and left the
+      // first one behind holding its old values. Anything with an :id in the
+      // URL takes this path unconditionally — falling through to create()
+      // because the row had not arrived yet is exactly the old bug.
+      if (!isNew) {
+        if (!existing) {
+          throw new Error('The return is still loading. Try again in a moment.');
+        }
+        if (existing.status !== 'draft') {
+          throw new Error('Only draft returns can be edited. Re-open a confirmed return first.');
+        }
+        await getAdapter().salesReturns.update(existing.id, {
+          invoice_id: invoiceId,
+          date,
+          reason:     reasonValue,
+          // null, not undefined: an omitted key leaves the stored value alone,
+          // so clearing the notes has to be said out loud.
+          notes:      notes || null,
+          // R4b — same reasoning as on create: the key is sent only when there
+          // is something to say about the fee, because restocking_fee is a
+          // phase-77 column and PostgREST rejects it outright until that
+          // migration is applied. A fee already on the row proves the column
+          // exists, so clearing it back to 0 is safe to send.
+          ...(restockingFee > 0 || Number(existing.restocking_fee ?? 0) > 0
+            ? { restocking_fee: restockingFee }
+            : {}),
+        }, items);
+        return existing;
+      }
+
       const header = {
         company_id:   company_id!,
         return_number: await getAdapter().salesReturns.getNextNumber(company_id!),
         invoice_id:   invoiceId,
         date,
-        // R6b — must stay in step with sales_returns_reason_check (phase 79).
-        reason:       reason as 'wrong_part' | 'defective' | 'customer_changed_mind'
-                              | 'damaged_in_transit' | 'ordered_in_error' | 'warranty' | 'other',
+        reason:       reasonValue,
         notes:        notes || undefined,
         // R4b — the key is OMITTED when there is no fee, not sent as 0.
         // Code ships before migrations are hand-applied, and PostgREST rejects
@@ -192,19 +236,20 @@ export default function SalesReturnEditorPage() {
         ...(restockingFee > 0 ? { restocking_fee: restockingFee } : {}),
         status:       'draft' as const,
       };
-      const items: SalesReturnItemInsert[] = lines.map(l => ({
-        invoice_item_id:     l.invoice_item_id,   // R2b
-        product_id:          l.product_id ?? undefined,
-        qty_returned:        l.qty_returned,
-        condition:           l.condition,
-        unit_cost:           l.unit_cost ?? undefined,
-      } as SalesReturnItemInsert));
       return getAdapter().salesReturns.create(header, items);
     },
     onSuccess: async (sr) => {
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['sales_returns'] });
-      // Navigate to linked credit note creation if wanted
+      // R5 — an edit stays on the document it edited. Only a brand-new return
+      // goes on to the credit note screen; sending an edit there would invite a
+      // second credit note for goods already accounted for.
+      if (!isNew) {
+        qc.invalidateQueries({ queryKey: ['sales_return', id] });
+        qc.invalidateQueries({ queryKey: ['sales_return_items', id] });
+        setViewMode(true);
+        return;
+      }
       navigate(`/sales/credit-notes/new?from_return=${sr?.id ?? ''}&invoice_id=${invoiceId}`);
     },
   });
@@ -335,8 +380,10 @@ export default function SalesReturnEditorPage() {
             </Button>
           )}
           {isDraft && (
-            <Button variant="primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !invoiceId || lines.length === 0}>
-              {t('returns.save_and_create_cn')}
+            <Button variant="primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !invoiceId || lines.length === 0 || (!isNew && !existing)}>
+              {/* R5 — only a new return goes on to the credit note screen, so
+                  only a new return promises to. */}
+              {isNew ? t('returns.save_and_create_cn') : t('common.save')}
             </Button>
           )}
         </div>
@@ -393,15 +440,16 @@ export default function SalesReturnEditorPage() {
         {/* R4b — a fee kept out of the credit. The credit note still reverses
             the sale in full, because that is what happened; this claws part
             of it back as Other Income, so revenue, gross margin and the VAT
-            return all stay right. Editable only while creating: there is no
-            update path for a saved return's header. */}
+            return all stay right. R5 — editable for as long as the return is a
+            draft, like every other header field: saving one now updates it
+            instead of minting a second return. */}
         <div>
           <label className="block text-sm font-medium text-ink-secondary mb-1">{t('returns.restocking_fee')}</label>
           <input
             type="number" min="0" step="0.01" placeholder="0.00"
             value={restockingFee || ''}
             onChange={e => setRestockingFee(e.target.value ? Number(e.target.value) : 0)}
-            disabled={!isNew}
+            disabled={!isDraft}
             className="w-full border border-border-strong rounded px-3 py-2 text-sm" />
           {restockingFee > 0 ? (
             <p className="mt-1 text-xs text-ink-tertiary">
@@ -412,7 +460,6 @@ export default function SalesReturnEditorPage() {
           ) : (
             <p className="mt-1 text-xs text-ink-tertiary">{t('returns.restocking_fee_hint')}</p>
           )}
-          {!isNew && <p className="mt-1 text-xs text-ink-tertiary">{t('returns.fee_set_at_creation')}</p>}
         </div>
       </div>
 

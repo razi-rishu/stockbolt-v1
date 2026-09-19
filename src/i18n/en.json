@@ -1444,7 +1444,6 @@
     "restocking_fee_hint": "Kept out of the credit. Leave 0 if you are crediting the return in full.",
     "fee_split": "Inclusive of {{rate}}% tax — {{net}} other income + {{vat}} tax.",
     "fee_no_tax": "No tax on this invoice — the whole {{net}} is other income.",
-    "fee_set_at_creation": "The fee is set when the return is created.",
     "return_reason": "Return Reason",
     "wrong_part": "Wrong part",
     "defective": "Defective",
