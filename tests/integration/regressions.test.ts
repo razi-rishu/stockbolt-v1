@@ -4545,3 +4545,118 @@ describe('R6b — return reason codes (soft until applied)', () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R7-alt — a purchase return must remove from stock exactly what it credits
+//
+// confirm_vendor_bill capitalises stock NET of discount. confirm_debit_note
+// credited 1300 net but removed quantity x unit_cost — GROSS — from the
+// subledger, because debit_note_items has no unit_price, only unit_cost and a
+// discount_amount. Every discounted purchase-return line drifted 1300 against
+// stock valuation by exactly the discount. Same class as the E1 drift
+// Pro_Parts and IMBD123 still carry from other causes.
+//
+// The last test runs whether or not the migration is applied: it is the one
+// that would catch this coming back.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('R7-alt — purchase return stock value (soft until applied)', () => {
+  async function debitNoteSrc(): Promise<string> {
+    const r = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='confirm_debit_note' AND pronamespace='public'::regnamespace`);
+    return r[0]?.src ?? '';
+  }
+  function stripComments(src: string) {
+    return src.split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+  }
+  async function applied(): Promise<boolean> {
+    return stripComments(await debitNoteSrc()).includes('v_eff_unit');
+  }
+
+  it('phase80: the ledger row carries the net value, not the gross', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ R7-alt not applied yet — run supabase/migrations/20260919000002_phase80_r7alt_purchase_return_stock_value.sql');
+      return;
+    }
+    const code = stripComments(await debitNoteSrc());
+    expect(code, 'per-unit figure derived from the net line value')
+      .toMatch(/v_eff_unit\s*:=\s*ROUND\(v_item_cost \/ v_item\.quantity, 4\)/);
+    expect(code, 'MAC comes off the net value').toMatch(/v_old_value - v_item_cost/);
+    expect(/v_item\.quantity \* v_item\.unit_cost/.test(code),
+      'the gross product is gone entirely').toBe(false);
+    expect(code, 'a worthless line writes no ledger row').toMatch(/v_item_cost > 0/);
+  });
+
+  it('phase80: DOUBLE ENTRY — the debit note still posts the same three legs', async () => {
+    if (!(await applied())) { console.warn('⚠ R7-alt not applied yet'); return; }
+    // The whole safety case for a surgical edit: what the GL does must not have
+    // moved at all. Only what leaves the subledger changed.
+    const code = stripComments(await debitNoteSrc());
+    expect(code, 'Dr 2100 AP').toMatch(/v_ap_id, '2100'/);
+    expect(code, 'Cr 1500 Input VAT').toMatch(/v_vat_id, '1500'/);
+    expect(code, 'Cr 1300 Inventory').toMatch(/v_inv_id, '1300'/);
+    const glInserts = (code.match(/INSERT INTO public\.general_ledger/g) ?? []).length;
+    expect(glInserts, 'still exactly four general_ledger inserts').toBe(4);
+    expect(code, 'still credits 1300 by the accumulated net value')
+      .toMatch(/0, v_total_inv_credit/);
+  });
+
+  it('phase80: no purchase return has drifted 1300 against the subledger', async () => {
+    if (!(await applied())) { console.warn('⚠ R7-alt not applied yet'); return; }
+    // The invariant the source change exists to hold. Per confirmed debit note:
+    // what the GL credited to 1300 must equal what the stock ledger removed.
+    const drift = await sql<{ debit_note_number: string; gl: number; stock: number }>(`
+      SELECT dn.debit_note_number,
+             ROUND(COALESCE(g.gl, 0), 2)    AS gl,
+             ROUND(COALESCE(s.stock, 0), 2) AS stock
+      FROM public.debit_notes dn
+      LEFT JOIN LATERAL (
+        SELECT SUM(gl.credit - gl.debit) AS gl
+        FROM public.general_ledger gl
+        WHERE gl.related_doc_type = 'debit_note' AND gl.related_doc_id = dn.id
+          AND gl.account_code = '1300') g ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT SUM(sl.total_cost) AS stock
+        FROM public.stock_ledger sl
+        WHERE sl.related_doc_type = 'debit_note' AND sl.related_doc_id = dn.id) s ON TRUE
+      WHERE dn.status = 'confirmed'
+        AND ABS(COALESCE(g.gl, 0) - COALESCE(s.stock, 0)) > 0.005`);
+    // Service lines credit 1300 with no stock movement — a separate, known gap
+    // (phase 36 never reached this function), so a mismatch there is expected
+    // and this assertion is scoped to notes whose lines are all goods.
+    const goodsOnly = [] as typeof drift;
+    for (const d of drift) {
+      const svc = await sql<{ n: number }>(`
+        SELECT count(*)::int AS n FROM public.debit_note_items dni
+        LEFT JOIN public.products p ON p.id = dni.product_id
+        WHERE dni.debit_note_id = (SELECT id FROM public.debit_notes
+                                    WHERE debit_note_number = '${d.debit_note_number}' LIMIT 1)
+          AND (dni.product_id IS NULL OR p.type = 'service')`);
+      if ((svc[0]?.n ?? 0) === 0) goodsOnly.push(d);
+    }
+    expect(goodsOnly, `goods-only debit notes where 1300 and stock disagree: ${JSON.stringify(goodsOnly)}`)
+      .toHaveLength(0);
+  });
+
+  // ── Holds whether or not the migration is applied ────────────────────────
+
+  it('phase80: the two sides of a purchase agree on what a discount means', async () => {
+    // confirm_vendor_bill decides what inventory is WORTH on the way in. If the
+    // two functions ever disagree again about whether a discount is included,
+    // 1300 and stock valuation part company silently and only surface later as
+    // E1 drift nobody can source.
+    const bill = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='confirm_vendor_bill' AND pronamespace='public'::regnamespace`);
+    expect(bill.length, 'confirm_vendor_bill exists').toBe(1);
+    const inbound = stripComments(bill[0]!.src);
+    expect(inbound, 'inbound value is net of tax (and so of discount)')
+      .toMatch(/v_line_value\s*:=\s*v_item\.line_total - v_item\.tax_amount/);
+    expect(inbound, 'inbound per-unit is derived from that value')
+      .toMatch(/v_eff_unit\s*:=\s*ROUND\(/);
+
+    const outbound = stripComments(await debitNoteSrc());
+    expect(outbound, 'outbound value is derived the same way')
+      .toMatch(/v_item_cost\s*:=\s*v_item\.line_total - v_item\.tax_amount/);
+  });
+});
