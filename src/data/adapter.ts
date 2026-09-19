@@ -539,7 +539,7 @@ export interface ContactsAPI {
   getAdvanceBalance(
     company_id: string,
     contact_id: string,
-    account_code?: '2400' | '1400',
+    account_code?: '2400' | '1400' | '1200',
   ): Promise<number>;
 }
 
@@ -1433,9 +1433,20 @@ export interface PaymentsAPI {
    */
   refundCustomerAdvance(input: RefundAdvanceInput): Promise<RefundResult>;
   refundVendorAdvance(input: RefundAdvanceInput): Promise<RefundResult>;
+  /**
+   * R5a — refund a credit balance sitting on 1200 AR, which is where a
+   * credit note leaves the money when the customer had already paid.
+   * Distinct from refundCustomerAdvance, which empties 2400 Customer
+   * Advances: that is money taken BEFORE a sale, this is money owed AFTER
+   * one. The ceiling is the contact's NET position on 1200, so a customer
+   * who owes more than they are owed cannot be refunded at all.
+   */
+  refundCustomerCredit(input: RefundAdvanceInput): Promise<RefundResult>;
   /** Reverses the refund at its VOUCHER date and marks the payment void. */
   voidCustomerRefund(payment_id: string, reason?: string): Promise<void>;
   voidVendorRefund(payment_id: string, reason?: string): Promise<void>;
+  /** R5a — mirror of voidCustomerRefund for the 1200 credit refund. */
+  voidCustomerCreditRefund(payment_id: string, reason?: string): Promise<void>;
 }
 
 export interface RefundAdvanceInput {

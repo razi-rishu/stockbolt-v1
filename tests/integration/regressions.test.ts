@@ -3924,7 +3924,7 @@ describe('R4a — damaged return write-off (soft until applied)', () => {
       SELECT pg_get_triggerdef(oid) AS def FROM pg_trigger
        WHERE tgname = 'sales_returns_writeoff' AND NOT tgisinternal`);
     expect(tg[0]!.def, 'fires after, on status only').toMatch(/AFTER UPDATE OF status ON public\.sales_returns/);
-    expect(tg[0]!.def, 'only when status actually changed').toMatch(/WHEN \(old\.status IS DISTINCT FROM new\.status\)/i);
+    expect(tg[0]!.def, 'only when status actually changed').toMatch(/WHEN \(+old\.status IS DISTINCT FROM new\.status\)+/i);
   });
 
   it('phase76: 6700 Inventory Loss is present and active for every company', async () => {
@@ -4111,7 +4111,7 @@ describe('R4b — restocking fee (soft until applied)', () => {
       SELECT pg_get_triggerdef(oid) AS def FROM pg_trigger
        WHERE tgname='sales_returns_fee' AND NOT tgisinternal`);
     expect(tg[0]!.def, 'fires after, on status only').toMatch(/AFTER UPDATE OF status ON public\.sales_returns/);
-    expect(tg[0]!.def, 'only when status actually changed').toMatch(/WHEN \(old\.status IS DISTINCT FROM new\.status\)/i);
+    expect(tg[0]!.def, 'only when status actually changed').toMatch(/WHEN \(+old\.status IS DISTINCT FROM new\.status\)+/i);
   });
 
   it('phase77: 4200 Other Income is present and active for every company', async () => {
@@ -4259,6 +4259,172 @@ describe('R4b — restocking fee (soft until applied)', () => {
       const code = def[0]!.src.split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
       expect(/restocking_fee/.test(code), `${fn} does not read the fee`).toBe(false);
       expect(/'4200'/.test(code), `${fn} does not post other income`).toBe(false);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R5a — refunding a credit balance on Accounts Receivable
+//
+// A customer pays, then returns the goods. The credit note posts Cr 1200, so
+// their receivable goes negative: we hold their money. Nothing could give it
+// back — confirm_customer_refund empties 2400, confirm_payment refuses
+// anything outbound, and no journal entry anywhere debited 1200 against a bank
+// account.
+//
+// The dangerous failure mode is the two refund engines learning about each
+// other's account, which would let the same money out twice. The last two
+// tests exist for that and run whether or not the migration is applied.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('R5a — customer credit refund (soft until applied)', () => {
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_proc
+       WHERE proname='confirm_customer_credit_refund' AND pronamespace='public'::regnamespace`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase78: both RPCs exist, are SECURITY DEFINER, gated and anon-locked', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ R5a not applied yet — run supabase/migrations/20260918000002_phase78_r5a_customer_credit_refund.sql');
+      return;
+    }
+    const fns = await sql<{ proname: string; secdef: boolean; src: string }>(`
+      SELECT proname, prosecdef AS secdef, pg_get_functiondef(oid) AS src
+      FROM pg_proc WHERE pronamespace='public'::regnamespace
+        AND proname IN ('confirm_customer_credit_refund','void_customer_credit_refund')
+      ORDER BY 1`);
+    expect(fns.map(f => f.proname))
+      .toEqual(['confirm_customer_credit_refund', 'void_customer_credit_refund']);
+    for (const f of fns) {
+      expect(f.secdef, `${f.proname} is SECURITY DEFINER`).toBe(true);
+      expect(f.src, `${f.proname} gates on accounting.write`)
+        .toMatch(/auth_require\('accounting\.write'\)/);
+    }
+
+    const anonExec = await sql<{ proname: string }>(`
+      SELECT proname FROM pg_proc
+       WHERE pronamespace='public'::regnamespace
+         AND proname IN ('confirm_customer_credit_refund','void_customer_credit_refund')
+         AND has_function_privilege('anon', oid, 'EXECUTE')`);
+    expect(anonExec, `executable by anon: ${JSON.stringify(anonExec)}`).toHaveLength(0);
+  });
+
+  it('phase78: DOUBLE ENTRY — Dr 1200 / Cr bank through the primitive, never raw GL', async () => {
+    if (!(await applied())) { console.warn('⚠ R5a not applied yet'); return; }
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='confirm_customer_credit_refund' AND pronamespace='public'::regnamespace`);
+    const code = def[0]!.src.split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+    expect(code, 'composes the one posting primitive').toMatch(/public\.post_journal_entry/);
+    expect(/insert\s+into\s+public\.general_ledger/i.test(code), 'writes no general_ledger of its own').toBe(false);
+    expect(code, 'debits the receivable').toMatch(/'account_code',\s*'1200'/);
+    expect(code, 'credits the chosen bank account').toMatch(/'account_code',\s*v_bank_code/);
+    expect(code, 'the receivable leg names the customer').toMatch(/'contact_id',\s*v_pmt\.contact_id/);
+  });
+
+  it('phase78: the ceiling is the 1200 ledger, and a net debtor is refused', async () => {
+    if (!(await applied())) { console.warn('⚠ R5a not applied yet'); return; }
+    // Reading the ledger rather than the credit note is what makes an unpaid
+    // invoice cancel the credit out. Refunding cash to someone who owes you
+    // more than they are owed is a loan, not a refund.
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='confirm_customer_credit_refund' AND pronamespace='public'::regnamespace`);
+    const code = def[0]!.src.split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+    expect(code, 'ceiling read from the 1200 ledger')
+      .toMatch(/SUM\(gl\.credit - gl\.debit\)[\s\S]{0,200}account_code\s*=\s*'1200'/);
+    expect(code, 'a net debtor cannot be refunded').toMatch(/v_available\s*<=\s*0/);
+    expect(code, 'the refund cannot exceed the balance').toMatch(/v_amount\s*>\s*v_available/);
+    expect(code, 'only an outbound document').toMatch(/v_pmt\.type\s*<>\s*'outbound'/);
+    expect(code, "only an 'on_account' document").toMatch(/v_pmt\.classification\s*<>\s*'on_account'/);
+  });
+
+  it('phase78: void mirrors at the VOUCHER date, not today', async () => {
+    if (!(await applied())) { console.warn('⚠ R5a not applied yet'); return; }
+    const def = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='void_customer_credit_refund' AND pronamespace='public'::regnamespace`);
+    const code = def[0]!.src.split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+    expect(/CURRENT_DATE/i.test(code), 'does not date the reversal today').toBe(false);
+    expect(/public\.reverse_journal_entry/i.test(code), 'does not use the CURRENT_DATE reverser').toBe(false);
+    expect(code, 'mirrors at the original date').toMatch(/v_je\.date/);
+    expect(code, 'swaps the legs').toMatch(/v_gl\.credit,\s*v_gl\.debit/);
+    expect(code, 'refuses a reconciled posting').toMatch(/reconciliation_id IS NOT NULL/);
+
+    const wrongDate = await sql<{ entry_number: string }>(`
+      SELECT rev.entry_number
+      FROM public.journal_entries rev
+      JOIN public.journal_entries orig ON orig.id = rev.reversal_of_id
+      WHERE rev.source_type = 'customer_credit_refund' AND rev.date <> orig.date`);
+    expect(wrongDate, `reversals not at the original date: ${JSON.stringify(wrongDate)}`).toHaveLength(0);
+  });
+
+  it('phase78: DOUBLE ENTRY — every credit refund balances and names the customer', async () => {
+    if (!(await applied())) { console.warn('⚠ R5a not applied yet'); return; }
+    const bad = await sql<{ entry_number: string; td: number; tc: number; legs: number }>(`
+      SELECT je.entry_number, SUM(gl.debit) AS td, SUM(gl.credit) AS tc, count(*)::int AS legs
+      FROM public.journal_entries je
+      JOIN public.general_ledger gl ON gl.journal_entry_id = je.id
+      WHERE je.source_type = 'customer_credit_refund'
+      GROUP BY je.entry_number
+      HAVING SUM(gl.debit) <> SUM(gl.credit)
+          OR count(*) <> 2
+          OR SUM(CASE WHEN gl.contact_id IS NULL THEN 1 ELSE 0 END) > 0`);
+    expect(bad, `malformed credit refunds: ${JSON.stringify(bad)}`).toHaveLength(0);
+  });
+
+  it('phase78: no customer has been refunded into a debit balance', async () => {
+    if (!(await applied())) { console.warn('⚠ R5a not applied yet'); return; }
+    // The ceiling should make this impossible. If a contact ends up owing
+    // money purely because of a refund, something got around it.
+    const over = await sql<{ customer: string; net: number }>(`
+      SELECT ct.name AS customer, ROUND(SUM(gl.credit - gl.debit), 2) AS net
+      FROM public.general_ledger gl
+      JOIN public.contacts ct ON ct.id = gl.contact_id
+      WHERE gl.account_code = '1200'
+        AND gl.contact_id IN (
+          SELECT p.contact_id FROM public.payments p
+           WHERE p.type='outbound' AND p.classification='on_account' AND p.status='confirmed')
+      GROUP BY ct.name
+      HAVING SUM(gl.credit - gl.debit) < -0.005`);
+    expect(over, `refunded customers now in debit: ${JSON.stringify(over)}`).toHaveLength(0);
+  });
+
+  // ── The two that hold whether or not the migration is applied ────────────
+
+  it('phase78: the two refund engines never touch each other\'s account', async () => {
+    // The one way this goes badly wrong. If the advance refund learned about
+    // 1200, or this one about 2400, the same money could leave twice — each
+    // engine checking a ceiling the other had already spent.
+    const advance = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='confirm_customer_refund' AND pronamespace='public'::regnamespace`);
+    if (advance.length === 1) {
+      const code = advance[0]!.src.split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+      expect(/'1200'/.test(code), 'the advance refund never touches 1200').toBe(false);
+    }
+    const credit = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='confirm_customer_credit_refund' AND pronamespace='public'::regnamespace`);
+    if (credit.length === 1) {
+      const code = credit[0]!.src.split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+      expect(/'2400'/.test(code), 'the credit refund never touches 2400').toBe(false);
+    }
+  });
+
+  it('phase78: the payment engines were not reopened for this', async () => {
+    // A standalone document alongside them, the same discipline phase 68 and
+    // the TDS work used. If a refund ever starts happening INSIDE confirm_payment
+    // there are two paths to keep in sync, and one of them will be forgotten.
+    for (const fn of ['confirm_payment', 'confirm_vendor_payment', 'void_payment',
+                      'reopen_payment', 'apply_advance']) {
+      const def = await sql<{ src: string }>(
+        `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+          WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+      if (def.length === 0) continue;
+      const code = def[0]!.src.split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+      expect(/customer_credit_refund/.test(code), `${fn} knows nothing of the credit refund`).toBe(false);
     }
   });
 });

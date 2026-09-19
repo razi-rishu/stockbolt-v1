@@ -27,13 +27,18 @@ function fmt(n: number) {
 }
 
 export function RefundAdvanceModal({
-  open, onClose, onDone, side, contactId, contactName, available, currency,
+  open, onClose, onDone, side, source = 'advance', contactId, contactName, available, currency,
 }: {
   open: boolean;
   onClose: () => void;
   /** Called after a successful refund so the page can refetch balances. */
   onDone: (result: RefundResult) => void;
   side: 'customer' | 'vendor';
+  /** R5a — which pot the money comes out of. 'advance' is 2400 Customer
+   *  Advances, money taken BEFORE a sale. 'credit' is a credit balance on
+   *  1200 AR, money owed AFTER one — typically a return by a customer who
+   *  had already paid. The vendor side is always 'advance'. */
+  source?: 'advance' | 'credit';
   contactId: string;
   contactName: string;
   /** Advance balance as the page last read it — display + client-side sanity only. */
@@ -77,9 +82,11 @@ export function RefundAdvanceModal({
         reference:       reference || null,
         notes:           null,
       };
-      const res = side === 'customer'
-        ? await api.refundCustomerAdvance(input)
-        : await api.refundVendorAdvance(input);
+      const res = side === 'vendor'
+        ? await api.refundVendorAdvance(input)
+        : source === 'credit'
+          ? await api.refundCustomerCredit(input)
+          : await api.refundCustomerAdvance(input);
       onDone(res);
       onClose();
       setAmount(''); setRef('');
@@ -90,19 +97,23 @@ export function RefundAdvanceModal({
     }
   };
 
-  const title = side === 'customer' ? t('refund.title_customer') : t('refund.title_vendor');
+  const isCredit = side === 'customer' && source === 'credit';
+  const title = side === 'vendor' ? t('refund.title_vendor')
+              : isCredit          ? t('refund.title_customer_credit')
+              :                     t('refund.title_customer');
 
   return (
     <Modal open={open} onClose={onClose} title={title} width="md">
       <div className="flex flex-col gap-3 text-sm">
         <p className="text-ink-secondary">
-          {side === 'customer' ? t('refund.intro_customer', { name: contactName })
-                               : t('refund.intro_vendor',   { name: contactName })}
+          {side === 'vendor' ? t('refund.intro_vendor',          { name: contactName })
+           : isCredit        ? t('refund.intro_customer_credit', { name: contactName })
+           :                   t('refund.intro_customer',        { name: contactName })}
         </p>
 
         <div className="rounded-card bg-surface-subtle px-3 py-2">
           <span className="text-xs uppercase tracking-wide text-ink-tertiary">
-            {t('refund.available')}
+            {isCredit ? t('refund.available_credit') : t('refund.available')}
           </span>
           <div className="font-mono text-base font-semibold text-ink-primary">
             {currency} {fmt(available)}
@@ -120,7 +131,9 @@ export function RefundAdvanceModal({
         </label>
         {overAvailable && (
           <p className="text-xs text-danger-600">
-            {t('refund.over_available', { available: `${currency} ${fmt(available)}` })}
+            {isCredit
+              ? t('refund.over_available_credit', { available: `${currency} ${fmt(available)}` })
+              : t('refund.over_available',        { available: `${currency} ${fmt(available)}` })}
           </p>
         )}
 
@@ -150,7 +163,9 @@ export function RefundAdvanceModal({
         </label>
 
         <p className="text-xs text-ink-tertiary">
-          {side === 'customer' ? t('refund.gl_hint_customer') : t('refund.gl_hint_vendor')}
+          {side === 'vendor' ? t('refund.gl_hint_vendor')
+           : isCredit        ? t('refund.gl_hint_customer_credit')
+           :                   t('refund.gl_hint_customer')}
         </p>
 
         {error && <p className="text-sm text-danger-600">{error}</p>}

@@ -139,9 +139,13 @@ async function postRefund(
   client: SupabaseClient<Database>,
   input: import('./adapter').RefundAdvanceInput,
   direction: 'inbound' | 'outbound',
-  rpc: 'confirm_customer_refund' | 'confirm_vendor_refund',
-  prefix: 'CRF' | 'VRF',
+  rpc: 'confirm_customer_refund' | 'confirm_vendor_refund' | 'confirm_customer_credit_refund',
+  prefix: 'CRF' | 'VRF' | 'CCR',
   context: string,
+  /** R5a — which pot is being emptied. 'advance' is 2400/1400; 'on_account'
+   *  is a credit balance on 1200. The confirm RPCs check this too, so a
+   *  document can never be handed to the wrong engine. */
+  classification: 'advance' | 'on_account' = 'advance',
 ): Promise<import('./adapter').RefundResult> {
   const rpcCall = client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
 
@@ -155,7 +159,7 @@ async function postRefund(
       company_id:        input.company_id,
       payment_number:    num as string,
       type:              direction,
-      classification:    'advance',
+      classification,
       contact_id:        input.contact_id,
       date:              input.date,
       amount:            input.amount,
@@ -2614,6 +2618,17 @@ export function createSupabaseAdapter(
       },
       async refundVendorAdvance(input): Promise<import('./adapter').RefundResult> {
         return postRefund(client, input, 'inbound', 'confirm_vendor_refund', 'VRF', 'payments.refundVendorAdvance');
+      },
+      async refundCustomerCredit(input): Promise<import('./adapter').RefundResult> {
+        // R5a — same helper, different pot: classification 'on_account' routes
+        // it to the 1200 engine instead of the 2400 one.
+        return postRefund(client, input, 'outbound', 'confirm_customer_credit_refund',
+                          'CCR', 'payments.refundCustomerCredit', 'on_account');
+      },
+      async voidCustomerCreditRefund(payment_id, reason): Promise<void> {
+        const { error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ error: unknown }>)
+          ('void_customer_credit_refund', { p_payment_id: payment_id, p_reason: reason ?? null });
+        assertNoError(error as Error | null, 'payments.voidCustomerCreditRefund');
       },
       async voidCustomerRefund(payment_id, reason): Promise<void> {
         const { error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ error: unknown }>)
