@@ -326,6 +326,8 @@ export function createSelfHostedAdapter(): DataAdapter {
       dailyCash: () => notImplemented('reports.dailyCash'),
       bankRecon: () => notImplemented('reports.bankRecon'),
       getSalesByCustomer:   () => notImplemented('reports.getSalesByCustomer'),
+      getSalesReturnsByReason:    () => notImplemented('reports.getSalesReturnsByReason'),
+      getPurchaseReturnsByReason: () => notImplemented('reports.getPurchaseReturnsByReason'),
       getSalesByProduct:    () => notImplemented('reports.getSalesByProduct'),
       getSalesByBrand:      () => notImplemented('reports.getSalesByBrand'),
       getSalesByVehicle:    () => notImplemented('reports.getSalesByVehicle'),

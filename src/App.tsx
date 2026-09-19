@@ -167,6 +167,7 @@ const PrintPage                       = lazy(() => import('@/modules/print/Print
 const PrintSettingsPage               = lazy(() => import('@/modules/settings/print-settings'));
 
 // Phase 10 — Reports Completion & Dashboards
+const ReturnsAnalysisPage             = lazy(() => import('@/modules/reports/returns-analysis'));
 const SalesByCustomerPage             = lazy(() => import('@/modules/reports/sales-by-customer'));
 const SalesByProductPage              = lazy(() => import('@/modules/reports/sales-by-product'));
 const SalesByBrandPage                = lazy(() => import('@/modules/reports/sales-by-brand'));
@@ -432,6 +433,7 @@ function AppRoutes() {
               <Route path="/purchasing/debit-notes"             element={<DebitNotesPage />} />
 
               {/* Phase 10 — Reports Completion & Dashboards */}
+              <Route path="/reports/returns-analysis"          element={<ReturnsAnalysisPage />} />
               <Route path="/reports/sales-by-customer"          element={<SalesByCustomerPage />} />
               <Route path="/reports/sales-by-product"           element={<SalesByProductPage />} />
               <Route path="/reports/sales-by-brand"             element={<SalesByBrandPage />} />

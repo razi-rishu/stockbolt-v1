@@ -2,6 +2,12 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database, Json } from '@/types/database';
 import { normalizeSettings, DEFAULT_TEMPLATE_SETTINGS } from '@/modules/print/engine/types';
 import { sha256Hex } from '@/lib/einvoice';   // AC-4C — content hash for e-invoice snapshots
+// R6a — the Returns Analysis fold lives in a pure module so it can be unit
+// tested without a database; the whole risk in a report is the arithmetic.
+import {
+  foldSalesReturnsByReason, foldPurchaseReturnsByReason,
+  type SalesReturnRaw, type PurchaseReturnRaw,
+} from '@/lib/returns-analysis';
 import type {
   DataAdapter, Company, Profile, AppRole, CompanyInviteRow, PendingInvite, RoleRow,
   ApiKeyRow, ApiScope,
@@ -3494,6 +3500,32 @@ export function createSupabaseAdapter(
           const gp = net - b.cogs;
           return { contact_id: id, contact_name: b.name, invoice_count: b.count, gross_sales: b.gross, returns: b.returns, net_sales: net, gross_profit: gp, gp_pct: net > 0 ? Math.round(gp / net * 1000) / 10 : 0 };
         }).sort((a, b) => b.net_sales - a.net_sales);
+      },
+
+      // R6a — Returns Analysis. Aggregated client-side like every other report
+      // here; no RPC and no migration. Only CONFIRMED returns count: a draft
+      // has returned nothing and a void has been reversed.
+      async getSalesReturnsByReason(company_id, from, to): Promise<import('./adapter').SalesReturnReasonLine[]> {
+        // Cast: restocking_fee is a phase-77 column and the generated
+        // database.ts predates it.
+        const { data, error } = await (client.from('sales_returns') as any)
+          .select('id, reason, restocking_fee, credit_notes(total_amount), sales_return_items(qty_returned, condition, unit_cost)')
+          .eq('company_id', company_id)
+          .eq('status', 'confirmed')
+          .gte('date', from).lte('date', to);
+        assertNoError(error as Error | null, 'getSalesReturnsByReason');
+        return foldSalesReturnsByReason((data ?? []) as SalesReturnRaw[]);
+      },
+
+      async getPurchaseReturnsByReason(company_id, from, to): Promise<import('./adapter').PurchaseReturnReasonLine[]> {
+        // Cast: purchase_returns is a phase-75 table, absent from database.ts.
+        const { data, error } = await (client.from('purchase_returns' as any) as any)
+          .select('id, reason, debit_notes(total_amount), purchase_return_items(qty_returned, unit_cost)')
+          .eq('company_id', company_id)
+          .eq('status', 'confirmed')
+          .gte('date', from).lte('date', to);
+        assertNoError(error as Error | null, 'getPurchaseReturnsByReason');
+        return foldPurchaseReturnsByReason((data ?? []) as PurchaseReturnRaw[]);
       },
 
       async getSalesByProduct(company_id, from, to): Promise<SalesByProductLine[]> {

@@ -262,6 +262,9 @@ function useNavSections(t: (k: string) => string): NavSection[] {
             { to: '/reports/reorder', label: t('reports.reorder') },
             { to: '/reports/stock-aging', label: t('reports.stock_aging') },
             { to: '/reports/inventory-adjustment-report', label: t('reports.inventory_adjustment_report') },
+            // R6a — covers BOTH trade directions, so it does not belong under
+            // Sales or Purchases; its headline figure is an inventory write-off.
+            { to: '/reports/returns-analysis', label: t('reports.returns_analysis') },
           ],
         },
         {

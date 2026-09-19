@@ -777,6 +777,18 @@
     "tr_reopen_success_body": "The tax period has been reopened and unlocked."
   },
   "reports": {
+    "returns_analysis": "Returns Analysis",
+    "returns_sales_side": "Sales returns",
+    "returns_purchase_side": "Purchase returns",
+    "returns_count": "Returns",
+    "qty_returned": "Qty Returned",
+    "credit_value": "Credit Value",
+    "debit_value": "Debit Value",
+    "restocked_cost": "Restocked Cost",
+    "returned_cost": "Returned Cost",
+    "written_off": "Written Off",
+    "written_off_hint": "Written-off cost is posted to 6700 Inventory Loss rather than left in 5100 Cost of Goods Sold.",
+    "reason_none": "Not given",
     "date": "Date",
     "trial_balance": "Trial Balance",
     "as_of_date": "As of date",

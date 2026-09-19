@@ -788,6 +788,18 @@
     "tr_reopen_success_body": "تمت إعادة فتح الفترة الضريبية وفتحها."
   },
   "reports": {
+    "returns_analysis": "تحليل المرتجعات",
+    "returns_sales_side": "مرتجعات المبيعات",
+    "returns_purchase_side": "مرتجعات المشتريات",
+    "returns_count": "عدد المرتجعات",
+    "qty_returned": "الكمية المرتجعة",
+    "credit_value": "قيمة الإشعار الدائن",
+    "debit_value": "قيمة الإشعار المدين",
+    "restocked_cost": "تكلفة المعاد للمخزون",
+    "returned_cost": "تكلفة المرتجع",
+    "written_off": "المشطوب",
+    "written_off_hint": "تُرحّل التكلفة المشطوبة إلى 6700 خسائر المخزون بدلاً من بقائها في 5100 تكلفة البضاعة المباعة.",
+    "reason_none": "غير محدد",
     "date": "التاريخ",
     "trial_balance": "ميزان المراجعة",
     "as_of_date": "حتى تاريخ",

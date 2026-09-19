@@ -1541,6 +1541,10 @@ export interface ReportsAPI {
   // Phase 10 reports
   getSalesByCustomer(company_id: string, from: string, to: string): Promise<SalesByCustomerLine[]>;
   getSalesByProduct(company_id: string, from: string, to: string): Promise<SalesByProductLine[]>;
+  /** R6a — confirmed sales returns in the period, grouped by reason code. */
+  getSalesReturnsByReason(company_id: string, from: string, to: string): Promise<SalesReturnReasonLine[]>;
+  /** R6a — confirmed purchase returns in the period, grouped by reason code. */
+  getPurchaseReturnsByReason(company_id: string, from: string, to: string): Promise<PurchaseReturnReasonLine[]>;
   getSalesByBrand(company_id: string, from: string, to: string): Promise<SalesByBrandLine[]>;
   getSalesByVehicle(company_id: string, from: string, to: string): Promise<SalesByVehicleLine[]>;
   getSalesBySalesperson(company_id: string, from: string, to: string): Promise<SalesBySalespersonLine[]>;
@@ -1580,6 +1584,37 @@ export interface SalesByCustomerLine {
   net_sales: number;
   gross_profit: number;
   gp_pct: number;
+}
+
+/**
+ * R6a — one row of the Returns Analysis report, sales side.
+ *
+ * `written_off` is the cost of lines marked damaged. It is the same figure
+ * phase 76 debits to 6700 Inventory Loss, computed the same way
+ * (qty x unit_cost), so the report and the ledger agree by construction
+ * rather than by coincidence.
+ */
+export interface SalesReturnReasonLine {
+  reason:          string;    // '' when the document carries no reason code
+  returns:         number;    // how many return documents
+  qty:             number;
+  credit_value:    number;    // gross credit issued, from the linked credit notes
+  restocked_value: number;    // cost of lines that went back on the shelf
+  written_off:     number;    // cost of damaged lines — posts to 6700
+  fees:            number;    // restocking fees retained (R4b)
+}
+
+/**
+ * R6a — purchase side. Deliberately has no `written_off`: condition exists on
+ * purchase_return_items but nothing posts from it, so a write-off column here
+ * would imply a GL entry that is never made.
+ */
+export interface PurchaseReturnReasonLine {
+  reason:      string;
+  returns:     number;
+  qty:         number;
+  debit_value: number;   // value debited back to the supplier
+  cost:        number;   // cost of the goods that went back
 }
 
 export interface SalesByProductLine {
