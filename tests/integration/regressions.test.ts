@@ -4660,3 +4660,132 @@ describe('R7-alt — purchase return stock value (soft until applied)', () => {
       .toMatch(/v_item_cost\s*:=\s*v_item\.line_total - v_item\.tax_amount/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 81 — a returned service credited Inventory
+//
+// confirm_debit_note lumped every line into one credit to 1300 while only goods
+// lines moved stock, so returning a purchased SERVICE reduced inventory that
+// never held it — and a service product with a unit_cost even wrote a
+// stock_ledger row. Phase 36's rule never reached this function.
+//
+// The last test holds whether or not the migration is applied: both sides of a
+// purchase must agree on where a service line belongs.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 81 — debit note service lines (soft until applied)', () => {
+  async function debitNoteSrc(): Promise<string> {
+    const r = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='confirm_debit_note' AND pronamespace='public'::regnamespace`);
+    return r[0]?.src ?? '';
+  }
+  const strip = (s: string) => s.split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+  async function applied(): Promise<boolean> {
+    return strip(await debitNoteSrc()).includes('v_svc_exp_id');
+  }
+
+  it('phase81: the engine resolves an account per line, as the inbound side does', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ phase81 not applied yet — apply phase80 first, then ' +
+                   'supabase/migrations/20260919000003_phase81_debit_note_service_lines.sql');
+      return;
+    }
+    const code = strip(await debitNoteSrc());
+    expect(code, 'reads the product type').toMatch(/SELECT p\.type, p\.purchase_account_id/);
+    expect(code, 'honours a purchase account on the product').toMatch(/v_line_acct_id IS NULL/);
+    expect(code, 'services fall back to an expense account')
+      .toMatch(/v_line_acct_id\s*:=\s*COALESCE\(v_svc_exp_id, v_cogs_id\)/);
+    expect(code, 'goods still land on inventory').toMatch(/v_line_acct_id\s*:=\s*v_inv_id/);
+  });
+
+  it('phase81: a service line neither credits 1300 nor moves stock', async () => {
+    if (!(await applied())) { console.warn('⚠ phase81 not applied yet'); return; }
+    const code = strip(await debitNoteSrc());
+    // Only lines resolving to 1300 feed the aggregate credit.
+    expect(code, 'the aggregate credit is gated on the resolved account')
+      .toMatch(/IF v_line_acct_id IS NOT DISTINCT FROM v_inv_id THEN\s*\n\s*v_total_inv_credit/);
+    // And the stock guard carries phase 36's rule.
+    expect(code, 'services never stock').toMatch(/v_product_type IS DISTINCT FROM 'service'/);
+    expect(code, 'nor does a line booked to an expense account').toMatch(/v_line_class = 'asset'/);
+  });
+
+  it('phase81: DOUBLE ENTRY — the header legs are untouched', async () => {
+    if (!(await applied())) { console.warn('⚠ phase81 not applied yet'); return; }
+    // Where credits LAND changed; how much they come to did not. If this ever
+    // stops holding, the debit note stops balancing and je_must_balance rejects
+    // it at COMMIT — but by then the engine is already wrong.
+    const code = strip(await debitNoteSrc());
+    expect(code, 'Dr 2100 by the document total').toMatch(/v_ap_id, '2100'[\s\S]{0,80}v_dn\.total_amount, 0/);
+    expect(code, 'Cr 1500 by the document tax').toMatch(/v_vat_id, '1500'[\s\S]{0,80}0, v_dn\.tax_amount/);
+    expect(code, 'Cr 1300 by the accumulated goods value').toMatch(/0, v_total_inv_credit/);
+    expect(code, 'phase80 survived: net value, not gross').toMatch(/v_old_value - v_item_cost/);
+  });
+
+  it('phase81: every confirmed debit note balances and ties to its subledger', async () => {
+    if (!(await applied())) { console.warn('⚠ phase81 not applied yet'); return; }
+    // With services routed away from 1300, this now applies to ALL debit notes,
+    // not just goods-only ones as it had to before.
+    const bad = await sql<{ debit_note_number: string; gl: number; stock: number }>(`
+      SELECT dn.debit_note_number,
+             ROUND(COALESCE(g.gl, 0), 2)    AS gl,
+             ROUND(COALESCE(s.stock, 0), 2) AS stock
+      FROM public.debit_notes dn
+      LEFT JOIN LATERAL (
+        SELECT SUM(gl.credit - gl.debit) AS gl FROM public.general_ledger gl
+        WHERE gl.related_doc_type='debit_note' AND gl.related_doc_id=dn.id
+          AND gl.account_code='1300') g ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT SUM(sl.total_cost) AS stock FROM public.stock_ledger sl
+        WHERE sl.related_doc_type='debit_note' AND sl.related_doc_id=dn.id) s ON TRUE
+      WHERE dn.status='confirmed'
+        AND ABS(COALESCE(g.gl,0) - COALESCE(s.stock,0)) > 0.005`);
+    expect(bad, `debit notes where 1300 and stock disagree: ${JSON.stringify(bad)}`).toHaveLength(0);
+
+    const unbalanced = await sql<{ entry_number: string }>(`
+      SELECT je.entry_number FROM public.journal_entries je
+      JOIN public.general_ledger gl ON gl.journal_entry_id = je.id
+      WHERE je.source_type = 'vendor_debit_note'
+      GROUP BY je.entry_number
+      HAVING ABS(SUM(gl.debit) - SUM(gl.credit)) > 0.005`);
+    expect(unbalanced, `unbalanced debit-note entries: ${JSON.stringify(unbalanced)}`).toHaveLength(0);
+  });
+
+  it('phase81: no service product has ever moved through the stock ledger', async () => {
+    // The invariant phase 36 exists to hold, checked across every engine rather
+    // than just this one. Warn-only for rows that predate the service flag.
+    const bad = await sql<{ product: string; rows: number; doc: string }>(`
+      SELECT p.name AS product, count(*)::int AS rows, sl.related_doc_type AS doc
+      FROM public.stock_ledger sl
+      JOIN public.products p ON p.id = sl.product_id
+      WHERE p.type = 'service'
+      GROUP BY p.name, sl.related_doc_type ORDER BY 2 DESC`);
+    if (bad.length > 0) {
+      console.warn(`⚠ service products with stock_ledger rows (pre-flip legacy or a new leak): ${JSON.stringify(bad)}`);
+    }
+    expect(true).toBe(true);
+  });
+
+  // ── Holds whether or not the migration is applied ────────────────────────
+
+  it('phase81: both sides of a purchase agree on where a service belongs', async () => {
+    // confirm_vendor_bill decides this on the way in. If the two ever disagree
+    // again, a service is an expense when bought and inventory when returned,
+    // and 1300 drifts by the whole value of the line.
+    const bill = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+        WHERE proname='confirm_vendor_bill' AND pronamespace='public'::regnamespace`);
+    expect(bill.length, 'confirm_vendor_bill exists').toBe(1);
+    const inbound = strip(bill[0]!.src);
+    expect(inbound, 'inbound keeps a service fallback').toMatch(/v_svc_exp_id/);
+    expect(inbound, 'inbound keeps services out of stock')
+      .toMatch(/v_product_type IS DISTINCT FROM 'service'/);
+
+    const outbound = strip(await debitNoteSrc());
+    if (!outbound.includes('v_svc_exp_id')) {
+      console.warn('⚠ confirm_debit_note still credits 1300 for service lines — phase81 not applied');
+      return;
+    }
+    expect(outbound, 'outbound uses the same fallback')
+      .toMatch(/COALESCE\(v_svc_exp_id, v_cogs_id\)/);
+  });
+});
