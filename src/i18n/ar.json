@@ -1402,6 +1402,8 @@
     "date": "التاريخ"
   },
   "returns": {
+    "ordered_in_error": "طُلب عن طريق الخطأ",
+    "warranty": "مطالبة ضمان",
     "purchase_returns_title": "مرتجعات المشتريات",
     "purchase_returns_desc": "بضاعة أُعيدت إلى المورد، مع تسجيل السبب والحالة.",
     "new_purchase_return": "مرتجع مشتريات جديد",

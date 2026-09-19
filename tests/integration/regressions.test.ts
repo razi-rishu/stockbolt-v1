@@ -4428,3 +4428,120 @@ describe('R5a — customer credit refund (soft until applied)', () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R6b — return reason codes
+//
+// Four codes added: warranty and damaged_in_transit and ordered_in_error on the
+// sales side, warranty on the purchase side. Both new sets are strict supersets,
+// so nothing had to be backfilled.
+//
+// The risk here is not the ledger — a reason code posts nothing. It is DRIFT
+// between the option list the editor offers and the CHECK constraint the
+// database enforces. When those disagree the user picks a reason, presses save,
+// and gets a raw 23514. The last test in this block is the one that matters.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('R6b — return reason codes (soft until applied)', () => {
+  async function constraintDef(table: string): Promise<string> {
+    const r = await sql<{ def: string }>(`
+      SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+       WHERE conname = '${table}_reason_check' AND connamespace = 'public'::regnamespace`);
+    return r[0]?.def ?? '';
+  }
+  async function applied(): Promise<boolean> {
+    return (await constraintDef('sales_returns')).includes('warranty');
+  }
+
+  it('phase79: both constraints carry the new codes', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ R6b not applied yet — run supabase/migrations/20260919000001_phase79_r6b_return_reason_codes.sql');
+      return;
+    }
+    const sales = await constraintDef('sales_returns');
+    for (const code of ['wrong_part', 'defective', 'customer_changed_mind',
+                        'damaged_in_transit', 'ordered_in_error', 'warranty', 'other']) {
+      expect(sales, `sales_returns permits ${code}`).toContain(`'${code}'`);
+    }
+    const purch = await constraintDef('purchase_returns');
+    for (const code of ['wrong_part', 'defective', 'damaged_in_transit',
+                        'over_shipment', 'warranty', 'other']) {
+      expect(purch, `purchase_returns permits ${code}`).toContain(`'${code}'`);
+    }
+  });
+
+  it('phase79: the constraints are VALID, not NOT VALID', async () => {
+    if (!(await applied())) { console.warn('⚠ R6b not applied yet'); return; }
+    // A NOT VALID check lets existing rows keep a code the constraint forbids,
+    // which is how a reason nobody can save ends up already in the data.
+    const unvalidated = await sql<{ conname: string }>(`
+      SELECT conname FROM pg_constraint
+       WHERE conname IN ('sales_returns_reason_check','purchase_returns_reason_check')
+         AND connamespace = 'public'::regnamespace
+         AND NOT convalidated`);
+    expect(unvalidated, `unvalidated: ${JSON.stringify(unvalidated)}`).toHaveLength(0);
+  });
+
+  it('phase79: every reason already in use is still permitted', async () => {
+    // Guards a NARROWING rewrite. Dropping a code that documents already carry
+    // does not fail loudly — those rows simply become impossible to update,
+    // which surfaces much later as a save that will not go through.
+    for (const table of ['sales_returns', 'purchase_returns']) {
+      const def = await constraintDef(table);
+      if (!def) continue;
+      const inUse = await sql<{ reason: string }>(`
+        SELECT DISTINCT reason FROM public.${table} WHERE reason IS NOT NULL`);
+      for (const r of inUse) {
+        expect(def, `${table} still permits '${r.reason}', which existing rows carry`)
+          .toContain(`'${r.reason}'`);
+      }
+    }
+  });
+
+  it('phase79: the financial vocabularies were NOT harmonised away', async () => {
+    // credit_notes and debit_notes describe WHY MONEY MOVED, not why goods came
+    // back — a credit note can exist with no goods movement at all. Folding them
+    // into the document vocabulary would look tidier and be wrong.
+    const cn = await constraintDef('credit_notes');
+    const dn = await constraintDef('debit_notes');
+    for (const code of ['return', 'rebate', 'price_correction']) {
+      expect(cn, `credit_notes keeps '${code}'`).toContain(`'${code}'`);
+      expect(dn, `debit_notes keeps '${code}'`).toContain(`'${code}'`);
+    }
+    expect(cn, 'credit_notes keeps bad_debt').toContain("'bad_debt'");
+    expect(cn, 'credit_notes did not inherit a document reason').not.toContain("'wrong_part'");
+    expect(dn, 'debit_notes did not inherit a document reason').not.toContain("'wrong_part'");
+  });
+
+  it('phase79: the editors never offer a reason the database rejects', async () => {
+    // THE ONE THAT MATTERS. The option list lives in a .tsx file and the
+    // permitted set lives in a CHECK constraint; nothing but this test keeps
+    // them in step. Drift here is a raw 23514 in the user's face on save.
+    const { readFileSync } = await import('node:fs');
+    const pairs: [string, string][] = [
+      ['src/modules/sales/sales-return-editor.tsx', 'sales_returns'],
+      ['src/modules/purchasing/purchase-return-editor.tsx', 'purchase_returns'],
+    ];
+    for (const [file, table] of pairs) {
+      const src = readFileSync(resolve(process.cwd(), file), 'utf8');
+      // The reason <select> only; the condition <select> below it is a
+      // different column with a different constraint. Anchored on the OPTIONS
+      // rather than the label, because the two editors happen to label the
+      // field with different i18n keys (returns.return_reason vs returns.reason).
+      const block = src.split('</select>').find(seg => seg.includes('value="wrong_part"')) ?? '';
+      const offered = [...block.matchAll(/<option value="([a-z_]+)"/g)].map(m => m[1]!);
+      expect(offered.length, `${file} offers reason options`).toBeGreaterThan(3);
+
+      const def = await constraintDef(table);
+      if (!def.includes('warranty')) {
+        console.warn(`⚠ phase79 not applied: ${file} offers ${JSON.stringify(offered)} but ` +
+                     `${table}_reason_check still rejects some of them. Saving a return with a ` +
+                     `new reason will fail with a CHECK violation until the migration is run.`);
+        continue;
+      }
+      for (const code of offered) {
+        expect(def, `${table}_reason_check permits '${code}', which the editor offers`)
+          .toContain(`'${code}'`);
+      }
+    }
+  });
+});

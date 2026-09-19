@@ -181,7 +181,9 @@ export default function SalesReturnEditorPage() {
         return_number: await getAdapter().salesReturns.getNextNumber(company_id!),
         invoice_id:   invoiceId,
         date,
-        reason:       reason as 'wrong_part' | 'defective' | 'customer_changed_mind' | 'other',
+        // R6b — must stay in step with sales_returns_reason_check (phase 79).
+        reason:       reason as 'wrong_part' | 'defective' | 'customer_changed_mind'
+                              | 'damaged_in_transit' | 'ordered_in_error' | 'warranty' | 'other',
         notes:        notes || undefined,
         // R4b — the key is OMITTED when there is no fee, not sent as 0.
         // Code ships before migrations are hand-applied, and PostgREST rejects
@@ -373,6 +375,11 @@ export default function SalesReturnEditorPage() {
             <option value="wrong_part">{t('returns.wrong_part')}</option>
             <option value="defective">{t('returns.defective')}</option>
             <option value="customer_changed_mind">{t('returns.customer_changed_mind')}</option>
+            {/* R6b — ordered_in_error is not the same as changing your mind, and
+                the difference decides whether a restocking fee applies. */}
+            <option value="ordered_in_error">{t('returns.ordered_in_error')}</option>
+            <option value="damaged_in_transit">{t('returns.damaged_in_transit')}</option>
+            <option value="warranty">{t('returns.warranty')}</option>
             <option value="other">{t('returns.other')}</option>
           </select>
         </div>

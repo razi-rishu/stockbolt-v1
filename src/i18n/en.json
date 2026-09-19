@@ -1402,6 +1402,8 @@
     "date": "Date"
   },
   "returns": {
+    "ordered_in_error": "Ordered in error",
+    "warranty": "Warranty claim",
     "purchase_returns_title": "Purchase Returns",
     "purchase_returns_desc": "Goods sent back to a supplier, with the reason and condition recorded.",
     "new_purchase_return": "New purchase return",

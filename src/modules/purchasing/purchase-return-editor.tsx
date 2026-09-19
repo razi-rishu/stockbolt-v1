@@ -260,6 +260,8 @@ export default function PurchaseReturnEditorPage() {
             <option value="defective">{t('returns.defective')}</option>
             <option value="damaged_in_transit">{t('returns.damaged_in_transit')}</option>
             <option value="over_shipment">{t('returns.over_shipment')}</option>
+            {/* R6b — a part that failed in service, not one that arrived bad. */}
+            <option value="warranty">{t('returns.warranty')}</option>
             <option value="other">{t('returns.other')}</option>
           </select>
         </div>
