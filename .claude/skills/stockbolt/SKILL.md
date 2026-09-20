@@ -106,6 +106,36 @@ Google OAuth sign-in, sidebar app shell, salesperson commissions.
 `docs/CURRENT_PHASE.md` and `docs/Document_5_Build_Phases.md` track phases.
 Known residuals and parked work: see `references/workflow.md` §Backlog.
 
+## Skill map — reach for the right guardian
+
+This skill is the entry point. Specialized guardian skills own the depth; this
+is your triage. **Before any change, name what you're about to touch and which
+guardian owns it** — then let that skill (and the ones it cross-references)
+carry the detail. Match the effort to the risk; a label fix does not need the
+whole set, a posting change does.
+
+| When the task touches… | Reach for |
+|---|---|
+| Deciding if a change is safe; risk tiers; the trap catalogue | `erp-guardian` |
+| Where code belongs; layers; thin-app/smart-DB shape | `project-architecture` |
+| Money, the GL, posting correctness, statements, VAT, currency | `accounting-engine` |
+| Stock, MAC, COGS, deferred COGS, valuation | `inventory-engine` |
+| Schema, RLS, RPCs, indexes, query bounds, Supabase specifics | `database-guardian` |
+| Writing/applying/verifying a migration | `migration-guardian` |
+| Auth, permissions, secrets, tenant isolation, the live findings | `security-guardian` |
+| The public REST API (Edge Function, `/v1/…`, keys) | `api-guardian` |
+| Document lifecycle, cross-module ripple, what a document does | `business-rules` |
+| Writing code that matches conventions (adapter, tokens, i18n) | `coding-standards` |
+| Tests, the regression suite, "is this proven?" | `test-engine` |
+| Slowness, large data, "should I optimize?" | `performance-guardian` |
+| "Is this ready to ship?"; commit/deploy/smoke | `release-guardian` |
+
+They are designed to defer to each other, not duplicate — follow the
+cross-references. The recurring failure mode across all of them is **silent
+wrongness**: a change that produces a confident wrong number instead of an
+error. When in doubt, ask "if this were wrong, would anyone find out?" — and
+if the honest answer is no, that is the thing to verify first.
+
 ## References
 
 - `references/system-map.md` — how every subsystem works (posting engine,

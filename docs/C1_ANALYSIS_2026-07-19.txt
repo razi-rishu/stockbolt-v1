@@ -1,0 +1,253 @@
+================================================================================
+StockBolt ERP — Audit Issue C1: Analysis Report
+Anonymous-callable arbitrary-SQL RPC (_regression_test_query)
+================================================================================
+Date:            2026-07-19
+Type:            ANALYSIS ONLY — no code, migration, or database change performed
+Object:          public._regression_test_query(text)
+Live-verified:   grants = anon, authenticated, postgres, service_role
+                 owner  = postgres
+                 SECURITY DEFINER · VOLATILE · single signature · 0 in-DB dependents
+Severity:        CRITICAL (live, unauthenticated, internet-exploitable)
+================================================================================
+
+
+1. ROOT CAUSE
+--------------------------------------------------------------------------------
+A SECURITY DEFINER function that executes a caller-supplied SQL string exists in
+the production database with EXECUTE granted to anon and authenticated.
+
+Two compounding facts:
+
+  * The function is owned by `postgres` and is SECURITY DEFINER, so it runs with
+    postgres privileges and BYPASSES RLS entirely — it can read every schema
+    (public, auth, storage), every tenant, every table.
+
+  * It was installed manually and the REVOKE never took effect live. The test
+    file (tests/integration/regressions.test.ts:91) CONTAINS the correct
+    `REVOKE ALL ... FROM PUBLIC`, but that SQL is only shown inside an error
+    message — it is NEVER executed by the test. The live function was pasted
+    into the Supabase SQL editor at some point; a freshly created function
+    default-grants EXECUTE to PUBLIC (which includes anon + authenticated), and
+    the revoke was not applied. There is no migration file for it, so nothing
+    re-asserts the grant.
+
+Deeper systemic root cause: H4 — the test harness runs against the PRODUCTION
+database, so a test-only helper had to live in prod at all.
+
+
+2. CURRENT WORKFLOW (how it is used today)
+--------------------------------------------------------------------------------
+  * Sole legitimate consumer: tests/integration/regressions.test.ts. Its sql()
+    helper (line 61) calls admin.rpc('_regression_test_query', { p_sql }), where
+    `admin` is a SERVICE_ROLE client built from SUPABASE_SECRET_KEY (line 51).
+    All ~91 regression checks read live DB state through this function.
+
+  * Invocation path for the suite:
+    .husky/pre-commit -> npm run test:regressions -> the suite -> the function
+    (called as service_role).
+
+  * Second use (documented, not code): the "generator pattern" in
+    .claude/skills/stockbolt/references/workflow.md — patching posting RPCs from
+    their LIVE definitions via pg_get_functiondef(...) run through this helper.
+    This is StockBolt non-negotiable #3.
+
+  * Exploit path (illegitimate): POST /rest/v1/rpc/_regression_test_query with
+    the publishable/anon key (shipped in the browser bundle) and
+    { "p_sql": "SELECT ..." } -> arbitrary read across all tenants. No
+    authentication required.
+
+
+3. WHY THIS EXISTS
+--------------------------------------------------------------------------------
+Created as a test-harness convenience (project task #10: "Install
+_regression_test_query helper RPC"). Supabase's REST API exposes only table
+operations and named RPCs, not ad-hoc SQL — so to let the regression suite run
+arbitrary inspection queries (pg_get_functiondef, cross-table invariants)
+without a dedicated RPC per check, a single generic "run this SELECT, return
+JSON" function was installed. It was INTENDED to be service_role-only; the intent
+is written into the code comment (lines 67-68). The gap is purely that the
+restriction was never applied to the live object.
+
+
+4. ALL AFFECTED FILES
+--------------------------------------------------------------------------------
+  tests/integration/regressions.test.ts
+      SOLE code consumer — sql() helper, beforeAll existence check, and the
+      (unexecuted) installSql block with the correct REVOKE.
+
+  .husky/pre-commit
+      Runs the suite that depends on it (operational).
+
+  package.json
+      test:regressions script (operational).
+
+  .claude/skills/stockbolt/references/workflow.md
+      Documents the generator/diagnostic pattern that uses it (non-negotiable #3).
+
+  docs/Document_6_SaaS_Billing_Architecture.md
+      References the test convention.
+
+  docs/SECURITY_AUDIT_2026-07-19.md, docs/CONSOLIDATED_AUDIT_2026-07-19.md,
+  and the security-guardian / erp-guardian / test-engine skills
+      Documentation of the finding (no functional link).
+
+  NOTE: No file under src/ references it — production application code has ZERO
+  dependency on it.
+
+
+5. ALL AFFECTED DATABASE OBJECTS
+--------------------------------------------------------------------------------
+  * public._regression_test_query(text)
+      The function itself (SECURITY DEFINER, owner postgres, VOLATILE). The
+      object to be modified.
+
+  * Its ACL / grant list
+      The actual thing that is wrong (anon, authenticated present). This is what
+      a fix changes.
+
+  * Blast radius (not modified, but what it can reach)
+      Because it runs as postgres bypassing RLS: all 124 public tables, plus
+      auth.users, storage.objects, api_keys (hashes), subscriptions, audit_logs
+      — every schema.
+
+  * In-DB dependents: NONE (verified pg_depend = 0). No view, trigger, or other
+    function references it, so altering or removing it CANNOT cascade-break
+    another database object.
+
+
+6. DEPENDENCIES
+--------------------------------------------------------------------------------
+  * On the function: the regression suite + pre-commit gate + the live-def
+    generator workflow all call it (all as service_role).
+
+  * The fix's dependency on H4: the IDEAL end state (remove the arbitrary-SQL
+    primitive from prod entirely) depends on H4 (a separate test/staging
+    database) existing, because the suite needs somewhere to run it. Without
+    that, the function must remain in prod for the suite and the generator
+    pattern to work.
+
+  * No dependency in the opposite direction: nothing depends on anon /
+    authenticated HAVING the grant — that grant serves no legitimate purpose.
+
+
+7. POSSIBLE SIDE EFFECTS IF REMOVED
+--------------------------------------------------------------------------------
+Two very different removal actions — the distinction is the crux:
+
+  A) Revoking anon + authenticated (keep function, service_role-only):
+     NO functional side effects. The suite, the pre-commit gate, the generator
+     pattern, and probe scripts all authenticate as service_role and are
+     unaffected. Nothing in src/ breaks. Pure attack-surface reduction.
+
+  B) Dropping the function entirely from prod:
+     Breaks four things —
+       (1) the regression suite (beforeAll throws an instructive
+           "helper missing" error),
+       (2) the husky pre-commit gate (blocks all commits until restored or a
+           test DB exists),
+       (3) the live-def generator/diagnostic pattern that the whole
+           posting-RPC-patch process relies on,
+       (4) throwaway probe scripts.
+     So a full drop is NOT a drop-in — it requires H4 plus a replacement for the
+     diagnostic workflow.
+
+
+8. RISK ASSESSMENT
+--------------------------------------------------------------------------------
+  Risk of the status quo (do nothing):        CRITICAL
+      Live, unauthenticated, internet-exploitable, total cross-tenant
+      confidentiality breach. Every hour open is exposure of all customers'
+      financials + PII.
+
+  Risk of the revoke fix (Option A):          NEGLIGIBLE
+      A GRANT revoke on a function only service_role legitimately calls. No data
+      touched. Fully reversible. Consumer unaffected.
+
+  Risk of full drop (Option B):               MEDIUM (operational)
+      No data risk, but breaks the test gate and diagnostic workflow until H4 +
+      a replacement exist.
+
+This is the rare case where the fix carries FAR LESS risk than the standing
+exposure — a strong argument to apply the revoke immediately and treat the
+durable cleanup as a follow-on.
+
+Exploit reality (precise, not overstated): the wrapper is
+`SELECT ... FROM (<p_sql>) t`, so the top-level statement must be a SELECT;
+data-modifying CTEs are rejected inside a subquery, and the powerful
+side-effecting definer functions self-gate on auth.uid() (null for anon). So
+this is a TOTAL CONFIDENTIALITY breach (arbitrary cross-tenant READ), with
+integrity/availability largely constrained. For a financial ERP, "any stranger
+can read every customer's books and PII" is already catastrophic.
+
+
+9. RECOMMENDED IMPLEMENTATION PLAN (for approval — NOT implemented)
+--------------------------------------------------------------------------------
+Two phases, because containment and durable cleanup have different dependencies.
+
+  PHASE 1 — Contain (minutes, no dependencies):
+    * A migration that:
+        REVOKE ALL ON FUNCTION public._regression_test_query(text)
+          FROM PUBLIC, anon, authenticated;
+      leaving service_role (+ postgres) as the only holders.
+    * Applied by hand in the SQL editor (per the migration process); verified
+      live with the grant query.
+    * Closes the breach with zero functional impact.
+
+  PHASE 2 — Durable (depends on H4):
+    Choose one:
+      (a) Keep service_role-only + tripwire.
+          Accept that a service_role-only arbitrary-SQL function is "only as
+          dangerous as the service key" (already all-powerful, and well-protected
+          in Vercel env / .env.local), and lock it with the regression test in
+          section 10. Lowest disruption; preserves the generator workflow.
+      (b) Remove from prod entirely.
+          Once H4 (separate test DB) exists, DROP it from production and install
+          it only in the test DB; replace the live-def generator pattern with a
+          service_role-only, read-only alternative (or the Supabase Management
+          API). Cleanest, but larger and gated on H4.
+
+  RECOMMENDATION: Phase 1 now; Phase 2(a) + tripwire as the near-term durable
+  state; Phase 2(b) folded into the H4 workstream later. This closes the breach
+  immediately while preserving the load-bearing diagnostic workflow.
+
+
+10. REGRESSION TESTS REQUIRED
+--------------------------------------------------------------------------------
+  * Primary tripwire (would have caught C1): a regression assertion that
+    _regression_test_query grants EXECUTE ONLY to service_role/postgres — and
+    explicitly NOT to anon or authenticated. (The test itself calls the function
+    as service_role to check its own grants — self-consistent.)
+
+  * Generalized guard: assert that NO public SECURITY DEFINER function grants
+    EXECUTE to anon/authenticated without an internal auth gate — catches the
+    whole class, not just this instance.
+
+  Both are structural queries with unambiguous healthy results (0 offending
+  rows) — cheap, deterministic, exactly what the suite is good at.
+
+
+11. ROLLBACK STRATEGY
+--------------------------------------------------------------------------------
+  * Nature of the change: a GRANT modification — NOT a data change, NOT a schema
+    change. Fully and instantly reversible; zero data risk.
+
+  * Phase 1 (revoke): rollback = re-GRANT EXECUTE ... TO anon, authenticated —
+    but this should NEVER be used (no legitimate reason). Because the consumer
+    runs as service_role, the revoke cannot break the suite, so rollback is not
+    expected to be needed. If the suite somehow failed after, INVESTIGATE rather
+    than roll back (the failure would not be caused by the revoke).
+
+  * Phase 2(b) (drop): rollback = re-create the function from the installSql
+    block already present in regressions.test.ts:76-93. Since a drop breaks the
+    suite immediately, this phase should not proceed until H4 provides a test DB
+    — reducing the chance rollback is ever needed.
+
+  * Verification after any action: re-run the live grant query and confirm the
+    expected grantee set; run `npm run test:regressions` and confirm green.
+
+
+================================================================================
+STATUS: Nothing implemented. No code, migration, or database change was made —
+read-only analysis. Awaiting approval before any implementation.
+================================================================================

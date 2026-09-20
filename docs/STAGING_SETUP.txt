@@ -1,0 +1,184 @@
+================================================================================
+StockBolt — Standing up a STAGING Supabase project
+Runbook (reusable — not tied to one increment)
+Last updated: 2026-07-29
+================================================================================
+
+WHY THIS EXISTS
+--------------------------------------------------------------------------------
+Four behavioural test suites have been written but have NEVER been executed:
+
+    npm run test:year-end-close     AC-1  close / reopen, RE roll-forward, LIFO
+    npm run test:tax-return         AC-3  file -> lock -> reopen
+    npm run test:fixed-assets       AC-5  depreciation, salvage cap, disposal
+    npm run test:amortization       AC-6  prepaid / deferred / accrual, reversal
+
+They all MUTATE (create and delete users, companies, journal entries), so the
+H4-P0 guard in tests/integration/_env-guard.ts refuses to run them against the
+production project. Verified behaviour: they abort before writing anything.
+
+Each of those is a POSTING engine. Their structure is verified live by the
+regression tripwires and their maths is covered by unit tests, but nobody has
+yet watched them actually book an entry and leave the Trial Balance at zero.
+That is the single biggest quality risk in the accounting work.
+
+This runbook creates a throwaway Supabase project so those suites can run.
+Time: about 20-30 minutes.
+
+
+HONEST CAVEAT — READ BEFORE TRUSTING THE RESULT
+--------------------------------------------------------------------------------
+Replaying the migration files produces a database that is CLOSE TO but possibly
+NOT IDENTICAL TO production. Some posting RPCs on prod were patched from their
+live definitions (pg_get_functiondef) rather than re-derived from migration
+files, so older function bodies may differ.
+
+  * For validating the NEW engines (phase56-61, all authored as migration
+    files) this is fine and far better than nothing.
+  * Do NOT treat staging as byte-identical to prod for older posting paths.
+
+
+PREREQUISITES
+--------------------------------------------------------------------------------
+  * A Supabase account (free tier is enough).
+  * Node + npm working in the repo (already true).
+  * Run every command below from the repo root:
+        E:\stockbolt_clean\stockbolt-v1
+  * The Supabase CLI is used via npx — no global install needed (v2.110.0).
+
+
+--------------------------------------------------------------------------------
+STEP 1 — Create the project
+--------------------------------------------------------------------------------
+Go to https://supabase.com/dashboard  ->  New project
+
+    Name:     stockbolt-staging
+    Region:   anything (closest to you is fine)
+    Password: SAVE IT — shown only once, needed in step 3
+
+Wait for provisioning to finish (a minute or two).
+
+
+--------------------------------------------------------------------------------
+STEP 2 — Copy the project ref
+--------------------------------------------------------------------------------
+It is the middle part of the dashboard URL:
+
+    https://supabase.com/dashboard/project/<THIS-IS-THE-REF>
+
+Keep it handy for step 3.
+
+
+--------------------------------------------------------------------------------
+STEP 3 — Link the CLI to the new project
+--------------------------------------------------------------------------------
+    npx supabase login
+        (opens a browser to authorise — approve it)
+
+    npx supabase link --project-ref <your-staging-ref>
+        (prompts for the DATABASE PASSWORD from step 1)
+
+
+--------------------------------------------------------------------------------
+STEP 4 — Apply all 150 migrations
+--------------------------------------------------------------------------------
+    npx supabase db push
+
+This replays every migration in order (150 files, ~39,000 lines) and is what
+replaces hours of copy-pasting into the SQL editor.
+
+If it FAILS partway: stop and send me the error. A failure here is itself a
+useful finding — it means the migration files no longer replay cleanly from
+scratch, which is worth knowing independently of the tests.
+
+
+--------------------------------------------------------------------------------
+STEP 5 — Back up your env file, then point it at staging
+--------------------------------------------------------------------------------
+Back it up FIRST so switching back later is trivial:
+
+    cp .env.local .env.local.prod-backup
+
+Then open .env.local in your editor and replace these three values with the
+staging project's, from Dashboard -> Project Settings -> API:
+
+    VITE_SUPABASE_URL
+    VITE_SUPABASE_PUBLISHABLE_KEY
+    SUPABASE_SECRET_KEY
+
+Keep those keys in your editor. Do NOT paste them into chat.
+
+
+--------------------------------------------------------------------------------
+STEP 6 — Run the four suites
+--------------------------------------------------------------------------------
+    npm run test:year-end-close
+    npm run test:tax-return
+    npm run test:fixed-assets
+    npm run test:amortization
+
+The H4-P0 guard passes automatically once the target is a non-prod ref — no
+code change is needed anywhere.
+
+EXPECT SOME FAILURES. Four engines that have never executed will probably
+surface something. Finding it on a throwaway database is exactly the point.
+Send me the output and I will work through it.
+
+
+--------------------------------------------------------------------------------
+STEP 7 — Switch back to production   *** DO NOT SKIP ***
+--------------------------------------------------------------------------------
+    cp .env.local.prod-backup .env.local
+
+WHY THIS MATTERS: while .env.local points at staging, `npm run test:regressions`
+— which the husky pre-commit hook runs on EVERY commit — checks staging instead
+of production. It would pass while telling you nothing about your real
+customers' database. Do the runs, then switch straight back.
+
+Confirm you are back on prod: the regression suite's H4-P0 line should again
+mention the production artifacts ("Phase 1 Test Auto Parts", "Phase 2 Test
+Auto"), and the phase57/phase61 "not applied yet" warnings should reappear
+(they are applied on staging but not on prod).
+
+
+--------------------------------------------------------------------------------
+TROUBLESHOOTING
+--------------------------------------------------------------------------------
+"supabase: command not found"
+    Use npx (as written above). No global install required.
+
+"failed to connect / password authentication failed" during link
+    The database password from step 1 is wrong. Reset it:
+    Dashboard -> Project Settings -> Database -> Reset database password.
+
+db push fails on one migration
+    Note the FILE NAME and the error text and send both. Do not hand-edit the
+    migration to force it through — the drift is the information.
+
+A suite errors with "relation does not exist"
+    That migration did not reach staging. Re-run `npx supabase db push` and
+    check its output for skipped files.
+
+A suite refuses with the H4-P0 guard message
+    .env.local is still pointing at production. Redo step 5.
+
+You are unsure which database you are pointed at
+    Look at VITE_SUPABASE_URL in .env.local. Production is the project ref
+    gzpkuaioibqrdppjdbwz. Anything else is not production.
+
+
+--------------------------------------------------------------------------------
+AFTER IT WORKS
+--------------------------------------------------------------------------------
+Keep the staging project. From then on:
+
+  * Re-run the four suites whenever a posting engine changes.
+  * New migrations can be tried on staging BEFORE being hand-applied to prod,
+    which removes the "half-applied migration on a live customer DB" risk that
+    has bitten this project before.
+  * This is INFRA-1 in docs/SECURITY_INFRA_BACKLOG_2026-07-24.md, and it is the
+    keystone that unblocks the rest of that backlog.
+
+================================================================================
+END
+================================================================================

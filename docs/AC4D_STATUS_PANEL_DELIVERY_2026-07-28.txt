@@ -1,0 +1,107 @@
+================================================================================
+StockBolt — AC-4D  Per-invoice e-invoice status panel
+IMPLEMENTATION DELIVERY (built + verified; COMMIT HELD until phase59 applied)
+Created: 2026-07-28
+================================================================================
+
+STATUS: Implemented + statically verified. NOT committed (held by owner request
+until phase59 is applied, since this is the first live UI path to the AC-4C
+RPCs). Sits on top of 52b7803 (AC-4C). UI + one pure mapper — NO schema change,
+NO migration, NO posting/adapter-RPC change.
+
+
+--------------------------------------------------------------------------------
+1. WHAT THIS IS
+--------------------------------------------------------------------------------
+The increment that makes AC-4 usable end-to-end. On a CONFIRMED sales invoice in
+a supported jurisdiction (India / UAE), a panel that:
+  • Generate — assembles the real invoice/customer/company/product rows into the
+    canonical model → runs the AC-4B formatter → AC-4C record RPC.
+  • View / Download — shows the payload and downloads it (.json / .xml).
+  • Mark submitted — records the manual government reference (IRN / ack / QR).
+  • Cancel — cancels the active document.
+  • History — lists superseded / cancelled snapshots.
+All write actions are gated by useHasPermission('sales.write'); nothing touches
+the GL. Readiness is WARN-BUT-ALLOW (missing fields shown; Generate still works).
+
+
+--------------------------------------------------------------------------------
+2. FILES CHANGED (3 new, 3 modified)
+--------------------------------------------------------------------------------
+NEW  src/lib/einvoice/from-invoice.ts       Pure assembleCanonicalFromInvoice()
+       (real rows → CanonicalBuildInput) + jurisdictionAndFormat(). Supplier GST
+       state derived from the company GSTIN prefix; buyer state from the captured
+       place-of-supply else buyer GSTIN prefix; amounts passed through from the
+       stored invoice_items (never recomputed). Imported directly (not via the
+       einvoice barrel) to avoid a Jurisdiction type-name collision.
+NEW  tests/unit/einvoice-from-invoice.test.ts   6 unit tests.
+NEW  src/modules/sales/einvoice-panel.tsx   The panel component.
+
+MOD  src/modules/sales/invoice-editor.tsx   +12 lines: 1 import + mount the panel
+       (data-print-hide) in the confirmed-invoice view, between the action bar and
+       the printable document. Screen-only; never printed.
+MOD  src/i18n/en.json, src/i18n/ar.json     einvoice.* namespace (EN + AR).
+
+
+--------------------------------------------------------------------------------
+3. VERIFICATION
+--------------------------------------------------------------------------------
+  tsc --noEmit ......... 0 errors.
+  npm run build ........ GREEN (~18s).
+  unit tests ........... 22/22 (5 einvoice files incl. the new assembler: India
+       intra/inter-state via GSTIN prefix, UAE, service line, export, amount
+       pass-through, jurisdiction mapping).
+  npm run test:regressions → 107/107 — UNCHANGED (AC-4D adds no DB surface).
+  BROWSER: not performed — the panel is auth-gated (OAuth login) AND needs phase59
+       applied to exercise Generate. Recommend an owner eyeball after applying
+       phase59 (open a confirmed IN/AE invoice → Generate → View/Download →
+       Mark submitted → Cancel → History).
+
+
+--------------------------------------------------------------------------------
+4. CONFIRMATIONS
+--------------------------------------------------------------------------------
+  • Posting / journal / VAT / reports unchanged — no posting RPC, adapter RPC,
+    schema, or report touched. The panel only reads + calls the metadata-only
+    AC-4C RPCs.
+  • Invoice editor footprint is minimal (12 lines) and confined to the confirmed-
+    invoice VIEW path; edit/draft/creation flows are untouched.
+  • Amounts are never recomputed — taken straight from the stored invoice_items /
+    invoice header (which came from the posting engine).
+
+
+--------------------------------------------------------------------------------
+5. KNOWN LIMITATIONS
+--------------------------------------------------------------------------------
+  • Only India + UAE are formatted; other GCC countries show "not yet supported".
+  • Line UOM code is not resolved (unit → null; formatters default) — acceptable
+    for a foundation; wire a units map later if fidelity is needed.
+  • No government submission / IRN minting / signing (deferred GSP/ASP); IRN / ack
+    / QR are entered manually via Mark submitted.
+  • IRN/QR are not yet rendered on the printed signature template (future).
+
+
+--------------------------------------------------------------------------------
+6. ROLLBACK
+--------------------------------------------------------------------------------
+Revert the 6 files (delete the 3 new; revert invoice-editor + the two i18n
+files). No DB/state to undo.
+
+
+--------------------------------------------------------------------------------
+7. ON YOUR SIDE — REQUIRED BEFORE COMMITTING AC-4D
+--------------------------------------------------------------------------------
+  1. Apply phase59 (supabase/migrations/20260728000001_phase59...) on prod.
+  2. Then tell me to commit AC-4D — the 6 files (no push). (Committing before
+     phase59 is applied would ship a Generate button that errors with "function
+     does not exist" until you apply it; hence the hold.)
+  • Also still pending from earlier: apply phase57 (AC-3); push the unpushed AC
+    commits (AC-4A.2 f464170, AC-4B f4dc88e, AC-4C 52b7803, + AC-1/2/3).
+
+With AC-4D committed + phase59 applied, AC-4 (e-invoicing foundation) is complete
+end-to-end for India + UAE. Remaining roadmap: AC-5 fixed assets, AC-6 accruals,
+AC-7 India TDS; deferred: live GSP/ASP clearance.
+
+================================================================================
+END — built + verified; commit held until phase59 is applied.
+================================================================================

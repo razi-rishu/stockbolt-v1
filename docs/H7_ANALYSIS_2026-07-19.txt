@@ -1,0 +1,273 @@
+================================================================================
+StockBolt ERP — Audit Issue H7: Analysis Report (re-investigated from source)
+Public API paid-gate not enforced at runtime.
+================================================================================
+Audit cycle date: 2026-07-19   |   Investigation performed: 2026-07-23
+Type:   ANALYSIS ONLY — no code, migration, database, report, or API changed.
+        Evidence read from the live repo + live DB (read-only).
+Method: Read authenticate() + create_api_key + company_has_api_access +
+        current_user_company_id; probed live keys/plans/subscriptions. Did NOT
+        assume the audit is correct.
+
+Convention: [VERIFIED] = read directly from repo/live DB. [INFERENCE] = reasoned.
+================================================================================
+
+
+0. HEADLINE
+--------------------------------------------------------------------------------
+  The finding is correct: the paid-gate `company_has_api_access()` is enforced at
+  key CREATION and in the UI, but NEVER per request in the Edge Function's
+  authenticate(). Keys never expire and are not revoked on downgrade, so a tenant
+  that loses API entitlement keeps full API access via existing keys. [VERIFIED]
+
+  A trap the audit's fix walks into: `company_has_api_access()` is JWT/user-scoped
+  (it calls current_user_company_id() = profiles.company_id WHERE id = auth.uid()).
+  The Edge Function authenticates by API KEY with the service_role client, so
+  auth.uid() is NULL there — naively reusing that "gate helper" would resolve to a
+  null company and DENY EVERY API request. So the fix must use a company_id-
+  PARAMETERIZED entitlement check, not the existing helper. [VERIFIED]
+
+
+1. IS THE ORIGINAL AUDIT FINDING CORRECT?
+--------------------------------------------------------------------------------
+  CORRECT. [VERIFIED]
+
+  Evidence:
+   a. authenticate() (supabase/functions/api/index.ts:82-97): parses the
+      Bearer sk_live_ token, hashes it, looks up api_keys by key_hash, and checks
+      ONLY revoked_at and expires_at, then returns {id, company_id, scopes}. There
+      is NO subscription/plan/entitlement check. [VERIFIED]
+   b. company_has_api_access() EXISTS (phase49_api_keys_foundation.sql:73): true
+      when the company has a subscription with status IN ('active','trialing') OR
+      grandfathered = TRUE, AND the plan's features->>'api_access' = true. A
+      proper, status-aware entitlement check. [VERIFIED]
+   c. It is enforced at CREATION: create_api_key() (phase49:95) does
+      `IF NOT public.company_has_api_access() THEN RAISE ... 42501` at line 113.
+      [VERIFIED]
+   d. And in the UI: src/modules/settings/developer.tsx gates the whole
+      Developer/API-keys screen on apiKeys.hasApiAccess() ->
+      company_has_api_access RPC (supabaseAdapter.ts:109). [VERIFIED]
+   e. Keys never expire: create_api_key inserts no expires_at (NULL) -> the
+      authenticate() `expires_at && ...` check never trips. [VERIFIED]
+   f. No downgrade/cancel path revokes keys: the only UPDATE public.api_keys in
+      the migrations is inside the MANUAL revoke_api_key(p_id) RPC; no
+      subscription-status change touches api_keys. [VERIFIED]
+
+  => A company entitled at creation keeps working forever via its key, regardless
+     of later plan status. The audit is right that the gate is creation-time only
+     and absent per request.
+
+
+2. ROOT CAUSE
+--------------------------------------------------------------------------------
+  [VERIFIED] Entitlement was modelled as a CREATION-time gate (create_api_key +
+  UI), on the implicit assumption that "no access => can't mint a key". But an
+  API key is a long-lived bearer credential: once minted it is honoured purely by
+  authenticate() (key hash valid, not revoked, not expired). Because authenticate()
+  was written to validate the KEY, not the company's current ENTITLEMENT, and
+  because nothing expires or revokes keys when entitlement lapses, the gate has no
+  effect after the key exists. [INFERENCE] The reusable-looking gate helper is
+  JWT-scoped, so it could not have been dropped into the API-key context without
+  reworking — which is likely why the per-request check was omitted.
+
+
+3. CURRENT WORKFLOW
+--------------------------------------------------------------------------------
+  [VERIFIED]
+   Mint a key: UI (Developer settings) is shown only if company_has_api_access();
+     create_api_key() re-checks the same gate and inserts an api_keys row with no
+     expiry. The raw secret is hashed in the browser; only prefix+hash are stored.
+   Call the API: client sends `Authorization: Bearer sk_live_...`; authenticate()
+     hashes it, finds the api_keys row, checks revoked_at/expires_at, returns the
+     company_id + scopes; the request is served (scoped to that company). NO
+     entitlement re-check.
+   Lose entitlement (trial ends unpaid / downgrade / cancel, non-grandfathered):
+     company_has_api_access() would now return false, so the UI hides key
+     management and create_api_key() would refuse — but EXISTING keys keep working
+     indefinitely because authenticate() never asks.
+
+
+4. WHY THE ISSUE EXISTS
+--------------------------------------------------------------------------------
+  [VERIFIED] The paid-gate lives in the two places a user interacts with keys
+  (UI + create RPC), not in the machine-to-machine request path. [VERIFIED] The
+  entitlement helper is bound to the logged-in user (auth.uid()), and the API path
+  has no logged-in user — so enforcing it per request needs a different,
+  company-parameterized check that was never added. [INFERENCE] Under time
+  pressure the creation-time gate looked sufficient.
+
+
+5. ALL AFFECTED FILES
+--------------------------------------------------------------------------------
+  * supabase/functions/api/index.ts — authenticate() (the fix site; no
+    entitlement check today). [VERIFIED]
+  * supabase/migrations/20260714000001_phase49_api_keys_foundation.sql —
+    company_has_api_access() (JWT-scoped), create_api_key() (creation gate, no
+    expiry), revoke_api_key() (manual only). [VERIFIED]
+  * src/modules/settings/developer.tsx + src/data/supabaseAdapter.ts (apiKeys.*) —
+    the UI/creation gate; CONTEXT, no change needed for the fix. [VERIFIED]
+  * (fix would add) a new migration for a company_id-parameterized entitlement
+    helper, and the authenticate() change. Not written (analysis only).
+
+
+6. ALL AFFECTED DATABASE OBJECTS
+--------------------------------------------------------------------------------
+  * api_keys — long-lived, no expiry, no auto-revoke on entitlement loss. [VERIFIED]
+  * subscriptions + subscription_plans — the entitlement source
+    (status + features->>'api_access'). [VERIFIED]
+  * company_has_api_access() — correct but JWT-scoped; NOT reusable from the API
+    path. [VERIFIED]
+  * current_user_company_id() = SELECT company_id FROM profiles WHERE id=auth.uid()
+    -> NULL under the Edge service-role/API-key context. [VERIFIED]
+
+
+7. ALL AFFECTED REPORTS
+--------------------------------------------------------------------------------
+  [VERIFIED] None. H7 is an API access-control gap; no report is involved.
+
+
+8. ALL AFFECTED APIs
+--------------------------------------------------------------------------------
+  [VERIFIED] The public Edge Function API — ALL endpoints, because authenticate()
+  runs for every request and is the single gate. Endpoint scopes are read /
+  write:contacts / write:orders (from create_api_key validation), so a stale key
+  can keep READING the tenant's data and CREATING draft contacts/orders. [VERIFIED]
+  /v1/me is included. The internal app RPCs are not affected (they gate at
+  creation/UI correctly).
+
+
+9. DEPENDENCIES
+--------------------------------------------------------------------------------
+  [VERIFIED] THE unexpected dependency (surfaced, per the standard): the audit's
+  "gate helper" (company_has_api_access) cannot be reused from the Edge — it is
+  auth.uid()-scoped and would return false for every API request, DENYING ALL
+  API ACCESS. The fix therefore depends on a NEW company_id-parameterized check
+  (a SQL helper overload `company_has_api_access(p_company_id uuid)` or an inline
+  join on subscriptions+plans by key.company_id). [VERIFIED]
+  Other:
+   * A per-request subscription lookup is cheap but per-request; the audit's
+     ~60s per-company cache is advisable (in-memory per Edge worker). [design]
+   * The api_keys tables/RPCs must be applied in prod for any of this to matter —
+     they ARE (1 live key exists). [VERIFIED]
+   * No ordering dependency on other audit items. Independent. [INFERENCE]
+
+
+10. BUSINESS IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED mechanism / INFERENCE severity] Revenue leakage + access-control
+  drift: a tenant whose entitlement lapses (trial ends unpaid, downgrade, cancel)
+  retains full API access via existing keys indefinitely. Because API access is a
+  paid ('professional') feature, this is unbilled usage and a broken paywall.
+  CURRENT EXPOSURE (live probe): 1 active key (no expiry); the only plan is
+  'professional' (api_access=true); all 11 subscriptions are 'trialing' with API
+  entitlement. So RIGHT NOW every tenant is entitled and the drift is LATENT — it
+  has not triggered because nobody has lost access yet. It becomes REAL the moment
+  a key-holding tenant's trial ends without conversion (or a future downgrade),
+  and is then PERMANENT (keys never expire, never auto-revoked). [VERIFIED live
+  state; INFERENCE that trial non-conversion is the imminent trigger.]
+
+
+11. ACCOUNTING IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED] None to the ledgers. The API is read-mostly; its write scopes create
+  DRAFT contacts/orders (not posted GL). So a stale key does not corrupt accounting
+  numbers. [INFERENCE] The only "accounting" angle is billing/revenue recognition
+  for the SaaS itself (unbilled API usage), not the tenant's books.
+
+
+12. INVENTORY IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED] None. The API exposes product/stock READS; a stale key could keep
+  reading inventory data but cannot alter stock (no posting scope). No MAC/COGS/
+  on-hand effect.
+
+
+13. RISK ASSESSMENT
+--------------------------------------------------------------------------------
+  Status quo: MEDIUM. A real paywall bypass + access-control drift, but bounded:
+    it is company-scoped (no cross-tenant leak), read-mostly, currently LATENT
+    (all tenants entitled; 1 key), and self-limited to tenants that both hold a
+    key AND lose entitlement. Severity rises as trials convert-or-lapse and as
+    more keys are issued. [VERIFIED bounds; INFERENCE severity.]
+  Risk of the fix: LOW-MEDIUM. Additive entitlement check + 402. The real hazard
+    is the JWT-helper TRAP (§9): a wrong implementation denies ALL API access.
+    Mitigated by using a company_id-parameterized check and testing an entitled
+    key still returns 200.
+
+
+14. RECOMMENDED IMPLEMENTATION PLAN  (for approval — NOT implemented)
+--------------------------------------------------------------------------------
+  1. Add a company_id-PARAMETERIZED entitlement check usable from the API path.
+     Either (preferred) a SQL helper
+       company_has_api_access(p_company_id uuid) RETURNS boolean  (SECURITY
+       DEFINER; same subscriptions+plans+status logic, keyed by the argument, not
+       auth.uid()), applied as a migration by hand; or an inline join in the Edge
+       Function selecting subscriptions+plans by the key's company_id. DO NOT reuse
+       the existing zero-arg company_has_api_access() — it is auth.uid()-scoped and
+       would deny all API access (§9). WHY: entitlement must be evaluated for the
+       KEY's company, which the Edge knows but the JWT helper does not.
+  2. In authenticate(), AFTER resolving the key, evaluate the parameterized check
+     for key.company_id; if not entitled, return 402 (payment_required) — the
+     semantically-correct "your plan doesn't include this" — (or 403). WHY: closes
+     the per-request gap the audit identifies.
+  3. Cache the entitlement result per company_id for ~60s (in-memory per Edge
+     worker) to avoid a subscription lookup on every request. WHY: cheap, and the
+     audit's suggestion; a short TTL bounds how long a just-lapsed tenant lingers.
+  4. (Defense-in-depth, SEPARATE item) On downgrade/cancel, revoke or set
+     expires_at on the company's api_keys, so access ends immediately regardless
+     of the cache. WHY: belt-and-suspenders; also makes the drift impossible even
+     if the per-request check is ever bypassed.
+  Deploy note: the authenticate() change needs a separate `supabase functions
+  deploy api` (Vercel deploys only the frontend); the SQL helper is a hand-applied
+  migration.
+  For each recommendation the WHY is stated; the load-bearing ASSUMPTIONS are
+  (i) 402 is acceptable UX for integrators, (ii) a ~60s stale window is tolerable.
+
+
+15. REGRESSION TESTS REQUIRED
+--------------------------------------------------------------------------------
+  [VERIFIED] The live suite does not exercise the API auth path behaviourally
+  (no user JWT; ties to H4 for a real API integration test). Add:
+   * Structural: assert authenticate() consults the entitlement check (source
+     marker), and that a company_has_api_access(uuid) parameterized helper exists.
+   * Behavioural (best under H4 staging): a key on an ENTITLED company -> 200; the
+     same key after its company's subscription is set non-entitled -> 402/403.
+     Also assert an entitled key is NOT wrongly denied (guards the JWT-helper trap).
+
+
+16. ROLLBACK STRATEGY
+--------------------------------------------------------------------------------
+  Additive/reversible, no customer data changed:
+   * authenticate() change: revert the Edge file and redeploy the function.
+   * Parameterized helper: additive function; DROP it to roll back (nothing else
+     depends on it).
+   * The optional downgrade->revoke (item 4): reversible; it only sets revoked_at/
+     expires_at on keys, which can be cleared, though revocation of a real key is
+     operationally significant — keep it in its own change.
+  No schema/data of the tenant books is touched.
+
+
+================================================================================
+## Verdict
+
+  AUDIT CORRECT BUT IMPLEMENTATION SHOULD DIFFER.
+
+  * Correct: the paid-gate is enforced only at key creation (create_api_key) and
+    in the UI, never per request in authenticate(); keys never expire and are not
+    revoked on downgrade — so a tenant that loses entitlement keeps full API
+    access via existing keys. Verified in code and against live data (1 key, all
+    11 subscriptions trialing+entitled -> currently LATENT, structurally real).
+  * Implementation must differ from the audit's "verify entitlement after
+    resolving the key (join or gate helper)": the named gate helper
+    company_has_api_access() is auth.uid()-scoped (current_user_company_id ->
+    profiles WHERE id = auth.uid()) and returns FALSE in the Edge API-key context,
+    so reusing it would DENY ALL API ACCESS. The correct fix adds a company_id-
+    PARAMETERIZED entitlement check (helper overload or inline join by
+    key.company_id), returns 402, and caches ~60s — with an optional separate
+    downgrade->revoke for defense-in-depth. (The audit's "join" alternative is
+    valid; the "gate helper" one is the trap.)
+
+STATUS: Analysis only. The unexpected dependency (JWT-scoped helper unusable from
+the API path) is surfaced and drives the verdict; nothing implemented. Awaiting
+owner approval before any implementation. No other audit item started.
+================================================================================

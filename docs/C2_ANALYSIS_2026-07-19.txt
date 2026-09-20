@@ -1,0 +1,278 @@
+================================================================================
+StockBolt ERP — Audit Issue C2: Analysis Report
+Currency picker enabled + posting engine does not convert = silent GL misstatement
+================================================================================
+Date:            2026-07-19
+Type:            ANALYSIS ONLY — no code, migration, database, or UI change made
+Severity:        CRITICAL (silent financial misstatement) — but LATENT
+Live data state: CLEAN — 0 non-base-currency documents exist; only AED in use
+                 (invoices 13/0, vendor_bills 11/0, sales_quotes 4/0, purchase_orders 1/0)
+================================================================================
+
+
+1. ROOT CAUSE
+--------------------------------------------------------------------------------
+Two independently-correct-looking facts combine into a silent defect:
+
+  (a) The document currency dropdown is fully enabled in the sales-invoice,
+      sales-quote, vendor-bill, and purchase-order editors, and it offers EVERY
+      world currency (currencyOptions() in src/lib/currencies.ts returns the
+      full list).
+
+  (b) The posting RPCs that write the general ledger (confirm_invoice,
+      confirm_vendor_bill, and ~13 others) RECORD exchange_rate on the journal
+      header but NEVER MULTIPLY the posted amount by it. They post the raw
+      transaction amount straight to the GL.
+
+Result: a foreign-currency document posts its face value as if it were base
+currency. A 1,000 USD invoice hits AR / Revenue / VAT as 1,000 AED instead of
+~3,673 AED. The journal still balances (1000 = 1000), so je_must_balance, the
+regression suite, and every guard pass with NO error.
+
+This is documented as an INTENTIONAL deferral in docs/MULTICURRENCY_AUDIT.md
+section 2: "Editor currency selection + foreign posting is intentionally
+deferred ... enabling it before the RPCs convert would mis-state the GL." The
+defect is that the UI gate implied by that decision was never applied — the
+picker is live while the engine is not.
+
+
+2. CURRENT CURRENCY WORKFLOW
+--------------------------------------------------------------------------------
+  * companies.base_currency + companies.currency define the tenant's functional
+    currency (onboarding sets both equal). base_currency backfilled in Phase 17.
+
+  * Every document table carries `currency TEXT NOT NULL` and
+    `exchange_rate NUMERIC(12,6) NOT NULL DEFAULT 1.0`.
+
+  * Editors default header.currency to companyCurrency (useCompanyCurrency()).
+    The 4 editors with a picker let the user override it freely.
+
+  * PAYMENTS are FX-aware and convert correctly: confirm_payment / post-sale
+    discount RPCs compute `v_bank_aed := ROUND(amount * exchange_rate, 2)` and
+    post realized FX gain/loss to 4400/6900 (phase12_01_fx_gain_loss,
+    phase12_23). This is the ONLY converting path.
+
+  * DOCUMENT posting RPCs (invoice, bill, etc.) do NOT convert — they post
+    transaction amounts directly. This asymmetry is the crux: a receipt converts,
+    but the invoice it settles did not.
+
+  * exchange_rates table + /settings/exchange-rates exist for manual rate entry
+    (Phase 17), but nothing in the document posting path consumes them.
+
+  * contacts.currency exists (a contact's default currency) but does NOT
+    auto-flow into a document header — verified: the invoice editor sets
+    header.currency from companyCurrency and the manual picker only, never from
+    the selected contact.
+
+
+3. ALL LOCATIONS WHERE DOCUMENT CURRENCY CAN ENTER THE SYSTEM
+--------------------------------------------------------------------------------
+  UI (the only real entry point today):
+    * src/modules/sales/invoice-editor.tsx      — picker (L972-977). DIRECT GL risk.
+    * src/modules/purchasing/vendor-bill-editor.tsx — picker (L405-406). DIRECT GL risk.
+    * src/modules/sales/quote-editor.tsx        — picker. Pre-posting (no GL until
+                                                   converted to an invoice).
+    * src/modules/purchasing/po-editor.tsx      — picker (L405-406). Pre-posting
+                                                   (no GL until GRN/bill).
+    Document editors WITHOUT a picker (safe — hardcode companyCurrency):
+      credit-note-editor (L208), debit-note-editor (L188), expense-editor,
+      sales-return-editor (returns post via the credit-note engine).
+    POS: separate screen — verify it has no picker (expected base-only).
+
+  API:
+    * POST /v1/orders (supabase/functions/api/index.ts) — FORCES the company base
+      currency; caller currency is ignored. SAFE.
+    * POST /v1/contacts — sets a CONTACT's currency (defaults to base); this is a
+      master field, not a document, and does not flow into documents. SAFE.
+
+  Imports:
+    * No document-currency import mapping exists (import/export covers masters).
+      The contacts importer can set contact.currency, but that never reaches a
+      document. SAFE.
+
+  Database:
+    * currency TEXT NOT NULL — NO default, NO CHECK constraint tying it to base.
+      exchange_rate NUMERIC DEFAULT 1.0. A raw INSERT could set any currency, but
+      all application inserts pass an explicit value from the editor/RPC.
+
+  RPCs:
+    * Document confirm/edit RPCs STORE exchange_rate but never multiply (the bug).
+    * Payment RPCs multiply (the FX-aware exception).
+
+
+4. ALL AFFECTED FILES
+--------------------------------------------------------------------------------
+  UI (the fix surface):
+    src/modules/sales/invoice-editor.tsx
+    src/modules/purchasing/vendor-bill-editor.tsx
+    src/modules/sales/quote-editor.tsx
+    src/modules/purchasing/po-editor.tsx
+    src/lib/currencies.ts                 (currencyOptions — the option source)
+
+  Posting engine (the reason the picker is unsafe — ~15 RPCs per
+  MULTICURRENCY_AUDIT.md section 2):
+    confirm_invoice, void_and_edit_invoice, confirm_vendor_bill,
+    edit_vendor_bill(_v2), confirm_grn, vendor_payment, apply_advance,
+    credit_note, debit_note, confirm_pos_sale, bank_transfer, expense, pdc,
+    inventory_adjustment  (confirm_payment already converts — the exception).
+
+  Reference:
+    docs/MULTICURRENCY_AUDIT.md           (the design decision + acceptance gates)
+
+
+5. ALL AFFECTED DATABASE OBJECTS
+--------------------------------------------------------------------------------
+  * currency + exchange_rate columns on: invoices, vendor_bills, sales_quotes,
+    purchase_orders (direct picker); plus credit_notes, debit_notes,
+    sales_returns, expenses, payments (currently base-only by construction).
+  * general_ledger — where a mis-stated amount would land.
+  * The ~15 posting RPCs listed above.
+  * exchange_rates table — exists but unused by the document posting path.
+  * No CHECK constraint currently guards currency = base_currency.
+
+
+6. DEPENDENCIES
+--------------------------------------------------------------------------------
+  * The MINIMAL fix (lock the UI picker to base currency) has NO dependency —
+    it is a self-contained UI change; data is already base-only.
+  * Consistency dependency: quote->invoice and PO->bill conversions carry the
+    currency forward. If only invoice/bill were locked, a foreign quote/PO could
+    seed a converted document — so all 4 editors should be locked together.
+  * The FULL fix (make multi-currency actually work) depends on the engine
+    project defined in MULTICURRENCY_AUDIT.md sections 3 and 6 (convert all ~15
+    RPCs to base, symmetric FX gain/loss on payments AND receipts, the section-5
+    test matrix). That is a large, separate initiative — NOT a prerequisite for
+    the minimal lock.
+  * No dependency in the opposite direction: nothing depends on the picker
+    offering foreign currencies.
+
+
+7. POSSIBLE SIDE EFFECTS OF LOCKING THE CURRENCY
+--------------------------------------------------------------------------------
+  * Functional: NONE for existing data — every document is already base currency,
+    so locking changes no stored value and needs no data migration.
+  * UX: removes a visible option that never worked correctly. A user who
+    *believed* they could invoice in a foreign currency loses a control — but it
+    would have silently corrupted their books, so removal is a net safety gain.
+  * Existing documents: unaffected (all base). No repost, no recompute.
+  * No accounting, inventory, or report output changes (see 9-11).
+  * If an optional DB CHECK (currency = base_currency) is added as a backstop,
+    that is an additional object to roll back, and any future real multi-currency
+    work would need to drop it first — worth noting but low cost.
+
+
+8. BUSINESS IMPACT
+--------------------------------------------------------------------------------
+  Of the DEFECT (if left open): CRITICAL and silent. The first time any user in
+  any tenant selects a foreign currency and confirms a document, that tenant's
+  AR/AP, VAT return, P&L and Balance Sheet become wrong with no error shown —
+  leading to an incorrect tax filing. It is one dropdown selection away.
+  Currently ZERO customers are affected (data verified clean).
+
+  Of the FIX (lock to base): positive. Removes the footgun. Businesses that
+  genuinely need to transact in a foreign currency cannot do so until the engine
+  is built — an acceptable limitation, because that capability never functioned
+  correctly and would have produced wrong filings.
+
+
+9. ACCOUNTING IMPACT
+--------------------------------------------------------------------------------
+  Of the defect: a foreign-currency document mis-states every GL leg it posts —
+  AR/AP, revenue/expense, VAT output/input — by the exchange-rate factor. Trial
+  Balance still "balances" (both sides scaled equally within the doc), so the
+  error is invisible to the balance check. Downstream: P&L, Balance Sheet, VAT
+  return all wrong for that document.
+
+  Of the lock: NONE. It prevents the misstatement. Existing base-currency
+  postings are untouched; no reposting.
+
+
+10. INVENTORY IMPACT
+--------------------------------------------------------------------------------
+  Of the defect: a foreign-currency VENDOR BILL or GRN would feed the raw
+  foreign amount into moving-average cost. A 1,000 EUR bill would value inventory
+  at 1,000 (not ~4,250 AED), corrupting MAC and therefore every subsequent COGS
+  and the inventory valuation (E1 reconciliation to GL 1300).
+
+  Of the lock: NONE.
+
+
+11. REPORT IMPACT
+--------------------------------------------------------------------------------
+  Of the defect: every GL-derived report (TB, BS, P&L, Cash Flow, VAT, AR/AP
+  aging, statements, inventory valuation, dashboard) would show wrong figures for
+  any foreign-currency document.
+
+  Of the lock: NONE — no report path is touched.
+
+
+12. RISK ASSESSMENT
+--------------------------------------------------------------------------------
+  Risk of the status quo (do nothing):     CRITICAL (latent)
+      One user action away from silent, unrecoverable-until-noticed misstatement
+      of a customer's books and tax filing.
+
+  Risk of the minimal lock fix:            NEGLIGIBLE
+      UI-only; no data change; no existing document affected; fully reversible;
+      removes a broken feature rather than adding behaviour.
+
+  Risk of NOT fixing while advertising multi-currency: HIGH reputational/legal —
+      the product visibly offers a currency selector it cannot honour.
+
+  This is again a case where the fix risk is far below the standing risk.
+
+
+13. RECOMMENDED IMPLEMENTATION PLAN (for approval — NOT implemented)
+--------------------------------------------------------------------------------
+  PHASE 1 — Lock the document currency to the company base currency (UI-only):
+    * In all 4 editors (invoice, vendor-bill, quote, PO): render the currency as
+      a fixed, read-only value equal to companyCurrency (either disable the
+      <Select> and pin its value to base, or replace it with a static label).
+      exchange_rate stays 1. No change to the posting RPCs.
+    * All 4 together, for the conversion-consistency dependency (item 6).
+    * Optional belt-and-suspenders: a DB CHECK (currency = base_currency) on the
+      document tables — flag separately; adds a rollback object.
+    * Add the regression tripwire in section 14.
+
+  PHASE 2 — Resolve multi-currency properly (separate, larger, later):
+    Choose ONE, per MULTICURRENCY_AUDIT.md:
+      (a) Build the engine to section 3 + section 6 acceptance gates (convert all
+          ~15 RPCs, symmetric FX gain/loss, section-5 test matrix passing), THEN
+          re-enable the picker.
+      (b) Formally remove multi-currency from the product surface.
+    No middle state — a half-built currency feature produces wrong filings.
+
+  RECOMMENDATION: Phase 1 now (closes the risk in a UI-only change); Phase 2 as a
+  scoped roadmap decision.
+
+
+14. REGRESSION TESTS
+--------------------------------------------------------------------------------
+  * Primary tripwire (add in Phase 1): assert NO document row exists with
+    currency <> base_currency OR exchange_rate <> 1, across invoices,
+    vendor_bills, sales_quotes, purchase_orders, credit_notes, debit_notes.
+    Healthy result: 0 rows. This is a structural invariant the suite is good at.
+  * UI checks (Phase 1 verification): editors compile (tsc) + build; the currency
+    field is non-editable and pinned to base; a saved document carries base
+    currency + exchange_rate 1.
+  * No posting-RPC test change (the RPCs are untouched in Phase 1).
+
+
+15. ROLLBACK STRATEGY
+--------------------------------------------------------------------------------
+  * Nature of Phase 1: UI-only (+ optional CHECK). No posting logic, no data
+    migration, no existing-document change. Zero data risk.
+  * Rollback of the UI lock: git revert the editor commits -> Vercel redeploys
+    the prior build (the picker returns). No DB action needed.
+  * Rollback of the optional CHECK (if added): DROP CONSTRAINT — a grant/schema
+    change with no data impact (all rows already satisfy it).
+  * Because no stored value changes, rollback carries no reconciliation risk in
+    either direction.
+
+
+================================================================================
+STATUS: Analysis only. No code, migration, database, or UI change made. Live
+data verified clean (0 non-base-currency documents). C1 remains the only issue
+implemented (Phase 1 applied + verified). Awaiting approval before any C2
+implementation. No other audit item started.
+================================================================================

@@ -1,0 +1,221 @@
+================================================================================
+StockBolt ERP — Audit Issue M3: Analysis Report (re-investigated from source)
+Order endpoint builds a PostgREST .or() filter by string interpolation.
+================================================================================
+Audit cycle date: 2026-07-19   |   Investigation performed: 2026-07-24
+Type:   ANALYSIS ONLY — no code, migration, database, report, or API changed.
+        Evidence read from the live repo (read-only).
+Method: Read createOrder()'s product-resolution query + the sku/id validation
+        and company scoping. Did NOT assume the audit is correct.
+
+Convention: [VERIFIED] = read directly from the repo. [INFERENCE] = reasoned.
+================================================================================
+
+
+0. HEADLINE
+--------------------------------------------------------------------------------
+  The finding is correct: createOrder() (POST /v1/orders) resolves products with a
+  PostgREST .or() filter it builds by STRING INTERPOLATION, and the only escaping
+  for a sku value is `s.replace(/"/g, '')` (strip double quotes). Two refinements:
+  the sibling `id.in.(...)` interpolation is SAFE (ids are UUID-validated), and
+  the whole thing is ANDed with a parameterized `.eq('company_id')`, so any
+  injection is contained within the caller's own company and only affects a DRAFT
+  invoice's product resolution. Low-risk + a code smell, exactly as stated.
+  [VERIFIED]
+
+
+1. IS THE ORIGINAL AUDIT FINDING CORRECT?
+--------------------------------------------------------------------------------
+  CORRECT. [VERIFIED]  (supabase/functions/api/index.ts, createOrder, 518-527)
+     const ids  = items.filter(i => i.product_id).map(...);
+     const skus = items.filter(i => !i.product_id).map(i => i.sku);
+     const ors: string[] = [];
+     if (ids.length)  ors.push(`id.in.(${ids.join(',')})`);                        // 522
+     if (skus.length) ors.push(`sku.in.(${skus.map(s => `"${s.replace(/"/g,'')}"`).join(',')})`); // 523
+     supabase.from('products').select(...).eq('company_id', key.company_id).or(ors.join(',')); // 526-527
+
+   a. The sku values ARE interpolated into a `.or()` filter string, escaped only
+      by stripping `"` — matches the audit exactly. [VERIFIED]
+   b. sku is NOT otherwise validated: line 508 accepts any non-empty string,
+      line 512 only trims it. So `,`, `)`, and `\` flow into the filter. [VERIFIED]
+   c. Contained within company scope: `.eq('company_id', key.company_id)` (526) is
+      a SEPARATE parameterized method ANDed with the `.or()` group, so the query is
+      `company_id = X AND (id.in(...) OR sku.in(...))`. Injection can only widen the
+      OR group WITHIN the caller's company. [VERIFIED]
+
+  Refinements the audit did not separate:
+   * The `id.in.(${ids.join(',')})` interpolation (522) is SAFE: line 507 gates
+     product_id on UUID_RE.test, so only hex/hyphen UUIDs reach it — no injection
+     chars possible. Only the sku side is exploitable-shaped. [VERIFIED]
+   * The endpoint creates a DRAFT invoice (Phase 4, scope write:orders); the
+     interpolation is in the product-LOOKUP that builds the draft lines, not in a
+     posting path. [VERIFIED]
+
+
+2. ROOT CAUSE
+--------------------------------------------------------------------------------
+  [VERIFIED] Resolving order items by EITHER product_id OR sku in one round-trip
+  led to hand-building a combined `(id.in OR sku.in)` filter as a string. The id
+  side was made safe by UUID-validating first; the sku side — free text — was
+  "escaped" by stripping quotes rather than by using the query builder's
+  parameterized `.in()`, which escapes values correctly. String-built filters over
+  user input are the smell.
+
+
+3. CURRENT WORKFLOW
+--------------------------------------------------------------------------------
+  [VERIFIED] POST /v1/orders (write:orders scope): validate items (each needs a
+  UUID product_id or a non-empty sku; qty bounds); collect ids + skus; build
+  `ors = [id.in.(<uuids>), sku.in.("<sku>",...)]`; query products WHERE
+  company_id = key.company_id AND (ors...); map results by id / lower(sku); build
+  draft invoice lines using OUR selling_price + OUR tax rate; create a DRAFT
+  invoice. A sku that doesn't resolve -> 400 "product not found".
+
+
+4. WHY THE ISSUE EXISTS
+--------------------------------------------------------------------------------
+  [VERIFIED] The one-query id-or-sku resolution can't be expressed with a single
+  supabase-js parameterized method (there is no built-in "OR of two .in()"), so
+  the author fell back to a string `.or()`. The id side was guarded with a UUID
+  check; the sku side got only a quote-strip. [INFERENCE] Under the current usage
+  (skus are normal alphanumeric part numbers) the gap has never bitten.
+
+
+5. ALL AFFECTED FILES
+--------------------------------------------------------------------------------
+  * supabase/functions/api/index.ts — createOrder(), lines 518-527 (the product-
+    resolution query). THE fix site. [VERIFIED]
+  No src/ (app) file, no migration — the fix is a query-builder change in the Edge
+  Function only (see §9).
+
+
+6. ALL AFFECTED DATABASE OBJECTS
+--------------------------------------------------------------------------------
+  [VERIFIED] None require change. The `products` table is queried (read-only); no
+  schema/RLS/RPC change is needed — the fix is entirely in how the Edge Function
+  builds the filter.
+
+
+7. ALL AFFECTED REPORTS
+--------------------------------------------------------------------------------
+  [VERIFIED] None. Order creation via the API is unrelated to any report.
+
+
+8. ALL AFFECTED APIs
+--------------------------------------------------------------------------------
+  [VERIFIED] The public Edge Function API, POST /v1/orders (createOrder) only.
+  Other endpoints (listProducts/listContacts/getMe/etc.) use likeEscape() for
+  their `.ilike` searches and pass user text differently; they are not part of
+  this finding. No internal app API is involved. [VERIFIED]
+
+
+9. DEPENDENCIES
+--------------------------------------------------------------------------------
+  [VERIFIED] NONE that block. Notably, the fix needs NO migration and NO DB change
+  — it is a self-contained rewrite of the product-lookup in the Edge Function
+  (parameterize with `.in()`), deployed via `supabase functions deploy api`. This
+  is simpler than M2/H7 (which needed migrations). [VERIFIED]
+  Minor implementation note: because resolution is id-OR-sku, the parameterized
+  fix is two `.in()` queries (or two filters), not a single `.in('sku', ...)` — see
+  §14. No unexpected dependency.
+
+
+10. BUSINESS IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED bounds / INFERENCE severity] Two effects, both minor:
+   * Security: a caller with write:orders could craft a sku (e.g. containing `\`
+     or `"`) to perturb the product-resolution OR group. It is contained by the
+     ANDed company_id (parameterized), so it cannot cross tenants or read beyond
+     the caller's own products — data the caller can already list. No escalation.
+   * Correctness: a legitimate sku containing `"` is silently corrupted (quote
+     stripped -> wrong/`not found`), and a `\`/`)`-bearing sku can mis-parse the
+     filter (400/500). So odd-charactered part numbers can fail order creation.
+   Severity: LOW. Company-contained, DRAFT-only, no posting, and current skus are
+   plain part numbers so it is latent. [INFERENCE.]
+
+
+11. ACCOUNTING IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED] None to the ledgers. createOrder builds a DRAFT invoice (unposted);
+  no GL/JE is written by this path, and a human confirms the draft later (which
+  re-resolves via the normal posting engine). At worst a draft line resolves to a
+  wrong product WITHIN the company or the create 400s — caught before posting.
+
+
+12. INVENTORY IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED] None. A draft invoice moves no stock; product resolution is a read.
+  No MAC/COGS/on-hand effect.
+
+
+13. RISK ASSESSMENT
+--------------------------------------------------------------------------------
+  Status quo: LOW. A company-contained, draft-only filter-injection smell plus a
+    special-character correctness bug in one API endpoint. No cross-tenant, no
+    escalation, no posting, and latent under normal part-number skus. [VERIFIED
+    bounds; INFERENCE severity.]
+  Risk of the fix: LOW. A query-builder rewrite in one function, Edge-only, no
+    migration, easily unit/integration-tested; the only care item is preserving
+    the id-OR-sku resolution semantics.
+
+
+14. RECOMMENDED IMPLEMENTATION PLAN  (for approval — NOT implemented)
+--------------------------------------------------------------------------------
+  Replace the string-built `.or()` with parameterized `.in()` queries in
+  createOrder():
+   1. Resolve by id and by sku with the builder's escaping:
+        products WHERE company_id = key.company_id AND id  IN (<ids>)   -> .in('id',  ids)
+        products WHERE company_id = key.company_id AND sku IN (<skus>)  -> .in('sku', skus)
+      supabase-js `.in(col, array)` builds the `in.(...)` filter and escapes each
+      value, so no interpolation/quote-strip is needed. WHY: removes the injection
+      surface and the special-character corruption in one move.
+   2. Run as two queries (skip the empty side) and merge into the same byId/bySku
+      maps, OR keep one round-trip via a safely-built `.or()` from arrays if a
+      helper is added — but two `.in()` queries is the simplest correct form given
+      the id-OR-sku shape. WHY: there is no single parameterized "OR of two .in()".
+   3. Keep everything else (validation, company scoping, draft build) unchanged.
+  Deploy: Edge-only change via `supabase functions deploy api` (no migration, no
+  frontend deploy). The id side is already UUID-safe but should be parameterized
+  too for consistency.
+  Each recommendation states its WHY; the only ASSUMPTION is that two small
+  queries are acceptable vs one (they are — the item counts are tiny).
+
+
+15. REGRESSION TESTS REQUIRED
+--------------------------------------------------------------------------------
+  [VERIFIED] The live suite does not exercise the API order path. Add (best under
+  H4 / an API harness):
+   * POST /v1/orders with a sku containing `,`, `)`, `"`, and `\` -> resolves the
+     correct product if one matches, else a clean 400 "not found" — never a 500 or
+     a cross-product match. (The audit's named test.)
+   * A normal multi-item order (some by id, some by sku) still resolves correctly
+     after the rewrite (semantics preserved).
+
+
+16. ROLLBACK STRATEGY
+--------------------------------------------------------------------------------
+  Additive-behaviour, no data/schema: revert supabase/functions/api/index.ts and
+  redeploy the Edge Function. No migration to undo; no tenant data touched.
+
+
+================================================================================
+## Verdict
+
+  AUDIT CORRECT.
+
+  * Verified: createOrder() interpolates sku values into a PostgREST `.or()` filter
+    string, escaping only `"`; the sku input is otherwise unvalidated; and the
+    query is ANDed with a parameterized `.eq('company_id')`, so the injection is
+    company-contained and only touches a DRAFT invoice's product lookup — a
+    low-risk filter-injection smell, exactly as the audit states.
+  * The recommended fix — parameterized `.in()` — is right. This analysis adds two
+    accurate refinements: the sibling `id.in.(...)` is already safe (UUID-
+    validated), and the full fix is two `.in()` queries (id + sku) rather than a
+    single `.in('sku', ...)`, because resolution is id-OR-sku. Both are
+    elaborations WITHIN the audit's approach, not corrections. The fix is Edge-only
+    (no migration).
+
+STATUS: Analysis only. No unexpected dependency (the fix is a self-contained
+Edge-Function query rewrite, no DB change). Nothing implemented. Awaiting owner
+approval before any implementation. No other audit item started.
+================================================================================

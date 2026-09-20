@@ -1,0 +1,278 @@
+================================================================================
+StockBolt ERP — Audit Issue M1: Analysis Report (re-investigated from source)
+Missing security headers (CSP, HSTS, Permissions-Policy).
+================================================================================
+Audit cycle date: 2026-07-19   |   Investigation performed: 2026-07-23
+Type:   ANALYSIS ONLY — no code, migration, database, report, or API changed.
+        Evidence read from the live repo (read-only).
+Method: Read vercel.json, index.html, the Supabase client config; checked for
+        inline scripts, eval, camera use, external origins (fonts, PayPal,
+        images, Supabase). Did NOT assume the audit is correct.
+
+Convention: [VERIFIED] = read directly from the repo. [INFERENCE] = reasoned
+from verified facts / standard browser behaviour.
+================================================================================
+
+
+0. HEADLINE
+--------------------------------------------------------------------------------
+  The finding is correct: vercel.json sets X-Content-Type-Options, X-Frame-Options
+  and Referrer-Policy but NO Content-Security-Policy, Strict-Transport-Security
+  (HSTS), or Permissions-Policy; and the Supabase session (JWT + refresh token) is
+  persisted to localStorage, so an XSS would have no CSP compensating control and
+  could exfiltrate the session. [VERIFIED]
+
+  The nuance the fix must handle (why "report-only first" matters): a naive strict
+  CSP would BREAK this app. It loads Google Fonts (fonts.googleapis.com /
+  fonts.gstatic.com) and uses React inline styles (style={{...}}) pervasively, so
+  the policy MUST allow style-src 'unsafe-inline' + the font origins, connect-src
+  the Supabase origin, and img-src the image sources. script-src 'self' IS viable
+  (no inline scripts in index.html, no eval in app code). [VERIFIED]
+
+
+1. IS THE ORIGINAL AUDIT FINDING CORRECT?
+--------------------------------------------------------------------------------
+  CORRECT. [VERIFIED]
+   a. vercel.json headers block sets exactly: X-Content-Type-Options=nosniff,
+      X-Frame-Options=DENY, Referrer-Policy=strict-origin-when-cross-origin.
+      No CSP, no Strict-Transport-Security, no Permissions-Policy. [VERIFIED]
+   b. No CSP <meta http-equiv> in index.html either. [VERIFIED]
+   c. The session IS in localStorage: src/data/supabase-client.ts creates the
+      client with auth.persistSession=true and no custom storage -> supabase-js
+      defaults to localStorage for the access + refresh token. An XSS can read
+      localStorage. [VERIFIED persistSession; INFERENCE that default storage is
+      localStorage — standard supabase-js behaviour.]
+   => All three headers are genuinely missing and the token-theft exposure is real.
+
+
+2. ROOT CAUSE
+--------------------------------------------------------------------------------
+  [VERIFIED] The security-header block in vercel.json was authored with the three
+  "easy" headers (frame/content-type/referrer) and never extended to the three
+  that need a per-app policy (CSP) or a deployment decision (HSTS preload). CSP in
+  particular requires knowing every origin the app talks to and tolerating the
+  app's inline styles, which is more work than a static header — so it was
+  deferred. [INFERENCE]
+
+
+3. CURRENT WORKFLOW
+--------------------------------------------------------------------------------
+  [VERIFIED] Vercel serves the built SPA and applies the vercel.json `headers`
+  block to every response (source "/(.*)"). The browser therefore receives
+  X-Frame-Options / X-Content-Type-Options / Referrer-Policy but no CSP/HSTS/
+  Permissions-Policy. The app authenticates via supabase-js, storing the JWT +
+  refresh token in localStorage; API calls go to the Supabase origin
+  (https://gzpkuaioibqrdppjdbwz.supabase.co) and same-origin /api/paypal/*.
+  Fonts load from fonts.googleapis.com / fonts.gstatic.com. There is no client-
+  side script injection point in index.html (single module script, same-origin).
+
+
+4. WHY THE ISSUE EXISTS
+--------------------------------------------------------------------------------
+  [VERIFIED] The three present headers are static values; the three missing ones
+  are not. CSP must enumerate origins (Supabase, Google Fonts, image hosts) and
+  accommodate the app's heavy inline-style usage; HSTS's includeSubDomains/preload
+  is a domain-wide commitment; Permissions-Policy needs a per-feature decision.
+  [INFERENCE] Getting CSP wrong breaks the app, so it was left out rather than
+  shipped and risked — which is exactly why the audit says "report-only first".
+
+
+5. ALL AFFECTED FILES
+--------------------------------------------------------------------------------
+  * vercel.json — the sole place response headers are set; THE fix site. [VERIFIED]
+  * index.html — loads Google Fonts (informs CSP style-src/font-src); single
+    same-origin module script (informs script-src 'self'). CONTEXT. [VERIFIED]
+  * src/data/supabase-client.ts — persistSession=true -> JWT in localStorage; the
+    reason CSP matters here. CONTEXT, no change needed. [VERIFIED]
+  * No src/ change is required for the header fix (pure vercel.json config). A
+    nonce-based CSP would need build/index.html changes and is NOT recommended
+    given the app's inline styles (see §14).
+
+
+6. ALL AFFECTED DATABASE OBJECTS
+--------------------------------------------------------------------------------
+  [VERIFIED] None. Security headers are an HTTP-response/edge concern; no DB
+  object is involved.
+
+
+7. ALL AFFECTED REPORTS
+--------------------------------------------------------------------------------
+  [VERIFIED] None. No report reads or is affected by response headers.
+
+
+8. ALL AFFECTED APIs
+--------------------------------------------------------------------------------
+  [VERIFIED] Scope boundary worth stating: vercel.json headers apply ONLY to the
+  Vercel-served FRONTEND. The public Edge Function API is served by SUPABASE (a
+  different origin) and sets its own CORS headers; the vercel.json CSP/HSTS do NOT
+  cover it. That is fine for M1 — CSP/token-theft risk lives in the BROWSER app.
+  The Edge API is JSON (no HTML/scripts), so CSP is largely N/A there; HSTS on the
+  supabase.co domain is Supabase's responsibility. [VERIFIED vercel.json scope;
+  INFERENCE on Supabase-domain headers.]
+  connect-src note: the app calls its own /api/paypal/* (same-origin) and the
+  Supabase origin; both must be allowed by CSP connect-src. [VERIFIED same-origin
+  /api + supabase-js origin.]
+
+
+9. DEPENDENCIES
+--------------------------------------------------------------------------------
+  [VERIFIED / INFERENCE] The CSP has real, load-bearing content dependencies —
+  surfaced here, not blocking (they inform §14, and report-only mode confirms
+  them safely):
+   D1. style-src MUST include 'unsafe-inline' — the app uses React inline styles
+       (style={{...}}, the theme.ts system) throughout; a strict style-src would
+       break rendering. [VERIFIED heavy inline-style usage.]
+   D2. style-src + font-src MUST allow Google Fonts (fonts.googleapis.com stylesheet
+       + fonts.gstatic.com font files). [VERIFIED index.html.]
+   D3. connect-src MUST allow 'self' (/api/paypal) + the Supabase origin. [VERIFIED]
+   D4. img-src: logo_url/image_url fields are used widely; images are 'self' /
+       Supabase Storage / possibly EXTERNAL URLs (brand logos). Decide img-src
+       'self' data: <supabase> vs adding https: for arbitrary logo URLs. [VERIFIED
+       fields exist; INFERENCE on whether external URLs are allowed — confirm.]
+   D5. script-src 'self' is viable: no inline <script> in index.html, no eval/
+       new Function in app src. A prod-build + xlsx (SheetJS) pass under report-
+       only should confirm no dependency needs 'wasm-unsafe-eval'. [VERIFIED app
+       code; INFERENCE for dependencies -> report-only verifies.]
+   D6. HSTS includeSubDomains/preload is a domain-wide commitment; only add
+       `preload` after confirming ALL subdomains of the production domain are
+       HTTPS. [INFERENCE — standard HSTS caveat.]
+   D7. Permissions-Policy may safely disable camera/microphone/geolocation: the
+       barcode scanner is keyboard-wedge (no getUserMedia/BarcodeDetector in src);
+       PayPal is a redirect (no Payment Request API). [VERIFIED no camera use.]
+  No ordering dependency on other audit items. Intersects H6 only if error
+  tracking (Sentry) is later added — its ingest origin must be added to CSP
+  connect-src then. [INFERENCE]
+
+
+10. BUSINESS IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED exposure / INFERENCE severity] These are defense-in-depth controls;
+  their absence does not create a vulnerability by itself, but removes the
+  compensating controls if one lands:
+   * No CSP + JWT in localStorage: an XSS (e.g. via a crafted import, a stored
+     field rendered unsafely) could read localStorage and exfiltrate the session
+     -> account takeover within that tenant. CSP (script-src 'self') is the
+     primary control that blocks injected/external script execution. [INFERENCE]
+   * No HSTS: a first-visit downgrade / SSL-strip window on untrusted networks
+     (mitigated by Vercel HTTPS + browser preload lists for some domains, not
+     guaranteed). [INFERENCE]
+   * No Permissions-Policy: no restriction on powerful browser features (low
+     impact here — none are used). [VERIFIED low.]
+  Severity: MEDIUM — hardening/defense-in-depth for a system of record whose
+  session token is XSS-reachable. Blocks enterprise/security-review sign-off.
+
+
+11. ACCOUNTING IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED] None direct — headers change no posting/GL logic. [INFERENCE] An
+  XSS-driven account takeover (which CSP helps prevent) could let an attacker act
+  as the user and post/void documents, but that presupposes an XSS; M1 is a
+  compensating control, not the flaw. No number changes.
+
+
+12. INVENTORY IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED] None. Same shape as §11 — protective, not corrective; no stock/MAC/
+  COGS effect.
+
+
+13. RISK ASSESSMENT
+--------------------------------------------------------------------------------
+  Status quo: MEDIUM (defense-in-depth gap). The missing headers don't create a
+    bug; they remove the compensating controls that would blunt an XSS, and the
+    localStorage-resident JWT is the amplifier. [VERIFIED facts; INFERENCE severity.]
+  Risk of the fix:
+    * HSTS + Permissions-Policy: LOW (static headers; the only care items are
+      HSTS preload/includeSubDomains — §D6 — and not disabling an in-use feature —
+      §D7, verified none).
+    * CSP: MEDIUM if enforced blindly (could break fonts/inline styles/images).
+      LOW if rolled out report-only first (the audit's approach), which surfaces
+      every needed origin before enforcing.
+
+
+14. RECOMMENDED IMPLEMENTATION PLAN  (for approval — NOT implemented)
+--------------------------------------------------------------------------------
+  All changes are in vercel.json's headers block; no src/ change. Sequence by risk:
+
+  A. Add the two low-risk headers now:
+     * Strict-Transport-Security: max-age=63072000; includeSubDomains
+       (add `; preload` ONLY after confirming every prod subdomain is HTTPS — D6).
+     * Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+       (all unused — D7). WHY: immediate, safe hardening.
+
+  B. Add CSP in REPORT-ONLY first (the audit's approach; the correct careful path):
+     Content-Security-Policy-Report-Only with a policy shaped for THIS app:
+       default-src 'self';
+       script-src 'self';
+       style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;   (D1, D2)
+       font-src 'self' https://fonts.gstatic.com;                        (D2)
+       img-src 'self' data: https://gzpkuaioibqrdppjdbwz.supabase.co;    (D4 — add
+         https: only if external logo/image URLs are permitted)
+       connect-src 'self' https://gzpkuaioibqrdppjdbwz.supabase.co;      (D3)
+       frame-ancestors 'none'; base-uri 'self'; form-action 'self';
+     WHY report-only: it reports violations without breaking the app, so the exact
+     needed origins (esp. img-src external URLs, any xlsx/dependency eval) are
+     confirmed before enforcing.
+
+  C. Exercise every flow (login, dashboard, imports incl. xlsx, catalog images,
+     billing/PayPal redirect, print) and read CSP violation reports (browser
+     console, or a report-to/report-uri collector if one is stood up). Adjust the
+     policy until clean.
+
+  D. Promote to ENFORCING: rename the header to Content-Security-Policy (drop
+     -Report-Only). WHY: only after C proves the policy doesn't break the app.
+
+  For each recommendation the WHY is stated; the load-bearing ASSUMPTIONS are
+  (i) all prod subdomains are HTTPS (for HSTS preload), (ii) images resolve to
+  'self'/Supabase (else img-src needs https:), (iii) no bundled dependency needs
+  eval/wasm-eval (report-only confirms). None block the report-only step.
+
+
+15. REGRESSION TESTS REQUIRED
+--------------------------------------------------------------------------------
+  [VERIFIED] Config change — not covered by the DB regression suite (unaffected).
+  Enforceable checks:
+   * Post-deploy smoke: assert the deployed responses carry CSP (or CSP-RO),
+     Strict-Transport-Security, and Permissions-Policy (a header-presence check
+     against the deployed URL — fits a CI/e2e step, ties loosely to H5).
+   * Manual: the report-only violation review in step C is the real "test" that
+     the enforced policy won't break the app.
+  No change to existing tests.
+
+
+16. ROLLBACK STRATEGY
+--------------------------------------------------------------------------------
+  Pure config, no data/schema:
+   * Revert vercel.json -> next Vercel deploy restores prior headers.
+   * CSP report-only is inherently non-breaking (reports only); the only step that
+     can break the app is promoting to enforcing (D), whose rollback is to revert
+     to -Report-Only (or remove the header) and redeploy.
+   * HSTS caveat: once a browser has cached a long max-age (or the domain is
+     preloaded), it will refuse HTTP for that duration even after you remove the
+     header — so HSTS is the least trivially-reversible piece IN THE CLIENT. Start
+     with a moderate max-age and NO preload until confident. [INFERENCE — standard.]
+  No production data is touched.
+
+
+================================================================================
+## Verdict
+
+  AUDIT CORRECT.
+
+  * Verified: vercel.json sets X-Frame-Options / X-Content-Type-Options /
+    Referrer-Policy but NOT CSP, HSTS, or Permissions-Policy; and the Supabase
+    session (JWT + refresh token) lives in localStorage, so an XSS has no CSP
+    compensating control and could steal the session.
+  * The recommended remediation is right, including the crucial "roll CSP out
+    report-only first". This analysis adds the specific policy THIS app requires
+    (style-src 'unsafe-inline' for its React inline styles, Google Fonts origins,
+    the Supabase connect/img origin, img-src decision for external image URLs) and
+    two deployment cautions (HSTS preload/includeSubDomains; Permissions-Policy may
+    safely disable camera — verified unused) — all elaborations WITHIN the audit's
+    approach, not corrections to it.
+
+STATUS: Analysis only. Load-bearing CSP content dependencies (inline styles, font
+origins, image/connect origins) surfaced; none block the report-only rollout.
+Nothing implemented. Awaiting owner approval before any implementation. No other
+audit item started.
+================================================================================

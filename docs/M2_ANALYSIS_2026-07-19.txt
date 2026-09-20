@@ -1,0 +1,240 @@
+================================================================================
+StockBolt ERP — Audit Issue M2: Analysis Report (re-investigated from source)
+Public API rate limiter is fail-open and racy.
+================================================================================
+Audit cycle date: 2026-07-19   |   Investigation performed: 2026-07-24
+Type:   ANALYSIS ONLY — no code, migration, database, report, or API changed.
+        Evidence read from the live repo (read-only).
+Method: Read rateLimited() + the Deno.serve request flow + the api_request_log
+        table/indexes. Did NOT assume the audit is correct.
+
+Convention: [VERIFIED] = read directly from the repo. [INFERENCE] = reasoned.
+================================================================================
+
+
+0. HEADLINE
+--------------------------------------------------------------------------------
+  The finding is correct: rateLimited() decides by COUNTING api_request_log, which
+  is written only AFTER the response — so concurrent requests don't see each
+  other's rows (racy) — and it ignores the query error, treating a failed count as
+  0 (fail-open). It is a soft courtesy throttle, not an enforceable control.
+  [VERIFIED]
+
+
+1. IS THE ORIGINAL AUDIT FINDING CORRECT?
+--------------------------------------------------------------------------------
+  CORRECT. [VERIFIED]
+
+  Evidence (supabase/functions/api/index.ts):
+   a. RATE_LIMIT_PER_MIN = 120 (line 37). rateLimited() (line 112):
+        const { count } = await supabase.from('api_request_log')
+          .select('id', { count: 'exact', head: true })
+          .eq('api_key_id', key.id).gte('created_at', since);   // since = now-60s
+        return (count ?? 0) >= RATE_LIMIT_PER_MIN;
+      -> It destructures ONLY `count` and ignores `error`; on any query failure
+         `count` is null, `(count ?? 0)` = 0, so it returns false = NOT limited.
+         FAIL-OPEN on error. [VERIFIED]
+   b. Request flow in Deno.serve: authenticate (672) -> rateLimited (688) ->
+      route -> res; THEN api_request_log.insert(...) (704). The CURRENT request is
+      logged only AFTER the response is built, so rateLimited() counts only
+      PREVIOUSLY-COMMITTED rows. Concurrent requests all read the same pre-burst
+      count before any of them logs -> all pass. RACY. [VERIFIED]
+   c. Because Edge Functions can run as MULTIPLE concurrent instances against the
+      shared DB, the count-then-decide has no serialization across instances
+      either — a read-count check cannot be atomic. [VERIFIED code; INFERENCE on
+      Supabase Edge concurrency, which is standard.]
+
+  So both defects the audit names are real: racy (a burst bypasses the limit) and
+  fail-open (a count-query error disables it).
+
+
+2. ROOT CAUSE
+--------------------------------------------------------------------------------
+  [VERIFIED] Rate limiting was implemented as a READ-then-DECIDE over the audit/
+  metering log (api_request_log), which is populated at the END of each request.
+  A read-check over an after-the-fact log is inherently non-atomic: it cannot see
+  in-flight or concurrent requests, and any error in the read defaults to
+  "allowed". The same shape as other read-check-not-a-constraint issues (cf. H2's
+  double-post guard) — correct under serial execution, wrong under concurrency.
+  [INFERENCE]
+
+
+3. CURRENT WORKFLOW
+--------------------------------------------------------------------------------
+  [VERIFIED] Per API request: authenticate the key -> rateLimited(): COUNT
+  api_request_log rows for this api_key_id in the last 60s; if >= 120, respond
+  429; else route and build the response -> finally INSERT one api_request_log row
+  (method, path, status, duration) and touch api_keys.last_used_at. The rate
+  decision therefore lags by one request-cycle and is blind to concurrency; a
+  failed count silently permits the request.
+
+
+4. WHY THE ISSUE EXISTS
+--------------------------------------------------------------------------------
+  [VERIFIED] Reusing api_request_log (already written for metering) as the rate
+  source avoided a second table, and the destructure-only-count pattern is the
+  common supabase-js idiom that silently drops the error. Under the low traffic
+  the API has seen, the throttle "works" for sustained sequential calls, so the
+  burst/error gaps were never exercised. [INFERENCE]
+
+
+5. ALL AFFECTED FILES
+--------------------------------------------------------------------------------
+  * supabase/functions/api/index.ts — rateLimited() (line 112), its call site
+    (line 688), and the post-response api_request_log insert (line 704). THE fix
+    site. [VERIFIED]
+  * (fix would add) a migration for an atomic counter table + RPC. Not written
+    (analysis only).
+  No src/ (app) file is involved.
+
+
+6. ALL AFFECTED DATABASE OBJECTS
+--------------------------------------------------------------------------------
+  * api_request_log — the current (mis)used rate source; indexes are
+    api_request_log_company_time_idx (company_id, created_at DESC) and
+    api_request_log_key_idx (api_key_id). NOTE the count query filters
+    (api_key_id AND created_at) but the only key index is on api_key_id alone, so
+    the count scans ALL of a key's rows and filters by time — a growing,
+    unpruned-log performance drag as a secondary concern. [VERIFIED]
+  * (fix adds) an atomic per-key/per-minute counter table + an increment RPC.
+  No other object depends on the rate-limit behaviour.
+
+
+7. ALL AFFECTED REPORTS
+--------------------------------------------------------------------------------
+  [VERIFIED] None. Rate limiting is an API-ingress control; no report involved.
+
+
+8. ALL AFFECTED APIs
+--------------------------------------------------------------------------------
+  [VERIFIED] The public Edge Function API — ALL endpoints, because rateLimited()
+  runs once per request for every route. It is the ONLY business rate control
+  (no Vercel/Supabase per-key business limiter). The internal app RPCs are not
+  affected. [VERIFIED]
+
+
+9. DEPENDENCIES
+--------------------------------------------------------------------------------
+  [VERIFIED / INFERENCE]
+   D1. The atomic fix needs a NEW counter table + an increment RPC (a migration,
+       hand-applied), plus a pruning strategy for old buckets (prune-in-RPC, a
+       pg_cron job, or a TTL). Additive. [INFERENCE]
+   D2. "Fails closed" is a DESIGN DECISION with an availability tradeoff: on a DB
+       error the request would be denied (429/503), so a DB blip briefly makes the
+       API unavailable — vs today's fail-open (a blip disables the limit). For a
+       low-traffic paid API this is acceptable; a bounded fail-open (allow on
+       transient error, short window) is a valid alternative. Owner should choose.
+       [INFERENCE — the only judgement call; not a blocker.]
+   D3. The Edge Function change deploys separately (supabase functions deploy api),
+       and the counter migration is hand-applied — same two-step as H7-P1. [VERIFIED
+       deploy model.]
+   D4. No ordering dependency on other audit items. A true concurrency/burst test
+       needs a load harness (ties loosely to H4). [INFERENCE]
+  No unexpected blocking dependency was found.
+
+
+10. BUSINESS IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED mechanism / INFERENCE severity] A single API key can exceed the
+  intended 120/min by (a) bursting many concurrent requests (all pass the pre-
+  burst count) or (b) triggering a count-query error (limit disabled). Each API
+  request runs DB queries as service_role, so an unthrottled key means DB load +
+  compute cost + a possible self-inflicted or malicious DoS-amplification on the
+  tenant's own data path. It is per-key and company-scoped (no cross-tenant
+  effect). CURRENT exposure: LATENT — 1 key, low usage (per the H7 probe). It
+  becomes real with a heavier/abusive integration. [INFERENCE.]
+
+
+11. ACCOUNTING IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED] None. Rate limiting touches no posting/GL logic; the API write scopes
+  create DRAFTS only. No number changes.
+
+
+12. INVENTORY IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED] None. No stock/MAC/COGS involvement.
+
+
+13. RISK ASSESSMENT
+--------------------------------------------------------------------------------
+  Status quo: LOW-MEDIUM. The limiter is a courtesy throttle; its bypass enables
+    abuse/cost/DoS-amplification on the API, but NOT data corruption or cross-
+    tenant access, and it is company-scoped and currently latent. [VERIFIED bounds;
+    INFERENCE severity.]
+  Risk of the fix: LOW-MEDIUM. An atomic DB counter is a well-understood pattern;
+    the care items are (i) the fail-closed availability tradeoff (D2), (ii)
+    pruning old buckets so the counter table doesn't grow unbounded (D1), and
+    (iii) an extra DB round-trip per request (an upsert) — cheap, but per-request.
+
+
+14. RECOMMENDED IMPLEMENTATION PLAN  (for approval — NOT implemented)
+--------------------------------------------------------------------------------
+  Replace the read-count check with an ATOMIC increment-and-check:
+   1. Add a counter table keyed by (api_key_id, minute-bucket) with a count, plus
+      an RPC that does an atomic upsert-increment and returns the new count, e.g.:
+        INSERT INTO api_rate_buckets (api_key_id, bucket, n)
+          VALUES (p_key, date_trunc('minute', now()), 1)
+        ON CONFLICT (api_key_id, bucket)
+          DO UPDATE SET n = api_rate_buckets.n + 1
+        RETURNING n;
+      This serializes across concurrent requests AND across Edge instances (the DB
+      does the increment), so a burst is counted correctly. Grant EXECUTE to
+      service_role only. WHY: atomicity is the fix for the race.
+   2. In the Edge Function, call the RPC BEFORE routing; if the returned count
+      exceeds RATE_LIMIT_PER_MIN, respond 429. WHY: each request counts itself.
+   3. FAIL CLOSED on the RPC error: if the increment RPC errors, deny (429/503)
+      instead of allowing — the current code's opposite. (Owner decision per D2:
+      hard fail-closed vs a bounded fail-open on transient errors.) WHY: an error
+      must not silently disable the control.
+   4. Prune old buckets (prune rows older than a few minutes in the RPC, or a
+      scheduled job) so the counter table stays small. Keep api_request_log as the
+      metering/audit log, written post-response as today (no longer the rate
+      source). WHY: separation of concerns + bounded growth.
+  Deploy: the counter migration is hand-applied; the Edge change needs
+  `supabase functions deploy api` (Vercel deploys the frontend only).
+  Each recommendation states its WHY; the load-bearing DECISION is D2
+  (fail-closed vs bounded-fail-open) — confirm before implementing.
+
+
+15. REGRESSION TESTS REQUIRED
+--------------------------------------------------------------------------------
+  [VERIFIED] The live suite does not exercise the API ingress path. Add:
+   * Structural: assert the counter table + increment RPC exist and the RPC is
+     service_role-only.
+   * Behavioural (best under H4 / a load harness): fire > limit concurrent
+     requests for one key and assert the excess get 429 (the race no longer lets
+     a burst through); and that an induced counter error DENIES rather than allows
+     (fail-closed).
+
+
+16. ROLLBACK STRATEGY
+--------------------------------------------------------------------------------
+  Additive/reversible, no customer data changed:
+   * Edge change: revert supabase/functions/api/index.ts and redeploy the function.
+   * Counter table + RPC: DROP them (nothing else depends on them); api_request_log
+     is untouched.
+  No tenant books/schema are affected.
+
+
+================================================================================
+## Verdict
+
+  AUDIT CORRECT.
+
+  * Verified: rateLimited() counts api_request_log, which is written only after the
+    response, so concurrent requests don't see each other (RACY); and it ignores
+    the query error, so a failed count reads 0 and the request is ALLOWED
+    (FAIL-OPEN). It is a courtesy throttle, not an enforceable control — exactly
+    as the audit states.
+  * The recommended fix — an atomic per-key/per-minute counter that fails closed —
+    is the right approach (a DB-atomic increment-and-check serializes bursts across
+    concurrent requests and Edge instances; failing closed stops an error from
+    disabling the control). The only judgement call is fail-closed vs a bounded
+    fail-open on transient errors (D2), and the fix should also prune the counter
+    table — implementation details WITHIN the audit's approach, not corrections.
+
+STATUS: Analysis only. No unexpected blocking dependency (the fail-closed
+availability tradeoff is a design decision, not a blocker). Nothing implemented.
+Awaiting owner approval before any implementation. No other audit item started.
+================================================================================

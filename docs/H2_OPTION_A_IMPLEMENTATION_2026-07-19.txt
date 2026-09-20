@@ -1,0 +1,137 @@
+================================================================================
+StockBolt ERP — Audit Issue H2, Option A: Implementation + Apply Instructions
+Whitelist-scoped partial UNIQUE INDEX on journal_entries
+================================================================================
+Audit cycle date: 2026-07-19   |   Prepared: 2026-07-22
+Type:   DDL delivered as a migration file for the owner to apply BY HAND.
+        No code, RPC, trigger, report, UI, API, inventory or opening-balance
+        workflow was modified. Option B was NOT implemented.
+Status: MIGRATION FILE CREATED. NOT YET APPLIED (owner applies).
+        Post-apply verification (below) runs after you apply it.
+================================================================================
+
+
+WHAT WAS DELIVERED
+--------------------------------------------------------------------------------
+  File: supabase/migrations/20260722000001_phase52_h2_one_canonical_per_source_index.sql
+
+  It creates ONE partial unique index:
+
+      CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS
+        journal_entries_one_canonical_per_source
+        ON public.journal_entries (company_id, source_type, source_id)
+        WHERE source_id IS NOT NULL
+          AND reversal_of_id IS NULL
+          AND reversed_by_id IS NULL
+          AND source_type IN (
+            'sales_invoice',
+            'vendor_bill',
+            'sales_credit_note',
+            'vendor_debit_note'
+          );
+
+  Nothing else is in the file except comments and a non-concurrent fallback.
+
+
+WHY THE PREDICATE IS EXACTLY THIS (Option A)
+--------------------------------------------------------------------------------
+  The four source_types are the EXACT whitelist read from the live
+  _guard_no_double_post trigger body (pg_get_functiondef):
+
+      IF NEW.source_type NOT IN
+        ('sales_invoice','vendor_bill','sales_credit_note','vendor_debit_note')
+      THEN RETURN NEW;   -- unguarded types skip the check
+
+  The trigger's own lookup filters on:
+        reversed_by_id IS NULL AND reversal_of_id IS NULL
+  The index reproduces that filter, plus source_id IS NOT NULL. So the index and
+  the trigger enforce the IDENTICAL rule; the index simply makes it atomic
+  (survives the concurrent-confirm race the trigger's read-check cannot).
+
+  Because the index matches the trigger exactly it CANNOT reject any insert the
+  trigger already permits -> it cannot break edit / void / repost:
+    * a reversal MIRROR has reversal_of_id set  -> excluded
+    * a voided/superseded canonical has reversed_by_id set -> excluded
+    * re-confirming after a void inserts a fresh canonical while the old one is
+      already reversed (excluded) -> allowed
+
+  NOT covered (intentionally, unchanged behaviour): opening_balance, opening_bank,
+  pos_sale, expense, and payment/receipt source_types are not in the trigger
+  whitelist and are not in the index. (Covering them is Option B — out of scope.)
+
+
+PREREQUISITE — VERIFIED READ-ONLY BEFORE DELIVERY (2026-07-22)
+--------------------------------------------------------------------------------
+  Duplicate live canonicals among the four whitelisted types:
+      GROUP BY (company_id, source_type, source_id)
+      HAVING COUNT(*) > 1  ->  [] (none)
+  Live canonical counts by type (context):
+      sales_invoice = 12, vendor_bill = 10, sales_credit_note = 1,
+      vendor_debit_note = 0
+  => The unique index will BUILD CLEANLY. No data change required.
+
+
+HOW TO APPLY (owner, by hand — Supabase SQL Editor)
+--------------------------------------------------------------------------------
+  1. Open the Supabase Dashboard -> SQL Editor for project gzpkuaioibqrdppjdbwz.
+  2. Paste ONLY the CREATE UNIQUE INDEX CONCURRENTLY statement (the first one in
+     the migration file). Run it on its own — do NOT wrap it in BEGIN/COMMIT and
+     do NOT run the whole file via `supabase db push` (CONCURRENTLY cannot run in
+     a transaction block).
+  3. It should report success in a second or two.
+  4. ONLY IF you see the error
+        "CREATE INDEX CONCURRENTLY cannot run inside a transaction block"
+     run the NON-CONCURRENT fallback statement (commented at the bottom of the
+     migration file) instead. It is safe on this small table (sub-second lock).
+  5. Tell me it's applied. I will then run the read-only post-apply verification.
+
+  Rollback if ever needed:
+     DROP INDEX CONCURRENTLY IF EXISTS
+       public.journal_entries_one_canonical_per_source;
+
+
+VERIFICATION — the 10 requested checks
+--------------------------------------------------------------------------------
+  Pre-apply (done now, before you apply — baseline):
+    2.  Existing data valid ...................... PASS (0 duplicate live
+        canonicals for the four types; index will build cleanly).
+    8.  No accounting reports change ............. PASS (no report file touched;
+        git shows only the new migration + this doc changed).
+    9.  No inventory reports change .............. PASS (no inventory/stock/MAC/
+        COGS code touched).
+    10. Regression suite ......................... [baseline run result recorded
+        below] — proves the codebase is green; the meaningful re-run is post-apply.
+    (No src/, RPC, trigger, UI or test file was modified — this change is a single
+     additive index delivered as a migration file.)
+
+  Post-apply (I run these read-only AFTER you apply the index):
+    1.  The index exists ......................... verify via pg_indexes /
+        \d public.journal_entries (name: journal_entries_one_canonical_per_source,
+        indisunique = true, indisvalid = true, matching partial predicate).
+    3.  Invoice confirmation still works ......... confirm_invoice path exercised
+        by the regression suite (posts a sales_invoice canonical).
+    4.  Vendor bill confirmation still works ..... confirm_vendor_bill path.
+    5.  POS confirmation still works ............. confirm_pos_sale (pos_sale is
+        NOT in the index -> wholly unaffected).
+    6.  Credit/debit note confirmations work ..... sales_credit_note /
+        vendor_debit_note canonical posting.
+    7.  Payments/receipts still work ............. payment source_types not in the
+        index -> unaffected.
+    8/9. Reports unchanged ....................... re-confirm via suite invariants.
+    10. Regression suite passes .................. definitive post-apply run.
+
+
+ROLLBACK STRATEGY
+--------------------------------------------------------------------------------
+  Additive index, no data written. Rollback = DROP INDEX CONCURRENTLY (above).
+  Zero reconciliation risk in either direction. The trigger remains the fallback
+  guard whether or not the index is present.
+
+
+STATUS
+--------------------------------------------------------------------------------
+  Migration file created; NOT applied. Trigger, RPCs, reports, inventory, UI,
+  APIs and opening-balance workflows untouched. Option B not implemented. No
+  refactor. Awaiting owner apply, then post-apply read-only verification. Stop
+  after H2 Option A.
+================================================================================

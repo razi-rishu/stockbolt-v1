@@ -1,0 +1,152 @@
+================================================================================
+StockBolt ERP — Audit Issue H3 (CORE): Implementation + Apply/Rollback + Checklist
+Make public.audit_logs append-only for tenant users (RLS policy replacement)
+================================================================================
+Audit cycle date: 2026-07-19   |   Prepared: 2026-07-22
+Type:   DDL delivered as a migration file for the owner to apply BY HAND.
+Scope:  APPROVED CORE ONLY — replace the FOR ALL policy with tenant-scoped
+        SELECT + INSERT policies; no UPDATE/DELETE policies. The optional REVOKE
+        (defense-in-depth) is NOT included. No posting RPC, trigger, report, UI,
+        inventory, accounting, or API change; no refactor.
+Status: MIGRATION FILE CREATED. NOT APPLIED. Verification NOT started (per
+        instruction — deliver only; do not verify yet).
+Risk:   CRITICAL tier (RLS policy on a financial table, hand-applied to live).
+================================================================================
+
+
+1) MIGRATION FILE (deliverable)
+--------------------------------------------------------------------------------
+  supabase/migrations/20260722000002_phase53_h3_audit_logs_append_only.sql
+
+  Effective statements (comments aside):
+
+    ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;   -- idempotent; already on
+
+    DROP POLICY IF EXISTS tenant_isolation ON public.audit_logs;
+
+    DROP POLICY IF EXISTS audit_logs_select ON public.audit_logs;
+    CREATE POLICY audit_logs_select ON public.audit_logs
+      FOR SELECT
+      USING (company_id = current_user_company_id());
+
+    DROP POLICY IF EXISTS audit_logs_insert ON public.audit_logs;
+    CREATE POLICY audit_logs_insert ON public.audit_logs
+      FOR INSERT
+      WITH CHECK (company_id = current_user_company_id());
+
+  No UPDATE policy and no DELETE policy are created -> both denied for
+  authenticated / anon. postgres / service_role (BYPASSRLS) retain UPDATE/DELETE,
+  so reset_company_data (SECURITY DEFINER) is unaffected.
+
+  Properties:
+    * Additive-style policy replacement on ONE table; no data row touched.
+    * Idempotent: DROP POLICY IF EXISTS precedes each CREATE; safe to run twice.
+    * Uses current_user_company_id() — the same tenant helper the old policy used.
+
+
+2) APPLY INSTRUCTIONS (owner, by hand)
+--------------------------------------------------------------------------------
+  1. Open the Supabase Dashboard -> SQL Editor for project gzpkuaioibqrdppjdbwz.
+  2. New query. Open the migration file
+       supabase/migrations/20260722000002_phase53_h3_audit_logs_append_only.sql
+     and paste its ENTIRE contents (the commented ROLLBACK block at the bottom is
+     inert — it is all SQL comments and will not execute).
+  3. Click Run. These are plain statements (no CONCURRENTLY), so a normal Run in
+     the SQL editor is fine; a wrapping transaction is OK here.
+  4. Expect "Success. No rows returned." Because a bare CREATE POLICY aborts and
+     rolls back the whole script if the policy already exists, the DROP POLICY IF
+     EXISTS lines make re-running safe — but on the first run it should simply
+     succeed.
+  5. Tell me it is applied. I will THEN run the read-only post-apply verification
+     in section 4 (not before — verification is deliberately deferred).
+
+  Note: do NOT also run the ROLLBACK block. It exists only for the undo path.
+
+
+3) ROLLBACK / UNDO INSTRUCTIONS
+--------------------------------------------------------------------------------
+  This change adds/removes NO data — it swaps policies — so "undo" means
+  recreating the original policy. If it must be reverted, run in the SQL editor:
+
+    DROP POLICY IF EXISTS audit_logs_select ON public.audit_logs;
+    DROP POLICY IF EXISTS audit_logs_insert ON public.audit_logs;
+    DROP POLICY IF EXISTS tenant_isolation  ON public.audit_logs;
+    CREATE POLICY tenant_isolation ON public.audit_logs
+      FOR ALL
+      USING (company_id = current_user_company_id())
+      WITH CHECK (company_id = current_user_company_id());
+
+  This restores the exact prior state (single cmd=ALL tenant_isolation policy,
+  read from live pg_policies before the change). Zero reconciliation risk in
+  either direction because no audit row is created, modified, or deleted by
+  either the migration or this undo.
+
+
+4) POST-IMPLEMENTATION VERIFICATION CHECKLIST  (to run AFTER apply — NOT NOW)
+--------------------------------------------------------------------------------
+  All read-only. To be executed only once the owner confirms the migration is
+  applied.
+
+  A. Policy set is correct
+     SELECT policyname, cmd, roles::text, qual, with_check
+     FROM pg_policies WHERE schemaname='public' AND tablename='audit_logs'
+     ORDER BY policyname;
+     EXPECT exactly two rows:
+       audit_logs_insert | INSERT | {public} | (null qual) | company_id = current_user_company_id()
+       audit_logs_select | SELECT | {public} | company_id = current_user_company_id() | (null with_check)
+     EXPECT: NO policy with cmd='ALL'; NO policy with cmd='UPDATE'; NO policy
+             with cmd='DELETE'; tenant_isolation is gone.
+
+  B. RLS still enabled
+     SELECT relrowsecurity FROM pg_class WHERE oid='public.audit_logs'::regclass;
+     EXPECT: true.
+
+  C. UPDATE/DELETE are structurally denied for tenant users
+     Confirmed by (A): with RLS on and no UPDATE/DELETE policy, both are denied
+     for authenticated/anon. (A live authenticated-JWT DELETE attempt returning
+     0 rows / denied is the behavioural proof; it needs a real user token, best
+     done under H4 staging — structural check A is the enforceable guard now.)
+
+  D. Read path intact (Audit Log report + Activity feed)
+     SELECT COUNT(*) FROM public.audit_logs;    -- service_role, sanity (~92+)
+     App-level: open /reports/audit-log and a document's Activity feed; rows show.
+
+  E. Write path intact (posting engine still logs)
+     Perform one confirm or void on the TEST TENANT only and assert audit_logs
+     row count strictly increased (proves the INSERT policy did not break the
+     SECURITY INVOKER logging path). Do this on the test tenant, not on a real
+     customer tenant.
+
+  F. reset_company_data unaffected
+     Confirmed structurally: it is SECURITY DEFINER, runs as postgres (BYPASSRLS),
+     so the absence of an UPDATE/DELETE policy does not restrict it. No action
+     needed beyond noting it.
+
+  G. No side effects
+     SELECT i.relname, ix.indisvalid FROM pg_index ix
+       JOIN pg_class i ON i.oid=ix.indexrelid
+       JOIN pg_class t ON t.oid=ix.indrelid
+      WHERE t.relname='audit_logs';                -- unchanged; all valid
+     git status: only the new migration + this doc; no src/ change.
+
+  H. Regression suite
+     npm run test:regressions  -> expect 91/91 (plus any new H3 structural test
+     added later). Nothing in this change touches posting logic, so the suite
+     should be unaffected.
+
+
+5) NOT INCLUDED (out of approved scope)
+--------------------------------------------------------------------------------
+  * REVOKE UPDATE, DELETE, TRUNCATE ON audit_logs FROM authenticated, anon
+    (optional defense-in-depth from the analysis §14.5) — NOT implemented.
+  * H3 structural regression test — to be added at the test step, not here.
+  * FORCE ROW LEVEL SECURITY — intentionally omitted (no-op; owner is BYPASSRLS).
+
+
+STATUS
+--------------------------------------------------------------------------------
+  Migration file created; NOT applied. Apply + rollback + verification checklist
+  delivered. No verification run yet (deferred per instruction). No posting RPC,
+  trigger, report, UI, inventory, accounting, or API changed; no refactor. Stop
+  after implementation.
+================================================================================

@@ -1,0 +1,122 @@
+================================================================================
+StockBolt — AC-4C  e-invoice document register + lifecycle RPCs
+IMPLEMENTATION DELIVERY (stop-before-commit review package)
+Created: 2026-07-28
+================================================================================
+
+STATUS: Implemented + verified. NOT committed. Migration phase59 NOT applied
+(hand-apply pending). Sits on top of f4dc88e (AC-4B). Data layer only — the UI
+is AC-4D.
+
+
+--------------------------------------------------------------------------------
+1. WHAT THIS IS
+--------------------------------------------------------------------------------
+Persistence for the payloads the AC-4B formatters produce: an immutable,
+per-invoice legal record (e_invoice_documents) with a lifecycle
+(generated → submitted → cancelled; regenerating supersedes the prior snapshot),
+written only through SECURITY DEFINER RPCs gated by sales.write.
+
+METADATA ONLY — posts NO journal entry, reads/writes NO general_ledger, changes
+NO posting RPC and NO existing table. No period-lock gate (you e-invoice after
+confirming, often after the period is locked).
+
+
+--------------------------------------------------------------------------------
+2. FILES CHANGED (3 new, 5 modified)
+--------------------------------------------------------------------------------
+NEW  supabase/migrations/20260728000001_phase59_ac4c_einvoice_documents.sql
+       e_invoice_documents table (immutable payload snapshot + content_hash +
+       status + manual government-reference columns irn/ack_no/ack_date/qr_data);
+       partial-unique "one active doc per invoice" index; RLS read-only; 3 RPCs:
+         record_einvoice_document(invoice, format, jurisdiction, payload, hash)
+           — confirmed-invoice-only; blocks if a 'submitted' doc exists;
+             idempotent on unchanged hash; supersedes a prior 'generated' snapshot.
+         mark_einvoice_submitted(doc, irn, ack_no, ack_date, qr, reference)
+           — 'generated' → 'submitted', records the manual portal reference.
+         cancel_einvoice_document(doc, reason) — active → 'cancelled'.
+       All gated by auth_require('sales.write'); anon REVOKEd; audit_logged.
+NEW  src/lib/einvoice/hash.ts            sha256Hex() (Web Crypto; content_hash).
+NEW  tests/unit/einvoice-hash.test.ts    2 tests (known SHA-256 vectors).
+
+MOD  src/data/adapter.ts                 EInvoicesAPI + types (EInvoiceDocumentRow,
+       EInvoiceFormat/Status, Record/MarkSubmitted inputs, ActionResult);
+       eInvoices wired on the root adapter.
+MOD  src/data/supabaseAdapter.ts         eInvoices impl (getForInvoice/listForInvoice
+       degrade gracefully pre-apply via isMissingRelation; record hashes the
+       payload then calls the RPC; markSubmitted/cancel). sha256Hex import.
+MOD  src/data/selfHostedAdapter.ts       5 notImplemented stubs (interface conformance).
+MOD  src/lib/einvoice/index.ts           re-export hash.
+MOD  tests/integration/regressions.test.ts  AC-4C tripwire (3 tests, soft-until-applied).
+
+
+--------------------------------------------------------------------------------
+3. VERIFICATION
+--------------------------------------------------------------------------------
+  tsc --noEmit ......... 0 errors.
+  npm run build ........ GREEN (~20s).
+  unit tests ........... 16/16 (4 einvoice files: canonical/india/pint + hash).
+  npm run test:regressions → 107/107 (104 → 107). The 3 AC-4C tripwires soft-skip
+       ("⚠ AC-4C not applied yet"), as designed (phase59 not applied here). All
+       existing tests unchanged/green.
+
+
+--------------------------------------------------------------------------------
+4. CONFIRMATIONS
+--------------------------------------------------------------------------------
+  • Posting logic unchanged — no posting RPC, no existing table touched.
+  • Journal entries unchanged — the 3 RPCs write NO general_ledger (asserted by
+    the AC-4C tripwire from pg_get_functiondef once applied).
+  • VAT calculations unchanged — no tax logic here; payload amounts pass through
+    from AC-4B, which passes them through from the posting engine.
+  • Existing reports unchanged — no report/query touched.
+  • Tenant isolation — table RLS is SELECT-only by company; all writes go through
+    SECURITY DEFINER RPCs that check current_user_company_id() + sales.write and
+    lock the target invoice/document row FOR UPDATE. anon cannot execute the RPCs.
+
+
+--------------------------------------------------------------------------------
+5. KNOWN LIMITATIONS
+--------------------------------------------------------------------------------
+  • No UI yet (AC-4D wires the invoice → AC-4B formatter → these RPCs, plus a
+    status panel / download).
+  • No government API, IRN minting, signing, or transmission (deferred GSP/ASP);
+    irn/ack_no/qr_data are recorded manually after the user files on the portal.
+  • Generated database.ts has no e_invoice_documents type yet, so the adapter
+    reads via a cast (`'e_invoice_documents' as any`) — same pattern as AC-3
+    tax_filings. Regenerate types later if desired.
+
+
+--------------------------------------------------------------------------------
+6. ROLLBACK
+--------------------------------------------------------------------------------
+Code: revert the 8 files (delete the 3 new, revert the 5 modified).
+Database (only if applied):
+  DROP FUNCTION IF EXISTS public.cancel_einvoice_document(uuid,text);
+  DROP FUNCTION IF EXISTS public.mark_einvoice_submitted(uuid,text,text,date,text,text);
+  DROP FUNCTION IF EXISTS public.record_einvoice_document(uuid,text,text,text,text);
+  DROP TABLE    IF EXISTS public.e_invoice_documents;
+No GL/posting to undo.
+
+
+--------------------------------------------------------------------------------
+7. ON YOUR SIDE
+--------------------------------------------------------------------------------
+  • Apply phase59 by hand when ready → the AC-4C tripwire goes live AND it
+    unblocks AC-4D (the e-invoice status panel).
+  • (Still pending from earlier: apply phase57 for AC-3; push the unpushed AC
+    commits. AC-4C, like AC-4B, is safe to commit before applying phase59 —
+    nothing is wired into a live UI path yet.)
+
+
+--------------------------------------------------------------------------------
+8. WHAT'S NEXT
+--------------------------------------------------------------------------------
+  AC-4D — per-invoice e-invoice status panel: Generate (assemble CanonicalBuildInput
+          from the real invoice/customer/company/product rows → AC-4B formatter →
+          eInvoices.record), view/download the payload, Mark submitted (enter
+          IRN/ack/QR), Cancel, and show history. → then AC-4E (regression) closes AC-4.
+
+================================================================================
+END — awaiting review before commit. (Commit only on your go; will not push.)
+================================================================================

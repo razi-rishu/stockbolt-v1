@@ -1,0 +1,246 @@
+================================================================================
+StockBolt — AC-1.2  Year-End Close UI
+IMPLEMENTATION DELIVERY (stop-before-commit review package)
+Created: 2026-07-24
+================================================================================
+
+STATUS: Implemented + verified. NOT committed. Awaiting review before commit.
+
+Approved scope (this step):
+  - Guided "next closeable fiscal year" only (no year picker).
+  - Confirmation modal swaps to a success modal after posting.
+  - No Dashboard prompt.
+  - Closing Impact Summary on the preview.
+  - PLUS enhancement: a secondary "Print / Save PDF" action on the read-only
+    preview whose output clearly marks the document as a PREVIEW / NOT POSTED.
+
+
+--------------------------------------------------------------------------------
+0. ENVIRONMENT NOTE (read first — affects where you commit)
+--------------------------------------------------------------------------------
+All changes below are in the MAIN repo:
+    E:\stockbolt_clean\stockbolt-v1     (branch: main)
+
+That is where AC-1.0 (177e864) and AC-1.1 (a5dd6b2) already live, and where the
+changes show up under `git status`.
+
+The worktree this session opened in
+    ...\.claude\worktrees\optimistic-hodgkin-a35968
+is a STALE Phase-11 checkout (301 commits behind main). No work was done there;
+ignore it. `tsc`/`build`/tests were all run in the main repo.
+
+
+--------------------------------------------------------------------------------
+1. FILES CHANGED
+--------------------------------------------------------------------------------
+NEW
+  src/modules/accounting/year-end-close.tsx
+      The whole page: preview (banner + Closing Impact Summary + net-income
+      tiles + closing-journal table), Print/Save-PDF action, confirm->success
+      close modal, closed-years list, reopen confirm->success modal, all
+      loading/empty/validation/error states.
+
+MODIFIED
+  src/data/adapter.ts
+      + 5 methods on AccountingAPI:
+          getNextCloseableFiscalYear(company_id): Promise<number | null>
+          previewYearEndClose(company_id, fiscal_year): Promise<YearEndClosePreview>
+          listFiscalYearCloses(company_id): Promise<FiscalYearClose[]>
+          closeFiscalYear(fiscal_year): Promise<YearEndCloseResult>
+          reopenFiscalYear(fiscal_year): Promise<YearEndReopenResult>
+      + 5 exported types:
+          FiscalYearClose, YearEndCloseLine, YearEndClosePreview,
+          YearEndCloseResult, YearEndReopenResult
+
+  src/data/supabaseAdapter.ts
+      + module-level helper isMissingRelation(error)  (42P01 / PGRST205 / "does
+        not exist" / "schema cache")  -> lets read paths degrade to empty when
+        the phase56 table/RPCs are not applied yet, instead of white-screening.
+      + implementations of the 5 methods (see section 3 for the parity design).
+
+  src/data/selfHostedAdapter.ts
+      + 5 notImplemented() stubs for the new AccountingAPI methods.
+      (This was a REAL typecheck failure surfaced by tsc — the stub adapter must
+       satisfy the interface; fixed.)
+
+  src/App.tsx
+      + lazy import YearEndClosePage
+      + <Route path="/accounting/year-end-close"> inside the existing
+        RequirePermission perm="accounting.read" block.
+
+  src/components/app-layout.tsx
+      + nav item { to: '/accounting/year-end-close', label: t('nav.year_end_close') }
+        in the Accounting -> Books group (after Period Lock).
+
+  src/i18n/en.json / src/i18n/ar.json
+      + nav.year_end_close
+      + common.done            (was missing; the "Done" button referenced it)
+      + accounting.yec_*  x58 keys each (EN + AR), full parity.
+
+  docs/AC1_2_YEAR_END_CLOSE_UI_SPEC_2026-07-24.md
+      Spec finalized earlier this session (locked decisions + Closing Impact
+      Summary section). Not code.
+
+
+--------------------------------------------------------------------------------
+2. PERMISSIONS / ROUTING
+--------------------------------------------------------------------------------
+  Route gate:   accounting.read  (page is viewable read-only).
+  Actions:      Close / Reopen buttons are gated by accounting.write via
+                hasPerm(role, permissions, 'accounting.write') — hidden for
+                read-only users. The RPC (auth_require('accounting.write')) is
+                the ultimate guard; the UI gate is convenience only.
+
+
+--------------------------------------------------------------------------------
+3. ADAPTER PARITY DESIGN (why the preview numbers are trustworthy)
+--------------------------------------------------------------------------------
+previewYearEndClose:
+  - Computes the fiscal window from companies.fiscal_year_start (month/day):
+        fy_start = make_date(fiscal_year, m, d)
+        fy_end   = fy_start + 1 year - 1 day
+  - Aggregates income+expense GL in [fy_start, fy_end], EXCLUDING prior
+    year_end_close legs — the SAME filter the P&L report (AC-1.0) and the close
+    RPC use. Therefore:
+        net_income (preview) == P&L net profit == what close_fiscal_year() posts.
+  - Builds the exact closing legs by account:
+        income  leg: Dr = max(sum_cr - sum_dr, 0), Cr = max(sum_dr - sum_cr, 0)
+        expense leg: same formula (zeroes any balance, incl. contra/archived)
+        RE leg:  profit -> Cr 3100 = net_income ; loss -> Dr 3100 = |net_income|
+                 zero  -> no RE leg
+    -> total_debit == total_credit (balanced badge in the UI).
+  - Read-only. Posts nothing.
+
+getNextCloseableFiscalYear:
+  - earliest GL date -> earliest fiscal year with activity.
+  - walk forward; first ended (fy_end <= today), un-closed year is the answer.
+    (priors are already closed because closed years are skipped in order ->
+     mirrors the RPC's sequential guard). null = nothing to close / all caught up.
+
+closeFiscalYear / reopenFiscalYear:
+  - thin wrappers over RPC close_fiscal_year(p_fiscal_year) /
+    reopen_fiscal_year(p_fiscal_year)  (phase56).
+
+listFiscalYearCloses:
+  - selects fiscal_year_closes newest-year-first; returns [] if the table is
+    not applied yet (graceful).
+
+
+--------------------------------------------------------------------------------
+4. UI DESCRIPTION (screens + states)
+--------------------------------------------------------------------------------
+PREVIEW (Region A):
+  - Amber banner "PREVIEW — NOT POSTED" + subtext "This is a draft calculation.
+    No journal entry has been created yet." (visible on screen AND in print).
+  - Year header: "Fiscal Year 2024 · 1 Jan 2024 – 31 Dec 2024 · ready to close".
+  - Actions (hidden in print): [Print / Save PDF] (secondary),
+    [Close fiscal year] (primary; hidden without accounting.write; disabled if
+    Retained Earnings 3100 is missing).
+  - Net-income tiles (3): Total Income · Total Expenses · Net Profit/(Loss)
+    (green profit / red loss), with a "View full Profit & Loss ->" parity link.
+  - CLOSING IMPACT SUMMARY (key/value): Fiscal Year · Income accounts to be
+    zeroed · Expense accounts to be zeroed · Journal lines in the closing entry
+    · Net Profit/(Loss) · Retained Earnings account · Period lock date after
+    close · Current lock date.
+  - Plain-language explanation callout (profit / loss / break-even / no-activity
+    variants).
+  - CLOSING JOURNAL ENTRY (preview) table: per-account Dr/Cr legs, the RE row
+    emphasized, totals row, and a "Debits = Credits" balanced badge.
+
+PRINT / SAVE PDF:
+  - window.print(). App chrome + Region B + on-screen action buttons carry
+    data-print-hide. The amber "NOT POSTED" banner prints. A data-print-only
+    header adds Company · "Year-End Close — Preview (Not Posted)" · FY range.
+  - "Not posted" is therefore guaranteed in the output two independent ways.
+
+CONFIRM -> SUCCESS (Close):
+  - Modal "Close Fiscal Year 2024?" restates net income + RE (3100) + lock date;
+    explicit [Cancel] / [Close fiscal year]; spinner + non-dismissable while
+    pending. On success the SAME modal swaps to a check + "Fiscal year 2024
+    closed" + entry number as a <DocLink> to the JE + [Done].
+
+CLOSED YEARS (Region B):
+  - Columns: Fiscal Year · Period · Net Income · Status badge (Closed/Reopened)
+    · Closed on · Entry (JE DocLink) · [Reopen].
+  - Reopen appears ONLY on the latest closed year (LIFO) and only with write
+    perm; its own confirm -> success modal.
+
+STATES:
+  - Loading: preview skeleton + list spinner + button spinners.
+  - Empty: "All caught up" (some closed) vs "Nothing to close yet" (none);
+    "No fiscal years have been closed yet."
+  - Validation notices: RE-missing (blocks close), no-activity (informational).
+  - Errors: friendly mapping — permission (42501), engine-not-installed
+    (function missing / schema cache), else the raw guard message.
+  - Mobile: tables in overflow-x-auto; EN + AR (RTL inherited).
+
+NOTE: no BackButton — consistent with its sibling Accounting nav pages
+(Period Lock, General Ledger) which are top-level nav destinations, not leaves.
+
+
+--------------------------------------------------------------------------------
+5. VERIFICATION RESULTS
+--------------------------------------------------------------------------------
+  tsc --noEmit ...................... 0 errors (main repo).
+      (Caught + fixed the selfHostedAdapter interface gap.)
+  npm run build (tsc -b + vite) ..... GREEN (~44s); year-end-close-*.js chunk
+                                      emitted.
+  i18n .............................. EN/AR yec_* parity 58/58; common.done
+                                      added to both; both JSON files parse.
+  CSS tokens ........................ verified against compiled CSS. Fixed a real
+                                      bug: the custom `danger` scale defines only
+                                      50/500/600, so danger-100/200/700 rendered
+                                      with NO color; switched those to
+                                      danger-50/500/600. emerald/amber/brand-50
+                                      confirmed present.
+
+  Browser (authenticated page) ...... NOT captured. The page sits behind
+                                      Supabase auth; no live-tenant credentials
+                                      are available to me and entering
+                                      credentials is out of scope for me, so I
+                                      cannot screenshot the real screen. Offer:
+                                      a static HTML mockup with sample numbers,
+                                      on request.
+
+
+--------------------------------------------------------------------------------
+6. REGRESSION RESULTS
+--------------------------------------------------------------------------------
+  npm run test:regressions
+    Run 1: 92 passed, 1 failed.
+           Failure = phase35 "grandfathered tenant got the free year" ->
+           "TypeError: fetch failed" on an information_schema query. Transient
+           NETWORK blip; unrelated SaaS-billing test; not my code.
+    Run 2: 93 passed, 0 failed.  (confirms transient)
+
+  AC-1.1 phase56 tripwire soft-skips (fiscal_year_closes / RPCs not applied yet),
+  as designed. No UI logic is covered by the suite (consistent with its scope).
+
+
+--------------------------------------------------------------------------------
+7. GO-LIVE DEPENDENCY
+--------------------------------------------------------------------------------
+  Close / Reopen / closed-years-list require the phase56 migration
+  (fiscal_year_closes + close_fiscal_year + reopen_fiscal_year) to be
+  hand-applied — still pending on your side. The PREVIEW renders today without
+  it (graceful degradation returns an empty closed-list pre-apply).
+
+
+--------------------------------------------------------------------------------
+8. ROLLBACK PLAN
+--------------------------------------------------------------------------------
+  Pure additive; no migration and no data change in this step.
+  To revert:
+    - rm src/modules/accounting/year-end-close.tsx
+    - App.tsx: remove the lazy import + <Route>
+    - app-layout.tsx: remove the nav line
+    - adapter.ts / supabaseAdapter.ts: revert the 5 methods + 5 types +
+      isMissingRelation helper
+    - selfHostedAdapter.ts: remove the 5 stubs
+    - en.json / ar.json: remove nav.year_end_close, common.done, accounting.yec_*
+  (git checkout -- <files> for the modified ones; delete the new page.)
+  Nothing to undo in the database.
+
+================================================================================
+END — awaiting review before commit.
+================================================================================

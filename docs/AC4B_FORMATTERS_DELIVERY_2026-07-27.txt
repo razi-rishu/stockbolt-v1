@@ -1,0 +1,109 @@
+================================================================================
+StockBolt — AC-4B  Canonical e-invoice model + jurisdiction formatters
+IMPLEMENTATION DELIVERY (stop-before-commit review package)
+Created: 2026-07-27
+================================================================================
+
+STATUS: Implemented + verified. NOT committed. Sits on top of f464170 (AC-4A.2).
+100% ADDITIVE — new files only; no existing tracked file touched. No DB, no
+migration, no adapter/UI/posting change.
+
+
+--------------------------------------------------------------------------------
+1. WHAT THIS IS
+--------------------------------------------------------------------------------
+A pure, OFFLINE library that turns a StockBolt sales invoice (using exactly the
+fields AC-4A/AC-4A.2 capture) into a compliant e-invoice payload:
+  • India GST  → NIC/IRP e-invoice JSON (schema v1.1) — the IRN-request payload.
+  • UAE        → PINT-AE (Peppol) UBL 2.1 Invoice XML.
+It builds the payload only. It does NOT call any government API, sign, or make
+an IRN/QR — that clearance step is deferred (GSP/ASP), by design.
+
+
+--------------------------------------------------------------------------------
+2. FILES CHANGED (7 new, 0 modified)
+--------------------------------------------------------------------------------
+  NEW src/lib/einvoice/canonical.ts   Jurisdiction-neutral CanonicalInvoice +
+        buildCanonicalInvoice(). Derives jurisdiction (IN_GST/AE_VAT from the
+        supplier country), NIC supply type (B2B/B2C/EXPWP/EXPWOP/SEZWP/SEZWOP),
+        place of supply (96 for export), intra-vs-inter-state, per-line CGST/SGST
+        (even split, remainder-safe) vs IGST, and the UBL tax-category code
+        (S/Z/E/O/AE). Reuses AC-4A resolveLineTreatment + isValidStateCode.
+  NEW src/lib/einvoice/india-gst.ts   toIndiaGstJson(canonical) → NIC schema
+        object (Version/TranDtls/DocDtls/SellerDtls/BuyerDtls/ItemList/ValDtls).
+        ISO date → dd/mm/yyyy; PIN → number.
+  NEW src/lib/einvoice/pint-ae.ts     toPintAeUbl(canonical) → UBL 2.1 XML string
+        (Supplier/Customer party, TaxTotal with per-(category,rate) subtotals,
+        LegalMonetaryTotal, InvoiceLine[]). Includes a tiny dependency-free,
+        deterministic XML builder (stable ordering, 2-space indent, XML-escaped).
+  NEW src/lib/einvoice/index.ts       Barrel re-export.
+  NEW tests/unit/einvoice-canonical.test.ts   7 tests — allocation, export,
+        supply-type + category mapping, AE jurisdiction, rounding split.
+  NEW tests/unit/einvoice-india-gst.test.ts   4 tests — golden B2B intra-state
+        payload (full toEqual), inter-state IGST, export EXPWOP, date/discount.
+  NEW tests/unit/einvoice-pint-ae.test.ts     3 tests — byte-for-byte golden UBL
+        for the standard case, zero-rated export (category Z), XML escaping.
+
+  IMPORTANT re-affirmation: TAX IS NEVER RE-COMPUTED. Every monetary figure
+  comes from the canonical, which took it from the posting engine. The CGST/SGST
+  vs IGST "split" only ALLOCATES the tax the engine already calculated across the
+  right heads (and the split is remainder-safe so the heads always re-sum to the
+  line tax).
+
+
+--------------------------------------------------------------------------------
+3. VERIFICATION
+--------------------------------------------------------------------------------
+  tsc --noEmit ......... 0 errors.
+  npm run build ........ GREEN (~17s).
+  new unit tests ....... 14/14
+       (npx vitest run tests/unit/einvoice-canonical.test.ts
+                        tests/unit/einvoice-india-gst.test.ts
+                        tests/unit/einvoice-pint-ae.test.ts).
+  npm run test:regressions → 104/104 — UNCHANGED. AC-4B adds no DB surface, so
+       the live suite is unaffected (no new tripwire; that is AC-4E).
+
+
+--------------------------------------------------------------------------------
+4. CONFIRMATIONS
+--------------------------------------------------------------------------------
+  • Posting logic unchanged — no posting RPC, no adapter, no SQL touched.
+  • Journal entries unchanged — this library never posts; it only reads/reshapes.
+  • VAT calculations unchanged — no tax is recomputed; amounts pass through from
+    the posting engine. The split allocates, it does not recalculate.
+  • Existing reports unchanged — no report file or query touched.
+  • Nothing is wired into the app yet — these pure functions are imported by no
+    app path, so runtime behaviour is identical to before.
+
+
+--------------------------------------------------------------------------------
+5. KNOWN LIMITATIONS (honest)
+--------------------------------------------------------------------------------
+  • Foundation fidelity: output is correctly STRUCTURED and locked by golden
+    fixtures, but full field-level conformance to the official NIC schema / the
+    PINT-AE XSD (and their validators) is iterative and needs the actual schema
+    files + a sandbox. That validation is a later step, not AC-4B.
+  • No IRN, no QR, no digital signature, no transmission — deferred GSP/ASP.
+  • The assembler input is row-agnostic on purpose; mapping real
+    invoice/customer/company/product rows into CanonicalBuildInput happens in
+    AC-4C/AC-4D (persistence + UI), keeping AC-4B pure and unit-testable.
+
+
+--------------------------------------------------------------------------------
+6. ROLLBACK
+--------------------------------------------------------------------------------
+  Delete src/lib/einvoice/ and the three tests/unit/einvoice-*.test.ts files.
+  Nothing else references them; no DB/state to undo.
+
+
+--------------------------------------------------------------------------------
+7. WHAT'S NEXT (not in this increment)
+--------------------------------------------------------------------------------
+  AC-4C — e_invoice_documents table + lifecycle RPCs (hand-applied migration).
+  AC-4D — per-invoice e-invoice status panel (assembles CanonicalBuildInput from
+          real rows, calls these formatters, shows/download the payload).
+  AC-4E — regression tripwire for the AC-4C schema.
+
+================================================================================
+END — awaiting review before commit. (Commit only on your go; will not push.)
+================================================================================

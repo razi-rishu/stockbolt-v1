@@ -1,0 +1,270 @@
+================================================================================
+StockBolt ERP — Audit Issue H8: Analysis Report (re-investigated from source)
+`xlsx` (SheetJS) HIGH prototype-pollution/ReDoS on parsed uploads; `ws` HIGH.
+================================================================================
+Audit cycle date: 2026-07-19   |   Investigation performed: 2026-07-23
+Type:   ANALYSIS ONLY — no code, no dependency, no migration, no DB change.
+        Evidence: `npm audit`, package-lock, and live source (all read-only).
+Method: Ran npm audit (read-only), traced xlsx usage (parse vs write), traced
+        the import UI, and checked whether ws/Realtime is reachable. Did NOT
+        assume the audit is correct.
+
+Convention: [VERIFIED] = read directly from repo/npm audit. [INFERENCE] = reasoned.
+================================================================================
+
+
+0. HEADLINE
+--------------------------------------------------------------------------------
+  * xlsx@0.18.5: HIGH, direct dependency, and REACHABLE — it parses operator-
+    supplied .xlsx uploads (XLSX.read on the browser main thread, no size cap).
+    npm audit reports "No fix available" (SheetJS moved newer builds off npm).
+    The audit finding is CORRECT and the risk is real. [VERIFIED]
+  * ws@8.20.0: HIGH, but TRANSITIVE (via @supabase/supabase-js → realtime-js) and
+    NOT REACHABLE in this app — no Supabase Realtime is used anywhere, and the
+    browser uses the native WebSocket, so the `ws` package is never exercised
+    client-side. A plain `npm audit fix` bumps it, but its practical risk here is
+    LOW. The audit lists it without noting this. [VERIFIED usage; INFERENCE bundle]
+  * Context refinement: the raw `npm audit` "1 critical, 5 high" is MOSTLY DEV
+    TOOLING (vitest CRITICAL, vite HIGH, esbuild MODERATE, @babel/core LOW —
+    none shipped to customers). Of runtime deps, only xlsx (HIGH) and
+    react-router-dom (MODERATE, open-redirect) are customer-facing. [VERIFIED]
+
+
+1. IS THE ORIGINAL AUDIT FINDING CORRECT?
+--------------------------------------------------------------------------------
+  CORRECT on substance, with two refinements. [VERIFIED]
+
+  npm audit (read-only) confirms:
+    xlsx  *        HIGH  Prototype Pollution (GHSA-4r6h-8v6p-xvw6)
+                         ReDoS               (GHSA-5pgg-2g8v-p4x9)
+                         -> "No fix available"
+    ws    8.20.0   HIGH  Uninitialized memory disclosure (GHSA-58qx-3vcg-4xpx)
+                         Memory-exhaustion DoS           (GHSA-96hv-2xvq-fx4p)
+                         -> fix available (npm audit fix)
+
+  Reachability (the part the audit did not separate):
+    * xlsx IS reachable: src/lib/io-export.ts:70 `XLSX.read(buffer,{type:'array'})`
+      then sheet_to_json; called by readPickedFile() -> parseXLSX(); the Import
+      screen (src/modules/settings/import-export/index.tsx:224) feeds it files
+      from `<input type="file" accept=".csv,.xlsx,.xls,.txt">` (line 410). So a
+      crafted .xlsx an operator imports is parsed by the vulnerable code. [VERIFIED]
+    * ws is NOT reachable: grep for `.channel(` / `.subscribe(` / `realtime` in
+      src returns nothing -> the app never opens a Realtime channel, and the
+      browser build uses native WebSocket, so `ws` (a Node transport) is never
+      run client-side. [VERIFIED no usage; INFERENCE it is tree-shaken/unused.]
+
+  Refinement of the audit's file path: the parse code is now `src/lib/io-export.ts`
+  (moved from `src/modules/settings/import-export/_io/`, which is now just a
+  re-export shim). [VERIFIED]
+
+
+2. ROOT CAUSE
+--------------------------------------------------------------------------------
+  [VERIFIED] The Import feature parses spreadsheets in the browser using SheetJS
+  `xlsx@0.18.5` — the last version SheetJS published to npm, which carries the two
+  HIGH advisories. Because SheetJS now ships fixes only from their own registry
+  (cdn.sheetjs.com), npm's advisory DB shows "No fix available" for the npm build,
+  so the vulnerable version stays pinned. `ws` is pulled in transitively by
+  supabase-realtime-js (always a dependency of supabase-js) regardless of whether
+  Realtime is used. [INFERENCE on the SheetJS-off-npm reason — public knowledge.]
+
+
+3. CURRENT WORKFLOW
+--------------------------------------------------------------------------------
+  [VERIFIED] Import: operator opens Settings -> Import/Export, picks a file via
+  `<input type=file accept=".csv,.xlsx,.xls,.txt">`. readPickedFile() routes by
+  EXTENSION: .csv/.txt -> PapaParse; .xlsx/.xls -> file.arrayBuffer() ->
+  parseXLSX() -> XLSX.read(...) -> sheet_to_json -> rows handed to a module
+  adapter that validates and writes to the tenant DB.
+  Guards present: sheet_to_json uses raw:false/defval:'' (type coercion, not a
+  security control). Guards ABSENT: no upload size cap (contrast
+  company-settings.tsx:118 which caps images at 5 MB); no Web Worker (parse runs
+  on the main thread); extension check only (spoofable, UI-level). [VERIFIED]
+  Export: stringifyXLSX/XLSX.write — writes a workbook for download; parses no
+  untrusted input, so the CVEs do not apply to the export path. [VERIFIED]
+
+
+4. WHY THE ISSUE EXISTS
+--------------------------------------------------------------------------------
+  [VERIFIED] `xlsx` was added from npm (the obvious source) and never migrated to
+  the SheetJS-hosted build; no size/worker hardening was added around a
+  parser that consumes untrusted files. `ws` exists only because it rides along
+  with supabase-js. [INFERENCE] The import parser was built for correctness
+  (uniform CSV/XLSX shape) without a threat model for hostile .xlsx content.
+
+
+5. ALL AFFECTED FILES
+--------------------------------------------------------------------------------
+  * package.json / package-lock.json — pin xlsx@^0.18.5 (direct) and resolve
+    ws@8.20.0 (transitive). [VERIFIED]
+  * src/lib/io-export.ts — parseXLSX (XLSX.read of untrusted input), stringifyXLSX
+    (export, not a risk), readPickedFile (routing, no size cap). [VERIFIED]
+  * src/modules/settings/import-export/_io/index.ts — re-export shim. [VERIFIED]
+  * src/modules/settings/import-export/index.tsx — the Import UI + file input
+    (line 410) + readPickedFile call (line 224); no size guard. [VERIFIED]
+  * (ws) no src file — transitive, unused. [VERIFIED]
+  No accounting/GL/inventory source file is implicated by the vulnerability itself.
+
+
+6. ALL AFFECTED DATABASE OBJECTS
+--------------------------------------------------------------------------------
+  [VERIFIED] None. The vulnerability is in CLIENT-SIDE parsing, before any DB
+  write. (Parsed rows do become tenant DB writes via the module adapters, but the
+  CVEs act on the browser JS runtime, not on a database object.)
+
+
+7. ALL AFFECTED REPORTS
+--------------------------------------------------------------------------------
+  [VERIFIED] None. Reports use the EXPORT path (XLSX.write), which parses nothing
+  untrusted. No report is affected by the parse-side CVEs.
+
+
+8. ALL AFFECTED APIs
+--------------------------------------------------------------------------------
+  [VERIFIED] The public Edge Function API is NOT involved — it does not parse
+  xlsx. The only "surface" is the in-browser Import feature. The parse is
+  client-side (the operator's browser), not a server endpoint, so this is a
+  client-side vulnerability, not a server RCE. [VERIFIED]
+
+
+9. DEPENDENCIES
+--------------------------------------------------------------------------------
+  [VERIFIED]
+   D1. xlsx has NO npm fix — remediation requires MIGRATING off the npm build
+       (to the SheetJS-hosted `xlsx` ≥0.20.x, or to a maintained lib e.g.
+       exceljs). Not a version-bump-in-place. [VERIFIED "No fix available".]
+   D2. ws is fixed by a transitive bump, but is UNREACHABLE here (no Realtime),
+       so it is low urgency. `npm audit fix` (non-force) would bump it safely.
+   D3. DANGER: `npm audit fix --force` would apply MAJOR upgrades — vitest 2->4,
+       vite 5->8 — which can break the build/test suite. Must NOT be run blindly.
+       [VERIFIED via npm audit fixAvailable targets.]
+   D4. Out of H8 scope but adjacent: vitest CRITICAL, vite HIGH, esbuild,
+       @babel/core are DEV/BUILD-only (not shipped). react-router-dom MODERATE
+       (open redirect) IS a runtime dep and deserves its own item. [VERIFIED]
+
+
+10. BUSINESS IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED vector / INFERENCE severity] An operator who imports a maliciously
+  crafted .xlsx (e.g. a supplier price list or bank statement received from an
+  outside party) triggers prototype pollution and/or ReDoS in THEIR OWN browser
+  session. Realistic outcomes: a frozen/crashed tab (DoS), or — if a pollution
+  gadget is chained — corruption of client-side app logic in the victim's
+  authenticated session. It is client-side and authenticated; it does NOT bypass
+  server-side RLS (the server still enforces the operator's own token), and it is
+  not an unauthenticated remote exploit. Severity: MEDIUM — real, but requires a
+  crafted file to reach an operator, and its blast radius is that operator's
+  session/tenant, not the server. [INFERENCE.]
+
+
+11. ACCOUNTING IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED] The CVEs do not themselves alter any posted number; the parse feeds
+  the existing import validation before any GL write. [INFERENCE] A worst-case
+  pollution gadget could in theory mis-map import rows and write wrong data to the
+  tenant's books, but that is a speculative chain, not a direct effect. No
+  existing posted data is affected.
+
+
+12. INVENTORY IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED] None direct. [INFERENCE] Same shape as §11 — product/stock imports go
+  through the same parser, so a successful exploit could in principle corrupt an
+  import batch, but the CVE's direct effect is pollution/DoS, not silent stock
+  drift.
+
+
+13. RISK ASSESSMENT
+--------------------------------------------------------------------------------
+  xlsx: MEDIUM (real + reachable, but client-side/authenticated, needs a crafted
+    file; no clean npm fix so it lingers). The missing size cap makes the DoS leg
+    trivially triggerable; prototype pollution needs a crafted workbook. [VERIFIED
+    reachability; INFERENCE severity.]
+  ws:   LOW in practice (HIGH advisory but unreachable — no Realtime, native WS in
+    browser). Worth clearing in routine maintenance, not urgent. [VERIFIED usage.]
+  Fix risk: LOW-MEDIUM. Size cap + Web Worker are safe additive hardening. The
+    xlsx LIBRARY swap is the risk-carrying part (API differences / bundle change)
+    and must be build+import-tested. `npm audit fix --force` is the real hazard
+    (major upgrades) and should be avoided.
+
+
+14. RECOMMENDED IMPLEMENTATION PLAN  (for approval — NOT implemented)
+--------------------------------------------------------------------------------
+  Sequenced by real risk, differing from the audit's one-liner:
+
+  PRIORITY 1 — xlsx (the reachable HIGH with no npm fix):
+   1a. Cheap, immediate hardening (no library change): add an upload SIZE CAP
+       (e.g. reject > 5–10 MB) and a stricter type check in readPickedFile / the
+       Import UI, BEFORE parseXLSX runs. Kills the easy DoS leg regardless of lib.
+       WHY: smallest change, blocks the trivially-triggerable vector now.
+   1b. Move parsing off the main thread into a Web Worker. WHY: a ReDoS/heavy
+       parse then cannot freeze the operator's UI; contains the DoS blast radius.
+   1c. Replace the vulnerable npm build: either
+         (i) migrate to the SheetJS-hosted `xlsx` ≥0.20.x (drop-in API, different
+             install source — pin an exact version), or
+         (ii) migrate the parse path to `exceljs` (maintained, larger API change).
+       WHY: this is the only thing that actually clears the advisory (npm has no
+       fix). DECISION NEEDED: SheetJS-hosted (smaller diff) vs exceljs (fully off
+       SheetJS). ASSUMPTION: the export path (XLSX.write) must keep working — test
+       both import and export after the swap.
+
+  PRIORITY 2 — ws (HIGH but unreachable): low urgency. A plain `npm audit fix`
+   (NOT --force) safely bumps ws (and the other safe transitives). Do it in a
+   routine dependency-maintenance pass. WHY: unreachable today, so not urgent.
+
+  DO NOT: run `npm audit fix --force` — it upgrades vitest->4 and vite->8 (majors)
+   and can break CI/build. Handle the dev-tooling advisories (vitest CRITICAL,
+   vite HIGH, esbuild) as a SEPARATE, tested upgrade item, and react-router-dom
+   (MODERATE open-redirect) as its own runtime item. [Out of H8 scope; flagged.]
+
+  Every recommendation states its WHY; the load-bearing ASSUMPTIONS (export still
+  works after the swap; a chosen size cap; SheetJS-hosted vs exceljs) are called
+  out and should be confirmed before implementing.
+
+
+15. REGRESSION TESTS REQUIRED
+--------------------------------------------------------------------------------
+  [VERIFIED] The live regression suite does not cover the import parser. Add:
+   * An upload-guard unit test: a file over the size cap / wrong type is rejected
+     BEFORE parseXLSX is called.
+   * A round-trip test: stringifyXLSX -> parseXLSX preserves rows/headers (locks
+     the export+import contract across the library swap).
+   * A dependency tripwire: assert the app does NOT depend on the vulnerable npm
+     `xlsx` build (version/source check) once migrated.
+  No change to the existing DB regression suite is needed.
+
+
+16. ROLLBACK STRATEGY
+--------------------------------------------------------------------------------
+  * Size cap + Web Worker (1a/1b): additive code; revert the files. No data impact.
+  * Library swap (1c): revert package.json/package-lock and the io-export.ts parse
+    code, then `npm ci`; rebuild and re-test import + export. Reversible via git +
+    lockfile; a dependency swap carries build risk, not data risk.
+  * ws bump (P2): `npm audit fix` is reversible by reverting the lockfile.
+  No production schema or data is touched by any part of this fix.
+
+
+================================================================================
+## Verdict
+
+  AUDIT CORRECT BUT IMPLEMENTATION SHOULD DIFFER.
+
+  * Correct: xlsx@0.18.5 carries HIGH prototype-pollution + ReDoS advisories and
+    IS reachable — it parses operator-uploaded .xlsx (XLSX.read, main thread, no
+    size cap). ws@8.20.0 carries HIGH advisories and is present in the tree. Both
+    confirmed by npm audit.
+  * Implementation should differ from "npm audit fix (handles ws); migrate xlsx":
+      - `npm audit fix` does NOT fix xlsx ("No fix available" — SheetJS is off
+        npm); the real fix is migrating to the SheetJS-hosted build or exceljs.
+      - ws is HIGH but UNREACHABLE here (no Realtime; native browser WebSocket),
+        so it is low urgency, not co-equal with xlsx.
+      - `npm audit fix --force` must be avoided — it applies major upgrades
+        (vitest->4, vite->8) that can break CI/build.
+      - Prioritise xlsx: add a size cap + Web Worker now (cheap), then swap the
+        library (the only thing that clears the advisory); treat ws and the
+        dev-tooling advisories as separate, lower-urgency maintenance.
+
+STATUS: Analysis only. No blocking unknown. Nothing implemented; no dependency
+changed. Awaiting owner approval before any implementation. No other audit item
+started.
+================================================================================

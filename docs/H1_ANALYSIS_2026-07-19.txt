@@ -1,0 +1,268 @@
+================================================================================
+StockBolt ERP — Audit Issue H1: Analysis Report (re-investigated from source)
+Financial reports aggregate the GL client-side over UNBOUNDED fetches
+================================================================================
+Date:   2026-07-19
+Type:   ANALYSIS ONLY — no code, migration, database, report, or API change made
+Verdict on the original audit: PARTIALLY CORRECT. The architectural defect is
+        REAL and CONFIRMED. The specific "silently truncates at 1,000 rows"
+        mechanism is NOT verified on the hosted project — see section 3 and the
+        "Where the audit is imprecise" box. Severity is currently LATENT.
+================================================================================
+
+
+DID NOT ASSUME THE AUDIT — WHAT I VERIFIED LIVE
+--------------------------------------------------------------------------------
+  * Largest table in the DB is general_ledger with 601 rows total; the largest
+    single COMPANY has ~121 GL rows. No company is anywhere near 1,000.
+  * An unbounded REST select on general_ledger returned all 601 rows; adding
+    .range(0,99999) also returned 601 — i.e. no truncation is observable today
+    because no table is large enough to reveal a cap.
+  * current_setting('pgrst.db_max_rows', true) returns NULL, and no role- or
+    database-level GUC sets pgrst.db_max_rows (checked pg_roles.rolconfig and
+    pg_db_role_setting). => the hosted row cap, if any, is set in the PostgREST
+    SERVICE config, which is NOT readable from SQL or the API keys. It must be
+    confirmed in the Supabase Dashboard -> Settings -> API -> "Max rows".
+  * config.toml max_rows = 1000 is the LOCAL dev value only; it does NOT prove
+    the hosted cap.
+
+
+┌─ WHERE THE ORIGINAL AUDIT IS IMPRECISE ──────────────────────────────────────┐
+│ The audit stated as fact: "PostgREST caps responses at 1,000 rows           │
+│ (supabase/config.toml)."                                                     │
+│                                                                              │
+│ Correction: config.toml is the LOCAL setting. On the hosted project the cap  │
+│ is governed by the PostgREST service (Dashboard -> Settings -> API -> Max    │
+│ rows), which I could not read from the database. It is very likely a finite  │
+│ cap (Supabase's historical default is 1,000), but its exact value is         │
+│ UNVERIFIED here. Therefore the "~170-250 invoices" threshold is an ESTIMATE  │
+│ contingent on cap = 1000, not a measured fact.                               │
+│                                                                              │
+│ This does NOT clear the issue. The architectural defect — unbounded          │
+│ client-side aggregation of the GL — is confirmed by source (section 1). Its  │
+│ failure MODE depends on the cap:                                             │
+│   * finite cap  -> silent truncation -> WRONG financial statements at scale  │
+│   * no cap      -> unbounded payload -> browser memory/latency at scale, AND │
+│                    the inventory aggregates that DO cap at 5,000/10,000       │
+│                    (section 6) still truncate silently at those thresholds.  │
+│ Either way it is a latent defect the recommended fix resolves.               │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+1. ROOT CAUSE
+--------------------------------------------------------------------------------
+  The financial-statement reports fetch raw general_ledger rows into the browser
+  with an UNBOUNDED .select() (no .limit / no .range) and aggregate them in
+  JavaScript. Any per-request row limit imposed by the API therefore becomes a
+  silent, invisible correctness boundary: past it the report computes over a
+  partial subset with no error.
+
+  Confirmed by source — e.g. getBalanceSheet (supabaseAdapter.ts:2005):
+      client.from('general_ledger')
+        .select('account_code, debit, credit, chart_of_accounts!inner(...)')
+        .eq('company_id', company_id)
+        .lte('date', as_of_date);        // <- no limit, no range
+  The result is then reduced in JS into the statement.
+
+
+2. CURRENT WORKFLOW
+--------------------------------------------------------------------------------
+  * Reports are computed in the DATA ADAPTER (src/data/supabaseAdapter.ts), not
+    in SQL. Each statement method issues one unbounded GL select and folds the
+    rows client-side (this is the architectural asymmetry noted in
+    project-architecture: business logic is in the DB, but REPORTING logic is in
+    the browser).
+  * Two reports are the exception and are SAFE: Daily Cash and Bank Recon go
+    through server-side RPCs (get_daily_cash_report, get_bank_recon) — they do
+    not client-aggregate.
+  * The public REST API (Edge Function) does NOT touch the GL or reports at all
+    (verified) — it exposes /v1/me, products, contacts, invoices only.
+
+
+3. WHY THIS ISSUE EXISTS
+--------------------------------------------------------------------------------
+  Reporting was implemented as convenient client-side aggregation early, when
+  every tenant had a handful of rows. It works perfectly at current scale and
+  has never failed, so the latent boundary was never hit. It inherits whatever
+  per-request row limit the API imposes as an invisible ceiling — and, crucially,
+  a truncated PostgREST response is returned as a normal 200 with partial data;
+  supabase-js does not raise an error, so the aggregation code cannot tell it
+  received a partial set.
+
+
+4. ALL AFFECTED FILES
+--------------------------------------------------------------------------------
+  src/data/supabaseAdapter.ts  — the report methods (the fix surface):
+    getTrialBalance          (GL fetch ~L1082)   UNBOUNDED
+    getProfitAndLoss         (GL fetch ~L1946)   UNBOUNDED
+    getBalanceSheet          (GL fetch  L2005)   UNBOUNDED
+    getControlAccountByContact (GL ~L2108)       UNBOUNDED (feeds aging/statements)
+    getARAgingReport         (GL ~L2197)         UNBOUNDED
+    getCustomerStatement     (GL ~L2286)         UNBOUNDED
+    getAPAgingReport / vendor statement (GL ~L2334/2393) UNBOUNDED (symmetric)
+    getLedgerEntries         (GL  L1131)         UNBOUNDED (account ledger / GL report)
+    getVATReturn             (GL  L3059-3090)    UNBOUNDED
+    getCashFlow              (GL  L3282-3295)    UNBOUNDED
+  Report UI files (src/modules/reports/*.tsx) consume these results but do NOT
+  themselves fetch — they are affected only in that they render whatever the
+  adapter returns (they would display truncated totals without knowing).
+
+  NOT a cause / no change needed: the reports that use RPCs (dailyCash,
+  bankRecon), and getGLLines (single-JE, bounded by je_id).
+
+
+5. ALL AFFECTED DATABASE OBJECTS
+--------------------------------------------------------------------------------
+  * general_ledger (table) — the unbounded fetch source for every statement.
+  * stock_ledger (table) — inventory aggregates (section 6).
+  * chart_of_accounts (table) — joined into the report queries.
+  * The hosted PostgREST "Max rows" API setting (Dashboard -> Settings -> API) —
+    NOT a schema object, but the operative control that sets the truncation
+    threshold. Confirm its value.
+  * NO RPC is the cause. (get_daily_cash_report / get_bank_recon are the SAFE,
+    server-side pattern the fix should follow.)
+
+
+6. ALL AFFECTED REPORTS
+--------------------------------------------------------------------------------
+  Directly affected (unbounded client-side GL aggregation):
+    Trial Balance, Balance Sheet, Profit & Loss, Cash Flow, VAT Return,
+    AR Aging, AP Aging, Customer Statement, Vendor Statement, General Ledger /
+    account ledger.
+  Inventory reports — bounded, but at HIGH thresholds (a milder form of the same
+  defect):
+    getCurrentStockMap uses .limit(10000); low-stock / valuation aggregate uses
+    .limit(5000). These will silently truncate past 5,000/10,000 stock_ledger
+    rows for a company, regardless of the REST cap.
+  NOT affected: Daily Cash report, Bank Reconciliation (server-side RPCs).
+
+  Refinement the audit missed: the Balance Sheet has an accidental partial
+  self-check — it computes a `balanced` indicator (assets − liabilities −
+  equity < 0.02). Truncation returns an arbitrary row subset, so the two sides
+  would NOT truncate proportionally and the balanced check would likely FAIL,
+  surfacing a soft warning. P&L, VAT, aging and statements have NO such
+  self-check and would silently show wrong totals with no signal at all.
+
+
+7. ALL AFFECTED APIS
+--------------------------------------------------------------------------------
+  * Internal data-adapter API: the report methods in section 4.
+  * Public REST API (supabase/functions/api): NOT affected — verified it does
+    not query the GL or expose any report.
+
+
+8. DEPENDENCIES
+--------------------------------------------------------------------------------
+  * Fix (server-side aggregation): write SQL aggregate RPCs (SECURITY INVOKER so
+    RLS still scopes by tenant) that return grouped totals, then point the
+    adapter methods at them. The report UI consumes the same result shape, so no
+    report-UI change is required.
+  * Confirming the exact cap depends on the owner reading Dashboard -> Settings
+    -> API -> Max rows (I cannot read it from SQL).
+  * A meaningful regression test depends on being able to seed >cap GL rows for a
+    scratch company — best done on a separate test DB (ties to H4) to avoid
+    touching live tenant data.
+  * No dependency on any posting RPC, the GL write path, or the public API.
+
+
+9. BUSINESS IMPACT
+--------------------------------------------------------------------------------
+  Currently: ZERO impact — no company is near any plausible cap (largest ~121 GL
+  rows). Reports are correct today.
+  Latent: once a single company's GL (up to the report's as-of date) exceeds the
+  hosted cap, its Trial Balance / Balance Sheet / P&L / VAT / aging / statements
+  begin computing over a partial subset and understate silently — feeding wrong
+  management decisions and, worst case, an incorrect VAT filing. The threshold is
+  contingent on the (unverified) cap; at cap = 1000 and ~5 GL rows per invoice it
+  is on the order of a couple hundred invoices of activity — months away for an
+  active tenant, not years.
+
+
+10. ACCOUNTING IMPACT
+--------------------------------------------------------------------------------
+  If truncation occurs: every GL-derived figure on the affected statements is
+  understated by the omitted rows. The Trial Balance would not net to zero and
+  the Balance Sheet's balanced check would likely trip (partial self-catch), but
+  P&L / VAT / aging / statements would show confident wrong numbers with no
+  indication. No POSTED data is wrong — this is a READ/aggregation defect, not a
+  posting defect; the ledger itself remains correct.
+
+
+11. INVENTORY IMPACT
+--------------------------------------------------------------------------------
+  Inventory valuation and stock aggregates cap at .limit(5000) / .limit(10000).
+  Past those thresholds a company's on-hand/valuation figures would silently
+  truncate — same class of defect at a higher bound. The underlying stock_ledger
+  and MAC are unaffected (read-only aggregation issue).
+
+
+12. RISK ASSESSMENT
+--------------------------------------------------------------------------------
+  Status quo (do nothing): HIGH (latent). Silent misstatement of financial
+      statements once any tenant grows past the cap; no error, no alert.
+  Confidence it is not YET occurring: HIGH — verified largest company ~121 GL
+      rows, far below any plausible cap; reports are correct now.
+  Risk of the recommended fix: LOW-MEDIUM. Moving aggregation into SQL changes
+      HOW a number is computed, so it must be proven to produce IDENTICAL results
+      to the current client-side path for existing data before switch-over — the
+      main risk is a subtle aggregation-logic difference, mitigated by a
+      byte-for-byte comparison test (section 14).
+
+
+13. RECOMMENDED IMPLEMENTATION PLAN (for approval — NOT implemented)
+--------------------------------------------------------------------------------
+  STEP 0 — Confirm the hosted cap. Read Dashboard -> Settings -> API -> Max rows.
+    This decides whether the failure mode is truncation (finite) or payload/perf
+    (unlimited) and calibrates urgency. Cheap, do first.
+
+  PHASE 1 — Fail loud, not silent (small, immediate safety net):
+    In each affected adapter report method, request one row beyond the cap (or a
+    high explicit .range) and THROW a clear error if the row count hits the
+    ceiling ("ledger too large to aggregate in the browser — server-side report
+    required"), instead of rendering a partial total. Converts a silent wrong
+    number into a visible, safe failure. No SQL, no report-UI change.
+
+  PHASE 2 — Correct fix (the durable resolution):
+    Move each statement's aggregation into a SQL RPC (SECURITY INVOKER, so RLS
+    still scopes by company) that returns grouped totals (~30 rows for a Balance
+    Sheet regardless of ledger size), mirroring the existing safe pattern
+    (get_daily_cash_report). Repoint the adapter methods; report UIs unchanged.
+    Do the Balance Sheet first as the template; then TB, P&L, VAT, Cash Flow,
+    aging, statements; then the inventory aggregates.
+
+  Sequence intentionally UI-agnostic: the report screens consume the same result
+  shape throughout, satisfying "do not change reports".
+
+
+14. REGRESSION TESTS
+--------------------------------------------------------------------------------
+  * Equivalence test (critical): for existing tenants, assert the SQL-aggregated
+    result equals the current client-side result to the cent, for every affected
+    report. This proves the fix changes performance/limits, not numbers.
+  * Large-dataset tripwire: seed >cap GL rows for a scratch company and assert
+    the Balance Sheet still balances and the Trial Balance still nets to zero
+    (would have caught the latent defect). Best on a separate test DB (H4).
+  * Phase-1 guard test: assert the row-count guard throws rather than returning a
+    partial set when the ceiling is hit.
+  No change to existing posting/inventory regression tests (posting untouched).
+
+
+15. ROLLBACK STRATEGY
+--------------------------------------------------------------------------------
+  * Phase 1 (loud-guard): UI/adapter-only, no data/schema. Rollback = git revert
+    + push (Vercel redeploys). Zero data risk.
+  * Phase 2 (SQL RPCs): the RPCs are additive (new functions); the adapter can be
+    reverted to the client-side path via git revert independently of the RPCs.
+    The RPCs themselves are read-only (SECURITY INVOKER SELECT aggregates) and
+    can be left in place or dropped; no data is touched either way.
+  * Because nothing WRITES data, rollback carries no reconciliation risk in
+    either direction.
+
+
+================================================================================
+STATUS: Analysis only. Re-investigated from source + live probes; the original
+audit's architectural finding is confirmed, its "1,000-row" cap claim is
+corrected to "unverified on hosted — confirm in Dashboard". No code, migration,
+database, report, or API changed. Awaiting approval before any implementation.
+No other audit item started.
+================================================================================

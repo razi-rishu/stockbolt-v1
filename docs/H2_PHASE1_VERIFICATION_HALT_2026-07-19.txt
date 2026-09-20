@@ -1,0 +1,122 @@
+================================================================================
+StockBolt ERP — Audit Issue H2, Phase 1: PRE-IMPLEMENTATION VERIFICATION
+Result: STOPPED — unexpected dependency found. Index NOT created.
+================================================================================
+Date:   2026-07-19
+Task:   Final read-only verification requested before creating the partial
+        unique index: "confirm there are no legitimate code paths that
+        intentionally create more than one canonical journal entry for the same
+        (company_id, source_type, source_id)."
+Outcome: VERIFICATION DID NOT PASS CLEANLY. Per the "stop immediately if you
+        discover any unexpected dependency" rule, implementation was halted.
+        No migration created. No index built. No code/DB/UI change made.
+================================================================================
+
+
+THE DEPENDENCY (why we stopped)
+--------------------------------------------------------------------------------
+The approved index predicate:
+    WHERE source_id IS NOT NULL AND reversal_of_id IS NULL AND reversed_by_id IS NULL
+covers EVERY source_type. But the existing _guard_no_double_post trigger only
+guards a WHITELIST of document types. So the approved index is BROADER than the
+trigger, and the gap is where the risk lives.
+
+A non-deferrable partial UNIQUE INDEX is enforced at each INSERT (not at commit).
+So for any type that is REVERSED-then-REPOSTED with a REUSED source_id within one
+transaction, the ordering matters: if a new canonical is inserted before the old
+is marked reversed, the index rejects it and breaks that workflow.
+
+
+EVIDENCE (read-only, live)
+--------------------------------------------------------------------------------
+Committed state: 0 duplicate unreversed canonical JEs for ANY real-source_id type
+  -> the index would BUILD cleanly; risk is FUTURE operations, not existing data.
+
+Per-type analysis:
+
+  sales_invoice / vendor_bill / credit-note / debit-note / receipts / payments...
+    Reposted with reused source_id: yes
+    Trigger-guarded: YES
+    Reverse-before-repost: GUARANTEED (editing works today; the trigger would
+      already block a premature re-insert, so the code must reverse first)
+    Verdict: SAFE
+
+  inventory_cogs
+    Reposted with reused source_id: yes (8 keys)
+    Trigger-guarded: no
+    Reverse-before-repost: VERIFIED by reading edit_invoice — it reverses BOTH
+      the sales_invoice and inventory_cogs originals (marks reversed_by_id) BEFORE
+      inserting the new canonicals (mirror insert -> mark reversed -> new inserts)
+    Verdict: SAFE
+
+  advance_application
+    Reposted with reused source_id: NO (0 keys — unique source_id per application)
+    Verdict: SAFE (never reposted to the same key)
+
+  opening_balance   *** UNRESOLVED RISK ***
+    Reposted with reused source_id: YES (3 keys)
+    Trigger-guarded: no
+    post_opening_balance: inserts 4 journal_entries and does NOT reverse or delete
+      any existing opening_balance (marks-reversed? false; deletes-old? false)
+    Verdict: CANNOT prove a unique index won't break opening-balance re-entry.
+
+  opening_bank      *** UNRESOLVED RISK ***
+    Reposted with reused source_id: YES (2 keys)
+    Trigger-guarded: no
+    post_bank_opening_balance: inserts without a clear reverse-first ordering
+    Verdict: CANNOT prove safe.
+
+
+WHY THIS MATTERS
+--------------------------------------------------------------------------------
+The opening-balance / opening-bank functions insert new canonical JEs without an
+observable reverse-first step, yet the data shows those keys DO get reposted with
+a reused source_id. That lifecycle is non-trivial, un-guarded by the trigger, and
+static analysis cannot guarantee a unique index would not raise a unique-violation
+on a future opening-balance re-entry — which would break that workflow on a live
+production ERP. This is exactly the "legitimate path that may collide with the
+constraint" the verification was asked to rule out, and it could not be ruled out
+for these two types.
+
+
+RECOMMENDED RESOLUTION (needs owner decision — deviates from "exactly as approved")
+--------------------------------------------------------------------------------
+Scope the partial unique index to the trigger's WHITELISTED document types — the
+exact set the H2 concurrent-confirm race threatens:
+
+  CREATE UNIQUE INDEX CONCURRENTLY journal_entries_one_canonical_per_source
+    ON public.journal_entries (company_id, source_type, source_id)
+    WHERE source_id IS NOT NULL
+      AND reversal_of_id IS NULL
+      AND reversed_by_id IS NULL
+      AND source_type IN ( <the trigger's whitelist> );
+
+Why this is provably safe:
+  * It matches the trigger's semantics EXACTLY, so it cannot reject any insert the
+    trigger already allows -> it cannot break any edit/void/repost flow that works
+    today, including openings.
+  * It still fully closes the H2 race: the concurrent-confirm double-post only
+    occurs on those whitelisted document confirmations.
+  * inventory_cogs does not need index coverage — it is a paired leg of an
+    already-guarded confirm; the guard on sales_invoice aborts the whole
+    transaction first.
+
+
+OPTIONS FOR THE OWNER
+--------------------------------------------------------------------------------
+  1. Approve the SCOPED predicate above (whitelist-matched). Safest; provably
+     cannot break editing. Requires approval because it changes the approved
+     predicate.
+  2. Have the assistant verify the opening-balance / opening-bank lifecycle
+     further (read-only) to determine whether the UNSCOPED index is genuinely
+     safe for those two types.
+  3. Another approach the owner prefers.
+
+
+STATUS
+--------------------------------------------------------------------------------
+  Index: NOT created.  Migration: NOT written.  Code/DB/UI: unchanged.
+  Committed data verified clean (0 duplicates) — build would succeed, but the
+  future-operation risk on opening_balance / opening_bank is unresolved.
+  Awaiting the owner's decision. No Phase 2. No other audit item started.
+================================================================================

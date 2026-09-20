@@ -1,0 +1,136 @@
+================================================================================
+StockBolt ERP — Audit Issue C2, Phase 1: Implementation Result
+Lock document currency to the company base currency (UI-only)
+================================================================================
+Date:     2026-07-19
+Scope:    Replace the editable currency selector with a read-only display of the
+          company base currency, in the Sales Invoice, Vendor Bill, Sales Quote,
+          and Purchase Order editors. No RPC / DB / migration / constraint /
+          exchange-rate / report / API / accounting / inventory change.
+Status:   IMPLEMENTED + COMMITTED. Commit cac7101 on branch main.
+          Pre-commit regression suite ran and passed 91/91.
+          Not pushed (owner pushes).
+================================================================================
+
+
+## FILES CHANGED (git diff --stat)
+--------------------------------------------------------------------------------
+  src/modules/sales/invoice-editor.tsx          | 9 +++++-----
+  src/modules/sales/quote-editor.tsx            | 6 +++---
+  src/modules/purchasing/vendor-bill-editor.tsx | 7 +++----
+  src/modules/purchasing/po-editor.tsx          | 6 +++---
+  4 files changed, 13 insertions(+), 15 deletions(-)
+
+  Nothing else touched: no posting RPC, no database, no migration, no
+  constraint, no exchange-rate logic, no report, no API, no test, no business
+  logic.
+
+
+## WHAT CHANGED, PER FILE
+--------------------------------------------------------------------------------
+  In each of the 4 editors:
+    * The editable currency <Select> (which offered every world currency and
+      wrote header.currency on change) was replaced with a disabled <Input>
+      that displays header.currency read-only. header.currency still defaults to
+      the company base currency (companyCurrency) and can no longer be changed.
+    * The now-unused `currencyOptions` import was removed.
+    * In quote-editor and vendor-bill-editor, the currency picker was their only
+      <Select>, so the now-unused `Select` import was also removed (a direct,
+      required consequence of the change to keep the build green).
+
+  A one-line comment records why the field is locked (posting engine does not
+  convert yet — see docs/MULTICURRENCY_AUDIT.md).
+
+
+## EXACT REPLACEMENT (example — invoice editor)
+--------------------------------------------------------------------------------
+  BEFORE:
+    <Select
+      label={t('sales.currency')}
+      options={currencyOptions(header.currency)}
+      value={header.currency}
+      disabled={!canEdit || isVoid}
+      onChange={e => setHeader(h => ({ ...h, currency: e.target.value }))}
+    />
+
+  AFTER:
+    <Input
+      label={t('sales.currency')}
+      value={header.currency}
+      disabled
+    />
+
+
+## VERIFICATION RESULTS
+--------------------------------------------------------------------------------
+  Build/compile:
+    npx tsc --noEmit ............................. exit 0        PASS
+    npm run build ............................... built 20.3s   PASS
+    npm run test:regressions (pre-commit) ....... 91/91 passed  PASS
+
+  Requested checks:
+    1. Existing documents behave identically ..... PASS
+       Load/save currency bindings (existing.currency -> header.currency ->
+       saved payload) are untouched; only the widget changed. All existing docs
+       are base currency, so they render and save identically.
+    2. New documents always use base currency .... PASS
+       Default init `currency: companyCurrency` unchanged; the field is now
+       non-editable (the onChange mutation path was removed), so it cannot
+       deviate from base.
+    3. Quote -> Invoice conversion still works ... PASS
+       Conversion logic not in the diff; both sides are base-only; tsc + build
+       green.
+    4. PO -> Vendor Bill conversion still works .. PASS
+       Same — conversion untouched; tsc + build green.
+    5. Reports unchanged ......................... PASS
+       No report file in the diff; GL untouched; regression suite 91/91.
+    6. Accounting unchanged ...................... PASS
+       No posting RPC / GL / JE in the diff; the suite's function-source and
+       live-invariant checks pass 91/91.
+    7. Inventory unchanged ....................... PASS
+       No stock / MAC / COGS in the diff; regression suite 91/91.
+    8. No other workflow changed ................. PASS
+       git diff = exactly the 4 editors, currency field only.
+
+
+## UI VERIFICATION CAVEAT
+--------------------------------------------------------------------------------
+  The 4 editors are auth-gated, so the read-only behaviour was verified by
+  compile + build + code inspection rather than by driving the live UI (no
+  credentials in this environment). The field is now a disabled input displaying
+  the base currency, with no dropdown and no change handler — structurally it
+  cannot produce a non-base currency. Recommended final check: open a new
+  invoice on the dev server and confirm the Currency field shows the base
+  currency (e.g. AED), greyed and non-editable.
+
+
+## NOT INCLUDED (out of approved scope)
+--------------------------------------------------------------------------------
+  * The C2 regression tripwire from the analysis (assert no document has
+    currency <> base_currency) was NOT added — the approved Phase 1 scope was the
+    selector replacement only ("smallest possible implementation"). Recommended
+    as a small follow-up.
+  * Phase 2 (real multi-currency engine, or formal removal of multi-currency)
+    remains a separate, larger decision — not started.
+
+
+## PRE-EXISTING WARNING (unrelated to this change)
+--------------------------------------------------------------------------------
+  The regression run logged a warn-only note: E1 stock-valuation drift on tenant
+  IMBD123 (210.59). This is the known, pre-existing deferred-COGS/valuation drift
+  (fix: SELECT public.recompute_stock_valuation();). It is NOT caused by C2 —
+  this change touches no inventory or valuation logic — and it is warn-only, so
+  the suite passed 91/91.
+
+
+## ROLLBACK STRATEGY
+--------------------------------------------------------------------------------
+  * UI-only change, no data/schema. Rollback = `git revert cac7101` and push ->
+    Vercel redeploys the prior build (the picker returns). No DB action needed.
+  * Because no stored value changed, rollback carries no reconciliation risk.
+
+
+================================================================================
+STATUS: C2 Phase 1 implemented, verified, and committed (cac7101, main). Not
+pushed. Stopped after C2 Phase 1 — no other audit item started.
+================================================================================

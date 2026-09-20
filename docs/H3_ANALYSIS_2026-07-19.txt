@@ -1,0 +1,403 @@
+================================================================================
+StockBolt ERP — Audit Issue H3: Analysis Report (re-investigated from source)
+audit_logs is mutable/deletable by ordinary users — the immutability control
+is missing, AND the audit's recommended fix has a false premise.
+================================================================================
+Audit cycle date: 2026-07-19   |   Investigation performed: 2026-07-22
+Type:   ANALYSIS ONLY — no code, migration, database, report, or API changed.
+        All evidence is read-only from the LIVE database + LIVE code.
+Method: Verified against pg_policies / pg_class / pg_trigger / role_table_grants
+        / pg_roles / pg_proc (live), plus the live function bodies and src/.
+        Did NOT trust the migration file the audit cites — many RLS migrations
+        landed after it; the LIVE policy set is what was checked.
+
+Convention in this report:
+  [VERIFIED]  = read directly from live DB / live code, quoted below.
+  [INFERENCE] = reasoned conclusion from verified facts.
+================================================================================
+
+
+0. HEADLINE
+--------------------------------------------------------------------------------
+  The FINDING is correct: an ordinary authenticated user can UPDATE or DELETE
+  their own company's audit_logs today. [VERIFIED]
+
+  The RECOMMENDED FIX is not safe as written. It says "definer posting fns bypass
+  RLS" and proposes INSERT WITH CHECK (false). But the accounting posting engine
+  writes audit_logs from SECURITY INVOKER functions that run as `authenticated`
+  and are subject to RLS. INSERT WITH CHECK (false) would make every one of those
+  audit inserts fail; because each is wrapped in a best-effort
+  BEGIN…EXCEPTION WHEN OTHERS block, the failure is SWALLOWED and the audit trail
+  goes SILENTLY DARK for all confirm/void/reopen/edit/post actions. [VERIFIED]
+
+  => The immutability GOAL is right; the METHOD must differ (keep a tenant-scoped
+     INSERT policy; deny only UPDATE/DELETE). See §14. This is the "unexpected
+     dependency" the investigation standard says to surface before implementing.
+
+
+1. IS THE ORIGINAL AUDIT FINDING CORRECT?
+--------------------------------------------------------------------------------
+  FINDING ("audit_logs editable/deletable by ordinary users"): CORRECT. [VERIFIED]
+
+  Live evidence (all read-only):
+   a. Exactly ONE policy on public.audit_logs:
+        policyname = tenant_isolation
+        cmd        = ALL                 <- covers SELECT/INSERT/UPDATE/DELETE
+        roles      = {public}            <- applies to every role
+        permissive = PERMISSIVE
+        qual       = (company_id = current_user_company_id())
+        with_check = (company_id = current_user_company_id())
+      (from pg_policies)
+   b. NO trigger on audit_logs at all (pg_trigger: 0 non-internal triggers) —
+      so there is no immutability enforcement outside the policy.
+   c. Table grants (information_schema.role_table_grants):
+        authenticated -> SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+        anon          -> same set
+   d. RLS state (pg_class): rls_enabled = true, rls_forced = FALSE.
+   e. Roles (pg_roles): authenticated.rolbypassrls = false (RLS DOES apply to it);
+      anon.rolbypassrls = false; postgres.rolbypassrls = true;
+      service_role.rolbypassrls = true.
+
+  [INFERENCE] Combine (a)+(c)+(e): an authenticated user holds the UPDATE and
+  DELETE table grants AND the permissive ALL policy passes for rows where
+  company_id = their own company. authenticated is not BYPASSRLS, but it does not
+  need to be — the policy AFFIRMATIVELY ALLOWS the write. PostgREST exposes row
+  UPDATE (HTTP PATCH) and DELETE (HTTP DELETE) on any public table, so:
+        DELETE /rest/v1/audit_logs?id=eq.<uuid>     (with a normal user JWT)
+        PATCH  /rest/v1/audit_logs?id=eq.<uuid>      body {"new_data": …}
+  both succeed within the caller's own company. The one table that must be
+  append-only is fully mutable by any logged-in user. (NOT executed — proven
+  statically; executing it would tamper with production data.)
+
+  REFINEMENT the audit missed: the recommended fix itself is unsafe (see §0, §4,
+  §14). So the finding is right but the proposed remedy is wrong.
+
+
+2. ROOT CAUSE
+--------------------------------------------------------------------------------
+  [VERIFIED] audit_logs was given the same generic tenant_isolation policy every
+  tenant table gets — a single FOR ALL (cmd=ALL) permissive policy scoped by
+  company_id. For an ordinary table that is correct (users read/write their own
+  rows). For an AUDIT table it is wrong: "ALL" grants UPDATE and DELETE to the
+  very users the log is meant to hold accountable. No SELECT-only / append-only
+  differentiation, no immutability trigger, and the broad authenticated
+  UPDATE/DELETE/TRUNCATE table grants were never revoked.
+
+  [VERIFIED] The later write-lockdown / read-lockdown RLS migrations (Phases B/C,
+  22b) hardened the posting-engine tables but did NOT re-scope audit_logs — its
+  live policy is still the single cmd=ALL tenant_isolation policy.
+
+
+3. CURRENT WORKFLOW
+--------------------------------------------------------------------------------
+  WRITE (server-side only — no client writes audit_logs): [VERIFIED]
+    * The posting/lifecycle RPCs write audit rows in-line, e.g. confirm_invoice:
+        ... UPDATE invoices SET status='confirmed' ...;
+        BEGIN
+          INSERT INTO public.audit_logs (company_id,user_id,action,entity_type,
+                     entity_id,new_data) VALUES (v_company_id, v_user_id,
+                     'confirm','invoice', p_invoice_id, jsonb_build_object(...));
+        EXCEPTION WHEN OTHERS THEN … END;     <- best-effort; never fails the post
+      Same shape in void_invoice, confirm_vendor_bill, and the rest.
+    * pg_proc census: 60 functions reference audit_logs. The accounting/inventory
+      engine ones — confirm_invoice, confirm_vendor_bill, confirm_pos_sale,
+      confirm_credit_note, confirm_debit_note, confirm_expense, confirm_grn,
+      confirm_inventory_adjustment, confirm_stock_transfer, confirm_bank_transfer,
+      confirm_payment, confirm_vendor_payment, all void_*/reopen_*/edit_*/post_*,
+      PDC and payroll fns — are SECURITY INVOKER (prosecdef=false). They run as
+      the CALLING role (authenticated) → their audit_logs INSERT is subject to
+      RLS. [VERIFIED]
+    * A SMALL admin subset is SECURITY DEFINER (prosecdef=true), owned by postgres
+      (rolbypassrls=true): accept_invite, invite_user, revoke_invite,
+      create_role, update_role, delete_role, set_user_role, set_user_active,
+      set_user_overrides, merge_brands, reset_company_data. These BYPASS RLS on
+      their audit_logs writes. [VERIFIED]
+    * reset_company_data (SECURITY DEFINER) legitimately does
+        DELETE FROM public.audit_logs WHERE company_id = p_company_id;
+      then inserts a 'company_reset' record. Because it runs as postgres
+      (bypassrls), it is unaffected by any RLS UPDATE/DELETE denial. [VERIFIED]
+
+  READ (client): [VERIFIED]
+    * src/data/supabaseAdapter.ts getAuditLog()      -> .from('audit_logs').select … (Audit Log report, limit 500)
+    * src/data/supabaseAdapter.ts getEntityAuditLog() -> .from('audit_logs').select … (per-document Activity feed)
+    * No client-side .insert/.update/.delete on audit_logs anywhere in src/.
+    * So the client needs SELECT; it never needs client UPDATE/DELETE/INSERT.
+
+  Live volume: audit_logs = 92 rows. [VERIFIED]
+
+
+4. WHY THE ISSUE EXISTS (and why the audit's fix is wrong)
+--------------------------------------------------------------------------------
+  [VERIFIED] Cause of the vulnerability: audit_logs inherited the generic
+  cmd=ALL tenant policy + broad table grants and was never specialised to
+  append-only. Nobody added an immutability control.
+
+  [VERIFIED] Why the audit's recommended fix (FORCE RLS + INSERT WITH CHECK false,
+  "definer posting fns bypass RLS") is unsafe:
+    (i)  The posting fns are SECURITY INVOKER, not DEFINER. They run as
+         authenticated, so RLS applies to THEIR audit inserts. INSERT WITH
+         CHECK (false) blocks those inserts. Because each is in a
+         BEGIN…EXCEPTION WHEN OTHERS block, the block is silently swallowed and
+         the write is lost — audit logging for the whole posting engine goes
+         dark with no error. That is a silent regression of the exact control
+         H3 is trying to strengthen.
+    (ii) FORCE ROW LEVEL SECURITY is a no-op here. FORCE makes RLS apply to the
+         table OWNER, but roles with BYPASSRLS still bypass. The owner is postgres
+         and postgres.rolbypassrls = true, so FORCE changes nothing for the
+         DEFINER path and nothing for the INVOKER path (already governed as
+         authenticated). It is harmless but pointless, and it does NOT rescue (i).
+  [INFERENCE] The audit author assumed audit_logs is written only by DEFINER
+  functions. Live pg_proc shows the opposite for the accounting engine. This is
+  precisely why "do not assume the audit is correct" matters here.
+
+  [VERIFIED] The CORRECT method: keep a tenant-scoped INSERT policy (so INVOKER
+  functions running as authenticated can still write), keep a tenant-scoped SELECT
+  policy (so the Audit Log report + Activity feed still read), and provide NO
+  UPDATE and NO DELETE policy (RLS then denies both for non-bypass roles).
+  postgres/service_role (bypassrls) — including reset_company_data — continue to
+  work. See §14.
+
+
+5. ALL AFFECTED FILES
+--------------------------------------------------------------------------------
+  The FIX surface is the database policy set (delivered as an additive migration
+  to be applied by hand); no src/ change is required. Files that are RELEVANT:
+    * supabase/migrations/20260430121600_phase0_17_rls_policies.sql (line ~44)
+      — where the cmd=ALL tenant_isolation policy on audit_logs originates.
+      [VERIFIED it is the origin of the policy name; the LIVE policy is what was
+       checked, and it still matches.]
+    * (new) a phase-53 migration that replaces that policy for audit_logs only.
+    * src/data/supabaseAdapter.ts — getAuditLog / getEntityAuditLog readers. Must
+      keep working (needs the SELECT policy). No edit needed.
+    * src/modules/reports/audit-log.tsx, src/components/activity-log.tsx — the two
+      read surfaces. No edit needed.
+    * tests/integration/regressions.test.ts — add the H3 invariant test(s) (§15).
+  NO posting RPC, NO trigger, NO report logic, NO UI is modified by the fix.
+
+
+6. ALL AFFECTED DATABASE OBJECTS
+--------------------------------------------------------------------------------
+  * public.audit_logs (table) — the policy target; RLS enabled, not forced.
+  * Policy tenant_isolation ON audit_logs (cmd=ALL) — to be REPLACED for this
+    table by SELECT + INSERT tenant policies (no UPDATE/DELETE policy).
+  * Table grants to authenticated/anon (UPDATE, DELETE, TRUNCATE) — optional
+    defense-in-depth REVOKE (RLS denial is the primary control; note TRUNCATE is
+    NOT governed by RLS at all — see §13).
+  * 60 functions that write audit_logs (pg_proc) — MUST all keep inserting:
+      - ~49 SECURITY INVOKER (run as authenticated → need the INSERT policy).
+      - ~11 SECURITY DEFINER (run as postgres/bypassrls → unaffected either way).
+  * reset_company_data (DEFINER) — deletes audit_logs by design; unaffected by an
+    RLS UPDATE/DELETE denial (bypassrls). [VERIFIED]
+  * current_user_company_id() — the tenant-scoping helper used by the policy;
+    reused unchanged in the replacement SELECT/INSERT policies.
+
+
+7. ALL AFFECTED REPORTS
+--------------------------------------------------------------------------------
+  * Audit Log report (src/modules/reports/audit-log.tsx via getAuditLog) — reads
+    audit_logs; unaffected by the corrected fix (SELECT policy retained).
+  * Per-document Activity feed (activity-log.tsx via getEntityAuditLog) — same.
+  * NO accounting/inventory report reads audit_logs (they read journal_entries /
+    general_ledger / stock_ledger). So Trial Balance, P&L, Balance Sheet, Cash
+    Flow, VAT, AR/AP aging, statements, inventory valuation are ALL untouched by
+    this issue and by the corrected fix. [VERIFIED — audit_logs appears in no
+    report method other than the two audit readers.]
+
+
+8. ALL AFFECTED APIs
+--------------------------------------------------------------------------------
+  * Internal RPCs: the 60 audit-writing functions (must keep writing) + the two
+    read adapter methods (must keep reading). The corrected fix preserves both.
+  * PostgREST auto-REST on public.audit_logs is the ATTACK SURFACE: it currently
+    exposes UPDATE (PATCH) and DELETE for authenticated. The corrected fix removes
+    the permitting policy so PATCH/DELETE are denied (RLS), while GET (SELECT) and
+    the server-side INSERT path remain. [VERIFIED grants + policy; INFERENCE on
+    PostgREST verb exposure, which is standard Supabase behaviour.]
+  * Public Edge Function API (api_keys, phase49/50): does not touch audit_logs.
+    No impact. [VERIFIED — not referenced.]
+
+
+9. DEPENDENCIES
+--------------------------------------------------------------------------------
+  [VERIFIED] CRITICAL DEPENDENCY (the reason to investigate before implementing):
+    The fix must NOT deny INSERT, because the SECURITY INVOKER posting engine
+    writes audit_logs as authenticated. Denying INSERT (the audit's proposal)
+    silently disables audit logging. The fix must retain a tenant-scoped INSERT
+    policy. THIS DEPENDENCY IS NOW INVESTIGATED AND RESOLVED (keep INSERT).
+  [VERIFIED] reset_company_data depends on being able to DELETE audit_logs; that
+    depends on it running as a bypassrls role (postgres). Confirmed it is DEFINER
+    and postgres is bypassrls → the RLS-based UPDATE/DELETE denial does not reach
+    it. No conflict.
+  [VERIFIED] The Audit Log report + Activity feed depend on SELECT → keep SELECT.
+  [INFERENCE] No ordering dependency on any other audit item. H3 is independent of
+    C1/C2/H1/H2. (The audit also states "Dependencies: none" for the finding; that
+    is true for the finding, but the fix has the INSERT dependency above.)
+  No dependency on H4 (staging) to ship H3 — but see §15 on test realism.
+
+
+10. BUSINESS IMPACT
+--------------------------------------------------------------------------------
+  [INFERENCE from VERIFIED exposure] Current state: any authenticated user can
+  rewrite or erase their own company's audit trail (PATCH/DELETE via PostgREST).
+  The audit log is the record of who confirmed/voided/edited financial documents;
+  if it is mutable, it cannot be relied on for internal control, dispute
+  resolution, or fraud investigation. Fails standard IT general controls
+  (immutable audit trail) and undermines the integrity story for a paid,
+  multi-tenant accounting product. Likelihood of casual accidental damage is low
+  (no UI exposes it), but the INTENTIONAL cover-up path is wide open and trivial
+  for anyone who can call the REST API with their own token.
+  Post-fix: audit trail becomes append-only for tenant users; tamper path closed.
+
+
+11. ACCOUNTING IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED] audit_logs holds NO general-ledger or balance data — it is a
+  metadata/activity trail. Ledgers live in journal_entries / general_ledger.
+  So the VULNERABILITY does not by itself misstate the books, and the CORRECTED
+  fix touches no posting logic → zero accounting-math impact.
+  [VERIFIED] IMPORTANT CAVEAT re: the WRONG fix — INSERT WITH CHECK (false) would
+  stop recording confirm/void/edit of invoices, bills, notes, expenses, payments,
+  journal entries and openings. The ledgers would still post, but the audit
+  narrative of who changed what would silently vanish — an accounting-governance
+  regression even though the numbers stay balanced. The corrected fix avoids this.
+
+
+12. INVENTORY IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED] audit_logs does not participate in stock math (on-hand, MAC, COGS,
+  stock_ledger). The issue and the corrected fix have NO inventory-quantity or
+  valuation impact.
+  [VERIFIED] CAVEAT (same as §11): confirm_inventory_adjustment and
+  confirm_stock_transfer are SECURITY INVOKER and log via the best-effort block;
+  the WRONG (INSERT-deny) fix would silently drop their audit records too. The
+  corrected fix keeps them.
+
+
+13. RISK ASSESSMENT
+--------------------------------------------------------------------------------
+  Vulnerability severity (status quo): HIGH for integrity/governance, LOW for
+    immediate financial misstatement. Tamper is trivial via the REST API; there
+    is no logging of the tamper itself. [VERIFIED exposure; INFERENCE severity.]
+  Risk of the AUDIT's fix (INSERT WITH CHECK false): HIGH — silently disables the
+    posting engine's audit logging (best-effort swallow). Do NOT apply as written.
+    [VERIFIED mechanism.]
+  Risk of the CORRECTED fix (SELECT+INSERT tenant policies, no UPDATE/DELETE):
+    LOW. It is additive/reversible, changes no posting logic, preserves reads,
+    preserves invoker-function inserts, preserves reset_company_data, and denies
+    only the tamper verbs. [INFERENCE from the verified role/grant/policy model.]
+  Secondary note — TRUNCATE: authenticated/anon hold the TRUNCATE grant, and RLS
+    does NOT govern TRUNCATE. PostgREST does not expose TRUNCATE, so it is not
+    reachable by the normal client today [INFERENCE — standard PostgREST], but it
+    is a latent grant; §14 includes an optional REVOKE for defense-in-depth.
+  Build/verify risk: none pre-apply; the change is a policy swap on one table.
+
+
+14. RECOMMENDED IMPLEMENTATION PLAN  (for approval — NOT implemented)
+--------------------------------------------------------------------------------
+  GOAL: make audit_logs append-only for tenant users, without breaking reads or
+  the invoker-function write path.
+
+  CORE (RLS policy swap on audit_logs ONLY) — additive migration, applied by hand:
+    1. DROP the single cmd=ALL policy on audit_logs:
+         DROP POLICY IF EXISTS tenant_isolation ON public.audit_logs;
+    2. CREATE a SELECT policy (keeps the Audit Log report + Activity feed):
+         CREATE POLICY audit_logs_select ON public.audit_logs
+           FOR SELECT USING (company_id = current_user_company_id());
+    3. CREATE an INSERT policy (keeps SECURITY INVOKER posting-engine logging):
+         CREATE POLICY audit_logs_insert ON public.audit_logs
+           FOR INSERT WITH CHECK (company_id = current_user_company_id());
+    4. Provide NO UPDATE policy and NO DELETE policy -> both are denied for all
+       non-bypassrls roles (authenticated, anon). postgres/service_role
+       (bypassrls) retain UPDATE/DELETE for admin/maintenance, so
+       reset_company_data keeps working.
+    (Do NOT add FORCE ROW LEVEL SECURITY — it is a no-op here because the owner is
+     bypassrls; adding it would only invite confusion. WHY: FORCE only affects the
+     table owner, and postgres already bypasses via rolbypassrls.)
+
+  OPTIONAL DEFENSE-IN-DEPTH (safe, recommended, still additive):
+    5. REVOKE UPDATE, DELETE, TRUNCATE ON public.audit_logs
+         FROM authenticated, anon;
+       Rationale: removes the latent table grants entirely (RLS is the primary
+       control for UPDATE/DELETE; this also closes the RLS-immune TRUNCATE grant).
+       KEEP SELECT and INSERT grants (needed by readers and invoker functions).
+       ASSUMPTION to confirm before doing this: no SECURITY INVOKER function
+       needs UPDATE/DELETE on audit_logs. [VERIFIED for the 60 writer fns: they
+       only INSERT (and reset_company_data DELETEs, but it is DEFINER/bypassrls,
+       independent of the authenticated grant).]
+
+  WHY THIS PLAN (not the audit's):
+    * Keeps INSERT (tenant-scoped) → the invoker posting engine keeps logging.
+      This is the single most important correction. [VERIFIED necessity.]
+    * Keeps SELECT (tenant-scoped) → reports/activity feed unaffected.
+    * Omits UPDATE/DELETE policies → tamper denied for tenant users.
+    * Preserves reset_company_data via bypassrls → no admin breakage.
+    * Additive and reversible → easy rollback.
+
+  NOT chosen — an immutability TRIGGER (BEFORE UPDATE/DELETE RAISE): rejected
+    because a trigger fires for ALL roles and would block reset_company_data's
+    legitimate DELETE unless it carried a role carve-out — more complex and more
+    fragile than the RLS approach. The RLS approach preserves reset automatically.
+    [INFERENCE — design trade-off.]
+
+  Delivery: one additive migration file (phase-53), applied BY HAND in the
+  Supabase SQL Editor (plain statements; no CONCURRENTLY needed). Patch nothing
+  from old migration files — the policy swap is self-contained.
+
+
+15. REGRESSION TESTS REQUIRED
+--------------------------------------------------------------------------------
+  Add to tests/integration/regressions.test.ts (live-DB, service_role):
+    T1. Structure: audit_logs has NO policy with cmd='ALL'; it HAS a SELECT policy
+        and an INSERT policy; it has NO UPDATE and NO DELETE policy.
+        (mirrors security-guardian open-finding SEC-2)
+    T2. Grants: authenticated has SELECT+INSERT on audit_logs and does NOT have
+        UPDATE/DELETE/TRUNCATE (only if the optional REVOKE in §14.5 is applied).
+    T3. Write-path still works: assert audit_logs row COUNT strictly increases
+        across a confirm/void performed by the suite (proves the INSERT policy
+        did not silently break invoker-function logging). NOTE: this needs a
+        write against the DB; on prod that means the test tenant only — ties to
+        H4 (staging) for a clean home. If kept on prod, scope to the test tenant.
+    T4. Read-path still works: getAuditLog returns rows for the test tenant.
+  A true "authenticated user cannot DELETE" behavioural test requires a real
+  authenticated JWT (not service_role) — best done once H4 staging exists;
+  until then T1/T2 (structural) are the enforceable guard. [INFERENCE.]
+
+
+16. ROLLBACK STRATEGY
+--------------------------------------------------------------------------------
+  Fully reversible, no data touched:
+    * To roll back the policy swap: DROP the audit_logs_select / audit_logs_insert
+      policies and RECREATE the original tenant_isolation cmd=ALL policy:
+        CREATE POLICY tenant_isolation ON public.audit_logs
+          FOR ALL USING (company_id = current_user_company_id())
+          WITH CHECK (company_id = current_user_company_id());
+    * To roll back the optional REVOKE: re-GRANT UPDATE,DELETE,TRUNCATE to
+      authenticated, anon.
+  No rows are added/changed/removed by this fix, so rollback carries zero
+  reconciliation risk in either direction.
+
+
+================================================================================
+## Verdict
+
+  AUDIT CORRECT BUT IMPLEMENTATION SHOULD DIFFER.
+
+  * The finding is VERIFIED live: audit_logs is mutable/deletable by ordinary
+    authenticated users (single cmd=ALL policy + authenticated UPDATE/DELETE
+    grants + no immutability control + authenticated is not bypassrls). Real,
+    high-severity governance/integrity defect.
+  * The recommended FIX is unsafe as written: "definer posting fns bypass RLS" is
+    false for the accounting engine (those functions are SECURITY INVOKER and run
+    as authenticated), so INSERT WITH CHECK (false) would silently disable audit
+    logging via the best-effort exception blocks; and FORCE ROW LEVEL SECURITY is
+    a no-op because the owner is bypassrls.
+  * The CORRECT fix keeps tenant-scoped SELECT + INSERT policies and omits
+    UPDATE/DELETE policies (optionally revoking the UPDATE/DELETE/TRUNCATE grants),
+    achieving append-only immutability while preserving reads, invoker-function
+    logging, and reset_company_data.
+
+STATUS: Analysis only. Unexpected dependency (INVOKER write-path) discovered AND
+investigated; corrected plan proposed in §14. Nothing implemented. Awaiting owner
+approval before any implementation. Not starting H3 implementation. Not touching
+H4+.
+================================================================================

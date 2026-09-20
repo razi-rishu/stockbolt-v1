@@ -1,0 +1,161 @@
+================================================================================
+StockBolt — AC-7A  India TDS (tax deducted at source) — ENGINE
+IMPLEMENTATION DELIVERY (stop-before-commit review package)
+Created: 2026-07-29
+================================================================================
+
+STATUS: Implemented + verified. NOT committed. Migration phase62 NOT applied
+(hand-apply pending). Sits on top of b07fc80 (AC-6B).
+
+This is the engine for the LAST phase of the accounting roadmap. AC-7B (the
+India-gated UI) remains.
+
+
+--------------------------------------------------------------------------------
+1. THE DESIGN DECISION THAT SHAPES EVERYTHING
+--------------------------------------------------------------------------------
+TDS is structurally different from AC-5 / AC-6. Those were isolated engines —
+new tables, new RPCs, nothing existing changed. Withholding, by contrast, sits
+inside an existing money flow, so the naive implementation edits
+confirm_vendor_payment or confirm_vendor_bill: the two most entangled RPCs in
+the codebase (PDC, reopen and edit paths all reach into them).
+
+APPROVED ALTERNATIVE — STANDALONE DEDUCTION DOCUMENT. TDS posts as its own
+isolated entry:
+
+    Bill      Dr Expense 10,000 / Cr AP           10,000    (unchanged)
+    TDS doc   Dr AP         200 / Cr TDS Payable     200    (this migration)
+    Payment   Dr AP       9,800 / Cr Bank          9,800    (unchanged)
+
+The AP balance therefore reflects what is actually owed to the vendor AFTER
+withholding, and the payment naturally settles the reduced amount. Correct
+accounting, ZERO changes to any existing posting RPC.
+
+Cost: deduction is a separate step rather than automatic. Mitigation (AC-7B):
+prompt it from the bill — "194C @2% -> deduct 200", one click.
+
+
+--------------------------------------------------------------------------------
+2. FILES CHANGED (4 new, 6 modified)
+--------------------------------------------------------------------------------
+NEW  supabase/migrations/20260729000002_phase62_ac7a_india_tds.sql
+       * CoA 2320 TDS Payable — INDIA ONLY (country_code = 'IN'), matching the
+         existing india_only pattern used by 1510/1520/1530 and 2210/2220/2230.
+       * contacts + pan, tds_section_code, tds_deductee_type (CHECK
+         individual_huf|other), lower_deduction_rate (§197 certificate).
+       * tds_sections — per-company, editable rate master with effective_from.
+         Seeded for India tenants: 194C 1%/2% (30k single, 100k annual),
+         194J 10% (30k), 194H 2% (20k), 194I 2% (240k), 194IB 10% (240k),
+         194Q 0.1% (5,000k).
+       * tds_deductions — deduction ledger with rate_reason and reversal fields.
+       * record_tds_deduction(bill, section, base, rate, date, reason)
+         reverse_tds_deduction(deduction_id)
+         SECURITY DEFINER, gated accounting.write, both COMPOSE
+         post_journal_entry — no new GL-writing path.
+NEW  src/lib/tds.ts            Pure rate resolution + thresholds + FY/quarter.
+NEW  tests/unit/tds.test.ts    16 unit tests.
+NEW  tests/integration/tds-verification.test.ts   T1-T9 behavioural suite.
+
+MOD  src/core/seeds/seedCOA.ts        2320 with india_only, for NEW companies.
+MOD  src/data/adapter.ts              TdsAPI + types; ContactTdsFields
+       intersected onto ContactRow/Insert/Update (generated types are stale).
+MOD  src/data/supabaseAdapter.ts      tds impl; reads degrade pre-apply.
+MOD  src/data/selfHostedAdapter.ts    9 notImplemented stubs.
+MOD  tests/integration/regressions.test.ts   AC-7A tripwire (4 tests).
+MOD  package.json                     + "test:tds" script.
+
+
+--------------------------------------------------------------------------------
+3. THREE THINGS WORTH CALLING OUT
+--------------------------------------------------------------------------------
+(a) A TRIPWIRE ENFORCES THE DESIGN. One regression test asserts that
+    confirm_vendor_bill and confirm_vendor_payment contain no reference to TDS
+    or account 2320. If a future change starts withholding inside them, the
+    suite fails loudly instead of silently double-deducting.
+
+(b) RATES ARE DATA, NOT LAW. Indian withholding rates change with each Finance
+    Act. The section master is seeded with post-Budget-2024 defaults, is fully
+    editable per company, and carries effective_from so a rate change is
+    representable. The migration says explicitly: VERIFY THE SEEDED DEFAULTS
+    AGAINST THE CURRENT FINANCE ACT before relying on them. Better a visible
+    instruction than a hidden hardcoded assumption.
+
+(c) THE STATUTORY EDGE CASES ARE ENCODED, not left to the user:
+      * §206AA — no PAN means the HIGHER of the section rate and 20%
+        (a section already above 20% is not reduced to 20).
+      * §197 — a lower/nil-deduction certificate takes precedence over both the
+        section rate and the no-PAN penalty. A 0% certificate is honoured as
+        genuinely nil, not mistaken for "absent".
+      * Thresholds — liability arises when EITHER the single-transaction OR the
+        annual-aggregate threshold is crossed; a section with no thresholds
+        always deducts.
+
+
+--------------------------------------------------------------------------------
+4. VERIFICATION
+--------------------------------------------------------------------------------
+  tsc --noEmit ......... 0 errors.
+  unit tests ........... 39/39 across the three pure libs (16 new for TDS:
+       rate resolution incl. §206AA / §197, amounts, thresholds, preview,
+       Indian FY boundary, 26Q quarter mapping).
+  npm run build ........ GREEN (~29s).
+  npm run test:regressions -> 117/117 (113 -> 117). The 4 AC-7A tripwires
+       soft-skip ("⚠ AC-7A not applied yet"), as designed.
+  npm run test:tds ..... correctly REFUSED by the H4 P0 guard against the
+       production target; all 5 mutating tests aborted before any write; the
+       prod orphan check still reports 0 @stockbolt.test users (no leak).
+
+
+--------------------------------------------------------------------------------
+5. WHAT IS AND IS NOT PROVEN
+--------------------------------------------------------------------------------
+PROVEN: the rate/threshold maths (unit tests); the structure once applied
+(tripwire); by construction, that posting composes post_journal_entry so
+balance / period lock / JE numbering / audit are inherited rather than
+re-implemented; and that the purchasing engine is untouched.
+
+NOT PROVEN: end-to-end posting on a real database. tests/integration/
+tds-verification.test.ts (T1-T9) is written but has NEVER EXECUTED, per the
+agreed plan to stand up staging after the accounting roadmap is complete.
+It covers: deduction posts Dr AP / Cr 2320 and reduces the payable; the section
+rate applies per deductee class; no-PAN escalation; over-deduction refused;
+draft bill refused; partial deductions accumulate; reversal flips the legs and
+restores AP; double-reversal refused; and India-gating (2320 + sections exist
+for an IN company, absent for AE).
+
+
+--------------------------------------------------------------------------------
+6. CONFIRMATIONS
+--------------------------------------------------------------------------------
+  * No existing posting RPC, table or report was modified — purely additive.
+  * No new GL-writing path — both RPCs go through post_journal_entry.
+  * Period lock respected (inherited from post_journal_entry).
+  * Guarded: confirmed bills only; total deducted can never exceed the bill.
+  * India-gated: 2320 and the section seed are applied only where
+    country_code = 'IN'; the tripwire asserts they do NOT leak to other tenants.
+  * Existing suites unchanged and green.
+
+
+--------------------------------------------------------------------------------
+7. ROLLBACK
+--------------------------------------------------------------------------------
+Code: revert the 10 files. Database (only if applied): see the migration header
+— DROP the 2 RPCs, tds_deductions, tds_sections, and the 4 contacts columns.
+The 2320 account is harmless to leave.
+
+
+--------------------------------------------------------------------------------
+8. ON YOUR SIDE / WHAT'S NEXT
+--------------------------------------------------------------------------------
+  * Three migrations now pending hand-apply: phase57 (AC-3), phase61 (AC-6),
+    phase62 (AC-7).
+  * AC-7B — the India-gated TDS UI (settings/rate master, deduct prompt on the
+    vendor bill, deductions register, challan / Form 26Q summary by section and
+    quarter). That completes the accounting roadmap.
+  * Then per the agreed plan: create the staging project, replay migrations
+    (docs/STAGING_SETUP.txt), and run all five behavioural suites before
+    production deployment.
+
+================================================================================
+END — awaiting review before commit. (Commit only on your go; will not push.)
+================================================================================

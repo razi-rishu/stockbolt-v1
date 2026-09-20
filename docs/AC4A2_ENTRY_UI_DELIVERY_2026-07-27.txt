@@ -1,0 +1,128 @@
+================================================================================
+StockBolt — AC-4A.2  E-invoice / tax-classification ENTRY-UI wiring
+IMPLEMENTATION DELIVERY (stop-before-commit review package)
+Created: 2026-07-27
+================================================================================
+
+STATUS: Implemented + verified. NOT committed. Sits on top of 134a6ab (AC-4A
+foundation). phase58 is already applied on prod, so this wiring is safe to ship.
+
+WHAT THIS IS: the entry-UI I deliberately deferred from AC-4A (see §5 of
+AC4A_IMPLEMENTATION_DELIVERY). Now that phase58 is live, the masters + invoice
+editor can write the six classification columns. No posting-logic change, no
+schema change, no new migration.
+
+
+--------------------------------------------------------------------------------
+1. SCOPE DELIVERED
+--------------------------------------------------------------------------------
+Master data (durable classification):
+  • Product editor (detail.tsx, edit form) — NEW "E-invoice supply treatment"
+    (default_tax_treatment, defaults to Auto→standard) + now-editable "HSN/SAC
+    code" (previously only settable in the create wizard).
+  • Product wizard (_wizard.tsx, create flow) — same "E-invoice supply treatment"
+    select on the Pricing step (HSN already existed there).
+  • Contact editor (contact-list.tsx, create+edit modal) — NEW "Buyer type
+    (e-invoice)" select (registered/unregistered/export/SEZ/composition) +
+    "Place of supply (GST state)" select, the latter shown only when the
+    contact's country is India.
+
+Transaction (per-invoice):
+  • Invoice editor (invoice-editor.tsx) — NEW "Export supply" checkbox on the
+    header (sets invoices.is_export). place_of_supply_code is derived from the
+    selected customer and stored on save (no redundant second dropdown).
+  • NEW non-blocking "e-invoice readiness" hint below the header: lists what a
+    compliant e-invoice would still need (buyer GSTIN/TRN, place of supply,
+    per-line HSN) using the pure eInvoiceReadiness() from AC-4A. Jurisdiction
+    follows the supplier's country (IN → IN_GST, else AE_VAT). It NEVER gates
+    saving or posting — purely advisory.
+
+Adapter plumbing:
+  • src/data/adapter.ts — four small intersection interfaces
+    (ProductEInvoiceFields / ContactEInvoiceFields / InvoiceEInvoiceFields /
+    InvoiceItemEInvoiceFields) composed onto the Row/Insert/Update aliases, so
+    the app-facing types carry the phase58 columns even though the generated
+    database.ts is not regenerated yet. Same pattern already used for
+    ContactGeoFields (Phase 16).
+  • src/data/supabaseAdapter.ts — cast the products / invoices / invoice_items
+    .insert()/.update() payloads to the generated Insert/Update type at the
+    boundary (contacts already did this). Confirmed necessary: supabase-js uses
+    RejectExcessProperties, which rejects the extra columns without the cast.
+
+i18n: EN + AR keys for every new label (products.*, contacts.*, sales.*).
+
+
+--------------------------------------------------------------------------------
+2. POSTING-SAFETY (unchanged from AC-4A, re-affirmed)
+--------------------------------------------------------------------------------
+confirm_invoice / edit_invoice / confirm_pos_sale / confirm_vendor_bill read
+NEITHER tax_category NOR tax_treatment — the six columns are inert to the GL.
+The invoice editor writes them onto the DRAFT row before confirm; the posting
+RPC ignores them. No GL leg, no balance, no COGS/MAC path is touched.
+
+
+--------------------------------------------------------------------------------
+3. FILES CHANGED (8)
+--------------------------------------------------------------------------------
+  MOD src/data/adapter.ts                       (+ 4 field interfaces, 7 aliases)
+  MOD src/data/supabaseAdapter.ts               (+ 5 boundary casts)
+  MOD src/modules/contacts/contact-list.tsx     (buyer_type + place_of_supply)
+  MOD src/modules/catalog/products/detail.tsx   (default_tax_treatment + hsn)
+  MOD src/modules/catalog/products/_wizard.tsx  (default_tax_treatment)
+  MOD src/modules/sales/invoice-editor.tsx      (is_export + readiness hint)
+  MOD src/i18n/en.json                          (+ labels)
+  MOD src/i18n/ar.json                          (+ labels)
+
+(NOT mine, pre-existing working-tree change — will NOT be staged:
+ .claude/skills/stockbolt/SKILL.md.)
+
+
+--------------------------------------------------------------------------------
+4. VERIFICATION
+--------------------------------------------------------------------------------
+  tsc --noEmit ......... 0 errors.
+  npm run build ........ GREEN (~26s).
+  npm run test:regressions → 104/104. The AC-4A tripwire now runs LIVE (phase58
+       applied) and PASSES: "phase58: classification columns + CHECKs exist
+       across the four tables" ✓ and "tax_treatment values stay in the allowed
+       set" ✓.
+  Browser: NOT done — the touched pages are auth-gated deep editors. Static
+       verification (types/build/regressions) is green; recommend an owner
+       eyeball after login (create/edit a product, a contact, an invoice).
+
+
+--------------------------------------------------------------------------------
+5. DESIGN NOTES / DELIBERATE CHOICES
+--------------------------------------------------------------------------------
+  • default_tax_treatment is a SEPARATE field from tax_category (which drives the
+    rate). It defaults to Auto (→ 'standard' at use) so existing behaviour is
+    unchanged; it only matters for reverse_charge / export / out_of_scope, which
+    tax_category can't express.
+  • Per-line tax_treatment override was intentionally NOT added to the invoice
+    line grid — the effective per-line treatment is DERIVED at e-invoice
+    generation time via resolveLineTreatment(product, invoice) from the product
+    default + the header is_export flag. A per-line override is a clean AC-4B/4D
+    enhancement, kept out of the app's most critical editor for now.
+  • invoice.place_of_supply_code is stored from the customer's place_of_supply on
+    save rather than a second per-invoice dropdown, to keep the header uncluttered.
+
+
+--------------------------------------------------------------------------------
+6. ROLLBACK
+--------------------------------------------------------------------------------
+Code only (no DB, no migration): revert the 8 files. Nothing to undo in the
+database — this increment writes to columns phase58 already added.
+
+
+--------------------------------------------------------------------------------
+7. WHAT'S NEXT (not in this increment)
+--------------------------------------------------------------------------------
+  AC-4B — canonical e-invoice model + toIndiaGstJson / toPintAeUbl formatters +
+          golden-fixture tests (consumes exactly these captured fields).
+  AC-4C — e_invoice_documents table + lifecycle RPCs.
+  AC-4D — per-invoice e-invoice status panel (natural home for a per-line
+          treatment override + the readiness hint's richer form).
+
+================================================================================
+END — awaiting review before commit. (Commit only on your go; will not push.)
+================================================================================

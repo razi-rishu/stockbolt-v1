@@ -1,0 +1,244 @@
+================================================================================
+StockBolt ERP — Audit Issue H2: Analysis Report (re-investigated from source)
+Concurrent-confirm double-post: the guard is a read-check, not a constraint
+================================================================================
+Date:   2026-07-19
+Type:   ANALYSIS ONLY — no code, migration, database, report, or API change made
+Verdict on the original audit: CORRECT IN SUBSTANCE, refined in three ways
+        (see "Refinements"). The defect is REAL but currently LATENT — zero
+        real documents have been double-posted in live data.
+================================================================================
+
+
+DID NOT ASSUME THE AUDIT — WHAT I VERIFIED LIVE + FROM SOURCE
+--------------------------------------------------------------------------------
+  * The live _guard_no_double_post body contains NO `FOR UPDATE` and no advisory
+    lock — it is a read-check (SELECT for an existing canonical JE).
+  * The only unique indexes on journal_entries are the primary key (id) and
+    (company_id, entry_number). There is NO unique index on
+    (company_id, source_type, source_id).
+  * The confirm RPCs (confirm_invoice, confirm_vendor_bill, confirm_pos_sale) do
+    a plain `SELECT ... INTO v_doc WHERE id = ...` (NO `FOR UPDATE`) and then
+    `IF v_doc.status <> 'draft' RAISE`. The status check is itself a TOCTOU read.
+    (Correction of an intermediate false positive: a `FOR UPDATE` string matched
+    inside confirm_vendor_bill's migration file belongs to a `CREATE POLICY ...
+    FOR UPDATE USING(...)` RLS clause — NOT a locking read. No confirm RPC locks
+    the document row.)
+  * EMPIRICAL: zero duplicate canonical JEs exist for real documents
+    (source_id IS NOT NULL, unreversed). Duplicates exist ONLY for source_type
+    'manual' (13) and 'opening_gl' (13), both with NULL source_id — which is
+    legitimate (these entries have no source document).
+  * The invoice editor UI disables the Save/confirm button while the mutation is
+    pending (disabled={saveMutation.isPending}) and gates the keyboard shortcut,
+    so a single user's double-click is largely prevented client-side.
+
+
+┌─ REFINEMENTS TO THE ORIGINAL AUDIT ──────────────────────────────────────────┐
+│ 1. LATENT, not active — verified 0 double-posted real documents live.        │
+│ 2. The residual race is NARROWER than "any double-click". The client         │
+│    button-disable closes the single-user single-tab vector. What remains:    │
+│    two browser tabs / two users on the same draft; a client retry after a    │
+│    timeout where the first call actually committed server-side; and (future) │
+│    the public API gaining an auto-confirm option.                            │
+│ 3. The audit's proposed unique index is subtly incomplete. It must be a      │
+│    PARTIAL index carrying `WHERE source_id IS NOT NULL`, or it conflates the  │
+│    legitimate multi-row manual/opening_gl entries. (Postgres treats NULLs as │
+│    distinct, so a bare index would not actually error on them, but the       │
+│    explicit predicate is correct and clearer.)                               │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+
+1. ROOT CAUSE
+--------------------------------------------------------------------------------
+  _guard_no_double_post (a BEFORE INSERT trigger on journal_entries) enforces
+  "one canonical JE per source document" using a READ:
+      SELECT entry_number ... FROM journal_entries
+       WHERE company_id = NEW.company_id AND source_type = NEW.source_type
+         AND source_id = NEW.source_id
+         AND reversal_of_id IS NULL AND reversed_by_id IS NULL
+         AND id <> NEW.id;
+  Under READ COMMITTED (the default), two concurrent confirm transactions cannot
+  see each other's uncommitted JE insert, so BOTH pass the guard and BOTH commit
+  -> two canonical JEs for one document. The confirm RPCs' `status = 'draft'`
+  check has the identical TOCTOU weakness (neither transaction sees the other's
+  uncommitted status update). A read-check is advisory; only a constraint is
+  atomic.
+
+
+2. CURRENT WORKFLOW
+--------------------------------------------------------------------------------
+  Confirm a document (invoice / bill / POS / CN / DN / expense / payment):
+    RPC reads the document (no lock) -> checks status='draft' -> inserts the
+    canonical journal_entry (guard trigger fires here, does its read-check) ->
+    inserts GL lines / stock rows -> updates the document to 'confirmed'.
+  The only backstop against a duplicate is the trigger's read-check. There is no
+  row lock and no unique constraint.
+
+
+3. WHY THIS ISSUE EXISTS
+--------------------------------------------------------------------------------
+  The guard was implemented as trigger logic (a query) rather than a database
+  constraint. A query-based check is correct under serial execution and in the
+  common single-user path (further protected by the UI button-disable), so the
+  race window was never observed. Enforcing uniqueness in application/trigger
+  logic instead of a constraint is the underlying cause.
+
+
+4. ALL AFFECTED FILES
+--------------------------------------------------------------------------------
+  Database (the fix surface — no src/ change needed):
+    supabase/migrations/...phase14_14o..._extend_double_post_guard.sql  (the guard)
+    supabase/migrations/...phase46_round_off.sql                        (confirm_invoice)
+    supabase/migrations/...phase47_itemized_landed_costs.sql            (confirm_vendor_bill)
+    supabase/migrations/...phase7_02_confirm_pos_sale.sql               (confirm_pos_sale)
+    ...and the other confirm RPCs (credit_note, debit_note, expense,
+       vendor_payment, customer_receipt, PDC) — all un-locked callers.
+  UI: src/modules/sales/invoice-editor.tsx already disables confirm while pending
+      (partial mitigation) — no change required for the fix.
+
+
+5. ALL AFFECTED DATABASE OBJECTS
+--------------------------------------------------------------------------------
+  * journal_entries (table) — missing the partial unique constraint.
+  * _guard_no_double_post (trigger + function) — the read-check to keep as the
+    friendly-error layer.
+  * Every confirm RPC listed above — the callers that do not lock the document.
+  * NO report/view/other object depends on this behaviour.
+
+
+6. ALL AFFECTED REPORTS
+--------------------------------------------------------------------------------
+  If the race fired, ANY GL-derived report would double-count the affected
+  document: Trial Balance, Balance Sheet, P&L, Cash Flow, VAT, AR/AP aging,
+  statements, inventory valuation. Currently NONE are affected (0 duplicates
+  live).
+
+
+7. ALL AFFECTED APIS
+--------------------------------------------------------------------------------
+  * Internal: the confirm RPCs.
+  * Public REST API (Edge Function): does NOT post/confirm (it creates DRAFT
+    invoices only), so it cannot currently trigger the race. A future auto-confirm
+    option would make the API a new trigger vector — an argument to fix H2 before
+    that feature ships.
+
+
+8. DEPENDENCIES
+--------------------------------------------------------------------------------
+  * Phase-1 fix (partial unique index): depends on there being NO pre-existing
+    real-document duplicates (a unique index build fails if any exist). VERIFIED:
+    zero exist, so the index will build cleanly.
+  * Phase-2 fix (row locks in confirm RPCs): must be generated from the LIVE
+    function definitions (they drift from migration files), per the project
+    workflow.
+  * A true concurrency regression test depends on a writable scratch DB (ties to
+    H4) to fire two simultaneous confirms.
+  * No dependency on the public API, reports, or any src/ code.
+
+
+9. BUSINESS IMPACT
+--------------------------------------------------------------------------------
+  Currently: ZERO (0 double-posted documents live).
+  If it fires: one document's revenue/AP, VAT, COGS and stock post TWICE,
+  overstating the books, the customer/vendor balance, and every affected report.
+  Because it is an accounting-integrity defect, the cost is trust and a possible
+  wrong tax filing — but the likelihood per event is low given the UI guard, and
+  the realistic triggers are two-tabs/two-users, a retry-after-timeout, or a
+  future API auto-confirm.
+
+
+10. ACCOUNTING IMPACT
+--------------------------------------------------------------------------------
+  A duplicate canonical JE double-posts every leg (AR/AP, revenue/expense, VAT,
+  COGS, inventory). Each JE still balances internally, so je_must_balance does
+  NOT catch it; the Trial Balance would still net to zero (both duplicated legs
+  scale equally), making the error INVISIBLE to the balance checks — the same
+  silent-wrongness signature as the other high-severity items. No existing posted
+  data is affected today.
+
+
+11. INVENTORY IMPACT
+--------------------------------------------------------------------------------
+  If the race fired on a stock document, the stock_ledger movement and COGS would
+  post twice, corrupting on-hand quantity, MAC and valuation for that product.
+  Not occurring today.
+
+
+12. RISK ASSESSMENT
+--------------------------------------------------------------------------------
+  Status quo: MEDIUM-HIGH (latent). Silent accounting corruption on a rare but
+      real concurrency event; probability rises with more users, more tabs, and
+      any future API auto-confirm.
+  Confidence it is not YET occurring: HIGH — 0 real-document duplicates live.
+  Risk of the Phase-1 fix (partial unique index): LOW. Additive, reversible,
+      no data change; the only failure mode (build fails on pre-existing dupes)
+      is already excluded by verification.
+  Risk of the Phase-2 fix (row locks): LOW-MEDIUM — touches ~7 posting RPCs, so
+      it needs the generate-from-live-def discipline and full regression.
+
+
+13. RECOMMENDED IMPLEMENTATION PLAN (for approval — NOT implemented)
+--------------------------------------------------------------------------------
+  PHASE 1 — Structural guarantee (small, decisive, recommended first):
+    Add a PARTIAL UNIQUE INDEX mirroring the guard's exact semantics, so a
+    duplicate canonical JE becomes structurally impossible regardless of
+    concurrency:
+
+      CREATE UNIQUE INDEX CONCURRENTLY journal_entries_one_canonical_per_source
+        ON public.journal_entries (company_id, source_type, source_id)
+        WHERE source_id IS NOT NULL
+          AND reversal_of_id IS NULL
+          AND reversed_by_id IS NULL;
+
+    Notes:
+      * `source_id IS NOT NULL` excludes the legitimate multi-row manual /
+        opening_gl entries.
+      * `reversal_of_id IS NULL AND reversed_by_id IS NULL` matches the trigger:
+        reversal mirrors are excluded, and a voided document (reversed_by_id set)
+        drops out of the index, so RE-CONFIRM after void still works.
+      * Keep _guard_no_double_post as the friendly error message; the index is
+        the actual guarantee.
+      * CONCURRENTLY cannot run inside a transaction block (own statement).
+      * Applied by hand per the migration workflow; verify no dupes first
+        (already confirmed: 0).
+
+  PHASE 2 — Optional hardening (larger, later):
+    Add `SELECT ... FOR UPDATE` on the document row at the top of each confirm
+    RPC so concurrent confirms serialize; the second then sees status='confirmed'
+    and aborts with a clean message rather than a raw unique-violation. Touches
+    ~7 RPCs; generate from live definitions.
+
+  Phase 1 alone closes the race. Phase 2 improves the error UX only.
+
+
+14. REGRESSION TESTS
+--------------------------------------------------------------------------------
+  * Assert the partial unique index exists on journal_entries.
+  * Invariant tripwire: assert 0 duplicate canonical JEs for real documents
+    (source_id IS NOT NULL, reversal_of_id IS NULL, reversed_by_id IS NULL).
+  * (If a writable test DB exists — H4) concurrency test: fire two simultaneous
+    confirms of one draft; assert exactly ONE canonical JE and a clean
+    unique-violation on the loser.
+  No change to existing posting regression tests (posting logic untouched by
+  Phase 1).
+
+
+15. ROLLBACK STRATEGY
+--------------------------------------------------------------------------------
+  * Phase 1: additive and reversible — `DROP INDEX journal_entries_one_canonical_
+    per_source;`. No data touched; the trigger remains as the fallback.
+  * Phase 2: each confirm RPC change is generated from the live def and can be
+    reverted by re-applying the prior live def (never an old migration file).
+  * No data is written by either phase, so rollback carries no reconciliation
+    risk in either direction.
+
+
+================================================================================
+STATUS: Analysis only. Re-investigated from source + live probes; the original
+audit's finding is confirmed (guard is a read-check, no lock, no unique
+constraint) and refined (latent — 0 live duplicates; UI partially mitigates;
+index must be partial with source_id IS NOT NULL). No code, migration, database,
+report, or API changed. Verified prerequisite: 0 existing real-document
+duplicates, so a unique index would build cleanly. Awaiting approval before any
+implementation. No other audit item started.
+================================================================================

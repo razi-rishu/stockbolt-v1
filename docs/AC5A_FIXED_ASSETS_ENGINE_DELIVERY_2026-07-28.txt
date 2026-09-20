@@ -1,0 +1,151 @@
+================================================================================
+StockBolt — AC-5A  Fixed assets + depreciation engine
+IMPLEMENTATION DELIVERY (stop-before-commit review package)
+Created: 2026-07-28
+================================================================================
+
+STATUS: Implemented + statically verified. NOT committed. Migration phase60 NOT
+applied (hand-apply pending). Sits on top of 873615f (AC-4D). This is a POSTING
+feature — read §5 (verification limits) carefully before trusting the GL output.
+
+
+--------------------------------------------------------------------------------
+1. WHAT THIS IS
+--------------------------------------------------------------------------------
+An asset register + a monthly depreciation engine that POSTS real journal
+entries, plus disposal. Straight-line + reducing-balance (WDV), monthly, pro-rata
+by days in the acquisition month, never below salvage.
+
+Posting REUSES the existing post_journal_entry() primitive (which enforces
+balance, period lock, JE numbering and audit) — so NO new GL-writing path is
+introduced. Dr 6750 Depreciation Expense / Cr 1790 Accumulated Depreciation per
+asset per month; disposal removes cost + accum-dep, books proceeds, and
+recognises 4250 Gain / 6910 Loss.
+
+
+--------------------------------------------------------------------------------
+2. FILES CHANGED (3 new, 5 modified)
+--------------------------------------------------------------------------------
+NEW  supabase/migrations/20260728000002_phase60_ac5a_fixed_assets.sql
+       • CoA seed + BACKFILL for every company: 1710/1720/1730/1740/1750 fixed-
+         asset categories + 1790 Accumulated Depreciation (asset/fixed),
+         6750 Depreciation Expense + 6910 Loss on Disposal (expense/indirect),
+         4250 Gain on Disposal (income/indirect). (4300 was taken — "Inventory
+         Gain" — so gain uses 4250.)
+       • fixed_assets table (register + running accumulated_depreciation +
+         status) with CHECKs (method, status, cost≥0, salvage≥0, salvage≤cost).
+         RLS: read by company; register CRUD gated by has_perm('accounting.write').
+       • depreciation_entries ledger (immutable; unique per asset+period;
+         reversible via reversed_at). RLS read-only; writes via RPC only.
+       • _fixed_asset_monthly_charge() — SQL charge helper mirroring the TS lib.
+       • run_depreciation(period_end) / dispose_fixed_asset(...) /
+         reverse_last_depreciation(asset) — SECURITY DEFINER, gated
+         accounting.write, all COMPOSE post_journal_entry.
+NEW  src/lib/depreciation.ts            Pure charge math (SL/WDV/pro-rata/salvage)
+       + projectSchedule() for the on-screen preview. Mirrors the SQL helper.
+NEW  tests/unit/depreciation.test.ts    8 unit tests.
+
+MOD  src/core/seeds/seedCOA.ts          Same 9 accounts for NEW companies.
+MOD  src/data/adapter.ts                FixedAssetsAPI + types; wired on root.
+MOD  src/data/supabaseAdapter.ts        fixedAssets impl (register CRUD via RLS;
+       runDepreciation/dispose/reverseLast via RPC; graceful pre-apply reads).
+MOD  src/data/selfHostedAdapter.ts      9 notImplemented stubs.
+MOD  tests/integration/regressions.test.ts  AC-5A tripwire (3 tests, soft-until-applied).
+
+
+--------------------------------------------------------------------------------
+3. THE ACCOUNTING (what posts)
+--------------------------------------------------------------------------------
+Monthly depreciation (per asset):  Dr 6750  /  Cr 1790  = period charge.
+Disposal:  Dr 1790 (accum to date) + Dr <proceeds acct> (proceeds)
+           Cr <asset acct> (cost)  +  Cr 4250 gain  OR  Dr 6910 loss  (to balance).
+Reversal (LIFO):  the opposite of the latest month's charge, at its voucher date.
+Every JE is balanced by construction and validated again by post_journal_entry.
+
+
+--------------------------------------------------------------------------------
+4. VERIFICATION (static)
+--------------------------------------------------------------------------------
+  tsc --noEmit ......... 0 errors.
+  npm run build ........ GREEN (~23s).
+  unit tests ........... 8/8 depreciation math (SL full/pro-rata, WDV, salvage
+       cap, not-in-service, full schedule).
+  npm run test:regressions → 110/110 (107 → 110). The 3 AC-5A tripwires soft-skip
+       ("⚠ AC-5A not applied yet"), as designed (phase60 not applied here).
+  npm run test:fixed-assets → correctly REFUSED (H4 P0 guard) against the
+       production target; 0 rows written; prod orphan check still 0 test users.
+
+
+--------------------------------------------------------------------------------
+5. VERIFICATION LIMITS — READ BEFORE TRUSTING THE GL  ⚠
+--------------------------------------------------------------------------------
+This posts to the ledger, and the plpgsql RPCs have NOT been executed against a
+database yet (phase60 is hand-applied by you). What IS proven today: the
+depreciation MATH (TS unit tests), the STRUCTURE (tripwire once applied), and —
+by design — that posting composes post_journal_entry (so balance/period-lock/
+numbering are inherited, not re-implemented). What is NOT yet proven: end-to-end
+posting on real data.
+
+AC-5A.2 (below) is the behavioural suite that closes that gap. It cannot run here
+because the only configured target is PRODUCTION and the suite mutates — the
+H4 P0 guard refuses (verified: all 8 mutating tests aborted at the guard, 0 rows
+written, confirmed by the prod orphan-artifact check still reporting 0
+@stockbolt.test users). Run it against staging, or a throwaway Supabase project,
+BEFORE using depreciation on a real company.
+
+
+--------------------------------------------------------------------------------
+5b. AC-5A.2 — BEHAVIOURAL SUITE (added; staging-gated)
+--------------------------------------------------------------------------------
+NEW  tests/integration/fixed-assets-verification.test.ts   (npm run test:fixed-assets)
+     Creates a scratch tenant, signs in as its owner, and drives the REAL
+     authenticated RPCs, asserting exact GL legs + verify_invariants (so the
+     Trial Balance is proven to still net to zero after every post):
+       F1  one SL month posts Dr 6750 / Cr 1790, moves the asset, TB balanced
+       F2  a later run catches up every missed month in one call
+       F3  re-running the same period posts nothing (idempotent)
+       F4  acquisition month pro-rated by days (16/31 → 516.13)
+       F5  salvage floor honoured; status → fully_depreciated; expense ≤ base
+       F6  WDV charges on the declining book value (100 then 99)
+       F7  disposal at a gain → Cr 4250; cost + accum removed from the books
+       F8  disposal at a loss → Dr 6910;  F8b disposed assets skipped later
+       F9  LIFO reversal rolls the month back, and it can be re-posted once
+       F10 depreciating into a locked period is rejected; nothing posted
+     Guarded by assertNotProductionTarget() (H4 P0) — refuses to run against
+     production. NOT wired into the pre-commit hook.
+MOD  package.json   + "test:fixed-assets" script.
+
+
+--------------------------------------------------------------------------------
+6. CONFIRMATIONS
+--------------------------------------------------------------------------------
+  • No existing posting RPC, table, or report was modified — purely additive.
+  • No new GL-writing path — depreciation/disposal/reversal all go through
+    post_journal_entry (asserted by the tripwire from pg_get_functiondef).
+  • Period lock respected (inherited from post_journal_entry).
+  • Idempotent: unique (asset, period) + an existence check skip re-runs.
+  • Existing suites unchanged/green.
+
+
+--------------------------------------------------------------------------------
+7. ROLLBACK
+--------------------------------------------------------------------------------
+Code: revert the 8 files. Database (only if applied): DROP the 3 RPCs + helper +
+depreciation_entries + fixed_assets (see the migration header). The seeded CoA
+accounts are harmless to leave.
+
+
+--------------------------------------------------------------------------------
+8. ON YOUR SIDE / WHAT'S NEXT
+--------------------------------------------------------------------------------
+  • Apply phase60 by hand → activates the tripwire + unblocks AC-5B (UI).
+  • Recommended: the behavioural check in §5 before real use.
+  • AC-5B — Fixed Assets UI (register list/form, run-depreciation, dispose,
+    schedule preview) under Accounting. AC-5C (optional) — Fixed Asset Register +
+    Depreciation Schedule reports; net book value on the Balance Sheet.
+  • Still pending from earlier: apply phase57 (AC-3) + phase60; push the unpushed
+    AC commits.
+
+================================================================================
+END — awaiting review before commit. (Commit only on your go; will not push.)
+================================================================================

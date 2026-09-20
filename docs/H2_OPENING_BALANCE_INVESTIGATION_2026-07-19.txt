@@ -1,0 +1,227 @@
+================================================================================
+StockBolt ERP — Audit Issue H2: Opening-Balance / Opening-Bank Lifecycle
+Read-only investigation to resolve the pre-implementation HALT
+================================================================================
+Audit cycle date: 2026-07-19   |   Investigation performed: 2026-07-22
+Type:  ANALYSIS ONLY — no code, migration, database, report, index, or API change.
+Scope: Answer the owner's 7 lifecycle questions, then recommend A vs B.
+Method: Read the LIVE function definitions (pg_get_functiondef) + live data, not
+        migration files. The earlier HALT was raised because a text heuristic on
+        post_opening_balance suggested it "inserts 4 JEs without reversing." This
+        investigation reads the ACTUAL bodies and RESOLVES that concern.
+================================================================================
+
+
+TL;DR
+--------------------------------------------------------------------------------
+  The earlier HALT was correctly cautious but is now RESOLVED. No legitimate code
+  path — document OR opening — creates more than one LIVE canonical journal entry
+  for the same (company_id, source_type, source_id). The opening workflows already
+  CONFORM to the one-live-canonical-per-source invariant; they just enforce it by
+  convention (fresh id / void-then-post) and, for opening_bank, by an explicit
+  in-RPC guard, rather than by a database constraint.
+
+  Consequence for the index decision:
+    * The SCOPED index (option A) is minimal, provably safe, and fully closes the
+      H2 concurrent-confirm race. RECOMMENDED for the H2 fix now.
+    * The UNSCOPED index that also covers openings is ALSO now proven safe — it
+      would NOT break any current opening flow — but it is broader than H2 needs
+      and is better shipped as a separate, independently-verified hardening step
+      (option B). NOT recommended to bundle into the H2 fix.
+
+
+================================================================================
+THE THREE OPENING PRODUCERS (read from live pg_get_functiondef)
+================================================================================
+
+  Function                      source_type      source_id            reused across
+                                                                       edits of same
+                                                                       entity?
+  ---------------------------------------------------------------------------------
+  post_opening_balance          opening_balance  FRESH invoice /       NO — a brand
+   (AR owed / AP owed /                           vendor_bill /        new UUID every
+    customer credit /                             payment id           call
+    vendor credit)
+  ---------------------------------------------------------------------------------
+  post_opening_stock            opening_balance  product_id           YES
+   (per-product opening stock)
+  ---------------------------------------------------------------------------------
+  post_bank_opening_balance     opening_bank     bank_account_id      YES  (guarded
+   (per-bank opening balance)                                          in-RPC — see
+                                                                       below)
+  ---------------------------------------------------------------------------------
+
+  NOTE: source_type 'opening_balance' is shared by TWO functions with different
+  source_id semantics (a document id vs a product id). They never collide because
+  an invoice/bill/payment UUID and a product UUID are disjoint values.
+
+
+--------------------------------------------------------------------------------
+1) post_opening_balance — WHY IT CANNOT DOUBLE-POST A source_id
+--------------------------------------------------------------------------------
+  The body is a single IF / ELSIF / ELSIF / ELSE over p_type:
+      'ar_owed'         -> INSERT INTO invoices     ... RETURNING id INTO v_doc_id
+      'ap_owed'         -> INSERT INTO vendor_bills ... RETURNING id INTO v_doc_id
+      'customer_credit' -> INSERT INTO payments     ... RETURNING id INTO v_doc_id
+      'vendor_credit'   -> INSERT INTO payments     ... RETURNING id INTO v_doc_id
+  Each branch then inserts EXACTLY ONE journal_entry with
+      source_type = 'opening_balance', source_id = v_doc_id.
+
+  * Only ONE branch executes per call (mutually exclusive).
+  * v_doc_id is a FRESH primary key returned by the just-inserted source document,
+    so it is UNIQUE to that call. Two calls can never yield the same v_doc_id.
+  => post_opening_balance structurally guarantees a unique source_id per opening,
+     so it can NEVER create two canonical opening_balance JEs sharing a source_id.
+     (The "4 inserts, no reverse" heuristic that triggered the HALT was reading the
+     four branch labels as four concurrent inserts. They are not.)
+
+
+--------------------------------------------------------------------------------
+2) post_opening_stock — CONFORMS VIA VOID-THEN-POST (no in-RPC guard)
+--------------------------------------------------------------------------------
+  Posts one opening_balance JE with source_id = product_id (REUSED across edits of
+  the same product). It has NO in-RPC "already exists" guard.
+
+  The edit flow in src/modules/settings/opening-balances.tsx calls TWO SEPARATE
+  RPCs in sequence — voidOpeningStock (L224) then postOpeningStock (L414) — i.e.
+  two separate transactions:
+      1. void: reverses the existing opening_balance JE for that product_id
+         (sets reversed_by_id on the original; inserts a mirror with reversal_of_id)
+         and commits.
+      2. post: inserts a fresh opening_balance JE for the same product_id.
+  Because the void commits first, at the moment of the new post the previous
+  canonical is already reversed (reversed_by_id set) and therefore OUTSIDE the
+  index predicate. Net: exactly one LIVE canonical per product_id.
+
+  Residual (named, not a blocker): with no in-RPC guard and two separate
+  transactions, nothing atomically prevents a post-without-void (e.g. a retry, or
+  posting opening stock for the same product from both the product wizard and the
+  Opening Balances screen). That would be a genuine duplicate-opening-stock bug —
+  which the index would (correctly) reject, but with a raw unique-violation rather
+  than a friendly message. Live data today: 0 such duplicates.
+
+
+--------------------------------------------------------------------------------
+3) post_bank_opening_balance — CONFORMS VIA AN EXPLICIT IN-RPC GUARD
+--------------------------------------------------------------------------------
+  Posts one opening_bank JE with source_id = bank_account_id (REUSED across edits).
+  It begins with a guard whose predicate is IDENTICAL to the proposed index:
+
+      IF EXISTS (SELECT 1 FROM public.journal_entries
+                  WHERE source_type   = 'opening_bank'
+                    AND source_id      = p_bank_account_id
+                    AND reversed_by_id IS NULL
+                    AND reversal_of_id IS NULL)
+      THEN RAISE EXCEPTION 'A bank opening balance already exists for "%".
+                            Void or edit the existing one ... instead of posting a
+                            second one.';
+
+  So a second live opening_bank for the same bank account is REFUSED in-RPC; the
+  user must void/edit the existing one first. Because this guard uses the same
+  predicate the index would enforce, the index can never reject anything this
+  function allows -> including opening_bank in the index is redundant-but-consistent
+  and CANNOT break it. (It also proves the one-live-per-source rule is INTENTIONAL.)
+
+
+================================================================================
+ANSWERS TO THE 7 QUESTIONS
+================================================================================
+
+1. Complete lifecycle of opening_balance
+   Two producers. post_opening_balance handles AR-owed / AP-owed / customer-credit
+   / vendor-credit: it creates a fresh is_opening invoice / vendor_bill / payment
+   and one canonical opening_balance JE keyed to that fresh document id.
+   post_opening_stock handles per-product opening stock: one canonical
+   opening_balance JE keyed to product_id. Editing voids the prior canonical
+   (reversed_by_id set on the original, a reversal mirror created) and posts a new
+   one — a fresh source doc for AR/AP/credit, the same product_id via separate
+   void-then-post RPCs for opening stock. At every committed moment there is
+   exactly one LIVE (unreversed, non-mirror) canonical per source_id.
+
+2. Complete lifecycle of opening_bank
+   One producer, post_bank_opening_balance, keyed to bank_account_id, protected by
+   an in-RPC IF-EXISTS guard that forbids a second live entry. Editing = void
+   (reverse) the existing, then post a new one. Exactly one live canonical per
+   bank_account_id, enforced in-RPC.
+
+3. Can users re-enter / edit opening balances after posting?
+   YES. Settings -> Opening Balances supports editing and voiding. AR/AP/credit
+   edits create a fresh source document (and thus a fresh source_id); opening-stock
+   and opening-bank edits reuse product_id / bank_account_id through void-then-post.
+   Live data shows "Edited on ..." reversal trails, confirming edits occur in
+   production.
+
+4. Intended business workflow
+   Opening balances are a ONE-TIME onboarding/migration figure per entity — per
+   customer/vendor (AR/AP/credit), per product (stock), per bank account (bank) —
+   captured when migrating from a prior system and OCCASIONALLY corrected via
+   void-then-re-post. There is never a legitimate reason for two simultaneous LIVE
+   openings for the same entity.
+
+5. Should there ever be >1 canonical unreversed JE for the same opening_balance
+   source_id?
+   NO. One opening figure per source. post_opening_balance guarantees this
+   structurally (fresh unique source_id per call); post_opening_stock relies on the
+   void-then-post workflow (no in-RPC guard, but 0 duplicates in live data).
+
+6. Should there ever be >1 canonical unreversed JE for the same opening_bank
+   source_id?
+   NO — and this is enforced EXPLICITLY in-RPC by post_bank_opening_balance's
+   IF-EXISTS guard, which is direct evidence the rule is intentional.
+
+7. Intentional business rule or implementation limitation?
+   The one-live-canonical-per-source_id INVARIANT is an INTENTIONAL business rule
+   (opening_bank codifies it in an explicit guard; the void-then-post UI pattern
+   encodes it for the others). What is an IMPLEMENTATION LIMITATION is the ABSENCE
+   of a database-level constraint enforcing that invariant for opening_balance /
+   opening_stock — the very same gap H2 identifies for documents. Current behavior
+   CONFORMS to the invariant; it simply is not structurally guaranteed for those
+   two the way opening_bank's in-RPC guard partially guarantees it.
+
+
+================================================================================
+RECOMMENDATION
+================================================================================
+
+  PRIMARY (for the H2 fix, now): OPTION A — scope the partial unique index to the
+  trigger's whitelisted document types.
+
+    Why A is the right H2 fix:
+      * The H2 defect is the concurrent-confirm double-post, which can only occur
+        on the whitelisted document confirmations (confirm_invoice, confirm_bill,
+        confirm_pos_sale, credit/debit note, expense, payments, ...). Opening
+        balances are single-user onboarding actions, not concurrent-confirm
+        targets — opening_bank even refuses a second live entry in-RPC. So openings
+        do not participate in the race and do not need index coverage to close it.
+      * A scoped index matches the trigger's semantics exactly, so it cannot reject
+        any insert the system already allows -> provably cannot break any edit /
+        void / repost flow that works today, including all three opening flows.
+      * inventory_cogs need not be in the whitelist: it is the paired leg of an
+        already-guarded confirm; the guard on sales_invoice aborts the whole
+        transaction first, so its canonical can never be duplicated on its own.
+
+  SECONDARY (separate, optional hardening later): OPTION B is now PROVEN SAFE too.
+    This investigation shows the UNSCOPED predicate would NOT break any opening
+    flow (post_opening_balance uses fresh unique source_ids; post_opening_stock and
+    post_bank_opening_balance conform via void-then-post, the latter guarded
+    in-RPC). So extending the index to opening_balance / opening_bank is a valid
+    future hardening that would give openings the same STRUCTURAL guarantee
+    documents get. If pursued, it is best shipped on its own and paired with adding
+    the missing in-RPC "already exists" guard to post_opening_stock, so a
+    post-without-void yields a friendly message instead of a raw unique-violation.
+
+  DO NOT bundle B into the H2 fix. H2's job is to close the concurrent-confirm
+  race with the minimum, provably-safe change; A does exactly that. B is a broader
+  invariant-hardening that deserves its own scope, approval, and verification.
+
+
+================================================================================
+STATUS
+--------------------------------------------------------------------------------
+  Read-only investigation. Earlier HALT RESOLVED: no legitimate path (document or
+  opening) creates more than one live canonical JE per (company, source_type,
+  source_id). Recommendation: implement OPTION A (whitelist-scoped index) for H2;
+  treat OPTION B (extend to openings + add the post_opening_stock guard) as a
+  separate future hardening. Nothing implemented. No code / DB / migration / index
+  / report / UI / test changed. Awaiting owner approval before any implementation.
+================================================================================

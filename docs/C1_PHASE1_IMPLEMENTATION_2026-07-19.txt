@@ -1,0 +1,126 @@
+================================================================================
+StockBolt ERP — Audit Issue C1, Phase 1: Implementation Result
+Revoke EXECUTE on public._regression_test_query(text) from PUBLIC/anon/authenticated
+================================================================================
+Date:     2026-07-19
+Scope:    Phase 1 ONLY — grant revoke. Function NOT dropped, body NOT modified,
+          service_role + postgres retained. No tests/src/app/business logic changed.
+Status:   STAGED (migration file created). NOT yet applied to the live database —
+          per the working agreement, the owner applies DDL by hand in the
+          Supabase SQL editor. I do not run DDL/DML against the live production DB.
+Dependency check: no unexpected dependency found (0 src/, 0 Edge Function; sole
+          consumer is the local regression suite, calling as service_role).
+================================================================================
+
+
+## FILES CHANGED
+--------------------------------------------------------------------------------
+  NEW:
+    supabase/migrations/20260719000001_phase51_c1_revoke_regression_helper_grants.sql
+        Contains only the REVOKE statement + a header comment.
+
+  NOT touched (verified): no src/, no tests/, no supabase/functions/, no existing
+  migration, no function body, no other database object.
+
+
+## DATABASE OBJECTS CHANGED
+--------------------------------------------------------------------------------
+  * public._regression_test_query(text) — its ACL (grant list) ONLY.
+      After apply: anon, authenticated, and any PUBLIC entry lose EXECUTE;
+      service_role and postgres retain EXECUTE.
+
+  * Function body, owner (postgres), signature, and volatility: UNCHANGED.
+
+  STATUS: PENDING the owner's apply. The migration file exists; the live DB is
+  unchanged until the SQL below is run.
+
+
+## EXACT SQL TO EXECUTE
+--------------------------------------------------------------------------------
+  Run in: Supabase dashboard -> SQL Editor -> New query -> paste -> Run.
+
+      REVOKE EXECUTE ON FUNCTION public._regression_test_query(text)
+        FROM PUBLIC, anon, authenticated;
+
+  Notes: idempotent (revoking a privilege not held is a no-op); grant-only —
+  touches no data, schema, or function body.
+
+
+## VERIFICATION RESULTS
+--------------------------------------------------------------------------------
+  DONE NOW (static — items 5-10):
+
+    5. No src/ affected .......... grep _regression_test_query src/ -> 0 matches   PASS
+    6. No Edge Function affected . not present in supabase/functions/ -> 0 matches PASS
+    7. No application workflow ... grant-only; no app code touched                 PASS
+    8. No accounting workflow .... no posting RPC / GL / JE logic touched          PASS
+    9. No inventory workflow ..... no stock / MAC / COGS logic touched             PASS
+   10. No reports affected ....... no report path or aggregation touched           PASS
+
+  BEFORE-STATE (live, captured this session):
+
+    _regression_test_query grantees: anon, authenticated, postgres, service_role
+
+  PENDING THE OWNER'S APPLY (items 1-4) — read-only checks to run immediately
+  after the REVOKE is applied:
+
+    1. service_role still executes ... call the function as service_role -> rows returned
+    2. anon denied ................... routine_privileges no longer lists 'anon'
+                                       (authoritative; cleaner than an exploit-shaped call)
+    3. authenticated denied .......... routine_privileges no longer lists 'authenticated'
+    4. Regression suite functional ... npm run test:regressions -> 91/91 pass
+                                       (runs as service_role, unaffected)
+
+  Verification query for #1-3 (owner or assistant runs after apply):
+
+      SELECT grantee, privilege_type FROM information_schema.routine_privileges
+      WHERE routine_name = '_regression_test_query' ORDER BY grantee;
+      -- healthy after apply: only postgres, service_role
+
+
+## REGRESSION CHECKS
+--------------------------------------------------------------------------------
+  * The suite calls the function EXCLUSIVELY as service_role, which keeps
+    EXECUTE -> no impact expected. `npm run test:regressions` to be run after
+    apply to confirm 91/91 green.
+  * The husky pre-commit gate (same suite, same auth) is likewise unaffected.
+
+
+## REMAINING RISKS
+--------------------------------------------------------------------------------
+  * Fragility (pre-existing, not introduced here): if the function is later
+    DROPped and re-CREATEd, Postgres re-grants EXECUTE to default roles and the
+    hole reopens. The Phase-2 tripwire test (assert grants stay service_role-only)
+    closes this — OUT OF SCOPE now (no test changes), noted for later approval.
+  * The arbitrary-SQL primitive still exists for service_role ("only as dangerous
+    as the service key" — confined to Vercel env / .env.local). Full removal is
+    Phase 2(b), gated on H4 (separate test DB) — NOT done here.
+  * Until the SQL is applied, the live breach remains open. The file alone changes
+    nothing on the live database.
+
+
+## ROLLBACK PLAN
+--------------------------------------------------------------------------------
+  * Nature: a GRANT change — no data, no schema, no body. Fully reversible, zero
+    data risk.
+  * Rollback command (should never be needed — no legitimate reason to restore
+    anon/authenticated access):
+
+        GRANT EXECUTE ON FUNCTION public._regression_test_query(text)
+          TO anon, authenticated;
+
+  * Why it won't be needed: the sole consumer runs as service_role, so the revoke
+    cannot break the suite. If the suite somehow failed after, INVESTIGATE — do
+    not roll back (the failure would not be caused by the revoke).
+  * Undo the file (if deciding not to apply at all): delete the new migration;
+    nothing else references it.
+
+
+================================================================================
+Phase 1 of C1 is staged and complete on the assistant side. It has NOT been
+applied to the live database. C2 and all other audit issues NOT started —
+stopped as instructed.
+
+NEXT: owner runs the one-line REVOKE in the SQL editor, then the read-only
+verification (items 1-4) is run to produce the after-apply evidence.
+================================================================================

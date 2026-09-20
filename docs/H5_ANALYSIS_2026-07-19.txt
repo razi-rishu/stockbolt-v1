@@ -1,0 +1,272 @@
+================================================================================
+StockBolt ERP — Audit Issue H5: Analysis Report (re-investigated from source)
+"No CI; the only gate is a locally bypassable pre-commit hook."
+================================================================================
+Audit cycle date: 2026-07-19   |   Investigation performed: 2026-07-23
+Type:   ANALYSIS ONLY — no code, migration, database, report, or API changed.
+        Evidence read from the live repo + config (read-only).
+Method: Read .github/, vercel.json, package.json scripts, tsconfig*, .husky/.
+        Did NOT assume the audit is correct.
+
+Convention: [VERIFIED] = read directly from the repo. [INFERENCE] = reasoned
+from verified facts (or standard platform behaviour that can't be read locally).
+================================================================================
+
+
+0. HEADLINE
+--------------------------------------------------------------------------------
+  The finding is REAL but the audit OVERSTATES it. There is genuinely no CI and
+  no automated TEST gate on deploy, and the local pre-commit hook is bypassable.
+  BUT the audit's claim "git push -> Vercel deploys with no typecheck/build/test
+  gate" is FACTUALLY WRONG on typecheck/build: vercel.json runs
+  `npm run build` = `tsc -b && vite build`, so every deploy runs a STRICT
+  TypeScript typecheck + a production build, and a failure BLOCKS the deploy.
+  So a broken build or a type error cannot reach production today. [VERIFIED]
+
+  The true, narrower gap: no automated TEST gate on deploy, no independent CI,
+  and the only thing that runs the tests (the local pre-commit hook) is
+  bypassable and machine-local. A change that COMPILES and BUILDS but is
+  functionally/accountingly wrong can deploy with no test having run. [VERIFIED]
+
+
+1. IS THE ORIGINAL AUDIT FINDING CORRECT?
+--------------------------------------------------------------------------------
+  PARTIALLY CORRECT. [VERIFIED]
+
+  Correct parts:
+   * No CI: `.github/workflows/` does not exist; no GitLab/CircleCI/Travis/Azure
+     config either. [VERIFIED — directory + file listing]
+   * The pre-commit hook is bypassable with `git commit --no-verify` (the hook
+     even documents the escape hatch) and only runs on the committer's machine.
+     [VERIFIED — .husky/pre-commit]
+   * No independent system validates a change before it can be pushed. [VERIFIED]
+
+  Incorrect / overstated parts:
+   * "no typecheck/build gate" is WRONG. vercel.json sets
+       "buildCommand": "npm run build"  and  build = "tsc -b && vite build".
+     `tsc -b` typechecks the root project (tsconfig.json: strict, noEmit,
+     include ["src","tests"]) plus its composite reference (tsconfig.node.json →
+     vite.config.ts). If typecheck fails, `&&` short-circuits, `npm run build`
+     exits non-zero, the Vercel build FAILS, and Vercel does not promote a failed
+     build. So typecheck + build ARE gated at deploy — just coupled to Vercel,
+     not a separate CI. [VERIFIED repo; INFERENCE that Vercel only promotes
+     successful builds — standard, unchangeable platform behaviour.]
+   * "the ONLY gate is the pre-commit hook" is therefore incomplete: there are
+     TWO gates — (a) the local pre-commit hook (tests, bypassable) and (b) the
+     Vercel build (typecheck + build, NOT bypassable for the deployed artifact).
+     The missing one is the TEST gate. [VERIFIED]
+
+  "…and was, once [bypassed]" — plausible but a historical claim not verifiable
+  from the current repo. [INFERENCE]
+
+
+2. ROOT CAUSE
+--------------------------------------------------------------------------------
+  [VERIFIED] The project deploys via Vercel's Git integration (push -> Vercel
+  builds with `npm run build` -> promotes on success). Test execution was placed
+  in a local husky pre-commit hook rather than in an automated pipeline, and no
+  `.github/workflows` was ever added. So the ONE automated, non-bypassable gate
+  (Vercel build) covers types + build but not tests, and the test gate lives only
+  where it can be skipped (`--no-verify`) and only runs if the committer has
+  network + the prod key (ties to H4).
+  [INFERENCE] This is a natural consequence of a solo developer + Vercel
+  autodeploy: the platform gives a build gate for free, so a separate CI felt
+  redundant — but that leaves tests ungated on the path to production.
+
+
+3. CURRENT WORKFLOW
+--------------------------------------------------------------------------------
+  [VERIFIED]
+   Commit:  `git commit` -> husky pre-commit runs `npm run test:regressions`
+            (92 read-only checks against prod). Blocks the commit on failure.
+            Bypassable with `--no-verify`. Local only. Does NOT run typecheck,
+            build, or lint. No pre-push hook exists (only pre-commit).
+   Push:    `git push` -> Vercel receives the event.
+   Deploy:  Vercel runs `npm run build` (= `tsc -b && vite build`). On success it
+            promotes the build; on failure it does not deploy. No vitest runs.
+   Net gates on the path to production:
+     * types + build: ENFORCED (Vercel build). [VERIFIED]
+     * tests:         NOT enforced automatically (only the bypassable local hook).
+     * lint:          NOT enforced anywhere (`npm run lint` is manual). [VERIFIED]
+
+
+4. WHY THE ISSUE EXISTS
+--------------------------------------------------------------------------------
+  [VERIFIED] No CI workflow file was authored, and the test step was wired into a
+  local hook. [INFERENCE] Building CI well needs a place to run the DB-touching
+  tests that is NOT production — i.e. it needs H4's staging environment. Without
+  staging, a test-running CI would have to hit prod (the exact H4 problem), so
+  the natural, safe CI (typecheck + build + lint, no DB) was simply never added,
+  and the richer test-in-CI was blocked. H5 is thus half-independent of H4 and
+  half-blocked by it.
+
+
+5. ALL AFFECTED FILES
+--------------------------------------------------------------------------------
+  * (absent) .github/workflows/ci.yml — the missing CI definition. [VERIFIED absent]
+  * vercel.json — the current (build-only) deploy gate; buildCommand npm run build.
+  * package.json — scripts: build (tsc -b && vite build), typecheck (tsc --noEmit),
+    lint (eslint .), test:regressions, test / test:phaseN.
+  * .husky/pre-commit — the local, bypassable test gate.
+  * tsconfig.json / tsconfig.node.json — strict typecheck config that `tsc -b`
+    enforces at build time.
+  No src/ application file is implicated — this is CI/CD process.
+
+
+6. ALL AFFECTED DATABASE OBJECTS
+--------------------------------------------------------------------------------
+  [VERIFIED] None. H5 introduces or changes no database object. (A future CI
+  TEST job would READ the DB, which is why it depends on H4's staging target —
+  see §9 — but H5 itself touches no DB object.)
+
+
+7. ALL AFFECTED REPORTS
+--------------------------------------------------------------------------------
+  [VERIFIED] None directly. [INFERENCE] Indirectly, a proper test gate protects
+  every GL-derived report from a regression reaching production unvalidated — but
+  no report code is read or changed by H5.
+
+
+8. ALL AFFECTED APIs
+--------------------------------------------------------------------------------
+  [VERIFIED] None. The public Edge Function API is not involved. (H5 is about the
+  pipeline that ships code, not any endpoint.)
+
+
+9. DEPENDENCIES
+--------------------------------------------------------------------------------
+  [VERIFIED / INFERENCE]
+   D1. The TEST job in CI depends on H4 (a non-prod target). Running
+       test:regressions in CI against PROD would re-create the H4 problem (and
+       needs the prod service key as a CI secret). So the test-in-CI portion is
+       BLOCKED by the deferred H4. [VERIFIED the coupling; INFERENCE on secret.]
+   D2. The typecheck + build + lint CI job depends on NOTHING external (no DB, no
+       secrets) and can be built now. [VERIFIED — those scripts need no DB.]
+   D3. "Deploy only on passing checks" depends on the repo host + Vercel Git
+       integration: it needs branch protection with required status checks, or
+       Vercel's Ignored-Build-Step / required-checks setting, so a red CI actually
+       prevents promotion. A GitHub Actions job running in parallel does NOT by
+       itself block a Vercel deploy unless wired this way. [INFERENCE — standard
+       platform behaviour; Vercel/branch settings are not readable from the repo.]
+   D4. `gh` CLI is not installed here, so remote branch-protection status could
+       not be verified. [VERIFIED gh absent → branch protection = UNKNOWN.]
+
+
+10. BUSINESS IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED gap / INFERENCE severity] A functionally- or accountingly-wrong
+  change that still compiles and builds can reach production with NO test having
+  run, because the only test gate is bypassable and local. For a system of record
+  holding customers' books, an un-gated regression is a silent-misstatement risk.
+  Mitigating context (why this is MEDIUM, not CRITICAL): the Vercel build already
+  blocks type/build breakage, and the owner runs the pre-commit suite in practice;
+  and this is a solo-developer repo, so the "un-reviewed change from another dev"
+  vector is limited. The real exposure is a skipped/forgotten local test run
+  shipping a logic regression. [INFERENCE.]
+
+
+11. ACCOUNTING IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED] H5 changes no posting/GL/accounting code, so zero direct accounting
+  impact. [INFERENCE] Its VALUE is indirect: an automated test gate is a primary
+  defence against an accounting regression (double-post, COGS/MAC drift) reaching
+  production unseen — the same class H2/E1 concern. H5 strengthens that defence;
+  it does not itself alter any number.
+
+
+12. INVENTORY IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED] None directly. [INFERENCE] Same as §11 — a test gate protects
+  inventory-valuation correctness indirectly; H5 changes no inventory logic.
+
+
+13. RISK ASSESSMENT
+--------------------------------------------------------------------------------
+  Status quo: MEDIUM (process). Types + build are gated (Vercel); tests are not
+    (bypassable local hook); lint is ungated. The concrete risk is a logic/
+    accounting regression shipping because the local suite was skipped or the
+    committer used --no-verify. [VERIFIED gates; INFERENCE severity.]
+  Likelihood: LOW-MEDIUM day to day (owner does run the suite), but unbounded on
+    any commit where the hook is skipped or a test that SHOULD exist doesn't yet
+    (the suite is mostly source-marker/invariant checks — see H4 — not behavioural).
+  Risk of the fix: LOW. A typecheck/build/lint CI is additive, reversible, needs
+    no secrets, and cannot affect production data. The only care items are D3
+    (wiring "deploy on passing checks" correctly) and D1 (not pointing a CI test
+    job at prod).
+
+
+14. RECOMMENDED IMPLEMENTATION PLAN  (for approval — NOT implemented)
+--------------------------------------------------------------------------------
+  Split by dependency, mirroring the H4 split:
+
+  NOW (staging-independent, buildable immediately):
+   1. Add `.github/workflows/ci.yml` triggered on pull_request + push, running:
+        npm ci  ->  npm run typecheck (tsc --noEmit)  ->  npm run build  ->  npm run lint
+      No DB, no secrets. WHY: gives an INDEPENDENT, pre-merge gate that fails
+      BEFORE deploy (not by failing the Vercel deploy), runs on PRs, and does not
+      depend on the owner remembering to run anything locally. It is partly
+      redundant with the Vercel build gate but adds: PR-time feedback, independence
+      from Vercel, and a required-status-check that can gate merges.
+   2. Configure "deploy only on passing checks" (D3): enable branch protection
+      with the CI job as a required status check, and/or Vercel's required-checks
+      / Ignored-Build-Step so a red CI blocks promotion. WHY: without this, CI is
+      advisory and Vercel still deploys. ASSUMPTION: repo is on GitHub and Vercel
+      is connected to it (implied by vercel.json + Vercel autodeploy) — confirm.
+
+  DEFERRED (blocked by H4 staging):
+   3. Add a `regressions` job to the same workflow that runs
+      `npm run test:regressions` against the STAGING project (staging keys as CI
+      secrets), NOT prod. WHY: this is the test gate that actually closes H5's core
+      gap; it needs H4's non-prod target to exist first (D1).
+
+  OPTIONAL (cheap local backstop):
+   4. A husky pre-push hook running typecheck (fast, no DB) as a local mirror of
+      CI. Still bypassable, so it's a convenience, not the gate.
+
+  For every recommendation the WHY is stated; the load-bearing ASSUMPTIONS are
+  (i) GitHub + Vercel Git integration, (ii) staging exists before the test job.
+  Neither is verified here (gh unavailable); confirm before building step 2/3.
+
+
+15. REGRESSION TESTS REQUIRED
+--------------------------------------------------------------------------------
+  [VERIFIED] H5 is process; it is not unit-testable. The enforceable "tests" are:
+   * the CI workflow itself IS the test harness (it runs typecheck/build/lint and,
+     later, the regression suite);
+   * optionally, a trivial check that `.github/workflows/ci.yml` exists and invokes
+     typecheck + build (guards against the file being deleted).
+  No change to the existing regression suite is needed.
+
+
+16. ROLLBACK STRATEGY
+--------------------------------------------------------------------------------
+  Fully additive/reversible, no data touched:
+   * Delete `.github/workflows/ci.yml` to remove CI.
+   * Revert the branch-protection / Vercel required-checks setting to restore the
+     prior push-to-deploy behaviour.
+   * Remove the optional pre-push hook.
+  No production schema or data is involved, so rollback carries zero risk.
+
+
+================================================================================
+## Verdict
+
+  AUDIT PARTIALLY CORRECT.
+
+  * Correct: there is no CI, no automated TEST gate on deploy, and the test step
+    lives only in a bypassable local pre-commit hook (no pre-push hook).
+  * Incorrect / overstated: the audit says the deploy has "no typecheck/build/test
+    gate." In fact vercel.json runs `npm run build` = `tsc -b && vite build`, so a
+    strict typecheck AND a production build ARE enforced at deploy and a failure
+    blocks promotion — only the TEST gate is missing.
+  * Implementation should therefore differ from the audit's one-liner: build the
+    staging-INDEPENDENT CI now (typecheck + build + lint + "deploy on passing
+    checks"), and DEFER the regression-test CI job to H4 (staging), on which it
+    depends. The typecheck/build half of the recommended fix is partly redundant
+    with the existing Vercel build gate (still worth it for PR-time, independent,
+    merge-blocking feedback).
+
+STATUS: Analysis only. No blocking unknown (branch-protection status is UNKNOWN —
+gh unavailable — but does not block the analysis). Nothing implemented. Awaiting
+owner approval before any implementation. No other audit item started.
+================================================================================

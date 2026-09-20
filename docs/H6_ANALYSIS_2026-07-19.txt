@@ -1,0 +1,296 @@
+================================================================================
+StockBolt ERP — Audit Issue H6: Analysis Report (re-investigated from source)
+No monitoring, alerting, or tested backup/DR.
+================================================================================
+Audit cycle date: 2026-07-19   |   Investigation performed: 2026-07-23
+Type:   ANALYSIS ONLY — no code, migration, database, report, or API changed.
+        Evidence read from the live repo (read-only).
+Method: Grepped for error-tracking deps + global handlers; read the
+        ErrorBoundary + Edge Function error path; searched for DR/backup/RPO/RTO
+        docs and any cron/uptime/monitoring config. Did NOT assume the audit is
+        correct.
+
+Convention: [VERIFIED] = read directly from the repo. [INFERENCE] = reasoned
+from verified facts, or platform behaviour not readable from the repo.
+================================================================================
+
+
+0. HEADLINE
+--------------------------------------------------------------------------------
+  The finding holds: there is no external error tracking, no alerting, no uptime
+  monitoring, and no documented/tested backup/DR. [VERIFIED] Two refinements:
+   * a React ErrorBoundary EXISTS (graceful fallback UI) but only console.errors
+     — its own comment says "In production you'd send this to an error-tracking
+     service (Sentry, etc.)". So users see a clean error page; the TEAM gets no
+     telemetry. [VERIFIED]
+   * the Edge Function's top-level catch SWALLOWS the exception (`catch (_e)`,
+     `_e` unused) — server errors are actively discarded, only the request row is
+     logged. That is slightly WORSE than "no monitoring". [VERIFIED]
+
+
+1. IS THE ORIGINAL AUDIT FINDING CORRECT?
+--------------------------------------------------------------------------------
+  CORRECT. [VERIFIED]
+
+  Evidence:
+   a. No error-tracking / APM dependency: grep of package.json for
+      sentry/datadog/bugsnag/rollbar/logrocket/opentelemetry/newrelic/pino/
+      winston/honeybadger -> NONE. [VERIFIED]
+   b. No external error reporting anywhere in src or supabase/functions: grep for
+      Sentry / captureException / datadog / bugsnag / rollbar -> NONE (only the
+      ErrorBoundary, which console.errors). [VERIFIED]
+   c. No global client error handler: no window.onerror and no
+      addEventListener('error'|'unhandledrejection') anywhere -> unhandled
+      promise rejections and non-React errors are invisible. [VERIFIED]
+   d. ErrorBoundary (src/components/error-boundary.tsx) componentDidCatch:
+      `console.error('[ErrorBoundary]', ...)` with a TODO to wire Sentry. Client
+      React errors land in the browser console only (lost unless devtools open).
+      [VERIFIED]
+   e. Edge Function (supabase/functions/api/index.ts): Deno.serve wraps a
+      try/catch at line 664 `} catch (_e) {` — the exception is UNUSED/discarded;
+      the code logs the REQUEST to api_request_log (metering) but not the error.
+      [VERIFIED]
+   f. No DR/backup/runbook doc: no docs/DISASTER_RECOVERY.md; a repo-wide grep for
+      "disaster recovery / RPO / RTO / point-in-time / PITR / restore drill /
+      backup strategy" finds only (i) the security-guardian skill noting the gap
+      ("Backups / DR — no verified restore, no documented RPO/RTO"), (ii) the
+      audit doc itself, and (iii) accounting "point-in-time" (Balance Sheet)
+      references. No actual DR content. [VERIFIED]
+   g. No uptime/alerting config: grep of .github + supabase for
+      schedule/cron/uptime/statuspage/pg_cron/healthcheck/pingdom/betteruptime ->
+      NONE. [VERIFIED]
+
+  Refinements the audit did not separate (see §0): the ErrorBoundary exists
+  (user-facing graceful failure) and the Edge catch actively swallows errors.
+  Neither changes the verdict — telemetry/alerting/DR are still absent.
+
+
+2. ROOT CAUSE
+--------------------------------------------------------------------------------
+  [VERIFIED] Observability and DR were never set up: no error-tracking SDK was
+  added to the app or the Edge Function, the ErrorBoundary's "send to Sentry" step
+  was left as a TODO, the Edge catch was written to fail soft (discard the error,
+  return a response) rather than report it, and no backup/restore runbook was
+  authored. [INFERENCE] For a solo-built product on managed platforms (Vercel +
+  Supabase), the platforms' own dashboards (Vercel logs, Supabase function logs,
+  automatic daily backups) create a false sense of coverage — they exist but are
+  ephemeral, un-alerted, and (for restore) unproven, so nothing surfaces a
+  production exception or guarantees recoverability.
+
+
+3. CURRENT WORKFLOW
+--------------------------------------------------------------------------------
+  [VERIFIED]
+   Client error: a React render error -> ErrorBoundary shows a fallback UI and
+     console.errors (no upload). A non-React error / unhandled rejection -> no
+     handler at all. The operator may see a broken screen; the team learns
+     nothing unless the operator reports it.
+   Server (Edge API) error: caught at the top level, the exception discarded, a
+     response returned; the request row goes to api_request_log. Supabase also
+     captures function console output in its platform logs (ephemeral, no alert).
+   DB failure / data loss: reliance on Supabase's managed backups; no documented
+     restore procedure, no tested drill, no stated RPO/RTO.
+   Uptime: nothing checks that the app or the API is up; an outage is discovered
+     by a customer.
+   Existing partial signals (NOT error tracking or alerting): api_request_log
+     (API request metering), audit_logs (in-app activity trail), webhook_logs
+     (PayPal webhook events). [VERIFIED these tables exist.]
+
+
+4. WHY THE ISSUE EXISTS
+--------------------------------------------------------------------------------
+  [VERIFIED] The building focus was features and correctness (the accounting
+  engine, RLS, the regression suite), not operations. Error tracking, alerting,
+  uptime checks, and a restore drill are cross-cutting operational concerns that
+  were deferred; the ErrorBoundary TODO and the fail-soft Edge catch are the
+  visible residue of that deferral. [INFERENCE] No enterprise/auditor review has
+  yet forced the DR runbook + RPO/RTO that such sign-off requires.
+
+
+5. ALL AFFECTED FILES
+--------------------------------------------------------------------------------
+  * package.json — no error-tracking/monitoring dependency. [VERIFIED]
+  * src/main.tsx — app entry; no Sentry.init and no global error/rejection
+    handler. [VERIFIED via grep — no such init anywhere in src]
+  * src/components/error-boundary.tsx — catches React errors, console-only, TODO
+    to wire a tracker. [VERIFIED]
+  * src/App.tsx — wraps the app in <ErrorBoundary>; no telemetry. [VERIFIED]
+  * supabase/functions/api/index.ts — top-level catch (line ~664) discards the
+    exception; logs the request to api_request_log only. [VERIFIED]
+  * vercel.json — no analytics/monitoring config. [VERIFIED]
+  * (absent) docs/DISASTER_RECOVERY.md — no DR runbook / RPO / RTO. [VERIFIED]
+  * (absent) any uptime/cron/statuspage config. [VERIFIED]
+  No accounting/inventory source file is implicated by the gap itself.
+
+
+6. ALL AFFECTED DATABASE OBJECTS
+--------------------------------------------------------------------------------
+  [VERIFIED] None require change. Relevant CONTEXT (existing, not error tracking):
+    * api_request_log — API request metering (could feed an error-rate signal).
+    * audit_logs — in-app activity trail (now append-only after H3).
+    * webhook_logs — PayPal webhook events.
+  A monitoring solution (Sentry/etc.) is EXTERNAL and needs no schema change. A DR
+  plan concerns the whole database's backup/restore, not a specific object.
+
+
+7. ALL AFFECTED REPORTS
+--------------------------------------------------------------------------------
+  [VERIFIED] None. Monitoring/DR is orthogonal to report logic. [INFERENCE] Its
+  value is protective: catching an error that corrupts GL/inventory data before a
+  customer notices protects every report's integrity — but no report is changed.
+
+
+8. ALL AFFECTED APIs
+--------------------------------------------------------------------------------
+  [VERIFIED] The public Edge Function API is the main SERVER surface that needs
+  error tracking (its exceptions are currently swallowed). `/v1/me` exists
+  (index.ts:634) — a lightweight "key check, no data" endpoint the audit proposes
+  as an uptime target; NOTE it is API-KEY-GATED, so an uptime monitor needs a
+  dedicated key (or should instead hit the public app URL / a new unauthenticated
+  health route). [VERIFIED /v1/me exists + is auth-gated.]
+
+
+9. DEPENDENCIES
+--------------------------------------------------------------------------------
+  [VERIFIED / INFERENCE]
+   D1. Error tracking (Sentry/etc.) is a NEW external dependency + DSN secret for
+       both the app (browser) and the Edge Function (Deno) — additive, no DB. It
+       also intersects M1 (CSP): a strict CSP must allow the Sentry ingest origin.
+       [INFERENCE — CSP is a separate Medium item.]
+   D2. Uptime monitoring is an external service; monitoring `/v1/me` needs an API
+       key (D8-style auth), or add a public health endpoint. [VERIFIED auth-gate.]
+   D3. Backup/DR: Supabase provides automatic daily backups on all plans;
+       point-in-time recovery (PITR) is a PAID add-on (Pro plan). "Confirm PITR"
+       may actually mean ENABLE PITR (a cost decision), then run a restore drill.
+       This is not readable from the repo — it is a dashboard/plan fact. [INFERENCE]
+   D4. No ordering dependency on other audit items. H6 is independent (it does not
+       need H4 staging or H5 CI), though a restore drill is safest performed
+       against a NON-production project (ties loosely to H4). [INFERENCE]
+  No blocking unknown was found. The only decision points are cost/plan (PITR) and
+  the uptime target (auth-gated /v1/me vs a public health route).
+
+
+10. BUSINESS IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED gap / INFERENCE severity] Production exceptions are known only when a
+  customer reports them (client errors console-only; server errors swallowed;
+  no alerts). An outage is discovered by customers, not by the team. Most
+  seriously for a system of record: "we can restore the books" is UNPROVEN — no
+  documented procedure, no tested drill, no stated RPO/RTO — so a data-loss event
+  (accidental delete, corruption, region incident) has an unknown and unrehearsed
+  recovery path. This blocks enterprise/auditor sign-off and is a trust/continuity
+  risk, even though it does not by itself corrupt any current data. [INFERENCE.]
+
+
+11. ACCOUNTING IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED] H6 changes no posting/GL code; zero direct accounting impact.
+  [INFERENCE] Indirectly large: without error tracking, an exception that
+  produces a wrong or missing posting can run unnoticed (the same silent-
+  wrongness class as H2/E1); without a proven restore, a corruption event to the
+  ledgers may be unrecoverable to a known-good point. Monitoring + DR are
+  protective controls for accounting integrity, not changes to it.
+
+
+12. INVENTORY IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED] None direct. [INFERENCE] Same shape as §11 — a swallowed error in a
+  stock-affecting path (confirm/adjust/transfer) could corrupt MAC/on-hand
+  unnoticed, and an unproven restore leaves no rehearsed recovery. Protective, not
+  corrective.
+
+
+13. RISK ASSESSMENT
+--------------------------------------------------------------------------------
+  Status quo: MEDIUM-HIGH (operational). Blind to production errors (client
+    console-only, server swallowed), blind to outages (no uptime check), and
+    unproven on recovery (no tested/documented DR). Likelihood of an
+    unnoticed-error or unrehearsed-recovery event rises with customer count.
+    [VERIFIED gaps; INFERENCE severity.]
+  The DR leg is the highest-severity part: for a book of record, an
+    untested restore is an existential continuity risk. [INFERENCE.]
+  Risk of the fix: LOW and mostly additive/external. Adding Sentry, an uptime
+    monitor, and a DR runbook changes no business logic; the restore DRILL should
+    be run against a NON-production copy to avoid touching live data; enabling
+    PITR is a cost, not a risk.
+
+
+14. RECOMMENDED IMPLEMENTATION PLAN  (for approval — NOT implemented)
+--------------------------------------------------------------------------------
+  The audit's fix is sound; sequence it and fold in the two refinements:
+
+  A. Error tracking (app + Edge):
+     1. Add an error-tracking SDK (e.g. Sentry) to the browser app: init in
+        main.tsx; wire ErrorBoundary.componentDidCatch to report (replacing the
+        console-only TODO); add a global unhandledrejection/error handler.
+     2. Add error reporting to the Edge Function and STOP swallowing: capture the
+        currently-discarded `_e` (report + log) before returning the 500.
+     WHY: makes production exceptions visible to the team, on both surfaces.
+     DEP: a DSN secret; CSP (M1) must allow the ingest origin.
+
+  B. Uptime monitoring:
+     3. Add an external uptime monitor on the app URL and an API health target.
+        Because /v1/me is API-key-gated, either provision a dedicated monitoring
+        key or add a small UNAUTHENTICATED health route. WHY: detect outages
+        before customers do.
+
+  C. Backup / DR (the highest-value leg):
+     4. Confirm/ENABLE Supabase backups + PITR (a plan/cost decision — verify the
+        current plan first).
+     5. Perform a RESTORE DRILL against a NON-production project and DOCUMENT it
+        in docs/DISASTER_RECOVERY.md with stated RPO/RTO and step-by-step restore.
+     WHY: turns "we can restore" from a hope into a tested, written procedure —
+     the thing enterprise/auditor sign-off requires.
+
+  For each item the WHY is stated; the load-bearing ASSUMPTIONS are (i) the
+  Supabase plan supports PITR (or a cost is accepted), (ii) a non-prod project
+  exists for the drill (or one is created), (iii) a Sentry-class service is
+  acceptable. None are verified here — confirm before implementing.
+
+
+15. REGRESSION TESTS REQUIRED
+--------------------------------------------------------------------------------
+  [VERIFIED] H6 is largely process/infra, not unit-testable. Enforceable checks:
+   * A test/lint asserting the Edge Function no longer swallows `_e` (it is
+     reported/logged) — locks refinement (A2).
+   * (Optional) a smoke test that the error-tracking init is present in main.tsx.
+   * The DR drill's proof is the documented runbook + a dated drill record, not a
+     unit test.
+  No change to the existing DB regression suite is needed.
+
+
+16. ROLLBACK STRATEGY
+--------------------------------------------------------------------------------
+  Additive/reversible, no customer data touched:
+   * Error tracking: remove the SDK + init (revert files); delete the DSN secret.
+   * Uptime monitor: delete the monitor / health route.
+   * DR: the runbook is documentation (safe); enabling PITR is reversible via the
+     Supabase dashboard; the restore DRILL must be run on a NON-prod copy so it
+     never touches production.
+  No production schema or data is changed by implementing H6 (the restore drill
+  explicitly targets a non-prod copy), so rollback carries no data risk.
+
+
+================================================================================
+## Verdict
+
+  AUDIT CORRECT.
+
+  * Verified: no error-tracking dependency, no external error reporting, no global
+    client error handler, no alerting, no uptime monitoring, and no documented or
+    tested backup/DR (no DISASTER_RECOVERY.md, no RPO/RTO, no restore drill).
+  * Refinements (which reinforce, not contradict, the finding): a React
+    ErrorBoundary exists but only console.errors (team gets no telemetry), and the
+    Edge Function's top-level catch actively SWALLOWS the exception (`_e` unused) —
+    so server errors are discarded, not merely unmonitored.
+  * The recommended fix (Sentry on app + Edge; confirm/enable PITR; documented
+    restore drill with RPO/RTO; uptime monitoring on the app and /v1/me) is
+    appropriate. Implementation should fold in two specifics the high-level fix
+    implies: stop swallowing the Edge `_e`, and note /v1/me is auth-gated (needs a
+    monitoring key or a public health route) — enhancements to the same plan, not
+    a different one.
+
+STATUS: Analysis only. No blocking unknown (PITR plan status and the uptime
+target are decision points, not blockers). Nothing implemented. Awaiting owner
+approval before any implementation. No other audit item started.
+================================================================================

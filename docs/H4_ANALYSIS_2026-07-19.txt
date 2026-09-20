@@ -1,0 +1,337 @@
+================================================================================
+StockBolt ERP — Audit Issue H4: Analysis Report (re-investigated from source)
+No environment separation: the test harness targets the PRODUCTION database.
+================================================================================
+Audit cycle date: 2026-07-19   |   Investigation performed: 2026-07-23
+Type:   ANALYSIS ONLY — no code, migration, database, report, or API changed.
+        Evidence is read from the live repo + live database (read-only).
+Method: Read package.json, .husky/pre-commit, the test files, env files,
+        supabase/config.toml, and checked for CI + a second Supabase project.
+
+Convention: [VERIFIED] = read directly from repo/live DB. [INFERENCE] = reasoned
+from verified facts.
+================================================================================
+
+
+0. HEADLINE
+--------------------------------------------------------------------------------
+  The finding is CORRECT: there is exactly one environment, and it is production.
+  The test harness (pre-commit and full suite) runs against the live customer
+  database via keys in .env.local; there is no staging/dev project. [VERIFIED]
+
+  Two refinements the audit's phrasing blurs, both material to the fix:
+   * The PRE-COMMIT suite (test:regressions) is READ-ONLY — it makes function-
+     source reads and live-data-invariant SELECTs with the service-role key. It
+     does not mutate. [VERIFIED]
+   * The MUTATING tests are the phase0-12 suites run by `npm test` (not the
+     hook): they CREATE a real auth user + company on prod and hard-delete them
+     in afterAll. [VERIFIED]
+
+  The one-line recommended fix ("point .env.local + CI at a staging project")
+  is directionally right but INCOMPLETE: roughly half the current suite is
+  live-DATA-integrity invariants that derive their value from real production
+  data. Repointing them at an empty staging DB makes them trivially pass and
+  stops them catching prod corruption. So the suite must be SPLIT, not merely
+  repointed. [INFERENCE — see §14.]
+
+
+1. IS THE ORIGINAL AUDIT FINDING CORRECT?
+--------------------------------------------------------------------------------
+  YES — CORRECT (with refinements). [VERIFIED]
+
+  Evidence:
+   a. Only two env files exist: `.env.example` (a template) and `.env.local`
+      (the single real config). There is NO `.env.test`, `.env.staging`, or
+      `.env.development`. [VERIFIED — directory listing]
+   b. `.env.local` points at the production project and carries BOTH the anon
+      key and the service-role key:
+        VITE_SUPABASE_URL            = https://gzpkuaioibqrdppjdbwz.supabase.co
+        VITE_SUPABASE_PUBLISHABLE_KEY (anon)
+        SUPABASE_SECRET_KEY          (service_role)
+      [VERIFIED — same prod ref used to verify C1/H2/H3.]
+   c. `.husky/pre-commit` runs `npm run test:regressions` on every commit;
+      `test:regressions` = `vitest run tests/integration/regressions.test.ts`.
+      [VERIFIED — package.json + hook.]
+   d. regressions.test.ts loads `.env.local`, builds a service-role client, and
+      runs everything through the `_regression_test_query` helper on prod.
+      [VERIFIED]
+   e. `npm test` = `vitest run` = ALL test files, including phase0-12, which
+      mutate prod (see §3). [VERIFIED]
+   f. No `.github/workflows` directory — there is no CI. [VERIFIED]
+   g. `supabase/config.toml` exists with LOCAL ports (54321/54322…), i.e. it is
+      the `supabase start` local-dev config — but the test harness reads
+      `.env.local` (hosted prod), so the local stack is not what the tests hit.
+      [VERIFIED config; INFERENCE that local stack is unused by the suite.]
+
+  REFINEMENTS to the audit's wording:
+   R1. "Every test run touches customer data" — TRUE that the pre-commit suite
+       READS prod customer data (service-role, RLS-bypassing SELECTs); it does
+       NOT modify it. The audit implies mutation risk from the hook; the hook is
+       read-only. The mutation risk lives in `npm test`'s phase suites. [VERIFIED]
+   R2. The recommended fix is incomplete (see §0 / §14).
+
+
+2. ROOT CAUSE
+--------------------------------------------------------------------------------
+  [VERIFIED] The project was built with a single Supabase project and no
+  dev/test environment. Because there is nowhere else to run, the test harness
+  was pointed at production via `.env.local`, and the pre-commit hook + the
+  phase suites inherited that target. The service-role key sits in `.env.local`
+  so tests can inspect/seed across tenants (RLS-bypassing).
+
+  [INFERENCE] This single-environment design is the upstream cause of C1: the
+  `_regression_test_query` SECURITY DEFINER helper had to be installed ON PROD so
+  the suite could run ad-hoc SQL there. With a staging DB, that helper would live
+  off-prod and C1 could not have reached customers. The audit's "root cause
+  behind C1" claim is therefore well-supported.
+
+
+3. CURRENT WORKFLOW
+--------------------------------------------------------------------------------
+  Two distinct test paths, different blast radius: [VERIFIED]
+
+  PATH A — pre-commit (runs automatically on `git commit`):
+    `npm run test:regressions` -> regressions.test.ts (91 tests).
+    beforeAll: probes `SELECT 1 AS ok` through the helper; if the helper is
+      missing, THROWS with a manual-install instruction. The `installSql`
+      string (with CREATE OR REPLACE + REVOKE/GRANT) is used ONLY as the text of
+      that error message — it is NOT executed by the suite. [VERIFIED]
+    Tests: (1) function-source assertions — `pg_get_functiondef(...)` reads that
+      a fix's textual marker is still present; (2) live-data invariants —
+      SELECTs over real tenant data asserting properties (e.g. one active JE per
+      confirmed invoice, TB nets to zero, stock ties to GL). All READS. [VERIFIED]
+    Net: read-only against prod; needs internet + the prod service key.
+
+  PATH B — `npm test` / `npm run test:phaseN` (manual, NOT in the hook):
+    Runs phase0-12 verification suites. phase0/1/2 (at least) are
+    setup-mutate-assert: create a pre-confirmed auth user + a tagged company
+    (TAG = Date.now()) via the service-role admin client and the real onboarding
+    code, assert seeded rows, then afterAll HARD-DELETE the company + profile and
+    admin.deleteUser the user. [VERIFIED — createUser/onboarding + afterAll
+    `companies.delete()` / `profiles.delete()` / `auth.admin.deleteUser`.]
+    Net: WRITES to prod (isolated tagged company), cleaned up on success.
+
+
+4. WHY THE ISSUE EXISTS
+--------------------------------------------------------------------------------
+  [VERIFIED] No second Supabase project was ever provisioned; a second project
+  means a second set of keys, applying every migration to it for schema parity,
+  seeding data, and maintaining it — none of which was done. The path of least
+  resistance was to reuse prod for tests, and the pre-commit hook cemented it.
+
+  [INFERENCE] The invariant-style tests were specifically SHAPED around having
+  only prod: the file header states they are "NOT setup-mutate-assert" precisely
+  because "the test harness has only the service key… without a test user + RLS
+  context." In other words, the read-only invariant design is a workaround for
+  the missing environment — which is why fixing H4 also changes what the suite
+  can be (it unlocks behavioural tests).
+
+
+5. ALL AFFECTED FILES
+--------------------------------------------------------------------------------
+  * .env.local                         — the single (prod) env the harness reads. [VERIFIED]
+  * .env.example                       — template documenting the keys (no env of its own).
+  * .husky/pre-commit                  — runs test:regressions on every commit. [VERIFIED]
+  * package.json                       — `test`, `test:regressions`, `test:phaseN` scripts. [VERIFIED]
+  * vitest.config.ts                   — vitest config (no env separation logic).
+  * tests/integration/regressions.test.ts        — read-only prod suite. [VERIFIED]
+  * tests/integration/phase0-rls.test.ts          — mutating (create+delete). [VERIFIED]
+  * tests/integration/phase1-verification.test.ts — mutating. [VERIFIED]
+  * tests/integration/phase2-verification.test.ts — mutating. [VERIFIED]
+  * tests/integration/phase3-12…                  — likely mutating (same shape). [INFERENCE]
+  * (absent) .github/workflows/ci.yml  — no CI to point at staging yet. [VERIFIED]
+  No src/ application file is implicated — this is a harness/infra concern.
+
+
+6. ALL AFFECTED DATABASE OBJECTS
+--------------------------------------------------------------------------------
+  * public._regression_test_query (SECURITY DEFINER helper) — exists on prod
+    solely to serve the suite; C1 already revoked its non-service grants. Its
+    presence on prod is a direct consequence of H4. [VERIFIED]
+  * Every table the invariant SELECTs read (journal_entries, general_ledger,
+    invoices, vendor_bills, stock_ledger, payments, chart_of_accounts, …) —
+    read-only, no change. [VERIFIED]
+  * companies / profiles / auth.users — WRITTEN (create + hard delete) by the
+    phase suites on prod. [VERIFIED]
+  * No schema change is proposed by H4; the fix is environmental.
+
+
+7. ALL AFFECTED REPORTS
+--------------------------------------------------------------------------------
+  [VERIFIED] None. H4 is a test-environment/process issue; no report reads or
+  writes anything as a result of it. Reports are unaffected either way.
+
+
+8. ALL AFFECTED APIs
+--------------------------------------------------------------------------------
+  [VERIFIED] The public Edge Function API is not involved. The only "API"-shaped
+  object in scope is the internal `_regression_test_query` RPC (see §6). The app
+  runtime correctly targets prod (that is expected for the deployed app); H4 is
+  about DEV/TEST sharing that prod target, not the app.
+
+
+9. DEPENDENCIES
+--------------------------------------------------------------------------------
+  [VERIFIED / INFERENCE] The fix is entangled with several items — this is the
+  area to weigh carefully before implementing:
+   D1. C1 (helper on prod): standing up staging lets behavioural tests run
+       off-prod, after which `_regression_test_query` can be DROPPED from prod
+       (fully closing C1) — UNLESS a prod-side read-only invariant monitor keeps
+       needing it. [INFERENCE]
+   D2. The live-data INVARIANT tests depend on PROD DATA. They cannot simply move
+       to an empty staging DB or they stop catching real corruption. They must be
+       split off as a separate prod-side read-only monitor. THIS IS THE KEY
+       DEPENDENCY the audit's one-liner omits. [INFERENCE, strongly supported by
+       the test file's own design.]
+   D3. H5 (CI): there is no CI yet; "point CI at staging" presupposes building CI
+       first. [VERIFIED no workflows.]
+   D4. Staging needs SCHEMA PARITY — every migration applied, in order, by hand
+       (the project has no automated migration runner). Non-trivial for a solo
+       beginner owner. [INFERENCE]
+   D5. Seed data: behavioural accounting tests need a seeded staging tenant;
+       inventory/COGS numeric tests need stock history. Someone must create it.
+       [INFERENCE]
+  No blocking "unknown" was found — but D2 and D4 mean the audit's fix is a
+  multi-step programme, not a config edit. Flagged, not hidden.
+
+
+10. BUSINESS IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED exposure / INFERENCE severity]
+   * Confidentiality/operational: the prod service-role key lives in a developer
+     `.env.local` and is used routinely by tests — broad blast radius if that
+     file leaks or a test is miswritten. Hard DELETEs run against prod in the
+     phase suites. [VERIFIED the deletes; INFERENCE the risk.]
+   * Reliability: the pre-commit gate needs internet + prod availability; prod
+     load or an outage blocks commits. [VERIFIED the dependency.]
+   * Quality: with no writable isolated DB, behavioural/numeric accounting tests
+     cannot exist, so whole bug classes (sell-before-buy COGS understatement, the
+     E1 valuation drift) can only be caught by hand — which is how the drift went
+     unnoticed. This is the audit's strongest point and it holds. [INFERENCE.]
+   * Residue: if a phase test crashes before afterAll, an orphan test company +
+     user + its seeded rows remain on prod (and count against tenant totals).
+     [INFERENCE from best-effort cleanup, incl. `.catch(()=>undefined)`.]
+
+
+11. ACCOUNTING IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED] No direct accounting-math impact today: the pre-commit suite only
+  reads, and the phase suites create/delete their OWN isolated company, not real
+  tenants' books. [INFERENCE] The indirect impact is large: the absence of a
+  test environment is why numeric accounting correctness is under-tested, so
+  silent-misstatement bugs (COGS/MAC/GL) are more likely to reach production
+  unseen. Fixing H4 is a prerequisite for behavioural accounting tests.
+
+
+12. INVENTORY IMPACT
+--------------------------------------------------------------------------------
+  [VERIFIED] None directly. [INFERENCE] Same shape as §11: inventory numeric
+  tests (MAC recomputation, deferred-COGS flush, negative-stock behaviour) need a
+  writable seeded DB; without staging they remain source-marker/invariant checks
+  only, not true behavioural tests. H4 blocks that.
+
+
+13. RISK ASSESSMENT
+--------------------------------------------------------------------------------
+  Status quo: MEDIUM-HIGH (process). The concrete live risks are: prod
+    service-role key in routine test use; hard DELETEs against prod in the phase
+    suites; the C1-class helper forced onto prod; commit gate coupled to prod
+    availability; and the untestability of numeric accounting correctness.
+    [VERIFIED facts; INFERENCE severity.]
+  Likelihood of acute damage: LOW day-to-day (pre-commit is read-only; phase
+    suites are isolated + cleaned up), but the TAIL risk (a miswritten mutating
+    test, a leaked key, an orphaned tenant) is real and unbounded.
+  Risk of the fix itself: LOW-MEDIUM and mostly EFFORT, not danger — provisioning
+    staging is additive and reversible; the trap is doing it wrong (repointing the
+    invariant tests and silently losing prod-integrity coverage — D2).
+
+
+14. RECOMMENDED IMPLEMENTATION PLAN  (for approval — NOT implemented)
+--------------------------------------------------------------------------------
+  The audit's direction is right; the plan must be staged and must SPLIT the
+  suite rather than blindly repoint it. Proposed programme:
+
+  Step 1 — Provision a separate Supabase project (e.g. "stockbolt-staging").
+     Owner task (beginner-friendly, step-by-step). Free tier is fine for a test
+     DB. WHY: gives a place to mutate without touching customer data.
+  Step 2 — Achieve schema parity: apply every migration, in order, to staging.
+     WHY: behavioural tests need the same functions/tables as prod. ASSUMPTION:
+     migrations are clean-runnable start-to-finish (they are additive) — confirm.
+  Step 3 — Add `.env.test` pointing at staging; make the test harness read it
+     (not `.env.local`). Keep `.env.local` for local app dev only. WHY: the app
+     and the tests should not share a target.
+  Step 4 — SPLIT the suite (the key correction, D2):
+     4a. Function-source + BEHAVIOURAL (setup-mutate-assert) tests -> run against
+         STAGING. This is where new numeric accounting/inventory tests belong.
+     4b. Live-DATA-integrity INVARIANTS -> keep them pointed at PROD but reframe
+         them as a SEPARATE, explicitly read-only "prod integrity monitor" (run
+         on demand / scheduled), NOT the developer pre-commit gate. WHY: their
+         value IS the prod data; moving them to empty staging neuters them.
+  Step 5 — Repoint the pre-commit hook to the staging-safe checks (typecheck +
+     build + function-source/behavioural tests on staging). WHY: fast, no prod
+     dependency, no prod key needed to commit.
+  Step 6 — Once behavioural tests live on staging, DROP `_regression_test_query`
+     from prod to fully close C1 — OR, if the prod integrity monitor keeps using
+     it, leave it (already service-role-only from C1) and document that.
+  Step 7 — Keep prod migration-only; the mutating phase suites run ONLY on
+     staging henceforth.
+  Downstream: this unblocks H5 (CI against staging) and behavioural accounting
+  tests. [INFERENCE]
+
+  For EVERY recommendation above the WHY is stated; the load-bearing ASSUMPTIONS
+  are (i) migrations run clean on a fresh project, (ii) a second free project is
+  acceptable, (iii) the owner will seed a staging tenant. None are verified here
+  (they are forward-looking) and each should be confirmed before Step 2+.
+
+
+15. REGRESSION TESTS REQUIRED
+--------------------------------------------------------------------------------
+  H4 is process, but it is guardable:
+   T1. Harness-target guard: the test bootstrap asserts the test env's
+       VITE_SUPABASE_URL is the STAGING ref, and FAILS LOUDLY if it equals the
+       prod ref — so no one can accidentally point mutating tests at prod again.
+   T2. Prod-monitor separation: a check that the mutating phase suites do not run
+       against the prod URL (guard by env).
+   T3. Prod residue monitor: a read-only assertion (on the prod integrity
+       monitor) that no `*@stockbolt.test` users / tagged test companies exist —
+       catches failed-cleanup orphans.
+  These are the enforceable guards; the rest of H4 is verified by process (CI
+  uses the staging URL), not by a unit test.
+
+
+16. ROLLBACK STRATEGY
+--------------------------------------------------------------------------------
+  Everything here is additive/reversible and touches no customer data:
+   * Provisioning staging adds a project; deleting it is the undo.
+   * `.env.test` + harness repoint: revert the files to read `.env.local`.
+   * Suite split: revert the test files.
+   * Dropping the prod helper (Step 6): re-create it from its definition if a
+     prod monitor still needs it (it is additive; C1's grants reapply).
+  No prod schema or data is changed by the fix, so rollback carries zero
+  reconciliation risk.
+
+
+================================================================================
+## Verdict
+
+  AUDIT CORRECT BUT IMPLEMENTATION SHOULD DIFFER.
+
+  * The finding is VERIFIED: there is no environment separation — the pre-commit
+    hook and the phase suites run against the production database via the keys in
+    `.env.local`; there is no staging project and no CI. The claim that this is
+    the root cause behind C1 (the helper on prod) is well-supported.
+  * Two refinements make the audit's remediation insufficient as written:
+      (1) the PRE-COMMIT suite is read-only; the mutating tests are the `npm test`
+          phase suites — so the "every test run touches customer data" framing
+          should be split into "reads (hook)" vs "writes (phase suites)";
+      (2) ~half the suite is live-DATA-integrity invariants whose value depends on
+          PROD data; "just point `.env.local` at staging" would silently gut them.
+  * The corrected implementation SPLITS the suite (behavioural -> staging;
+    integrity invariants -> a separate read-only prod monitor), provisions staging
+    with schema parity, adds `.env.test`, repoints the hook off prod, and only
+    then can drop the C1 helper — a multi-step programme, not a config edit.
+
+STATUS: Analysis only. Key dependency (invariant tests depend on prod data)
+surfaced and characterised; no blocking unknown. Nothing implemented. Awaiting
+owner approval before any implementation. No other audit item started.
+================================================================================

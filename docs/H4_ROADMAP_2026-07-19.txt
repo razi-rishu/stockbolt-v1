@@ -1,0 +1,238 @@
+================================================================================
+StockBolt ERP — Audit Issue H4: Implementation Roadmap
+Environment separation (staging DB + suite split). PLANNING ONLY — nothing built.
+================================================================================
+Audit cycle date: 2026-07-19   |   Prepared: 2026-07-23
+Verdict carried forward: "Audit correct but implementation should differ."
+Nothing in this document is implemented. No code, migration, or DB change made.
+
+Legend: Effort S (≤1h) / M (2–4h) / L (½–1 day+), owner = Rashid, asst = assistant.
+================================================================================
+
+
+THE ONE THING THAT SHAPES THE ORDER
+--------------------------------------------------------------------------------
+Two facts from the H4 analysis drive the sequencing:
+ * [D2] ~half the current suite is LIVE-DATA integrity invariants whose value
+   comes from PROD data. They must NOT be repointed at empty staging — they get
+   split into a read-only prod monitor. (Baked into P4.)
+ * [D4] Migration FILES drift from the live prod definitions (functions were
+   patched from live defs, per project discipline). So "replay the migration
+   files onto staging" may NOT reproduce prod exactly. Parity is safer via a
+   schema-only dump of prod. (Baked into P1b.)
+
+Because of these, the safe path front-loads a cheap SAFETY NET (P0) that makes
+today's setup less dangerous immediately, before any of the larger infra work.
+
+
+================================================================================
+PHASE P0 — Safety net: block accidental prod mutation + detect residue
+================================================================================
+Objective   Add two guards to the EXISTING harness, needing no staging:
+            (a) a test-bootstrap assertion that REFUSES to run the mutating
+                phase suites when the target URL is the prod ref; (b) a read-only
+                "prod residue" check that flags leftover `*@stockbolt.test`
+                users / tagged test companies from failed cleanups.
+Effort      S (asst writes; owner reviews).
+Prereq      None. Can be done first, standalone.
+Risks       Low. Side effect: `npm test` (mutating phase suites) will FAIL until
+            staging exists — which is the intended safety posture (those suites
+            should never touch prod). The read-only pre-commit regressions are
+            unaffected and keep passing.
+Rollback    Revert the two test-file edits. No data touched.
+Outcome     It becomes structurally impossible to mutate prod via the phase
+            suites by accident; orphaned test tenants become visible.
+INDEPENDENT Yes — fully standalone; recommended FIRST.
+
+
+================================================================================
+PHASE P1 — Provision the staging Supabase project
+================================================================================
+Objective   Create a second Supabase project ("stockbolt-staging") to serve as
+            the writable, non-production test target; capture its URL + anon +
+            service-role keys.
+Effort      S (owner, dashboard).
+Prereq      P0 recommended first (safety) but not technically required.
+Risks       Low/additive. Cost (free tier is fine for a test DB); wrong
+            region/name is cosmetic.
+Rollback    Delete the project. Nothing else references it yet.
+Outcome     An empty staging project + a fresh key set, isolated from prod.
+INDEPENDENT Yes — standalone infra; nothing depends on it until P1b.
+
+
+================================================================================
+PHASE P1b — Achieve schema parity on staging
+================================================================================
+Objective   Bring staging to the SAME schema as prod (tables, functions, RLS,
+            triggers, indexes, seed reference data).
+Effort      M–L. Two options:
+            * SAFER (recommended): schema-only dump of prod (pg_dump
+              --schema-only, or the Supabase schema export) loaded into staging.
+              Reproduces the LIVE state including functions patched from live
+              defs — avoids the [D4] drift trap.
+            * Alternative: replay migration files in order. Cheaper to wire but
+              risks NOT matching prod where functions were patched post-migration.
+Prereq      P1.
+Risks       MEDIUM. [D4] migration-file drift if the replay path is chosen; a
+            partial load leaves staging half-built (re-run on a fresh project).
+            CONCURRENTLY-index migrations (e.g. H2 phase52) can't run in a txn —
+            handle as standalone statements.
+Rollback    Reset/recreate staging (it holds no customer data).
+Outcome     staging schema == prod schema; behavioural tests can run truthfully.
+INDEPENDENT No — depends on P1.
+
+
+================================================================================
+PHASE P2 — Seed a staging test tenant
+================================================================================
+Objective   Create a representative company on staging (masters + enough stock
+            and document history) so behavioural + NUMERIC accounting/inventory
+            tests have data to exercise (MAC, COGS, deferred-COGS, aging, VAT).
+Effort      M.
+Prereq      P1b.
+Risks       Low. Seed must be representative enough to be useful; under-seeding
+            just limits which tests are meaningful.
+Rollback    Truncate / re-seed staging. No prod impact.
+Outcome     A reusable staging tenant that behavioural tests target.
+INDEPENDENT No — depends on P1b. (Can proceed in parallel with P3 wiring.)
+
+
+================================================================================
+PHASE P3 — Introduce .env.test and repoint the test harness
+================================================================================
+Objective   Add `.env.test` (staging keys); make the test bootstrap load it
+            instead of `.env.local`. Keep `.env.local` for local APP dev only.
+            Update `.env.example` to document the new file.
+Effort      S (small change to the test setup + docs).
+Prereq      P1 (need staging keys). Tests only PASS once P1b/P2 exist, but the
+            wiring itself only needs the keys.
+Risks       Low. Touches test files (code) — trivially reversible. Ensure secrets
+            (`.env.test`) are gitignored like `.env.local`.
+Rollback    Revert the harness edit; delete `.env.test`.
+Outcome     The test harness targets staging by configuration, not prod.
+INDEPENDENT Partly — needs P1's keys; independent of P1b/P2 to WIRE, dependent on
+            them to be GREEN.
+
+
+================================================================================
+PHASE P4 — Split the suite (the D2-critical phase)
+================================================================================
+Objective   Separate the two concerns the current file mixes:
+            (4a) function-source + BEHAVIOURAL (setup-mutate-assert) tests ->
+                 run against STAGING (this is where NEW numeric accounting /
+                 inventory tests are added later);
+            (4b) live-DATA integrity INVARIANTS -> keep pointed at PROD but as a
+                 SEPARATE, explicitly READ-ONLY "prod integrity monitor" (run on
+                 demand / scheduled), NOT the developer pre-commit gate.
+Effort      L. This is the intellectually load-bearing phase.
+Prereq      P3 (env split) + P1b/P2 (staging usable).
+Risks       MEDIUM. A wrong split silently DROPS coverage: the invariant monitor
+            must keep reading prod (via the service-role helper or dedicated
+            read-only monitor RPCs); the behavioural tests must not accidentally
+            still read prod.
+Rollback    Revert the reorganisation to the single current file.
+Outcome     Two clear suites: fast behavioural (staging) + prod integrity
+            monitor (read-only). No loss of prod-corruption detection.
+INDEPENDENT No — depends on P3.
+
+
+================================================================================
+PHASE P5 — Repoint the pre-commit hook off prod
+================================================================================
+Objective   Make committing fast and prod-independent: hook runs typecheck +
+            build + the behavioural suite on STAGING (no prod key, no prod
+            availability needed to commit).
+Effort      S.
+Prereq      P3 + P4.
+Risks       Low. Ensure the hook still gates something meaningful (don't leave it
+            asserting nothing).
+Rollback    Revert `.husky/pre-commit` to the current content.
+Outcome     `git commit` no longer depends on prod; the prod integrity monitor is
+            run deliberately, not on every commit.
+INDEPENDENT No — depends on P4.
+
+
+================================================================================
+PHASE P6 — Fully close C1: drop the prod helper (or retain, documented)
+================================================================================
+Objective   Once behavioural tests live on staging, DROP
+            `_regression_test_query` from PROD to eliminate the C1 surface
+            entirely — UNLESS the prod integrity monitor (4b) still needs it, in
+            which case KEEP it (already service-role-only from C1) and DOCUMENT
+            that as the intentional end state.
+Effort      S (a small drop migration OR an explicit "retain" decision).
+Prereq      P4 (the monitor's read path must be decided first).
+Risks       MEDIUM. Dropping it while the prod monitor still calls it breaks the
+            monitor. Decide the monitor's read path BEFORE dropping.
+Rollback    Re-create the helper from its definition (additive; C1's REVOKE/GRANT
+            reapply). No data impact.
+Outcome     C1 is either fully removed from prod, or consciously retained,
+            service-role-only, with a documented reason.
+INDEPENDENT No — depends on P4.
+
+
+================================================================================
+PHASE P7 — CI gate (bridge to H5; optional within H4)
+================================================================================
+Objective   Add `.github/workflows/ci.yml` running typecheck + build + the
+            staging behavioural suite on push/PR, using staging secrets. This is
+            formally H5, but H4 unblocks it and it consumes the same wiring.
+Effort      M.
+Prereq      P1b + P2 + P3 + P4 (staging usable + suite split + env).
+Risks       Low-Medium. Secrets management (staging keys as CI secrets, never
+            prod); flaky-network handling.
+Rollback    Delete the workflow file.
+Outcome     An independent, non-bypassable pre-deploy gate (unlike the local
+            hook). Belongs to H5 — listed here only as the natural continuation.
+INDEPENDENT No — depends on P1b–P4. Defer to the H5 work item.
+
+
+================================================================================
+INDEPENDENCE MAP
+================================================================================
+  Fully independent / can start any time:
+    * P0  (safety net)          — recommended FIRST; no prerequisites.
+    * P1  (provision staging)   — standalone infra.
+
+  Dependency chain (each needs the prior):
+    P1 -> P1b -> P2
+                 \-> P3 (needs P1 keys) -> P4 -> P5
+                                              \-> P6
+    P7 (CI) needs P1b + P2 + P3 + P4.
+
+  Parallelism:
+    * P0 and P1 can happen in parallel (different surfaces: code vs infra).
+    * After P1b, P2 (seed) and P3 (env wiring) can proceed in parallel; P4 needs
+      both.
+
+
+================================================================================
+RECOMMENDED SAFEST ORDER
+================================================================================
+  1. P0   — Safety net FIRST. Cheapest, biggest immediate risk reduction; makes
+            accidental prod mutation impossible before any larger change.
+  2. P1   — Provision staging (can overlap with P0).
+  3. P1b  — Schema parity via prod schema-dump (avoid the migration-drift trap).
+  4. P2   — Seed a staging tenant.
+  5. P3   — Add .env.test + repoint the harness (can overlap with P2).
+  6. P4   — Split the suite (behavioural -> staging; invariants -> prod monitor).
+            The decisive phase; do NOT rush it.
+  7. P5   — Repoint the pre-commit hook off prod.
+  8. P6   — Drop (or consciously retain) the C1 helper on prod.
+  9. P7   — CI gate — hand off to the H5 work item.
+
+  Why this order is safest:
+    * P0 reduces live risk before touching anything else and is reversible.
+    * Parity (P1b) precedes any test move, so staging is trustworthy first.
+    * The suite split (P4) — the only phase that can silently LOSE coverage —
+      happens only after staging is proven usable, and it explicitly preserves
+      prod-integrity monitoring rather than discarding it.
+    * The C1 helper is dropped LAST (P6), after the prod monitor's read path is
+      settled, so nothing that still needs it breaks.
+    * Every phase is independently reversible and touches no customer data.
+
+
+STATUS: Roadmap only. No implementation, no code, no migration, no DB change.
+Awaiting owner decision on whether/when to begin, and on the P1b parity method
+(schema-dump vs migration replay) and P6 (drop vs retain the helper).
+================================================================================
