@@ -2708,14 +2708,19 @@ describe('AC-V1 — audit trail + corruption scan', () => {
       WHERE polrelid='public.audit_logs'::regclass AND polcmd IN ('w','d')`);
     expect(mutable, `audit_logs UPDATE/DELETE policies exist: ${JSON.stringify(mutable)}`).toHaveLength(0);
 
-    // phase53 would add a trigger that also blocks SECURITY DEFINER /
-    // service_role tampering. It is NOT applied — RLS is the only protection.
+    // phase53 IS applied — it is what removed the UPDATE/DELETE policies the
+    // assertion above checks for. What it did NOT add is a trigger, and RLS
+    // does not constrain a SECURITY DEFINER function or service_role, so those
+    // two can still rewrite history. The warning is about that remaining gap,
+    // not about a missing migration; it used to say "phase53 not applied",
+    // which sent me looking for a migration that had been live for months.
     const trg = await sql<{ tgname: string }>(`
       SELECT tgname FROM pg_trigger
       WHERE tgrelid='public.audit_logs'::regclass AND NOT tgisinternal`);
     if (trg.length === 0) {
-      console.warn('⚠ [AC-V1] audit_logs has no append-only trigger (phase53 not applied);' +
-                   ' RLS blocks normal users but not SECURITY DEFINER or service_role');
+      console.warn('⚠ [AC-V1] audit_logs is append-only for tenant users (phase53 policies),' +
+                   ' but has no trigger — so SECURITY DEFINER and service_role can still' +
+                   ' UPDATE or DELETE audit rows. Remaining hardening, not a missing migration.');
     }
   });
 
