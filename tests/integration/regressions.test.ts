@@ -4865,3 +4865,245 @@ describe('Phase 82 — refund RPCs are anon-locked (soft until applied)', () => 
     expect(true).toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 83 — a return line chooses its own warehouse
+//
+// restock_warehouse_id existed on both return-item tables and was read by
+// nothing: each engine resolved ONE warehouse per document and used it for
+// every line. It could not have worked — credit_note_items and
+// debit_note_items had no such column, so the value had nowhere to travel.
+//
+// A warehouse decides WHERE stock sits, never what it is worth, so the GL must
+// be untouched. That is what the second test asserts.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 83 — per-line restock warehouse (soft until applied)', () => {
+  const src = async (fn: string) => {
+    const r = await sql<{ s: string }>(`SELECT pg_get_functiondef(oid) AS s FROM pg_proc
+      WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+    return (r[0]?.s ?? '').split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+  };
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM information_schema.columns
+       WHERE table_schema='public' AND table_name='credit_note_items'
+         AND column_name='restock_warehouse_id'`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase83: both note item tables carry the column', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ phase83 not applied yet — run supabase/migrations/20260922000001_phase83_per_line_restock_warehouse.sql');
+      return;
+    }
+    const cols = await sql<{ table_name: string }>(`
+      SELECT table_name FROM information_schema.columns
+       WHERE table_schema='public' AND column_name='restock_warehouse_id'
+         AND table_name IN ('credit_note_items','debit_note_items')
+       ORDER BY 1`);
+    expect(cols.map(c => c.table_name)).toEqual(['credit_note_items', 'debit_note_items']);
+  });
+
+  it('phase83: both engines resolve the warehouse PER LINE, with a fallback', async () => {
+    if (!(await applied())) { console.warn('⚠ phase83 not applied yet'); return; }
+    for (const fn of ['confirm_credit_note', 'confirm_debit_note']) {
+      const code = await src(fn);
+      expect(code, `${fn} resolves per line`)
+        .toMatch(/v_line_wh_id\s*:=\s*COALESCE\(v_item\.restock_warehouse_id,\s*v_wh_id\)/);
+      // The fallback is what keeps every pre-existing document identical.
+      expect(code, `${fn} still resolves a document warehouse to fall back to`)
+        .toMatch(/v_wh_id\s*:=\s*v_(cn|dn)\.warehouse_id/);
+      expect(code, `${fn} writes the ledger row at the line warehouse`)
+        .toMatch(/v_item\.product_id, v_line_wh_id/);
+    }
+  });
+
+  it('phase83: DOUBLE ENTRY — the GL legs are untouched by a warehouse change', async () => {
+    if (!(await applied())) { console.warn('⚠ phase83 not applied yet'); return; }
+    // Where stock sits cannot change what it is worth. Valuation is
+    // company-wide moving average, so moving a line to another warehouse
+    // relocates quantity, never value.
+    const cn = await src('confirm_credit_note');
+    expect(cn, 'Dr 4100 revenue reversal').toMatch(/v_revenue_id, '4100'/);
+    expect(cn, 'Cr 1200 AR reduction').toMatch(/v_ar_id, '1200'/);
+    expect(cn, 'Dr 1300 / Cr 5100 restock pair').toMatch(/v_inv_id, '1300'/);
+    const dn = await src('confirm_debit_note');
+    expect(dn, 'Dr 2100 AP').toMatch(/v_ap_id, '2100'/);
+    expect(dn, 'Cr 1300 inventory').toMatch(/v_inv_id, '1300'/);
+    expect(dn, 'phase80 survived: net value not gross').toMatch(/v_old_value - v_item_cost/);
+    expect(dn, 'phase81 survived: services never stock').toMatch(/v_product_type IS DISTINCT FROM 'service'/);
+  });
+
+  it('phase83: the return documents carry the line warehouse onto the note', async () => {
+    if (!(await applied())) { console.warn('⚠ phase83 not applied yet'); return; }
+    expect(await src('confirm_sales_return'), 'sales return passes it through')
+      .toMatch(/v_item\.restock_warehouse_id/);
+    expect(await src('confirm_purchase_return'), 'purchase return passes it through')
+      .toMatch(/v_item\.restock_warehouse_id/);
+  });
+
+  it('phase83: no stock row sits in a warehouse its line never asked for', async () => {
+    if (!(await applied())) { console.warn('⚠ phase83 not applied yet'); return; }
+    // Every credit-note stock row must be in either the line's nominated
+    // warehouse or the document's. Anything else means the resolution broke.
+    const stray = await sql<{ doc: string }>(`
+      SELECT cn.credit_note_number AS doc
+      FROM public.stock_ledger sl
+      JOIN public.credit_notes cn ON cn.id = sl.related_doc_id
+      JOIN public.credit_note_items cni ON cni.credit_note_id = cn.id
+                                       AND cni.product_id = sl.product_id
+      WHERE sl.related_doc_type = 'credit_note'
+        AND sl.warehouse_id IS DISTINCT FROM COALESCE(cni.restock_warehouse_id, cn.warehouse_id)
+        AND cn.warehouse_id IS NOT NULL`);
+    expect(stray, `stock rows in an unexpected warehouse: ${JSON.stringify(stray)}`).toHaveLength(0);
+  });
+
+  // ── Holds whether or not the migration is applied ────────────────────────
+
+  it('phase83: the purchase-return editor offers no condition control', async () => {
+    // P2 — purchase_return_items still HAS `condition`, but nothing reads it
+    // and nothing can: goods going back to a supplier are credited by that
+    // supplier, so no value is destroyed whatever state they are in. Offering
+    // a control that implies a posting it never makes is worse than omitting
+    // it. The sales side keeps its copy, where it drives the 6700 write-off.
+    const { readFileSync } = await import('node:fs');
+    const purch = readFileSync(resolve(process.cwd(), 'src/modules/purchasing/purchase-return-editor.tsx'), 'utf8');
+    expect(/value="damaged"/.test(purch), 'no damaged/resellable selector on the purchase side').toBe(false);
+
+    const sales = readFileSync(resolve(process.cwd(), 'src/modules/sales/sales-return-editor.tsx'), 'utf8');
+    expect(/value="damaged"/.test(sales), 'the SALES side keeps it — it drives the write-off').toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 84 — receiving money back from a supplier
+//
+// Return goods against a bill you already paid and AP goes into a DEBIT
+// balance: the supplier owes you. Nothing could take that money back —
+// confirm_payment demands inbound AND a customer, confirm_vendor_payment
+// demands outbound AND a supplier, and confirm_vendor_refund empties 1400.
+//
+// This is the vendor mirror of phase 78. The dangerous failure is the two
+// vendor engines learning about each other's account, which would let the same
+// money arrive twice; the last test guards that either way.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 84 — vendor credit refund (soft until applied)', () => {
+  const src = async (fn: string) => {
+    const r = await sql<{ s: string }>(`SELECT pg_get_functiondef(oid) AS s FROM pg_proc
+      WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+    return (r[0]?.s ?? '').split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+  };
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(`SELECT count(*)::int AS n FROM pg_proc
+      WHERE proname='confirm_vendor_credit_refund' AND pronamespace='public'::regnamespace`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase84: both RPCs exist, are SECURITY DEFINER, gated and anon-locked', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ phase84 not applied yet — run supabase/migrations/20260922000002_phase84_vendor_credit_refund.sql');
+      return;
+    }
+    const fns = await sql<{ proname: string; secdef: boolean }>(`
+      SELECT proname, prosecdef AS secdef FROM pg_proc
+       WHERE pronamespace='public'::regnamespace
+         AND proname IN ('confirm_vendor_credit_refund','void_vendor_credit_refund') ORDER BY 1`);
+    expect(fns.map(f => f.proname))
+      .toEqual(['confirm_vendor_credit_refund', 'void_vendor_credit_refund']);
+    for (const f of fns) expect(f.secdef, `${f.proname} is SECURITY DEFINER`).toBe(true);
+
+    // Learned in phase 82: revoking FROM PUBLIC alone leaves anon's own grant.
+    // This one named anon from the start; the assertion keeps it that way.
+    const anon = await sql<{ proname: string }>(`
+      SELECT proname FROM pg_proc WHERE pronamespace='public'::regnamespace
+        AND proname IN ('confirm_vendor_credit_refund','void_vendor_credit_refund')
+        AND has_function_privilege('anon', oid, 'EXECUTE')`);
+    expect(anon, `reachable by anon: ${JSON.stringify(anon)}`).toHaveLength(0);
+  });
+
+  it('phase84: DOUBLE ENTRY — Dr bank / Cr 2100 through the primitive', async () => {
+    if (!(await applied())) { console.warn('⚠ phase84 not applied yet'); return; }
+    const code = await src('confirm_vendor_credit_refund');
+    expect(code, 'composes the one posting primitive').toMatch(/public\.post_journal_entry/);
+    expect(/insert\s+into\s+public\.general_ledger/i.test(code), 'writes no raw GL').toBe(false);
+    expect(code, 'credits the payable').toMatch(/'account_code',\s*'2100'/);
+    expect(code, 'debits the chosen bank account').toMatch(/'account_code',\s*v_bank_code/);
+    expect(code, 'the payable leg names the supplier').toMatch(/'contact_id',\s*v_pmt\.contact_id/);
+    expect(code, 'converts by exchange rate').toMatch(/v_pmt\.amount \* COALESCE\(v_pmt\.exchange_rate, 1\)/);
+  });
+
+  it('phase84: the ceiling is the 2100 ledger, and a net creditor is refused', async () => {
+    if (!(await applied())) { console.warn('⚠ phase84 not applied yet'); return; }
+    const code = await src('confirm_vendor_credit_refund');
+    expect(code, 'ceiling read from the 2100 ledger, debit side')
+      .toMatch(/SUM\(gl\.debit - gl\.credit\)[\s\S]{0,200}account_code\s*=\s*'2100'/);
+    expect(code, 'a supplier who is not owed anything is refused').toMatch(/v_available\s*<=\s*0/);
+    expect(code, 'cannot exceed what is owed').toMatch(/v_amount\s*>\s*v_available/);
+    expect(code, 'inbound only').toMatch(/v_pmt\.type\s*<>\s*'inbound'/);
+    expect(code, "on_account only").toMatch(/v_pmt\.classification\s*<>\s*'on_account'/);
+    expect(code, 'must be a supplier').toMatch(/NOT IN \('supplier', 'both'\)/);
+  });
+
+  it('phase84: void mirrors at the VOUCHER date, not today', async () => {
+    if (!(await applied())) { console.warn('⚠ phase84 not applied yet'); return; }
+    const code = await src('void_vendor_credit_refund');
+    expect(/CURRENT_DATE/i.test(code), 'not dated today').toBe(false);
+    expect(/public\.reverse_journal_entry/i.test(code), 'not the CURRENT_DATE reverser').toBe(false);
+    expect(code, 'mirrors at the original date').toMatch(/v_je\.date/);
+    expect(code, 'swaps the legs').toMatch(/v_gl\.credit,\s*v_gl\.debit/);
+    expect(code, 'refuses a reconciled posting').toMatch(/reconciliation_id IS NOT NULL/);
+
+    const wrong = await sql<{ entry_number: string }>(`
+      SELECT rev.entry_number FROM public.journal_entries rev
+      JOIN public.journal_entries orig ON orig.id = rev.reversal_of_id
+      WHERE rev.source_type='vendor_credit_refund' AND rev.date <> orig.date`);
+    expect(wrong, `reversals not at the original date: ${JSON.stringify(wrong)}`).toHaveLength(0);
+  });
+
+  it('phase84: every vendor credit refund balances and names the supplier', async () => {
+    if (!(await applied())) { console.warn('⚠ phase84 not applied yet'); return; }
+    const bad = await sql<{ entry_number: string }>(`
+      SELECT je.entry_number FROM public.journal_entries je
+      JOIN public.general_ledger gl ON gl.journal_entry_id = je.id
+      WHERE je.source_type = 'vendor_credit_refund'
+      GROUP BY je.entry_number
+      HAVING SUM(gl.debit) <> SUM(gl.credit)
+          OR count(*) <> 2
+          OR SUM(CASE WHEN gl.contact_id IS NULL THEN 1 ELSE 0 END) > 0`);
+    expect(bad, `malformed vendor credit refunds: ${JSON.stringify(bad)}`).toHaveLength(0);
+  });
+
+  it('phase84: no supplier has been refunded into a credit balance', async () => {
+    if (!(await applied())) { console.warn('⚠ phase84 not applied yet'); return; }
+    const over = await sql<{ supplier: string; net: number }>(`
+      SELECT ct.name AS supplier, ROUND(SUM(gl.debit - gl.credit), 2) AS net
+      FROM public.general_ledger gl JOIN public.contacts ct ON ct.id = gl.contact_id
+      WHERE gl.account_code='2100'
+        AND gl.contact_id IN (SELECT p.contact_id FROM public.payments p
+                               WHERE p.type='inbound' AND p.classification='on_account'
+                                 AND p.status='confirmed')
+      GROUP BY ct.name HAVING SUM(gl.debit - gl.credit) < -0.005`);
+    expect(over, `over-refunded suppliers: ${JSON.stringify(over)}`).toHaveLength(0);
+  });
+
+  // ── Holds whether or not the migration is applied ────────────────────────
+
+  it('phase84: the two vendor refund engines never touch each other\'s account', async () => {
+    // 1400 is money we paid BEFORE a bill; 2100 is money owed back AFTER one.
+    // If either engine learned the other's account, the same money could leave
+    // the supplier twice, each checking a ceiling the other had already spent.
+    const adv = await src('confirm_vendor_refund');
+    if (adv) expect(/'2100'/.test(adv), 'the advance refund never touches 2100').toBe(false);
+    const cred = await src('confirm_vendor_credit_refund');
+    if (cred) expect(/'1400'/.test(cred), 'the credit refund never touches 1400').toBe(false);
+  });
+
+  it('phase84: the payment engines were not reopened for this', async () => {
+    for (const fn of ['confirm_payment', 'confirm_vendor_payment', 'void_payment',
+                      'reopen_vendor_payment', 'apply_vendor_advance']) {
+      const code = await src(fn);
+      if (!code) continue;
+      expect(/vendor_credit_refund/.test(code), `${fn} knows nothing of it`).toBe(false);
+    }
+  });
+});

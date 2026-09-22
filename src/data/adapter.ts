@@ -539,7 +539,7 @@ export interface ContactsAPI {
   getAdvanceBalance(
     company_id: string,
     contact_id: string,
-    account_code?: '2400' | '1400' | '1200',
+    account_code?: '2400' | '1400' | '1200' | '2100',
   ): Promise<number>;
 }
 
@@ -1442,11 +1442,23 @@ export interface PaymentsAPI {
    * who owes more than they are owed cannot be refunded at all.
    */
   refundCustomerCredit(input: RefundAdvanceInput): Promise<RefundResult>;
+  /**
+   * P4 — take back money a SUPPLIER owes us, which is where a debit note
+   * leaves it when the bill had already been paid. Mirror of
+   * refundCustomerCredit in the other direction: Dr bank / Cr 2100. Distinct
+   * from refundVendorAdvance, which empties 1400 Vendor Advances — that is
+   * money we paid BEFORE a bill, this is money owed back AFTER one. The
+   * ceiling is the supplier's NET position on 2100, so a supplier we still
+   * owe more to cannot refund us at all.
+   */
+  refundVendorCredit(input: RefundAdvanceInput): Promise<RefundResult>;
   /** Reverses the refund at its VOUCHER date and marks the payment void. */
   voidCustomerRefund(payment_id: string, reason?: string): Promise<void>;
   voidVendorRefund(payment_id: string, reason?: string): Promise<void>;
   /** R5a — mirror of voidCustomerRefund for the 1200 credit refund. */
   voidCustomerCreditRefund(payment_id: string, reason?: string): Promise<void>;
+  /** P4 — mirror of the above for the 2100 vendor credit refund. */
+  voidVendorCreditRefund(payment_id: string, reason?: string): Promise<void>;
 }
 
 export interface RefundAdvanceInput {
@@ -2535,8 +2547,16 @@ export type PurchaseReturnInsert =
   { debit_note_id?: string | null };
 
 export type PurchaseReturnItemInsert =
-  Omit<PurchaseReturnItemRow, 'id' | 'created_at' | 'purchase_return_id'> &
-  { purchase_return_id?: string };
+  Omit<PurchaseReturnItemRow, 'id' | 'created_at' | 'purchase_return_id' | 'condition'> &
+  {
+    purchase_return_id?: string;
+    /** P2 — optional, and no longer written by the editor. The column stays
+     *  (data is never dropped) but nothing reads it: goods going back to a
+     *  supplier are credited by that supplier, so no value is destroyed
+     *  whatever state they are in — phase 80's conclusion. On the SALES side
+     *  the same field drives the 6700 write-off and is still required. */
+    condition?: 'resellable' | 'damaged' | null;
+  };
 
 export interface PurchaseReturnsAPI {
   list(company_id: string): Promise<PurchaseReturnRow[]>;

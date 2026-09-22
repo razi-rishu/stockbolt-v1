@@ -13,7 +13,8 @@ import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocT
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { salesReturnToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
-import type { SalesReturnRow, SalesReturnItemRow, InvoiceRow, InvoiceItemRow, SalesReturnItemInsert, Company, ProductRow, ContactRow, ReturnableLine } from '@/data/adapter';
+import type { SalesReturnRow, SalesReturnItemRow, InvoiceRow, InvoiceItemRow, SalesReturnItemInsert, Company, ProductRow, ContactRow, ReturnableLine, WarehouseRow } from '@/data/adapter';
+import { computeReturnLine, sumReturnLines } from '@/lib/return-line-math';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -30,6 +31,11 @@ interface ReturnLine {
   /** How much of that line is still returnable — display + input cap. The
    *  server enforces the same number, so a stale figure cannot over-return. */
   qty_returnable:      number;
+  /** P3 — where these goods physically go back. Null means the document's
+   *  warehouse, which is what every return did before phase 83. Price and tax
+   *  are deliberately NOT held here: they belong to the invoice line and are
+   *  read from it at render, so the screen cannot drift from the credit note. */
+  restock_warehouse_id: string | null;
 }
 
 export default function SalesReturnEditorPage() {
@@ -108,6 +114,7 @@ export default function SalesReturnEditorPage() {
         qty_returned: Number(it.qty_returned),
         condition:    (it.condition ?? 'resellable') as 'resellable' | 'damaged',
         unit_cost:    it.unit_cost !== undefined ? Number(it.unit_cost) : null,
+        restock_warehouse_id: (it as { restock_warehouse_id?: string | null }).restock_warehouse_id ?? null,
         // Already-saved lines consumed their own quantity, so add it back to
         // show what this return may still claim.
         qty_returnable: Number(it.qty_returned),
@@ -130,6 +137,39 @@ export default function SalesReturnEditorPage() {
     enabled:  !!invoiceId,
   });
   const returnableById = new Map(returnable.map(r => [r.invoice_item_id, r]));
+
+  const { data: warehouses = [] } = useQuery<WarehouseRow[]>({
+    queryKey: ['warehouses', company_id],
+    queryFn: () => getAdapter().warehouses.list(company_id!),
+    enabled: !!company_id,
+  });
+
+  // P1 — price and tax come from the INVOICE line, never from the return line
+  // and never from an operator. You credit back the tax you charged; offering a
+  // choice here would let someone bill 5% and credit 0%. Read at render so the
+  // figures cannot drift from what confirm_sales_return will post.
+  const invItemById = new Map(invItems.map(it => [it.id, it]));
+  const lineValue = (l: ReturnLine) => {
+    const src = l.invoice_item_id ? invItemById.get(l.invoice_item_id) : undefined;
+    return {
+      src,
+      ...computeReturnLine({
+        unit_value:       Number(src?.unit_price ?? 0),
+        quantity:         l.qty_returned,
+        discount_percent: Number(src?.discount_percent ?? 0),
+        tax_rate:         Number(src?.tax_rate ?? 0),
+      }),
+    };
+  };
+  const docTotal = sumReturnLines(lines.map(l => {
+    const src = l.invoice_item_id ? invItemById.get(l.invoice_item_id) : undefined;
+    return {
+      unit_value:       Number(src?.unit_price ?? 0),
+      quantity:         l.qty_returned,
+      discount_percent: Number(src?.discount_percent ?? 0),
+      tax_rate:         Number(src?.tax_rate ?? 0),
+    };
+  }));
 
   // R4b — the fee is INCLUSIVE of tax at the rate of the invoice's
   // highest-value line, which is how post_sales_return_fee splits it too: one
@@ -160,6 +200,7 @@ export default function SalesReturnEditorPage() {
         condition:       'resellable' as const,
         unit_cost:       it.cost_at_sale !== undefined ? Number(it.cost_at_sale) : null,
         qty_returnable:  Number(returnableById.get(it.id)?.qty_returnable ?? it.quantity),
+        restock_warehouse_id: null,
       }))
       .filter(l => l.qty_returnable > 0));
   }
@@ -182,6 +223,7 @@ export default function SalesReturnEditorPage() {
         qty_returned:        l.qty_returned,
         condition:           l.condition,
         unit_cost:           l.unit_cost ?? undefined,
+        restock_warehouse_id: l.restock_warehouse_id,   // P3
       } as SalesReturnItemInsert));
       // R6b — must stay in step with sales_returns_reason_check (phase 79).
       // R5 branched before those codes existed and hoisted this cast with the
@@ -478,6 +520,13 @@ export default function SalesReturnEditorPage() {
               <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('returns.returnable')}</th>
               <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('returns.qty_returned')}</th>
               <th className="px-3 py-2 text-left text-xs font-medium text-ink-tertiary">{t('returns.condition')}</th>
+              {/* P3 — where the goods physically land. Blank = the document's warehouse. */}
+              <th className="px-3 py-2 text-left text-xs font-medium text-ink-tertiary">{t('returns.restock_to')}</th>
+              {/* P1 — what the CUSTOMER gets back. Read-only: taken from the
+                  invoice line, because you credit the tax you charged. */}
+              <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('returns.unit_price')}</th>
+              <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('returns.tax_pct')}</th>
+              <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('returns.credit_amount')}</th>
               <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('returns.cost_at_sale')}</th>
               {isDraft && <th className="px-3 py-2" />}
             </tr>
@@ -515,6 +564,25 @@ export default function SalesReturnEditorPage() {
                   </select>
                 </td>
                 <td className="px-3 py-2">
+                  <select value={l.restock_warehouse_id ?? ''}
+                    onChange={e => updateLine(i, 'restock_warehouse_id', e.target.value || null)}
+                    disabled={!isDraft} className="border border-border-strong rounded px-2 py-1 text-sm">
+                    <option value="">{t('returns.warehouse_default')}</option>
+                    {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                  </select>
+                </td>
+                {(() => { const v = lineValue(l); return (<>
+                  <td className="px-3 py-2 text-right text-sm text-ink-secondary tabular-nums">
+                    {v.src ? Number(v.src.unit_price).toFixed(2) : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-right text-sm text-ink-secondary tabular-nums">
+                    {v.src?.tax_rate ? `${Number(v.src.tax_rate)}%` : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-right text-sm font-medium text-ink-primary tabular-nums">
+                    {v.line_total.toFixed(2)}
+                  </td>
+                </>); })()}
+                <td className="px-3 py-2">
                   <input type="number" min="0" step="0.01" value={l.unit_cost ?? ''}
                     placeholder={t('returns.from_invoice')}
                     onChange={e => updateLine(i, 'unit_cost', e.target.value ? Number(e.target.value) : null)}
@@ -528,6 +596,29 @@ export default function SalesReturnEditorPage() {
               </tr>
             ))}
           </tbody>
+          {lines.length > 0 && (
+            <tfoot>
+              {/* P1 — the credit this return will raise, computed exactly as
+                  confirm_sales_return computes it. The restocking fee is NOT
+                  netted here: it posts as a separate charge, so the customer
+                  receives this total minus the fee. */}
+              <tr className="border-t-2 border-border-strong bg-surface-muted">
+                <td className="px-3 py-2 text-xs font-semibold text-ink-primary" colSpan={5}>
+                  {t('returns.credit_total')}
+                </td>
+                <td className="px-3 py-2 text-right text-xs text-ink-secondary tabular-nums">
+                  {t('returns.tax_pct')}
+                </td>
+                <td className="px-3 py-2 text-right text-xs text-ink-secondary tabular-nums">
+                  {docTotal.tax_amount.toFixed(2)}
+                </td>
+                <td className="px-3 py-2 text-right text-sm font-semibold text-ink-primary tabular-nums">
+                  {docTotal.line_total.toFixed(2)}
+                </td>
+                {isDraft && <td />}
+              </tr>
+            </tfoot>
+          )}
         </table>
         {lines.length === 0 && (
           <p className="text-center text-ink-tertiary py-6 text-sm">{t('returns.no_lines_yet')}</p>

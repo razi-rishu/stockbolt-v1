@@ -26,6 +26,9 @@ import type {
  * confirm_debit_note, which is the only thing that touches the ledger.
  */
 
+import { computeReturnLine, sumReturnLines } from '@/lib/return-line-math';
+import type { WarehouseRow } from '@/data/adapter';
+
 const today = () => new Date().toISOString().slice(0, 10);
 
 interface ReturnLine {
@@ -34,9 +37,19 @@ interface ReturnLine {
   description:         string;
   qty_returned:        number;
   qty_returnable:      number;
-  condition:           'resellable' | 'damaged';
   unit_cost:           number | null;
+  /** P3 — where the goods leave from. Null means the document's warehouse. */
+  restock_warehouse_id: string | null;
 }
+
+// P2 — `condition` is gone from this editor on purpose. purchase_return_items
+// still HAS the column (data is never dropped), but nothing reads it and
+// nothing can: goods going back to a supplier are credited by that supplier,
+// so no value is destroyed whatever state they are in — which is exactly why
+// phase 80 concluded there is no write-off to make on this side. On the SALES
+// side the same field drives the 6700 write-off, so it earns its place there.
+// Offering a control that implies a posting it never makes is worse than not
+// offering it. The `reason` field already records why the goods went back.
 
 export default function PurchaseReturnEditorPage() {
   const { id }   = useParams<{ id: string }>();
@@ -106,13 +119,36 @@ export default function PurchaseReturnEditorPage() {
         // A saved line already consumed its own quantity; add it back so the
         // document shows what it may still claim.
         qty_returnable:      Number(it.qty_returned),
-        condition:           (it.condition ?? 'resellable') as 'resellable' | 'damaged',
         unit_cost:           it.unit_cost !== null ? Number(it.unit_cost) : null,
+        restock_warehouse_id: (it as { restock_warehouse_id?: string | null }).restock_warehouse_id ?? null,
       })));
     }
   }, [existingItems]);
 
   const isDraft = isNew || existing?.status === 'draft';
+
+  const { data: warehouses = [] } = useQuery<WarehouseRow[]>({
+    queryKey: ['warehouses', company_id],
+    queryFn: () => getAdapter().warehouses.list(company_id!),
+    enabled: !!company_id,
+  });
+
+  // P1 — value and tax come from the BILL line, never typed here. You debit
+  // back the input tax you claimed, at the rate you claimed it.
+  const billItemById = new Map(billItems.map(it => [it.id, it]));
+  const lineInput = (l: ReturnLine) => {
+    const src = billItemById.get(l.vendor_bill_item_id);
+    return {
+      src,
+      unit_value:       Number(src?.unit_cost ?? l.unit_cost ?? 0),
+      quantity:         l.qty_returned,
+      discount_percent: Number(src?.discount_percent ?? 0),
+      tax_rate:         Number(src?.tax_rate ?? 0),
+    };
+  };
+  const docTotal = sumReturnLines(lines.map(l => {
+    const { src, ...rest } = lineInput(l); void src; return rest;
+  }));
 
   function importFromBill() {
     if (billItems.length === 0) return;
@@ -124,8 +160,8 @@ export default function PurchaseReturnEditorPage() {
         description:         it.description ?? '',
         qty_returned:        Number(returnableById.get(it.id)?.qty_returnable ?? it.quantity),
         qty_returnable:      Number(returnableById.get(it.id)?.qty_returnable ?? it.quantity),
-        condition:           'resellable' as const,
         unit_cost:           Number(it.unit_cost),
+        restock_warehouse_id: null,
       }))
       .filter(l => l.qty_returnable > 0));
   }
@@ -144,8 +180,7 @@ export default function PurchaseReturnEditorPage() {
         vendor_bill_item_id:  l.vendor_bill_item_id,
         product_id:           l.product_id,
         qty_returned:         l.qty_returned,
-        condition:            l.condition,
-        restock_warehouse_id: null,
+        restock_warehouse_id: l.restock_warehouse_id,   // P3
         unit_cost:            l.unit_cost,
       }));
       return getAdapter().purchaseReturns.create({
@@ -286,8 +321,12 @@ export default function PurchaseReturnEditorPage() {
               <th className="px-3 py-2 text-start text-xs font-medium text-ink-tertiary">{t('common.description')}</th>
               <th className="px-3 py-2 text-end text-xs font-medium text-ink-tertiary">{t('returns.returnable')}</th>
               <th className="px-3 py-2 text-end text-xs font-medium text-ink-tertiary">{t('returns.qty_returned')}</th>
-              <th className="px-3 py-2 text-start text-xs font-medium text-ink-tertiary">{t('returns.condition')}</th>
+              {/* P3 — which warehouse the goods leave. Blank = the document's. */}
+              <th className="px-3 py-2 text-start text-xs font-medium text-ink-tertiary">{t('returns.return_from')}</th>
               <th className="px-3 py-2 text-end text-xs font-medium text-ink-tertiary">{t('common.unit_cost')}</th>
+              {/* P1 — what the SUPPLIER will credit, read from the bill line. */}
+              <th className="px-3 py-2 text-end text-xs font-medium text-ink-tertiary">{t('returns.tax_pct')}</th>
+              <th className="px-3 py-2 text-end text-xs font-medium text-ink-tertiary">{t('returns.debit_amount')}</th>
               {isNew && <th className="px-3 py-2" />}
             </tr>
           </thead>
@@ -312,17 +351,25 @@ export default function PurchaseReturnEditorPage() {
                         : 'border-border-strong'}`} />
                 </td>
                 <td className="px-3 py-2">
-                  <select value={l.condition}
-                    onChange={e => updateLine(i, 'condition', e.target.value as 'resellable' | 'damaged')}
+                  <select value={l.restock_warehouse_id ?? ''}
+                    onChange={e => updateLine(i, 'restock_warehouse_id', e.target.value || null)}
                     disabled={!isDraft}
                     className="rounded border border-border-strong px-2 py-1 text-sm">
-                    <option value="resellable">{t('returns.resellable')}</option>
-                    <option value="damaged">{t('returns.damaged')}</option>
+                    <option value="">{t('returns.warehouse_default')}</option>
+                    {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
                   </select>
                 </td>
-                <td className="px-3 py-2 text-end text-ink-secondary">
-                  {l.unit_cost !== null ? l.unit_cost.toFixed(2) : '—'}
-                </td>
+                {(() => { const v = lineInput(l); const c = computeReturnLine(v); return (<>
+                  <td className="px-3 py-2 text-end text-ink-secondary tabular-nums">
+                    {v.unit_value ? v.unit_value.toFixed(2) : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-end text-ink-secondary tabular-nums">
+                    {v.tax_rate ? `${v.tax_rate}%` : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-end text-sm font-medium text-ink-primary tabular-nums">
+                    {c.line_total.toFixed(2)}
+                  </td>
+                </>); })()}
                 {isNew && (
                   <td className="px-3 py-2">
                     <button onClick={() => removeLine(i)} className="text-xs text-red-400 hover:text-red-600">✕</button>
@@ -331,6 +378,27 @@ export default function PurchaseReturnEditorPage() {
               </tr>
             ))}
           </tbody>
+          {lines.length > 0 && (
+            <tfoot>
+              {/* P1 — the debit note this return will raise, computed exactly as
+                  confirm_purchase_return computes it. */}
+              <tr className="border-t-2 border-border-strong bg-surface-muted">
+                <td className="px-3 py-2 text-xs font-semibold text-ink-primary" colSpan={4}>
+                  {t('returns.debit_total')}
+                </td>
+                <td className="px-3 py-2 text-end text-xs text-ink-secondary tabular-nums">
+                  {t('returns.tax_pct')}
+                </td>
+                <td className="px-3 py-2 text-end text-xs text-ink-secondary tabular-nums">
+                  {docTotal.tax_amount.toFixed(2)}
+                </td>
+                <td className="px-3 py-2 text-end text-sm font-semibold text-ink-primary tabular-nums">
+                  {docTotal.line_total.toFixed(2)}
+                </td>
+                {isNew && <td />}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 

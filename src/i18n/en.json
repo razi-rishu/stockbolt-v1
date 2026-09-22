@@ -1402,6 +1402,15 @@
     "date": "Date"
   },
   "returns": {
+    "restock_to": "Restock To",
+    "return_from": "Return From",
+    "warehouse_default": "Document warehouse",
+    "unit_price": "Unit Price",
+    "tax_pct": "Tax %",
+    "credit_amount": "Credit",
+    "debit_amount": "Debit",
+    "credit_total": "Credit note total",
+    "debit_total": "Debit note total",
     "ordered_in_error": "Ordered in error",
     "warranty": "Warranty claim",
     "purchase_returns_title": "Purchase Returns",
@@ -1763,6 +1772,12 @@
     "col_amount": "Amount"
   },
   "refund": {
+    "title_vendor_credit": "Receive refund from supplier",
+    "intro_vendor_credit": "Record money {{name}} is sending back against a debit note on a bill you had already paid. This is not an advance.",
+    "gl_hint_vendor_credit": "Posts Dr the selected account / Cr 2100 Accounts Payable.",
+    "ap_debit_badge": "SUPPLIER OWES YOU",
+    "ap_debit_desc": "{{amount}} is owed back by this supplier.",
+    "ap_debit_gl": "Sits as a debit balance on 2100 Accounts Payable, net of anything still unpaid.",
     "title_customer": "Refund advance to customer",
     "title_vendor": "Record refund from supplier",
     "intro_customer": "Give part or all of {{name}}'s advance back. Use this when they cancelled before an invoice was raised — no sales return is involved.",

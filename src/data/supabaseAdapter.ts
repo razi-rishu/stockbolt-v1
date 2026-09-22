@@ -145,8 +145,9 @@ async function postRefund(
   client: SupabaseClient<Database>,
   input: import('./adapter').RefundAdvanceInput,
   direction: 'inbound' | 'outbound',
-  rpc: 'confirm_customer_refund' | 'confirm_vendor_refund' | 'confirm_customer_credit_refund',
-  prefix: 'CRF' | 'VRF' | 'CCR',
+  rpc: 'confirm_customer_refund' | 'confirm_vendor_refund' | 'confirm_customer_credit_refund'
+     | 'confirm_vendor_credit_refund',
+  prefix: 'CRF' | 'VRF' | 'CCR' | 'VCR',
   context: string,
   /** R5a — which pot is being emptied. 'advance' is 2400/1400; 'on_account'
    *  is a credit balance on 1200. The confirm RPCs check this too, so a
@@ -1138,7 +1139,12 @@ export function createSupabaseAdapter(
         // (credit - debit) so a positive number means "customer has credit".
         // For 1400 (asset) the natural balance is DR > CR, so we flip the
         // sign — positive still means "supplier holds OUR money".
-        if (account_code === '1400') return debit - credit;
+        // P4 — 2100 flips for the same reason 1400 does. AP is a liability, so
+        // its natural balance is CR > DR (we owe them). A DEBIT balance means
+        // the opposite: they owe US, typically a debit note against a bill that
+        // was already paid. Flipping keeps one meaning across every account
+        // this helper serves — positive always means "they hold our money".
+        if (account_code === '1400' || account_code === '2100') return debit - credit;
         return credit - debit;
       },
     },
@@ -2630,6 +2636,17 @@ export function createSupabaseAdapter(
         // it to the 1200 engine instead of the 2400 one.
         return postRefund(client, input, 'outbound', 'confirm_customer_credit_refund',
                           'CCR', 'payments.refundCustomerCredit', 'on_account');
+      },
+      async refundVendorCredit(input): Promise<import('./adapter').RefundResult> {
+        // P4 — INBOUND: the money is coming back to us. classification
+        // 'on_account' routes it to the 2100 engine rather than the 1400 one.
+        return postRefund(client, input, 'inbound', 'confirm_vendor_credit_refund',
+                          'VCR', 'payments.refundVendorCredit', 'on_account');
+      },
+      async voidVendorCreditRefund(payment_id, reason): Promise<void> {
+        const { error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ error: unknown }>)
+          ('void_vendor_credit_refund', { p_payment_id: payment_id, p_reason: reason ?? null });
+        assertNoError(error as Error | null, 'payments.voidVendorCreditRefund');
       },
       async voidCustomerCreditRefund(payment_id, reason): Promise<void> {
         const { error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ error: unknown }>)

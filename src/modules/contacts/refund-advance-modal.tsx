@@ -83,10 +83,10 @@ export function RefundAdvanceModal({
         notes:           null,
       };
       const res = side === 'vendor'
-        ? await api.refundVendorAdvance(input)
-        : source === 'credit'
-          ? await api.refundCustomerCredit(input)
-          : await api.refundCustomerAdvance(input);
+        ? (source === 'credit' ? await api.refundVendorCredit(input)
+                               : await api.refundVendorAdvance(input))
+        : (source === 'credit' ? await api.refundCustomerCredit(input)
+                               : await api.refundCustomerAdvance(input));
       onDone(res);
       onClose();
       setAmount(''); setRef('');
@@ -97,17 +97,21 @@ export function RefundAdvanceModal({
     }
   };
 
-  const isCredit = side === 'customer' && source === 'credit';
-  const title = side === 'vendor' ? t('refund.title_vendor')
-              : isCredit          ? t('refund.title_customer_credit')
-              :                     t('refund.title_customer');
+  const isCredit       = source === 'credit';
+  const isVendorCredit = side === 'vendor'   && isCredit;
+  const isCustCredit   = side === 'customer' && isCredit;
+  const title = isVendorCredit ? t('refund.title_vendor_credit')
+              : side === 'vendor' ? t('refund.title_vendor')
+              : isCustCredit    ? t('refund.title_customer_credit')
+              :                   t('refund.title_customer');
 
   return (
     <Modal open={open} onClose={onClose} title={title} width="md">
       <div className="flex flex-col gap-3 text-sm">
         <p className="text-ink-secondary">
-          {side === 'vendor' ? t('refund.intro_vendor',          { name: contactName })
-           : isCredit        ? t('refund.intro_customer_credit', { name: contactName })
+          {isVendorCredit   ? t('refund.intro_vendor_credit',   { name: contactName })
+           : side === 'vendor' ? t('refund.intro_vendor',        { name: contactName })
+           : isCustCredit    ? t('refund.intro_customer_credit', { name: contactName })
            :                   t('refund.intro_customer',        { name: contactName })}
         </p>
 
@@ -163,8 +167,9 @@ export function RefundAdvanceModal({
         </label>
 
         <p className="text-xs text-ink-tertiary">
-          {side === 'vendor' ? t('refund.gl_hint_vendor')
-           : isCredit        ? t('refund.gl_hint_customer_credit')
+          {isVendorCredit   ? t('refund.gl_hint_vendor_credit')
+           : side === 'vendor' ? t('refund.gl_hint_vendor')
+           : isCustCredit    ? t('refund.gl_hint_customer_credit')
            :                   t('refund.gl_hint_customer')}
         </p>
 
