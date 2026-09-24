@@ -316,6 +316,16 @@ export default function SalesReturnEditorPage() {
       qc.invalidateQueries({ queryKey: ['credit_notes'] });
     },
   });
+  // Draft -> Delete, confirmed -> Void. The same rule invoices, bills and
+  // payments follow: a draft has posted nothing, so it is removed outright
+  // rather than leaving a void document nobody wanted a record of.
+  const deleteMutation = useMutation({
+    mutationFn: () => getAdapter().salesReturns.deleteDraft(id!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sales_returns'] });
+      navigate('/sales/returns');
+    },
+  });
   // Phase 34 — Edit a confirmed return: void its credit note + reopen as a draft.
   const reopenMutation = useMutation({
     mutationFn: () => getAdapter().salesReturns.reopen(id!),
@@ -431,8 +441,23 @@ export default function SalesReturnEditorPage() {
               {isNew ? t('returns.save_and_create_cn') : t('common.save')}
             </Button>
           )}
+          {/* Only once it exists: there is nothing to delete before the first
+              save, and a confirmed return has a credit note behind it and must
+              be voided so the GL and the restock are reversed. */}
+          {!isNew && existing?.status === 'draft' && (
+            <Button variant="danger" onClick={() => {
+              if (window.confirm(t('returns.delete_confirm'))) deleteMutation.mutate();
+            }} loading={deleteMutation.isPending}>
+              {t('common.delete')}
+            </Button>
+          )}
         </div>
       </div>
+      {deleteMutation.isError && (
+        <p className="rounded-card border border-danger-500 bg-danger-50 px-4 py-2 text-sm text-danger-600">
+          {String((deleteMutation.error as Error).message)}
+        </p>
+      )}
 
       <div className="glass-card p-6 grid grid-cols-2 gap-4">
         <div>

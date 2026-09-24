@@ -2505,6 +2505,12 @@ export interface SalesReturnsAPI {
   void(id: string, reason?: string): Promise<void>;
   /** Phase 34 — reverse a confirmed return (void its credit note) + reopen as draft. */
   reopen(id: string): Promise<void>;
+  /**
+   * Draft only — a draft return has never posted, so a hard delete is safe and
+   * leaves nothing behind. Matches the rule the rest of the app follows:
+   * draft -> Delete, confirmed -> Void (which reverses the GL).
+   */
+  deleteDraft(id: string): Promise<void>;
   getNextNumber(company_id: string): Promise<string>;
 }
 
@@ -2567,6 +2573,8 @@ export interface PurchaseReturnsAPI {
   confirm(id: string): Promise<{ debit_note_id: string; debit_note_number: string }>;
   /** Reverses the debit note and marks the return void. */
   void(id: string, reason?: string): Promise<void>;
+  /** Draft only — mirror of the sales side. */
+  deleteDraft(id: string): Promise<void>;
   /** Reverses the debit note and returns the document to draft. */
   reopen(id: string): Promise<void>;
   getNextNumber(company_id: string): Promise<string>;

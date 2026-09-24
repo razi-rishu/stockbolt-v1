@@ -5564,6 +5564,25 @@ export function createSupabaseAdapter(
         const { error } = await rpcAny('reopen_sales_return', { p_sales_return_id: id });
         assertNoError(error as Error | null, 'salesReturns.reopen');
       },
+      async deleteDraft(id): Promise<void> {
+        // Drafts only — a draft return has never produced a credit note, so a
+        // hard delete posts nothing and reverses nothing. Guard on status so a
+        // confirmed return can never be wiped: that one has a credit note
+        // behind it and must go through void_sales_return, which reverses the
+        // GL and the restock at the voucher date.
+        const { data: row, error: fErr } = await client
+          .from('sales_returns').select('status').eq('id', id).single();
+        assertNoError(fErr, 'salesReturns.deleteDraft fetch');
+        if ((row as { status?: string } | null)?.status !== 'draft') {
+          throw new Error('Only draft returns can be deleted. Void a confirmed return instead.');
+        }
+        const { error: itErr } = await client
+          .from('sales_return_items').delete().eq('sales_return_id', id);
+        assertNoError(itErr, 'salesReturns.deleteDraft items');
+        const { error } = await client
+          .from('sales_returns').delete().eq('id', id).eq('status', 'draft');
+        assertNoError(error, 'salesReturns.deleteDraft');
+      },
       // R2a — what is still returnable on each line of an invoice. Reads the
       // view rather than recomputing, so the UI and the confirm-time guard can
       // never disagree about what is left.
@@ -5589,6 +5608,24 @@ export function createSupabaseAdapter(
     // types; `as any` on the builder is the same pattern used for every other
     // post-generation table here.
     purchaseReturns: {
+      async deleteDraft(id): Promise<void> {
+        // Mirror of the sales side. Drafts only: a draft purchase return has
+        // never produced a debit note, so nothing was posted and nothing needs
+        // reversing. A confirmed one must go through void_purchase_return,
+        // which unwinds the debit note and the stock movement.
+        const { data: row, error: fErr } = await (client.from('purchase_returns' as any) as any)
+          .select('status').eq('id', id).single();
+        assertNoError(fErr as Error | null, 'purchaseReturns.deleteDraft fetch');
+        if ((row as { status?: string } | null)?.status !== 'draft') {
+          throw new Error('Only draft returns can be deleted. Void a confirmed return instead.');
+        }
+        const { error: itErr } = await (client.from('purchase_return_items' as any) as any)
+          .delete().eq('purchase_return_id', id);
+        assertNoError(itErr as Error | null, 'purchaseReturns.deleteDraft items');
+        const { error } = await (client.from('purchase_returns' as any) as any)
+          .delete().eq('id', id).eq('status', 'draft');
+        assertNoError(error as Error | null, 'purchaseReturns.deleteDraft');
+      },
       async list(company_id): Promise<import('./adapter').PurchaseReturnRow[]> {
         const { data, error } = await (client.from('purchase_returns' as any) as any)
           .select('*').eq('company_id', company_id).order('date', { ascending: false });

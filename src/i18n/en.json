@@ -1402,6 +1402,7 @@
     "date": "Date"
   },
   "returns": {
+    "delete_confirm": "Delete this draft return? It has not posted anything, so nothing is reversed — the document is simply removed.",
     "remove_line": "Remove this line",
     "restock_to": "Restock To",
     "return_from": "Return From",

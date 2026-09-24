@@ -211,6 +211,15 @@ export default function PurchaseReturnEditorPage() {
     onError: (e) => setError(e instanceof Error ? e.message : String(e)),
   });
 
+  // Draft -> Delete, confirmed -> Void. Mirror of the sales side.
+  const deleteMutation = useMutation({
+    mutationFn: () => getAdapter().purchaseReturns.deleteDraft(id!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['purchase_returns'] });
+      navigate('/purchasing/returns');
+    },
+    onError: (e: Error) => setError(e.message),
+  });
   const voidMutation = useMutation({
     mutationFn: (r: string) => getAdapter().purchaseReturns.void(id!, r),
     onSuccess: async () => {
@@ -254,6 +263,13 @@ export default function PurchaseReturnEditorPage() {
               }}
               loading={voidMutation.isPending}>
               {t('common.void')}
+            </Button>
+          )}
+          {!isNew && existing?.status === 'draft' && (
+            <Button variant="danger" onClick={() => {
+              if (window.confirm(t('returns.delete_confirm'))) deleteMutation.mutate();
+            }} loading={deleteMutation.isPending}>
+              {t('common.delete')}
             </Button>
           )}
         </div>

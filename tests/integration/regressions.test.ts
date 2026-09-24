@@ -5244,3 +5244,43 @@ describe('Phase 85/86 — guard scope and engine-account protection (soft until 
     expect(true).toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Returns — draft Delete, confirmed Void
+//
+// The rule the rest of the app already follows (invoices, bills, payments):
+// a DRAFT has posted nothing, so it is removed outright; a CONFIRMED document
+// has a credit or debit note behind it and must be voided so the GL and the
+// stock movement are reversed at the voucher date.
+//
+// Both return editors had only the Void half. The guard below is the one that
+// matters: deleteDraft must refuse anything that is not a draft, because a
+// hard delete of a confirmed return would strand its note and its journal.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Returns — delete is draft-only', () => {
+  it('no confirmed or void return has lost its document row', async () => {
+    // A hard delete that got past the status guard would show up here as a
+    // note whose parent return no longer exists.
+    const orphanCn = await sql<{ credit_note_number: string }>(`
+      SELECT cn.credit_note_number FROM public.credit_notes cn
+      WHERE cn.reason = 'return'
+        AND NOT EXISTS (SELECT 1 FROM public.sales_returns sr WHERE sr.credit_note_id = cn.id)`);
+    expect(orphanCn, `credit notes from a return with no return document: ${JSON.stringify(orphanCn)}`)
+      .toHaveLength(0);
+  });
+
+  it('both adapters guard deleteDraft on status', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(resolve(process.cwd(), 'src/data/supabaseAdapter.ts'), 'utf8');
+    for (const tbl of ['sales_returns', 'purchase_returns']) {
+      const i = src.indexOf(`assertNoError(fErr as Error | null, 'purchaseReturns.deleteDraft fetch')`);
+      const j = src.indexOf(`assertNoError(fErr, 'salesReturns.deleteDraft fetch')`);
+      expect(i >= 0 || j >= 0, `${tbl} deleteDraft reads the status first`).toBe(true);
+    }
+    // Both must refuse a non-draft, and both must scope the delete itself.
+    expect((src.match(/Only draft returns can be deleted/g) ?? []).length,
+      'both sides refuse a non-draft').toBe(2);
+    expect((src.match(/\.delete\(\)\.eq\('id', id\)\.eq\('status', 'draft'\)/g) ?? []).length,
+      'both scope the delete to status=draft as a second lock').toBe(2);
+  });
+});
