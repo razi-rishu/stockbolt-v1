@@ -215,7 +215,7 @@ BEGIN
     'credit_note_id', v_cn_id,
     'credit_note_number', v_cn_number);
 END;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.confirm_purchase_return(p_purchase_return_id uuid)
@@ -365,7 +365,7 @@ BEGIN
     'debit_note_id',      v_dn_id,
     'debit_note_number',  v_dn_number);
 END;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.confirm_credit_note(p_credit_note_id uuid)
@@ -653,7 +653,7 @@ BEGIN
     'entry_number',       v_je_entry
   );
 END;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.confirm_debit_note(p_debit_note_id uuid)
@@ -955,7 +955,7 @@ BEGIN
     'entry_number',      v_je_entry
   );
 END;
-$function$
+$function$;
 
 
 NOTIFY pgrst, 'reload schema';

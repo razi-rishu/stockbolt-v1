@@ -5107,3 +5107,42 @@ describe('Phase 84 — vendor credit refund (soft until applied)', () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Migration hygiene — a file you cannot paste into the SQL editor
+//
+// pg_get_functiondef returns a definition with NO trailing semicolon. Every
+// migration that rebuilds a posting RPC from the live definition is assembled
+// from that output, so concatenating two of them yields:
+//
+//     END;
+//     $function$            <- nothing terminates it
+//     CREATE OR REPLACE ...  <- "syntax error at or near CREATE"
+//
+// Phase 83 shipped exactly that and failed on first paste. Postgres aborts the
+// whole batch at parse time so nothing half-applies, but the owner loses a
+// round trip and has to be told why.
+//
+// The check has to look at the NEXT non-blank line too: several older
+// migrations legitimately put the semicolon on its own line, and a
+// single-line rule flags them as broken. I made that mistake while writing
+// this and edited three files that were fine.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Migration hygiene', () => {
+  it('every dollar-quoted body is terminated', async () => {
+    const { readdirSync, readFileSync } = await import('node:fs');
+    const dir = resolve(process.cwd(), 'supabase/migrations');
+    const bad: string[] = [];
+    for (const name of readdirSync(dir).filter(f => f.endsWith('.sql'))) {
+      const lines = readFileSync(resolve(dir, name), 'utf8').split('\n');
+      lines.forEach((l, i) => {
+        const s = l.trim();
+        if (s !== '$function$' && s !== '$$' && s !== '$body$') return;
+        const next = lines.slice(i + 1).map(x => x.trim()).find(x => x !== '') ?? '';
+        if (!s.endsWith(';') && !next.startsWith(';')) bad.push(`${name}:${i + 1}`);
+      });
+    }
+    expect(bad, `unterminated function bodies — these files cannot be run as one batch: ${JSON.stringify(bad)}`)
+      .toHaveLength(0);
+  });
+});
