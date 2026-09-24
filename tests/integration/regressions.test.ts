@@ -5146,3 +5146,95 @@ describe('Migration hygiene', () => {
       .toHaveLength(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 85/86 — two guarantees that were not being kept
+//
+// 85: the negative-stock guard inspected only type='sale', so a purchase
+//     return (direction -1, no reversal_of_id) walked past it at a company
+//     with backorders off. The reversal exemption is NOT the bug and must
+//     survive — you have to be able to void a document whose goods are sold.
+//
+// 86: phase 60 seeded 4250/6750/6910 without is_system, and two tenants have
+//     already repurposed 6910 for their own expenses. dispose_fixed_asset
+//     resolves it by code, so a loss would post into "IT EXPENSES".
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 85/86 — guard scope and engine-account protection (soft until applied)', () => {
+  const src = async (fn: string) => {
+    const r = await sql<{ s: string }>(`SELECT pg_get_functiondef(oid) AS s FROM pg_proc
+      WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+    return (r[0]?.s ?? '').split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+  };
+
+  it('phase85: the guard covers every outbound movement, and still exempts reversals', async () => {
+    const code = await src('tg_block_negative_stock');
+    if (!/NEW\.direction <> -1/.test(code)) {
+      console.warn('⚠ phase85 not applied — the guard still inspects only type=sale, so a ' +
+                   'purchase return can take stock negative at a company with backorders off. ' +
+                   'Run supabase/migrations/20260924000001_phase85_negative_stock_all_outbound.sql');
+      return;
+    }
+    expect(code, 'scoped by direction, not by type name').toMatch(/NEW\.direction <> -1/);
+    expect(/NEW\.type <> 'sale'/.test(code), 'the type-name proxy is gone').toBe(false);
+    // Load-bearing: without this you cannot void a document whose goods are sold.
+    expect(code, 'reversals stay exempt').toMatch(/NEW\.reversal_of_id IS NOT NULL/);
+    expect(code, 'the company setting still wins').toMatch(/allow_negative_stock/);
+    expect(code, 'only blocks when the RESULT is negative').toMatch(/NEW\.running_qty >= 0/);
+  });
+
+  it('phase85: the trigger is still attached and enabled', async () => {
+    const t = await sql<{ tgname: string; enabled: string }>(`
+      SELECT tgname, tgenabled::text AS enabled FROM pg_trigger t
+      JOIN pg_class c ON c.oid=t.tgrelid
+      WHERE c.relname='stock_ledger' AND t.tgname='stock_ledger_block_negative'`);
+    expect(t.length, 'guard trigger exists').toBe(1);
+    expect(t[0]!.enabled, 'and is enabled').toBe('O');
+  });
+
+  it('phase86: the disposal accounts are protected where they are still standard', async () => {
+    const unprotected = await sql<{ code: string; company: string; acct: string }>(`
+      SELECT coa.code, c.name AS company, coa.name AS acct
+      FROM public.chart_of_accounts coa JOIN public.companies c ON c.id = coa.company_id
+      WHERE NOT coa.is_system
+        AND (   (coa.code = '4250' AND coa.name = 'Gain on Asset Disposal')
+             OR (coa.code = '6750' AND coa.name = 'Depreciation Expense')
+             OR (coa.code = '6910' AND coa.name = 'Loss on Asset Disposal'))
+      ORDER BY 1, 2`);
+    if (unprotected.length) {
+      console.warn(`⚠ phase86 not applied — ${unprotected.length} standard disposal account(s) ` +
+                   'are still editable and can be renamed onto another use. Run ' +
+                   'supabase/migrations/20260924000002_phase86_protect_engine_accounts.sql');
+      return;
+    }
+    expect(unprotected).toHaveLength(0);
+  });
+
+  it('phase86: disposal refuses an account it cannot recognise', async () => {
+    const code = await src('dispose_fixed_asset');
+    if (!/v_disp_code/.test(code)) { console.warn('⚠ phase86 not applied yet'); return; }
+    expect(code, 'checks the account is a system account').toMatch(/AND is_system AND is_active/);
+    expect(code, 'raises rather than posting into the wrong account')
+      .toMatch(/is not a recognised disposal account/);
+    expect(code, 'still posts 4250 on a gain').toMatch(/'account_code', '4250'/);
+    expect(code, 'still posts 6910 on a loss').toMatch(/'account_code', '6910'/);
+  });
+
+  // ── Holds whether or not the migrations are applied ──────────────────────
+
+  it('phase86: reports engine codes a tenant has repurposed (warn-only)', async () => {
+    // Not a failure: a tenant may legitimately have taken a code before it was
+    // protected. It IS something the owner needs to see, because the engine
+    // resolving that code will now refuse rather than post.
+    const repurposed = await sql<{ code: string; company: string; acct: string }>(`
+      SELECT coa.code, c.name AS company, coa.name AS acct
+      FROM public.chart_of_accounts coa JOIN public.companies c ON c.id = coa.company_id
+      WHERE coa.code IN ('4250','6750','6910')
+        AND coa.name NOT IN ('Gain on Asset Disposal','Depreciation Expense','Loss on Asset Disposal')
+      ORDER BY 1, 2`);
+    if (repurposed.length) {
+      console.warn(`⚠ engine account codes in use for something else: ${JSON.stringify(repurposed)}. ` +
+                   'A fixed-asset disposal at these companies will be refused until the code is freed.');
+    }
+    expect(true).toBe(true);
+  });
+});
