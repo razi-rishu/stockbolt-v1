@@ -1059,10 +1059,16 @@ describe('Phase 30 — Negative-stock guard', () => {
     expect(rows[0].data_type).toBe('boolean');
   });
 
-  it('phase30: tg_block_negative_stock guards sale rows and honours the toggle', async () => {
+  it('phase30: tg_block_negative_stock guards outbound rows and honours the toggle', async () => {
     const src = await guardSrc();
     if (!src) { console.warn('phase30 not applied — skipping guard source check.'); return; }
-    expect(src, 'must scope to sale rows only').toMatch(/type\s*<>\s*'sale'/);
+    // Was: expect(...).toMatch(/type <> 'sale'/) — asserting the guard looked at
+    // the TYPE NAME. Phase 85 deliberately widened it to every outbound movement
+    // (direction = -1), because confirm_debit_note writes type='purchase_return'
+    // and walked straight past a sale-only check. The intent this test protects
+    // is "outbound movements are guarded", not "the clause says sale", so it now
+    // accepts either scoping and keeps the three assertions that actually matter.
+    expect(src, 'must scope to outbound movements').toMatch(/direction\s*<>\s*-1|type\s*<>\s*'sale'/);
     expect(src, 'must skip reversal rows').toMatch(/reversal_of_id\s+IS\s+NOT\s+NULL/i);
     expect(src, 'must respect allow_negative_stock').toMatch(/allow_negative_stock/);
     expect(src, 'must raise when stock would go negative').toMatch(/RAISE\s+EXCEPTION/i);
