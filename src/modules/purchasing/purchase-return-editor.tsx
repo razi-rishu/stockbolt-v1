@@ -315,9 +315,12 @@ export default function PurchaseReturnEditorPage() {
             <span className="text-xs text-ink-tertiary">{t('returns.use_import')}</span>
           )}
         </div>
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-surface-muted">
             <tr>
+              {/* First, not last — same reason as the sales side. */}
+              {isNew && <th className="w-10 px-2 py-2" />}
               <th className="px-3 py-2 text-start text-xs font-medium text-ink-tertiary">{t('common.description')}</th>
               <th className="px-3 py-2 text-end text-xs font-medium text-ink-tertiary">{t('returns.returnable')}</th>
               <th className="px-3 py-2 text-end text-xs font-medium text-ink-tertiary">{t('returns.qty_returned')}</th>
@@ -327,7 +330,6 @@ export default function PurchaseReturnEditorPage() {
               {/* P1 — what the SUPPLIER will credit, read from the bill line. */}
               <th className="px-3 py-2 text-end text-xs font-medium text-ink-tertiary">{t('returns.tax_pct')}</th>
               <th className="px-3 py-2 text-end text-xs font-medium text-ink-tertiary">{t('returns.debit_amount')}</th>
-              {isNew && <th className="px-3 py-2" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-border-subtle">
@@ -336,6 +338,17 @@ export default function PurchaseReturnEditorPage() {
             )}
             {lines.map((l, i) => (
               <tr key={i}>
+                {isNew && (
+                  <td className="px-2 py-2">
+                    <button
+                      type="button"
+                      onClick={() => removeLine(i)}
+                      title={t('returns.remove_line')}
+                      aria-label={t('returns.remove_line')}
+                      className="flex h-7 w-7 items-center justify-center rounded-full text-ink-tertiary transition-colors hover:bg-danger-50 hover:text-danger-600"
+                    >✕</button>
+                  </td>
+                )}
                 <td className="px-3 py-2 text-ink-secondary">
                   {l.description || <span className="text-ink-tertiary">—</span>}
                 </td>
@@ -370,11 +383,6 @@ export default function PurchaseReturnEditorPage() {
                     {c.line_total.toFixed(2)}
                   </td>
                 </>); })()}
-                {isNew && (
-                  <td className="px-3 py-2">
-                    <button onClick={() => removeLine(i)} className="text-xs text-red-400 hover:text-red-600">✕</button>
-                  </td>
-                )}
               </tr>
             ))}
           </tbody>
@@ -383,6 +391,7 @@ export default function PurchaseReturnEditorPage() {
               {/* P1 — the debit note this return will raise, computed exactly as
                   confirm_purchase_return computes it. */}
               <tr className="border-t-2 border-border-strong bg-surface-muted">
+                {isNew && <td className="w-10" />}
                 <td className="px-3 py-2 text-xs font-semibold text-ink-primary" colSpan={4}>
                   {t('returns.debit_total')}
                 </td>
@@ -395,11 +404,11 @@ export default function PurchaseReturnEditorPage() {
                 <td className="px-3 py-2 text-end text-sm font-semibold text-ink-primary tabular-nums">
                   {docTotal.line_total.toFixed(2)}
                 </td>
-                {isNew && <td />}
               </tr>
             </tfoot>
           )}
         </table>
+        </div>
       </div>
 
       <p className="text-xs text-ink-tertiary">{t('returns.purchase_post_hint')}</p>

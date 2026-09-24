@@ -409,8 +409,11 @@ export default function SalesReturnEditorPage() {
     );
   }
 
+  // P1/P3 took the line table to ten columns. max-w-4xl clipped the last two
+  // against a card with overflow-hidden, so the remove button became
+  // unreachable rather than merely off-screen.
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-6xl">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-ink-primary">
           {isNew ? t('returns.new_return') : `${t('returns.return_number')}: ${existing?.return_number}`}
@@ -513,9 +516,14 @@ export default function SalesReturnEditorPage() {
             <span className="text-xs text-ink-tertiary">{t('returns.use_import')}</span>
           )}
         </div>
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-surface-muted">
             <tr>
+              {/* First, not last: a customer returning 1 line of 5 imports all five
+                  and deletes four, so this is the most-used control on the row.
+                  At the far right it scrolled out of reach. */}
+              {isDraft && <th className="w-10 px-2 py-2" />}
               <th className="px-3 py-2 text-left text-xs font-medium text-ink-tertiary">{t('common.description')}</th>
               <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('returns.returnable')}</th>
               <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('returns.qty_returned')}</th>
@@ -528,12 +536,22 @@ export default function SalesReturnEditorPage() {
               <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('returns.tax_pct')}</th>
               <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('returns.credit_amount')}</th>
               <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('returns.cost_at_sale')}</th>
-              {isDraft && <th className="px-3 py-2" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-border-subtle">
             {lines.map((l, i) => (
               <tr key={i}>
+                {isDraft && (
+                  <td className="px-2 py-2">
+                    <button
+                      type="button"
+                      onClick={() => removeLine(i)}
+                      title={t('returns.remove_line')}
+                      aria-label={t('returns.remove_line')}
+                      className="flex h-7 w-7 items-center justify-center rounded-full text-ink-tertiary transition-colors hover:bg-danger-50 hover:text-danger-600"
+                    >✕</button>
+                  </td>
+                )}
                 {/* R1 — read-only. sales_return_items has no description column,
                     so anything typed here was silently discarded on save, and
                     confirm_sales_return uses the INVOICE line's description for
@@ -588,11 +606,6 @@ export default function SalesReturnEditorPage() {
                     onChange={e => updateLine(i, 'unit_cost', e.target.value ? Number(e.target.value) : null)}
                     disabled={!isDraft} className="w-28 border border-border-strong rounded px-2 py-1 text-sm text-right" />
                 </td>
-                {isDraft && (
-                  <td className="px-3 py-2">
-                    <button onClick={() => removeLine(i)} className="text-red-400 hover:text-red-600 text-xs">✕</button>
-                  </td>
-                )}
               </tr>
             ))}
           </tbody>
@@ -603,6 +616,11 @@ export default function SalesReturnEditorPage() {
                   netted here: it posts as a separate charge, so the customer
                   receives this total minus the fee. */}
               <tr className="border-t-2 border-border-strong bg-surface-muted">
+                {/* Leading spacer for the remove column, which now sits first.
+                    The trailing spacer this replaces also left Cost at Sale with
+                    no footer cell — the row was one short and HTML quietly
+                    tolerated it. */}
+                {isDraft && <td className="w-10" />}
                 <td className="px-3 py-2 text-xs font-semibold text-ink-primary" colSpan={5}>
                   {t('returns.credit_total')}
                 </td>
@@ -615,11 +633,12 @@ export default function SalesReturnEditorPage() {
                 <td className="px-3 py-2 text-right text-sm font-semibold text-ink-primary tabular-nums">
                   {docTotal.line_total.toFixed(2)}
                 </td>
-                {isDraft && <td />}
+                <td className="px-3 py-2" />
               </tr>
             </tfoot>
           )}
         </table>
+        </div>
         {lines.length === 0 && (
           <p className="text-center text-ink-tertiary py-6 text-sm">{t('returns.no_lines_yet')}</p>
         )}

@@ -1402,6 +1402,7 @@
     "date": "Date"
   },
   "returns": {
+    "remove_line": "Remove this line",
     "restock_to": "Restock To",
     "return_from": "Return From",
     "warehouse_default": "Document warehouse",

@@ -1402,6 +1402,7 @@
     "date": "التاريخ"
   },
   "returns": {
+    "remove_line": "إزالة هذا السطر",
     "restock_to": "إعادة التخزين إلى",
     "return_from": "الإرجاع من",
     "warehouse_default": "مستودع المستند",
