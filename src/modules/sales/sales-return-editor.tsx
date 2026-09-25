@@ -138,6 +138,22 @@ export default function SalesReturnEditorPage() {
   });
   const returnableById = new Map(returnable.map(r => [r.invoice_item_id, r]));
 
+  // Another return already raised against this invoice. The returnable view
+  // counts CONFIRMED credit notes only — correct for the over-return guard,
+  // but it means two DRAFTS each believe the full quantity is still available.
+  // Nothing catches that until the second one is confirmed and the guard
+  // finally fires, by which point the duplicate has been sitting in the list.
+  //
+  // A warning, not a block: returning two lines of an invoice on separate days
+  // is ordinary, and so is a partial return followed by another.
+  const { data: allReturns = [] } = useQuery<SalesReturnRow[]>({
+    queryKey: ['sales_returns', company_id],
+    queryFn: () => getAdapter().salesReturns.list(company_id!),
+    enabled: !!company_id,
+  });
+  const siblingReturns = allReturns.filter(r =>
+    r.invoice_id === invoiceId && r.id !== existing?.id && r.status !== 'void');
+
   const { data: warehouses = [] } = useQuery<WarehouseRow[]>({
     queryKey: ['warehouses', company_id],
     queryFn: () => getAdapter().warehouses.list(company_id!),
@@ -382,6 +398,18 @@ export default function SalesReturnEditorPage() {
                 ✎ {t('common.edit') || 'Edit'}
               </Button>
             )}
+            {/* The Delete added alongside Save only ever appeared on the EDIT
+                form. A saved return opens in VIEW mode, so that button was
+                somewhere nobody looks. This is the bar people actually use. */}
+            {isDraft && existing?.id && (
+              <Button
+                variant="danger"
+                loading={deleteMutation.isPending}
+                onClick={() => { if (window.confirm(t('returns.delete_confirm'))) deleteMutation.mutate(); }}
+              >
+                {t('common.delete')}
+              </Button>
+            )}
             {existing?.status === 'confirmed' && (
               <Button
                 variant="secondary"
@@ -407,9 +435,9 @@ export default function SalesReturnEditorPage() {
             )}
           </div>
         </div>
-        {(confirmMutation.error || voidMutation.error) && (
+        {(confirmMutation.error || voidMutation.error || deleteMutation.error) && (
           <div data-print-hide style={{ color: '#b91c1c', fontSize: '13px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px' }}>
-            {String((confirmMutation.error as Error)?.message || (voidMutation.error as Error)?.message || confirmMutation.error || voidMutation.error)}
+            {String((confirmMutation.error as Error)?.message || (voidMutation.error as Error)?.message || (deleteMutation.error as Error)?.message || confirmMutation.error || voidMutation.error || deleteMutation.error)}
           </div>
         )}
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
@@ -457,6 +485,14 @@ export default function SalesReturnEditorPage() {
         <p className="rounded-card border border-danger-500 bg-danger-50 px-4 py-2 text-sm text-danger-600">
           {String((deleteMutation.error as Error).message)}
         </p>
+      )}
+
+      {siblingReturns.length > 0 && (
+        <div className="rounded-card border border-warning-500 bg-warning-50 px-4 py-3 text-sm text-ink-primary">
+          {t('returns.already_returned', {
+            list: siblingReturns.map(r => `${r.return_number} (${r.status})`).join(', '),
+          })}
+        </div>
       )}
 
       <div className="glass-card p-6 grid grid-cols-2 gap-4">

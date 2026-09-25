@@ -1402,6 +1402,7 @@
     "date": "Date"
   },
   "returns": {
+    "already_returned": "This invoice already has a return: {{list}}. Check it before saving another — quantities already returned on a DRAFT are not deducted from what is shown as returnable.",
     "delete_confirm": "Delete this draft return? It has not posted anything, so nothing is reversed — the document is simply removed.",
     "remove_line": "Remove this line",
     "restock_to": "Restock To",
