@@ -5284,3 +5284,60 @@ describe('Returns — delete is draft-only', () => {
       'both scope the delete to status=draft as a second lock').toBe(2);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Statements must never fetch the ledger unpaged
+//
+// PostgREST caps a response at ~1000 rows and returns a short array with NO
+// error. Every statement sums the ledger in JavaScript, so an unpaged
+// .select() understates silently once a company outgrows the cap.
+//
+// A truncated Trial Balance at least stops netting to zero. The Balance Sheet
+// folds income and expense into a synthetic equity line, so it would still
+// BALANCE while every figure on it was short — and the VAT and tax returns
+// get filed.
+//
+// Runs whether or not anything is applied: this is source, not schema.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Reports — the statements page the ledger', () => {
+  it('every statement and tax return uses fetchAllPages', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(resolve(process.cwd(), 'src/data/supabaseAdapter.ts'), 'utf8');
+
+    // Each of these sums the GL client-side and is reported as a financial
+    // figure, so each must page. Named individually rather than counted,
+    // because a count passes while the wrong one regresses.
+    for (const ctx of [
+      'accounting.getTrialBalance',
+      'reports.getProfitAndLoss',
+      'reports.getBalanceSheet',
+      'reports.getCashFlow/openingJEs',
+      'reports.getCashFlow/cashAsOf',
+      'reports.getCashFlow/periodRows',
+      'getVATReturn output',
+      'getVATReturn input',
+      'getVATReturn sales',
+      'getVATReturn expenses',
+      'getTaxReturn:gl',
+      'getTaxReturn:base',
+    ]) {
+      const i = src.indexOf(`'${ctx}'`);
+      expect(i, `${ctx} exists`).toBeGreaterThan(-1);
+      // The context string is the first argument to fetchAllPages, so the call
+      // opens just before it — but an inline row type can sit between the two,
+      // e.g. fetchAllPages<{ account_code: string; ... }>('ctx', ...), which is
+      // why the window is generous rather than tight.
+      const before = src.slice(Math.max(0, i - 400), i);
+      expect(before, `${ctx} is fetched through fetchAllPages`).toContain('fetchAllPages');
+    }
+  });
+
+  it('the paging helper keeps its cap and its warning', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(resolve(process.cwd(), 'src/lib/paging.ts'), 'utf8');
+    expect(src, 'stops on a short page').toMatch(/rows\.length < PAGE_SIZE/);
+    expect(src, 'warns rather than truncating in silence').toMatch(/console\.warn/);
+    expect(src, 'says the figures may be wrong, not just that a cap was hit')
+      .toMatch(/understated/);
+  });
+});

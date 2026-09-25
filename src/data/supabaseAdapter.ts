@@ -2,6 +2,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database, Json } from '@/types/database';
 import { normalizeSettings, DEFAULT_TEMPLATE_SETTINGS } from '@/modules/print/engine/types';
 import { sha256Hex } from '@/lib/einvoice';   // AC-4C — content hash for e-invoice snapshots
+// PostgREST caps a response at ~1000 rows without saying so. Every statement
+// below sums the ledger in JavaScript, so an uncapped .select() would have
+// started understating silently once a company outgrew that.
+import { fetchAllPages } from '@/lib/paging';
 // R6a — the Returns Analysis fold lives in a pure module so it can be unit
 // tested without a database; the whole risk in a report is the arithmetic.
 import {
@@ -1181,13 +1185,19 @@ export function createSupabaseAdapter(
         return data ?? [];
       },
       async getTrialBalance(company_id, as_of_date): Promise<TrialBalance> {
-        // Fetch all GL rows up to as_of_date
-        const { data: rows, error } = await client
-          .from('general_ledger')
-          .select('account_code, debit, credit')
-          .eq('company_id', company_id)
-          .lte('date', as_of_date);
-        assertNoError(error, 'accounting.getTrialBalance');
+        // Every GL row up to as_of_date, paged. A truncated Trial Balance stops
+        // netting to zero, which at least looks wrong — the statements below
+        // fail less visibly.
+        const rows = await fetchAllPages<{ account_code: string; debit: number; credit: number }>(
+          'accounting.getTrialBalance',
+          (f, t) => client
+            .from('general_ledger')
+            .select('account_code, debit, credit')
+            .eq('company_id', company_id)
+            .lte('date', as_of_date)
+            .range(f, t),
+          assertNoError,
+        );
 
         // Fetch CoA for names and types
         const { data: coa } = await client.from('chart_of_accounts').select('code, name, name_ar, type').eq('company_id', company_id);
@@ -2677,13 +2687,21 @@ export function createSupabaseAdapter(
         // range spans the year-end — would net to ~zero. (The Balance Sheet must
         // INCLUDE the close JE, since it moves earnings into equity, so the
         // exclusion lives here in the P&L, not in the shared GL fetch.)
-        const { data, error } = await client
-          .from('general_ledger')
-          .select('account_code, debit, credit, chart_of_accounts!inner(name, type, sub_type), journal_entries(source_type)')
-          .eq('company_id', company_id)
-          .gte('date', from)
-          .lte('date', to);
-        assertNoError(error, 'reports.getProfitAndLoss');
+        type PlRow = {
+          account_code: string; debit: number; credit: number;
+          chart_of_accounts: unknown; journal_entries: unknown;
+        };
+        const data = await fetchAllPages<PlRow>(
+          'reports.getProfitAndLoss',
+          (f, t) => client
+            .from('general_ledger')
+            .select('account_code, debit, credit, chart_of_accounts!inner(name, type, sub_type), journal_entries(source_type)')
+            .eq('company_id', company_id)
+            .gte('date', from)
+            .lte('date', to)
+            .range(f, t),
+          assertNoError,
+        );
 
         const byCode: Record<string, { name: string; type: string; sub_type: string | null; debit: number; credit: number }> = {};
         for (const row of data ?? []) {
@@ -2739,12 +2757,23 @@ export function createSupabaseAdapter(
         // below ("Current Period Earnings") so the accounting identity
         //   Assets = Liabilities + Equity
         // holds — without that fold the BS never balances during an open period.
-        const { data, error } = await client
-          .from('general_ledger')
-          .select('account_code, debit, credit, chart_of_accounts!inner(name, type, sub_type)')
-          .eq('company_id', company_id)
-          .lte('date', as_of_date);
-        assertNoError(error, 'reports.getBalanceSheet');
+        // The most dangerous of the three: income and expense fold into a
+        // synthetic equity line, so a truncated Balance Sheet still BALANCES
+        // while every figure on it is short.
+        type BsRow = {
+          account_code: string; debit: number; credit: number;
+          chart_of_accounts: unknown;
+        };
+        const data = await fetchAllPages<BsRow>(
+          'reports.getBalanceSheet',
+          (f, t) => client
+            .from('general_ledger')
+            .select('account_code, debit, credit, chart_of_accounts!inner(name, type, sub_type)')
+            .eq('company_id', company_id)
+            .lte('date', as_of_date)
+            .range(f, t),
+          assertNoError,
+        );
 
         const byCode: Record<string, { name: string; type: string; sub_type: string | null; debit: number; credit: number }> = {};
         // Net income running total (Revenue − Expenses) over the period
@@ -3819,44 +3848,62 @@ export function createSupabaseAdapter(
 
       async getVATReturn(company_id, from, to): Promise<VATReturn> {
         // Output VAT (account 2200) — credits = VAT collected on sales
-        const { data: outRows, error: outErr } = await client
-          .from('general_ledger')
-          .select('debit, credit, contact_id')
-          .eq('company_id', company_id)
-          .eq('account_code', '2200')
-          .gte('date', from).lte('date', to);
-        assertNoError(outErr, 'getVATReturn output');
+        // A truncated VAT return is a wrong filing, not a wrong screen. Paged.
+        type VatRow = { debit: number; credit: number; contact_id: string | null };
+        const outRows = await fetchAllPages<VatRow>(
+          'getVATReturn output',
+          (f, t) => client
+            .from('general_ledger')
+            .select('debit, credit, contact_id')
+            .eq('company_id', company_id)
+            .eq('account_code', '2200')
+            .gte('date', from).lte('date', to)
+            .range(f, t),
+          assertNoError,
+        );
 
         const totalOutputVAT = (outRows ?? []).reduce((s, r) => s + Number(r.credit) - Number(r.debit), 0);
 
         // Input VAT (account 1500) — debits = VAT paid on purchases
-        const { data: inRows, error: inErr } = await client
-          .from('general_ledger')
-          .select('debit, credit, contact_id')
-          .eq('company_id', company_id)
-          .eq('account_code', '1500')
-          .gte('date', from).lte('date', to);
-        assertNoError(inErr, 'getVATReturn input');
+        const inRows = await fetchAllPages<VatRow>(
+          'getVATReturn input',
+          (f, t) => client
+            .from('general_ledger')
+            .select('debit, credit, contact_id')
+            .eq('company_id', company_id)
+            .eq('account_code', '1500')
+            .gte('date', from).lte('date', to)
+            .range(f, t),
+          assertNoError,
+        );
 
         const totalInputVAT = (inRows ?? []).reduce((s, r) => s + Number(r.debit) - Number(r.credit), 0);
 
         // Get sales subtotal for Box 1 (standard-rated)
-        const { data: salesRows, error: salesErr } = await client
-          .from('general_ledger')
-          .select('debit, credit, contact_id')
-          .eq('company_id', company_id)
-          .eq('account_code', '4100')
-          .gte('date', from).lte('date', to);
-        assertNoError(salesErr, 'getVATReturn sales');
+        const salesRows = await fetchAllPages<VatRow>(
+          'getVATReturn sales',
+          (f, t) => client
+            .from('general_ledger')
+            .select('debit, credit, contact_id')
+            .eq('company_id', company_id)
+            .eq('account_code', '4100')
+            .gte('date', from).lte('date', to)
+            .range(f, t),
+          assertNoError,
+        );
         const totalSales = (salesRows ?? []).reduce((s, r) => s + Number(r.credit) - Number(r.debit), 0);
 
-        const { data: expRows, error: expErr } = await client
-          .from('general_ledger')
-          .select('debit, credit')
-          .eq('company_id', company_id)
-          .eq('account_code', '5100')
-          .gte('date', from).lte('date', to);
-        assertNoError(expErr, 'getVATReturn expenses');
+        const expRows = await fetchAllPages<{ debit: number; credit: number }>(
+          'getVATReturn expenses',
+          (f, t) => client
+            .from('general_ledger')
+            .select('debit, credit')
+            .eq('company_id', company_id)
+            .eq('account_code', '5100')
+            .gte('date', from).lte('date', to)
+            .range(f, t),
+          assertNoError,
+        );
         const totalExpenses = (expRows ?? []).reduce((s, r) => s + Number(r.debit) - Number(r.credit), 0);
 
         const outputBoxes: VATReturnBox[] = [
@@ -3946,21 +3993,29 @@ export function createSupabaseAdapter(
         // voids net to zero). output = Σ(credit − debit) over output accounts;
         // input/ITC = Σ(debit − credit) over input accounts.
         const sumGL = async (codes: string[], side: 'output' | 'input'): Promise<number> => {
-          const { data, error } = await client
-            .from('general_ledger').select('debit, credit')
-            .eq('company_id', company_id).in('account_code', codes)
-            .gte('date', from).lte('date', to);
-          assertNoError(error, 'getTaxReturn:gl');
+          const data = await fetchAllPages<{ debit: number; credit: number }>(
+            'getTaxReturn:gl',
+            (f, t) => client
+              .from('general_ledger').select('debit, credit')
+              .eq('company_id', company_id).in('account_code', codes)
+              .gte('date', from).lte('date', to)
+              .range(f, t),
+            assertNoError,
+          );
           return (data ?? []).reduce((s, r) => s + (side === 'output'
             ? Number(r.credit) - Number(r.debit)
             : Number(r.debit) - Number(r.credit)), 0);
         };
         const sumGLBase = async (code: string, side: 'output' | 'input'): Promise<number> => {
-          const { data, error } = await client
-            .from('general_ledger').select('debit, credit')
-            .eq('company_id', company_id).eq('account_code', code)
-            .gte('date', from).lte('date', to);
-          assertNoError(error, 'getTaxReturn:base');
+          const data = await fetchAllPages<{ debit: number; credit: number }>(
+            'getTaxReturn:base',
+            (f, t) => client
+              .from('general_ledger').select('debit, credit')
+              .eq('company_id', company_id).eq('account_code', code)
+              .gte('date', from).lte('date', to)
+              .range(f, t),
+            assertNoError,
+          );
           return (data ?? []).reduce((s, r) => s + (side === 'output'
             ? Number(r.credit) - Number(r.debit)
             : Number(r.debit) - Number(r.credit)), 0);
@@ -4098,33 +4153,50 @@ export function createSupabaseAdapter(
         // Opening-balance journal entries for this company (small set). Their
         // legs are non-cash establishment entries, excluded from the period
         // changes; their cash leg becomes part of Opening Cash.
-        const { data: obJes } = await client
-          .from('journal_entries')
-          .select('id')
-          .eq('company_id', company_id)
-          .like('source_type', 'opening%');
-        const obSet = new Set((obJes ?? []).map((j) => (j as { id: string }).id));
+        const obJes = await fetchAllPages<{ id: string }>(
+          'reports.getCashFlow/openingJEs',
+          (f, t) => client
+            .from('journal_entries')
+            .select('id')
+            .eq('company_id', company_id)
+            .like('source_type', 'opening%')
+            .range(f, t),
+          assertNoError,
+        );
+        const obSet = new Set(obJes.map((j) => j.id));
 
         // Actual cash (11xx, incl. cash/bank sub-accounts) up to a date.
         const cashAsOf = async (date: string) => {
-          const { data } = await client
-            .from('general_ledger')
-            .select('debit, credit')
-            .eq('company_id', company_id)
-            .like('account_code', '11%')
-            .lte('date', date);
-          return (data ?? []).reduce((s, r) => s + (Number(r.debit) - Number(r.credit)), 0);
+          const rows = await fetchAllPages<{ debit: number; credit: number }>(
+            'reports.getCashFlow/cashAsOf',
+            (f, t) => client
+              .from('general_ledger')
+              .select('debit, credit')
+              .eq('company_id', company_id)
+              .like('account_code', '11%')
+              .lte('date', date)
+              .range(f, t),
+            assertNoError,
+          );
+          return rows.reduce((s, r) => s + (Number(r.debit) - Number(r.credit)), 0);
         };
         const openingCashBase = await cashAsOf(prevDay(from));
         const closingCash = await cashAsOf(to);
 
         // Period rows — pull journal_entry_id so we can exclude opening-balance
         // entries and detect the opening-cash leg.
-        const { data: glRows } = await client
-          .from('general_ledger')
-          .select('account_code, debit, credit, journal_entry_id')
-          .eq('company_id', company_id)
-          .gte('date', from).lte('date', to);
+        const glRows = await fetchAllPages<{
+          account_code: string; debit: number; credit: number; journal_entry_id: string;
+        }>(
+          'reports.getCashFlow/periodRows',
+          (f, t) => client
+            .from('general_ledger')
+            .select('account_code, debit, credit, journal_entry_id')
+            .eq('company_id', company_id)
+            .gte('date', from).lte('date', to)
+            .range(f, t),
+          assertNoError,
+        );
 
         const move = new Map<string, { dr: number; cr: number }>();
         // Opening balance OF cash that happens to be dated inside the period —
