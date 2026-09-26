@@ -1127,15 +1127,23 @@ export function createSupabaseAdapter(
         // GL account for this contact. Positive = customer has paid in
         // advance / overpaid (we owe them); zero = no credit on file.
         // Works for both customer (2400) and supplier (1400) sides.
-        const { data, error } = await client
-          .from('general_ledger')
-          .select('debit, credit')
-          .eq('company_id',  company_id)
-          .eq('contact_id',  contact_id)
-          .eq('account_code', account_code);
-        assertNoError(error, 'contacts.getAdvanceBalance');
+        // Paged: this balance is the CEILING on a refund, so a truncated sum
+        // would understate what a customer is owed and hide the banner that
+        // offers it back. The database enforces the real ceiling, but a short
+        // read here would silently refuse money that is genuinely theirs.
+        const data = await fetchAllPages<{ debit: number; credit: number }>(
+          'contacts.getAdvanceBalance',
+          (f, t) => client
+            .from('general_ledger')
+            .select('debit, credit')
+            .eq('company_id',  company_id)
+            .eq('contact_id',  contact_id)
+            .eq('account_code', account_code)
+            .range(f, t),
+          assertNoError,
+        );
         let credit = 0, debit = 0;
-        for (const r of (data ?? []) as { debit: number; credit: number }[]) {
+        for (const r of data) {
           credit += Number(r.credit ?? 0);
           debit  += Number(r.debit  ?? 0);
         }

@@ -24,6 +24,7 @@ import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { RefundAdvanceModal } from './refund-advance-modal';
+import { RefundDueBanner } from '@/components/refund-due-banner';
 import { BackButton } from '@/ui/back-button';
 import { Tabs } from '@/ui/tabs';
 import { theme } from '@/ui/theme';
@@ -177,7 +178,6 @@ export default function SupplierDetailPage() {
   // S4 — record money the supplier sends back against an advance we paid.
   const [refundOpen, setRefundOpen] = useState(false);
   // P4 — the other pot: a debit balance on 2100, not an advance on 1400.
-  const [creditRefundOpen, setCreditRefundOpen] = useState(false);
   const qc = useQueryClient();
   // Phase 14.07 — statement period preset, search, audit-trail toggle.
   const [stmtPreset, setStmtPreset] = useState<PeriodPreset>('last_90');
@@ -218,12 +218,6 @@ export default function SupplierDetailPage() {
   // sees it. Read NET, so a supplier we still owe more to nets to zero or
   // below and offers no refund — which is correct: offset it against the
   // open bill instead.
-  const { data: apDebit = 0 } = useQuery<number>({
-    queryKey: ['advance_balance', company_id, id, '2100'],
-    queryFn: () => getAdapter().contacts.getAdvanceBalance(company_id!, id!, '2100'),
-    enabled: !!company_id && !!id,
-  });
-
   const { data: vendorAdvance = 0 } = useQuery<number>({
     queryKey: ['advance_balance', company_id, id, '1400'],
     queryFn: () => getAdapter().contacts.getAdvanceBalance(company_id!, id!, '1400'),
@@ -431,42 +425,15 @@ export default function SupplierDetailPage() {
 
       {/* P4 — the OTHER way a supplier can be holding our money: a debit
            balance on 2100, left by a debit note against a bill we had already
-           paid. The advance banner above reads 1400 and never sees it. */}
-      {apDebit > 0.005 && (
-        <div className="rounded-card border border-emerald-200 bg-emerald-50 px-5 py-3 flex flex-wrap items-center gap-4">
-          <span className="rounded-pill bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
-            {t('refund.ap_debit_badge')}
-          </span>
-          <p className="flex-1 min-w-[260px] text-sm text-emerald-900">
-            {t('refund.ap_debit_desc', {
-              amount: `${contact?.currency ?? companyCurrency} ${fmt(apDebit)}`,
-            })}{' '}
-            <span className="text-emerald-700/80">{t('refund.ap_debit_gl')}</span>
-          </p>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => setCreditRefundOpen(true)}
-            title={t('refund.title_vendor_credit')}
-          >
-            {t('refund.refund_cta')}
-          </Button>
-          <RefundAdvanceModal
-            open={creditRefundOpen}
-            onClose={() => setCreditRefundOpen(false)}
-            onDone={() => {
-              void qc.invalidateQueries({ queryKey: ['advance_balance'] });
-              void qc.invalidateQueries({ queryKey: ['payments'] });
-            }}
-            side="vendor"
-            source="credit"
-            contactId={id!}
-            contactName={contact?.name ?? ''}
-            available={apDebit}
-            currency={contact?.currency ?? companyCurrency}
-          />
-        </div>
-      )}
+           paid. The advance banner above reads 1400 and never sees it. Shared
+           with the purchase return and debit note, which are where you notice
+           the money is owed. */}
+      <RefundDueBanner
+        side="vendor"
+        contactId={id}
+        contactName={contact?.name ?? ''}
+        currency={contact?.currency ?? companyCurrency}
+      />
 
       {/* KPI tiles */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

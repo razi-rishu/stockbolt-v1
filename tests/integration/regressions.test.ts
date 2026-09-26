@@ -5343,6 +5343,9 @@ describe('Reports — the statements page the ledger', () => {
       'getVATReturn expenses',
       'getTaxReturn:gl',
       'getTaxReturn:base',
+      // Not a statement, but it is the CEILING on a refund: a short read
+      // understates what a party is owed and hides the offer to pay it back.
+      'contacts.getAdvanceBalance',
     ]) {
       const i = src.indexOf(`'${ctx}'`);
       expect(i, `${ctx} exists`).toBeGreaterThan(-1);
@@ -5415,5 +5418,66 @@ describe('Sales return document — priced from the invoice line', () => {
     const src = readFileSync(resolve(process.cwd(), 'src/modules/print/_signature/adapters.ts'), 'utf8');
     expect((src.match(/currency:\s*'AED',/g) ?? []),
       "every currency is resolved from the document or the company, not literal").toHaveLength(0);
+  });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Money owed back is offered where it is incurred, not only on the contact
+//
+// The refund engines have existed since phase 78 (customer, R5a) and phase 84
+// (vendor, P4), but the only screen that offered them was the contact detail
+// page. Confirm a sales return for a customer who had already paid and there
+// was no way, from the return, to give the money back — which is exactly
+// where someone stands when the customer asks for it.
+//
+// One shared banner now, mounted on every document that can create the debt.
+// It reads the LEDGER, never the document: a return by a customer who still
+// owes more nets to zero and correctly offers nothing, because that credit
+// should be applied to the open invoice and the engine refuses it anyway.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Refunds — offered where the debt is created', () => {
+  it('every document that can leave a party in credit offers the refund', async () => {
+    const { readFileSync } = await import('node:fs');
+    // Named individually: a count would pass while the wrong page lost it.
+    for (const file of [
+      'src/modules/sales/sales-return-editor.tsx',
+      'src/modules/sales/credit-note-editor.tsx',
+      'src/modules/purchasing/purchase-return-editor.tsx',
+      'src/modules/purchasing/debit-note-editor.tsx',
+      'src/modules/contacts/customer-detail.tsx',
+      'src/modules/contacts/supplier-detail.tsx',
+    ]) {
+      const src = readFileSync(resolve(process.cwd(), file), 'utf8');
+      expect(src, `${file} mounts the refund banner`).toMatch(/<RefundDueBanner/);
+    }
+  });
+
+  it('the banner reads the control account, and refunds from credit not advance', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(resolve(process.cwd(), 'src/components/refund-due-banner.tsx'), 'utf8');
+    // 1200 AR for a customer, 2100 AP for a supplier. Both are CONTROL
+    // accounts, so the figure is already net of anything still unpaid — that
+    // is what stops a refund being offered to someone who owes us more.
+    expect(src, 'customer side reads 1200 AR').toMatch(/'1200'/);
+    expect(src, 'vendor side reads 2100 AP').toMatch(/'2100'/);
+    // 2400 / 1400 are the ADVANCE pots and have their own banner. Mixing them
+    // here would offer the same money twice.
+    expect(src, 'never touches the advance accounts').not.toMatch(/'2400'|'1400'/);
+    expect(src, 'refunds the credit balance, not an advance').toMatch(/source="credit"/);
+  });
+
+  it('the contact pages do not keep a second copy of the banner', async () => {
+    // They had the only implementation; it is now shared. Two copies would
+    // drift, and the document pages would be the ones that fell behind.
+    const { readFileSync } = await import('node:fs');
+    for (const [file, key] of [
+      ['src/modules/contacts/customer-detail.tsx', 'refund.ar_credit_badge'],
+      ['src/modules/contacts/supplier-detail.tsx', 'refund.ap_debit_badge'],
+    ] as const) {
+      const src = readFileSync(resolve(process.cwd(), file), 'utf8');
+      expect(src, `${file} renders the credit banner only through the shared component`)
+        .not.toContain(key);
+    }
   });
 });

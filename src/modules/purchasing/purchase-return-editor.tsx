@@ -9,6 +9,7 @@ import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { StatusBadge } from '@/ui/status-badge';
+import { RefundDueBanner } from '@/components/refund-due-banner';
 import type {
   PurchaseReturnRow, PurchaseReturnItemRow, PurchaseReturnItemInsert,
   VendorBillRow, VendorBillItemRow, ReturnableBillLine,
@@ -276,6 +277,17 @@ export default function PurchaseReturnEditorPage() {
       </div>
 
       {error && <p className="rounded-card border border-danger-500 bg-danger-50 px-4 py-2 text-sm text-danger-600">{error}</p>}
+
+      {/* Mirror of the sales return: confirming this posts a debit note, and
+          if the bill was already paid the supplier is left holding our money
+          as a DEBIT on 2100. The return has no supplier of its own — it
+          belongs to the bill — so the party comes from there. The banner
+          reads the ledger and shows only when we are genuinely owed. */}
+      <RefundDueBanner
+        side="vendor"
+        contactId={bills.find(b => b.id === billId)?.supplier_id}
+        currency={bills.find(b => b.id === billId)?.currency ?? undefined}
+      />
 
       <div className="glass-card grid gap-4 p-4 md:grid-cols-2">
         <div>

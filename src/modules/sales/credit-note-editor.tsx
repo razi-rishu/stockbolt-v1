@@ -15,6 +15,7 @@ import { SearchableSelect } from '@/ui/searchable-select';
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { creditNoteToDocumentData } from '@/modules/print/_signature/adapters';
+import { RefundDueBanner } from '@/components/refund-due-banner';
 import '@/modules/print/_signature/print.css';
 import type { CreditNoteRow, CreditNoteItemInsert, CreditNoteItemRow, ContactRow, InvoiceRow, InvoiceItemRow, Company, ProductRow } from '@/data/adapter';
 
@@ -305,6 +306,17 @@ export default function CreditNoteEditorPage() {
               </Button>
             )}
           </div>
+        </div>
+        {/* The document that actually puts the credit on 1200. A note raised
+            with no return behind it is the commonest way a customer ends up
+            in credit, so the refund belongs here too. The banner reads the ledger, so it shows only when the
+            party's NET position is in their favour, and never prints. */}
+        <div data-print-hide>
+          <RefundDueBanner
+            side="customer"
+            contactId={existing.contact_id}
+            currency={existing.currency ?? undefined}
+          />
         </div>
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
           <ConfigurableDocTemplate data={doc} template={printTemplate} />

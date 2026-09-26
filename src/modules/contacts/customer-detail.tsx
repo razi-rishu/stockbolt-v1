@@ -24,6 +24,7 @@ import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
 import { RefundAdvanceModal } from './refund-advance-modal';
+import { RefundDueBanner } from '@/components/refund-due-banner';
 import { Tabs } from '@/ui/tabs';
 import { theme } from '@/ui/theme';
 import { StatusBadge } from '@/ui/status-badge';
@@ -180,7 +181,6 @@ export default function CustomerDetailPage() {
   // S4 — refund an advance back to the customer (no invoice, no sales return).
   const [refundOpen, setRefundOpen] = useState(false);
   // R5a — the other pot: a credit balance on 1200, not an advance on 2400.
-  const [creditRefundOpen, setCreditRefundOpen] = useState(false);
   const qc = useQueryClient();
   // Phase 12.52 — default ON: shows only entries that affect the
   // current balance. Toggle OFF to see the full audit trail with
@@ -222,16 +222,6 @@ export default function CustomerDetailPage() {
   const { data: advanceCredit = 0 } = useQuery<number>({
     queryKey: ['advance_balance', company_id, id, '2400'],
     queryFn: () => getAdapter().contacts.getAdvanceBalance(company_id!, id!, '2400'),
-    enabled: !!company_id && !!id,
-  });
-
-  // R5a — credit sitting on 1200 AR. A credit note leaves the money here when
-  // the customer had already paid, and 2400 never sees it. Read NET, so an
-  // unpaid invoice cancels it out: that customer should have the credit
-  // APPLIED, not refunded, and the ceiling says so without needing a rule.
-  const { data: arCredit = 0 } = useQuery<number>({
-    queryKey: ['advance_balance', company_id, id, '1200'],
-    queryFn: () => getAdapter().contacts.getAdvanceBalance(company_id!, id!, '1200'),
     enabled: !!company_id && !!id,
   });
 
@@ -460,46 +450,16 @@ export default function CustomerDetailPage() {
       })()}
 
       {/* R5a — the OTHER place we can be holding a customer's money. A credit
-           note leaves it on 1200 AR, not 2400, so the banner above never sees
-           it. Shown only when the customer's NET receivable is a credit: if
-           they still owe more than they are owed, the right move is to apply
-           the credit to the open invoice, and the refund engine refuses it
-           for the same reason. */}
-      {arCredit > 0.005 && (
-        <div className="rounded-card border border-emerald-200 bg-emerald-50 px-5 py-3 flex flex-wrap items-center gap-4">
-          <span className="rounded-pill bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
-            {t('refund.ar_credit_badge')}
-          </span>
-          <p className="flex-1 min-w-[260px] text-sm text-emerald-900">
-            {t('refund.ar_credit_desc', {
-              amount: `${contact?.currency ?? companyCurrency} ${fmt(arCredit)}`,
-            })}{' '}
-            <span className="text-emerald-700/80">{t('refund.ar_credit_gl')}</span>
-          </p>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => setCreditRefundOpen(true)}
-            title={t('refund.title_customer_credit')}
-          >
-            {t('refund.refund_cta')}
-          </Button>
-          <RefundAdvanceModal
-            open={creditRefundOpen}
-            onClose={() => setCreditRefundOpen(false)}
-            onDone={() => {
-              void qc.invalidateQueries({ queryKey: ['advance_balance'] });
-              void qc.invalidateQueries({ queryKey: ['payments'] });
-            }}
-            side="customer"
-            source="credit"
-            contactId={id!}
-            contactName={contact?.name ?? ''}
-            available={arCredit}
-            currency={contact?.currency ?? companyCurrency}
-          />
-        </div>
-      )}
+           note leaves it on 1200 AR, not 2400, so the advance banner above
+           never sees it. Shared now, because the same offer has to appear on
+           the documents that CREATE the credit — nobody looking for their
+           money back starts on a contact page. */}
+      <RefundDueBanner
+        side="customer"
+        contactId={id}
+        contactName={contact?.name ?? ''}
+        currency={contact?.currency ?? companyCurrency}
+      />
 
       {/* KPI tiles */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

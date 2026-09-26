@@ -12,6 +12,7 @@ import { SearchableSelect } from '@/ui/searchable-select';
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { salesReturnToDocumentData } from '@/modules/print/_signature/adapters';
+import { RefundDueBanner } from '@/components/refund-due-banner';
 import '@/modules/print/_signature/print.css';
 import type { SalesReturnRow, SalesReturnItemRow, InvoiceRow, InvoiceItemRow, SalesReturnItemInsert, Company, ProductRow, ContactRow, ReturnableLine, WarehouseRow } from '@/data/adapter';
 import { computeReturnLine, sumReturnLines } from '@/lib/return-line-math';
@@ -446,6 +447,18 @@ export default function SalesReturnEditorPage() {
             {String((confirmMutation.error as Error)?.message || (voidMutation.error as Error)?.message || (deleteMutation.error as Error)?.message || confirmMutation.error || voidMutation.error || deleteMutation.error)}
           </div>
         )}
+        {/* Confirming this return credited the customer. If they had already
+            paid, that money is now sitting on 1200 AR and they will ask for
+            it back HERE, not on their contact page — which was the only
+            place the refund had ever been offered. The banner reads the ledger, so it shows only when the
+            party's NET position is in their favour, and never prints. */}
+        <div data-print-hide>
+          <RefundDueBanner
+            side="customer"
+            contactId={customer?.id}
+            currency={linkedInv?.currency ?? companyRow?.base_currency ?? undefined}
+          />
+        </div>
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>

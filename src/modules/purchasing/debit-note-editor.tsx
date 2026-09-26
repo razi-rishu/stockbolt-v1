@@ -14,6 +14,7 @@ import { SearchableSelect } from '@/ui/searchable-select';
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { debitNoteToDocumentData } from '@/modules/print/_signature/adapters';
+import { RefundDueBanner } from '@/components/refund-due-banner';
 import '@/modules/print/_signature/print.css';
 import type { DebitNoteRow, DebitNoteItemInsert, DebitNoteItemRow, ContactRow, VendorBillRow, VendorBillItemRow, Company, ProductRow, ReturnableBillLine } from '@/data/adapter';
 
@@ -313,6 +314,16 @@ export default function DebitNoteEditorPage() {
               </Button>
             )}
           </div>
+        </div>
+        {/* The purchase-side mirror: a debit note against a bill we had already
+            paid leaves the supplier holding our money as a DEBIT on 2100. The banner reads the ledger, so it shows only when the
+            party's NET position is in their favour, and never prints. */}
+        <div data-print-hide>
+          <RefundDueBanner
+            side="vendor"
+            contactId={existing.supplier_id}
+            currency={existing.currency ?? undefined}
+          />
         </div>
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
