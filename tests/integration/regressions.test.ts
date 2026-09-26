@@ -5258,14 +5258,37 @@ describe('Phase 85/86 — guard scope and engine-account protection (soft until 
 // hard delete of a confirmed return would strand its note and its journal.
 // ─────────────────────────────────────────────────────────────────────────────
 describe('Returns — delete is draft-only', () => {
-  it('no confirmed or void return has lost its document row', async () => {
+  it('no LIVE note is left behind by a deleted return', async () => {
     // A hard delete that got past the status guard would show up here as a
     // note whose parent return no longer exists.
-    const orphanCn = await sql<{ credit_note_number: string }>(`
-      SELECT cn.credit_note_number FROM public.credit_notes cn
-      WHERE cn.reason = 'return'
+    //
+    // A VOID one is expected, not a fault: reopening a confirmed return voids
+    // its credit note and hands the return back as a draft, which may then be
+    // deleted outright. The voided note stays as the audit trail of a credit
+    // that was issued and withdrawn — deleting it would be the real bug.
+    // Asserting zero orphans full stop pinned that implementation detail
+    // instead of the rule, and fired the first time the path was used.
+    const orphanCn = await sql<{ credit_note_number: string; status: string }>(`
+      SELECT cn.credit_note_number, cn.status FROM public.credit_notes cn
+      WHERE cn.reason = 'return' AND cn.status <> 'void'
         AND NOT EXISTS (SELECT 1 FROM public.sales_returns sr WHERE sr.credit_note_id = cn.id)`);
-    expect(orphanCn, `credit notes from a return with no return document: ${JSON.stringify(orphanCn)}`)
+    expect(orphanCn, `LIVE credit notes from a return with no return document: ${JSON.stringify(orphanCn)}`)
+      .toHaveLength(0);
+  });
+
+  it('an orphaned note is inert — no GL and no stock left standing', async () => {
+    // The half the status check cannot prove. 'void' is a flag; what matters
+    // is that the ledger agrees, so a stranded note that still moves money
+    // would be caught here even though its status says otherwise.
+    const live = await sql<{ credit_note_number: string; account_code: string; net: number }>(`
+      WITH orphan AS (
+        SELECT cn.id, cn.credit_note_number FROM public.credit_notes cn
+        WHERE cn.reason = 'return'
+          AND NOT EXISTS (SELECT 1 FROM public.sales_returns sr WHERE sr.credit_note_id = cn.id))
+      SELECT o.credit_note_number, gl.account_code, ROUND(SUM(gl.debit - gl.credit), 2) AS net
+      FROM orphan o JOIN public.general_ledger gl ON gl.related_doc_id = o.id
+      GROUP BY 1, 2 HAVING ABS(SUM(gl.debit - gl.credit)) > 0.005`);
+    expect(live, `orphaned notes still holding a GL position: ${JSON.stringify(live)}`)
       .toHaveLength(0);
   });
 
@@ -5339,5 +5362,58 @@ describe('Reports — the statements page the ledger', () => {
     expect(src, 'warns rather than truncating in silence').toMatch(/console\.warn/);
     expect(src, 'says the figures may be wrong, not just that a cap was hit')
       .toMatch(/understated/);
+  });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A sales return document is priced from the INVOICE, never from cost
+//
+// salesReturnToDocumentData priced every line at the return row's `unit_cost`
+// and forced discount and tax to zero. Two ways to be wrong at once:
+//
+//   * a DRAFT has no cost yet — it is stamped at confirm — so the whole
+//     document printed 0.00, which is what the bug report showed;
+//   * a CONFIRMED return printed what we PAID for the goods, on a document
+//     that goes to the customer.
+//
+// Price, discount and tax belong to the invoice line, which is where
+// confirm_sales_return reads them. Source lint, so it runs unapplied.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Sales return document — priced from the invoice line', () => {
+  it('prices through the shared return-line formula, not from unit_cost', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(resolve(process.cwd(), 'src/modules/print/_signature/adapters.ts'), 'utf8');
+    const i = src.indexOf('export function salesReturnToDocumentData');
+    expect(i, 'the adapter still exists').toBeGreaterThan(-1);
+    const body = src.slice(i, src.indexOf('export function paymentToDocumentData'));
+
+    // One formula for the editor grid, this printout and the posting engine.
+    expect(body, 'prices via computeReturnLine').toMatch(/computeReturnLine\(/);
+    expect(body, 'totals are the sum of the lines, not a re-derivation')
+      .toMatch(/sumReturnLines\(/);
+    // The specific regression: cost must not become a price.
+    expect(body, 'unit_cost is never used as the unit price')
+      .not.toMatch(/unit_price:\s*(cost|Number\(it\.unit_cost)/);
+    // A zero literal here is how the tax column went blank.
+    expect(body, 'tax is read from the source line, never zeroed')
+      .not.toMatch(/tax_rate:\s*0,/);
+  });
+
+  it('the editor hands the document the invoice lines it needs to price with', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(resolve(process.cwd(), 'src/modules/sales/sales-return-editor.tsx'), 'utf8');
+    expect(src, 'view mode passes the invoice items').toMatch(/invoiceItems:\s*invItems/);
+    expect(src, 'and the invoice currency, falling back to the company base')
+      .toMatch(/currency:\s*linkedInv\?\.currency \?\? companyRow\?\.base_currency/);
+  });
+
+  it('no printed document hardcodes a dirham', async () => {
+    // GCC AND India from one code path — a literal 'AED' printed dirhams on
+    // an Indian company's return, expense voucher and goods receipt.
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(resolve(process.cwd(), 'src/modules/print/_signature/adapters.ts'), 'utf8');
+    expect((src.match(/currency:\s*'AED',/g) ?? []),
+      "every currency is resolved from the document or the company, not literal").toHaveLength(0);
   });
 });

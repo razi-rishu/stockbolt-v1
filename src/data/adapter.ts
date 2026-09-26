@@ -2400,7 +2400,14 @@ export type CreditNoteItemInsert = Omit<Tables['credit_note_items']['Insert'], '
 /** R4b — restocking_fee is a phase-77 column the generated database.ts
  *  predates, so it is spelled out here rather than waiting on a regen. */
 export type SalesReturnRow     = Tables['sales_returns']['Row'] & { restocking_fee?: number | null };
-export type SalesReturnItemRow = Tables['sales_return_items']['Row'];
+export type SalesReturnItemRow = Tables['sales_return_items']['Row'] & {
+  /** R2b — the invoice line this came from. Phase 72 added the column; the
+   *  generated types predate it, so it was cast at every read. Optional
+   *  because a row saved before that phase genuinely carries null. */
+  invoice_item_id?: string | null;
+  /** P3 — phase 83. Null means the document's own warehouse. */
+  restock_warehouse_id?: string | null;
+};
 export type SalesReturnInsert  = Omit<Tables['sales_returns']['Insert'], 'id' | 'created_at' | 'updated_at'> & {
   /** R4b — amount kept out of the credit, INCLUSIVE of tax. The credit note
    *  still reverses the sale in full; post_sales_return_fee claws this back

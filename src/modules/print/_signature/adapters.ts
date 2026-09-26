@@ -31,6 +31,9 @@ type CompanyRow = Company;
 import type {
   DocumentData, DocumentStatus, LineItem, CompanyInfo, PartyInfo,
 } from './types';
+// P1 — one formula for a return line, shared by the editor grid, this
+// printout and (by construction) the posting engines. See return-line-math.
+import { computeReturnLine, sumReturnLines } from '@/lib/return-line-math';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -654,9 +657,19 @@ export function debitNoteToDocumentData({
 // ────────────────────────────────────────────────────────────────────────────
 // Sales Return → DocumentData
 //
-// Sales-return items are sparse — only qty + cost. We treat the printout
-// like a delivery note: qty-focused, no pricing. The template still renders
-// through TaxInvoiceTemplate but most amount columns will be zero.
+// A return line holds quantity, condition and COST. Price, discount and tax
+// belong to the INVOICE line it came from — the same place
+// confirm_sales_return reads them — so the document is priced against the
+// invoice, exactly as the editor grid is (P1).
+//
+// It used to print `unit_cost` as the unit price with discount and tax forced
+// to zero, which failed twice over: a DRAFT has no cost yet, so every figure
+// showed 0.00, and a CONFIRMED one showed what we PAID for the goods on a
+// document that goes to the customer. Neither was the credit they receive.
+//
+// REGIONS: nothing here branches by country. One `tax_rate` per line carries
+// UAE VAT 5 and Indian GST 18 alike — the CGST/SGST split is a reporting
+// concern (place of supply), never a line-level one.
 // ────────────────────────────────────────────────────────────────────────────
 
 const SR_STATUS_MAP: Record<string, DocumentStatus> = {
@@ -671,36 +684,62 @@ export interface SalesReturnToDocInput {
   products?:      ProductRow[];
   /** The invoice this return is against. */
   linkedInvoiceNumber?: string | null;
+  /** The invoice's own lines, where price, discount and tax live. Omit them
+   *  and the document prices at zero, which is what it used to do always. */
+  invoiceItems?:  InvoiceItemRow[];
+  /** The credit follows the invoice's currency; the company's base currency
+   *  is the fallback. A hardcoded 'AED' printed dirhams on an Indian return. */
+  currency?:      string | null;
 }
 
 export function salesReturnToDocumentData({
   salesReturn, items, contact, company, products, linkedInvoiceNumber,
+  invoiceItems, currency,
 }: SalesReturnToDocInput): DocumentData {
   const productById: Record<string, ProductRow> = {};
   for (const p of products ?? []) productById[p.id] = p;
+  const invItemById = new Map((invoiceItems ?? []).map(it => [it.id, it]));
 
-  const lines: LineItem[] = items.map((it, i) => {
-    const prod = it.product_id ? productById[it.product_id] : null;
-    const qty  = Number(it.qty_returned ?? 0);
-    const cost = Number(it.unit_cost ?? 0);
+  // Built once and reused for the lines, the totals and the VAT breakdown, so
+  // the three cannot disagree.
+  const sourced = items.map(it => {
+    const src = it.invoice_item_id ? invItemById.get(it.invoice_item_id) : undefined;
     return {
-      index:       i + 1,
-      sku:         prod?.sku ?? null,
-      description: prod?.name ?? '—',
-      description_ar: prod?.name_ar ?? null,
-      quantity:    qty,
-      unit_code:   null,
-      unit_price:  cost,
-      discount_percent: 0,
-      discount_amount:  0,
-      tax_rate:    0,
-      tax_amount:  0,
-      line_total:  qty * cost,
+      it, src,
+      input: {
+        unit_value:       Number(src?.unit_price ?? 0),
+        quantity:         Number(it.qty_returned ?? 0),
+        discount_percent: Number(src?.discount_percent ?? 0),
+        tax_rate:         Number(src?.tax_rate ?? 0),
+      },
     };
   });
 
-  // Sum line costs as the "subtotal" so the totals ladder still balances.
-  const subtotal = lines.reduce((s, l) => s + l.line_total, 0);
+  const lines: LineItem[] = sourced.map(({ it, src, input }, i) => {
+    const prod = it.product_id ? productById[it.product_id] : null;
+    const v    = computeReturnLine(input);
+    return {
+      index:       i + 1,
+      sku:         prod?.sku ?? null,
+      // What the customer saw on the invoice, not today's product name — a
+      // renamed product must not change what an issued credit says.
+      description: src?.description ?? prod?.name ?? '—',
+      description_ar: prod?.name_ar ?? null,
+      quantity:    input.quantity,
+      unit_code:   null,
+      unit_price:  input.unit_value,
+      discount_percent: input.discount_percent,
+      discount_amount:  v.discount_amount,
+      tax_rate:    input.tax_rate,
+      tax_amount:  v.tax_amount,
+      line_total:  v.line_total,
+    };
+  });
+
+  // The sum of the per-line figures, never a re-derivation — the same rule
+  // the posting engine follows, so the printout ties to the credit note to
+  // the fils.
+  const totals = sumReturnLines(sourced.map(s => s.input));
 
   const refBits: string[] = [];
   if (linkedInvoiceNumber) refBits.push(`Against invoice: ${linkedInvoiceNumber}`);
@@ -715,7 +754,7 @@ export function salesReturnToDocumentData({
     due_date: null,
     reference: refBits.join(' · ') || null,
     reference_doc: linkedInvoiceNumber ?? null,
-    currency: 'AED',
+    currency: currency ?? company?.base_currency ?? 'AED',
 
     company: companyToInfo(company),
     bill_to: contactToParty(contact),
@@ -723,15 +762,18 @@ export function salesReturnToDocumentData({
 
     items: lines,
 
-    subtotal,
-    discount_total: 0,
-    tax_total:      0,
+    subtotal:       totals.line_subtotal,
+    discount_total: totals.discount_amount,
+    tax_total:      totals.tax_amount,
     shipping_total: 0,
-    grand_total:    subtotal,
+    grand_total:    totals.line_total,
     paid_amount:    0,
-    balance_due:    subtotal,
+    balance_due:    totals.line_total,
 
-    vat_breakdown: [],
+    vat_breakdown: buildVatBreakdown(sourced.map(({ input }) => {
+      const v = computeReturnLine(input);
+      return { tax_rate: input.tax_rate, line_subtotal: v.line_subtotal, tax_amount: v.tax_amount };
+    })),
 
     qr_payload: null,
     banking: null,
@@ -930,7 +972,10 @@ export function expenseToDocumentData({
     date:   expense.date as unknown as string,
     due_date: null,
     reference: refBits.join(' · ') || null,
-    currency: 'AED',
+    // No currency column on expenses — the company's base currency is what
+    // an expense is recorded in. A literal 'AED' printed dirhams on an
+    // Indian company's voucher.
+    currency: company?.base_currency ?? 'AED',
 
     company: companyToInfo(company),
     bill_to: contactToParty(supplier),
@@ -1010,7 +1055,9 @@ export function grnToDocumentData({
     due_date: null,
     reference: linkedPoNumber ? `Against PO: ${linkedPoNumber}` : null,
     reference_doc: linkedPoNumber ?? null,
-    currency: 'AED',
+    // As above: no currency column on goods_receipts, so the company's
+    // base currency rather than a hardcoded dirham.
+    currency: company?.base_currency ?? 'AED',
 
     company: companyToInfo(company),
     bill_to: contactToParty(supplier),

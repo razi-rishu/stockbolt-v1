@@ -108,13 +108,13 @@ export default function SalesReturnEditorPage() {
       setLines(existingItems.map(it => ({
         // R2b — a saved row may predate phase 72 and carry no link. It stays
         // null so the confirm guard surfaces it rather than the UI hiding it.
-        invoice_item_id: (it as { invoice_item_id?: string | null }).invoice_item_id ?? null,
+        invoice_item_id: it.invoice_item_id ?? null,
         product_id:   it.product_id ?? null,
         description:  '',
         qty_returned: Number(it.qty_returned),
         condition:    (it.condition ?? 'resellable') as 'resellable' | 'damaged',
         unit_cost:    it.unit_cost !== undefined ? Number(it.unit_cost) : null,
-        restock_warehouse_id: (it as { restock_warehouse_id?: string | null }).restock_warehouse_id ?? null,
+        restock_warehouse_id: it.restock_warehouse_id ?? null,
         // Already-saved lines consumed their own quantity, so add it back to
         // show what this return may still claim.
         qty_returnable: Number(it.qty_returned),
@@ -367,6 +367,12 @@ export default function SalesReturnEditorPage() {
       company: companyRow ?? null,
       products,
       linkedInvoiceNumber: linkedInv?.invoice_number ?? null,
+      // P1 — price, discount and tax live on the invoice line, so the
+      // printed document needs them just as the edit grid above does.
+      // Without this every amount rendered 0.00 on a draft and the COGS on
+      // a confirmed return.
+      invoiceItems: invItems,
+      currency: linkedInv?.currency ?? companyRow?.base_currency ?? null,
     });
     return (
       <div className="signature-print-scope" style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
