@@ -158,7 +158,14 @@ async function postRefund(
    *  document can never be handed to the wrong engine. */
   classification: 'advance' | 'on_account' = 'advance',
 ): Promise<import('./adapter').RefundResult> {
-  const rpcCall = client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+  // CRITICAL: an arrow that CALLS client.rpc, never client.rpc itself.
+  // Assigning the method to a variable detaches `this`, and supabase-js
+  // then throws "Cannot read properties of undefined (reading 'rest')"
+  // from inside rpc(). Every refund in the app routes through here, so that
+  // one const meant none of the four had ever been able to post.
+  // The same hazard is called out on getBankOpeningJE below.
+  const rpcCall = (fn: string, args: Record<string, unknown>) =>
+    (client.rpc as unknown as (f: string, a: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)(fn, args);
 
   const { data: num, error: numErr } = await rpcCall('get_next_document_number', {
     p_company_id: input.company_id, p_prefix: prefix,

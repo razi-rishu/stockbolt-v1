@@ -5481,3 +5481,53 @@ describe('Refunds — offered where the debt is created', () => {
     }
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Never detach a method from the supabase client
+//
+// postRefund held `const rpcCall = client.rpc`. supabase-js implements rpc()
+// as `return this.rest.rpc(...)`, so assigning the method away from its object
+// left `this` undefined and every call threw
+//
+//     Cannot read properties of undefined (reading 'rest')
+//
+// before a request was ever sent. All four refunds route through that helper,
+// so none of them had EVER posted — and the server saw nothing to log.
+//
+// The hazard was already written down on getBankOpeningJE in the same file and
+// reintroduced anyway, which is why it is a test now and not a comment.
+// tests/unit/refund-rpc-binding.test.ts proves the behaviour; this catches the
+// shape anywhere else in the adapter.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Supabase client — methods stay bound to their object', () => {
+  it('no adapter code assigns a client method to a variable', async () => {
+    const { readFileSync } = await import('node:fs');
+    for (const file of ['src/data/supabaseAdapter.ts', 'src/data/index.ts']) {
+      const src = readFileSync(resolve(process.cwd(), file), 'utf8');
+      // `= client.rpc` / `= client.from` with nothing following it but a cast
+      // or a semicolon: a detached method. `= client.storage.from(...)` and
+      // `= client.auth.onAuthStateChange(...)` are member CALLS and fine, so
+      // a following '(' or '.' excludes the match.
+      // Comment lines are skipped: the hazard is DESCRIBED in prose on
+      // getBankOpeningJE, and that description must not trip its own test.
+      const code = src.split('\n')
+        .filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l))
+        .join('\n');
+      const detached = code.match(/=\s*client\.[A-Za-z_$]+(?![\w$]*\s*[(.])/g) ?? [];
+      expect(detached, `${file} detaches a client method, which breaks \`this\`: ` +
+        JSON.stringify(detached)).toHaveLength(0);
+    }
+  });
+
+  it('the refund helper calls rpc through the client, not through a copy', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(resolve(process.cwd(), 'src/data/supabaseAdapter.ts'), 'utf8');
+    const i = src.indexOf('async function postRefund');
+    expect(i, 'postRefund still exists').toBeGreaterThan(-1);
+    const body = src.slice(i, i + 3000);
+    // An arrow that calls it keeps the receiver; the bare method does not.
+    expect(body, 'rpcCall is a wrapper, not the method itself')
+      .toMatch(/const rpcCall = \(fn: string, args: Record<string, unknown>\) =>/);
+  });
+});
