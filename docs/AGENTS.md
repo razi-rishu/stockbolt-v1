@@ -221,6 +221,31 @@ export type SourceType =
   | 'customer_receipt'
   | 'customer_advance'
   | 'advance_application'
+  // ── phase87 — thirteen engines that were shipped without ever
+  // reaching this list OR the journal_entries CHECK constraint, so every
+  // one of them failed to post. Refunds, depreciation, asset disposal,
+  // amortization, TDS, the damaged-return write-off and the restocking fee.
+  // The names are the ones the engines already post: collapsing them would
+  // leave the GL unable to tell a depreciation from its reversal, or an
+  // advance refund from a credit refund.
+  //
+  // Adding a source_type means: the engine, this list, AND the constraint.
+  // Missing the third is what broke all thirteen.
+  | 'customer_refund'          // Dr 2400 / Cr bank        (phase70, S4)
+  | 'vendor_refund'            // Dr bank / Cr 1400        (phase70)
+  | 'customer_credit_refund'   // Dr 1200 / Cr bank        (phase78, R5a)
+  | 'vendor_credit_refund'     // Dr bank / Cr 2100        (phase84, P4)
+  | 'depreciation'             // Dr 6750 / Cr accum dep   (phase60, AC-5)
+  | 'depreciation_reversal'    //                          (phase60)
+  | 'asset_disposal'           // 4250 gain / 6910 loss    (phase60)
+  | 'amortization'             //                          (phase61, AC-6)
+  | 'amortization_reversal'    //                          (phase61)
+  | 'tds_deduction'            //                          (AC-7, India)
+  | 'tds_reversal'             //                          (AC-7)
+  | 'sales_return_writeoff'    // Dr 6700 / Cr 5100        (phase76, R4a)
+  | 'sales_return_fee'         // Dr 1200 / Cr 2200 + 4200 (phase77, R4b)
+  // Accepted by the constraint and used by nothing: no row has ever carried
+  // it. Kept only so widening the constraint stayed additive.
   | 'advance_refund'
   | 'sales_credit_note'
   | 'sales_return'

@@ -351,7 +351,11 @@ Dr  [bank_or_cash_account]        [amount]
 
 **Trigger:** User refunds an advance back to a customer.
 
-**Source type:** `advance_refund`
+**Source type:** `customer_refund`
+
+> Corrected in phase87. This doc said `advance_refund`; `confirm_customer_refund`
+> has always posted `customer_refund`, and the CHECK constraint allowed neither
+> to be distinguished from the vendor side. The engine's name wins.
 
 **Journal entry:**
 
@@ -359,6 +363,31 @@ Dr  [bank_or_cash_account]        [amount]
 Dr  2400 Customer Advances        [amount]
     Cr  [bank_or_cash_account]         [amount]
 ```
+
+---
+
+## A8b. Customer Credit Balance Refund
+
+**Trigger:** User refunds a credit balance sitting on the customer's
+receivable account — typically left by a credit note (A9) after the
+customer had already paid, or by an overpayment. Not an advance: the money
+is on 1200, not 2400.
+
+**Source type:** `customer_credit_refund`
+
+**Journal entry:**
+
+```
+Dr  1200 Accounts Receivable      [amount]
+    Cr  [bank_or_cash_account]         [amount]
+```
+
+**Notes:**
+- The ceiling is the customer's NET position on 1200. A customer who still
+  owes more than they are owed has nothing to refund — the credit is applied
+  to the open invoice instead (A6), and the engine refuses the refund.
+- Built in phase78 (R5a); could not post until phase87 widened the
+  `journal_entries` source_type constraint.
 
 ---
 
@@ -615,7 +644,9 @@ Dr  2100 Accounts Payable         [amount_applied]
 
 **Trigger:** User refunds an advance back from a supplier (rare, but possible).
 
-**Source type:** `advance_refund`
+**Source type:** `vendor_refund`
+
+> Corrected in phase87, as A8.
 
 **Journal entry:**
 
@@ -623,6 +654,29 @@ Dr  2100 Accounts Payable         [amount_applied]
 Dr  [bank_or_cash_account]        [amount]
     Cr  1400 Vendor Advances            [amount]
 ```
+
+---
+
+## B8b. Vendor Credit Balance Refund
+
+**Trigger:** A supplier sends money back against a debit note (B9) raised on
+a bill we had already paid. The money is owed to us as a DEBIT balance on
+2100, not as an advance on 1400.
+
+**Source type:** `vendor_credit_refund`
+
+**Journal entry:**
+
+```
+Dr  [bank_or_cash_account]        [amount]
+    Cr  2100 Accounts Payable          [amount]
+```
+
+**Notes:**
+- Mirror of A8b. The ceiling is the supplier's NET position on 2100: if we
+  still owe them more than they owe us, the debit note is set against the
+  open bill rather than refunded.
+- Built in phase84 (P4); could not post until phase87.
 
 ---
 

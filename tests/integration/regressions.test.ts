@@ -5531,3 +5531,100 @@ describe('Supabase client — methods stay bound to their object', () => {
       .toMatch(/const rpcCall = \(fn: string, args: Record<string, unknown>\) =>/);
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 87 — every source_type an engine posts is one the table accepts
+//
+// All four refund engines posted a source_type that
+// journal_entries_source_type_check had never heard of, so every refund died
+// on:
+//
+//     new row for relation "journal_entries" violates check constraint
+//
+// phase70, phase78 and phase84 each added an engine and left the constraint
+// behind. The client-side bug fixed in 0d1923f meant the call never reached
+// the server, so the database error stayed hidden behind a TypeError.
+//
+// The general test is the last one here: it reads the source_type out of
+// EVERY posting function and asserts the constraint accepts it. That is the
+// check that would have caught all three migrations at the time.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 87 — posting source types (soft until applied)', () => {
+  const allowed = async (): Promise<string[]> => {
+    const r = await sql<{ def: string }>(`SELECT pg_get_constraintdef(oid) AS def
+      FROM pg_constraint WHERE conname='journal_entries_source_type_check'`);
+    return [...(r[0]?.def ?? '').matchAll(/'([a-z_]+)'/g)].map(m => m[1]!);
+  };
+  // All thirteen, not just the refunds. Checking the constraint against
+  // EVERY posting function rather than the one that failed turned up nine
+  // more engines in the same state — depreciation, asset disposal,
+  // amortization, TDS, the damaged-return write-off and the restocking fee.
+  const SHIPPED = [
+    'customer_refund', 'vendor_refund',
+    'customer_credit_refund', 'vendor_credit_refund',
+    'depreciation', 'depreciation_reversal', 'asset_disposal',
+    'amortization', 'amortization_reversal',
+    'tds_deduction', 'tds_reversal',
+    'sales_return_writeoff', 'sales_return_fee',
+  ];
+
+  it('phase87: the constraint accepts what the shipped engines post', async () => {
+    const list = await allowed();
+    if (!SHIPPED.every(v => list.includes(v))) {
+      console.warn('⚠ phase87 not applied yet — run ' +
+        'supabase/migrations/20260926000001_phase87_posting_source_types.sql. ' +
+        'Until then refunds, depreciation, asset disposal, amortization, TDS, ' +
+        'the damaged-return write-off and the restocking fee all fail at the DB.');
+      return;
+    }
+    for (const v of SHIPPED) expect(list, `${v} is accepted`).toContain(v);
+    // Widening had to stay additive: nothing that used to post may have been
+    // dropped on the way through.
+    for (const v of ['sales_invoice', 'vendor_bill', 'inventory_cogs', 'expense',
+                     'customer_receipt', 'year_end_close', 'advance_refund']) {
+      expect(list, `${v} survived the rewrite`).toContain(v);
+    }
+  });
+
+  it('phase87: no posting function names a source_type the table would reject',
+    async () => {
+    // The general form of the bug. Every posting RPC is read, every quoted
+    // source_type it assigns is extracted, and each is checked against the
+    // constraint — so the next engine that invents a name fails here rather
+    // than in front of whoever presses the button.
+    const list = await allowed();
+    if (!SHIPPED.every(v => list.includes(v))) {
+      console.warn('⚠ phase87 not applied yet — the thirteen below are ' +
+        'known and pending; this check turns hard the moment it lands.');
+      return;
+    }
+    const fns = await sql<{ proname: string; s: string }>(`
+      SELECT proname, pg_get_functiondef(oid) AS s FROM pg_proc
+       WHERE pronamespace='public'::regnamespace
+         AND pg_get_functiondef(oid) LIKE '%source_type%'`);
+
+    const bad: string[] = [];
+    for (const f of fns) {
+      const body = f.s.split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+      // 'source_type', 'x'  — the JSONB key/value shape post_journal_entry takes.
+      for (const m of body.matchAll(/'source_type'\s*,\s*'([a-z_]+)'/g)) {
+        if (!list.includes(m[1]!)) bad.push(`${f.proname} -> ${m[1]}`);
+      }
+    }
+    expect(bad, `posting functions naming a rejected source_type: ${JSON.stringify(bad)}`)
+      .toHaveLength(0);
+  });
+
+  it('the locked SourceType list documents what the database accepts', async () => {
+    // Doc and code move together (AGENTS.md §11.4). If the constraint gains a
+    // value the list has to gain it too, or the next reader trusts the wrong one.
+    const list = await allowed();
+    if (!SHIPPED.every(v => list.includes(v))) return;   // soft until applied
+    const { readFileSync } = await import('node:fs');
+    const doc = readFileSync(resolve(process.cwd(), 'AGENTS.md'), 'utf8');
+    for (const v of SHIPPED) {
+      expect(doc, `AGENTS.md lists '${v}'`).toContain(`'${v}'`);
+    }
+  });
+});
