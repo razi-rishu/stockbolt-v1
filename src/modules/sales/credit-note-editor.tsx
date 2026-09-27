@@ -17,7 +17,7 @@ import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { creditNoteToDocumentData } from '@/modules/print/_signature/adapters';
 import { RefundDueBanner } from '@/components/refund-due-banner';
 import '@/modules/print/_signature/print.css';
-import type { CreditNoteRow, CreditNoteItemInsert, CreditNoteItemRow, ContactRow, InvoiceRow, InvoiceItemRow, Company, ProductRow } from '@/data/adapter';
+import type { CreditNoteRow, CreditNoteItemInsert, CreditNoteItemRow, ContactRow, InvoiceRow, InvoiceItemRow, Company, ProductRow, ReturnableLine, WarehouseRow } from '@/data/adapter';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt   = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -30,7 +30,28 @@ interface LineItem {
   discount_percent: number;
   tax_rate:         number;
   cost_at_sale:     number | null;
+  /** Z1 — the invoice line this came back from. Set only when the note is
+   *  raised against an invoice; a standalone rebate or goodwill credit has
+   *  no source line and leaves it null. v_invoice_line_returnable counts
+   *  these, so it is what stops the same goods being credited twice. */
+  invoice_item_id:  string | null;
+  /** How much of that invoice line is still returnable — display + input
+   *  cap. 0 when there is no source line, which means uncapped. */
+  qty_returnable:   number;
+  /** R4a — damaged goods come back into stock and are then written off.
+   *  Only meaningful when the note restocks. */
+  condition:        'resellable' | 'damaged';
+  /** P3 — where these goods physically go. Null = the note's warehouse. */
+  restock_warehouse_id: string | null;
 }
+
+/** Every new line starts here, so a field added above cannot be forgotten. */
+const BLANK_RETURN_FIELDS = {
+  invoice_item_id: null,
+  qty_returnable: 0,
+  condition: 'resellable' as const,
+  restock_warehouse_id: null,
+};
 
 function calcLine(l: LineItem) {
   const sub   = l.quantity * l.unit_price;
@@ -59,6 +80,8 @@ export default function CreditNoteEditorPage() {
   const [reason,       setReason]       = useState<string>('return');
   const [restock,      setRestock]      = useState(true);
   const [notes,        setNotes]        = useState('');
+  // R4b — kept out of the credit, entered inclusive of tax.
+  const [restockingFee, setRestockingFee] = useState(0);
   // Phase 46 — null = automatic rounding from Settings; a string = manual.
   const [roundOffOverride, setRoundOffOverride] = useState<string | null>(null);
   const [lines,        setLines]        = useState<LineItem[]>([]);
@@ -110,6 +133,7 @@ export default function CreditNoteEditorPage() {
       setReason(existing.reason ?? 'return');
       setRestock(existing.restock);
       setNotes(existing.notes ?? '');
+      setRestockingFee(Number(existing.restocking_fee ?? 0));
       // Freeze the stored round-off on edit; "Auto" re-rounds on demand.
       setRoundOffOverride(String(Number((existing as { round_off_amount?: number }).round_off_amount ?? 0)));
     }
@@ -124,6 +148,12 @@ export default function CreditNoteEditorPage() {
         discount_percent: Number(it.discount_percent),
         tax_rate:         Number(it.tax_rate ?? 0),
         cost_at_sale:     it.cost_at_sale !== undefined ? Number(it.cost_at_sale) : null,
+        invoice_item_id:  it.invoice_item_id ?? null,
+        // A saved line has already consumed its own quantity, so add it back
+        // to show what this note may still claim.
+        qty_returnable:   Number(it.quantity),
+        condition:        (it.condition ?? 'resellable') as 'resellable' | 'damaged',
+        restock_warehouse_id: it.restock_warehouse_id ?? null,
       })));
     }
   }, [existingItems]);
@@ -135,21 +165,76 @@ export default function CreditNoteEditorPage() {
     enabled:  !!linkedInvId,
   });
 
+  // Z1 — what is still returnable per line, from the same view the confirm-—
+  // time guard reads, so the screen and the server always agree.
+  const { data: returnable = [] } = useQuery<ReturnableLine[]>({
+    queryKey: ['returnable_lines', linkedInvId],
+    queryFn:  () => getAdapter().creditNotes.getReturnableLines(linkedInvId),
+    enabled:  !!linkedInvId,
+  });
+  const returnableById = new Map(returnable.map(r => [r.invoice_item_id, r]));
+
+  const { data: warehouses = [] } = useQuery<WarehouseRow[]>({
+    queryKey: ['warehouses', company_id],
+    queryFn: () => getAdapter().warehouses.list(company_id!),
+    enabled: !!company_id,
+  });
+
+  // Another note already raised against this invoice. The returnable view
+  // counts CONFIRMED notes only — correct for the over-return guard, but it
+  // means two DRAFTS each believe the full quantity is still available, and
+  // nothing catches that until the second is confirmed. A warning, not a
+  // block: crediting two lines of an invoice on separate days is ordinary.
+  const { data: allNotes = [] } = useQuery<CreditNoteRow[]>({
+    queryKey: ['credit_notes', company_id],
+    queryFn: () => getAdapter().creditNotes.list(company_id!),
+    enabled: !!company_id,
+  });
+  const siblingNotes = allNotes.filter(n =>
+    n.linked_invoice_id === linkedInvId && n.id !== existing?.id && n.status !== 'void');
+
+  // R4b — the fee is INCLUSIVE of tax at the rate of the invoice's
+  // highest-value line, which is how the posting engine splits it too: one
+  // side rounded, the other derived by subtraction so the two always sum to
+  // the fee. A preview — the server recomputes and is authoritative.
+  const feeTaxRate = [...invItems]
+    .sort((a, b) => Number(b.line_total ?? 0) - Number(a.line_total ?? 0)
+                 || Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0))
+    .map(it => Number(it.tax_rate ?? 0))[0] ?? 0;
+  const feeNet = feeTaxRate > 0
+    ? Math.round((restockingFee / (1 + feeTaxRate / 100)) * 100) / 100
+    : restockingFee;
+  const feeVat = Math.round((restockingFee - feeNet) * 100) / 100;
+
+  // Z1 — import each invoice LINE at what is still RETURNABLE, not at the
+  // full original quantity, and skip lines already fully credited. Before
+  // this it pulled every line at full qty, so a second note could re-credit
+  // goods that had already come back — the confirm guard would refuse it, but
+  // only after the operator had filled the whole form in.
   function importFromInvoice() {
     if (invItems.length === 0) return;
-    setLines(invItems.map(it => ({
-      product_id:       it.product_id ?? null,
-      description:      it.description ?? '',
-      quantity:         Number(it.quantity),
-      unit_price:       Number(it.unit_price),
-      discount_percent: Number(it.discount_percent),
-      tax_rate:         Number(it.tax_rate ?? 0),
-      cost_at_sale:     it.cost_at_sale !== undefined ? Number(it.cost_at_sale) : null,
-    })));
+    setLines(invItems.map(it => {
+      const left = Number(returnableById.get(it.id)?.qty_returnable ?? it.quantity);
+      return {
+        product_id:       it.product_id ?? null,
+        description:      it.description ?? '',
+        quantity:         left,
+        unit_price:       Number(it.unit_price),
+        discount_percent: Number(it.discount_percent),
+        tax_rate:         Number(it.tax_rate ?? 0),
+        cost_at_sale:     it.cost_at_sale !== undefined ? Number(it.cost_at_sale) : null,
+        ...BLANK_RETURN_FIELDS,
+        invoice_item_id:  it.id,
+        qty_returnable:   left,
+      };
+    }).filter(l => l.qty_returnable > 0));
   }
 
   function addLine() {
-    setLines(prev => [...prev, { product_id: null, description: '', quantity: 1, unit_price: 0, discount_percent: 0, tax_rate: defaultTaxRate(companyCountry), cost_at_sale: null }]);
+    // A hand-typed line names no invoice line, so it is uncapped and cannot
+    // be counted against what was sold — which is correct for a rebate or a
+    // goodwill credit, the cases that have no goods behind them at all.
+    setLines(prev => [...prev, { product_id: null, description: '', quantity: 1, unit_price: 0, discount_percent: 0, tax_rate: defaultTaxRate(companyCountry), cost_at_sale: null, ...BLANK_RETURN_FIELDS }]);
   }
   function removeLine(i: number) {
     setLines(prev => prev.filter((_, idx) => idx !== i));
@@ -189,6 +274,9 @@ export default function CreditNoteEditorPage() {
         sort_order:      i,
         cost_at_sale:    l.cost_at_sale ?? undefined,
         tax_category:    'standard',
+        invoice_item_id: l.invoice_item_id,
+        condition:       l.condition,
+        restock_warehouse_id: l.restock_warehouse_id,
       } as CreditNoteItemInsert;
     });
   }
@@ -214,6 +302,7 @@ export default function CreditNoteEditorPage() {
         ...(roundOff !== 0 ? { round_off_amount: +roundOff.toFixed(2) } : {}),
         total_amount:      +roundedTotal.toFixed(2),
         notes:             notes || undefined,
+        restocking_fee:    restockingFee || 0,
         status:            'draft' as const,
       };
       // Save = persist the draft then immediately post it (single-step).
@@ -325,8 +414,12 @@ export default function CreditNoteEditorPage() {
     );
   }
 
+  // Z1 added condition + restock-to, taking the line table to ten columns.
+  // max-w-5xl clipped the last one against a card with overflow-hidden on
+  // the return editor, which is how the remove button went missing there.
+  // Wider page, and remove moved to the first column below.
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6 max-w-6xl">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-ink-primary">
           {isNew ? t('returns.new_credit_note') : `${t('returns.cn_number')}: ${existing?.credit_note_number}`}
@@ -417,7 +510,40 @@ export default function CreditNoteEditorPage() {
           <input type="text" value={notes} onChange={e => setNotes(e.target.value)} disabled={!isDraft}
             className="w-full border border-border-strong rounded px-3 py-2 text-sm" />
         </div>
+
+        {/* R4b — a charge kept OUT of the credit. The note still reverses the
+            sale in full; this is clawed back separately, so the customer's
+            net position is the credit MINUS this. */}
+        <div>
+          <label className="block text-sm font-medium text-ink-secondary mb-1">
+            {t('returns.restocking_fee')}
+          </label>
+          <input type="number" min="0" step="0.01" value={restockingFee || ''}
+            placeholder="0.00"
+            onChange={e => setRestockingFee(Number(e.target.value) || 0)}
+            disabled={!isDraft}
+            className="w-full border border-border-strong rounded px-3 py-2 text-sm text-right" />
+          {restockingFee > 0 && (
+            <p className="mt-1 text-xs text-ink-tertiary">
+              {feeTaxRate > 0
+                ? t('returns.fee_split', { net: fmt(feeNet), vat: fmt(feeVat), rate: feeTaxRate })
+                : t('returns.fee_no_tax', { net: fmt(feeNet) })}
+            </p>
+          )}
+          <p className="mt-1 text-xs text-ink-tertiary">{t('returns.restocking_fee_hint')}</p>
+        </div>
       </div>
+
+      {/* Z1 — the returnable view counts CONFIRMED notes only, so two drafts
+          against one invoice each believe the full quantity is available.
+          Nothing catches that until the second is confirmed. */}
+      {isDraft && linkedInvId && siblingNotes.length > 0 && (
+        <div className="rounded-card border border-warning-500/40 bg-warning-500/10 px-4 py-2 text-sm text-ink-secondary">
+          {t('returns.already_credited', {
+            list: siblingNotes.map(n => `${n.credit_note_number} (${n.status})`).join(', '),
+          })}
+        </div>
+      )}
 
       {/* Line items */}
       <div className="glass-card overflow-hidden">
@@ -429,14 +555,16 @@ export default function CreditNoteEditorPage() {
           <table className="w-full text-sm">
             <thead className="bg-surface-muted">
               <tr>
+                {isDraft && <th className="w-8 px-2 py-2" />}
                 <th className="px-3 py-2 text-left text-xs font-medium text-ink-tertiary">{t('common.description')}</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.qty')}</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.unit_price')}</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.discount')} %</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.tax')} %</th>
                 {restock && <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('returns.cost_at_sale')}</th>}
+                {restock && <th className="px-3 py-2 text-left text-xs font-medium text-ink-tertiary">{t('returns.condition')}</th>}
+                {restock && <th className="px-3 py-2 text-left text-xs font-medium text-ink-tertiary">{t('returns.restock_to')}</th>}
                 <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.total')}</th>
-                {isDraft && <th className="px-3 py-2" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
@@ -444,14 +572,34 @@ export default function CreditNoteEditorPage() {
                 const c = calcLine(l);
                 return (
                   <tr key={i}>
+                    {isDraft && (
+                      <td className="w-8 px-2 py-2 align-middle">
+                        <button onClick={() => removeLine(i)}
+                          className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                      </td>
+                    )}
                     <td className="px-3 py-2">
                       <input value={l.description} onChange={e => updateLine(i, 'description', e.target.value)}
                         disabled={!isDraft} className="w-full border border-border-strong rounded px-2 py-1 text-sm" />
                     </td>
                     <td className="px-3 py-2">
-                      <input type="number" min="1" step="1" value={l.quantity}
-                        onChange={e => updateLine(i, 'quantity', Number(e.target.value))}
+                      {/* Capped only when the line names an invoice line. A
+                          standalone credit has nothing to cap against. The
+                          server enforces the same ceiling, so a stale figure
+                          here cannot over-credit. */}
+                      <input type="number" min="0" step="0.001" value={l.quantity}
+                        max={l.invoice_item_id ? l.qty_returnable : undefined}
+                        onChange={e => {
+                          const v = Number(e.target.value);
+                          updateLine(i, 'quantity', l.invoice_item_id
+                            ? Math.min(Math.max(v, 0), l.qty_returnable) : v);
+                        }}
                         disabled={!isDraft} className="w-24 border border-border-strong rounded px-2 py-1 text-sm text-right" />
+                      {l.invoice_item_id && (
+                        <span className="mt-0.5 block text-[10px] text-ink-tertiary">
+                          {t('returns.of_returnable', { qty: l.qty_returnable })}
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <input type="number" min="0" step="0.01" value={l.unit_price}
@@ -476,12 +624,31 @@ export default function CreditNoteEditorPage() {
                           disabled={!isDraft} className="w-28 border border-border-strong rounded px-2 py-1 text-sm text-right" />
                       </td>
                     )}
-                    <td className="px-3 py-2 text-right font-semibold text-ink-secondary">{fmt(c.line_total)}</td>
-                    {isDraft && (
+                    {restock && (
                       <td className="px-3 py-2">
-                        <button onClick={() => removeLine(i)} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                        <select value={l.condition}
+                          onChange={e => updateLine(i, 'condition', e.target.value as 'resellable' | 'damaged')}
+                          disabled={!isDraft}
+                          className="w-32 border border-border-strong rounded px-2 py-1 text-sm">
+                          <option value="resellable">{t('returns.resellable')}</option>
+                          <option value="damaged">{t('returns.damaged')}</option>
+                        </select>
                       </td>
                     )}
+                    {restock && (
+                      <td className="px-3 py-2">
+                        <select value={l.restock_warehouse_id ?? ''}
+                          onChange={e => updateLine(i, 'restock_warehouse_id', e.target.value || null)}
+                          disabled={!isDraft}
+                          className="w-40 border border-border-strong rounded px-2 py-1 text-sm">
+                          <option value="">{t('returns.warehouse_default')}</option>
+                          {warehouses.map(w => (
+                            <option key={w.id} value={w.id}>{w.name}</option>
+                          ))}
+                        </select>
+                      </td>
+                    )}
+                    <td className="px-3 py-2 text-right font-semibold text-ink-secondary">{fmt(c.line_total)}</td>
                   </tr>
                 );
               })}

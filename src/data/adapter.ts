@@ -2391,11 +2391,46 @@ export interface PosAPI {
 }
 
 // ── Phase 9 row types ─────────────────────────────────────────────────────────
-export type CreditNoteRow     = Tables['credit_notes']['Row'];
-export type CreditNoteItemRow = Tables['credit_note_items']['Row'];
-export type CreditNoteInsert  = Omit<Tables['credit_notes']['Insert'], 'id' | 'created_at' | 'updated_at'>;
-export type CreditNoteUpdate  = Tables['credit_notes']['Update'];
-export type CreditNoteItemInsert = Omit<Tables['credit_note_items']['Insert'], 'id' | 'created_at'>;
+export type CreditNoteRow     = Tables['credit_notes']['Row'] & {
+  /** R4b (phase88) — a charge kept OUT of the credit, entered INCLUSIVE
+   *  of tax. Optional: the generated types predate the column. */
+  restocking_fee?: number | null;
+};
+export type CreditNoteItemRow = Tables['credit_note_items']['Row'] & {
+  /** R2b — the invoice line this came from. The over-return guard
+   *  (v_invoice_line_returnable) counts these, so a credit note against an
+   *  invoice cannot give back more than was sold. Null on a standalone note:
+   *  a rebate or goodwill credit has no source line. */
+  invoice_item_id?:      string | null;
+  /** P3 — where the goods physically go back. Null means the note's own
+   *  warehouse. Already in the database since phase83. */
+  restock_warehouse_id?: string | null;
+  /** R4a (phase88) — 'damaged' goods restock and are then written off.
+   *  Optional because the generated types predate the column. */
+  condition?:            'resellable' | 'damaged' | null;
+};
+export type CreditNoteInsert  = Omit<Tables['credit_notes']['Insert'], 'id' | 'created_at' | 'updated_at'> & {
+  /** R4b (phase88) — a charge kept OUT of the credit, entered INCLUSIVE
+   *  of tax. The note still reverses the sale in full. */
+  restocking_fee?: number;
+};
+export type CreditNoteUpdate  = Tables['credit_notes']['Update'] & {
+  /** As on CreditNoteInsert. 0 clears a fee an earlier save had entered. */
+  restocking_fee?: number | null;
+};
+export type CreditNoteItemInsert = Omit<Tables['credit_note_items']['Insert'], 'id' | 'created_at'> & {
+  /** R2b — the invoice line this came from. The over-return guard
+   *  (v_invoice_line_returnable) counts these, so a credit note against an
+   *  invoice cannot give back more than was sold. Null on a standalone note:
+   *  a rebate or goodwill credit has no source line. */
+  invoice_item_id?:      string | null;
+  /** P3 — where the goods physically go back. Null means the note's own
+   *  warehouse. Already in the database since phase83. */
+  restock_warehouse_id?: string | null;
+  /** R4a (phase88) — 'damaged' goods restock and are then written off.
+   *  Optional because the generated types predate the column. */
+  condition?:            'resellable' | 'damaged' | null;
+};
 
 /** R4b — restocking_fee is a phase-77 column the generated database.ts
  *  predates, so it is spelled out here rather than waiting on a regen. */
@@ -2483,6 +2518,10 @@ export interface CreditNotesAPI {
   list(company_id: string, params?: { status?: string; contact_id?: string; date_from?: string; date_to?: string }): Promise<CreditNoteRow[]>;
   getById(id: string): Promise<CreditNoteRow | null>;
   getItems(credit_note_id: string): Promise<CreditNoteItemRow[]>;
+  /** Z1 — what is still returnable per line of an invoice. The same view
+   *  the sales return used, and it already counts credit_note_items rather
+   *  than returns, so the cap transfers unchanged. */
+  getReturnableLines(invoice_id: string): Promise<ReturnableLine[]>;
   create(row: CreditNoteInsert, items: CreditNoteItemInsert[]): Promise<CreditNoteRow>;
   update(id: string, row: CreditNoteUpdate, items: CreditNoteItemInsert[]): Promise<void>;
   confirm(id: string): Promise<CreditNoteConfirmResult>;

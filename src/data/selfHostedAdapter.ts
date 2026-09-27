@@ -462,6 +462,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       list:          () => notImplemented('creditNotes.list'),
       getById:       () => notImplemented('creditNotes.getById'),
       getItems:      () => notImplemented('creditNotes.getItems'),
+      getReturnableLines: () => notImplemented('creditNotes.getReturnableLines'),
       create:        () => notImplemented('creditNotes.create'),
       update:        () => notImplemented('creditNotes.update'),
       confirm:       () => notImplemented('creditNotes.confirm'),

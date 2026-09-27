@@ -5628,3 +5628,84 @@ describe('Phase 87 — posting source types (soft until applied)', () => {
     }
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 88 (Z1) — the credit note absorbs the sales return
+//
+// A return and its credit note are one event recorded twice. The credit note
+// was always the real document — it posts the AR, the VAT, the restock and
+// the COGS reversal, and v_invoice_line_returnable already counted
+// credit_note_items rather than returns, so the over-return cap transferred
+// for free. Only two fields were missing, and phase88 adds them.
+//
+// DEPLOY ORDER MATTERS: the editor now writes `condition` on every line, so
+// the migration has to land BEFORE the build that sends it. The first test
+// here is what says so out loud.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 88 — credit note absorbs the return (soft until applied)', () => {
+  const hasCol = async (tbl: string, col: string): Promise<boolean> => {
+    const r = await sql<{ n: number }>(`SELECT count(*)::int AS n
+      FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='${tbl}' AND column_name='${col}'`);
+    return (r[0]?.n ?? 0) === 1;
+  };
+
+  it('phase88: credit notes carry condition and a restocking fee', async () => {
+    const cond = await hasCol('credit_note_items', 'condition');
+    const fee  = await hasCol('credit_notes', 'restocking_fee');
+    if (!cond || !fee) {
+      console.warn('⚠ phase88 not applied yet — run ' +
+        'supabase/migrations/20260927000001_phase88_credit_note_absorbs_return.sql ' +
+        'BEFORE deploying this build. The credit note editor writes `condition` ' +
+        'on every line, so saving one will fail until the column exists.');
+      return;
+    }
+    expect(cond, 'credit_note_items.condition').toBe(true);
+    expect(fee,  'credit_notes.restocking_fee').toBe(true);
+
+    // Defaulting to 'damaged' would silently rewrite every historic note.
+    const def = await sql<{ d: string | null }>(`SELECT column_default AS d
+      FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='credit_note_items' AND column_name='condition'`);
+    expect(def[0]?.d ?? '', 'condition defaults to resellable').toContain('resellable');
+
+    const chk = await sql<{ def: string }>(`SELECT pg_get_constraintdef(oid) AS def
+      FROM pg_constraint WHERE conname='credit_note_items_condition_check'`);
+    expect(chk.length, 'the condition CHECK exists').toBe(1);
+    for (const v of ['resellable', 'damaged']) {
+      expect(chk[0]!.def, `CHECK allows ${v}`).toContain(v);
+    }
+  });
+
+  it('the over-return cap reads credit notes, which is what made this possible',
+    async () => {
+    // If this view ever went back to counting sales_returns, the credit note
+    // would stop being capped and the merge would silently allow double
+    // credits. It is the single assumption Z1 rests on.
+    const v = await sql<{ def: string }>(`
+      SELECT pg_get_viewdef('public.v_invoice_line_returnable'::regclass, true) AS def`);
+    expect(v[0]!.def, 'counts credit_note_items').toContain('credit_note_items');
+    expect(v[0]!.def, 'only CONFIRMED notes consume quantity').toMatch(/status = 'confirmed'/);
+  });
+
+  it('the editor caps against what is returnable and records the source line',
+    async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(resolve(process.cwd(), 'src/modules/sales/credit-note-editor.tsx'), 'utf8');
+    expect(src, 'reads the returnable view').toMatch(/getReturnableLines\(/);
+    // Without invoice_item_id the line cannot be counted against what was
+    // sold, so the cap silently stops working.
+    expect(src, 'persists the invoice line').toMatch(/invoice_item_id: l\.invoice_item_id/);
+    expect(src, 'persists the condition').toMatch(/condition:\s+l\.condition/);
+    expect(src, 'persists the restock warehouse')
+      .toMatch(/restock_warehouse_id: l\.restock_warehouse_id/);
+    expect(src, 'imports at the returnable quantity, not the full one')
+      .toMatch(/qty_returnable \?\? it\.quantity/);
+    // The lesson from the return editor: the last column becomes unreachable
+    // inside a card with overflow-hidden, so remove sits first.
+    const head = src.slice(src.indexOf('<thead'), src.indexOf('</thead>'));
+    expect(head.indexOf('w-8'), 'the remove column is first')
+      .toBeLessThan(head.indexOf("common.description"));
+  });
+});

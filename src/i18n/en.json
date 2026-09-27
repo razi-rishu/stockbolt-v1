@@ -1403,6 +1403,8 @@
   },
   "returns": {
     "already_returned": "This invoice already has a return: {{list}}. Check it before saving another — quantities already returned on a DRAFT are not deducted from what is shown as returnable.",
+    "already_credited": "This invoice already has a credit note: {{list}}. Check it before saving another — quantities on a DRAFT note are not deducted from what is shown as returnable.",
+    "of_returnable": "of {{qty}} returnable",
     "delete_confirm": "Delete this draft return? It has not posted anything, so nothing is reversed — the document is simply removed.",
     "remove_line": "Remove this line",
     "restock_to": "Restock To",

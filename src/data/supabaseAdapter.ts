@@ -5534,20 +5534,37 @@ export function createSupabaseAdapter(
         assertNoError(error, 'creditNotes.getItems');
         return (data ?? []) as CreditNoteItemRow[];
       },
+      // Z1 — the credit note absorbs the sales return, so it needs the same
+      // over-return cap. The view already counts credit_note_items rather than
+      // sales returns, so this is the identical read the return page used.
+      async getReturnableLines(invoice_id: string): Promise<import('./adapter').ReturnableLine[]> {
+        const { data, error } = await (client.from('v_invoice_line_returnable' as any) as any)
+          .select('*').eq('invoice_id', invoice_id);
+        assertNoError(error as Error | null, 'creditNotes.getReturnableLines');
+        return (data ?? []) as import('./adapter').ReturnableLine[];
+      },
       async create(row: CreditNoteInsert, items: CreditNoteItemInsert[]): Promise<CreditNoteRow> {
-        const { data: cn, error: hErr } = await client.from('credit_notes').insert(row).select().single();
+        // Z1 — restocking_fee is a phase-88 column the generated database.ts
+        // predates, and supabase-js RejectExcessProperties refuses unknown keys.
+        // Same cast the sales return has used for its post-generation columns.
+        const { data: cn, error: hErr } = await client.from('credit_notes')
+          .insert(row as Database['public']['Tables']['credit_notes']['Insert'])
+          .select().single();
         assertNoError(hErr, 'creditNotes.create header');
         const itemsWithId = items.map((it, i) => ({ ...it, credit_note_id: cn!.id, sort_order: i }));
-        const { error: iErr } = await client.from('credit_note_items').insert(itemsWithId);
+        const { error: iErr } = await client.from('credit_note_items')
+          .insert(itemsWithId as Database['public']['Tables']['credit_note_items']['Insert'][]);
         assertNoError(iErr, 'creditNotes.create items');
         return cn as CreditNoteRow;
       },
       async update(id, row: CreditNoteUpdate, items: CreditNoteItemInsert[]): Promise<void> {
-        const { error: hErr } = await client.from('credit_notes').update(row).eq('id', id);
+        const { error: hErr } = await client.from('credit_notes')
+          .update(row as Database['public']['Tables']['credit_notes']['Update']).eq('id', id);
         assertNoError(hErr, 'creditNotes.update header');
         await client.from('credit_note_items').delete().eq('credit_note_id', id);
         const itemsWithId = items.map((it, i) => ({ ...it, credit_note_id: id, sort_order: i }));
-        const { error: iErr } = await client.from('credit_note_items').insert(itemsWithId);
+        const { error: iErr } = await client.from('credit_note_items')
+          .insert(itemsWithId as Database['public']['Tables']['credit_note_items']['Insert'][]);
         assertNoError(iErr, 'creditNotes.update items');
       },
       async confirm(id): Promise<CreditNoteConfirmResult> {
