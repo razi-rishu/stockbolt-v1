@@ -117,7 +117,11 @@ function useNavSections(t: (k: string) => string): NavSection[] {
           { to: '/sales/invoices', label: t('nav.invoices') },
           { to: '/sales/quotes', label: t('nav.quotes') },
           { to: '/sales/payments', label: t('nav.payments') },
-          { to: '/sales/returns', label: t('returns.sales_returns_title') },
+          // Z3 — Sales Returns is gone from the menu: the credit note is the
+          // document now, and two entries for one event was the confusion
+          // this set out to remove. The ROUTES stay alive so every return
+          // ever raised is still readable and printable at its own URL, and
+          // the credit notes page links to the list while any exist.
           { to: '/sales/credit-notes', label: t('returns.credit_notes_title') },
           { to: '/pos', label: t('pos.counter_sales') },
         ],

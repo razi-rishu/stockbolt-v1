@@ -423,6 +423,12 @@ function AppRoutes() {
               <Route path="/reports/bank-recon"                 element={<BankReconPage />} />
 
               {/* Phase 9 — Returns & Credit/Debit Notes */}
+              {/* Z3 — the credit note is the document now, so there is no
+                  such thing as a NEW sales return. Every return already
+                  raised keeps its own URL and stays readable, printable and
+                  voidable; only creation moved. A bookmark to /new lands on
+                  the credit note form rather than a dead end. */}
+              <Route path="/sales/returns/new"                  element={<Navigate to="/sales/credit-notes/new" replace />} />
               <Route path="/sales/returns/:id"                  element={<SalesReturnEditorPage />} />
               <Route path="/sales/returns"                      element={<SalesReturnsPage />} />
               <Route path="/sales/credit-notes/:id"             element={<CreditNoteEditorPage />} />

@@ -49,14 +49,27 @@ export default function SalesReturnsPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <PageHeader
         title={t('returns.sales_returns_title')}
-        subtitle={t('returns.sales_returns_desc')}
+        subtitle={t('returns.sales_returns_legacy_desc')}
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-            <Link to="/sales/returns/new"><Button>+ {t('returns.new_return')}</Button></Link>
+            {/* Z3 — no New Return. Raising one here would create the second
+                document all over again. Everything already raised stays
+                readable, printable and voidable at its own URL. */}
+            <Link to="/sales/credit-notes/new">
+              <Button>+ {t('returns.new_credit_note')}</Button>
+            </Link>
           </div>
         }
       />
+
+      <div style={{
+        borderRadius: '16px', border: '1px solid rgba(245,158,11,0.35)',
+        background: 'rgba(245,158,11,0.08)', padding: '12px 16px',
+        fontSize: '13px', color: theme.ink,
+      }}>
+        {t('returns.sales_returns_legacy_note')}
+      </div>
 
       {isLoading ? (
         <p style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>{t('common.loading')}</p>

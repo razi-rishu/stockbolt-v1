@@ -10,7 +10,7 @@ import { theme } from '@/ui/theme';
 import { StatusBadge } from '@/ui/status-badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
-import type { CreditNoteRow, ContactRow } from '@/data/adapter';
+import type { CreditNoteRow, ContactRow, SalesReturnRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -39,8 +39,27 @@ export default function CreditNotesPage() {
   });
   const customerMap = Object.fromEntries(customers.map(c => [c.id, c.name]));
 
+  // Z3 — history only. A company that never raised a sales return sees
+  // no trace of them, which is the point of retiring the menu entry.
+  const { data: legacyReturns = [] } = useQuery<SalesReturnRow[]>({
+    queryKey: ['sales_returns', company_id],
+    queryFn: () => getAdapter().salesReturns.list(company_id!),
+    enabled: !!company_id,
+  });
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* Z3 — the only way back to returns raised before the credit note
+          became the document. Hidden entirely for a company that never
+          raised one, so a new tenant never learns the word. */}
+      {legacyReturns.length > 0 && (
+        <div style={{ fontSize: '12px', color: theme.inkFaint }}>
+          <Link to="/sales/returns" style={{ color: theme.brand, textDecoration: 'none' }}>
+            {t('returns.legacy_returns_link', { count: legacyReturns.length })}
+          </Link>
+        </div>
+      )}
+
       <PageHeader
         title={t('returns.credit_notes_title')}
         subtitle={t('returns.credit_notes_desc')}
