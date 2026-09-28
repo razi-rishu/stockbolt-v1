@@ -244,6 +244,12 @@ export type SourceType =
   | 'tds_reversal'             //                          (AC-7)
   | 'sales_return_writeoff'    // Dr 6700 / Cr 5100        (phase76, R4a)
   | 'sales_return_fee'         // Dr 1200 / Cr 2200 + 4200 (phase77, R4b)
+  // phase89 (Z2) — the same two events once the credit note became the
+  // document. Separate names, not the sales_return ones reused: source_id
+  // points at a credit note, and the Document 7 drill-down resolves
+  // source_type to a table.
+  | 'credit_note_writeoff'     // Dr 6700 / Cr 5100        (phase89, Z2)
+  | 'credit_note_fee'          // Dr 1200 / Cr 2200 + 4200 (phase89, Z2)
   // Accepted by the constraint and used by nothing: no row has ever carried
   // it. Kept only so widening the constraint stayed additive.
   | 'advance_refund'

@@ -5709,3 +5709,104 @@ describe('Phase 88 — credit note absorbs the return (soft until applied)', () 
       .toBeLessThan(head.indexOf("common.description"));
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 89 (Z2) — the write-off and the fee post from the credit note
+//
+// phase88 added credit_note_items.condition and credit_notes.restocking_fee
+// and nothing read them. phase89 is what makes them post, mirroring the
+// sales-return engines from phase76 (R4a) and phase77 (R4b).
+//
+// THE ONE THAT MATTERS is the double-post guard. While sales returns still
+// exist, confirming one confirms its credit note, so a single act would fire
+// the RETURN's triggers and the NOTE's triggers and post the write-off and the
+// fee twice. Both new trigger functions skip a note that belongs to a return.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 89 — credit note write-off and fee (soft until applied)', () => {
+  const fnSrc = async (fn: string): Promise<string> => {
+    const r = await sql<{ s: string }>(`SELECT pg_get_functiondef(oid) AS s FROM pg_proc
+      WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+    return r[0]?.s ?? '';
+  };
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(`SELECT count(*)::int AS n FROM pg_proc
+      WHERE proname='post_credit_note_writeoff' AND pronamespace='public'::regnamespace`);
+    return (r[0]?.n ?? 0) === 1;
+  }
+
+  it('phase89: all four engines and both triggers exist', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ phase89 not applied yet — run ' +
+        'supabase/migrations/20260928000001_phase89_credit_note_writeoff_and_fee.sql. ' +
+        'Until then a damaged line or a restocking fee on a credit note posts nothing.');
+      return;
+    }
+    const fns = await sql<{ proname: string }>(`
+      SELECT proname FROM pg_proc WHERE pronamespace='public'::regnamespace
+       AND proname IN ('post_credit_note_writeoff','reverse_credit_note_writeoff',
+                       'post_credit_note_fee','reverse_credit_note_fee',
+                       '_tg_credit_note_writeoff','_tg_credit_note_fee')
+       ORDER BY 1`);
+    expect(fns.map(f => f.proname)).toEqual([
+      '_tg_credit_note_fee', '_tg_credit_note_writeoff',
+      'post_credit_note_fee', 'post_credit_note_writeoff',
+      'reverse_credit_note_fee', 'reverse_credit_note_writeoff',
+    ]);
+
+    const trg = await sql<{ tgname: string }>(`
+      SELECT t.tgname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+       WHERE NOT t.tgisinternal AND c.relname = 'credit_notes'
+         AND t.tgname IN ('credit_notes_writeoff','credit_notes_fee') ORDER BY 1`);
+    expect(trg.map(x => x.tgname)).toEqual(['credit_notes_fee', 'credit_notes_writeoff']);
+  });
+
+  it('phase89: neither trigger fires for a note that belongs to a sales return',
+    async () => {
+    if (!(await applied())) return;   // soft until applied
+    // The double-post guard. Without it, confirming a sales return posts the
+    // write-off and the fee twice for one event — once keyed on the return,
+    // once on the note.
+    for (const fn of ['_tg_credit_note_writeoff', '_tg_credit_note_fee']) {
+      const src = await fnSrc(fn);
+      expect(src, `${fn} skips return-generated notes`)
+        .toMatch(/sales_returns\s+sr\s+WHERE\s+sr\.credit_note_id\s*=\s*NEW\.id/i);
+    }
+  });
+
+  it('phase89: the postings match Doc 3 A8c and A8d', async () => {
+    if (!(await applied())) return;   // soft until applied
+    const wo = await fnSrc('post_credit_note_writeoff');
+    expect(wo, 'Dr 6700 Inventory Loss').toContain("'6700'");
+    expect(wo, 'Cr 5100 COGS').toContain("'5100'");
+    expect(wo, 'only damaged lines').toMatch(/condition\s*=\s*'damaged'/);
+    // cost_at_sale, not unit_cost: this is the credit note's own cost column.
+    expect(wo, 'uses the note cost column').toContain('cost_at_sale');
+    expect(wo, 'its own source type').toContain("'credit_note_writeoff'");
+
+    const fee = await fnSrc('post_credit_note_fee');
+    expect(fee, 'Dr 1200 AR').toContain("'1200'");
+    expect(fee, 'Cr 4200 Other Income').toContain("'4200'");
+    expect(fee, 'its own source type').toContain("'credit_note_fee'");
+    // One side rounded, the other derived, so net + vat is exactly the fee.
+    expect(fee, 'derives the tax half by subtraction').toMatch(/v_vat\s*:=\s*v_fee\s*-\s*v_net/);
+    // A customer must never end up OWING money for returning goods.
+    expect(fee, 'the fee cannot exceed the credit')
+      .toMatch(/v_fee\s*>\s*COALESCE\(v_cn\.total_amount/);
+  });
+
+  it('phase89: both reversals are dated at the original entry, not today',
+    async () => {
+    if (!(await applied())) return;   // soft until applied
+    // phase43. A reversal posted at CURRENT_DATE lands in the wrong period and
+    // silently moves profit between months.
+    for (const fn of ['reverse_credit_note_writeoff', 'reverse_credit_note_fee']) {
+      const src = await fnSrc(fn);
+      expect(src, `${fn} reverses at the original date`).toMatch(/v_je\.date/);
+      expect(src, `${fn} never uses CURRENT_DATE`).not.toMatch(/CURRENT_DATE/);
+      expect(src, `${fn} respects the period lock`).toMatch(/period_lock_date/);
+      expect(src, `${fn} mirrors Dr and Cr rather than deleting`)
+        .toMatch(/v_gl\.credit,\s*v_gl\.debit/);
+    }
+  });
+});

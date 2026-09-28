@@ -366,6 +366,63 @@ Dr  2400 Customer Advances        [amount]
 
 ---
 
+## A8c. Damaged Goods Write-Off (on a credit note)
+
+**Trigger:** A credit note restocks a line marked `condition = 'damaged'`.
+The note itself has already put the goods back into inventory at full cost
+(A9); this reclassifies that cost out of inventory and into loss, because
+the goods cannot be sold again.
+
+**Source type:** `credit_note_writeoff`
+
+**Journal entry:**
+
+```
+Dr  6700 Inventory Loss           [sum of qty x cost_at_sale, damaged lines]
+    Cr  5100 Cost of Goods Sold        [same]
+```
+
+**Notes:**
+- Posts nothing when there are no damaged lines, or when they carry no cost,
+  so a note raised without the field behaves exactly as it always did.
+- The amount is rounded ONCE and used for both legs, so the entry balances
+  by construction.
+- Reversed at the ORIGINAL entry's date on void or reopen (Doc 3 Rule 5,
+  phase43), never at today's date.
+- Built for sales returns in phase76 (R4a); moved onto the credit note in
+  phase89 (Z2) when the note became the only document.
+
+---
+
+## A8d. Restocking Fee (on a credit note)
+
+**Trigger:** A credit note carries a `restocking_fee`. The note still
+reverses the sale in FULL; the fee is a separate charge back to the
+customer, so their net position is the credit minus the fee.
+
+**Source type:** `credit_note_fee`
+
+**Journal entry:**
+
+```
+Dr  1200 Accounts Receivable      [fee, inclusive of tax]
+    Cr  2200 Output VAT Payable        [tax portion]
+    Cr  4200 Other Income              [net portion]
+```
+
+**Notes:**
+- The fee is entered INCLUSIVE of tax. One side is rounded and the other
+  derived by subtraction, so net + tax is exactly the fee.
+- The rate is the linked invoice's highest-value line — the fee arises from
+  that sale, so the same registration applies. With no linked invoice the
+  note's own top line is used.
+- The fee may not exceed the credit. A customer must never end up OWING
+  money for bringing goods back, and the engine refuses it.
+- REGIONS: one `tax_rate`, so GCC VAT and India GST take the same path.
+- Built for sales returns in phase77 (R4b); moved in phase89 (Z2).
+
+---
+
 ## A8b. Customer Credit Balance Refund
 
 **Trigger:** User refunds a credit balance sitting on the customer's
