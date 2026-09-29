@@ -139,7 +139,10 @@ function useNavSections(t: (k: string) => string): NavSection[] {
           { to: '/purchasing/bills', label: t('purchasing.bills_title') },
           { to: '/purchasing/payments', label: t('purchasing.vp_title') },
           { to: '/purchasing/expenses', label: 'Expenses' },
-          { to: '/purchasing/returns', label: t('returns.purchase_returns_title') },
+          // Z6 — mirror of Z3: the debit note is the document on this side
+          // too. The ROUTES stay alive so every purchase return ever raised
+          // is still readable, and the debit notes page links to the list
+          // while any exist.
           { to: '/purchasing/debit-notes', label: t('returns.debit_notes_title') },
         ],
       }],

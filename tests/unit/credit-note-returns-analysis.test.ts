@@ -124,3 +124,47 @@ describe('merging the two sources', () => {
     expect(filtered[0]!.credit_value).toBe(100);
   });
 });
+
+/**
+ * Z6 — the purchase-side mirror. Same two hazards, same answers.
+ */
+describe('debit note fold', () => {
+  const dn = (over: Partial<import('@/lib/returns-analysis').DebitNoteRaw> = {}) => ({
+    reason: 'return',
+    total_amount: 100,
+    debit_note_items: [{ quantity: 2, unit_cost: 10 }],
+    ...over,
+  });
+
+  it('counts the note total once, not once per line', async () => {
+    const { foldDebitNotesByReason } = await import('@/lib/returns-analysis');
+    const out = foldDebitNotesByReason([dn({
+      total_amount: 300,
+      debit_note_items: [
+        { quantity: 1, unit_cost: 10 },
+        { quantity: 1, unit_cost: 20 },
+        { quantity: 1, unit_cost: 30 },
+      ],
+    })]);
+    expect(out[0]!.debit_value).toBe(300);   // not 900
+    expect(out[0]!.qty).toBe(3);
+    expect(out[0]!.cost).toBe(60);
+  });
+
+  it('merges with the legacy purchase-return side instead of listing twice', async () => {
+    const { foldPurchaseReturnsByReason, foldDebitNotesByReason, mergePurchaseReasonLines } =
+      await import('@/lib/returns-analysis');
+    const out = mergePurchaseReasonLines(
+      foldPurchaseReturnsByReason([{
+        reason: 'damaged',
+        debit_notes: { total_amount: 100 },
+        purchase_return_items: [{ qty_returned: 2, unit_cost: 10 }],
+      }]),
+      foldDebitNotesByReason([dn({ reason: 'damaged', total_amount: 50 })]),
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]!.returns).toBe(2);
+    expect(out[0]!.debit_value).toBe(150);
+    expect(out[0]!.qty).toBe(4);
+  });
+});

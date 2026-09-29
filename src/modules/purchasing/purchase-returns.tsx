@@ -59,13 +59,16 @@ export default function PurchaseReturnsPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <PageHeader title={t('returns.purchase_returns_title')} subtitle={t('returns.purchase_returns_desc')} />
+        <PageHeader title={t('returns.purchase_returns_title')} subtitle={t('returns.purchase_returns_legacy_desc')} />
         <div className="flex flex-wrap items-center gap-2">
           <PeriodPicker mode="range" preset={preset} from={from} to={to}
             onPresetChange={setPreset} onCustomRange={setCustomRange} />
           <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided} count={returnsVoidedCount} />
-          <Button onClick={() => navigate('/purchasing/returns/new')}>
-            {t('returns.new_purchase_return')}
+          {/* Z6 — no New Purchase Return: raising one here would create the
+              second document all over again. Everything already raised stays
+              readable, printable and voidable at its own URL. */}
+          <Button onClick={() => navigate('/purchasing/debit-notes/new')}>
+            {t('returns.new_debit_note')}
           </Button>
         </div>
       </div>

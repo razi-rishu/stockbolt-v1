@@ -17,7 +17,7 @@ import { debitNoteToDocumentData } from '@/modules/print/_signature/adapters';
 import { RefundDueBanner } from '@/components/refund-due-banner';
 import { RefundedBadge } from '@/components/refunded-badge';
 import '@/modules/print/_signature/print.css';
-import type { DebitNoteRow, DebitNoteItemInsert, DebitNoteItemRow, ContactRow, VendorBillRow, VendorBillItemRow, Company, ProductRow, ReturnableBillLine } from '@/data/adapter';
+import type { DebitNoteRow, DebitNoteItemInsert, DebitNoteItemRow, ContactRow, VendorBillRow, VendorBillItemRow, Company, ProductRow, ReturnableBillLine, WarehouseRow } from '@/data/adapter';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt   = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -29,6 +29,11 @@ interface LineItem {
   vendor_bill_item_id: string | null;
   /** Remaining returnable on that bill line; null when unlinked. */
   qty_returnable:   number | null;
+  /** Z6 (P3 mirror) — which warehouse these goods physically leave from.
+   *  Null means the note's own warehouse, which is what every debit note
+   *  did before. The purchase return had this picker; retiring that screen
+   *  without bringing it across would quietly delete the capability. */
+  restock_warehouse_id: string | null;
   product_id:       string | null;
   description:      string;
   quantity:         number;
@@ -129,11 +134,19 @@ export default function DebitNoteEditorPage() {
         unit_cost:        Number(it.unit_cost),
         discount_percent: Number(it.discount_percent),
         tax_rate:         Number(it.tax_rate ?? 0),
+        restock_warehouse_id: (it as { restock_warehouse_id?: string | null }).restock_warehouse_id ?? null,
       })));
     }
   }, [existingItems]);
 
   // Bill items for import
+  // Z6 — the purchase return had a per-line warehouse picker (P3); it
+  // comes across rather than being lost with that screen.
+  const { data: warehouses = [] } = useQuery<WarehouseRow[]>({
+    queryKey: ['warehouses', company_id],
+    queryFn: () => getAdapter().warehouses.list(company_id!),
+    enabled: !!company_id,
+  });
   const { data: billItems = [] } = useQuery<VendorBillItemRow[]>({
     queryKey: ['bill_items_for_dn', linkedBillId],
     queryFn:  () => getAdapter().vendorBills.getItems(linkedBillId),
@@ -155,6 +168,7 @@ export default function DebitNoteEditorPage() {
     if (billItems.length === 0) return;
     setLines(billItems.map(it => ({
       vendor_bill_item_id: it.id,
+      restock_warehouse_id: null,
       qty_returnable:   Number(billReturnableById.get(it.id)?.qty_returnable ?? it.quantity),
       product_id:       it.product_id ?? null,
       description:      it.description ?? '',
@@ -168,7 +182,7 @@ export default function DebitNoteEditorPage() {
   // Unlike the sales side, a hand-added line is still valid here — it just
   // carries no bill link, so no returnable cap applies to it.
   function addLine() {
-    setLines(prev => [...prev, { vendor_bill_item_id: null, qty_returnable: null, product_id: null, description: '', quantity: 1, unit_cost: 0, discount_percent: 0, tax_rate: defaultTaxRate(companyCountry) }]);
+    setLines(prev => [...prev, { vendor_bill_item_id: null, qty_returnable: null, product_id: null, description: '', quantity: 1, unit_cost: 0, discount_percent: 0, tax_rate: defaultTaxRate(companyCountry), restock_warehouse_id: null }]);
   }
   function removeLine(i: number) {
     setLines(prev => prev.filter((_, idx) => idx !== i));
@@ -190,6 +204,7 @@ export default function DebitNoteEditorPage() {
       const c = calcLine(l);
       return {
         vendor_bill_item_id: l.vendor_bill_item_id,   // R2c
+        restock_warehouse_id: l.restock_warehouse_id, // Z6
         product_id:       l.product_id ?? undefined,
         description:      l.description || undefined,
         quantity:         l.quantity,
@@ -436,6 +451,7 @@ export default function DebitNoteEditorPage() {
                 <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.unit_cost')}</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.discount')} %</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.tax')} %</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-ink-tertiary">{t('returns.ship_from')}</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.total')}</th>
                 {isDraft && <th className="px-3 py-2" />}
               </tr>
@@ -477,6 +493,17 @@ export default function DebitNoteEditorPage() {
                       <input type="number" min="0" max="100" step="0.1" value={l.tax_rate}
                         onChange={e => updateLine(i, 'tax_rate', Number(e.target.value))}
                         disabled={!isDraft} className="w-20 border border-border-strong rounded px-2 py-1 text-sm text-right" />
+                    </td>
+                    <td className="px-3 py-2">
+                      <select value={l.restock_warehouse_id ?? ''}
+                        onChange={e => updateLine(i, 'restock_warehouse_id', e.target.value || null)}
+                        disabled={!isDraft}
+                        className="w-40 border border-border-strong rounded px-2 py-1 text-sm">
+                        <option value="">{t('returns.warehouse_default')}</option>
+                        {warehouses.map(w => (
+                          <option key={w.id} value={w.id}>{w.name}</option>
+                        ))}
+                      </select>
                     </td>
                     <td className="px-3 py-2 text-right font-semibold text-ink-secondary">{fmt(c.line_total)}</td>
                     {isDraft && (

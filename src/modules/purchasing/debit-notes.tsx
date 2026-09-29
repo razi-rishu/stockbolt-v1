@@ -12,7 +12,7 @@ import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { VoidedToggle } from '@/ui/voided-toggle';
 import { useHideVoided, showsInList } from '@/hooks/use-hide-voided';
-import type { DebitNoteRow, ContactRow } from '@/data/adapter';
+import type { DebitNoteRow, ContactRow, PurchaseReturnRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -23,6 +23,12 @@ export default function DebitNotesPage() {
   // Phase 47c — period filter (default All time = show every debit note).
   const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.debit-notes.period', 'all_time');
   const { hideVoided, setHideVoided } = useHideVoided('stockbolt.list.debit-notes.voided');
+  // Z6 — history only; a company that never raised one sees nothing.
+  const { data: legacyReturns = [] } = useQuery<PurchaseReturnRow[]>({
+    queryKey: ['purchase_returns', company_id],
+    queryFn: () => getAdapter().purchaseReturns.list(company_id!),
+    enabled: !!company_id,
+  });
 
   const { data: allNotes = [], isLoading } = useQuery<DebitNoteRow[]>({
     queryKey: ['debit_notes', company_id],
@@ -47,6 +53,16 @@ export default function DebitNotesPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* Z6 — the only way back to purchase returns raised before the debit
+          note became the document. Hidden for a company that never raised one. */}
+      {legacyReturns.length > 0 && (
+        <div style={{ fontSize: '12px', color: theme.inkFaint }}>
+          <Link to="/purchasing/returns" style={{ color: theme.brand, textDecoration: 'none' }}>
+            {t('returns.legacy_purchase_returns_link', { count: legacyReturns.length })}
+          </Link>
+        </div>
+      )}
+
       <PageHeader
         title={t('returns.debit_notes_title')}
         subtitle={t('returns.debit_notes_desc')}

@@ -2513,7 +2513,14 @@ export interface ReturnableBillLine {
   qty_returnable:      number;
 }
 
-export type DebitNoteItemRow    = Tables['debit_note_items']['Row'];
+export type DebitNoteItemRow = Tables['debit_note_items']['Row'] & {
+  /** R2c — the bill line this returns. v_bill_line_returnable counts
+   *  these, so it is what caps a return at what was actually billed. */
+  vendor_bill_item_id?:  string | null;
+  /** P3 / Z6 — which warehouse the goods leave from. Null = the note's own.
+   *  In the database since phase83; the generated types predate it. */
+  restock_warehouse_id?: string | null;
+};
 export type DebitNoteInsert     = Omit<Tables['debit_notes']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type DebitNoteUpdate     = Tables['debit_notes']['Update'];
 export type DebitNoteItemInsert = Omit<Tables['debit_note_items']['Insert'], 'id' | 'created_at'> & {
@@ -2522,6 +2529,9 @@ export type DebitNoteItemInsert = Omit<Tables['debit_note_items']['Insert'], 'id
    *  freight adjustment, a short-shipment claim) and may have no linked bill at
    *  all. Lines that DO name one are capped at what remains returnable. */
   vendor_bill_item_id?: string | null;
+  /** P3 / Z6 — which warehouse the goods leave from. Null = the note's own.
+   *  In the database since phase83; the generated types predate it. */
+  restock_warehouse_id?: string | null;
 };
 
 // Phase 9 RPC result types

@@ -1405,6 +1405,9 @@
     "date": "Date"
   },
   "returns": {
+    "purchase_returns_legacy_desc": "Returns raised before debit notes became the single document. Read-only history.",
+    "legacy_purchase_returns_link": "← {{count}} purchase return(s) raised before debit notes became the single document",
+    "ship_from": "Ship From",
     "already_returned": "This invoice already has a return: {{list}}. Check it before saving another — quantities already returned on a DRAFT are not deducted from what is shown as returnable.",
     "already_credited": "This invoice already has a credit note: {{list}}. Check it before saving another — quantities on a DRAFT note are not deducted from what is shown as returnable.",
     "of_returnable": "of {{qty}} returnable",

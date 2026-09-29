@@ -433,6 +433,9 @@ function AppRoutes() {
               <Route path="/sales/returns"                      element={<SalesReturnsPage />} />
               <Route path="/sales/credit-notes/:id"             element={<CreditNoteEditorPage />} />
               <Route path="/sales/credit-notes"                 element={<CreditNotesPage />} />
+              {/* Z6 — as Z3 on the sales side: no new purchase returns, but
+                  every one already raised keeps its URL. */}
+              <Route path="/purchasing/returns/new"            element={<Navigate to="/purchasing/debit-notes/new" replace />} />
               <Route path="/purchasing/returns/:id"             element={<PurchaseReturnEditorPage />} />
               <Route path="/purchasing/returns"                 element={<PurchaseReturnsPage />} />
               <Route path="/purchasing/debit-notes/:id"         element={<DebitNoteEditorPage />} />
