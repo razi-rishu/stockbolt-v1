@@ -17,6 +17,8 @@ import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
+import { VoidedToggle } from '@/ui/voided-toggle';
+import { useHideVoided, showsInList } from '@/hooks/use-hide-voided';
 import type { PayrollRunRow, PayrollRunItemInsert, EmployeeRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -41,17 +43,22 @@ export default function PayrollRunsPage() {
   const [error, setError] = useState<string | null>(null);
   // Phase 47c — period filter (default All time = show every run).
   const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.payroll-runs.period', 'all_time');
+  const { hideVoided, setHideVoided } = useHideVoided('stockbolt.list.payroll-runs.voided');
 
   const { data: allRuns = [], isLoading } = useQuery<PayrollRunRow[]>({
     queryKey: ['payroll_runs', company_id],
     queryFn: () => getAdapter().payroll.listRuns(company_id!),
     enabled: !!company_id,
   });
-  const runs = allRuns.filter(r => {
+  const runsInPeriod = allRuns.filter(r => {
     if (from && (r.date as string) < from) return false;
     if (to && (r.date as string) > to) return false;
     return true;
   });
+  // Z4 — the count is what THIS period is holding back, not all
+  // history, so "Show 2 voided" always reveals exactly two.
+  const runsVoidedCount = runsInPeriod.filter(r => r.status === 'void').length;
+  const runs = runsInPeriod.filter(r => showsInList(r, hideVoided));
 
   const { data: employees = [] } = useQuery<EmployeeRow[]>({
     queryKey: ['employees', company_id, false],
@@ -100,6 +107,8 @@ export default function PayrollRunsPage() {
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+            <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided}
+              count={runsVoidedCount} />
             <Button size="sm" onClick={() => { setError(null); setNewOpen(true); }}>+ New Run</Button>
           </div>
         }

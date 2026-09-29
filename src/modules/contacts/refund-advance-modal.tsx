@@ -5,7 +5,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Modal } from '@/ui/modal';
 import { Button } from '@/ui/button';
-import type { BankAccountRow, RefundResult } from '@/data/adapter';
+import type { BankAccountRow, RefundResult, RefundSourceDocType } from '@/data/adapter';
 
 /**
  * S4 — refund part or all of a contact's advance balance.
@@ -28,6 +28,7 @@ function fmt(n: number) {
 
 export function RefundAdvanceModal({
   open, onClose, onDone, side, source = 'advance', contactId, contactName, available, currency,
+  sourceDoc,
 }: {
   open: boolean;
   onClose: () => void;
@@ -41,6 +42,10 @@ export function RefundAdvanceModal({
   source?: 'advance' | 'credit';
   contactId: string;
   contactName: string;
+  /** Z5 — the document this refund is being raised from, recorded on the
+   *  payment so the document can later show it was refunded. Absent on a
+   *  contact page, where no single document is the source. */
+  sourceDoc?: { type: RefundSourceDocType; id: string };
   /** Advance balance as the page last read it — display + client-side sanity only. */
   available: number;
   currency: string;
@@ -81,6 +86,8 @@ export function RefundAdvanceModal({
         bank_account_id: bankId,
         reference:       reference || null,
         notes:           null,
+        source_doc_type: sourceDoc?.type ?? null,
+        source_doc_id:   sourceDoc?.id ?? null,
       };
       const res = side === 'vendor'
         ? (source === 'credit' ? await api.refundVendorCredit(input)

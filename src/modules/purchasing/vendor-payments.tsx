@@ -8,6 +8,8 @@ import { Button } from '@/ui/button';
 import { Badge } from '@/ui/badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
+import { VoidedToggle } from '@/ui/voided-toggle';
+import { useHideVoided, showsInList } from '@/hooks/use-hide-voided';
 import type { PaymentRow, ContactRow } from '@/data/adapter';
 
 const statusColor: Record<string, string> = { draft: 'muted', confirmed: 'success', void: 'danger' };
@@ -48,17 +50,22 @@ export default function VendorPaymentsPage() {
   const navigate = useNavigate();
   // Phase 47c — period filter (default All time = show every vendor payment).
   const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.vendor-payments.period', 'all_time');
+  const { hideVoided, setHideVoided } = useHideVoided('stockbolt.list.vendor-payments.voided');
 
   const { data: allPayments = [], isLoading } = useQuery<PaymentWithAlloc[]>({
     queryKey: ['vendor_payments', company_id],
     queryFn: () => getAdapter().vendorPayments.list(company_id!) as Promise<PaymentWithAlloc[]>,
     enabled: !!company_id,
   });
-  const payments = allPayments.filter(pmt => {
+  const paymentsInPeriod = allPayments.filter(pmt => {
     if (from && (pmt.date as string) < from) return false;
     if (to && (pmt.date as string) > to) return false;
     return true;
   });
+  // Z4 — the count is what THIS period is holding back, not all
+  // history, so "Show 2 voided" always reveals exactly two.
+  const paymentsVoidedCount = paymentsInPeriod.filter(r => r.status === 'void').length;
+  const payments = paymentsInPeriod.filter(r => showsInList(r, hideVoided));
 
   const { data: suppliers = [] } = useQuery<ContactRow[]>({
     queryKey: ['contacts', company_id, 'supplier'],
@@ -81,6 +88,8 @@ export default function VendorPaymentsPage() {
         <h1 className="text-xl font-semibold text-ink-primary">{t('purchasing.vp_title')}</h1>
         <div className="flex flex-wrap items-center gap-2">
           <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+          <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided}
+            count={paymentsVoidedCount} />
           <Button size="sm" onClick={() => navigate('/purchasing/payments/new')}>{t('purchasing.new_vp')}</Button>
         </div>
       </div>

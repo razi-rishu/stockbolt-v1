@@ -6,6 +6,8 @@ import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
+import { VoidedToggle } from '@/ui/voided-toggle';
+import { useHideVoided } from '@/hooks/use-hide-voided';
 import { Badge } from '@/ui/badge';
 import { Pagination, paginate } from '@/ui/pagination';
 import { PageHeader } from '@/ui/primitives';
@@ -64,6 +66,7 @@ export default function VendorBillsPage() {
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
+  const { hideVoided, setHideVoided } = useHideVoided('stockbolt.list.vendor-bills.voided');
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -93,8 +96,13 @@ export default function VendorBillsPage() {
   const today = new Date().toISOString().slice(0, 10);
 
   const q = search.trim().toLowerCase();
+  // Z4 — how many the default view is holding back right now.
+  const voidedCount = bills.filter(r => r.status === 'void').length;
   const filtered = bills.filter(bill => {
     if (statusFilter && bill.status !== statusFilter) return false;
+    // Z4 — hidden unless the user has explicitly asked for the void
+    // status, in which case showing them is the whole point.
+    if (!statusFilter && hideVoided && bill.status === 'void') return false;
     if (dateFrom && (bill.date as string) < dateFrom) return false;
     if (dateTo && (bill.date as string) > dateTo) return false;
     if (q) {
@@ -133,6 +141,11 @@ export default function VendorBillsPage() {
                 onClick={() => { setStatusFilter(s); setPage(1); }}
               />
             ))}
+            {/* Z4 — only meaningful on the All view; picking the Void pill
+                is already an explicit request to see them. */}
+            {!statusFilter && (
+              <VoidedToggle hideVoided={hideVoided} onChange={(v) => { setHideVoided(v); setPage(1); }} count={voidedCount} />
+            )}
           </div>
         </>
       )}

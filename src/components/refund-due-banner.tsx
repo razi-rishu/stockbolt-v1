@@ -5,7 +5,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { RefundAdvanceModal } from '@/modules/contacts/refund-advance-modal';
-import type { ContactRow, Company } from '@/data/adapter';
+import type { ContactRow, Company, RefundSourceDocType } from '@/data/adapter';
 
 /**
  * "We owe this party money" — shown wherever that becomes true, with the way
@@ -34,7 +34,7 @@ const fmt = (n: number) =>
   n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function RefundDueBanner({
-  side, contactId, contactName, currency,
+  side, contactId, contactName, currency, sourceDoc,
 }: {
   side: 'customer' | 'vendor';
   /** Null while the parent is still loading its document — renders nothing. */
@@ -44,6 +44,9 @@ export function RefundDueBanner({
    *  with the contact page. Looked up here when not given. */
   contactName?: string;
   currency?: string;
+  /** Z5 — the document this banner sits on, recorded on the refund so the
+   *  document can afterwards say it was refunded and by which payment. */
+  sourceDoc?: { type: RefundSourceDocType; id: string };
 }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -108,6 +111,7 @@ export function RefundDueBanner({
         }}
         side={side}
         source="credit"
+        sourceDoc={sourceDoc}
         contactId={contactId!}
         contactName={contactName ?? contact?.name ?? ''}
         available={balance}

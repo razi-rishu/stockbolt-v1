@@ -15,6 +15,7 @@ import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocT
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { debitNoteToDocumentData } from '@/modules/print/_signature/adapters';
 import { RefundDueBanner } from '@/components/refund-due-banner';
+import { RefundedBadge } from '@/components/refunded-badge';
 import '@/modules/print/_signature/print.css';
 import type { DebitNoteRow, DebitNoteItemInsert, DebitNoteItemRow, ContactRow, VendorBillRow, VendorBillItemRow, Company, ProductRow, ReturnableBillLine } from '@/data/adapter';
 
@@ -321,10 +322,13 @@ export default function DebitNoteEditorPage() {
         <div data-print-hide>
           <RefundDueBanner
             side="vendor"
+            sourceDoc={{ type: 'debit_note', id: existing.id }}
             contactId={existing.supplier_id}
             currency={existing.currency ?? undefined}
           />
         </div>
+        <RefundedBadge docType="debit_note" docId={existing.id}
+          currency={existing.currency ?? companyCurrency} />
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>

@@ -5,6 +5,8 @@ import { useNavigate, useMatch, Outlet } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
+import { VoidedToggle } from '@/ui/voided-toggle';
+import { useHideVoided } from '@/hooks/use-hide-voided';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
 import { StatusBadge } from '@/ui/status-badge';
@@ -72,6 +74,9 @@ export default function InvoicesPage() {
   const selectedId = selMatch?.params.id;
 
   const [statusFilter, setStatusFilter] = useState('');
+
+  const { hideVoided, setHideVoided } = useHideVoided('stockbolt.list.invoices.voided');
+
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -95,8 +100,13 @@ export default function InvoicesPage() {
   });
 
   const q = search.trim().toLowerCase();
+  // Z4 — how many the default view is holding back right now.
+  const voidedCount = (allInvoices as InvoiceRow[]).filter(r => r.status === 'void').length;
   const filtered = (allInvoices as InvoiceRow[]).filter(inv => {
     if (statusFilter && inv.status !== statusFilter) return false;
+    // Z4 — hidden unless the user has explicitly asked for the void
+    // status, in which case showing them is the whole point.
+    if (!statusFilter && hideVoided && inv.status === 'void') return false;
     if (dateFrom && (inv.date as string) < dateFrom) return false;
     if (dateTo && (inv.date as string) > dateTo) return false;
     if (q) {
@@ -163,6 +173,11 @@ export default function InvoicesPage() {
             {['', 'draft', 'confirmed', 'void'].map(s => (
               <FilterPill key={s} label={s === '' ? t('common.all') : s.charAt(0).toUpperCase() + s.slice(1)} active={statusFilter === s} onClick={() => setStatusFilter(s)} />
             ))}
+            {/* Z4 — only meaningful on the All view; picking the Void pill
+                is already an explicit request to see them. */}
+            {!statusFilter && (
+              <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided} count={voidedCount} />
+            )}
           </div>
           <div className="bg-white" style={{ border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm, maxHeight: '78vh', overflowY: 'auto', overscrollBehavior: 'contain' }}>
             {isLoading ? (

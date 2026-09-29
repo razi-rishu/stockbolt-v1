@@ -10,6 +10,8 @@ import { theme } from '@/ui/theme';
 import { StatusBadge } from '@/ui/status-badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
+import { VoidedToggle } from '@/ui/voided-toggle';
+import { useHideVoided, showsInList } from '@/hooks/use-hide-voided';
 import type { SalesReturnRow, InvoiceRow, ContactRow } from '@/data/adapter';
 
 export default function SalesReturnsPage() {
@@ -18,17 +20,22 @@ export default function SalesReturnsPage() {
   const navigate = useNavigate();
   // Phase 47c — period filter (default All time = show every return).
   const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.sales-returns.period', 'all_time');
+  const { hideVoided, setHideVoided } = useHideVoided('stockbolt.list.sales-returns.voided');
 
   const { data: allReturns = [], isLoading } = useQuery<SalesReturnRow[]>({
     queryKey: ['sales_returns', company_id],
     queryFn:  () => getAdapter().salesReturns.list(company_id!),
     enabled:  !!company_id,
   });
-  const returns = allReturns.filter(sr => {
+  const returnsInPeriod = allReturns.filter(sr => {
     if (from && (sr.date as string) < from) return false;
     if (to && (sr.date as string) > to) return false;
     return true;
   });
+  // Z4 — the count is what THIS period is holding back, not all
+  // history, so "Show 2 voided" always reveals exactly two.
+  const returnsVoidedCount = returnsInPeriod.filter(r => r.status === 'void').length;
+  const returns = returnsInPeriod.filter(r => showsInList(r, hideVoided));
 
   // sales_returns has no contact FK — the customer comes via the linked
   // invoice. Resolve invoice_id → invoice number + customer name.
@@ -53,6 +60,8 @@ export default function SalesReturnsPage() {
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+            <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided}
+              count={returnsVoidedCount} />
             {/* Z3 — no New Return. Raising one here would create the second
                 document all over again. Everything already raised stays
                 readable, printable and voidable at its own URL. */}

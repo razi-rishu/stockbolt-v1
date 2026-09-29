@@ -12,6 +12,8 @@ import { theme } from '@/ui/theme';
 import { StatusBadge } from '@/ui/status-badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
+import { VoidedToggle } from '@/ui/voided-toggle';
+import { useHideVoided, showsInList } from '@/hooks/use-hide-voided';
 import type { PaymentRow, ContactRow } from '@/data/adapter';
 
 const PAGE_SIZE = 50;
@@ -68,17 +70,22 @@ export default function PaymentsPage() {
   const [page, setPage] = useState(1);
   // Phase 47c — period filter (default All time = show every receipt).
   const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.receipts.period', 'all_time');
+  const { hideVoided, setHideVoided } = useHideVoided('stockbolt.list.receipts.voided');
 
   const { data: allPaymentsRaw = [], isLoading } = useQuery({
     queryKey: ['payments', company_id],
     queryFn: () => getAdapter().payments.list(company_id!, 'inbound'),
     enabled: !!company_id,
   });
-  const allPayments = (allPaymentsRaw as PaymentWithAlloc[]).filter(p => {
+  const paymentsInPeriod = (allPaymentsRaw as PaymentWithAlloc[]).filter(p => {
     if (from && (p.date as string) < from) return false;
     if (to && (p.date as string) > to) return false;
     return true;
   });
+  // Z4 — voided documents are hidden by default; the count is what
+  // THIS period is holding back, not all history.
+  const paymentsVoidedCount = paymentsInPeriod.filter(r => r.status === 'void').length;
+  const allPayments = paymentsInPeriod.filter(r => showsInList(r, hideVoided));
 
   const { data: reconciledIds = [] } = useQuery({
     queryKey: ['reconciled_payment_ids', company_id],
@@ -108,6 +115,7 @@ export default function PaymentsPage() {
               onPresetChange={(p) => { setPreset(p); setPage(1); }}
               onCustomRange={(f, tt) => { setCustomRange(f, tt); setPage(1); }}
             />
+            <VoidedToggle hideVoided={hideVoided} onChange={(v) => { setHideVoided(v); setPage(1); }} count={paymentsVoidedCount} />
             <Button size="sm" onClick={() => navigate('/sales/payments/new')}>
               + {t('payments.new_payment')}
             </Button>

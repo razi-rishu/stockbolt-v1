@@ -9,6 +9,8 @@ import { PageHeader } from '@/ui/primitives';
 import { StatusBadge } from '@/ui/status-badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
+import { VoidedToggle } from '@/ui/voided-toggle';
+import { useHideVoided, showsInList } from '@/hooks/use-hide-voided';
 import type { PurchaseReturnRow, VendorBillRow, ContactRow } from '@/data/adapter';
 
 /**
@@ -24,17 +26,22 @@ export default function PurchaseReturnsPage() {
   const navigate = useNavigate();
   const { preset, from, to, setPreset, setCustomRange } =
     usePeriodPicker('stockbolt.list.purchase-returns.period', 'all_time');
+  const { hideVoided, setHideVoided } = useHideVoided('stockbolt.list.purchase-returns.voided');
 
   const { data: allReturns = [], isLoading } = useQuery<PurchaseReturnRow[]>({
     queryKey: ['purchase_returns', company_id],
     queryFn:  () => getAdapter().purchaseReturns.list(company_id!),
     enabled:  !!company_id,
   });
-  const returns = allReturns.filter(pr => {
+  const returnsInPeriod = allReturns.filter(pr => {
     if (from && (pr.date as string) < from) return false;
     if (to   && (pr.date as string) > to)   return false;
     return true;
   });
+  // Z4 — voided documents are hidden by default; the count is what
+  // THIS period is holding back, not all history.
+  const returnsVoidedCount = returnsInPeriod.filter(r => r.status === 'void').length;
+  const returns = returnsInPeriod.filter(r => showsInList(r, hideVoided));
 
   const { data: bills = [] } = useQuery<VendorBillRow[]>({
     queryKey: ['vendor_bills', company_id],
@@ -56,6 +63,7 @@ export default function PurchaseReturnsPage() {
         <div className="flex flex-wrap items-center gap-2">
           <PeriodPicker mode="range" preset={preset} from={from} to={to}
             onPresetChange={setPreset} onCustomRange={setCustomRange} />
+          <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided} count={returnsVoidedCount} />
           <Button onClick={() => navigate('/purchasing/returns/new')}>
             {t('returns.new_purchase_return')}
           </Button>

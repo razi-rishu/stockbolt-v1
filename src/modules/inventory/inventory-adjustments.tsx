@@ -8,6 +8,8 @@ import { Button } from '@/ui/button';
 import { Badge } from '@/ui/badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
+import { VoidedToggle } from '@/ui/voided-toggle';
+import { useHideVoided, showsInList } from '@/hooks/use-hide-voided';
 import type { InventoryAdjustmentRow, WarehouseRow } from '@/data/adapter';
 
 const statusColor: Record<string, string> = {
@@ -20,17 +22,22 @@ export default function InventoryAdjustmentsPage() {
   const navigate = useNavigate();
   // Phase 47c — period filter (default All time = show every adjustment).
   const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.inventory-adjustments.period', 'all_time');
+  const { hideVoided, setHideVoided } = useHideVoided('stockbolt.list.inventory-adjustments.voided');
 
   const { data: allAdjustments = [], isLoading } = useQuery<InventoryAdjustmentRow[]>({
     queryKey: ['inventory_adjustments', company_id],
     queryFn: () => getAdapter().inventoryAdjustments.list(company_id!),
     enabled: !!company_id,
   });
-  const adjustments = allAdjustments.filter(adj => {
+  const adjustmentsInPeriod = allAdjustments.filter(adj => {
     if (from && (adj.date as string) < from) return false;
     if (to && (adj.date as string) > to) return false;
     return true;
   });
+  // Z4 — the count is what THIS period is holding back, not all
+  // history, so "Show 2 voided" always reveals exactly two.
+  const adjustmentsVoidedCount = adjustmentsInPeriod.filter(r => r.status === 'void').length;
+  const adjustments = adjustmentsInPeriod.filter(r => showsInList(r, hideVoided));
 
   const { data: warehouses = [] } = useQuery<WarehouseRow[]>({
     queryKey: ['warehouses', company_id],
@@ -45,6 +52,8 @@ export default function InventoryAdjustmentsPage() {
         <h1 className="text-xl font-semibold text-ink-primary">{t('inventory.adjustments_title')}</h1>
         <div className="flex flex-wrap items-center gap-2">
           <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+          <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided}
+            count={adjustmentsVoidedCount} />
           <Button size="sm" onClick={() => navigate('/inventory/adjustments/new')}>{t('inventory.new_adjustment')}</Button>
         </div>
       </div>

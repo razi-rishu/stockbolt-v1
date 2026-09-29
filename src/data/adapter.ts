@@ -1431,6 +1431,10 @@ export interface PaymentsAPI {
    * capped SERVER-SIDE at the contact's ledger balance — never trust the UI for
    * that.
    */
+  /** Z5 — every refund raised against one document, newest first. Void
+   *  ones are included: the page shows them struck through rather than
+   *  claiming the money went back when it came straight out again. */
+  listForDocument(doc_type: RefundSourceDocType, doc_id: string): Promise<DocumentRefund[]>;
   refundCustomerAdvance(input: RefundAdvanceInput): Promise<RefundResult>;
   refundVendorAdvance(input: RefundAdvanceInput): Promise<RefundResult>;
   /**
@@ -1470,6 +1474,27 @@ export interface RefundAdvanceInput {
   bank_account_id: string;
   reference?:      string | null;
   notes?:          string | null;
+  /** Z5 (phase90) — the document this refund was raised from, so the
+   *  document can later say it was refunded and by which payment.
+   *  Provenance only: deliberately NOT a payment_allocations row, because
+   *  those are how AR settlement is derived and a synthetic one would
+   *  corrupt balances. Omitted from a refund raised on a contact page,
+   *  where there is no single source document to name. */
+  source_doc_type?: RefundSourceDocType | null;
+  source_doc_id?:   string | null;
+}
+
+export type RefundSourceDocType =
+  | 'credit_note' | 'sales_return' | 'debit_note' | 'purchase_return';
+
+/** Z5 — a refund already raised against a document. */
+export interface DocumentRefund {
+  id:             string;
+  payment_number: string;
+  date:           string;
+  amount:         number;
+  currency:       string;
+  status:         string;
 }
 
 export interface RefundResult {

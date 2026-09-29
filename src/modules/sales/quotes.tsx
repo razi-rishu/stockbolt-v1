@@ -10,6 +10,8 @@ import { theme } from '@/ui/theme';
 import { StatusBadge } from '@/ui/status-badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
+import { VoidedToggle } from '@/ui/voided-toggle';
+import { useHideVoided, showsInList } from '@/hooks/use-hide-voided';
 import type { SalesQuoteRow, ContactRow } from '@/data/adapter';
 
 function fmt(n: number) {
@@ -23,17 +25,22 @@ export default function QuotesPage() {
   const qc = useQueryClient();
   // Phase 47c — period filter (default All time = show every quote).
   const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.quotes.period', 'all_time');
+  const { hideVoided, setHideVoided } = useHideVoided('stockbolt.list.quotes.voided');
 
   const { data: allQuotes = [], isLoading } = useQuery({
     queryKey: ['sales_quotes', company_id],
     queryFn: () => getAdapter().salesQuotes.list(company_id!),
     enabled: !!company_id,
   });
-  const quotes = (allQuotes as SalesQuoteRow[]).filter(q => {
+  const quotesInPeriod = (allQuotes as SalesQuoteRow[]).filter(q => {
     if (from && (q.date as string) < from) return false;
     if (to && (q.date as string) > to) return false;
     return true;
   });
+  // Z4 — the count is what THIS period is holding back, not all
+  // history, so "Show 2 voided" always reveals exactly two.
+  const quotesVoidedCount = quotesInPeriod.filter(r => r.status === 'void').length;
+  const quotes = quotesInPeriod.filter(r => showsInList(r, hideVoided));
 
   const { data: customers = [] } = useQuery<ContactRow[]>({
     queryKey: ['contacts', company_id, 'customer'],
@@ -59,6 +66,8 @@ export default function QuotesPage() {
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+            <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided}
+              count={quotesVoidedCount} />
             <Button size="sm" onClick={() => navigate('/sales/quotes/new')}>
               + {t('sales.new_quote')}
             </Button>

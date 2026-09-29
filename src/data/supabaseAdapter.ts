@@ -180,6 +180,11 @@ async function postRefund(
       type:              direction,
       classification,
       contact_id:        input.contact_id,
+      // Z5 — provenance, written at the moment the refund is raised, which
+      // is the only moment the source document is known. Null for a refund
+      // raised from a contact page, where there is no single document.
+      source_doc_type:   input.source_doc_type ?? null,
+      source_doc_id:     input.source_doc_id ?? null,
       date:              input.date,
       amount:            input.amount,
       currency:          input.currency,
@@ -2651,6 +2656,15 @@ export function createSupabaseAdapter(
 
       // ── S2/S3 — advance refunds ───────────────────────────────────────────
       // Draft + confirm are one user action, so they are one call here.
+      async listForDocument(doc_type, doc_id): Promise<import('./adapter').DocumentRefund[]> {
+        const { data, error } = await (client.from('payments') as any)
+          .select('id, payment_number, date, amount, currency, status')
+          .eq('source_doc_type', doc_type)
+          .eq('source_doc_id', doc_id)
+          .order('date', { ascending: false });
+        assertNoError(error as Error | null, 'payments.listForDocument');
+        return (data ?? []) as import('./adapter').DocumentRefund[];
+      },
       async refundCustomerAdvance(input): Promise<import('./adapter').RefundResult> {
         return postRefund(client, input, 'outbound', 'confirm_customer_refund', 'CRF', 'payments.refundCustomerAdvance');
       },

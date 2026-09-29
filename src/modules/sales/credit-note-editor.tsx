@@ -16,6 +16,7 @@ import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocT
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { creditNoteToDocumentData } from '@/modules/print/_signature/adapters';
 import { RefundDueBanner } from '@/components/refund-due-banner';
+import { RefundedBadge } from '@/components/refunded-badge';
 import '@/modules/print/_signature/print.css';
 import type { CreditNoteRow, CreditNoteItemInsert, CreditNoteItemRow, ContactRow, InvoiceRow, InvoiceItemRow, Company, ProductRow, ReturnableLine, WarehouseRow } from '@/data/adapter';
 
@@ -403,10 +404,15 @@ export default function CreditNoteEditorPage() {
         <div data-print-hide>
           <RefundDueBanner
             side="customer"
+            sourceDoc={{ type: 'credit_note', id: existing.id }}
             contactId={existing.contact_id}
             currency={existing.currency ?? undefined}
           />
         </div>
+        {/* Z5 — the answer to "was this refunded?", read from the refund
+            itself rather than guessed from the contact and the date. */}
+        <RefundedBadge docType="credit_note" docId={existing.id}
+          currency={existing.currency ?? companyCurrency} />
         <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>

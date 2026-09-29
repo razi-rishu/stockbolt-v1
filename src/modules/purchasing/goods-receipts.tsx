@@ -8,6 +8,8 @@ import { Button } from '@/ui/button';
 import { Badge } from '@/ui/badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
+import { VoidedToggle } from '@/ui/voided-toggle';
+import { useHideVoided, showsInList } from '@/hooks/use-hide-voided';
 import type { GoodsReceiptRow, ContactRow } from '@/data/adapter';
 
 const statusColor: Record<string, string> = {
@@ -20,17 +22,22 @@ export default function GoodsReceiptsPage() {
   const navigate = useNavigate();
   // Phase 47c — period filter (default All time = show every GRN).
   const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.goods-receipts.period', 'all_time');
+  const { hideVoided, setHideVoided } = useHideVoided('stockbolt.list.goods-receipts.voided');
 
   const { data: allGrns = [], isLoading } = useQuery<GoodsReceiptRow[]>({
     queryKey: ['goods_receipts', company_id],
     queryFn: () => getAdapter().goodsReceipts.list(company_id!),
     enabled: !!company_id,
   });
-  const grns = allGrns.filter(grn => {
+  const grnsInPeriod = allGrns.filter(grn => {
     if (from && (grn.date as string) < from) return false;
     if (to && (grn.date as string) > to) return false;
     return true;
   });
+  // Z4 — the count is what THIS period is holding back, not all
+  // history, so "Show 2 voided" always reveals exactly two.
+  const grnsVoidedCount = grnsInPeriod.filter(r => r.status === 'void').length;
+  const grns = grnsInPeriod.filter(r => showsInList(r, hideVoided));
   const { data: suppliers = [] } = useQuery<ContactRow[]>({
     queryKey: ['contacts', company_id, 'supplier'],
     queryFn: () => getAdapter().contacts.list(company_id!, 'supplier'),
@@ -44,6 +51,8 @@ export default function GoodsReceiptsPage() {
         <h1 className="text-xl font-semibold text-ink-primary">{t('purchasing.grn_title')}</h1>
         <div className="flex flex-wrap items-center gap-2">
           <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+          <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided}
+            count={grnsVoidedCount} />
           <Button size="sm" onClick={() => navigate('/purchasing/grns/new')}>{t('purchasing.new_grn')}</Button>
         </div>
       </div>

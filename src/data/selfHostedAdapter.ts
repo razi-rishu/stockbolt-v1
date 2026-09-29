@@ -303,6 +303,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       // S2/S3
       refundCustomerAdvance: () => notImplemented('payments.refundCustomerAdvance'),
       refundVendorAdvance:   () => notImplemented('payments.refundVendorAdvance'),
+      listForDocument:       () => notImplemented('payments.listForDocument'),
       refundCustomerCredit:  () => notImplemented('payments.refundCustomerCredit'),
       refundVendorCredit:    () => notImplemented('payments.refundVendorCredit'),
       voidVendorCreditRefund: () => notImplemented('payments.voidVendorCreditRefund'),

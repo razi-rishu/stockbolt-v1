@@ -10,6 +10,8 @@ import { theme } from '@/ui/theme';
 import { StatusBadge } from '@/ui/status-badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
+import { VoidedToggle } from '@/ui/voided-toggle';
+import { useHideVoided, showsInList } from '@/hooks/use-hide-voided';
 import type { DebitNoteRow, ContactRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -20,17 +22,22 @@ export default function DebitNotesPage() {
   const navigate = useNavigate();
   // Phase 47c — period filter (default All time = show every debit note).
   const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.debit-notes.period', 'all_time');
+  const { hideVoided, setHideVoided } = useHideVoided('stockbolt.list.debit-notes.voided');
 
   const { data: allNotes = [], isLoading } = useQuery<DebitNoteRow[]>({
     queryKey: ['debit_notes', company_id],
     queryFn:  () => getAdapter().debitNotes.list(company_id!),
     enabled:  !!company_id,
   });
-  const notes = allNotes.filter(dn => {
+  const notesInPeriod = allNotes.filter(dn => {
     if (from && (dn.date as string) < from) return false;
     if (to && (dn.date as string) > to) return false;
     return true;
   });
+  // Z4 — the count is what THIS period is holding back, not all
+  // history, so "Show 2 voided" always reveals exactly two.
+  const notesVoidedCount = notesInPeriod.filter(r => r.status === 'void').length;
+  const notes = notesInPeriod.filter(r => showsInList(r, hideVoided));
   const { data: suppliers = [] } = useQuery<ContactRow[]>({
     queryKey: ['contacts', company_id, 'supplier'],
     queryFn: () => getAdapter().contacts.list(company_id!, 'supplier'),
@@ -46,6 +53,8 @@ export default function DebitNotesPage() {
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+            <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided}
+              count={notesVoidedCount} />
             <Link to="/purchasing/debit-notes/new"><Button>+ {t('returns.new_debit_note')}</Button></Link>
           </div>
         }

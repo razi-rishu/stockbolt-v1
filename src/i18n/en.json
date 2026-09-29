@@ -4,6 +4,9 @@
     "tagline": "Auto Parts ERP"
   },
   "common": {
+    "show_voided": "Show {{count}} voided",
+    "hide_voided": "Hide voided",
+    "voided_toggle_hint": "Voided documents are hidden by default. They keep their number and their reversal stays in the ledger, so they are never deleted.",
     "apply": "Apply",
     "clear": "Clear",
     "default": "Default",
@@ -1780,6 +1783,8 @@
     "col_amount": "Amount"
   },
   "refund": {
+    "refunded_badge": "Refunded {{amount}}",
+    "refund_voided_badge": "The refund against this document was voided",
     "title_vendor_credit": "Receive refund from supplier",
     "intro_vendor_credit": "Record money {{name}} is sending back against a debit note on a bill you had already paid. This is not an advance.",
     "gl_hint_vendor_credit": "Posts Dr the selected account / Cr 2100 Accounts Payable.",

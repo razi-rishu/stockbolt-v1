@@ -5876,3 +5876,160 @@ describe('Z3 — returns retired, history intact', () => {
     expect(body, 'excludes return-generated notes').toMatch(/fromReturn\.has\(n\.id\)/);
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Z4 — voided documents are out of the way, not destroyed
+//
+// "Delete means deleted. I don't want to see the deleted transaction there."
+//
+// They cannot be deleted: the numbers are issued, the journal entries are
+// already reversed, and Doc 3 Rule 5 is reverse-never-delete. What was
+// actually wrong is that they were in the way — one reopened return left two
+// voided credit notes sitting next to the live one, all three for 131.25.
+//
+// So they are hidden by default across every document list, one click behind.
+// The tests below are that it is EVERY list (a half-applied rule is worse than
+// none) and that hiding is all that happens.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Z4 — voided hidden by default', () => {
+  const read = async (f: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(resolve(process.cwd(), f), 'utf8');
+  };
+
+  // Named individually: a count passes while the wrong list loses it.
+  const LISTS = [
+    'src/modules/sales/invoices.tsx',
+    'src/modules/sales/credit-notes.tsx',
+    'src/modules/sales/payments.tsx',
+    'src/modules/sales/quotes.tsx',
+    'src/modules/sales/sales-returns.tsx',
+    'src/modules/purchasing/vendor-bills.tsx',
+    'src/modules/purchasing/debit-notes.tsx',
+    'src/modules/purchasing/expenses.tsx',
+    'src/modules/purchasing/goods-receipts.tsx',
+    'src/modules/purchasing/purchase-orders.tsx',
+    'src/modules/purchasing/purchase-returns.tsx',
+    'src/modules/purchasing/vendor-payments.tsx',
+    'src/modules/banking/bank-transfers.tsx',
+    'src/modules/inventory/inventory-adjustments.tsx',
+    'src/modules/inventory/stock-transfers.tsx',
+    'src/modules/payroll/payroll-runs.tsx',
+  ];
+
+  it('every document list hides voided rows and offers the toggle', async () => {
+    for (const f of LISTS) {
+      const src = await read(f);
+      expect(src, `${f} reads the preference`).toMatch(/useHideVoided\(/);
+      expect(src, `${f} offers a way back`).toMatch(/<VoidedToggle/);
+      expect(src, `${f} actually filters on it`).toMatch(/hideVoided/);
+    }
+  });
+
+  it('hidden means hidden, never deleted', async () => {
+    // The whole point. If a list ever answers "remove it from view" with a
+    // delete call, the audit trail goes with it.
+    for (const f of LISTS) {
+      const src = await read(f);
+      expect(src, `${f} does not delete to hide`)
+        .not.toMatch(/\.delete\(\)[^\n]*void/i);
+    }
+  });
+
+  it('only VOID is hidden — a draft is unfinished work, not rubbish', async () => {
+    const hook = await read('src/hooks/use-hide-voided.ts');
+    expect(hook, "hides 'void'").toMatch(/status === 'void'/);
+    expect(hook, 'and nothing else').not.toMatch(/status === 'draft'/);
+    // Default hidden, and a corrupt or missing value fails to hidden rather
+    // than to a cluttered list.
+    expect(hook, 'defaults to hidden').toMatch(/!== 'false'/);
+    expect(hook, 'survives blocked storage').toMatch(/catch/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Z5 — a document can say whether it was refunded
+//
+// "Where is the sign if users check later how they know is it refund or not."
+//
+// There was no sign because there was no data: a refund payment carried
+// contact_id and nothing else, so it knew WHO was paid and never WHAT it
+// settled. phase90 records the source document when the refund is raised.
+//
+// The load-bearing decision is that this is NOT a payment_allocations row.
+// Those are how AR settlement is derived, and a synthetic one would make a
+// credit note look settled to every query that reads them.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Z5 — refund provenance (soft until applied)', () => {
+  const read = async (f: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(resolve(process.cwd(), f), 'utf8');
+  };
+  const hasCol = async (col: string): Promise<boolean> => {
+    const r = await sql<{ n: number }>(`SELECT count(*)::int AS n
+      FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='payments' AND column_name='${col}'`);
+    return (r[0]?.n ?? 0) === 1;
+  };
+
+  it('phase90: payments record the document a refund came from', async () => {
+    if (!(await hasCol('source_doc_type'))) {
+      console.warn('⚠ phase90 not applied yet — run ' +
+        'supabase/migrations/20260929000001_phase90_refund_source_document.sql. ' +
+        'Until then a refund cannot say which document it settled.');
+      return;
+    }
+    expect(await hasCol('source_doc_type')).toBe(true);
+    expect(await hasCol('source_doc_id')).toBe(true);
+
+    // Both halves or neither: a type with no id, or an id with no type, is a
+    // row nothing can resolve.
+    const pair = await sql<{ def: string }>(`SELECT pg_get_constraintdef(oid) AS def
+      FROM pg_constraint WHERE conname='payments_source_doc_pair_check'`);
+    expect(pair.length, 'the pair CHECK exists').toBe(1);
+
+    const typ = await sql<{ def: string }>(`SELECT pg_get_constraintdef(oid) AS def
+      FROM pg_constraint WHERE conname='payments_source_doc_type_check'`);
+    for (const v of ['credit_note', 'sales_return', 'debit_note', 'purchase_return']) {
+      expect(typ[0]?.def ?? '', `type CHECK allows ${v}`).toContain(v);
+    }
+  });
+
+  it('no orphaned or half-written provenance in the data', async () => {
+    if (!(await hasCol('source_doc_type'))) return;   // soft until applied
+    const bad = await sql<{ payment_number: string }>(`
+      SELECT payment_number FROM public.payments
+       WHERE (source_doc_type IS NULL) <> (source_doc_id IS NULL)`);
+    expect(bad, `payments with half a source document: ${JSON.stringify(bad)}`)
+      .toHaveLength(0);
+  });
+
+  it('the refund is provenance, NOT a settlement allocation', async () => {
+    // The decision this rests on. payment_allocations is how the app derives
+    // what a document has been paid; writing one for a refund would corrupt
+    // every balance computed from them.
+    const src = await read('src/data/supabaseAdapter.ts');
+    const i = src.indexOf('async function postRefund');
+    const body = src.slice(i, src.indexOf('export function createSupabaseAdapter'));
+    expect(body, 'writes the provenance pair').toMatch(/source_doc_type:\s+input\.source_doc_type/);
+    expect(body, 'and never an allocation').not.toMatch(/payment_allocations/);
+  });
+
+  it('the documents that can be refunded show whether they were', async () => {
+    for (const [f, type] of [
+      ['src/modules/sales/credit-note-editor.tsx', 'credit_note'],
+      ['src/modules/purchasing/debit-note-editor.tsx', 'debit_note'],
+    ] as const) {
+      const src = await read(f);
+      expect(src, `${f} shows the badge`).toMatch(/<RefundedBadge/);
+      expect(src, `${f} records itself as the source`)
+        .toMatch(new RegExp(`type: '${type}'`));
+    }
+    // A voided refund is shown struck through, not hidden: "refunded" and
+    // "refunded, then cancelled" are different facts.
+    const badge = await read('src/components/refunded-badge.tsx');
+    expect(badge, 'void refunds stay visible').toMatch(/line-through/);
+    expect(badge, 'but do not count as refunded').toMatch(/status !== 'void'/);
+  });
+});

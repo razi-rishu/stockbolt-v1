@@ -8,6 +8,8 @@ import { Button } from '@/ui/button';
 import { Badge } from '@/ui/badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
+import { VoidedToggle } from '@/ui/voided-toggle';
+import { useHideVoided, showsInList } from '@/hooks/use-hide-voided';
 import type { StockTransferRow, WarehouseRow } from '@/data/adapter';
 
 const statusColor: Record<string, string> = {
@@ -20,17 +22,22 @@ export default function StockTransfersPage() {
   const navigate = useNavigate();
   // Phase 47c — period filter (default All time = show every transfer).
   const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.stock-transfers.period', 'all_time');
+  const { hideVoided, setHideVoided } = useHideVoided('stockbolt.list.stock-transfers.voided');
 
   const { data: allTransfers = [], isLoading } = useQuery<StockTransferRow[]>({
     queryKey: ['stock_transfers', company_id],
     queryFn: () => getAdapter().stockTransfers.list(company_id!),
     enabled: !!company_id,
   });
-  const transfers = allTransfers.filter(tr => {
+  const transfersInPeriod = allTransfers.filter(tr => {
     if (from && (tr.date as string) < from) return false;
     if (to && (tr.date as string) > to) return false;
     return true;
   });
+  // Z4 — the count is what THIS period is holding back, not all
+  // history, so "Show 2 voided" always reveals exactly two.
+  const transfersVoidedCount = transfersInPeriod.filter(r => r.status === 'void').length;
+  const transfers = transfersInPeriod.filter(r => showsInList(r, hideVoided));
 
   const { data: warehouses = [] } = useQuery<WarehouseRow[]>({
     queryKey: ['warehouses', company_id],
@@ -45,6 +52,8 @@ export default function StockTransfersPage() {
         <h1 className="text-xl font-semibold text-ink-primary">{t('inventory.transfers_title')}</h1>
         <div className="flex flex-wrap items-center gap-2">
           <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+          <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided}
+            count={transfersVoidedCount} />
           <Button size="sm" onClick={() => navigate('/inventory/transfers/new')}>{t('inventory.new_transfer')}</Button>
         </div>
       </div>

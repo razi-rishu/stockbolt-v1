@@ -12,6 +12,8 @@ import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
+import { VoidedToggle } from '@/ui/voided-toggle';
+import { useHideVoided, showsInList } from '@/hooks/use-hide-voided';
 import type { PurchaseOrderRow, ContactRow } from '@/data/adapter';
 
 const PAGE_SIZE = 50;
@@ -30,17 +32,22 @@ export default function PurchaseOrdersPage() {
   const [converting, setConverting] = useState<string | null>(null);
   // Phase 47c — period filter (default All time = show every PO).
   const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.purchase-orders.period', 'all_time');
+  const { hideVoided, setHideVoided } = useHideVoided('stockbolt.list.purchase-orders.voided');
 
   const { data: allOrders = [], isLoading } = useQuery<PurchaseOrderRow[]>({
     queryKey: ['purchase_orders', company_id],
     queryFn: () => getAdapter().purchaseOrders.list(company_id!),
     enabled: !!company_id,
   });
-  const orders = allOrders.filter(po => {
+  const ordersInPeriod = allOrders.filter(po => {
     if (from && (po.date as string) < from) return false;
     if (to && (po.date as string) > to) return false;
     return true;
   });
+  // Z4 — voided documents are hidden by default; the count is what
+  // THIS period is holding back, not all history.
+  const ordersVoidedCount = ordersInPeriod.filter(r => r.status === 'void').length;
+  const orders = ordersInPeriod.filter(r => showsInList(r, hideVoided));
   const { data: suppliers = [] } = useQuery<ContactRow[]>({
     queryKey: ['contacts', company_id, 'supplier'],
     queryFn: () => getAdapter().contacts.list(company_id!, 'supplier'),
@@ -73,6 +80,7 @@ export default function PurchaseOrdersPage() {
               onPresetChange={(p) => { setPreset(p); setPage(1); }}
               onCustomRange={(f, tt) => { setCustomRange(f, tt); setPage(1); }}
             />
+            <VoidedToggle hideVoided={hideVoided} onChange={(v) => { setHideVoided(v); setPage(1); }} count={ordersVoidedCount} />
             <Button size="sm" onClick={() => navigate('/purchasing/orders/new')}>+ {t('purchasing.new_po')}</Button>
           </div>
         }

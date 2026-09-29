@@ -26,6 +26,8 @@ import { theme } from '@/ui/theme';
 import { StatusBadge } from '@/ui/status-badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
+import { VoidedToggle } from '@/ui/voided-toggle';
+import { useHideVoided } from '@/hooks/use-hide-voided';
 import type { ExpenseRow, CoaRow } from '@/data/adapter';
 
 const fmt = (n: number) =>
@@ -78,6 +80,7 @@ export default function ExpensesPage() {
   const navigate = useNavigate();
   const currency = useCompanyCurrency();
   const [filter, setFilter] = useState<Filter>('all');
+  const { hideVoided, setHideVoided } = useHideVoided('stockbolt.list.expenses.voided');
   // Phase 47c — period filter (default All time = show every expense).
   const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.expenses.period', 'all_time');
 
@@ -157,8 +160,12 @@ export default function ExpensesPage() {
     } else if (filter !== 'all') {
       rows = rows.filter(e => e.status === filter);
     }
+    // Z4 — hidden on the All and This-month views. Picking the Void pill
+    // is already an explicit request to see them.
+    if (hideVoided && filter !== 'void') rows = rows.filter(e => e.status !== 'void');
     return rows;
-  }, [expenses, filter, from, to]);
+  }, [expenses, filter, from, to, hideVoided]);
+  const voidedCount = expenses.filter(e => e.status === 'void').length;
 
   const catShades = [theme.brand, '#8b5cf6', '#a78bfa', '#c4b5fd'];
 
@@ -287,6 +294,9 @@ export default function ExpensesPage() {
         <FilterPill label="Confirmed"  active={filter === 'confirmed'}  onClick={() => setFilter('confirmed')} />
         <FilterPill label="Void"       active={filter === 'void'}       onClick={() => setFilter('void')} />
         <FilterPill label="This month" active={filter === 'this_month'} onClick={() => setFilter('this_month')} />
+        {filter !== 'void' && (
+          <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided} count={voidedCount} />
+        )}
       </div>
 
       {isLoading ? (
