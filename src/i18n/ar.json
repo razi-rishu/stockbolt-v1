@@ -1343,6 +1343,8 @@
     "error_amount_required": "المبلغ مطلوب."
   },
   "banking": {
+    "accounts_title": "الحسابات البنكية",
+    "reconciliation_title": "التسوية البنكية",
     "transfers_title": "التحويلات البنكية",
     "transfers_desc": "تحويل الأموال بين الحسابات البنكية.",
     "new_transfer": "تحويل جديد",

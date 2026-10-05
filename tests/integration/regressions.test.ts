@@ -6306,3 +6306,76 @@ describe('Stock ledger — movement types', () => {
     }
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Banking is its own section, and every link in it resolves
+//
+// Banking was a group nested inside Accounting — which is where you go for
+// the chart of accounts, not for a cheque. It is top-level now.
+//
+// The risk in a nav change is not the nav: it is a link that points at a
+// route which does not exist, which renders as a dead click and nothing else.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Navigation — Banking section', () => {
+  const read = async (f: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(resolve(process.cwd(), f), 'utf8');
+  };
+
+  it('Banking is a top-level section, not buried in Accounting', async () => {
+    const nav = await read('src/components/app-layout.tsx');
+    // A section has an icon; a group does not.
+    expect(nav, 'Banking has its own icon').toMatch(/label: t\('nav\.banking'\),\s*\n\s*icon: <BankIcon \/>/);
+    // The accounting section must no longer carry the banking links.
+    const acct = nav.slice(nav.indexOf("label: t('nav.accounting')"), nav.indexOf("label: t('nav.banking')"));
+    expect(acct, 'accounting no longer lists banking pages')
+      .not.toMatch(/\/banking\//);
+  });
+
+  it('every Banking link points at a route that exists', async () => {
+    // The whole failure mode of a nav change, in one assertion.
+    const nav = await read('src/components/app-layout.tsx');
+    const app = await read('src/App.tsx');
+    // Bound the slice to THIS section. An unbounded one runs into the next
+    // section and reports its labels as Banking's, which is how this test
+    // first 'failed' on Payroll.
+    const start = nav.indexOf("label: t('nav.banking')");
+    const section = nav.slice(start, start + nav.slice(start).indexOf('\n    },'));
+    const links = [...section.matchAll(/to: '([^']+)'/g)].map(m => m[1]!);
+    expect(links.length, 'the section has links').toBeGreaterThanOrEqual(5);
+    for (const to of links) {
+      // Routes are declared either absolute, or relative inside a parent
+      // (e.g. "bank-accounts" under /settings).
+      const tail = to.split('/').filter(Boolean).pop()!;
+      expect(
+        app.includes(`path="${to}"`) || app.includes(`path="${tail}"`),
+        `${to} has no route in App.tsx`,
+      ).toBe(true);
+    }
+  });
+
+  it('no Banking label is hardcoded English', async () => {
+    // 'Bank Reconciliation' used to be a raw string in the nav while every
+    // sibling went through i18n, so it stayed English in Arabic mode.
+    const nav = await read('src/components/app-layout.tsx');
+    // Bound the slice to THIS section. An unbounded one runs into the next
+    // section and reports its labels as Banking's, which is how this test
+    // first 'failed' on Payroll.
+    const start = nav.indexOf("label: t('nav.banking')");
+    const section = nav.slice(start, start + nav.slice(start).indexOf('\n    },'));
+    const labels = [...section.matchAll(/label: ([^,\n]+)/g)].map(m => m[1]!.trim());
+    for (const l of labels) {
+      expect(l, `a Banking label is a raw string: ${l}`).toMatch(/^t\(/);
+    }
+
+    const { readFileSync } = await import('node:fs');
+    const en = JSON.parse(readFileSync(resolve(process.cwd(), 'src/i18n/en.json'), 'utf8'));
+    const ar = JSON.parse(readFileSync(resolve(process.cwd(), 'src/i18n/ar.json'), 'utf8'));
+    for (const k of ['accounts_title', 'reconciliation_title', 'transfers_title',
+                     'pdc_received_title', 'pdc_issued_title']) {
+      expect(en.banking?.[k], `en banking.${k}`).toBeTruthy();
+      expect(ar.banking?.[k], `ar banking.${k}`).toBeTruthy();
+    }
+  });
+});

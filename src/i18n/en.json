@@ -1343,6 +1343,8 @@
     "error_amount_required": "Amount is required."
   },
   "banking": {
+    "accounts_title": "Bank Accounts",
+    "reconciliation_title": "Bank Reconciliation",
     "transfers_title": "Bank Transfers",
     "transfers_desc": "Transfer funds between bank accounts.",
     "new_transfer": "New Transfer",

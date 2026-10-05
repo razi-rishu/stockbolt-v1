@@ -67,6 +67,9 @@ const PurchasingIcon = () => icn(<><circle cx="9" cy="20" r="1.4" /><circle cx="
 const InventoryIcon  = () => icn(<><path d="M21 8 12 3 3 8v8l9 5 9-5V8z" /><path d="M3 8l9 5 9-5M12 13v8" /></>);
 const AccountingIcon = () => icn(<><rect x="4" y="2.5" width="16" height="19" rx="2" /><path d="M8 7h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h4.01" /></>);
 const PayrollIcon    = () => icn(<><circle cx="9" cy="8.5" r="3.2" /><path d="M3.5 19.5c.9-3 3-4.5 5.5-4.5s4.6 1.5 5.5 4.5" /><circle cx="17" cy="9.5" r="2.4" /><path d="M16 14.6c2.3.2 3.9 1.6 4.6 4" /></>);
+// A bank front: columns under a pediment. Deliberately not a card or a
+// wallet — those read as payment, and this section is the institution.
+const BankIcon       = () => icn(<><path d="M3 10h18M4 10 12 4l8 6" /><path d="M6 10v7M10 10v7M14 10v7M18 10v7" /><path d="M3 20h18" /></>);
 const ReportsIcon    = () => icn(<><path d="M4 20V10M10 20V4M16 20v-7M21 20H3" /></>);
 const ContactsIcon   = () => icn(<><circle cx="12" cy="8" r="3.5" /><path d="M5 19.5c1.2-3 4-4.5 7-4.5s5.8 1.5 7 4.5" /></>);
 const InvoicePlusIcon= () => icn(<><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M12 9v6M9 12h6" /></>);
@@ -176,9 +179,11 @@ function useNavSections(t: (k: string) => string): NavSection[] {
       label: t('nav.accounting'),
       icon: <AccountingIcon />,
       perm: 'accounting.read',
+      // 'Books' was only a heading to separate these from Banking. With
+      // Banking promoted out, a lone labelled group is just a redundant
+      // header, so this matches every other single-group section.
       groups: [
         {
-          label: 'Books',
           items: [
             { to: '/accounting/chart-of-accounts', label: t('nav.coa') },
             { to: '/accounting/journal-entries', label: t('nav.journal_entries') },
@@ -191,16 +196,29 @@ function useNavSections(t: (k: string) => string): NavSection[] {
             { to: '/accounting/tds', label: t('nav.tds') },
           ],
         },
-        {
-          label: t('nav.banking'),
-          items: [
-            { to: '/banking/transfers', label: t('banking.transfers_title') },
-            { to: '/banking/pdc-received', label: t('banking.pdc_received_title') },
-            { to: '/banking/pdc-issued', label: t('banking.pdc_issued_title') },
-            { to: '/banking/reconciliation', label: 'Bank Reconciliation' },
-          ],
-        },
       ],
+    },
+
+    // Banking was a GROUP buried inside Accounting, which is where you look
+    // for the chart of accounts, not for a cheque. It is its own section
+    // now. Same permission as before (accounting.read), so nobody gains or
+    // loses access — this moves where the links live, nothing else.
+    {
+      label: t('nav.banking'),
+      icon: <BankIcon />,
+      perm: 'accounting.read',
+      groups: [{
+        items: [
+          // The accounts come first: a section called Banking that does not
+          // list your banks is the obvious thing to look for and miss. The
+          // page still lives under Settings; this is a second way in.
+          { to: '/settings/bank-accounts', label: t('banking.accounts_title') },
+          { to: '/banking/transfers', label: t('banking.transfers_title') },
+          { to: '/banking/pdc-received', label: t('banking.pdc_received_title') },
+          { to: '/banking/pdc-issued', label: t('banking.pdc_issued_title') },
+          { to: '/banking/reconciliation', label: t('banking.reconciliation_title') },
+        ],
+      }],
     },
 
     // Payroll P1 (owner override 2026-06-13)
