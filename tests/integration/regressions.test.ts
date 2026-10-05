@@ -6143,3 +6143,98 @@ describe('Phase 91 — refunded status', () => {
     }
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 92 — a reversal is never itself reversed
+//
+// Editing a credit note TWICE inflated the customer's credit by the value of
+// the note. reopen_credit_note chose what to reverse with
+//
+//     WHERE source_id = ... AND reversed_by_id IS NULL
+//
+// which excludes entries already reversed but NOT entries that ARE reversals.
+// On the second reopen the set contained the first reopen's own reversal, and
+// reversing a reversal re-applies the original credit.
+//
+// Ten functions had the same missing clause. The money consequence had fired
+// once (Pro_Parts JE-1115, JUMA ARIF left holding a phantom 131.25 credit
+// after being refunded); the voids were latent, since a reopen cycle leaves
+// an un-reversed reversal for a later void to find.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 92 — never reverse a reversal (soft until applied)', () => {
+  // Named individually: a count passes while the wrong one regresses.
+  const GUARDED = [
+    'reopen_credit_note', 'reopen_debit_note', 'reopen_expense', 'reopen_bank_transfer',
+    'void_credit_note', 'void_debit_note', 'void_invoice', 'void_expense',
+    'void_payment', 'void_bank_transfer',
+  ];
+
+  const srcOf = async (fn: string): Promise<string> => {
+    const r = await sql<{ s: string }>(`SELECT pg_get_functiondef(oid) AS s FROM pg_proc
+      WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+    return r[0]?.s ?? '';
+  };
+  async function applied(): Promise<boolean> {
+    return /reversed_by_id IS NULL AND reversal_of_id IS NULL/
+      .test(await srcOf('reopen_credit_note'));
+  }
+
+  it('phase92: every document-reversal query excludes reversals', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ phase92 not applied yet — run ' +
+        'supabase/migrations/20261005000002_phase92_never_reverse_a_reversal.sql. ' +
+        'Until then editing a credit note twice inflates the customer credit.');
+      return;
+    }
+    for (const fn of GUARDED) {
+      const src = await srcOf(fn);
+      expect(src, `${fn} exists`).not.toBe('');
+      // Every query that sweeps a document's entries must exclude entries
+      // that are themselves reversals.
+      const sweeps = src.split('FROM public.journal_entries').slice(1);
+      for (const tail of sweeps) {
+        const where = tail.slice(0, 400);
+        if (!/source_id/.test(where)) continue;          // not a document sweep
+        if (!/reversed_by_id IS NULL/.test(where)) continue;
+        expect(where, `${fn}: a sweep still allows reversals to be reversed`)
+          .toMatch(/reversal_of_id IS NULL/);
+      }
+    }
+  });
+
+  it('no LIVE entry anywhere reverses a reversal', async () => {
+    if (!(await applied())) return;   // soft until applied
+    // JE-1115 is expected to remain, corrected: its own reversal clears
+    // reversed_by_id, so a corrected one drops out of this.
+    const bad = await sql<{ entry_number: string; company: string }>(`
+      SELECT je.entry_number, c.name AS company
+      FROM public.journal_entries je
+      JOIN public.journal_entries r ON r.id = je.reversal_of_id
+      JOIN public.companies c ON c.id = je.company_id
+      WHERE r.reversal_of_id IS NOT NULL
+        AND je.reversed_by_id IS NULL`);
+    expect(bad, `entries reversing a reversal, uncorrected: ${JSON.stringify(bad)}`)
+      .toHaveLength(0);
+  });
+
+  it('a confirmed credit note moves AR by its own value, not a multiple',
+    async () => {
+    if (!(await applied())) return;   // soft until applied
+    // The general form of the damage. A note that has been reopened and
+    // re-confirmed any number of times must still have moved receivables by
+    // exactly its total_amount — never twice it.
+    const drift = await sql<{ credit_note_number: string; expected: number; actual: number }>(`
+      SELECT cn.credit_note_number,
+             ROUND(cn.total_amount, 2) AS expected,
+             ROUND(SUM(gl.credit - gl.debit), 2) AS actual
+      FROM public.credit_notes cn
+      JOIN public.journal_entries je ON je.source_id = cn.id
+      JOIN public.general_ledger gl ON gl.journal_entry_id = je.id AND gl.account_code = '1200'
+      WHERE cn.status = 'confirmed'
+      GROUP BY 1, 2
+      HAVING ABS(SUM(gl.credit - gl.debit) - cn.total_amount) > 0.01`);
+    expect(drift, `credit notes whose AR movement is not their value: ${JSON.stringify(drift)}`)
+      .toHaveLength(0);
+  });
+});
