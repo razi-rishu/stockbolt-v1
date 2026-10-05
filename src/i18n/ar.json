@@ -1162,6 +1162,19 @@
     "error_amount_required": "المبلغ مطلوب."
   },
   "inventory": {
+    "movement": {
+      "purchase": "مشتريات",
+      "sale": "مبيعات",
+      "sales_return": "مرتجع مبيعات",
+      "purchase_return": "مرتجع مشتريات",
+      "transfer_in": "تحويل وارد",
+      "transfer_out": "تحويل صادر",
+      "adjustment_in": "تسوية إضافة",
+      "adjustment_out": "تسوية خصم",
+      "opening_balance": "رصيد افتتاحي",
+      "void": "ملغى (عكس)",
+      "edit_reversal": "عكس تعديل"
+    },
     "transfers_title": "تحويلات المخزون",
     "adjustments_title": "تسويات المخزون",
     "stock_ledger_title": "دفتر المخزون",

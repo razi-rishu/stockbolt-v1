@@ -21,6 +21,8 @@
  */
 import { useState, useMemo } from 'react';
 import { formatDate } from '@/lib/locale';
+import { useTranslation } from 'react-i18next';
+import { stockMovementKey, stockMovementTone } from '@/lib/stock-movement';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
@@ -33,39 +35,12 @@ function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  purchase:        'Purchase',
-  sale:            'Sale',
-  sales_return:    'Sales Return',
-  purchase_return: 'Purchase Return',
-  transfer_in:     'Transfer In',
-  transfer_out:    'Transfer Out',
-  adjustment_in:   'Adjustment In',
-  adjustment_out:  'Adjustment Out',
-  opening_balance: 'Opening',
-  opening:         'Opening',
-  void:            'Void (reversal)',
-  edit_reversal:   'Edit Reversal',
-};
 
-const TYPE_TONE: Record<string, string> = {
-  purchase:        'bg-green-50 text-green-700',
-  sale:            'bg-blue-50 text-blue-700',
-  sales_return:    'bg-blue-50 text-blue-700',
-  purchase_return: 'bg-green-50 text-green-700',
-  transfer_in:     'bg-purple-50 text-purple-700',
-  transfer_out:    'bg-purple-50 text-purple-700',
-  adjustment_in:   'bg-amber-50 text-amber-700',
-  adjustment_out:  'bg-amber-50 text-amber-700',
-  opening_balance: 'bg-gray-100 text-gray-700',
-  opening:         'bg-gray-100 text-gray-700',
-  void:            'bg-red-50 text-red-700',
-  edit_reversal:   'bg-orange-50 text-orange-700',
-};
 
 export function ProductStockTab({
   companyId, productId,
 }: { companyId: string; productId: string }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   // Phase 47c — preset period picker (replaces raw From/To). This feeds a
   // server query that requires date bounds, so no "All time" here; default
@@ -204,8 +179,10 @@ export function ProductStockTab({
               {rows.map((row, i) => {
                 const isIn  = row.direction === 1;
                 const isOut = row.direction === -1;
-                const typeLabel = TYPE_LABELS[row.movement_type] ?? row.movement_type;
-                const typeTone  = TYPE_TONE[row.movement_type]  ?? 'bg-gray-100 text-gray-700';
+                // One shared map, translated — the Stock Ledger page reads the
+                // same one, so the two pages cannot drift apart again.
+                const typeLabel = t(stockMovementKey(row.movement_type), { defaultValue: row.movement_type });
+                const typeTone  = stockMovementTone(row.movement_type);
                 return (
                   <tr key={i} className="border-b border-border-subtle last:border-0 hover:bg-surface-muted/30">
                     <td className="px-4 py-2 text-ink-secondary font-mono text-xs">{formatDate(row.date as string)}</td>

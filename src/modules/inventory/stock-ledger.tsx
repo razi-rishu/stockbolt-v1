@@ -12,24 +12,11 @@ import { theme } from '@/ui/theme';
 import { DocLink } from '@/ui/doc-link';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
+import { stockMovementKey, stockMovementTone } from '@/lib/stock-movement';
 import type { ProductRow, WarehouseRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const TYPE_LABELS: Record<string, string> = {
-  purchase:        'Purchase',
-  sale:            'Sale',
-  sales_return:    'Sales Return',
-  purchase_return: 'Purchase Return',
-  transfer_in:     'Transfer In',
-  transfer_out:    'Transfer Out',
-  adjustment_in:   'Adjustment In',
-  adjustment_out:  'Adjustment Out',
-  opening_balance: 'Opening',
-  opening:         'Opening',
-  void:            'Void (reversal)',
-  edit_reversal:   'Edit Reversal',
-};
 
 export default function StockLedgerPage() {
   const { t } = useTranslation();
@@ -178,7 +165,12 @@ export default function StockLedgerPage() {
                         {row.sku && <span style={{ marginInlineStart: '6px', fontSize: '11px', color: theme.inkMuted }}>({row.sku})</span>}
                       </td>
                       <td className="px-4 py-2" style={{ color: theme.inkMuted, fontSize: '13px' }}>{row.warehouse_name}</td>
-                      <td className="px-4 py-2" style={{ color: theme.inkMuted, fontSize: '13px' }}>{TYPE_LABELS[row.movement_type] ?? row.movement_type}</td>
+                      {/* Translated and toned, from the one shared map. */}
+                      <td className="px-4 py-2">
+                        <span className={`inline-block rounded-pill px-2 py-0.5 text-xs font-semibold ${stockMovementTone(row.movement_type)}`}>
+                          {t(stockMovementKey(row.movement_type), { defaultValue: row.movement_type })}
+                        </span>
+                      </td>
                       <td className="px-4 py-2 font-mono" style={{ textAlign: 'end', color: '#059669' }}>
                         {isIn ? fmt(row.quantity) : '—'}
                       </td>

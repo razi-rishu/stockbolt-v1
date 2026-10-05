@@ -6205,15 +6205,19 @@ describe('Phase 92 — never reverse a reversal (soft until applied)', () => {
 
   it('no LIVE entry anywhere reverses a reversal', async () => {
     if (!(await applied())) return;   // soft until applied
-    // JE-1115 is expected to remain, corrected: its own reversal clears
-    // reversed_by_id, so a corrected one drops out of this.
+    // Deliberately CORRECTING a bad reversal is itself a reversal of a
+    // reversal, and it is the one legitimate case — phase92's own
+    // correction entry trips this rule otherwise. What must never reappear
+    // is one created by a reopen/void sweep, which is what the description
+    // distinguishes: a sweep names the document, a correction names itself.
     const bad = await sql<{ entry_number: string; company: string }>(`
       SELECT je.entry_number, c.name AS company
       FROM public.journal_entries je
       JOIN public.journal_entries r ON r.id = je.reversal_of_id
       JOIN public.companies c ON c.id = je.company_id
       WHERE r.reversal_of_id IS NOT NULL
-        AND je.reversed_by_id IS NULL`);
+        AND je.reversed_by_id IS NULL
+        AND je.description NOT LIKE 'Correction - phase92%'`);
     expect(bad, `entries reversing a reversal, uncorrected: ${JSON.stringify(bad)}`)
       .toHaveLength(0);
   });
@@ -6232,9 +6236,73 @@ describe('Phase 92 — never reverse a reversal (soft until applied)', () => {
       JOIN public.journal_entries je ON je.source_id = cn.id
       JOIN public.general_ledger gl ON gl.journal_entry_id = je.id AND gl.account_code = '1200'
       WHERE cn.status = 'confirmed'
-      GROUP BY 1, 2
+      GROUP BY cn.id, cn.credit_note_number, cn.total_amount
       HAVING ABS(SUM(gl.credit - gl.debit) - cn.total_amount) > 0.01`);
     expect(drift, `credit notes whose AR movement is not their value: ${JSON.stringify(drift)}`)
       .toHaveLength(0);
+  });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stock movement types are named once, and in both languages
+//
+// The label map lived verbatim in two files — the Stock Ledger page and the
+// product's Stock Movement tab — so they could drift, and both hardcoded
+// English while every other string on those pages went through i18n. In
+// Arabic the movement type stayed in English.
+//
+// The vocabulary IS the stock_ledger.type CHECK constraint. If a type is ever
+// added there and not here, the ledger prints a raw database value at someone.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Stock ledger — movement types', () => {
+  const read = async (f: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(resolve(process.cwd(), f), 'utf8');
+  };
+
+  it('the shared map covers exactly what the database permits', async () => {
+    const r = await sql<{ def: string }>(`SELECT pg_get_constraintdef(oid) AS def
+      FROM pg_constraint
+      WHERE conrelid='public.stock_ledger'::regclass AND contype='c'
+        AND pg_get_constraintdef(oid) LIKE '%type = ANY%'`);
+    const allowed = [...(r[0]?.def ?? '').matchAll(/'([a-z_]+)'::text/g)].map(m => m[1]!);
+    expect(allowed.length, 'the CHECK was found').toBeGreaterThan(5);
+
+    const src = await read('src/lib/stock-movement.ts');
+    for (const t of allowed) {
+      expect(src, `the shared map knows '${t}'`).toContain(`'${t}'`);
+    }
+  });
+
+  it('every type has an English AND an Arabic label', async () => {
+    // AGENTS.md 7.6: no fallback to English in Arabic mode.
+    const { readFileSync } = await import('node:fs');
+    const en = JSON.parse(readFileSync(resolve(process.cwd(), 'src/i18n/en.json'), 'utf8'));
+    const ar = JSON.parse(readFileSync(resolve(process.cwd(), 'src/i18n/ar.json'), 'utf8'));
+    const src = await read('src/lib/stock-movement.ts');
+    const types = [...src.matchAll(/^  '([a-z_]+)',$/gm)].map(m => m[1]!);
+    expect(types.length, 'the type list was parsed').toBeGreaterThan(5);
+    for (const t of types) {
+      expect(en.inventory?.movement?.[t], `en label for ${t}`).toBeTruthy();
+      expect(ar.inventory?.movement?.[t], `ar label for ${t}`).toBeTruthy();
+      expect(ar.inventory?.movement?.[t], `ar label for ${t} is not the English one`)
+        .not.toBe(en.inventory?.movement?.[t]);
+    }
+  });
+
+  it('neither page keeps its own copy of the labels', async () => {
+    // The drift this replaced. A second map is how the two pages started
+    // disagreeing in the first place.
+    for (const f of [
+      'src/modules/inventory/stock-ledger.tsx',
+      'src/modules/catalog/products/_stock-tab.tsx',
+    ]) {
+      const src = await read(f);
+      expect(src, `${f} has no local label map`).not.toMatch(/TYPE_LABELS\s*:\s*Record/);
+      expect(src, `${f} has no local tone map`).not.toMatch(/TYPE_TONE\s*:\s*Record/);
+      expect(src, `${f} uses the shared one`).toMatch(/stockMovementKey\(/);
+      expect(src, `${f} translates it`).toMatch(/t\(stockMovementKey/);
+    }
   });
 });

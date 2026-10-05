@@ -1162,6 +1162,19 @@
     "no_results": "No parts found for this vehicle."
   },
   "inventory": {
+    "movement": {
+      "purchase": "Purchase",
+      "sale": "Sale",
+      "sales_return": "Sales Return",
+      "purchase_return": "Purchase Return",
+      "transfer_in": "Transfer In",
+      "transfer_out": "Transfer Out",
+      "adjustment_in": "Adjustment In",
+      "adjustment_out": "Adjustment Out",
+      "opening_balance": "Opening",
+      "void": "Void (reversal)",
+      "edit_reversal": "Edit Reversal"
+    },
     "transfers_title": "Stock Transfers",
     "adjustments_title": "Inventory Adjustments",
     "stock_ledger_title": "Stock Ledger",
