@@ -71,3 +71,44 @@ export function RefundedBadge({
     </div>
   );
 }
+
+/**
+ * Z5b — the same fact as a pill, for a document header or a list row.
+ *
+ * The green bar above carries the amount and the payment number, which is
+ * what you want once you are reading the document. This is what you want
+ * BEFORE that: a status you can see without reading anything, sitting next
+ * to the Confirmed badge it qualifies. Confirmed and Refunded are two
+ * different facts about a credit note and neither implies the other.
+ *
+ * A document whose only refund was VOIDED shows nothing: the money came
+ * back out, so the note is not refunded any more.
+ */
+export function RefundedPill({
+  docType, docId,
+}: {
+  docType: RefundSourceDocType;
+  docId: string | null | undefined;
+}) {
+  const { t } = useTranslation();
+  const { data: refunds = [] } = useQuery<DocumentRefund[]>({
+    queryKey: ['document_refunds', docType, docId],
+    queryFn: () => getAdapter().payments.listForDocument(docType, docId!),
+    enabled: !!docId,
+  });
+
+  if (!refunds.some(r => r.status !== 'void')) return null;
+
+  return (
+    <span
+      title={t('refund.refunded_pill_hint')}
+      style={{
+        display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
+        fontSize: '11px', fontWeight: 700, letterSpacing: '.02em',
+        background: '#d1fae5', color: '#065f46', border: '1px solid #a7f3d0',
+      }}
+    >
+      {t('refund.refunded_pill')}
+    </span>
+  );
+}

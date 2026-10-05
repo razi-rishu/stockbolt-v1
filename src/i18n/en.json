@@ -1786,6 +1786,8 @@
     "col_amount": "Amount"
   },
   "refund": {
+    "refunded_pill": "REFUNDED",
+    "refunded_pill_hint": "A refund has been paid against this document.",
     "refunded_badge": "Refunded {{amount}}",
     "refund_voided_badge": "The refund against this document was voided",
     "title_vendor_credit": "Receive refund from supplier",

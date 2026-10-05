@@ -304,6 +304,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       refundCustomerAdvance: () => notImplemented('payments.refundCustomerAdvance'),
       refundVendorAdvance:   () => notImplemented('payments.refundVendorAdvance'),
       listForDocument:       () => notImplemented('payments.listForDocument'),
+      listRefundedDocIds:    () => notImplemented('payments.listRefundedDocIds'),
       refundCustomerCredit:  () => notImplemented('payments.refundCustomerCredit'),
       refundVendorCredit:    () => notImplemented('payments.refundVendorCredit'),
       voidVendorCreditRefund: () => notImplemented('payments.voidVendorCreditRefund'),

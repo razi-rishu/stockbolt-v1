@@ -44,6 +44,13 @@ export default function DebitNotesPage() {
   // history, so "Show 2 voided" always reveals exactly two.
   const notesVoidedCount = notesInPeriod.filter(r => r.status === 'void').length;
   const notes = notesInPeriod.filter(r => showsInList(r, hideVoided));
+  // Z5b — one query for the whole page rather than one per row.
+  const { data: refunded = [] } = useQuery<string[]>({
+    queryKey: ['refunded_doc_ids', company_id, 'debit_note'],
+    queryFn: () => getAdapter().payments.listRefundedDocIds(company_id!, 'debit_note'),
+    enabled: !!company_id,
+  });
+  const refundedIds = new Set(refunded);
   const { data: suppliers = [] } = useQuery<ContactRow[]>({
     queryKey: ['contacts', company_id, 'supplier'],
     queryFn: () => getAdapter().contacts.list(company_id!, 'supplier'),
@@ -123,7 +130,17 @@ export default function DebitNotesPage() {
                   <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px' }}>{supplierName(dn.supplier_id)}</td>
                   <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px', textTransform: 'capitalize' }}>{dn.reason ?? '—'}</td>
                   <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', fontSize: '13px', fontWeight: 600, color: theme.ink }}>{fmt(dn.total_amount)}</td>
-                  <td className="px-4 py-3"><StatusBadge status={dn.status} /></td>
+                  <td className="px-4 py-3">
+                    <StatusBadge status={dn.status} />
+                    {refundedIds.has(dn.id) && (
+                      <span title={t('refund.refunded_pill_hint')} style={{
+                        display: 'inline-block', marginInlineStart: '6px',
+                        padding: '2px 8px', borderRadius: '999px', fontSize: '10px',
+                        fontWeight: 700, letterSpacing: '.02em',
+                        background: '#d1fae5', color: '#065f46',
+                      }}>{t('refund.refunded_pill')}</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3" style={{ textAlign: 'end' }}>
                     <Link to={`/purchasing/debit-notes/${dn.id}`} style={{ fontSize: '11px', color: theme.brand, fontWeight: 600, textDecoration: 'none' }}>
                       {t('common.view')} →

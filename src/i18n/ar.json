@@ -1786,6 +1786,8 @@
     "col_amount": "المبلغ"
   },
   "refund": {
+    "refunded_pill": "مُسترد",
+    "refunded_pill_hint": "تمّ دفع استرداد مقابل هذا المستند.",
     "refunded_badge": "تمّ الاسترداد {{amount}}",
     "refund_voided_badge": "تمّ إلغاء الاسترداد الخاص بهذا المستند",
     "title_vendor_credit": "استلام مبلغ مُعاد من المورد",

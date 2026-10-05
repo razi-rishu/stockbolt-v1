@@ -39,6 +39,14 @@ export default function CreditNotesPage() {
   const notesVoidedCount = notesInPeriod.filter(r => r.status === 'void').length;
   const notes = notesInPeriod.filter(r => showsInList(r, hideVoided));
 
+  // Z5b — one query for the whole page rather than one per row.
+  const { data: refunded = [] } = useQuery<string[]>({
+    queryKey: ['refunded_doc_ids', company_id, 'credit_note'],
+    queryFn: () => getAdapter().payments.listRefundedDocIds(company_id!, 'credit_note'),
+    enabled: !!company_id,
+  });
+  const refundedIds = new Set(refunded);
+
   const { data: customers = [] } = useQuery<ContactRow[]>({
     queryKey: ['contacts', company_id, 'customer'],
     queryFn: () => getAdapter().contacts.list(company_id!, 'customer'),
@@ -133,7 +141,19 @@ export default function CreditNotesPage() {
                       : <span style={{ fontSize: '11px', color: theme.inkFaint }}>{t('returns.no')}</span>}
                   </td>
                   <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', fontSize: '13px', fontWeight: 600, color: theme.ink }}>{fmt(cn.total_amount)}</td>
-                  <td className="px-4 py-3"><StatusBadge status={cn.status} /></td>
+                  {/* Z5b — a credit note can be confirmed AND already refunded;
+                      those are two different facts, so two pills. */}
+                  <td className="px-4 py-3">
+                    <StatusBadge status={cn.status} />
+                    {refundedIds.has(cn.id) && (
+                      <span title={t('refund.refunded_pill_hint')} style={{
+                        display: 'inline-block', marginInlineStart: '6px',
+                        padding: '2px 8px', borderRadius: '999px', fontSize: '10px',
+                        fontWeight: 700, letterSpacing: '.02em',
+                        background: '#d1fae5', color: '#065f46',
+                      }}>{t('refund.refunded_pill')}</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3" style={{ textAlign: 'end' }}>
                     <Link to={`/sales/credit-notes/${cn.id}`} style={{ fontSize: '11px', color: theme.brand, fontWeight: 600, textDecoration: 'none' }}>
                       {t('common.view')} →

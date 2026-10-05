@@ -2657,6 +2657,15 @@ export function createSupabaseAdapter(
 
       // ── S2/S3 — advance refunds ───────────────────────────────────────────
       // Draft + confirm are one user action, so they are one call here.
+      async listRefundedDocIds(company_id, doc_type): Promise<string[]> {
+        const { data, error } = await (client.from('payments') as any)
+          .select('source_doc_id')
+          .eq('company_id', company_id)
+          .eq('source_doc_type', doc_type)
+          .neq('status', 'void');
+        assertNoError(error as Error | null, 'payments.listRefundedDocIds');
+        return ((data ?? []) as { source_doc_id: string }[]).map(r => r.source_doc_id);
+      },
       async listForDocument(doc_type, doc_id): Promise<import('./adapter').DocumentRefund[]> {
         const { data, error } = await (client.from('payments') as any)
           .select('id, payment_number, date, amount, currency, status')

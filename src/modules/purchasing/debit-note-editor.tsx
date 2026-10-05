@@ -15,7 +15,7 @@ import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocT
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { debitNoteToDocumentData } from '@/modules/print/_signature/adapters';
 import { RefundDueBanner } from '@/components/refund-due-banner';
-import { RefundedBadge } from '@/components/refunded-badge';
+import { RefundedBadge, RefundedPill } from '@/components/refunded-badge';
 import '@/modules/print/_signature/print.css';
 import type { DebitNoteRow, DebitNoteItemInsert, DebitNoteItemRow, ContactRow, VendorBillRow, VendorBillItemRow, Company, ProductRow, ReturnableBillLine, WarehouseRow } from '@/data/adapter';
 
@@ -318,6 +318,10 @@ export default function DebitNoteEditorPage() {
             fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
             background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
           }}>{existing.status}</span>
+          {/* Z5b — confirmed AND refunded are two different facts. The green
+              bar below gives the amount and the payment number; this is the
+              at-a-glance version, next to the status it qualifies. */}
+          <RefundedPill docType="debit_note" docId={existing.id} />
           <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
             {isConfirmed && (
               <Button variant="primary" loading={reopenMutation.isPending} onClick={() => { if (window.confirm(t('common.reopen_warn') || 'Edit this confirmed document? It reverses its posted entries and reopens it as a draft so you can change it and confirm again.')) reopenMutation.mutate(); }}>

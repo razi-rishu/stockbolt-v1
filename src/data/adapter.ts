@@ -1435,6 +1435,10 @@ export interface PaymentsAPI {
    *  ones are included: the page shows them struck through rather than
    *  claiming the money went back when it came straight out again. */
   listForDocument(doc_type: RefundSourceDocType, doc_id: string): Promise<DocumentRefund[]>;
+  /** Z5b — every document of one kind that has a LIVE refund against it,
+   *  for a list page. One query instead of one per row. Void refunds are
+   *  excluded here: a cancelled refund must not mark a note Refunded. */
+  listRefundedDocIds(company_id: string, doc_type: RefundSourceDocType): Promise<string[]>;
   refundCustomerAdvance(input: RefundAdvanceInput): Promise<RefundResult>;
   refundVendorAdvance(input: RefundAdvanceInput): Promise<RefundResult>;
   /**

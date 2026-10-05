@@ -6061,3 +6061,85 @@ describe('Z5 — refund provenance (soft until applied)', () => {
     expect(badge, 'but do not count as refunded').toMatch(/status !== 'void'/);
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 91 / Z5b — a refunded document says so
+//
+// phase90 records the source document when a refund is RAISED, so refunds
+// raised before it had no link: CN-1004 had been refunded by CCR-1002 and
+// said so nowhere. phase91 backfills, but ONLY where exactly one confirmed
+// document matches on company, contact and amount. One candidate means the
+// answer is determined by the data; two means it is a coin toss, and those
+// are left null, because a blank is honest and a wrong link is not.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 91 — refunded status', () => {
+  it('phase91: no refund is linked to an ambiguous document', async () => {
+    // The guard that makes the backfill honest rather than a guess. If this
+    // ever finds a link where more than one candidate existed, something
+    // picked one arbitrarily.
+    const linked = await sql<{ payment_number: string; n: number }>(`
+      SELECT p.payment_number,
+             (SELECT count(*) FROM public.credit_notes cn
+               WHERE cn.company_id = p.company_id AND cn.contact_id = p.contact_id
+                 AND cn.status = 'confirmed'
+                 AND ROUND(cn.total_amount,2) = ROUND(p.amount,2))::int AS n
+        FROM public.payments p
+       WHERE p.source_doc_type = 'credit_note'
+         AND p.classification = 'on_account'`);
+    for (const r of linked) {
+      expect(r.n, `${r.payment_number} is linked although ${r.n} documents matched`)
+        .toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('a link always points at a document that exists', async () => {
+    // source_doc_id cannot be a foreign key — it points at one of four tables
+    // depending on the type — so nothing but this catches a dangling link.
+    const orphan = await sql<{ payment_number: string }>(`
+      SELECT p.payment_number FROM public.payments p
+       WHERE p.source_doc_type = 'credit_note' AND p.source_doc_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM public.credit_notes cn WHERE cn.id = p.source_doc_id)
+      UNION ALL
+      SELECT p.payment_number FROM public.payments p
+       WHERE p.source_doc_type = 'debit_note' AND p.source_doc_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM public.debit_notes dn WHERE dn.id = p.source_doc_id)`);
+    expect(orphan, `refunds pointing at a missing document: ${JSON.stringify(orphan)}`)
+      .toHaveLength(0);
+  });
+
+  it('a voided refund never marks a document Refunded', async () => {
+    // The money came back out, so the note is not refunded any more. Both the
+    // list lookup and the pill have to agree on that.
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(resolve(process.cwd(), 'src/data/supabaseAdapter.ts'), 'utf8');
+    const i = src.indexOf('async listRefundedDocIds');
+    expect(i, 'the bulk lookup exists').toBeGreaterThan(-1);
+    expect(src.slice(i, i + 700), 'excludes void refunds')
+      .toMatch(/neq\('status', 'void'\)/);
+
+    const badge = readFileSync(resolve(process.cwd(), 'src/components/refunded-badge.tsx'), 'utf8');
+    expect(badge, 'the pill ignores void refunds too')
+      .toMatch(/refunds\.some\(r => r\.status !== 'void'\)/);
+  });
+
+  it('the status is shown where you look before reading the document', async () => {
+    const { readFileSync } = await import('node:fs');
+    for (const f of [
+      'src/modules/sales/credit-notes.tsx',
+      'src/modules/purchasing/debit-notes.tsx',
+    ]) {
+      const src = readFileSync(resolve(process.cwd(), f), 'utf8');
+      expect(src, `${f} marks refunded rows`).toMatch(/refundedIds\.has\(/);
+      // One query for the page, not one per row.
+      expect(src, `${f} uses the bulk lookup`).toMatch(/listRefundedDocIds\(/);
+    }
+    for (const f of [
+      'src/modules/sales/credit-note-editor.tsx',
+      'src/modules/purchasing/debit-note-editor.tsx',
+    ]) {
+      const src = readFileSync(resolve(process.cwd(), f), 'utf8');
+      expect(src, `${f} shows the pill beside the status`).toMatch(/<RefundedPill/);
+    }
+  });
+});
