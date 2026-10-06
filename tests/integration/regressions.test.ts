@@ -6379,3 +6379,81 @@ describe('Navigation — Banking section', () => {
     }
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 93 — a return restocks even when its cost is unknown
+//
+// "2 pcs invoice, 1 pcs sales return, 1 pcs purchase" should leave 0. It left
+// -1, because confirm_credit_note skipped the whole line when cost_at_sale
+// was 0 — and skipping the line skipped the QUANTITY, not just the value.
+//
+// cost_at_sale is 0 when the item was sold before it was ever bought: there
+// was no cost to assign at sale time. The goods still came back.
+//
+// Quantity and value are two different facts, and only the value was unknown.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 93 — restock without a known cost (soft until applied)', () => {
+  const srcOf = async (fn: string): Promise<string> => {
+    const r = await sql<{ s: string }>(`SELECT pg_get_functiondef(oid) AS s FROM pg_proc
+      WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
+    return r[0]?.s ?? '';
+  };
+  async function applied(): Promise<boolean> {
+    const src = await srcOf('confirm_credit_note');
+    return !/CONTINUE WHEN COALESCE\(v_item\.cost_at_sale, 0\) = 0/.test(src);
+  }
+
+  it('phase93: neither confirm gates the stock movement on cost', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ phase93 not applied yet — run ' +
+        'supabase/migrations/20261006000001_phase93_restock_without_cost.sql. ' +
+        'Until then a return of an item with no known cost puts nothing back.');
+      return;
+    }
+    const cn = await srcOf('confirm_credit_note');
+    expect(cn, 'the sales-side cost skip is gone')
+      .not.toMatch(/CONTINUE WHEN COALESCE\(v_item\.cost_at_sale, 0\) = 0/);
+    // The movement must still be written.
+    expect(cn, 'still writes the stock row').toMatch(/INSERT INTO public\.stock_ledger/);
+
+    const dn = await srcOf('confirm_debit_note');
+    expect(dn, 'the purchase-side cost gate is gone')
+      .not.toMatch(/unit_cost > 0 AND v_item_cost > 0/);
+    // The exclusions that were always right must survive: these never were
+    // stock in the first place.
+    expect(dn, 'services still excluded').toMatch(/IS DISTINCT FROM 'service'/);
+    expect(dn, 'expense lines still excluded').toMatch(/v_line_class = 'asset'/);
+  });
+
+  it('phase93: the moving average is never divided by a non-positive quantity',
+    async () => {
+    if (!(await applied())) return;   // soft until applied
+    // Stock can be negative here — that is the situation this arises in — and
+    // a negative denominator does not fail, it flips the SIGN of the cost.
+    const cn = await srcOf('confirm_credit_note');
+    expect(cn, 'divides only when the result is a real holding')
+      .toMatch(/IF \(v_old_qty \+ v_item\.quantity\) > 0 THEN/);
+    expect(cn, 'and otherwise keeps the cost already on file')
+      .toMatch(/COALESCE\(NULLIF\(v_item\.cost_at_sale, 0\), v_prev_wh_mac, 0\)/);
+  });
+
+  it('every confirmed restocking credit note actually moved stock', async () => {
+    if (!(await applied())) return;   // soft until applied
+    // The data form of the bug. A note that says "restock", names a stocked
+    // product, and produced no movement, put nothing back.
+    const missing = await sql<{ credit_note_number: string; company: string }>(`
+      SELECT cn.credit_note_number, c.name AS company
+      FROM public.credit_notes cn
+      JOIN public.companies c ON c.id = cn.company_id
+      WHERE cn.status = 'confirmed' AND cn.restock
+        AND EXISTS (
+          SELECT 1 FROM public.credit_note_items i
+          JOIN public.products p ON p.id = i.product_id
+          WHERE i.credit_note_id = cn.id AND p.type IS DISTINCT FROM 'service')
+        AND NOT EXISTS (
+          SELECT 1 FROM public.stock_ledger s WHERE s.related_doc_id = cn.id)`);
+    expect(missing, `credit notes that restocked nothing: ${JSON.stringify(missing)}`)
+      .toHaveLength(0);
+  });
+});
