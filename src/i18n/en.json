@@ -1162,6 +1162,7 @@
     "no_results": "No parts found for this vehicle."
   },
   "inventory": {
+    "document": "Document",
     "movement": {
       "purchase": "Purchase",
       "sale": "Sale",

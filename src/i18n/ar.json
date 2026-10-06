@@ -1162,6 +1162,7 @@
     "error_amount_required": "المبلغ مطلوب."
   },
   "inventory": {
+    "document": "المستند",
     "movement": {
       "purchase": "مشتريات",
       "sale": "مبيعات",

@@ -22,6 +22,7 @@
 import { useState, useMemo } from 'react';
 import { formatDate } from '@/lib/locale';
 import { useTranslation } from 'react-i18next';
+import { DocLink } from '@/ui/doc-link';
 import { stockMovementKey, stockMovementTone } from '@/lib/stock-movement';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -167,6 +168,7 @@ export function ProductStockTab({
               <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
                 <th className="px-4 py-2 text-start font-medium">Date</th>
                 <th className="px-4 py-2 text-start font-medium">Type</th>
+                <th className="px-4 py-2 text-start font-medium">Document</th>
                 <th className="px-4 py-2 text-start font-medium">Warehouse</th>
                 <th className="px-4 py-2 text-end font-medium w-24">Qty in</th>
                 <th className="px-4 py-2 text-end font-medium w-24">Qty out</th>
@@ -190,6 +192,13 @@ export function ProductStockTab({
                       <span className={`rounded-pill px-2 py-0.5 text-[10px] font-medium ${typeTone}`}>
                         {typeLabel}
                       </span>
+                    </td>
+                    {/* DocLink resolves the route and checks the permission. */}
+                    <td className="px-4 py-2 text-xs">
+                      {row.related_doc_id
+                        ? <DocLink type={row.related_doc_type} id={row.related_doc_id}
+                            className="text-brand-600 hover:underline" />
+                        : <span className="text-ink-tertiary">{'—'}</span>}
                     </td>
                     <td className="px-4 py-2 text-ink-secondary text-xs">{row.warehouse_name || row.warehouse_id}</td>
                     <td className="px-4 py-2 text-end font-mono text-green-700">

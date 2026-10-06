@@ -135,6 +135,7 @@ export default function StockLedgerPage() {
                     { l: t('inventory.product'),      a: 'start' as const, w: undefined },
                     { l: t('inventory.warehouse'),    a: 'start' as const, w: undefined },
                     { l: t('inventory.type'),         a: 'start' as const, w: undefined },
+                    { l: t('inventory.document'),     a: 'start' as const, w: undefined },
                     { l: t('inventory.qty_in'),       a: 'end'   as const, w: '96px' },
                     { l: t('inventory.qty_out'),      a: 'end'   as const, w: '96px' },
                     { l: t('inventory.running_qty'),  a: 'end'   as const, w: '110px' },
@@ -170,6 +171,16 @@ export default function StockLedgerPage() {
                         <span className={`inline-block rounded-pill px-2 py-0.5 text-xs font-semibold ${stockMovementTone(row.movement_type)}`}>
                           {t(stockMovementKey(row.movement_type), { defaultValue: row.movement_type })}
                         </span>
+                      </td>
+                      {/* The document that caused the movement. DocLink
+                          resolves the route from related_doc_type and checks
+                          the permission for it, so an unauthorised reader
+                          gets plain text rather than a dead link. */}
+                      <td className="px-4 py-2" style={{ fontSize: '13px' }}>
+                        {row.related_doc_id
+                          ? <DocLink type={row.related_doc_type} id={row.related_doc_id}
+                              className="text-brand-600 hover:underline" />
+                          : <span style={{ color: theme.inkFaint }}>{'\u2014'}</span>}
                       </td>
                       <td className="px-4 py-2 font-mono" style={{ textAlign: 'end', color: '#059669' }}>
                         {isIn ? fmt(row.quantity) : '—'}

@@ -2254,6 +2254,11 @@ export interface StockMovementLine {
   unit_cost: number;
   running_qty: number;
   running_value: number;
+  /** The document that caused this movement, so the ledger can link back
+   *  to it. Null for a movement with no document behind it — an opening
+   *  balance, or a row written before the column was populated. */
+  related_doc_type: string | null;
+  related_doc_id:   string | null;
 }
 
 export interface SlowMovingLine {

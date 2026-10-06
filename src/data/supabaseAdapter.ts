@@ -3351,7 +3351,7 @@ export function createSupabaseAdapter(
         // on-hand quantity.
         let q = client
           .from('stock_ledger')
-          .select('id, reversal_of_id, product_id, warehouse_id, date, type, direction, quantity, unit_cost, running_qty, running_avg_cost, products(name, sku), warehouses(name)')
+          .select('id, reversal_of_id, product_id, warehouse_id, date, type, direction, quantity, unit_cost, running_qty, running_avg_cost, related_doc_type, related_doc_id, products(name, sku), warehouses(name)')
           .eq('company_id', company_id)
           .gte('date', params.date_from)
           .lte('date', params.date_to);
@@ -3372,6 +3372,8 @@ export function createSupabaseAdapter(
           unit_cost: number;
           running_qty: number;
           running_avg_cost: number | null;
+          related_doc_type: string | null;
+          related_doc_id: string | null;
           products: { name: string; sku: string } | null;
           warehouses: { name: string } | null;
         };
@@ -3400,6 +3402,7 @@ export function createSupabaseAdapter(
             date: r.date, movement_type: r.type ?? '', direction: Number(r.direction),
             quantity: Number(r.quantity), unit_cost: cost,
             running_qty: qty, running_value: qty * Number(r.running_avg_cost ?? 0),
+            related_doc_type: r.related_doc_type, related_doc_id: r.related_doc_id,
           };
         });
       },

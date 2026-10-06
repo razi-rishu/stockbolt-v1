@@ -4602,7 +4602,13 @@ describe('R7-alt — purchase return stock value (soft until applied)', () => {
     expect(code, 'MAC comes off the net value').toMatch(/v_old_value - v_item_cost/);
     expect(/v_item\.quantity \* v_item\.unit_cost/.test(code),
       'the gross product is gone entirely').toBe(false);
-    expect(code, 'a worthless line writes no ledger row').toMatch(/v_item_cost > 0/);
+    // SUPERSEDED BY phase93. This used to assert that a zero-value line
+    // wrote no ledger row, which pinned the behaviour phase93 deliberately
+    // reversed: goods leave the building whether or not we know their cost,
+    // so the QUANTITY must move even when the value is zero. phase80's real
+    // invariant is the three assertions above — that the row carries the NET
+    // value rather than the gross — and those still hold.
+    expect(code, 'the cost gate is gone, per phase93').not.toMatch(/unit_cost > 0 AND v_item_cost > 0/);
   });
 
   it('phase80: DOUBLE ENTRY — the debit note still posts the same three legs', async () => {
@@ -6455,5 +6461,59 @@ describe('Phase 93 — restock without a known cost (soft until applied)', () =>
           SELECT 1 FROM public.stock_ledger s WHERE s.related_doc_id = cn.id)`);
     expect(missing, `credit notes that restocked nothing: ${JSON.stringify(missing)}`)
       .toHaveLength(0);
+  });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A stock movement links back to the document that caused it
+//
+// The ledger told you a sale happened and left you to find WHICH sale. Every
+// row already carried related_doc_type + related_doc_id; the report query
+// simply never selected them, so the UI could not link even though the
+// Document 7 registry already knew every route.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Stock ledger — drill-down to the source document', () => {
+  const read = async (f: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(resolve(process.cwd(), f), 'utf8');
+  };
+
+  it('the query fetches the document, and the mapper keeps it', async () => {
+    const src = await read('src/data/supabaseAdapter.ts');
+    // Bound to the function, not a fixed window: the mapper sits well past
+    // any round number of characters from the declaration.
+    const i = src.indexOf('async getStockMovement');
+    const body = src.slice(i, src.indexOf('async getSlowMoving', i));
+    expect(body.length, 'the function was bounded').toBeGreaterThan(500);
+    expect(body, 'selects the document columns').toMatch(/related_doc_type, related_doc_id/);
+    expect(body, 'and passes them through the mapper')
+      .toMatch(/related_doc_type: r\.related_doc_type/);
+  });
+
+  it('both ledger views render a link', async () => {
+    for (const f of [
+      'src/modules/inventory/stock-ledger.tsx',
+      'src/modules/catalog/products/_stock-tab.tsx',
+    ]) {
+      const src = await read(f);
+      expect(src, `${f} links the source document`)
+        .toMatch(/<DocLink type=\{row\.related_doc_type\} id=\{row\.related_doc_id\}/);
+      // A movement with no document must not render a dead link.
+      expect(src, `${f} guards the null case`).toMatch(/row\.related_doc_id/);
+    }
+  });
+
+  it('every document type a movement can carry has a route', async () => {
+    // The failure that matters: a movement pointing at a type the registry
+    // does not know renders as plain text and the user cannot get there.
+    const used = await sql<{ related_doc_type: string }>(`
+      SELECT DISTINCT related_doc_type FROM public.stock_ledger
+       WHERE related_doc_type IS NOT NULL`);
+    const registry = await read('src/lib/doc-links.ts');
+    for (const r of used) {
+      expect(registry, `doc-links knows '${r.related_doc_type}'`)
+        .toContain(r.related_doc_type);
+    }
   });
 });
