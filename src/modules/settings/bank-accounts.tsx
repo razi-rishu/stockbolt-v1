@@ -17,6 +17,7 @@ import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Modal } from '@/ui/modal';
+import { useNavigate } from 'react-router-dom';
 import { Table, type Column } from '@/ui/table';
 import { Badge } from '@/ui/badge';
 import { PageHeader } from '@/ui/primitives';
@@ -48,6 +49,7 @@ export default function BankAccountsSettingsPage() {
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
   const [editing, setEditing] = useState<BankAccountRow | null>(null);
 
   // Settings page wants to see EVERY bank account (including inactive),
@@ -243,14 +245,30 @@ export default function BankAccountsSettingsPage() {
     return a ? `${a.code} ${a.name}` : id.slice(0, 8) + '…';
   };
 
+  // The GL account CODE behind a bank account. The ledger filters by code,
+  // not by id, so this is what the link needs.
+  const coaCode = (id: string) =>
+    (coa as CoaRow[]).find(r => r.id === id)?.code ?? null;
+
   const columns: Column<BankAccountRow>[] = [
     {
       key: 'name', header: 'Name',
       render: (r) => (
         <div>
+          {/* The name opens the LEDGER. Clicking an account to see what
+              moved through it is the common action; changing its IBAN is
+              the rare one, and that now has its own button on the row.
+              Falls back to Edit only when the account has no GL code to
+              link to, so the name is never a dead click. */}
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); openEdit(r); }}
+            title={coaCode(r.coa_account_id) ? 'View ledger' : 'Edit'}
+            onClick={(e) => {
+              e.stopPropagation();
+              const code = coaCode(r.coa_account_id);
+              if (code) navigate(`/accounting/general-ledger?code=${encodeURIComponent(code)}`);
+              else openEdit(r);
+            }}
             style={{ background: 'transparent', border: 'none', padding: 0, fontSize: '13px', fontWeight: 600, color: theme.brandSoftText, cursor: 'pointer' }}
           >
             {r.name}
@@ -280,6 +298,21 @@ export default function BankAccountsSettingsPage() {
     },
     { key: 'default',  header: '', width: '80px', render: (r) => r.is_default ? <Badge variant="brand">Default</Badge> : null },
     { key: 'status',   header: '', width: '80px', render: (r) => <Badge variant={r.is_active ? 'success' : 'muted'}>{r.is_active ? 'Active' : 'Inactive'}</Badge> },
+    // The name used to be the way in to editing. Now that it opens the
+    // ledger, editing needs its own control or it becomes unreachable.
+    {
+      key: 'edit', header: '', width: '60px',
+      render: (r) => (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); openEdit(r); }}
+          style={{ background: 'transparent', border: 'none', padding: 0, fontSize: '12px', color: theme.brandSoftText, cursor: 'pointer', textDecoration: 'underline' }}
+          title="Edit this bank account"
+        >
+          Edit
+        </button>
+      ),
+    },
     {
       key: 'delete', header: '', width: '70px',
       render: (r) => (

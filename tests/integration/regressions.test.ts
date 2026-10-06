@@ -6517,3 +6517,55 @@ describe('Stock ledger — drill-down to the source document', () => {
     }
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A bank account opens its ledger, not its edit form
+//
+// Clicking an account to see what moved through it is the common action;
+// changing its IBAN is the rare one. The name used to open the edit modal.
+//
+// The risk in the change is the opposite mistake: making editing unreachable
+// because the only way in was the thing we just repurposed.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Bank accounts — the name opens the ledger', () => {
+  const read = async (f: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(resolve(process.cwd(), f), 'utf8');
+  };
+
+  it('the name navigates to the ledger for that GL account', async () => {
+    const src = await read('src/modules/settings/bank-accounts.tsx');
+    expect(src, 'links to the general ledger')
+      .toMatch(/navigate\(.\/accounting\/general-ledger\?code=/);
+    // The ledger filters by CODE, not by the account's id.
+    expect(src, 'resolves the account code').toMatch(/const coaCode =/);
+  });
+
+  it('editing is still reachable', async () => {
+    // The whole failure mode of this change.
+    const src = await read('src/modules/settings/bank-accounts.tsx');
+    expect(src, 'a dedicated Edit control exists').toMatch(/key: 'edit'/);
+    expect(src, 'and it opens the editor').toMatch(/openEdit\(r\)/);
+  });
+
+  it('the ledger honours the code the link sends', async () => {
+    // The contract the link depends on. If the ledger stopped reading the
+    // param, every one of these links would land on an unfiltered ledger
+    // and look like it had simply ignored the click.
+    const gl = await read('src/modules/accounting/general-ledger.tsx');
+    expect(gl, 'reads the code parameter').toMatch(/searchParams\.get\('code'\)/);
+  });
+
+  it('every bank account resolves to a real GL account', async () => {
+    // A link built from a code that does not exist would filter to nothing.
+    const orphan = await sql<{ name: string; company: string }>(`
+      SELECT b.name, c.name AS company
+      FROM public.bank_accounts b
+      JOIN public.companies c ON c.id = b.company_id
+      WHERE NOT EXISTS (
+        SELECT 1 FROM public.chart_of_accounts a WHERE a.id = b.coa_account_id)`);
+    expect(orphan, `bank accounts with no GL account: ${JSON.stringify(orphan)}`)
+      .toHaveLength(0);
+  });
+});
