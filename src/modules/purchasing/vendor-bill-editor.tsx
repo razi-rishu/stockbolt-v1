@@ -199,6 +199,18 @@ export default function VendorBillEditorPage() {
     landed_cost_total: '0',          // Phase 12.17 — freight + duty + customs
   });
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
+
+  // Arriving from a contact's page already names the party; making you pick
+  // them again is the kind of small friction that adds up. Only on a NEW
+  // document, and only as a starting value — changing it afterwards works
+  // exactly as before.
+  const [preselectParams] = useSearchParams();
+  useEffect(() => {
+    const pre = preselectParams.get('contact');
+    if (!isNew || !pre) return;
+    setHeader(h => h.supplier_id ? h : { ...h, supplier_id: pre });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Phase 47 — itemized landed costs (freight, customs, insurance…), each
   // credited to its own account. Sum drives the inventory allocation.
   const [landedCosts, setLandedCosts] = useState<LandedCostLine[]>([]);

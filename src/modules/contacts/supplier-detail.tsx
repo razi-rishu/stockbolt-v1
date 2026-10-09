@@ -317,16 +317,16 @@ export default function SupplierDetailPage() {
           <Button variant="ghost" size="sm" onClick={() => navigate(`/contacts/suppliers?edit=${id}`)}>
             ✎ Edit
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => navigate('/purchasing/orders/new')}>
+          <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/orders/new?contact=${id}`)}>
             + Purchase Order
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => navigate('/purchasing/payments/new')}>
+          <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/payments/new?contact=${id}`)}>
             + Pay Supplier
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => navigate('/purchasing/debit-notes/new')}>
+          <Button variant="ghost" size="sm" onClick={() => navigate(`/purchasing/debit-notes/new?contact=${id}`)}>
             + Debit Note
           </Button>
-          <Button size="sm" onClick={() => navigate('/purchasing/bills/new')}>
+          <Button size="sm" onClick={() => navigate(`/purchasing/bills/new?contact=${id}`)}>
             + Bill
           </Button>
         </div>

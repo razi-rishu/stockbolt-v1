@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency, useCompanyCountry, useCompanyRoundingStep } from '@/hooks/use-company-currency';
@@ -111,6 +111,18 @@ export default function QuoteEditorPage() {
   const [viewMode, setViewMode] = useState(!isNew);
 
   const [header, setHeader] = useState({ contact_id: '', salesperson_id: '', date: todayIso(), expiry_date: '', reference: '', notes: '', currency: companyCurrency ?? 'AED' });
+
+  // Arriving from a contact's page already names the party; making you pick
+  // them again is the kind of small friction that adds up. Only on a NEW
+  // document, and only as a starting value — changing it afterwards works
+  // exactly as before.
+  const [preselectParams] = useSearchParams();
+  useEffect(() => {
+    const pre = preselectParams.get('contact');
+    if (!isNew || !pre) return;
+      setHeader(h => h.contact_id ? h : { ...h, contact_id: pre });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
@@ -63,6 +63,18 @@ export default function DebitNoteEditorPage() {
   const { company_id } = useAuthStore();
 
   const [supplierId,   setSupplierId]   = useState('');
+
+  // Arriving from a contact's page already names the party; making you pick
+  // them again is the kind of small friction that adds up. Only on a NEW
+  // document, and only as a starting value — changing it afterwards works
+  // exactly as before.
+  const [preselectParams] = useSearchParams();
+  useEffect(() => {
+    const pre = preselectParams.get('contact');
+    if (!isNew || !pre) return;
+      setSupplierId(prev => prev || pre);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [linkedBillId, setLinkedBillId] = useState('');
   const [date,         setDate]         = useState(today());
   const [reason,       setReason]       = useState('return');

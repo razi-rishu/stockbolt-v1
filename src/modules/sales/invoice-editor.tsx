@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useNavigate, useParams, useLocation, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useShortcutAction } from '@/keyboard/use-shortcut-action';
@@ -184,6 +184,18 @@ export default function InvoiceEditorPage() {
     is_export: false,
   };
   const [header, setHeader] = useState<InvHeader>(defaultHeader);
+
+  // Arriving from a contact's page already names the party; making you pick
+  // them again is the kind of small friction that adds up. Only on a NEW
+  // document, and only as a starting value — changing it afterwards works
+  // exactly as before.
+  const [preselectParams] = useSearchParams();
+  useEffect(() => {
+    const pre = preselectParams.get('contact');
+    if (!isNew || !pre) return;
+      setHeader(h => h.contact_id ? h : { ...h, contact_id: pre });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
   // Product Quick Create state — shared across all line pickers.
   // We remember which line opened the modal so onCreated updates THAT line.

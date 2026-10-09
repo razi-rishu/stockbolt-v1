@@ -6614,3 +6614,72 @@ describe('Contacts — search covers what the list displays', () => {
       .not.toMatch(/\(c\.phone \?\? ''\)\.includes/);
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Starting a document from a contact keeps the contact
+//
+// "+ Invoice" on a customer's page opened a blank invoice and made you pick
+// the customer you were already looking at. Same on every other button, on
+// both sides.
+//
+// The two payment editors ALREADY read `?contact=<id>`, so the convention
+// existed and six editors simply did not follow it. They do now — one
+// parameter name across all eight, not three.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Contacts — new documents keep the contact', () => {
+  const read = async (f: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(resolve(process.cwd(), f), 'utf8');
+  };
+
+  it('every action button on a contact page passes the contact', async () => {
+    for (const f of [
+      'src/modules/contacts/customer-detail.tsx',
+      'src/modules/contacts/supplier-detail.tsx',
+    ]) {
+      const src = await read(f);
+      // Every navigate to a /new form must carry the id. A bare one is the
+      // bug: it opens an empty form and discards the context you were in.
+      const bare = [...src.matchAll(/navigate\('\/[^']*\/new'\)/g)].map(m => m[0]);
+      expect(bare, `${f} has buttons that drop the contact: ${JSON.stringify(bare)}`)
+        .toHaveLength(0);
+      expect(src, `${f} passes it`).toMatch(/new\?contact=\$\{id\}/);
+    }
+  });
+
+  it('every editor those buttons target reads the parameter', async () => {
+    // Half a wiring is worse than none: the link looks right and the form
+    // still comes up empty.
+    for (const f of [
+      'src/modules/sales/invoice-editor.tsx',
+      'src/modules/sales/quote-editor.tsx',
+      'src/modules/sales/credit-note-editor.tsx',
+      'src/modules/sales/payment-editor.tsx',
+      'src/modules/purchasing/vendor-bill-editor.tsx',
+      'src/modules/purchasing/po-editor.tsx',
+      'src/modules/purchasing/debit-note-editor.tsx',
+      'src/modules/purchasing/vendor-payment-editor.tsx',
+    ]) {
+      const src = await read(f);
+      expect(src, `${f} reads ?contact=`).toMatch(/searchParams\.get\('contact'\)|preselectParams\.get\('contact'\)/);
+      // Only as a starting value on a NEW document; it must never overwrite
+      // the party on something already saved.
+      expect(src, `${f} only seeds a new document`).toMatch(/isNew/);
+    }
+  });
+
+  it('one parameter name, not three', async () => {
+    // The convention already existed in the payment editors. Inventing
+    // ?customer= and ?supplier= alongside it would mean three names for one
+    // idea and a link that silently does nothing when they disagree.
+    for (const f of [
+      'src/modules/contacts/customer-detail.tsx',
+      'src/modules/contacts/supplier-detail.tsx',
+    ]) {
+      const src = await read(f);
+      expect(src, `${f} uses no rival param name`)
+        .not.toMatch(/new\?(customer|supplier)=/);
+    }
+  });
+});

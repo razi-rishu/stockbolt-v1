@@ -340,16 +340,16 @@ export default function CustomerDetailPage() {
           <Button variant="ghost" size="sm" onClick={() => navigate(`/contacts/customers?edit=${id}`)}>
             ✎ Edit
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => navigate('/sales/quotes/new')}>
+          <Button variant="ghost" size="sm" onClick={() => navigate(`/sales/quotes/new?contact=${id}`)}>
             + Quote
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => navigate('/sales/payments/new')}>
+          <Button variant="ghost" size="sm" onClick={() => navigate(`/sales/payments/new?contact=${id}`)}>
             + Record Receipt
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => navigate('/sales/credit-notes/new')}>
+          <Button variant="ghost" size="sm" onClick={() => navigate(`/sales/credit-notes/new?contact=${id}`)}>
             + Credit Note
           </Button>
-          <Button size="sm" onClick={() => navigate('/sales/invoices/new')}>
+          <Button size="sm" onClick={() => navigate(`/sales/invoices/new?contact=${id}`)}>
             + Invoice
           </Button>
         </div>
