@@ -263,7 +263,7 @@ function BankAccountsCard({ data }: { data: DashboardCards }) {
       <Card title="Bank & Cash">
         <div style={{ padding: '40px 0', textAlign: 'center', fontSize: '12px', color: theme.inkFaint }}>
           No bank accounts configured.{' '}
-          <Link to="/settings/bank-accounts" style={{ color: theme.brand, fontWeight: 600 }}>Add one →</Link>
+          <Link to="/banking/bank-accounts" style={{ color: theme.brand, fontWeight: 600 }}>Add one →</Link>
         </div>
       </Card>
     );
@@ -273,7 +273,7 @@ function BankAccountsCard({ data }: { data: DashboardCards }) {
       title="Bank & Cash Accounts"
       hint={`${data.bank_balances.length} account${data.bank_balances.length === 1 ? '' : 's'}`}
       right={
-        <Link to="/settings/bank-accounts" style={{ fontSize: '11px', color: theme.brand, fontWeight: 600, textDecoration: 'none' }}>
+        <Link to="/banking/bank-accounts" style={{ fontSize: '11px', color: theme.brand, fontWeight: 600, textDecoration: 'none' }}>
           Manage →
         </Link>
       }

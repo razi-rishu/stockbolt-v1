@@ -6535,7 +6535,7 @@ describe('Bank accounts — the name opens the ledger', () => {
   };
 
   it('the name navigates to the ledger for that GL account', async () => {
-    const src = await read('src/modules/settings/bank-accounts.tsx');
+    const src = await read('src/modules/banking/bank-accounts.tsx');
     expect(src, 'links to the general ledger')
       .toMatch(/navigate\(.\/accounting\/general-ledger\?code=/);
     // The ledger filters by CODE, not by the account's id.
@@ -6544,8 +6544,8 @@ describe('Bank accounts — the name opens the ledger', () => {
 
   it('editing is still reachable', async () => {
     // The whole failure mode of this change.
-    const src = await read('src/modules/settings/bank-accounts.tsx');
-    expect(src, 'a dedicated Edit control exists').toMatch(/key: 'edit'/);
+    const src = await read('src/modules/banking/bank-accounts.tsx');
+    expect(src, 'a dedicated Edit control exists').toMatch(/key: 'actions'/);
     expect(src, 'and it opens the editor').toMatch(/openEdit\(r\)/);
   });
 
@@ -6894,5 +6894,103 @@ describe('phase94 — aging nets off a note that has already been settled', () =
     );
     expect(row.src, 'invariant nets off cash refunds').toMatch(/source_doc_type\s*=\s*'credit_note'/);
     expect(row.src, 'invariant nets off applications').toMatch(/doc_type\s*=\s*'credit_note'/);
+  });
+});
+
+describe('phase95 — Bank Accounts is a Banking page, not a Settings page', () => {
+  const read = async (f: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(resolve(process.cwd(), f), 'utf8');
+  };
+
+  it('the page is OUT of the Settings shell and has a route of its own', async () => {
+    const app = await read('src/App.tsx');
+    // The route must exist...
+    expect(app, 'a Banking route exists')
+      .toMatch(/path="\/banking\/bank-accounts"\s+element=\{<BankAccountsPage/);
+    // ...and must NOT be a child of the /settings element, which is what
+    // rendered the two-pane Settings rail around it.
+    const settingsBlock = app.slice(
+      app.indexOf('<Route path="/settings" element={<SettingsLayout />}>'),
+      app.indexOf('{/* Public marketing routes'),
+    );
+    expect(settingsBlock, 'no bank-accounts child inside the Settings shell')
+      .not.toMatch(/path="bank-accounts"/);
+    // The module moved too, so nothing imports it out of settings/.
+    expect(app, 'imported from the banking module')
+      .toMatch(/import\('@\/modules\/banking\/bank-accounts'\)/);
+  });
+
+  it('the old URL still works', async () => {
+    // Bookmarks, a pinned tab, a link someone pasted in chat. Dropping the
+    // settings route without a redirect would turn all of them into the 404
+    // page, which looks exactly like the feature was deleted.
+    const app = await read('src/App.tsx');
+    expect(app, '/settings/bank-accounts redirects to the new home')
+      .toMatch(/path="\/settings\/bank-accounts"\s+element=\{<Navigate to="\/banking\/bank-accounts"/);
+  });
+
+  it('nothing still points at the old path', async () => {
+    // A link left behind does not error - it silently bounces through the
+    // redirect, which works but means the codebase disagrees with itself.
+    for (const f of [
+      'src/components/app-layout.tsx',
+      'src/modules/dashboard/_summary-cards.tsx',
+      'src/modules/sales/payment-editor.tsx',
+      'src/modules/settings/_nav.ts',
+      'src/modules/settings/index.tsx',
+    ]) {
+      const src = await read(f);
+      expect(src, `${f} points at the new route`).not.toMatch(/['"`]\/settings\/bank-accounts/);
+    }
+  });
+
+  it('the balance is DERIVED, never read off the row', async () => {
+    // Rule 1. A balance column on bank_accounts is exactly the cached
+    // aggregate that broke the previous build; this page must read the
+    // GL-side aggregate instead.
+    const src = await read('src/modules/banking/bank-accounts.tsx');
+    expect(src, 'balance comes from the dashboard aggregate')
+      .toMatch(/getDashboardCards/);
+    expect(src, 'keyed back to the bank account')
+      .toMatch(/bank_balances\.find/);
+    expect(src, 'never reads a balance column off the row')
+      .not.toMatch(/r\.(current_)?balance\b/);
+    // And the activity column is derived too.
+    const adapter = await read('src/data/supabaseAdapter.ts');
+    const start = adapter.indexOf('async listActivity');
+    expect(start, 'listActivity exists').toBeGreaterThan(-1);
+    expect(adapter.slice(start, start + 900), 'reads gl_active, not a stored column')
+      .toMatch(/from\('gl_active'\)/);
+  });
+
+  it('an unloaded balance shows nothing rather than zero', async () => {
+    // A money figure that defaults to 0 while loading is a lie that looks
+    // like data. The KPI tiles must render an em dash until the aggregate
+    // has actually arrived.
+    const src = await read('src/modules/banking/bank-accounts.tsx');
+    expect(src, 'money() handles the null case')
+      .toMatch(/const money = \(n: number \| null\)/);
+    expect(src, 'and the tiles pass null until cards load')
+      .toMatch(/money\(cards \? combined : null\)/);
+  });
+
+  it('every new string goes through i18n, in both languages', async () => {
+    const en = JSON.parse(await read('src/i18n/en.json')).banking;
+    const ar = JSON.parse(await read('src/i18n/ar.json')).banking;
+    const keys = [
+      'accounts_subtitle', 'add_account', 'col_account_name', 'col_type',
+      'col_currency', 'col_gl_code', 'col_opening', 'col_current',
+      'col_last_txn', 'col_status', 'col_actions', 'type_bank', 'type_cash',
+      'all_types', 'all_statuses', 'search_placeholder', 'kpi_total',
+      'kpi_active', 'kpi_combined', 'kpi_cash', 'empty', 'empty_filtered',
+      'balances_note',
+    ];
+    for (const k of keys) {
+      expect(en[k], `en.banking.${k}`).toBeTruthy();
+      expect(ar[k], `ar.banking.${k}`).toBeTruthy();
+      // AGENTS.md 7.6 - Arabic never falls back to the English string.
+      expect(ar[k], `ar.banking.${k} is actually translated`).not.toBe(en[k]);
+    }
   });
 });

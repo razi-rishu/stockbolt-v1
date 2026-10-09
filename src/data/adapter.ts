@@ -1522,9 +1522,39 @@ export interface RefundResult {
   advance_after:    number;
 }
 
+/**
+ * What last moved through a bank/cash account. Derived at read time from
+ * gl_active (Rule 1 - never a cached column on bank_accounts), so it cannot
+ * drift from the ledger.
+ */
+export interface BankAccountActivity {
+  /** Date of the most recent posted, non-reversed GL line. */
+  last_date: string | null;
+  /** The document that caused it, for drill-through. Either may be null. */
+  related_doc_type: string | null;
+  related_doc_id: string | null;
+  /** The GL line's own description, used when there is no linked document. */
+  description: string | null;
+}
+
 export interface BankAccountsAPI {
   /** Active bank accounts. Default `includeInactive=false` keeps pickers clean. */
   list(company_id: string, opts?: { includeInactive?: boolean }): Promise<BankAccountRow[]>;
+  /**
+   * Latest ledger activity per account, keyed by bank_account id.
+   *
+   * One indexed `limit 1` query per account rather than one wide scan: the
+   * accounts are few (a handful per company) and `(account_id, date)` is
+   * indexed, so this stays cheap and, unlike a capped bulk fetch, cannot
+   * lose a quiet account behind a busy one.
+   *
+   * Accounts with no `coa_account_id`, and accounts that have never been
+   * posted to, are simply absent from the result.
+   */
+  listActivity(
+    company_id: string,
+    accounts: Array<{ id: string; coa_account_id: string | null }>,
+  ): Promise<Record<string, BankAccountActivity>>;
   getById(id: string): Promise<BankAccountRow | null>;
   create(row: BankAccountInsert): Promise<BankAccountRow>;
   update(id: string, row: Partial<BankAccountInsert>): Promise<void>;

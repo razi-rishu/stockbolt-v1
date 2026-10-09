@@ -1862,6 +1862,34 @@ export function createSupabaseAdapter(
         assertNoError(error, 'bankAccounts.list');
         return data ?? [];
       },
+      async listActivity(company_id, accounts): Promise<Record<string, import('./adapter').BankAccountActivity>> {
+        // Derived at read time from gl_active - there is deliberately no
+        // last_transaction column on bank_accounts to drift (Rule 1).
+        const withCoa = accounts.filter(a => !!a.coa_account_id);
+        const results = await Promise.all(withCoa.map(async (acct) => {
+          const { data, error } = await client
+            .from('gl_active')
+            .select('date, related_doc_type, related_doc_id, description')
+            .eq('company_id', company_id)
+            .eq('account_id', acct.coa_account_id!)
+            .order('date', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(1);
+          assertNoError(error, 'bankAccounts.listActivity');
+          const row = (data ?? [])[0];
+          if (!row) return null;
+          return [acct.id, {
+            last_date:        row.date as string | null,
+            related_doc_type: row.related_doc_type as string | null,
+            related_doc_id:   row.related_doc_id as string | null,
+            description:      row.description as string | null,
+          }] as const;
+        }));
+        const out: Record<string, import('./adapter').BankAccountActivity> = {};
+        for (const r of results) if (r) out[r[0]] = r[1];
+        return out;
+      },
+
       async getById(id): Promise<BankAccountRow | null> {
         const { data, error } = await client.from('bank_accounts').select('*').eq('id', id).single();
         if (error?.code === 'PGRST116') return null;

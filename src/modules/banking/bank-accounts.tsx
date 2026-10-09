@@ -1,5 +1,10 @@
 /**
- * Bank accounts settings — Phase 12.45.
+ * Bank Accounts — Phase 12.45, moved out of Settings in Phase 95.
+ *
+ * Lives under Banking now. It was reachable only at /settings/bank-accounts,
+ * which rendered it inside the Settings two-pane shell: you navigated from
+ * the Banking section and landed in a Settings rail. The route moved; the old
+ * path redirects so existing links keep working.
  *
  * CRUD UI for the bank_accounts master table. Each row links to a GL
  * account in the CoA (the cash/bank side of every payment posts into
@@ -18,9 +23,12 @@ import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Modal } from '@/ui/modal';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Table, type Column } from '@/ui/table';
 import { Badge } from '@/ui/badge';
-import { PageHeader } from '@/ui/primitives';
+import { Breadcrumbs } from '@/ui/breadcrumbs';
+import { DocLink } from '@/ui/doc-link';
+import { PageHeader, Stat } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
 import type { BankAccountRow, CoaRow } from '@/data/adapter';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
@@ -45,7 +53,8 @@ type FormValues = z.infer<typeof schema>;
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export default function BankAccountsSettingsPage() {
+export default function BankAccountsPage() {
+  const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -250,98 +259,286 @@ export default function BankAccountsSettingsPage() {
   const coaCode = (id: string) =>
     (coa as CoaRow[]).find(r => r.id === id)?.code ?? null;
 
+  // ── Everything below is DERIVED, never stored ────────────────────────
+  // There is no balance column on bank_accounts and there must never be one
+  // (Rule 1). The balance comes from get_dashboard_cards, which aggregates
+  // gl_active in the database and keys the result by bank_account id.
+  const { data: cards, isLoading: balLoading } = useQuery({
+    queryKey: ['dashboardCards', company_id],
+    queryFn:  () => getAdapter().reports.getDashboardCards(company_id!),
+    enabled:  !!company_id,
+  });
+  const balanceOf = (id: string): number | null => {
+    const hit = cards?.bank_balances.find(b => b.id === id);
+    return hit ? Number(hit.balance) : null;
+  };
+
+  // What last moved through each account, for the activity column.
+  const accountKey = accounts.map(a => a.id).join(',');
+  const { data: activity = {} } = useQuery({
+    queryKey: ['bankActivity', company_id, accountKey],
+    queryFn:  () => getAdapter().bankAccounts.listActivity(
+      company_id!,
+      accounts.map(a => ({ id: a.id, coa_account_id: a.coa_account_id })),
+    ),
+    enabled:  !!company_id && accounts.length > 0,
+  });
+
+  // ── Filters ──────────────────────────────────────────────────────────
+  const [search, setSearch]             = useState('');
+  const [typeFilter, setTypeFilter]     = useState<'all' | 'bank' | 'cash'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+
+  const visible = (accounts as BankAccountRow[]).filter(a => {
+    if (typeFilter !== 'all' && a.account_type !== typeFilter) return false;
+    if (statusFilter === 'active'   && !a.is_active) return false;
+    if (statusFilter === 'inactive' &&  a.is_active) return false;
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return [a.name, a.name_ar, a.bank_name, a.currency, a.account_number,
+            a.coa_account_id ? coaName(a.coa_account_id) : '']
+      .some(v => (v ?? '').toLowerCase().includes(q));
+  });
+
+  // KPI tiles. Summed over EVERY account, not just the filtered view - a
+  // filter narrows the list you are reading, it does not change how much
+  // money the business holds.
+  const activeCount  = (accounts as BankAccountRow[]).filter(a => a.is_active).length;
+  const sumBalances  = (rows: BankAccountRow[]) =>
+    rows.reduce((t, a) => t + (balanceOf(a.id) ?? 0), 0);
+  const combined     = sumBalances(accounts as BankAccountRow[]);
+  const cashOnHand   = sumBalances((accounts as BankAccountRow[]).filter(a => a.account_type === 'cash'));
+  // Until the aggregate lands, say nothing rather than claim zero.
+  const money = (n: number | null) => n === null ? '\u2014' : `${n < 0 ? '-' : ''}AED ${fmt(Math.abs(n))}`;
+
+  const AccountIcon = ({ kind }: { kind: string }) => (
+    <span
+      aria-hidden="true"
+      style={{
+        width: '32px', height: '32px', borderRadius: '10px', flexShrink: 0,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        background: kind === 'cash' ? '#ECFDF5' : theme.brandSoft,
+        color:      kind === 'cash' ? '#047857' : theme.brandSoftText,
+      }}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        {kind === 'cash'
+          ? <><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /></>
+          : <><path d="M3 10h18M5 10V8l7-4 7 4v2M5 10v8m14-8v8M3 18h18" /></>}
+      </svg>
+    </span>
+  );
+
   const columns: Column<BankAccountRow>[] = [
     {
-      key: 'name', header: 'Name',
+      key: 'name', header: t('banking.col_account_name'),
       render: (r) => (
-        <div>
-          {/* The name opens the LEDGER. Clicking an account to see what
-              moved through it is the common action; changing its IBAN is
-              the rare one, and that now has its own button on the row.
-              Falls back to Edit only when the account has no GL code to
-              link to, so the name is never a dead click. */}
-          <button
-            type="button"
-            title={coaCode(r.coa_account_id) ? 'View ledger' : 'Edit'}
-            onClick={(e) => {
-              e.stopPropagation();
-              const code = coaCode(r.coa_account_id);
-              if (code) navigate(`/accounting/general-ledger?code=${encodeURIComponent(code)}`);
-              else openEdit(r);
-            }}
-            style={{ background: 'transparent', border: 'none', padding: 0, fontSize: '13px', fontWeight: 600, color: theme.brandSoftText, cursor: 'pointer' }}
-          >
-            {r.name}
-          </button>
-          {r.bank_name && <div style={{ fontSize: '11px', color: theme.inkFaint, marginTop: '2px' }}>{r.bank_name}</div>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <AccountIcon kind={r.account_type ?? 'bank'} />
+          <div style={{ minWidth: 0 }}>
+            {/* The name opens the LEDGER. Seeing what moved through an
+                account is the common action; changing its IBAN is the rare
+                one, and that has its own control on the row. Falls back to
+                Edit when there is no GL code, so it is never a dead click. */}
+            <button
+              type="button"
+              title={r.coa_account_id && coaCode(r.coa_account_id) ? t('banking.view_ledger') : t('common.edit')}
+              onClick={(e) => {
+                e.stopPropagation();
+                const code = r.coa_account_id ? coaCode(r.coa_account_id) : null;
+                if (code) navigate(`/accounting/general-ledger?code=${encodeURIComponent(code)}`);
+                else openEdit(r);
+              }}
+              style={{ background: 'transparent', border: 'none', padding: 0, fontSize: '13px', fontWeight: 600, color: theme.brandSoftText, cursor: 'pointer', textAlign: 'start' }}
+            >
+              {r.name}
+            </button>
+            {r.bank_name && <div style={{ fontSize: '11px', color: theme.inkFaint, marginTop: '1px' }}>{r.bank_name}</div>}
+          </div>
         </div>
       ),
     },
-    { key: 'type',     header: 'Type',     width: '90px',  render: (r) => <span style={{ textTransform: 'capitalize' }}>{r.account_type}</span> },
-    { key: 'currency', header: 'Currency', width: '90px',  render: (r) => <span className="font-mono" style={{ fontSize: '12px' }}>{r.currency}</span> },
-    { key: 'account_number', header: 'Account #', render: (r) => r.account_number ? <span className="font-mono" style={{ fontSize: '12px', color: theme.inkMuted }}>{r.account_number}</span> : '—' },
-    { key: 'coa',      header: 'GL Account', render: (r) => <span className="font-mono" style={{ fontSize: '11px', color: theme.inkMuted }}>{coaName(r.coa_account_id)}</span> },
     {
-      key: 'opening',
-      header: 'Opening (posted)',
-      align: 'end',
-      width: '140px',
+      key: 'type', header: t('banking.col_type'), width: '110px',
       render: (r) => (
-        <span
-          className="font-mono"
-          style={{ color: theme.ink }}
-          title="Read-only mirror of the opening JE posted via Settings → Opening Balances. Edits to the bank-accounts form do NOT change this — void + re-post the opening JE instead."
-        >
+        <Badge variant={r.account_type === 'cash' ? 'success' : 'brand'}>
+          {r.account_type === 'cash' ? t('banking.type_cash') : t('banking.type_bank')}
+        </Badge>
+      ),
+    },
+    { key: 'currency', header: t('banking.col_currency'), width: '90px', render: (r) => <span className="font-mono" style={{ fontSize: '12px' }}>{r.currency}</span> },
+    {
+      key: 'coa', header: t('banking.col_gl_code'),
+      render: (r) => (
+        <span className="font-mono" style={{ fontSize: '11px', color: theme.inkMuted }}>
+          {r.coa_account_id ? coaName(r.coa_account_id) : '\u2014'}
+        </span>
+      ),
+    },
+    {
+      key: 'opening', header: t('banking.col_opening'), align: 'end', width: '130px',
+      render: (r) => (
+        <span className="font-mono" style={{ color: theme.inkMuted }}
+          title={t('banking.opening_hint')}>
           {fmt(Number(r.opening_balance ?? 0))}
         </span>
       ),
     },
-    { key: 'default',  header: '', width: '80px', render: (r) => r.is_default ? <Badge variant="brand">Default</Badge> : null },
-    { key: 'status',   header: '', width: '80px', render: (r) => <Badge variant={r.is_active ? 'success' : 'muted'}>{r.is_active ? 'Active' : 'Inactive'}</Badge> },
-    // The name used to be the way in to editing. Now that it opens the
-    // ledger, editing needs its own control or it becomes unreachable.
     {
-      key: 'edit', header: '', width: '60px',
+      key: 'balance', header: t('banking.col_current'), align: 'end', width: '140px',
+      render: (r) => {
+        const bal = balanceOf(r.id);
+        if (bal === null) {
+          return <span style={{ fontSize: '12px', color: theme.inkFaint }}>{balLoading ? '\u2026' : '\u2014'}</span>;
+        }
+        // A negative cash account is a real condition worth seeing on the
+        // page rather than only in a System Health check.
+        return (
+          <span className="font-mono" style={{ fontWeight: 700, color: bal < 0 ? theme.danger : theme.ink }}
+            title={bal < 0 ? t('banking.negative_hint') : undefined}>
+            {fmt(bal)}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'last', header: t('banking.col_last_txn'), width: '170px',
+      render: (r) => {
+        const a = (activity as Record<string, import('@/data/adapter').BankAccountActivity>)[r.id];
+        if (!a?.last_date) return <span style={{ fontSize: '12px', color: theme.inkFaint }}>{'\u2014'}</span>;
+        return (
+          <div>
+            <div style={{ fontSize: '12px', color: theme.ink }}>{a.last_date}</div>
+            <div style={{ fontSize: '11px', color: theme.inkFaint, marginTop: '1px' }}>
+              {a.related_doc_type && a.related_doc_id
+                ? <DocLink type={a.related_doc_type} id={a.related_doc_id} />
+                : (a.description ?? '\u2014')}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'status', header: t('banking.col_status'), width: '110px',
       render: (r) => (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); openEdit(r); }}
-          style={{ background: 'transparent', border: 'none', padding: 0, fontSize: '12px', color: theme.brandSoftText, cursor: 'pointer', textDecoration: 'underline' }}
-          title="Edit this bank account"
-        >
-          Edit
-        </button>
+        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+          <Badge variant={r.is_active ? 'success' : 'muted'}>
+            {r.is_active ? t('common.active') : t('common.inactive')}
+          </Badge>
+          {r.is_default && <Badge variant="brand">{t('banking.default')}</Badge>}
+        </div>
       ),
     },
     {
-      key: 'delete', header: '', width: '70px',
+      key: 'actions', header: t('banking.col_actions'), width: '120px', align: 'end',
       render: (r) => (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onDelete(r); }}
-          disabled={deleteMutation.isPending}
-          style={{ background: 'transparent', border: 'none', padding: 0, fontSize: '12px', color: '#dc2626', cursor: 'pointer', textDecoration: 'underline' }}
-          title="Permanently delete this bank account (refuses if it's referenced by any transaction)"
-        >
-          Delete
-        </button>
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); openEdit(r); }}
+            style={{ background: 'transparent', border: 'none', padding: 0, fontSize: '12px', color: theme.brandSoftText, cursor: 'pointer' }}
+            title={t('banking.edit_hint')}
+          >
+            {t('common.edit')}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onDelete(r); }}
+            disabled={deleteMutation.isPending}
+            style={{ background: 'transparent', border: 'none', padding: 0, fontSize: '12px', color: theme.danger, cursor: 'pointer' }}
+            title={t('banking.delete_hint')}
+          >
+            {t('common.delete')}
+          </button>
+        </div>
       ),
     },
   ];
 
+  const fieldStyle: React.CSSProperties = {
+    border: `1px solid ${theme.border}`, borderRadius: '8px', padding: '8px 10px',
+    fontSize: '13px', color: theme.ink, background: '#fff', outline: 'none',
+  };
+  const filterLabel: React.CSSProperties = {
+    fontSize: '10px', fontWeight: 700, color: theme.inkFaint,
+    textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '3px', display: 'block',
+  };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* Banking has no landing page of its own, so the section is a plain
+          label. Linking it to Transfers would make "Banking" a click that
+          lands somewhere you did not ask for. */}
+      <Breadcrumbs items={[
+        { label: t('nav.banking') },
+        { label: t('banking.accounts_title') },
+      ]} />
+
       <PageHeader
-        title="Bank Accounts"
-        subtitle={`${accounts.length} account${accounts.length === 1 ? '' : 's'} — used to receive payments and post expenses.`}
-        crumb="Settings · Accounting"
-        actions={<Button size="sm" onClick={openAdd}>+ Add bank account</Button>}
+        title={t('banking.accounts_title')}
+        subtitle={t('banking.accounts_subtitle')}
+        actions={<Button size="sm" onClick={openAdd}>+ {t('banking.add_account')}</Button>}
       />
 
+      {/* KPI row. Summed across every account, not the filtered view. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+        <Stat label={t('banking.kpi_total')}  value={accounts.length} hint={t('banking.kpi_total_hint')} />
+        <Stat label={t('banking.kpi_active')} value={activeCount} color="success"
+              hint={activeCount === accounts.length ? t('banking.kpi_all_active') : t('banking.kpi_some_inactive')} />
+        <Stat label={t('banking.kpi_combined')} value={money(cards ? combined : null)}
+              color={combined < 0 ? 'danger' : 'brand'} hint={t('banking.kpi_combined_hint')} />
+        <Stat label={t('banking.kpi_cash')} value={money(cards ? cashOnHand : null)}
+              color={cashOnHand < 0 ? 'danger' : undefined} hint={t('banking.kpi_cash_hint')} />
+      </div>
+
+      {/* Filter bar */}
+      <div style={{
+        background: theme.card, border: `1px solid ${theme.border}`,
+        borderRadius: theme.radiusLg, padding: '12px 14px',
+        display: 'flex', alignItems: 'flex-end', gap: '10px', flexWrap: 'wrap',
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 240px', minWidth: '200px' }}>
+          <label style={filterLabel} htmlFor="ba-search">{t('common.search')}</label>
+          <input id="ba-search" style={fieldStyle} value={search}
+                 placeholder={t('banking.search_placeholder')}
+                 onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <label style={filterLabel} htmlFor="ba-type">{t('banking.col_type')}</label>
+          <select id="ba-type" style={fieldStyle} value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value as 'all' | 'bank' | 'cash')}>
+            <option value="all">{t('banking.all_types')}</option>
+            <option value="bank">{t('banking.type_bank')}</option>
+            <option value="cash">{t('banking.type_cash')}</option>
+          </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <label style={filterLabel} htmlFor="ba-status">{t('banking.col_status')}</label>
+          <select id="ba-status" style={fieldStyle} value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}>
+            <option value="all">{t('banking.all_statuses')}</option>
+            <option value="active">{t('common.active')}</option>
+            <option value="inactive">{t('common.inactive')}</option>
+          </select>
+        </div>
+      </div>
+
       {isLoading
-        ? <div style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>Loading…</div>
-        : <Table columns={columns} rows={accounts} keyFn={(r) => r.id} emptyMessage="No bank accounts yet. Click Add to create one." />
+        ? <div style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>{t('common.loading')}</div>
+        : <>
+            <Table
+              columns={columns}
+              rows={visible}
+              keyFn={(r) => r.id}
+              emptyMessage={accounts.length === 0 ? t('banking.empty') : t('banking.empty_filtered')}
+            />
+            <p style={{ fontSize: '11px', color: theme.inkFaint, margin: 0 }}>
+              {t('banking.balances_note')}
+            </p>
+          </>
       }
+
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Edit bank account' : 'Add bank account'} width="lg">
         <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v); }, onInvalid)} className="flex flex-col gap-4">

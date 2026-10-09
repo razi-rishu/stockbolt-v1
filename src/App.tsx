@@ -39,7 +39,7 @@ const CompanySettingsPage = lazy(() => import('@/modules/settings/company-settin
 const WarehousesPage     = lazy(() => import('@/modules/settings/warehouses'));
 const UnitsPage          = lazy(() => import('@/modules/settings/units-of-measure'));
 const PriceLevelsPage    = lazy(() => import('@/modules/settings/price-levels'));
-const BankAccountsPage   = lazy(() => import('@/modules/settings/bank-accounts'));
+const BankAccountsPage   = lazy(() => import('@/modules/banking/bank-accounts'));
 const TaxRatesPage       = lazy(() => import('@/modules/settings/tax-rates'));
 const ExchangeRatesPage  = lazy(() => import('@/modules/settings/exchange-rates'));
 const OpeningBalancesPage = lazy(() => import('@/modules/settings/opening-balances'));
@@ -271,7 +271,6 @@ function AppRoutes() {
                   <Route path="warehouses"       element={<WarehousesPage />} />
                   <Route path="units"            element={<UnitsPage />} />
                   <Route path="price-levels"     element={<PriceLevelsPage />} />
-                  <Route path="bank-accounts"    element={<BankAccountsPage />} />
                   <Route path="tax-rates"        element={<TaxRatesPage />} />
                   <Route path="exchange-rates"   element={<ExchangeRatesPage />} />
                   <Route path="opening-balances" element={<OpeningBalancesPage />} />
@@ -407,10 +406,15 @@ function AppRoutes() {
 
               {/* Expenses merged into Purchasing (2026-06-14). Old Banking
                   paths redirect — same underlying expenses table. */}
+              {/* Phase 95 — Bank Accounts moved out of the Settings shell.
+                   Old links, bookmarks and anything still pointing at the
+                   settings path keep working. */}
+              <Route path="/settings/bank-accounts"            element={<Navigate to="/banking/bank-accounts" replace />} />
               <Route path="/banking/expenses/:id"               element={<Navigate to="/purchasing/expenses" replace />} />
               <Route path="/banking/expenses"                   element={<Navigate to="/purchasing/expenses" replace />} />
               {/* Phase 8 — Banking & PDC — require accounting.read (Phase 22) */}
               <Route element={<RequirePermission perm="accounting.read" />}>
+                <Route path="/banking/bank-accounts"              element={<BankAccountsPage />} />
                 <Route path="/banking/transfers/:id"              element={<BankTransferEditorPage />} />
                 <Route path="/banking/transfers"                  element={<BankTransfersPage />} />
                 <Route path="/banking/pdc-received"               element={<PDCReceivedPage />} />

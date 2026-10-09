@@ -216,8 +216,9 @@ export function createSelfHostedAdapter(): DataAdapter {
       seedDefaults: () => notImplemented('taxRates.seedDefaults'),
     },
     bankAccounts: {
-      list:     () => notImplemented('bankAccounts.list'),
-      getById:  () => notImplemented('bankAccounts.getById'),
+      list:         () => notImplemented('bankAccounts.list'),
+      listActivity: () => notImplemented('bankAccounts.listActivity'),
+      getById:      () => notImplemented('bankAccounts.getById'),
       create:   () => notImplemented('bankAccounts.create'),
       update:   () => notImplemented('bankAccounts.update'),
       remove:   () => notImplemented('bankAccounts.remove'),

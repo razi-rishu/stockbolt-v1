@@ -210,9 +210,9 @@ function useNavSections(t: (k: string) => string): NavSection[] {
       groups: [{
         items: [
           // The accounts come first: a section called Banking that does not
-          // list your banks is the obvious thing to look for and miss. The
-          // page still lives under Settings; this is a second way in.
-          { to: '/settings/bank-accounts', label: t('banking.accounts_title') },
+          // list your banks is the obvious thing to look for and miss.
+          // Phase 95 moved the page here properly, out of the Settings shell.
+          { to: '/banking/bank-accounts', label: t('banking.accounts_title') },
           { to: '/banking/transfers', label: t('banking.transfers_title') },
           { to: '/banking/pdc-received', label: t('banking.pdc_received_title') },
           { to: '/banking/pdc-issued', label: t('banking.pdc_issued_title') },

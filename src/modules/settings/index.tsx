@@ -141,7 +141,6 @@ export default function SettingsHubPage() {
   const { data: salespeople = [] } = useQuery({ queryKey: ['salespeople',  company_id], queryFn: () => getAdapter().salespeople.list(company_id!), enabled: !!company_id });
   const { data: taxRates    = [] } = useQuery({ queryKey: ['taxRates',     company_id], queryFn: () => getAdapter().taxRates.list(company_id!),    enabled: !!company_id });
   const { data: coa         = [] } = useQuery({ queryKey: ['coa',          company_id], queryFn: () => getAdapter().coa.list(company_id!),         enabled: !!company_id });
-  const { data: banks       = [] } = useQuery({ queryKey: ['bankAccounts', company_id], queryFn: () => getAdapter().bankAccounts.list(company_id!), enabled: !!company_id });
 
   const countByPath: Record<string, number> = {
     '/settings/warehouses':       warehouses.length,
@@ -153,7 +152,6 @@ export default function SettingsHubPage() {
     '/settings/salespeople':      salespeople.length,
     '/settings/tax-rates':        taxRates.length,
     '/settings/chart-of-accounts': coa.length,
-    '/settings/bank-accounts':    banks.length,
   };
 
   const sections: SectionSpec[] = SETTINGS_SECTIONS.map((s: SettingsNavSection) => ({

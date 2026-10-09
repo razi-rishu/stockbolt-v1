@@ -804,7 +804,7 @@ export default function PaymentEditorPage() {
             {canEdit && !isVoid && bankAccounts.length === 0 && (
               <p className="mt-1 text-xs text-ink-tertiary">
                 No bank or cash accounts yet. Add one in{' '}
-                <a href="/settings/bank-accounts" className="text-brand-600 underline">
+                <a href="/banking/bank-accounts" className="text-brand-600 underline">
                   Settings → Bank Accounts
                 </a>{' '}
                 — set <span className="font-medium">Type = Cash</span> for cash transactions.
