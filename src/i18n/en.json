@@ -1109,6 +1109,8 @@
     "quote_details": "Quote Details"
   },
   "payments": {
+    "apply_advance": "Apply Advance",
+    "apply_advance_hint": "Apply money already on account ({{number}}) against this document",
     "title": "Receipts",
     "new_payment": "New Receipt",
     "empty": "No receipts yet.",

@@ -18,6 +18,7 @@ import { ProductQuickCreate } from '@/components/quick-create/product-quick-crea
 import { ContactPicker } from '@/components/contact-picker';
 import { AccountingPreview, buildVendorBillPreview } from '@/components/accounting-preview';
 // Phase 14.03 — Signature template view mode for saved bills.
+import { ApplyAdvanceButton } from '@/components/apply-advance-button';
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { vendorBillToDocumentData } from '@/modules/print/_signature/adapters';
@@ -667,6 +668,15 @@ export default function VendorBillEditorPage() {
                 });
               }}
             >⧉ {t('common.duplicate')}</Button>
+            {/* Mirror of the sales side: an advance already paid to this
+                supplier can settle this bill. */}
+            {existing.status === 'confirmed' && (
+              <ApplyAdvanceButton
+                side="vendor"
+                contactId={existing.supplier_id}
+                outstanding={Number(existing.total_amount ?? 0) - (appliedMap[existing.id] ?? 0)}
+              />
+            )}
             {existing.status === 'confirmed' && (
               <Button size="sm" onClick={() => navigate(`/purchasing/payments/new?contact=${existing.supplier_id}`)}>
                 💰 {t('purchasing.make_payment') || 'Make Payment'}

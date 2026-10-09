@@ -6707,3 +6707,63 @@ describe('Contacts — new documents keep the contact', () => {
     }
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// An advance on account can be applied from the document
+//
+// Applying an advance worked, but only from the CONTACT page — which is
+// not where you are when you are looking at an unpaid invoice. NUHAMMED
+// ALABDUWAHAB had 1,250 on account and INV-1014 unpaid at 462.00, with no
+// route between them.
+//
+// This adds a second DOOR to the existing mechanism, not a second way to
+// allocate: the button opens the same advance payment with the same apply
+// modal the contact page uses.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Advances — applying one from the document', () => {
+  const read = async (f: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(resolve(process.cwd(), f), 'utf8');
+  };
+
+  it('both document types offer it', async () => {
+    for (const f of [
+      'src/modules/sales/invoice-editor.tsx',
+      'src/modules/purchasing/vendor-bill-editor.tsx',
+    ]) {
+      const src = await read(f);
+      expect(src, f + ' offers the advance').toMatch(/<ApplyAdvanceButton/);
+      // Offering it on a settled document would be noise.
+      expect(src, f + ' passes what is still owed').toMatch(/outstanding=/);
+    }
+  });
+
+  it('it reuses the existing apply modal rather than a second mechanism', async () => {
+    const btn = await read('src/components/apply-advance-button.tsx');
+    expect(btn, 'opens the payment with the apply modal').toMatch(/\?apply=1/);
+    // Same candidate rule as the contact page: confirmed, not fully spent.
+    expect(btn, 'only confirmed payments').toMatch(/status === 'confirmed'/);
+    expect(btn, 'only unspent ones').toMatch(/unallocated|partial/);
+    // Nothing to apply means no button at all.
+    expect(btn, 'renders away when there is nothing').toMatch(/return null/);
+  });
+
+  it('both doors pick the SAME advance', () => {
+    // The contact page and the document page are two routes to one action.
+    // If they disagreed about which payment to open, applying from an
+    // invoice would settle a different advance than the one the contact
+    // page had just told you about — same money, different document, and
+    // no error either way.
+    const rule = (src: string) => ({
+      confirmed:  /status === 'confirmed'/.test(src),
+      unspent:    /unallocated/.test(src) && /partial/.test(src),
+      newestFirst: /localeCompare/.test(src),
+    });
+    const { readFileSync } = require('node:fs') as typeof import('node:fs');
+    const button  = readFileSync(resolve(process.cwd(), 'src/components/apply-advance-button.tsx'), 'utf8');
+    const contact = readFileSync(resolve(process.cwd(), 'src/modules/contacts/customer-detail.tsx'), 'utf8');
+    expect(rule(button), 'the shared button and the contact page agree')
+      .toEqual(rule(contact));
+  });
+});

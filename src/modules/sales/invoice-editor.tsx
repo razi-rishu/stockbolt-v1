@@ -24,6 +24,7 @@ import { ContactPicker } from '@/components/contact-picker';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 import { AccountingPreview, buildSalesInvoicePreview } from '@/components/accounting-preview';
 // Phase 14.03 — Signature template view mode.
+import { ApplyAdvanceButton } from '@/components/apply-advance-button';
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { invoiceToDocumentData } from '@/modules/print/_signature/adapters';
@@ -751,6 +752,16 @@ export default function InvoiceEditorPage() {
                 });
               }}
             >⧉ {t('common.duplicate')}</Button>
+            {/* Money already on account is money you can settle this with.
+                It renders itself away when the customer has no advance or
+                this invoice is already paid. */}
+            {isConfirmed && (
+              <ApplyAdvanceButton
+                side="customer"
+                contactId={existing.contact_id}
+                outstanding={Number(existing.total_amount ?? 0) - (appliedMap[existing.id] ?? 0)}
+              />
+            )}
             {isConfirmed && (
               <Button size="sm" onClick={() => navigate(`/sales/payments/new?contact=${existing.contact_id}`)}>
                 💰 {t('sales.receive_payment') || 'Record Receipt'}
