@@ -6669,6 +6669,30 @@ describe('Contacts — new documents keep the contact', () => {
     }
   });
 
+  it('every button targets a route that exists', async () => {
+    // Carrying the id is useless if the path is wrong: the click would
+    // land nowhere and look like the button simply did not work. Checked
+    // for Banking when that section moved; it belongs here too.
+    const app = await read('src/App.tsx');
+    for (const f of [
+      'src/modules/contacts/customer-detail.tsx',
+      'src/modules/contacts/supplier-detail.tsx',
+    ]) {
+      const src = await read(f);
+      const targets = [...src.matchAll(/navigate\(`([^`?]+)\?contact=/g)]
+        .map(m => m[1]!);
+      expect(targets.length, `${f} has contact-carrying buttons`)
+        .toBeGreaterThan(0);
+      for (const t of targets) {
+        const base = t.replace(/\/new$/, '');
+        expect(
+          app.includes(`path=\"${t}\"`) || app.includes(`path=\"${base}/:id\"`),
+          `${t} has no route in App.tsx`,
+        ).toBe(true);
+      }
+    }
+  });
+
   it('one parameter name, not three', async () => {
     // The convention already existed in the payment editors. Inventing
     // ?customer= and ?supplier= alongside it would mean three names for one
