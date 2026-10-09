@@ -2985,7 +2985,8 @@ export function createSupabaseAdapter(
               contact_name: contact?.name ?? inv.contact_id,
               current: 0, days_31_60: 0, days_61_90: 0, over_90: 0, total: 0,
               // Phase 12.24 — populated after the loop from 2400 GL.
-              advance_credit: 0, net_due: 0,
+              // Phase 94 — credit_note_credit likewise, from credit_notes.
+              advance_credit: 0, credit_note_credit: 0, net_due: 0,
             };
           }
           const b = bucketMap[inv.contact_id];
@@ -3027,16 +3028,96 @@ export function createSupabaseAdapter(
               contact_id: contactId,
               contact_name: contactId, // backfill below if we have it from another query
               current: 0, days_31_60: 0, days_61_90: 0, over_90: 0, total: 0,
-              advance_credit: 0, net_due: 0,
+              advance_credit: 0, credit_note_credit: 0, net_due: 0,
             };
           }
         }
 
-        // Finish populating advance_credit + net_due on every bucket.
+        // Phase 94 — a confirmed credit note reduces what the customer owes,
+        // but ONLY while it is still unsettled. The AR control account (1200)
+        // already nets this out: the note credits 1200 and a cash refund
+        // debits it straight back. This report derives from documents rather
+        // than from the GL, so without this block it disagreed with its own
+        // control account the moment a credit note existed — overstating the
+        // customer by the note's value.
+        const { data: cnRows, error: cnErr } = await client
+          .from('credit_notes')
+          .select('id, contact_id, total_amount')
+          .eq('company_id', company_id)
+          .eq('status', 'confirmed')
+          .lte('date', as_of_date);
+        assertNoError(cnErr, 'reports.getARAgingReport credit notes');
+
+        const cnIds = (cnRows ?? []).map(r => r.id);
+        // Settled two ways: refunded in cash (a payment that names the note
+        // as its source document) or applied to another document.
+        const refundByCn: Record<string, number> = {};
+        const appliedByCn: Record<string, number> = {};
+        if (cnIds.length) {
+          // `as any` per the local convention for phase90's source_doc_* columns
+          // (see payments.listRefundedDocIds above): the generated DB types in
+          // src/types predate that migration, so the typed builder rejects
+          // columns the database definitely has. Justified inline per
+          // AGENTS.md 9.1; the real fix is regenerating the types.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- stale generated types, justified above
+          const paymentsTbl = client.from('payments') as any;
+          const { data: refunds, error: refErr } = await paymentsTbl
+            .select('source_doc_id, amount')
+            .eq('company_id', company_id)
+            .eq('source_doc_type', 'credit_note')
+            .eq('status', 'confirmed')
+            .lte('date', as_of_date)
+            .in('source_doc_id', cnIds);
+          assertNoError(refErr, 'reports.getARAgingReport credit-note refunds');
+          for (const r of (refunds ?? []) as { source_doc_id: string | null; amount: number }[]) {
+            if (!r.source_doc_id) continue;
+            refundByCn[r.source_doc_id] = (refundByCn[r.source_doc_id] ?? 0) + Number(r.amount ?? 0);
+          }
+
+          const { data: cnAllocs, error: cnAllocErr } = await client
+            .from('payment_allocations')
+            .select('doc_id, amount_applied')
+            .eq('company_id', company_id)
+            .eq('doc_type', 'credit_note')
+            .in('doc_id', cnIds);
+          assertNoError(cnAllocErr, 'reports.getARAgingReport credit-note allocations');
+          for (const r of cnAllocs ?? []) {
+            appliedByCn[r.doc_id] = (appliedByCn[r.doc_id] ?? 0) + Number(r.amount_applied ?? 0);
+          }
+        }
+
+        const creditNoteByContact: Record<string, number> = {};
+        for (const cn of cnRows ?? []) {
+          if (!cn.contact_id) continue;
+          const outstanding =
+            Number(cn.total_amount ?? 0) - (refundByCn[cn.id] ?? 0) - (appliedByCn[cn.id] ?? 0);
+          if (outstanding <= 0.005) continue;
+          creditNoteByContact[cn.contact_id] =
+            (creditNoteByContact[cn.contact_id] ?? 0) + outstanding;
+        }
+
+        // A customer whose only position is a credit note would otherwise be
+        // missing from the report entirely, the same way an advance-only
+        // customer was before Phase 12.24.
+        for (const [contactId, credit] of Object.entries(creditNoteByContact)) {
+          if (Math.abs(credit) < 0.005) continue;
+          if (!bucketMap[contactId]) {
+            bucketMap[contactId] = {
+              contact_id: contactId,
+              contact_name: contactId, // backfilled below
+              current: 0, days_31_60: 0, days_61_90: 0, over_90: 0, total: 0,
+              advance_credit: 0, credit_note_credit: 0, net_due: 0,
+            };
+          }
+        }
+
+        // Finish populating advance_credit + credit_note_credit + net_due.
         for (const b of Object.values(bucketMap)) {
           const adv = advanceByContact[b.contact_id] ?? 0;
-          (b as ARAgingBucket).advance_credit = +adv.toFixed(2);
-          (b as ARAgingBucket).net_due        = +(b.total - adv).toFixed(2);
+          const cnc = creditNoteByContact[b.contact_id] ?? 0;
+          (b as ARAgingBucket).advance_credit     = +adv.toFixed(2);
+          (b as ARAgingBucket).credit_note_credit = +cnc.toFixed(2);
+          (b as ARAgingBucket).net_due            = +(b.total - adv - cnc).toFixed(2);
         }
 
         // For any new buckets created above without a contact_name, fetch

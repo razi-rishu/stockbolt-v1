@@ -992,7 +992,18 @@ export interface ARAgingBucket {
    * the customer has credit on file).
    */
   advance_credit: number;
-  /** total - advance_credit. Negative means we owe them. */
+  /**
+   * Phase 94 - the part of this customer's confirmed credit notes that is
+   * still owed to them: face value less anything refunded in cash and less
+   * anything already applied to another document. A refunded credit note
+   * contributes 0, because the refund debited 1200 straight back.
+   *
+   * Kept out of the aging buckets on purpose. A credit note is not an
+   * overdue receivable, so ageing it by 30/60/90 would be meaningless; it
+   * belongs in the net position instead.
+   */
+  credit_note_credit: number;
+  /** total - advance_credit - credit_note_credit. Negative means we owe them. */
   net_due: number;
 }
 

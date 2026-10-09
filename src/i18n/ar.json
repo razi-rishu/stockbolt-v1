@@ -791,6 +791,8 @@
     "tr_reopen_success_body": "تمت إعادة فتح الفترة الضريبية وفتحها."
   },
   "reports": {
+    "credit_note_credit": "إشعارات الدائن",
+    "credit_note_credit_hint": "إشعارات الدائن المستحقة لهذا العميل — القيمة الاسمية ناقصًا ما تم رده أو تطبيقه",
     "returns_analysis": "تحليل المرتجعات",
     "returns_sales_side": "مرتجعات المبيعات",
     "returns_purchase_side": "مرتجعات المشتريات",

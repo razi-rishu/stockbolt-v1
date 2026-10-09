@@ -780,6 +780,8 @@
     "tr_reopen_success_body": "The tax period has been reopened and unlocked."
   },
   "reports": {
+    "credit_note_credit": "Credit Notes",
+    "credit_note_credit_hint": "Credit notes still owed to this customer — face value less anything refunded or already applied",
     "returns_analysis": "Returns Analysis",
     "returns_sales_side": "Sales returns",
     "returns_purchase_side": "Purchase returns",

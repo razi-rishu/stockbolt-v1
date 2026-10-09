@@ -44,9 +44,10 @@ export default function ARAgingPage() {
     '>90': b.over_90.toFixed(2),
     Total: b.total.toFixed(2),
     Advance: b.advance_credit.toFixed(2),
+    'Credit Notes': b.credit_note_credit.toFixed(2),
     'Net Due': b.net_due.toFixed(2),
   }));
-  const exportHeaders = ['Customer', 'Current', '31-60', '61-90', '>90', 'Total', 'Advance', 'Net Due'];
+  const exportHeaders = ['Customer', 'Current', '31-60', '61-90', '>90', 'Total', 'Advance', 'Credit Notes', 'Net Due'];
 
   return (
     <div className="space-y-4">
@@ -89,9 +90,17 @@ export default function ARAgingPage() {
                 >
                   Advance
                 </th>
+                {/* Phase 94 — a credit note still owed to the customer. Not
+                    aged, because a credit note is not an overdue receivable. */}
                 <th
                   className="px-4 py-2.5 text-end font-medium"
-                  title="Outstanding minus advance — what the customer actually owes (negative = we owe them)"
+                  title={t('reports.credit_note_credit_hint')}
+                >
+                  {t('reports.credit_note_credit')}
+                </th>
+                <th
+                  className="px-4 py-2.5 text-end font-medium"
+                  title="Outstanding minus advance and credit notes — what the customer actually owes (negative = we owe them)"
                 >
                   Net Due
                 </th>
@@ -111,6 +120,9 @@ export default function ARAgingPage() {
                     <td className="px-4 py-2.5 text-end font-mono text-emerald-700">
                       {b.advance_credit > 0.005 ? fmt(b.advance_credit) : '—'}
                     </td>
+                    <td className="px-4 py-2.5 text-end font-mono text-emerald-700">
+                      {b.credit_note_credit > 0.005 ? fmt(b.credit_note_credit) : '—'}
+                    </td>
                     <td className={`px-4 py-2.5 text-end font-mono font-semibold ${netNegative ? 'text-emerald-700' : 'text-ink-primary'}`}>
                       {fmtSigned(b.net_due)}
                     </td>
@@ -126,6 +138,9 @@ export default function ARAgingPage() {
                 <td className="px-4 py-2.5 text-end font-mono">{fmt(ar.grand_total)}</td>
                 <td className="px-4 py-2.5 text-end font-mono text-emerald-700">
                   {fmt(ar.buckets.reduce((s, b) => s + b.advance_credit, 0))}
+                </td>
+                <td className="px-4 py-2.5 text-end font-mono text-emerald-700">
+                  {fmt(ar.buckets.reduce((s, b) => s + b.credit_note_credit, 0))}
                 </td>
                 <td className="px-4 py-2.5 text-end font-mono">
                   {fmtSigned(ar.buckets.reduce((s, b) => s + b.net_due, 0))}

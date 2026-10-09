@@ -6767,3 +6767,132 @@ describe('Advances — applying one from the document', () => {
       .toEqual(rule(contact));
   });
 });
+
+describe('phase94 — aging nets off a note that has already been settled', () => {
+  async function applied(): Promise<boolean> {
+    const [row] = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src
+         FROM pg_proc WHERE proname = 'verify_invariants'`,
+    );
+    return /Phase 94/.test(row?.src ?? '');
+  }
+
+  it('verify_invariants nets settlement off BOTH notes, not just one side', async () => {
+    if (!(await applied())) { console.warn('phase94 not applied yet — skipping source check.'); return; }
+    const [row] = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src
+         FROM pg_proc WHERE proname = 'verify_invariants'`,
+    );
+    const src = row.src;
+    // The bug was subtracting a note's FULL value with no regard for whether
+    // it had been settled. Both subtractions must now net off a cash refund
+    // AND an application, on both sides.
+    for (const kind of ['credit_note', 'debit_note']) {
+      expect(src, `${kind}: refunds netted off`).toMatch(
+        new RegExp(`source_doc_type\\s*=\\s*'${kind}'`));
+      expect(src, `${kind}: applications netted off`).toMatch(
+        new RegExp(`doc_type\\s*=\\s*'${kind}'`));
+    }
+    // The naive forms are what produced -131.15. They must be gone.
+    expect(src, 'no bare SUM of credit-note face value')
+      .not.toMatch(/SELECT\s+SUM\(cn\.total_amount\)\s*\n\s*FROM\s+credit_notes/);
+    expect(src, 'no bare SUM of debit-note face value')
+      .not.toMatch(/SELECT\s+SUM\(dn\.total_amount\)\s*\n\s*FROM\s+debit_notes/);
+    // An as-of date before the refund must still see the note outstanding.
+    expect(src, 'settlement is date-filtered').toMatch(/p\.date\s*<=\s*p_as_of_date/);
+  });
+
+  it('the CORRECT aging formula equals the control account, every company', async () => {
+    // Deliberately NOT gated on the migration: the test computes the right
+    // answer itself, so it is meaningful before phase94 lands and keeps
+    // working after. A tripwire that has never executed is unverified, and
+    // the phase92 pair taught us that the hard way.
+    const rows = await sql<{
+      company: string; ar_aging: number; ar_control: number; ar_diff: number;
+      ap_aging: number; ap_control: number; ap_diff: number;
+    }>(`
+      WITH co AS (SELECT id, name FROM companies),
+      inv AS (
+        SELECT i.company_id, SUM(i.total_amount - COALESCE((
+                 SELECT SUM(pa.amount_applied) FROM payment_allocations pa
+                  WHERE pa.doc_id = i.id AND pa.doc_type = 'invoice'), 0)) AS v
+        FROM invoices i WHERE i.status = 'confirmed' GROUP BY i.company_id),
+      cn AS (
+        SELECT c.company_id, SUM(
+                 c.total_amount
+                 - COALESCE((SELECT SUM(p.amount) FROM payments p
+                              WHERE p.source_doc_type = 'credit_note'
+                                AND p.source_doc_id = c.id AND p.status = 'confirmed'), 0)
+                 - COALESCE((SELECT SUM(pa.amount_applied) FROM payment_allocations pa
+                              WHERE pa.doc_type = 'credit_note' AND pa.doc_id = c.id), 0)
+               ) AS v
+        FROM credit_notes c WHERE c.status = 'confirmed' GROUP BY c.company_id),
+      bill AS (
+        SELECT b.company_id, SUM(b.total_amount - COALESCE((
+                 SELECT SUM(pa.amount_applied) FROM payment_allocations pa
+                  WHERE pa.doc_id = b.id AND pa.doc_type = 'vendor_bill'), 0)) AS v
+        FROM vendor_bills b WHERE b.status = 'confirmed' GROUP BY b.company_id),
+      dn AS (
+        SELECT d.company_id, SUM(
+                 d.total_amount
+                 - COALESCE((SELECT SUM(p.amount) FROM payments p
+                              WHERE p.source_doc_type = 'debit_note'
+                                AND p.source_doc_id = d.id AND p.status = 'confirmed'), 0)
+                 - COALESCE((SELECT SUM(pa.amount_applied) FROM payment_allocations pa
+                              WHERE pa.doc_type = 'debit_note' AND pa.doc_id = d.id), 0)
+               ) AS v
+        FROM debit_notes d WHERE d.status = 'confirmed' GROUP BY d.company_id),
+      ctl AS (
+        SELECT g.company_id,
+               SUM(CASE WHEN coa.code = '1200' THEN g.debit - g.credit ELSE 0 END) AS ar,
+               SUM(CASE WHEN coa.code = '2100' THEN g.credit - g.debit ELSE 0 END) AS ap
+        FROM gl_active g JOIN chart_of_accounts coa ON coa.id = g.account_id
+        WHERE coa.code IN ('1200','2100') GROUP BY g.company_id)
+      SELECT co.name AS company,
+             ROUND((COALESCE(inv.v,0) - COALESCE(cn.v,0))::numeric, 2)  AS ar_aging,
+             ROUND(COALESCE(ctl.ar,0)::numeric, 2)                      AS ar_control,
+             ROUND((COALESCE(inv.v,0) - COALESCE(cn.v,0) - COALESCE(ctl.ar,0))::numeric, 2) AS ar_diff,
+             ROUND((COALESCE(bill.v,0) - COALESCE(dn.v,0))::numeric, 2) AS ap_aging,
+             ROUND(COALESCE(ctl.ap,0)::numeric, 2)                      AS ap_control,
+             ROUND((COALESCE(bill.v,0) - COALESCE(dn.v,0) - COALESCE(ctl.ap,0))::numeric, 2) AS ap_diff
+      FROM co
+      LEFT JOIN inv  ON inv.company_id  = co.id
+      LEFT JOIN cn   ON cn.company_id   = co.id
+      LEFT JOIN bill ON bill.company_id = co.id
+      LEFT JOIN dn   ON dn.company_id   = co.id
+      LEFT JOIN ctl  ON ctl.company_id  = co.id`);
+
+    for (const r of rows) {
+      expect(Math.abs(Number(r.ar_diff)), `${r.company}: AR aging ${r.ar_aging} vs control ${r.ar_control}`)
+        .toBeLessThanOrEqual(0.01);
+      expect(Math.abs(Number(r.ap_diff)), `${r.company}: AP aging ${r.ap_aging} vs control ${r.ap_control}`)
+        .toBeLessThanOrEqual(0.01);
+    }
+  });
+
+  it('the report and the invariant define "outstanding note" the same way', async () => {
+    // This is the one worth having. The AR aging REPORT derives from
+    // documents; the invariant derives from documents and compares against
+    // the GL. If the two disagreed about what makes a credit note settled,
+    // System Health would pass while the report quietly overstated a
+    // customer — or the reverse, which is exactly the state we just fixed.
+    const { readFileSync } = require('node:fs') as typeof import('node:fs');
+    const adapter = readFileSync(resolve(process.cwd(), 'src/data/supabaseAdapter.ts'), 'utf8');
+    const start = adapter.indexOf('async getARAgingReport');
+    const report = adapter.slice(start, adapter.indexOf('async getSupplierStatement', start));
+    expect(start, 'getARAgingReport still exists').toBeGreaterThan(-1);
+
+    // Both components, in the report.
+    expect(report, "report nets off cash refunds").toMatch(/source_doc_type'?,?\s*'credit_note'|'source_doc_type', 'credit_note'/);
+    expect(report, 'report nets off applications').toMatch(/'doc_type', 'credit_note'/);
+    expect(report, 'report subtracts the note from net_due').toMatch(/credit_note_credit/);
+
+    if (!(await applied())) { console.warn('phase94 not applied yet — skipping the SQL half.'); return; }
+    const [row] = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src
+         FROM pg_proc WHERE proname = 'verify_invariants'`,
+    );
+    expect(row.src, 'invariant nets off cash refunds').toMatch(/source_doc_type\s*=\s*'credit_note'/);
+    expect(row.src, 'invariant nets off applications').toMatch(/doc_type\s*=\s*'credit_note'/);
+  });
+});
