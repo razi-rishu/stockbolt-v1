@@ -6569,3 +6569,48 @@ describe('Bank accounts — the name opens the ledger', () => {
       .toHaveLength(0);
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// You can search for the number the list is showing you
+//
+// The Phone column renders `phone ?? mobile`. The filter looked only at
+// `phone`, so a contact whose number lived in `mobile` displayed a number on
+// screen that no search would ever match — and the list answered "No
+// contacts yet", which reads as "this customer does not exist".
+//
+// The bug CLASS is the column and the filter disagreeing about which fields
+// hold a phone number, so that is what this checks.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Contacts — search covers what the list displays', () => {
+  const read = async (f: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(resolve(process.cwd(), f), 'utf8');
+  };
+
+  it('every field the Phone column can show is also searched', async () => {
+    const list = await read('src/modules/contacts/contact-list.tsx');
+    const matcher = await read('src/lib/contact-search.ts');
+
+    // Pull the fallback chain straight out of the column renderer, so this
+    // keeps working if someone adds a third fallback.
+    const col = list.match(/key: 'phone'[^\n]*render: \(r\) => ([^,]+),/);
+    expect(col, 'the Phone column renderer was found').not.toBeNull();
+    const shown = [...col![1].matchAll(/r\.(\w+)/g)].map(m => m[1]!);
+    expect(shown.length, 'the renderer names at least one field')
+      .toBeGreaterThan(0);
+
+    for (const f of shown) {
+      expect(matcher, `the matcher searches c.${f}, which the column can show`)
+        .toContain(`c.${f}`);
+    }
+  });
+
+  it('the list uses the shared, tested matcher', async () => {
+    const list = await read('src/modules/contacts/contact-list.tsx');
+    expect(list, 'no hand-rolled filter').toMatch(/contactMatches\(c, search\)/);
+    // A second inline copy is how the column and the filter drifted apart.
+    expect(list, 'and no private copy of the rule')
+      .not.toMatch(/\(c\.phone \?\? ''\)\.includes/);
+  });
+});

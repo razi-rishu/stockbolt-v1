@@ -13,6 +13,7 @@ import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Modal } from '@/ui/modal';
 import { Table, type Column } from '@/ui/table';
+import { contactMatches } from '@/lib/contact-search';
 import { Badge } from '@/ui/badge';
 import { Pagination, paginate } from '@/ui/pagination';
 import { PageHeader } from '@/ui/primitives';
@@ -202,12 +203,9 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
     onSuccess: () => qc.invalidateQueries({ queryKey: ['contacts', company_id, defaultType] }),
   });
 
-  const filtered = contacts.filter((c) =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    (c.name_ar ?? '').includes(search) ||
-    (c.email ?? '').toLowerCase().includes(search.toLowerCase()) ||
-    (c.phone ?? '').includes(search),
-  );
+  // The matching rule lives in src/lib/contact-search.ts so it can be
+  // tested without a database — this bug was invisible on screen.
+  const filtered = contacts.filter((c) => contactMatches(c, search));
   const pagedContacts = paginate(filtered, page, PAGE_SIZE);
 
   const typeBadge = (type: string) => {
