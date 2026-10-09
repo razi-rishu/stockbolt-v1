@@ -118,6 +118,23 @@ function assertNoError(error: { message: string } | null, context: string): void
       `${context}: Can't reach the server. Check your internet — or your Supabase project may be paused (open the Supabase dashboard and Resume it), then try again.`,
     );
   }
+  // A unique-constraint violation reaches the operator as
+  // 'duplicate key value violates unique constraint "products_company_id_sku_key"',
+  // which tells them nothing they can act on. The forms warn BEFORE saving,
+  // but a CSV import, two tabs, or a stale list all route around that, so
+  // the message is translated here - one chokepoint, every table.
+  const uniq = /duplicate key value violates unique constraint "([a-z0-9_]+)"/i.exec(msg);
+  if (uniq) {
+    const BY_CONSTRAINT: Record<string, string> = {
+      products_company_id_sku_key:          'A product with this SKU already exists. SKUs have to be unique - change it, or edit the existing product.',
+      brands_company_id_name_key:           'A brand with this name already exists.',
+      warehouses_company_id_code_key:       'A warehouse with this code already exists.',
+      chart_of_accounts_company_id_code_key: 'An account with this code already exists in the chart of accounts.',
+    };
+    throw new SupabaseDataError(
+      `${context}: ${BY_CONSTRAINT[uniq[1]!] ?? 'That value is already used by another record.'}`,
+    );
+  }
   throw new SupabaseDataError(`${context}: ${msg}`);
 }
 
@@ -840,6 +857,14 @@ export function createSupabaseAdapter(
 
     // ── Phase 2: Products ──────────────────────────────────────────────────
     products: {
+      async listIdentities(company_id): Promise<import('./adapter').ProductIdentityRow[]> {
+        const { data, error } = await client
+          .from('products')
+          .select('id, name, sku, oe_number, barcode')
+          .eq('company_id', company_id);
+        assertNoError(error, 'products.listIdentities');
+        return (data ?? []) as import('./adapter').ProductIdentityRow[];
+      },
       async list(company_id): Promise<ProductRow[]> {
         const { data, error } = await client.from('products').select('*').eq('company_id', company_id).order('name');
         assertNoError(error, 'products.list');
@@ -1097,6 +1122,16 @@ export function createSupabaseAdapter(
     })(),
 
     contacts: {
+      async listIdentities(company_id): Promise<import('./adapter').ContactIdentityRow[]> {
+        // Narrow projection, no type filter - a customer sharing a supplier's
+        // number is exactly the collision worth catching.
+        const { data, error } = await client
+          .from('contacts')
+          .select('id, name, phone, mobile, email, tax_id')
+          .eq('company_id', company_id);
+        assertNoError(error, 'contacts.listIdentities');
+        return (data ?? []) as import('./adapter').ContactIdentityRow[];
+      },
       async list(company_id, type = null): Promise<ContactRow[]> {
         let q = client.from('contacts').select('*').eq('company_id', company_id);
         if (type) q = q.eq('type', type);

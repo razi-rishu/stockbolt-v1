@@ -27,6 +27,8 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { DuplicateWarning } from '@/ui/duplicate-warning';
+import { findProductDuplicates } from '@/lib/duplicate-check';
 import { useCompanyCurrency, useCompanyCountry } from '@/hooks/use-company-currency';
 import { defaultTaxRate } from '@/lib/locale';
 import { TAX_TREATMENTS } from '@/lib/einvoice-metadata';
@@ -132,6 +134,18 @@ export function ProductWizard() {
   const { data: coa        = [] } = useQuery<CoaRow[]>(      { queryKey: ['coa',        company_id], queryFn: () => getAdapter().coa.list(company_id!),        enabled: !!company_id });
   const { data: suppliers  = [] } = useQuery<ContactRow[]>(  { queryKey: ['contacts',   company_id, 'supplier'], queryFn: () => getAdapter().contacts.list(company_id!, 'supplier'), enabled: !!company_id });
   const { data: warehouses = [] } = useQuery<WarehouseRow[]>({ queryKey: ['warehouses', company_id], queryFn: () => getAdapter().warehouses.list(company_id!), enabled: !!company_id });
+
+  // The quick-add path is where a duplicate is most likely to be born: you
+  // are mid-invoice, the part is not in the catalogue, you type it in. Same
+  // check as the full product form, same component.
+  const { data: productIdentities = [] } = useQuery({
+    queryKey: ['productIdentities', company_id],
+    queryFn:  () => getAdapter().products.listIdentities(company_id!),
+    enabled:  !!company_id,
+  });
+  const duplicateHits = findProductDuplicates(productIdentities, {
+    sku: form.sku, oe_number: form.oe_number, barcode: form.barcode,
+  });
 
   function set<K extends keyof WizardForm>(k: K, v: WizardForm[K]) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -405,6 +419,14 @@ export function ProductWizard() {
 
           {/* Step body */}
           <div style={{ flex: 1, padding: '24px 28px', overflowY: 'auto' }}>
+            {/* Shown on every step, not just the one with the SKU box: the
+                identifiers are entered on step 1 and 3, and a warning you
+                have already scrolled past is a warning you did not get. */}
+            {duplicateHits.length > 0 && (
+              <div style={{ marginBottom: '16px' }}>
+                <DuplicateWarning hits={duplicateHits} docType="product" />
+              </div>
+            )}
             {step === 1 && <Step1
               form={form} set={set}
               brands={brands} categories={categories} units={units}

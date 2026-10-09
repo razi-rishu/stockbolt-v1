@@ -1347,6 +1347,20 @@
     "error_supplier_required": "Supplier is required.",
     "error_amount_required": "Amount is required."
   },
+  "duplicates": {
+    "warning_title": "Already in use",
+    "warning_hint": "You can still save \u2014 this is a heads-up, not a rule. Check it is not the same record under a different name.",
+    "blocked_title": "This will be refused",
+    "blocked_hint": "A SKU has to be unique. Change it, or edit the existing product instead.",
+    "field": {
+      "phone": "This number is on",
+      "email": "This email is on",
+      "tax_id": "This TRN / tax number is on",
+      "sku": "This SKU belongs to",
+      "oe_number": "This OE number is also on",
+      "barcode": "This barcode is on"
+    }
+  },
   "banking": {
     "accounts_subtitle": "Manage cash and bank ledgers, opening balances, and account activity.",
     "add_account": "Add account",

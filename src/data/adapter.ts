@@ -435,6 +435,9 @@ export interface ContactSearchInput {
 }
 
 export interface ProductsAPI {
+  /** Every product's identifiers (sku / oe_number / barcode), for duplicate
+   *  detection while a product form is open. */
+  listIdentities(company_id: string): Promise<ProductIdentityRow[]>;
   list(company_id: string): Promise<ProductRow[]>;
   search(company_id: string, query: string): Promise<ProductRow[]>;
   /**
@@ -516,6 +519,13 @@ export interface ExchangeRatesAPI {
 }
 
 export interface ContactsAPI {
+  /**
+   * Every contact's identifiers, across BOTH customers and suppliers.
+   * Un-filtered by type on purpose: a customer sharing a supplier's mobile
+   * is exactly the collision worth knowing about, and a type-filtered list
+   * would never see it.
+   */
+  listIdentities(company_id: string): Promise<ContactIdentityRow[]>;
   list(company_id: string, type?: 'customer' | 'supplier' | 'both' | null): Promise<ContactRow[]>;
   getById(id: string): Promise<ContactRow | null>;
   create(row: ContactInsert): Promise<ContactRow>;
@@ -1535,6 +1545,21 @@ export interface BankAccountActivity {
   related_doc_id: string | null;
   /** The GL line's own description, used when there is no linked document. */
   description: string | null;
+}
+
+/**
+ * Narrow identifier projections used for duplicate detection. Deliberately
+ * only the fields that identify a record - fetching whole rows to compare a
+ * phone number would be wasteful, and the warning needs nothing else.
+ */
+export interface ContactIdentityRow {
+  id: string; name: string;
+  phone: string | null; mobile: string | null;
+  email: string | null; tax_id: string | null;
+}
+export interface ProductIdentityRow {
+  id: string; name: string;
+  sku: string | null; oe_number: string | null; barcode: string | null;
 }
 
 export interface BankAccountsAPI {

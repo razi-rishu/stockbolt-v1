@@ -137,6 +137,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       importVehicles: () => notImplemented('vehicleMakes.importVehicles'),
     },
     products: {
+      listIdentities: () => notImplemented('products.listIdentities'),
       list: () => notImplemented('products.list'),
       search: () => notImplemented('products.search'),
       smartSearch: () => notImplemented('products.smartSearch'),
@@ -158,6 +159,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       removePriceOverride: () => notImplemented('products.removePriceOverride'),
     },
     contacts: {
+      listIdentities: () => notImplemented('contacts.listIdentities'),
       list: () => notImplemented('contacts.list'),
       getById: () => notImplemented('contacts.getById'),
       create: () => notImplemented('contacts.create'),

@@ -6994,3 +6994,102 @@ describe('phase95 — Bank Accounts is a Banking page, not a Settings page', () 
     }
   });
 });
+
+describe('phase96 — duplicate identifiers warn before they are saved', () => {
+  const read = async (f: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(resolve(process.cwd(), f), 'utf8');
+  };
+
+  it('a NAME is never treated as an identifier', async () => {
+    // "Name comes same we can't give warning for names." Two customers can
+    // genuinely share a name, and a warning that fires constantly is one
+    // people learn to click past - taking the warnings that matter with it.
+    const lib = await read('src/lib/duplicate-check.ts');
+    const candidates = lib.slice(lib.indexOf('export interface ContactCandidate'));
+    const contactCandidate = candidates.slice(0, candidates.indexOf('}'));
+    expect(contactCandidate, 'ContactCandidate has no name field')
+      .not.toMatch(/\bname\s*\?:/);
+    const pc = lib.slice(lib.indexOf('export interface ProductCandidate'));
+    expect(pc.slice(0, pc.indexOf('}')), 'ProductCandidate has no name field')
+      .not.toMatch(/\bname\s*\?:/);
+  });
+
+  it('every surface that creates these records runs the check', async () => {
+    // Wiring one form and not the others is the obvious way for this to rot:
+    // the warning looks implemented, and the path people actually use is the
+    // one still letting duplicates through.
+    const surfaces: Array<[string, string]> = [
+      ['src/modules/contacts/contact-list.tsx',       'findContactDuplicates'],
+      ['src/modules/catalog/products/detail.tsx',     'findProductDuplicates'],
+      ['src/modules/catalog/products/_wizard.tsx',    'findProductDuplicates'],
+    ];
+    for (const [file, fn] of surfaces) {
+      const src = await read(file);
+      expect(src, `${file} computes duplicates`).toContain(fn);
+      expect(src, `${file} renders the warning`).toContain('<DuplicateWarning');
+    }
+  });
+
+  it('the contact lookup is NOT filtered by customer/supplier', async () => {
+    // A customer sharing a supplier's mobile is exactly the collision worth
+    // catching, and the list behind the modal is type-filtered, so reusing
+    // it would quietly miss half the duplicates.
+    const adapter = await read('src/data/supabaseAdapter.ts');
+    const start = adapter.indexOf('async listIdentities(company_id): Promise<import(\'./adapter\').ContactIdentityRow[]>');
+    expect(start, 'contacts.listIdentities exists').toBeGreaterThan(-1);
+    const body = adapter.slice(start, start + 600);
+    expect(body, 'selects both phone columns').toMatch(/phone, mobile/);
+    expect(body, 'no type filter').not.toMatch(/\.eq\('type'/);
+  });
+
+  it('a duplicate SKU is flagged as blocking, an OE number is not', async () => {
+    // The difference matters: the database REFUSES a duplicate SKU, so that
+    // warning is a preview of an error. Two brands making the same part
+    // share an OE number legitimately, so that one must stay advisory or
+    // people will stop believing it.
+    const lib = await read('src/lib/duplicate-check.ts');
+    expect(lib, 'sku is blocking').toMatch(/check\('sku',[^;]*true\)/s);
+    expect(lib, 'oe_number is advisory').toMatch(/check\('oe_number',[^;]*false\)/s);
+    expect(lib, 'barcode is advisory').toMatch(/check\('barcode',[^;]*false\)/s);
+  });
+
+  it('the unique constraints we translate actually exist', async () => {
+    // The readable message is keyed by constraint NAME. Rename or drop one
+    // and the mapping silently falls back to "that value is already used",
+    // which is true but useless. This fails instead.
+    const adapter = await read('src/data/supabaseAdapter.ts');
+    const named = [...adapter.matchAll(/^\s{6}([a-z0-9_]+_key):/gm)].map(m => m[1]!);
+    expect(named.length, 'the mapping names some constraints').toBeGreaterThan(0);
+    const live = await sql<{ conname: string }>(`
+      SELECT conname FROM pg_constraint
+      WHERE contype IN ('u','p') AND connamespace = 'public'::regnamespace`);
+    const liveNames = new Set(live.map(r => r.conname));
+    for (const n of named) {
+      expect(liveNames.has(n), `${n} still exists in the database`).toBe(true);
+    }
+  });
+
+  it('every warning string exists in BOTH languages', async () => {
+    const en = JSON.parse(await read('src/i18n/en.json')).duplicates;
+    const ar = JSON.parse(await read('src/i18n/ar.json')).duplicates;
+    expect(en, 'en.duplicates exists').toBeTruthy();
+    expect(ar, 'ar.duplicates exists').toBeTruthy();
+    expect(Object.keys(en).sort()).toEqual(Object.keys(ar).sort());
+    expect(Object.keys(en.field).sort()).toEqual(Object.keys(ar.field).sort());
+    // AGENTS.md 7.6 - Arabic never falls back to the English string.
+    for (const k of Object.keys(en.field)) {
+      expect(ar.field[k], `ar.duplicates.field.${k} is translated`).not.toBe(en.field[k]);
+    }
+    // Every field the matcher can report must have a label, or the warning
+    // renders a raw i18n key at the operator.
+    const lib = await read('src/lib/duplicate-check.ts');
+    const union = /export type DuplicateField =([\s\S]*?);/.exec(lib)?.[1] ?? '';
+    const fields = [...union.matchAll(/'([a-z_]+)'/g)].map(m => m[1]!);
+    expect(fields.length, 'parsed the DuplicateField union').toBeGreaterThan(3);
+    for (const f of fields) {
+      expect(en.field[f], `en label for ${f}`).toBeTruthy();
+      expect(ar.field[f], `ar label for ${f}`).toBeTruthy();
+    }
+  });
+});

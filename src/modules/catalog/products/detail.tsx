@@ -18,6 +18,8 @@ import type { ProductCompatibilityRow, ProductSupplierCodeRow, ContactRow, Vehic
 import { ProductStockTab } from './_stock-tab';
 import { ProductWizard } from './_wizard';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
+import { DuplicateWarning } from '@/ui/duplicate-warning';
+import { findProductDuplicates } from '@/lib/duplicate-check';
 import { FormErrorBanner } from '@/ui/form-error-banner';
 
 const schema = z.object({
@@ -130,8 +132,18 @@ export default function ProductDetailPage() {
   const { data: supplierCodes = [] } = useQuery<ProductSupplierCodeRow[]>({ queryKey: ['supplier_codes', id], queryFn: () => getAdapter().products.listSupplierCodes(id!), enabled: !isNew && !!id });
   const { data: images } = useQuery({ queryKey: ['product', id], queryFn: () => getAdapter().products.getById(id!), enabled: !isNew && !!id, select: (p) => p?.image_urls ?? [] });
 
+  // Duplicate detection across the catalogue. SKU is unique in the database
+  // (products_company_id_sku_key), so a SKU hit is a preview of a refusal
+  // rather than advice; OE number and barcode are advisory, because two
+  // brands making the same part legitimately share an OE number.
+  const { data: productIdentities = [] } = useQuery({
+    queryKey: ['productIdentities', company_id],
+    queryFn:  () => getAdapter().products.listIdentities(company_id!),
+    enabled:  !!company_id,
+  });
+
   const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('product-detail');
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
+  const { register, handleSubmit, reset, watch, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
     values: product ? {
       sku: product.sku, name: product.name, name_ar: product.name_ar ?? '',
@@ -148,6 +160,11 @@ export default function ProductDetailPage() {
       min_stock_level: Number(product.min_stock_level), requires_serial: product.requires_serial, is_active: product.is_active, barcode: product.barcode ?? '',
     } : { sku: '', name: '', name_ar: '', description: '', description_ar: '', oe_number: '', replacement_numbers: '', brand_id: null, category_id: null, unit_id: null, purchase_account_id: null, quality_tier: null, type: 'goods' as const, selling_price: 0, tax_category: 'standard', default_tax_treatment: '', hsn_code: '', min_stock_level: 0, requires_serial: false, is_active: true, barcode: '' },
   });
+  const duplicateHits = findProductDuplicates(
+    productIdentities,
+    { sku: watch('sku'), oe_number: watch('oe_number'), barcode: watch('barcode') },
+    isNew ? undefined : id,
+  );
 
   const saveMutation = useMutation({
     mutationFn: async (values: FormValues) => {
@@ -367,6 +384,9 @@ export default function ProductDetailPage() {
             <div style={S.card}>
               <div style={S.head}>Identifiers</div>
               <div style={S.body}>
+                {/* Identifier collisions only - never the product NAME. Two
+                    products really can both be called "Brake Pad Front". */}
+                <DuplicateWarning hits={duplicateHits} docType="product" />
                 <Input label={t('products.sku')} required error={errors.sku?.message} {...register('sku')} />
                 <Input label={t('products.barcode')} {...register('barcode')} />
                 <Input label={t('products.oe_number')} {...register('oe_number')} />

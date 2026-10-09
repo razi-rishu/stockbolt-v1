@@ -24,6 +24,8 @@ import ImportExportButton from '@/modules/settings/import-export/ImportExportBut
 import type { ContactRow } from '@/data/adapter';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
 import { FormErrorBanner } from '@/ui/form-error-banner';
+import { DuplicateWarning } from '@/ui/duplicate-warning';
+import { findContactDuplicates } from '@/lib/duplicate-check';
 
 const PAGE_SIZE = 50;
 
@@ -101,11 +103,32 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
 
   const defaultCurrency = company?.currency ?? 'AED';
 
+  // Duplicate detection. Fetched only while the form is open, and across
+  // EVERY contact rather than the type-filtered list behind the modal - a
+  // customer sharing a supplier's mobile is exactly the collision worth
+  // catching, and the filtered list would never see it.
+  const { data: identities = [] } = useQuery({
+    queryKey: ['contactIdentities', company_id],
+    queryFn:  () => getAdapter().contacts.listIdentities(company_id!),
+    enabled:  !!company_id && open,
+  });
+
   const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('contact-list');
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
     defaultValues: { name: '', name_ar: '', type: defaultType, email: '', phone: '', mobile: '', currency: defaultCurrency, tax_id: '', buyer_type: 'registered', place_of_supply_code: '', pan: '', tds_section_code: '', tds_deductee_type: 'other', lower_deduction_rate: '', address_street: '', address_city: '', address_country: '', country_code: '', region_id: '', contact_person_name: '', contact_person_phone: '', credit_limit: 0, payment_terms_days: 0, payable_account_code: '2100', notes: '' },
   });
+  // Watched so the warning appears as the number is typed, not only on save.
+  // Identifier fields only: the name is deliberately absent.
+  const watchedPhone  = watch('phone');
+  const watchedMobile = watch('mobile');
+  const watchedEmail  = watch('email');
+  const watchedTaxId  = watch('tax_id');
+  const duplicateHits = findContactDuplicates(
+    identities,
+    { phone: watchedPhone, mobile: watchedMobile, email: watchedEmail, tax_id: watchedTaxId },
+    editing?.id,
+  );
   const watchedType = watch('type');
 
   // Phase 16 — Country → Region dependent dropdowns.
@@ -308,6 +331,9 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? t('contacts.edit') : `${t('common.add')} ${t(singularKey)}`} width="xl">
         <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v as FormValues); }, onInvalid)} className="flex flex-col gap-4">
           <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
+          {/* Identifiers only - never the name. Two customers really can
+              both be called Mohammed Ali. */}
+          <DuplicateWarning hits={duplicateHits} docType={defaultType} />
           <div className="grid grid-cols-2 gap-4">
             <Input label={t('contacts.name')} required error={errors.name?.message} {...register('name')} />
             <Input label={t('contacts.name_ar')} dir="rtl" {...register('name_ar')} />
