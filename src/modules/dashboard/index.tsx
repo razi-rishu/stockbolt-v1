@@ -105,22 +105,27 @@ function KpiTile({
   const pal = tonePalette[tone];
   const inner = (
     <div
-      style={{ ...cardStyle, padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px', height: '100%' }}
+      className="p-3 sm:p-4"
+      style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: '10px', height: '100%' }}
       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = theme.shadowMd; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = theme.shadowSm; }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <div style={{
-          height: '40px', width: '40px', flexShrink: 0,
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          borderRadius: '12px', background: pal.bg, color: pal.fg,
-        }}>
+        <div
+          className="h-8 w-8 sm:h-10 sm:w-10"
+          style={{
+            flexShrink: 0,
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            borderRadius: '12px', background: pal.bg, color: pal.fg,
+          }}>
           {icon}
         </div>
         <div style={{ fontSize: '12px', fontWeight: 600, color: theme.inkMuted, lineHeight: 1.3 }}>{label}</div>
       </div>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: '19px', fontWeight: 800, color: theme.ink, letterSpacing: '-.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+        <div
+          className="text-[17px] sm:text-[19px]"
+          style={{ fontWeight: 800, color: theme.ink, letterSpacing: '-.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
         <div style={{ marginTop: '2px', fontSize: '12px', color: theme.inkFaint, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>
       </div>
       <div>
@@ -476,10 +481,11 @@ export default function DashboardPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '96px' }}>
       {/* ── Hero band — greeting + quick actions ───────────────────────── */}
-      <div style={{
+      <div
+        className="px-4 py-5 sm:px-7 sm:py-[26px]"
+        style={{
         background: 'linear-gradient(135deg, #2e1065 0%, #5b21b6 55%, #7c3aed 100%)',
         borderRadius: '16px',
-        padding: '26px 28px',
         color: '#fff',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         gap: '16px', flexWrap: 'wrap',
@@ -498,7 +504,7 @@ export default function DashboardPage() {
             </div>
           )}
           <div style={{ minWidth: 0 }}>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, letterSpacing: '-.01em' }}>
+            <h1 className="text-[19px] sm:text-[22px]" style={{ margin: 0, fontWeight: 800, letterSpacing: '-.01em' }}>
               {greetName || 'StockBolt'}
             </h1>
             <p style={{ margin: '5px 0 0', fontSize: '12.5px', color: 'rgba(255,255,255,.78)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -548,12 +554,12 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* ── 6 KPI tiles (3×2 on desktop, horizontal compact layout) ────── */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
-        gap: '14px',
-      }}>
+      {/* ── 6 KPI tiles ───────────────────────────────────────────────────
+           auto-fit with a 230px floor meant one card per row on a phone:
+           six full-width tiles, and the trend chart pushed off the bottom of
+           the screen. Explicit breakpoints instead - 2 up on a phone, 3 on a
+           tablet, all 6 across on a wide screen. */}
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3.5 xl:grid-cols-6">
         <KpiTile label={`${periodWord} Sales`}     value={formatCurrency(ps.sales, currency)}     sub="Revenue (excl. VAT)" delta={dSales}     icon={<TrendingUpIcon />} tone="emerald" href="/sales/invoices" />
         <KpiTile label={`${periodWord} Purchases`} value={formatCurrency(ps.purchases, currency)} sub="Bills (excl. VAT)"   delta={dPurchases} icon={<CartIcon />}       tone="violet"  href="/purchasing/bills" />
         <KpiTile label="Inventory Value"  value={formatCurrency(data.inventory_value, currency)}         sub="Asset Value"         delta={dInventory} icon={<WalletIcon />}     tone="slate"   href="/reports/stock-valuation" />

@@ -7243,3 +7243,47 @@ describe('phase98 — one compact date-range filter, everywhere', () => {
     expect(uses, 'used by all-time, the presets and custom').toBeGreaterThanOrEqual(3);
   });
 });
+
+describe('phase99 — All time is unbounded at both ends; the dashboard fits a phone', () => {
+  const read = async (f: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(resolve(process.cwd(), f), 'utf8');
+  };
+
+  it('All time does not secretly stop at today', async () => {
+    // It used to. A post-dated invoice - ordinary in trade - was excluded
+    // from a total labelled "all time". Nothing errored; the figure was
+    // just quietly short, which is the worst way for a number to be wrong.
+    const src = await read('src/data/supabaseAdapter.ts');
+    const start = src.indexOf('async getOwnerDashboard');
+    const body = src.slice(start, start + 20000);
+    expect(body, 'all time is recognised as both ends empty')
+      .toMatch(/const isAllTime = !!range && range\.from === '' && range\.to === ''/);
+    expect(body, 'the fetch ceiling opens up for it').toMatch(/ALL_TIME_CEILING/);
+    expect(body, 'and so does the summed window').toMatch(/isAllTime[\s\S]{0,120}lastDate/);
+  });
+
+  it('the KPI row is laid out for a phone, not just a desktop', async () => {
+    // auto-fit with a 230px floor collapsed to ONE card per row on a phone:
+    // six full-width tiles, and the trend chart pushed off the screen.
+    const src = await read('src/modules/dashboard/index.tsx');
+    expect(src, 'no 230px floor any more').not.toMatch(/minmax\(230px/);
+    expect(src, 'two up on a phone').toMatch(/grid-cols-2/);
+    expect(src, 'three on a tablet').toMatch(/sm:grid-cols-3/);
+    expect(src, 'six across when there is room').toMatch(/xl:grid-cols-6/);
+  });
+
+  it('the breakpoints survive into the built CSS', async () => {
+    // Tailwind only emits what it can see. A class written as a computed
+    // string, or scanned out of a file the config does not cover, silently
+    // does nothing - the layout just stays at its base size for ever.
+    const { readdirSync, readFileSync, existsSync } = await import('node:fs');
+    const dir = resolve(process.cwd(), 'dist/assets');
+    if (!existsSync(dir)) { console.warn('no dist/ — run npm run build to check the CSS.'); return; }
+    const css = readdirSync(dir).filter(f => f.endsWith('.css'))
+      .map(f => readFileSync(`${dir}/${f}`, 'utf8')).join('');
+    expect(css, 'the sm breakpoint exists').toContain('@media (min-width: 640px)');
+    expect(css, 'the xl breakpoint exists').toContain('@media (min-width: 1280px)');
+    expect(css, 'six-column rule was generated').toContain('grid-cols-6');
+  });
+});

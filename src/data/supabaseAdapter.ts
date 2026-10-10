@@ -4580,10 +4580,19 @@ export function createSupabaseAdapter(
         // follow it or the total silently under-reports: the rows are summed
         // client-side, so a row that was never fetched is simply missing from
         // the answer, with nothing to show that it is.
-        const ALL_TIME_FLOOR = '1900-01-01';
+        const ALL_TIME_FLOOR   = '1900-01-01';
+        const ALL_TIME_CEILING = '9999-12-31';
+        // All time is BOTH ends unbounded. The picker sends '' for each.
+        const isAllTime = !!range && range.from === '' && range.to === '';
         const wantFrom = range ? (range.from || ALL_TIME_FLOOR) : prevYearStart;
         const flowFrom = wantFrom < prevYearStart ? wantFrom : prevYearStart;
-        const flowTo   = range && range.to > today ? range.to : today;
+        // Phase 99 - the ceiling used to be today even for All time, so a
+        // post-dated invoice (ordinary in trade) was excluded from a total
+        // labelled "all time". Nothing errors; the figure is just quietly
+        // short, which is the worst way for a number to be wrong.
+        const flowTo = isAllTime        ? ALL_TIME_CEILING
+                     : range && range.to > today ? range.to
+                     : today;
 
         // One paged fetch per document type covers every KPI period AND all
         // three trend charts (7-day, daily-this-month, monthly-this-year).
@@ -4737,7 +4746,12 @@ export function createSupabaseAdapter(
         const selFrom = range
           ? (range.from || allDates[0] || today)
           : today;
-        const selTo = range ? (range.to || today) : today;
+        // Same at the top end: All time runs to the last document there is,
+        // which may be later than today.
+        const lastDate = allDates[allDates.length - 1];
+        const selTo = isAllTime
+          ? (lastDate && lastDate > today ? lastDate : today)
+          : (range ? (range.to || today) : today);
 
         // The comparison window is the SAME LENGTH, immediately before. That
         // is the only comparison that means anything for an arbitrary range -
