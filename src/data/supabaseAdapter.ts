@@ -4548,7 +4548,7 @@ export function createSupabaseAdapter(
         return data as import('./adapter').DashboardCards;
       },
 
-      async getOwnerDashboard(company_id): Promise<OwnerDashboard> {
+      async getOwnerDashboard(company_id, range): Promise<OwnerDashboard> {
         // Date helpers
         const todayDate = new Date();
         const today = todayDate.toISOString().slice(0, 10);
@@ -4575,6 +4575,16 @@ export function createSupabaseAdapter(
         const prevMonthStart    = `${prevMonthY}-${pad2(prevMonthM)}-01`;
         const prevMonthSameDay  = clampDay(prevMonthY, prevMonthM, curD);
 
+        // Phase 97 - the dropdown can ask for a window older than last
+        // January, and All time asks for everything. The fetch floor has to
+        // follow it or the total silently under-reports: the rows are summed
+        // client-side, so a row that was never fetched is simply missing from
+        // the answer, with nothing to show that it is.
+        const ALL_TIME_FLOOR = '1900-01-01';
+        const wantFrom = range ? (range.from || ALL_TIME_FLOOR) : prevYearStart;
+        const flowFrom = wantFrom < prevYearStart ? wantFrom : prevYearStart;
+        const flowTo   = range && range.to > today ? range.to : today;
+
         // One paged fetch per document type covers every KPI period AND all
         // three trend charts (7-day, daily-this-month, monthly-this-year).
         // Amounts are net of VAT (total − tax) so "Revenue (excl. VAT)" is true.
@@ -4592,8 +4602,8 @@ export function createSupabaseAdapter(
               .select(cols)
               .eq('company_id', company_id)
               .eq('status', 'confirmed')
-              .gte('date', prevYearStart)
-              .lte('date', today)
+              .gte('date', flowFrom)
+              .lte('date', flowTo)
               .order('date', { ascending: true })
               .range(i * page, (i + 1) * page - 1);
             if (error && /round_off_amount/i.test(error.message ?? '')) {
@@ -4603,8 +4613,8 @@ export function createSupabaseAdapter(
                 .select(cols)
                 .eq('company_id', company_id)
                 .eq('status', 'confirmed')
-                .gte('date', prevYearStart)
-                .lte('date', today)
+                .gte('date', flowFrom)
+                .lte('date', flowTo)
                 .order('date', { ascending: true })
                 .range(i * page, (i + 1) * page - 1));
             }
@@ -4720,6 +4730,64 @@ export function createSupabaseAdapter(
           },
         };
 
+        // ── Phase 97 - the range the dropdown resolved to ─────────────────
+        // Bounds: an empty `from` means All time, so fall back to the earliest
+        // row we actually hold rather than inventing a date.
+        const allDates = [...flowInvs, ...flowBills].map(r => r.date).sort();
+        const selFrom = range
+          ? (range.from || allDates[0] || today)
+          : today;
+        const selTo = range ? (range.to || today) : today;
+
+        // The comparison window is the SAME LENGTH, immediately before. That
+        // is the only comparison that means anything for an arbitrary range -
+        // last month vs the month before it, a custom fortnight vs the
+        // fortnight before it.
+        const dayMs = 86_400_000;
+        const spanDays = Math.max(
+          0,
+          Math.round((Date.parse(selTo) - Date.parse(selFrom)) / dayMs),
+        );
+        const shift = (iso: string, days: number) =>
+          new Date(Date.parse(iso) + days * dayMs).toISOString().slice(0, 10);
+        const prevTo   = shift(selFrom, -1);
+        const prevFrom = shift(prevTo, -spanDays);
+        // All time has nothing before it, so there is no honest delta to show.
+        const hasPrev = !(range && range.from === '');
+
+        const selectedStats = {
+          sales:          sumRange(flowInvs,  selFrom, selTo),
+          sales_prev:     hasPrev ? sumRange(flowInvs,  prevFrom, prevTo) : 0,
+          purchases:      sumRange(flowBills, selFrom, selTo),
+          purchases_prev: hasPrev ? sumRange(flowBills, prevFrom, prevTo) : 0,
+        };
+
+        // Trend buckets sized to the span: days for a short window, months
+        // for a long one. A 2-year range bucketed daily is 730 unreadable
+        // bars; a one-week range bucketed monthly is a single bar.
+        const bucketMonthly = spanDays > 62;
+        const trendMode: 'week' | 'month' | 'year' | 'range' =
+          spanDays <= 8      ? 'week'
+          : !bucketMonthly   ? 'month'
+          : spanDays <= 370  ? 'year'
+          :                    'range';
+        const buckets = new Map<string, { sales: number; purchases: number }>();
+        const bucketKey = (d: string) => bucketMonthly ? d.slice(0, 7) + '-01' : d;
+        const addTo = (rows: FlowRow[], field: 'sales' | 'purchases') => {
+          for (const r of rows) {
+            if (r.date < selFrom || r.date > selTo) continue;
+            const k = bucketKey(r.date);
+            const cur = buckets.get(k) ?? { sales: 0, purchases: 0 };
+            cur[field] += net(r);
+            buckets.set(k, cur);
+          }
+        };
+        addTo(flowInvs, 'sales');
+        addTo(flowBills, 'purchases');
+        const trendSelected = [...buckets.entries()]
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([date, v]) => ({ date, sales: v.sales, purchases: v.purchases }));
+
         // Top products by revenue this month
         const prodRevenue: Record<string, { name: string; qty: number; rev: number }> = {};
         for (const r of (topProds ?? []) as unknown as { product_id: string | null; quantity: number; unit_price: number; discount_percent: number; products: { name: string } | null }[]) {
@@ -4834,7 +4902,16 @@ export function createSupabaseAdapter(
           today_sales_amount_prev: yestAmount,
           today_purchases_amount: todayPurchases,
           today_purchases_amount_prev: yestPurchases,
-          period_stats: periodStats,
+          period_stats: { ...periodStats, selected: selectedStats },
+          selected_meta: {
+            from: range ? range.from : today,
+            to: selTo,
+            prev_from: prevFrom,
+            prev_to: prevTo,
+            has_prev: hasPrev,
+          },
+          trend_selected: trendSelected,
+          trend_selected_mode: trendMode,
           inventory_value: Math.max(0, invNow),
           inventory_value_prev: Math.max(0, invPrev),
           sku_count: skuCountNow ?? 0,

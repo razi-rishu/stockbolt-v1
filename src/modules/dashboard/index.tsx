@@ -21,6 +21,8 @@ import { useEffect, useState, useRef, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { PeriodPicker } from '@/ui/period-picker';
+import { usePeriodPicker, PERIOD_PRESETS } from '@/hooks/use-period-picker';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
@@ -306,7 +308,7 @@ function HeroMoreMenu() {
 }
 
 // ── Sales Trend chart ───────────────────────────────────────────────────────
-type TrendMode = 'week' | 'month' | 'year';
+type TrendMode = 'week' | 'month' | 'year' | 'range';
 
 function SalesTrendChart({ data, mode = 'week' }: { data: { date: string; sales: number; purchases: number }[]; mode?: TrendMode }) {
   const dayLabels   = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -315,14 +317,16 @@ function SalesTrendChart({ data, mode = 'week' }: { data: { date: string; sales:
     ...d,
     label: mode === 'week'  ? dayLabels[new Date(d.date).getDay()]
          : mode === 'month' ? String(Number(d.date.slice(8, 10)))          // day of month
-         :                    monthLabels[Number(d.date.slice(5, 7)) - 1], // month of year
+         : mode === 'year'  ? monthLabels[Number(d.date.slice(5, 7)) - 1]  // month of year
+         // A range spanning more than a year repeats every month label, so
+         // the year has to be on the axis or Jan 2025 and Jan 2026 look like
+         // the same bar.
+         :                    `${monthLabels[Number(d.date.slice(5, 7)) - 1]} ${d.date.slice(2, 4)}`,
   }));
   const hasData = data.some((d) => d.sales > 0 || d.purchases > 0);
 
   if (!hasData) {
-    const emptyMsg = mode === 'week'  ? 'No transactions in the last 7 days.'
-                   : mode === 'month' ? 'No transactions this month yet.'
-                   :                    'No transactions this year yet.';
+    const emptyMsg = 'No transactions in this period.';
     return <p style={{ padding: '40px 0', textAlign: 'center', fontSize: theme.fontBase, color: theme.inkFaint }}>{emptyMsg}</p>;
   }
 
@@ -357,31 +361,37 @@ function SalesTrendChart({ data, mode = 'week' }: { data: { date: string; sales:
   );
 }
 
-// ── Phase 40 — Today / This Month / This Year KPI period toggle ─────────────
-type KpiPeriod = 'today' | 'month' | 'year';
+// ── Phase 97 — the KPI period is the SHARED picker ──────────────────────────
+// Phase 40 shipped three pinned buttons (Today / This Month / This Year).
+// Meanwhile every one of the 30 reports grew a dropdown with ten ranges,
+// including All time and a custom range. Two controls for one idea, and the
+// dashboard had the weaker one. This is the reports' picker, not a new one.
 const KPI_PERIOD_KEY = 'stockbolt.dashboard.period';
 
-function PeriodToggle({ value, onChange }: { value: KpiPeriod; onChange: (p: KpiPeriod) => void }) {
-  const opts: { key: KpiPeriod; label: string }[] = [
-    { key: 'today', label: 'Today' },
-    { key: 'month', label: 'This Month' },
-    { key: 'year',  label: 'This Year' },
-  ];
-  return (
-    <div style={{ display: 'inline-flex', gap: '6px' }}>
-      {opts.map(o => (
-        <button key={o.key} onClick={() => onChange(o.key)} style={{
-          padding: '7px 16px', borderRadius: '999px', cursor: 'pointer',
-          fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap',
-          background: value === o.key ? '#fff' : 'transparent',
-          color: value === o.key ? '#6d28d9' : theme.inkMuted,
-          border: value === o.key ? `1px solid ${theme.border}` : '1px solid transparent',
-          boxShadow: value === o.key ? '0 1px 3px rgba(15,23,42,.08)' : 'none',
-        }}>{o.label}</button>
-      ))}
-    </div>
-  );
+// The KPI cards say "This Month Sales"; the label has to track whatever the
+// dropdown resolved to, or the number and its caption disagree.
+const PERIOD_LABELS: Record<string, string> = {
+  ...Object.fromEntries(PERIOD_PRESETS.map((x: { key: string; label: string }) => [x.key, x.label])),
+  all_time: 'All time',
+  custom:   'Selected range',
+};
+
+/**
+ * Phase 40 stored 'today' | 'month' | 'year'. The shared hook stores a JSON
+ * blob keyed by different preset names, so an operator who had picked This
+ * Year would silently be reset. Translate the old value once, on read.
+ */
+function migrateLegacyPeriod(): void {
+  try {
+    const raw = localStorage.getItem(KPI_PERIOD_KEY);
+    if (!raw || raw.startsWith('{')) return;   // absent, or already migrated
+    const preset = raw === 'month' ? 'this_month'
+                 : raw === 'year'  ? 'this_year'
+                 : 'today';
+    localStorage.setItem(KPI_PERIOD_KEY, JSON.stringify({ preset, from: '', to: '' }));
+  } catch { /* private mode */ }
 }
+migrateLegacyPeriod();
 
 // ── Main component ──────────────────────────────────────────────────────────
 export default function DashboardPage() {
@@ -403,24 +413,22 @@ export default function DashboardPage() {
   const [data, setData] = useState<OwnerDashboard | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Phase 40 — KPI period (Today / This Month / This Year), remembered per device.
-  const [period, setPeriodState] = useState<KpiPeriod>(() => {
-    const saved = localStorage.getItem(KPI_PERIOD_KEY);
-    return saved === 'month' || saved === 'year' ? saved : 'today';
-  });
-  const setPeriod = (p: KpiPeriod) => {
-    setPeriodState(p);
-    try { localStorage.setItem(KPI_PERIOD_KEY, p); } catch { /* private mode */ }
-  };
+  // Phase 97 — the shared period picker, remembered per device by the hook.
+  const { preset, from, to, setPreset, setCustomRange } =
+    usePeriodPicker(KPI_PERIOD_KEY, 'today');
 
+  // Refetch whenever the window moves: the totals are summed from rows the
+  // adapter fetches, so a wider range needs a wider fetch - it cannot be
+  // narrowed down from what is already in memory.
   useEffect(() => {
     if (!company_id) return;
-    adapter.reports.getOwnerDashboard(company_id)
+    setLoading(true);
+    adapter.reports.getOwnerDashboard(company_id, { from, to })
       .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [company_id]);
+  }, [company_id, from, to]);
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '96px 0' }}>
@@ -441,22 +449,25 @@ export default function DashboardPage() {
 
   // Phase 40 — flow KPIs follow the selected period (fall back to the legacy
   // today fields if period_stats is missing, e.g. a stale cached payload).
-  const ps = data.period_stats?.[period] ?? {
+  // Falls back to the legacy today fields only if a cached payload predates
+  // Phase 97 and has no `selected` block.
+  const ps = data.period_stats?.selected ?? data.period_stats?.today ?? {
     sales: data.today_sales_amount, sales_prev: data.today_sales_amount_prev,
     purchases: data.today_purchases_amount, purchases_prev: data.today_purchases_amount_prev,
   };
-  const periodWord   = period === 'today' ? 'Today' : period === 'month' ? 'This Month' : 'This Year';
-  const monthTitle   = new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-  const trendTitle   = period === 'today' ? 'Sales Trend — last 7 days'
-                     : period === 'month' ? `Sales Trend — ${monthTitle}`
-                     :                      `Sales Trend — ${new Date().getFullYear()}`;
-  const trendData    = period === 'today' ? data.trend_7d
-                     : period === 'month' ? (data.trend_month ?? data.trend_7d)
-                     :                      (data.trend_year ?? data.trend_7d);
+  const periodWord   = PERIOD_LABELS[preset] ?? 'Selected';
+  const trendTitle   = `Sales Trend — ${periodWord}`;
+  const trendData    = data.trend_selected ?? data.trend_7d;
+  const trendMode    = data.trend_selected_mode ?? 'week';
+  // All time has no earlier period, so there is no honest delta to draw.
+  const showDelta    = data.selected_meta?.has_prev ?? true;
 
   // Pre-compute deltas
-  const dSales      = deltaPct(ps.sales,     ps.sales_prev);
-  const dPurchases  = deltaPct(ps.purchases, ps.purchases_prev);
+  // All time has no earlier period to compare against. Passing a delta
+  // there would render "-100%" off a prev of 0, which is not a fall in
+  // sales - it is the absence of a question.
+  const dSales      = showDelta ? deltaPct(ps.sales,     ps.sales_prev)     : null;
+  const dPurchases  = showDelta ? deltaPct(ps.purchases, ps.purchases_prev) : null;
   const dInventory  = deltaPct(data.inventory_value,        data.inventory_value_prev);
   const dSku        = deltaPct(data.sku_count,              data.sku_count_prev);
   const dAR         = deltaPct(data.outstanding_ar,         data.outstanding_ar_prev);
@@ -527,7 +538,14 @@ export default function DashboardPage() {
 
       {/* ── Phase 40 — KPI period toggle (drives Sales/Purchases + trend) ── */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '-12px' }}>
-        <PeriodToggle value={period} onChange={setPeriod} />
+        <PeriodPicker
+          preset={preset}
+          from={from}
+          to={to}
+          onPresetChange={setPreset}
+          onCustomRange={setCustomRange}
+          allowAllTime
+        />
       </div>
 
       {/* ── 6 KPI tiles (3×2 on desktop, horizontal compact layout) ────── */}
@@ -574,7 +592,7 @@ export default function DashboardPage() {
             <span><span style={{ color: '#10b981' }}>◆</span> Purchases ({currency})</span>
           </div>
 
-          <SalesTrendChart data={trendData} mode={period === 'today' ? 'week' : period} />
+          <SalesTrendChart data={trendData} mode={trendMode} />
         </div>
 
         {/* Recent Inventory (1/3) */}

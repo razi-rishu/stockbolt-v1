@@ -7093,3 +7093,82 @@ describe('phase96 — duplicate identifiers warn before they are saved', () => {
     }
   });
 });
+
+describe('phase97 — the dashboard period is the shared picker', () => {
+  const read = async (f: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(resolve(process.cwd(), f), 'utf8');
+  };
+
+  it('there is ONE period control, not two', async () => {
+    // Phase 40 pinned three buttons on the dashboard while the 30 reports
+    // grew a ten-range dropdown. Two controls for one idea, and the
+    // dashboard had the weaker one.
+    const src = await read('src/modules/dashboard/index.tsx');
+    expect(src, 'uses the shared picker').toMatch(/<PeriodPicker/);
+    expect(src, 'and the shared hook').toMatch(/usePeriodPicker\(/);
+    expect(src, 'the private toggle is gone').not.toMatch(/function PeriodToggle/);
+    expect(src, 'All time is offered').toMatch(/allowAllTime/);
+  });
+
+  it('the flow fetch floor FOLLOWS the requested range', async () => {
+    // The silent one. Totals are summed from rows the adapter fetched, so a
+    // row outside the fetch window is not an error - it is simply absent
+    // from the total, and the number looks perfectly plausible. Pin the
+    // range-aware bounds in place.
+    const src = await read('src/data/supabaseAdapter.ts');
+    const start = src.indexOf('async getOwnerDashboard');
+    expect(start, 'getOwnerDashboard exists').toBeGreaterThan(-1);
+    const body = src.slice(start, start + 20000);
+    expect(body, 'computes a range-aware floor').toMatch(/const flowFrom =/);
+    expect(body, 'and an all-time floor').toMatch(/ALL_TIME_FLOOR/);
+    // The fetch must not be pinned to last January any more.
+    expect(body, 'fetch is not hard-bounded to prevYearStart')
+      .not.toMatch(/\.gte\('date', prevYearStart\)/);
+    expect(body, 'fetch uses the computed bounds').toMatch(/\.gte\('date', flowFrom\)/);
+  });
+
+  it('All time shows no delta, because there is nothing before it', async () => {
+    // prev would be 0, and deltaPct(x, 0) renders -100% - which reads as a
+    // collapse in sales rather than the absence of a comparison.
+    const adapter = await read('src/data/supabaseAdapter.ts');
+    expect(adapter, 'adapter reports whether a comparison exists')
+      .toMatch(/has_prev: hasPrev/);
+    expect(adapter, 'and all-time has none')
+      .toMatch(/const hasPrev = !\(range && range\.from === ''\)/);
+    const page = await read('src/modules/dashboard/index.tsx');
+    expect(page, 'the page honours it').toMatch(/showDelta \? deltaPct/);
+  });
+
+  it('an existing saved preference is migrated, not reset', async () => {
+    // Phase 40 stored 'today' | 'month' | 'year'; the shared hook stores a
+    // JSON blob with different preset names. Without a translation step an
+    // operator who had chosen This Year silently gets Today.
+    const src = await read('src/modules/dashboard/index.tsx');
+    expect(src, 'migration runs').toMatch(/function migrateLegacyPeriod/);
+    expect(src, "'month' becomes this_month").toMatch(/'this_month'/);
+    expect(src, "'year' becomes this_year").toMatch(/'this_year'/);
+    expect(src, 'and it is actually called').toMatch(/^migrateLegacyPeriod\(\);$/m);
+  });
+
+  it('a multi-year range does not label two Januaries the same', async () => {
+    // Month-name labels repeat once a range crosses a year boundary, so
+    // Jan 2025 and Jan 2026 would render as the same bar.
+    const src = await read('src/modules/dashboard/index.tsx');
+    expect(src, "TrendMode has a multi-year case").toMatch(/'week' \| 'month' \| 'year' \| 'range'/);
+    const adapter = await read('src/data/supabaseAdapter.ts');
+    expect(adapter, 'the adapter can return it').toMatch(/trend_selected_mode: trendMode/);
+    expect(adapter, 'buckets by month for a long span').toMatch(/bucketMonthly/);
+  });
+
+  it('every preset the dropdown offers resolves to a usable range', async () => {
+    // The dashboard refetches on [from, to]. A preset that resolved to
+    // undefined would send the adapter a broken window.
+    const hook = await read('src/hooks/use-period-picker.ts');
+    const presets = [...hook.matchAll(/\{ key: '([a-z_]+)',\s+label:/g)].map(m => m[1]!);
+    expect(presets.length, 'parsed the preset list').toBeGreaterThanOrEqual(8);
+    for (const k of presets) {
+      expect(hook, `${k} is resolved to a range`).toMatch(new RegExp(`case '${k}'`));
+    }
+  });
+});

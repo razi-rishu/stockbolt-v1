@@ -1674,7 +1674,15 @@ export interface ReportsAPI {
   getEntityAuditLog(company_id: string, entity_type: string, entity_id: string, limit?: number): Promise<AuditLogLine[]>;
   getReversalTrail(company_id: string, from: string, to: string): Promise<ReversalTrailLine[]>;
   getCashFlow(company_id: string, from: string, to: string): Promise<CashFlowStatement>;
-  getOwnerDashboard(company_id: string): Promise<OwnerDashboard>;
+  /**
+   * @param range Optional explicit window from the period dropdown. `from: ''`
+   *              means unbounded (All time). Omitted = today only, which is
+   *              what the dashboard asked for before Phase 97.
+   */
+  getOwnerDashboard(
+    company_id: string,
+    range?: { from: string; to: string },
+  ): Promise<OwnerDashboard>;
   /** Phase 13.03 — bottom-of-dashboard cards (Income/Expense 12mo,
    *  Top Expenses YTD, Bank Balances, Watchlist) in one round trip. */
   getDashboardCards(company_id: string): Promise<DashboardCards>;
@@ -1903,7 +1911,30 @@ export interface OwnerDashboard {
     today: DashboardPeriodStats;
     month: DashboardPeriodStats;   // month-to-date vs same days last month
     year:  DashboardPeriodStats;   // year-to-date vs same period last year
+    // Phase 97 — whatever range the period dropdown resolved to. The three
+    // above are kept because they cost nothing (same fetched rows) and the
+    // dashboard still falls back to them if a cached payload predates this.
+    selected: DashboardPeriodStats;
   };
+  /**
+   * Phase 97 — what `selected` actually covers, and whether comparing it to
+   * anything is meaningful.
+   *
+   * `has_prev` is false for All time: there is no earlier period to compare
+   * against, so the KPI cards must show no delta rather than a fabricated
+   * -100%.
+   */
+  selected_meta: {
+    from: string;          // '' when unbounded (All time)
+    to: string;
+    prev_from: string;
+    prev_to: string;
+    has_prev: boolean;
+  };
+  /** Phase 97 — trend series for the selected range, bucketed to suit its span. */
+  trend_selected: { date: string; sales: number; purchases: number }[];
+  /** How to label trend_selected's x-axis. */
+  trend_selected_mode: 'week' | 'month' | 'year' | 'range';
   // ── Snapshot totals (current value + value 30 days ago for delta) ─────
   inventory_value: number;
   inventory_value_prev: number;
