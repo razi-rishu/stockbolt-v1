@@ -7358,6 +7358,47 @@ describe('phase100 — the summary cards follow the period filter', () => {
     expect(body, 'and retries with the old one').toMatch(/call\(\{ p_company_id: company_id \}\)/);
   });
 
+  it("'Fiscal year to date' uses the COMPANY's fiscal year, not January", async () => {
+    // Gated on phase101, NOT phase100: phase100 shipped the period window and
+    // was applied before this bug surfaced, so `applied()` is already true.
+    const [row] = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc WHERE proname = 'get_dashboard_cards'`);
+    if (!/v_fy_anchor/.test(row.src)) {
+      console.warn('phase101 not applied yet — skipping fiscal check.'); return;
+    }
+    expect(row.src, 'reads the company setting').toMatch(/fiscal_year_start FROM public\.companies/);
+    expect(row.src, 'and steps back when the start has not arrived yet')
+      .toMatch(/v_fy_cand > v_to/);
+  });
+
+  it('the fiscal-year arithmetic is right for every company on the instance', async () => {
+    // Ungated: the expression is evaluated here, so this is meaningful before
+    // the migration lands and keeps working after. Three companies run an
+    // April year, which is what made this a live bug rather than a tidy-up.
+    const rows = await sql<{ name: string; anchor: string; fy: string; reporting_on: string }>(`
+      WITH c AS (SELECT name, fiscal_year_start FROM companies),
+      calc AS (
+        SELECT c.name, c.fiscal_year_start AS anchor, CURRENT_DATE AS reporting_on,
+               (make_date(EXTRACT(YEAR FROM CURRENT_DATE)::INT,
+                          EXTRACT(MONTH FROM c.fiscal_year_start)::INT, 1)
+                + (EXTRACT(DAY FROM c.fiscal_year_start)::INT - 1)) AS cand
+        FROM c)
+      SELECT name, anchor::text, reporting_on::text,
+             (CASE WHEN cand > reporting_on THEN (cand - INTERVAL '1 year')::DATE
+                   ELSE cand END)::text AS fy
+      FROM calc`);
+    expect(rows.length, 'companies exist').toBeGreaterThan(0);
+    for (const r of rows) {
+      // The fiscal year must START on the configured month/day...
+      expect(r.fy.slice(5), `${r.name}: month-day matches the setting`).toBe(r.anchor.slice(5));
+      // ...and must be the one we are currently IN: started already, and
+      // less than a year ago.
+      expect(r.fy <= r.reporting_on, `${r.name}: fiscal year has begun`).toBe(true);
+      const plusYear = `${Number(r.fy.slice(0, 4)) + 1}${r.fy.slice(4)}`;
+      expect(plusYear > r.reporting_on, `${r.name}: and has not ended`).toBe(true);
+    }
+  });
+
   it('the window is part of the query key', async () => {
     // Otherwise switching period re-renders the PREVIOUS period's cached
     // cards, which looks exactly like a filter that does nothing.

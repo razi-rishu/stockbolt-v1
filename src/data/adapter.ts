@@ -1609,6 +1609,9 @@ export interface DashboardCards {
   period_to?:        string;
   /** False when no window was requested and the card kept its own default. */
   period_explicit?:  boolean;
+  /** Phase 100 — the company's CURRENT fiscal year start, derived from
+   *  companies.fiscal_year_start rather than assumed to be 1 January. */
+  fiscal_year_start?: string;
   monthly_pl:        Array<{ month: string; income: number; expense: number }>;
   top_expenses:      Array<{ account_code: string; account_name: string; amount: number }>;
   top_expenses_others: number;
