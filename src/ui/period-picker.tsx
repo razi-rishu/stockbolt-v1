@@ -38,10 +38,26 @@ const LABELS: Record<PeriodPreset, string> = {
   custom: 'Custom',
 } as Record<PeriodPreset, string>;
 
-const MENU_W = 224; // px — matches w-56
+// Sized to the longest option ('Custom range\u2026'), not to a round number.
+// 224px left most of the menu empty beside 'Today'.
+const MENU_W = 172;
 
 const dateField =
-  'h-8 w-full rounded-lg border border-border-subtle bg-white px-2.5 text-sm text-ink-primary outline-none focus:border-brand-400';
+  'h-7 w-full rounded-md border border-border-subtle bg-white px-2 text-xs text-ink-primary outline-none focus:border-brand-400';
+
+/**
+ * One row style for every option, so the spacing cannot drift between the
+ * preset list and the custom affordance.
+ *
+ * The selected row is purple and medium-weight - readable at a glance
+ * without a filled background behind it. A filled row in a 10-item menu
+ * reads as a block of colour rather than as "this one".
+ */
+const row = (selected: boolean) =>
+  'block w-full px-2.5 py-1 text-start text-[13px] leading-[18px] ' +
+  (selected
+    ? 'font-medium text-brand-600'
+    : 'text-ink-secondary hover:bg-surface-subtle hover:text-ink-primary');
 
 export function PeriodPicker({
   mode = 'range',
@@ -71,7 +87,15 @@ export function PeriodPicker({
     let left = r.right - MENU_W;                 // right-align to the trigger
     if (left < 8) left = 8;
     if (left + MENU_W > window.innerWidth - 8) left = window.innerWidth - 8 - MENU_W;
-    setPos({ top: r.bottom + 6, left });
+    // Flip above the trigger when there is not room below. Horizontal
+    // clamping was already here; without the vertical case the menu runs off
+    // the bottom of a phone, which is where a filter bar usually sits.
+    const menuH = menuRef.current?.offsetHeight ?? 300;
+    const below = window.innerHeight - r.bottom - 8;
+    const top = below < menuH && r.top > menuH
+      ? r.top - menuH - 6
+      : r.bottom + 6;
+    setPos({ top, left });
   };
 
   useLayoutEffect(() => { if (open) place(); }, [open]);
@@ -119,14 +143,12 @@ export function PeriodPicker({
         aria-haspopup="listbox"
         aria-expanded={open}
         title="Change reporting period"
-        className="inline-flex h-[30px] max-w-[240px] items-center gap-1.5 rounded-lg border border-border-subtle bg-white px-3 text-xs font-semibold text-ink-secondary transition-colors hover:border-border-strong hover:text-ink-primary"
+        className="inline-flex h-7 max-w-[220px] items-center gap-1 rounded-md border border-border-subtle bg-white px-2.5 text-xs font-medium text-ink-secondary hover:border-border-strong hover:text-ink-primary"
       >
-        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 text-ink-tertiary" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="4" width="18" height="18" rx="2" />
-          <path d="M16 2v4M8 2v4M3 10h18" />
-        </svg>
+        {/* The calendar glyph was decoration: the label already says the
+            period, and every one of these sits in a filter bar. */}
         <span className="truncate">{triggerLabel}</span>
-        <svg viewBox="0 0 20 20" className={`h-3.5 w-3.5 shrink-0 text-ink-tertiary transition-transform ${open ? 'rotate-180' : ''}`} fill="currentColor">
+        <svg viewBox="0 0 20 20" className={`h-3 w-3 shrink-0 text-ink-tertiary ${open ? 'rotate-180' : ''}`} fill="currentColor">
           <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 011.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
         </svg>
       </button>
@@ -136,23 +158,22 @@ export function PeriodPicker({
           ref={menuRef}
           role="listbox"
           style={{ position: 'fixed', top: pos.top, left: pos.left, width: MENU_W, zIndex: 1000 }}
-          className="rounded-xl border border-border-subtle bg-white py-1 shadow-xl"
+          className="rounded-lg border border-border-subtle bg-white py-1 shadow-md"
         >
+          {/* All time is a preset like any other, so it is spaced like one.
+              The divider that used to follow it made the menu read as three
+              sections when it only has two kinds of thing: presets, and the
+              custom range that opens inputs. */}
           {allowAllTime && (
-            <>
-              <button
-                type="button"
-                role="option"
-                aria-selected={preset === 'all_time'}
-                onClick={() => choose('all_time')}
-                className={`block w-full px-3 py-1.5 text-start text-sm transition-colors ${
-                  preset === 'all_time' ? 'bg-brand-50 font-semibold text-brand-600' : 'text-ink-secondary hover:bg-surface-subtle hover:text-ink-primary'
-                }`}
-              >
-                All time
-              </button>
-              <div className="my-1 border-t border-border-subtle" />
-            </>
+            <button
+              type="button"
+              role="option"
+              aria-selected={preset === 'all_time'}
+              onClick={() => choose('all_time')}
+              className={row(preset === 'all_time')}
+            >
+              All time
+            </button>
           )}
           {PERIOD_PRESETS.map((p) => (
             <button
@@ -161,14 +182,14 @@ export function PeriodPicker({
               role="option"
               aria-selected={preset === p.key}
               onClick={() => choose(p.key)}
-              className={`block w-full px-3 py-1.5 text-start text-sm transition-colors ${
-                preset === p.key ? 'bg-brand-50 font-semibold text-brand-600' : 'text-ink-secondary hover:bg-surface-subtle hover:text-ink-primary'
-              }`}
+              className={row(preset === p.key)}
             >
               {p.label}
             </button>
           ))}
 
+          {/* The one divider that earns its place: everything above picks a
+              period and closes; this one opens inputs. */}
           <div className="my-1 border-t border-border-subtle" />
 
           <button
@@ -176,15 +197,13 @@ export function PeriodPicker({
             role="option"
             aria-selected={isCustom}
             onClick={() => onPresetChange('custom')}
-            className={`block w-full px-3 py-1.5 text-start text-sm transition-colors ${
-              isCustom ? 'bg-brand-50 font-semibold text-brand-600' : 'text-ink-secondary hover:bg-surface-subtle hover:text-ink-primary'
-            }`}
+            className={row(isCustom)}
           >
             Custom range…
           </button>
 
           {isCustom && (
-            <div className="flex flex-col gap-2 border-t border-border-subtle px-3 pb-2.5 pt-2">
+            <div className="flex flex-col gap-1.5 border-t border-border-subtle px-2.5 pb-2 pt-1.5">
               {mode === 'range' && (
                 <label className="flex flex-col gap-1">
                   <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-tertiary">From</span>

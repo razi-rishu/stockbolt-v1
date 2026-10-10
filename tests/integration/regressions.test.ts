@@ -7172,3 +7172,74 @@ describe('phase97 — the dashboard period is the shared picker', () => {
     }
   });
 });
+
+describe('phase98 — one compact date-range filter, everywhere', () => {
+  const read = async (f: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(resolve(process.cwd(), f), 'utf8');
+  };
+  const walk = async (dir: string): Promise<string[]> => {
+    const { readdirSync, statSync } = await import('node:fs');
+    const out: string[] = [];
+    for (const name of readdirSync(dir)) {
+      const full = `${dir}/${name}`;
+      if (statSync(full).isDirectory()) out.push(...await walk(full));
+      else if (/\.tsx?$/.test(name)) out.push(full);
+    }
+    return out;
+  };
+
+  it('no page declares the preset vocabulary for itself', async () => {
+    // The thing that rots: someone needs a period filter, does not find the
+    // shared one, and writes their own list of the same ten labels. The
+    // vocabulary must live in exactly one place.
+    const files = await walk(resolve(process.cwd(), 'src'));
+    const owners = ['use-period-picker.ts', 'period-picker.tsx'];
+    const offenders: string[] = [];
+    for (const f of files) {
+      if (owners.some(o => f.endsWith(o))) continue;
+      const src = await read(f);
+      // Two of the shared labels as STRING LITERALS in one file means a
+      // second list. A single label can legitimately appear in a comment.
+      const hits = ["'This Quarter'", '"This Quarter"', "'Last Quarter'", '"Last Quarter"',
+                    "'This Year'", '"This Year"'].filter(l => src.includes(l));
+      if (hits.length >= 2) offenders.push(f.replace(process.cwd().replace(/\\/g, '/') + '/', ''));
+    }
+    expect(offenders, 'these files declare their own preset list').toEqual([]);
+  });
+
+  it('the custom inputs appear only for Custom range', async () => {
+    // An explicit requirement, and a real regression risk: the date fields
+    // are inside the same menu, so dropping the guard shows two date inputs
+    // to everyone who opens the dropdown.
+    const src = await read('src/ui/period-picker.tsx');
+    expect(src, 'the custom panel is gated on isCustom').toMatch(/\{isCustom && \(/);
+  });
+
+  it('the menu flips above the trigger when there is no room below', async () => {
+    // Filter bars sit low on the page and the menu is ~280px tall. Without
+    // this it opens off the bottom of a phone and cannot be reached at all -
+    // horizontal clamping was already handled, vertical was not.
+    const src = await read('src/ui/period-picker.tsx');
+    expect(src, 'measures the space below').toMatch(/const below = window\.innerHeight/);
+    expect(src, 'and flips when it does not fit').toMatch(/below < menuH/);
+  });
+
+  it('the selected option is purple, not a filled block', async () => {
+    // "Clearly indicate the selected option without excessive highlighting."
+    // A filled row in a ten-item menu reads as a block of colour rather than
+    // as "this one".
+    const src = await read('src/ui/period-picker.tsx');
+    expect(src, 'selected state is the brand colour').toMatch(/text-brand-600/);
+    expect(src, 'no filled background on the selected row').not.toMatch(/bg-brand-50/);
+  });
+
+  it('every option shares one row style', async () => {
+    // All time, the eight presets and Custom range used to carry three
+    // copies of the same class string, which is how spacing drifts apart.
+    const src = await read('src/ui/period-picker.tsx');
+    expect(src, 'one row helper').toMatch(/const row = \(selected: boolean\)/);
+    const uses = [...src.matchAll(/className=\{row\(/g)].length;
+    expect(uses, 'used by all-time, the presets and custom').toBeGreaterThanOrEqual(3);
+  });
+});
