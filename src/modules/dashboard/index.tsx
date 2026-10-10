@@ -669,7 +669,7 @@ export default function DashboardPage() {
       {/* ── Phase 13.03 — Summary cards row (Income/Expense, Top Expenses,
             Bank balances, Watchlist). Single RPC fetch via the cards
             component. */}
-      <DashboardSummaryCards />
+      <DashboardSummaryCards from={from} to={to} periodLabel={periodWord} />
 
       {/* ── Low Stock Alerts bar ───────────────────────────────────────── */}
       <div style={{ ...cardStyle, padding: '20px' }}>

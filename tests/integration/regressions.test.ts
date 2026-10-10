@@ -7287,3 +7287,81 @@ describe('phase99 — All time is unbounded at both ends; the dashboard fits a p
     expect(css, 'six-column rule was generated').toContain('grid-cols-6');
   });
 });
+
+describe('phase100 — the summary cards follow the period filter', () => {
+  const read = async (f: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(resolve(process.cwd(), f), 'utf8');
+  };
+  async function applied(): Promise<boolean> {
+    const rows = await sql<{ args: string }>(`
+      SELECT pg_get_function_identity_arguments(p.oid) AS args
+      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.proname = 'get_dashboard_cards'`);
+    return rows.some(r => /p_from/.test(r.args));
+  }
+
+  it('the FLOW cards take a window; the BALANCE card deliberately does not', async () => {
+    if (!(await applied())) { console.warn('phase100 not applied yet — skipping source check.'); return; }
+    const [row] = await sql<{ src: string }>(
+      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc WHERE proname = 'get_dashboard_cards'`);
+    const src = row.src;
+    // Income vs Expense and Top Expenses were pinned to their own periods.
+    expect(src, 'income/expense is bounded above').toMatch(/gl\.date <= v_to/);
+    // A balance is a position, not a flow - windowing it would turn the
+    // Watchlist from a live alert into a historical note.
+    const bank = src.slice(src.indexOf('bank_bal AS'), src.indexOf('SELECT jsonb_build_object'));
+    expect(bank, 'bank balances stay unbounded').not.toMatch(/v_to|v_start/);
+  });
+
+  it('only ONE signature exists, so a one-arg call is not ambiguous', async () => {
+    // Adding defaulted params with CREATE OR REPLACE would leave the old
+    // 1-arg function in place; a single-argument call then matches both and
+    // fails with "function is not unique". The migration drops first.
+    const rows = await sql<{ args: string }>(`
+      SELECT pg_get_function_identity_arguments(p.oid) AS args
+      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.proname = 'get_dashboard_cards'`);
+    expect(rows.length, 'exactly one get_dashboard_cards').toBe(1);
+  });
+
+  it('the grants survived the drop', async () => {
+    if (!(await applied())) { console.warn('phase100 not applied yet — skipping grant check.'); return; }
+    // DROP takes the ACL with it. Without the re-grant the dashboard would
+    // 403 for every signed-in user.
+    const [row] = await sql<{ acl: string }>(`
+      SELECT COALESCE(array_to_string(p.proacl, ' '), 'PUBLIC') AS acl
+      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.proname = 'get_dashboard_cards'`);
+    expect(row.acl, 'authenticated can still execute').toMatch(/authenticated=X|PUBLIC/);
+  });
+
+  it('All time is sent as explicit bounds, never as NULL', async () => {
+    // NULL means "no window asked for" to the function, which falls back to
+    // the card's own default. Sending NULL for All time would make the one
+    // preset that means "do not bound me" the one that silently re-bounds.
+    const src = await read('src/data/supabaseAdapter.ts');
+    const start = src.indexOf('async getDashboardCards');
+    const body = src.slice(start, start + 1600);
+    expect(body, "unbounded start becomes 1900").toMatch(/range\.from \|\| '1900-01-01'/);
+    expect(body, "unbounded end becomes 9999").toMatch(/range\.to\s+\|\| '9999-12-31'/);
+  });
+
+  it('the cards keep working while the migration is still unapplied', async () => {
+    // The deployed bundle is ahead of the database for as long as it takes to
+    // run the migration. Without a fallback the whole card block shows an
+    // error panel during that window.
+    const src = await read('src/data/supabaseAdapter.ts');
+    const start = src.indexOf('async getDashboardCards');
+    const body = src.slice(start, start + 2200);
+    expect(body, 'detects the missing signature').toMatch(/PGRST202/);
+    expect(body, 'and retries with the old one').toMatch(/call\(\{ p_company_id: company_id \}\)/);
+  });
+
+  it('the window is part of the query key', async () => {
+    // Otherwise switching period re-renders the PREVIOUS period's cached
+    // cards, which looks exactly like a filter that does nothing.
+    const src = await read('src/modules/dashboard/_summary-cards.tsx');
+    expect(src, 'from/to are in the key').toMatch(/queryKey: \['dashboard_cards', company_id, from/);
+  });
+});

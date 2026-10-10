@@ -4540,10 +4540,30 @@ export function createSupabaseAdapter(
       // (reading 'rest')" because it tries to read this.rest (the REST
       // config) inside the call. Mirror the inline-cast pattern used by
       // bankReconciliations.save.
-      async getDashboardCards(company_id): Promise<import('./adapter').DashboardCards> {
-        const { data, error } = await (
-          client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>
-        )('get_dashboard_cards', { p_company_id: company_id });
+      async getDashboardCards(company_id, range): Promise<import('./adapter').DashboardCards> {
+        // The picker sends '' for an unbounded end. NULL already means
+        // "no window asked for" to the function, so All time is sent as an
+        // explicit 1900/9999 pair rather than as NULL - otherwise the cards
+        // would silently fall back to their own defaults on the one preset
+        // that means "do not bound me".
+        const p_from = range ? (range.from || '1900-01-01') : null;
+        const p_to   = range ? (range.to   || '9999-12-31') : null;
+        const call = (args: Record<string, unknown>) => (
+          client.rpc as unknown as (fn: string, a: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>
+        )('get_dashboard_cards', args);
+
+        let { data, error } = await call({ p_company_id: company_id, p_from, p_to });
+        // Soft until phase100 is applied. The deployed bundle is ahead of the
+        // database for as long as it takes to run the migration, and during
+        // that window the three-argument signature does not exist - PostgREST
+        // answers PGRST202, not a date error. Falling back keeps the cards
+        // working (on their own defaults) instead of showing an error panel.
+        const msg = (error as { message?: string } | null)?.message ?? '';
+        const code = (error as { code?: string } | null)?.code ?? '';
+        if (error && (code === 'PGRST202' || /p_from|p_to|function.*does not exist|could not find the function/i.test(msg))) {
+          console.warn('[getDashboardCards] phase100 not applied yet — cards keep their default periods.');
+          ({ data, error } = await call({ p_company_id: company_id }));
+        }
         assertNoError(error as Error | null, 'reports.getDashboardCards');
         return data as import('./adapter').DashboardCards;
       },

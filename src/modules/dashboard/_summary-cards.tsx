@@ -89,7 +89,7 @@ function Card({ title, hint, children, right }: {
 }
 
 // ── 1. Income vs Expense (12-mo diverging bars) ─────────────────────────
-function IncomeExpenseCard({ data }: { data: DashboardCards }) {
+function IncomeExpenseCard({ data, periodLabel }: { data: DashboardCards; periodLabel?: string }) {
   const totalIncome  = data.monthly_pl.reduce((s, r) => s + r.income,  0);
   const totalExpense = data.monthly_pl.reduce((s, r) => s + r.expense, 0);
   const net = totalIncome - totalExpense;
@@ -106,7 +106,7 @@ function IncomeExpenseCard({ data }: { data: DashboardCards }) {
   return (
     <Card
       title="Income vs Expense"
-      hint="Last 12 months · diverging bars · accrual basis"
+      hint={`${data.period_explicit && periodLabel ? periodLabel : 'Last 12 months'} · diverging bars · accrual basis`}
       right={
         <div style={{ textAlign: 'end' }}>
           <div style={{ fontSize: '10px', color: theme.inkFaint, textTransform: 'uppercase', letterSpacing: '.05em' }}>Net</div>
@@ -165,7 +165,7 @@ function IncomeExpenseCard({ data }: { data: DashboardCards }) {
 const DONUT_PALETTE = ['#7c3aed', '#0ea5e9', '#f59e0b', '#10b981', '#ef4444', '#ec4899', '#14b8a6', '#a855f7'];
 const OTHERS_COLOR = '#94a3b8';
 
-function TopExpensesCard({ data }: { data: DashboardCards }) {
+function TopExpensesCard({ data, periodLabel }: { data: DashboardCards; periodLabel?: string }) {
   const slices = [
     ...data.top_expenses.map((e, i) => ({
       name: e.account_name, code: e.account_code, value: e.amount, color: DONUT_PALETTE[i % DONUT_PALETTE.length],
@@ -189,7 +189,7 @@ function TopExpensesCard({ data }: { data: DashboardCards }) {
   return (
     <Card
       title="Top Expenses"
-      hint="Fiscal year to date"
+      hint={data.period_explicit && periodLabel ? periodLabel : 'Fiscal year to date'}
       right={
         <div style={{ textAlign: 'end' }}>
           <div style={{ fontSize: '10px', color: theme.inkFaint, textTransform: 'uppercase', letterSpacing: '.05em' }}>Total</div>
@@ -257,6 +257,13 @@ function TopExpensesCard({ data }: { data: DashboardCards }) {
 }
 
 // ── 3. Bank & Cash Accounts ─────────────────────────────────────────────
+/**
+ * Deliberately NOT windowed by the period filter. A balance is a position,
+ * not a flow: "what is in the account" is a question about now, and the
+ * Watchlist built on these numbers is an alert about now. The hint says
+ * "balance today" out loud so the card does not read as one that is ignoring
+ * the filter.
+ */
 function BankAccountsCard({ data }: { data: DashboardCards }) {
   if (data.bank_balances.length === 0) {
     return (
@@ -271,7 +278,7 @@ function BankAccountsCard({ data }: { data: DashboardCards }) {
   return (
     <Card
       title="Bank & Cash Accounts"
-      hint={`${data.bank_balances.length} account${data.bank_balances.length === 1 ? '' : 's'}`}
+      hint={`${data.bank_balances.length} account${data.bank_balances.length === 1 ? '' : 's'} · balance today`}
       right={
         <Link to="/banking/bank-accounts" style={{ fontSize: '11px', color: theme.brand, fontWeight: 600, textDecoration: 'none' }}>
           Manage →
@@ -367,11 +374,23 @@ function WatchlistCard({ data }: { data: DashboardCards }) {
 }
 
 // ── Public block — 2x2 grid ─────────────────────────────────────────────
-export default function DashboardSummaryCards() {
+export default function DashboardSummaryCards({
+  from, to, periodLabel,
+}: {
+  /** Phase 100 — the dashboard's period. Omitted = each card's own default. */
+  from?: string;
+  to?: string;
+  /** What the dropdown says, so the cards can repeat it back. */
+  periodLabel?: string;
+} = {}) {
   const company_id = useAuthStore(s => s.company_id);
+  const ranged = from !== undefined && to !== undefined;
   const { data, isLoading, isError, error, refetch } = useQuery<DashboardCards>({
-    queryKey: ['dashboard_cards', company_id],
-    queryFn:  () => getAdapter().reports.getDashboardCards(company_id!),
+    // The window is part of the key, or switching period would show the
+    // previous period's cached cards.
+    queryKey: ['dashboard_cards', company_id, from ?? null, to ?? null],
+    queryFn:  () => getAdapter().reports.getDashboardCards(
+      company_id!, ranged ? { from: from!, to: to! } : undefined),
     enabled:  !!company_id,
   });
 
@@ -419,8 +438,8 @@ export default function DashboardSummaryCards() {
       gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 330px), 1fr))',
       gap: '16px',
     }}>
-      <IncomeExpenseCard data={data} />
-      <TopExpensesCard data={data} />
+      <IncomeExpenseCard data={data} periodLabel={periodLabel} />
+      <TopExpensesCard data={data} periodLabel={periodLabel} />
       <BankAccountsCard data={data} />
       <WatchlistCard data={data} />
     </div>

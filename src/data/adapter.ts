@@ -1603,6 +1603,12 @@ export interface TaxRatesAPI {
 export interface DashboardCards {
   period_start_12mo: string;
   period_start_fy:   string;
+  /** Phase 100 — the window the FLOW cards actually covered, so they can
+   *  label themselves instead of claiming "Last 12 months" regardless. */
+  period_from?:      string;
+  period_to?:        string;
+  /** False when no window was requested and the card kept its own default. */
+  period_explicit?:  boolean;
   monthly_pl:        Array<{ month: string; income: number; expense: number }>;
   top_expenses:      Array<{ account_code: string; account_name: string; amount: number }>;
   top_expenses_others: number;
@@ -1685,7 +1691,15 @@ export interface ReportsAPI {
   ): Promise<OwnerDashboard>;
   /** Phase 13.03 — bottom-of-dashboard cards (Income/Expense 12mo,
    *  Top Expenses YTD, Bank Balances, Watchlist) in one round trip. */
-  getDashboardCards(company_id: string): Promise<DashboardCards>;
+  /**
+   * @param range Optional window for the FLOW cards (Income vs Expense, Top
+   *              Expenses). Bank balances ignore it: a balance is a position,
+   *              not a flow. Omitted = each card's own default.
+   */
+  getDashboardCards(
+    company_id: string,
+    range?: { from: string; to: string },
+  ): Promise<DashboardCards>;
 }
 
 // ── Phase 10 report types ─────────────────────────────────────────────────────
