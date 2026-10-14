@@ -1361,6 +1361,18 @@
       "barcode": "This barcode is on"
     }
   },
+  "backup": {
+    "title": "Download my data",
+    "blurb": "Every record this company owns \u2014 all {{count}} tables, including invoices, payments, the ledger and stock history \u2014 in one file.",
+    "download_json": "Download (JSON)",
+    "download_xlsx": "Download (Excel)",
+    "working": "Preparing\u2026",
+    "reading": "Reading {{table}} \u2014 {{n}} of {{total}}",
+    "done": "Done \u2014 {{rows}} rows across {{tables}} tables.",
+    "truncated": "INCOMPLETE: these tables hit the row limit and are missing data \u2014 {{tables}}. Tell your administrator before relying on this file.",
+    "failed": "Could not read: {{tables}}. Everything else is included.",
+    "not_a_restore": "This is a copy for your records, your accountant, or moving to another system. It is not a restore file \u2014 putting transactions back requires re-posting them, not re-inserting them."
+  },
   "banking": {
     "accounts_subtitle": "Manage cash and bank ledgers, opening balances, and account activity.",
     "add_account": "Add account",

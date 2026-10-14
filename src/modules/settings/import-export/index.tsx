@@ -18,6 +18,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth';
+import { BackupCard } from './_backup-card';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
 import {
@@ -325,6 +326,11 @@ export default function ImportExportHub() {
       </div>
 
       {/* Module picker */}
+      {/* Phase 102 — the whole company, not just the eight master-data
+          modules below. Placed above the wizard because "get everything out"
+          is the bigger question, and the wizard reads as the answer to it. */}
+      <BackupCard />
+
       <div className="rounded-card border border-border-subtle bg-surface-card overflow-hidden">
         <div className="border-b border-border-subtle px-5 py-3">
           <h2 className="text-sm font-semibold text-ink-primary">Pick a module</h2>

@@ -113,6 +113,58 @@ export async function stringifyXLSX(
   return XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
 }
 
+/**
+ * Write a multi-sheet workbook — one sheet per table — for the company backup.
+ *
+ * Headers are the union of every key present across the rows, not the first
+ * row's keys: Postgres omits nothing, but a row whose nullable column came
+ * back absent would otherwise silently drop that column for the whole sheet.
+ *
+ * Excel caps a sheet name at 31 characters and rejects : \ / ? * [ ], so names
+ * are sanitised and de-duplicated. A collision would otherwise throw and lose
+ * the entire backup over a long table name.
+ */
+/** Excel rejects these in a sheet name. A collision or a stray character
+ *  throws inside SheetJS and loses the whole backup, so they are mapped
+ *  to '_' rather than trusted not to appear. */
+const FORBIDDEN_SHEET_CHARS = new Set([':', '\\', '/', '?', '*', '[', ']']);
+
+export async function downloadWorkbook(
+  sheets: { name: string; rows: Record<string, unknown>[] }[],
+  filename: string,
+) {
+  const XLSX = await getXlsx();
+  const wb = XLSX.utils.book_new();
+  const used = new Set<string>();
+
+  for (const { name, rows } of sheets) {
+    let safe = [...name]
+      .map(c => (FORBIDDEN_SHEET_CHARS.has(c) ? '_' : c))
+      .join('')
+      .slice(0, 31);
+    if (used.has(safe)) {
+      let n = 2;
+      while (used.has(`${safe.slice(0, 28)}_${n}`)) n++;
+      safe = `${safe.slice(0, 28)}_${n}`;
+    }
+    used.add(safe);
+
+    const headers = [...new Set(rows.flatMap(r => Object.keys(r)))];
+    const aoa: unknown[][] = rows.length
+      ? [headers, ...rows.map(r => headers.map(h => {
+          const v = r[h];
+          // Objects (jsonb columns) would render as [object Object].
+          return v !== null && typeof v === 'object' ? JSON.stringify(v) : v ?? '';
+        }))]
+      : [['(no rows)']];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), safe);
+  }
+
+  const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+  downloadBlob(buf, filename,
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+}
+
 // ── Browser download helper ────────────────────────────────────────────────
 export function downloadBlob(data: BlobPart, filename: string, mime: string) {
   const blob = new Blob([data], { type: mime });

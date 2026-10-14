@@ -7406,3 +7406,117 @@ describe('phase100 — the summary cards follow the period filter', () => {
     expect(src, 'from/to are in the key').toMatch(/queryKey: \['dashboard_cards', company_id, from/);
   });
 });
+
+describe('phase102 — "Download my data" backs up the whole company', () => {
+  const read = async (f: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(resolve(process.cwd(), f), 'utf8');
+  };
+  const manifest = async () => {
+    const src = await read('src/lib/backup-manifest.ts');
+    // Slice the ARRAY LITERAL, not the file region: the surrounding prose
+    // contains `.eq('company_id', ...)` as an example, and a region-based
+    // parse happily reads that as a table name.
+    const tbStart = src.indexOf('[', src.indexOf('BACKUP_TABLES'));
+    const tb = src.slice(tbStart, src.indexOf('] as const;', tbStart));
+    const exStart = src.indexOf('{', src.indexOf('BACKUP_EXCLUSIONS'));
+    const ex = src.slice(exStart, src.indexOf('} as const;', exStart));
+    return {
+      src,
+      listed:   new Set([...tb.matchAll(/'([a-z_]+)'/g)].map(m => m[1]!)),
+      excluded: new Set([...ex.matchAll(/^ {2}([a-z_]+)\s*:/gm)].map(m => m[1]!)),
+    };
+  };
+
+  it('every live table is either backed up or excluded ON PURPOSE', async () => {
+    // THE tripwire for this feature. A migration that adds a table and does
+    // not touch the manifest silently drops it from every customer's backup
+    // for ever - no error, no warning, a file that looks complete. "We forgot
+    // it" and "we decided against it" must not be indistinguishable.
+    const { listed, excluded } = await manifest();
+    const live = (await sql<{ table_name: string }>(`
+      SELECT c.relname AS table_name
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relkind = 'r'`)).map(r => r.table_name);
+    expect(live.length, 'found the schema').toBeGreaterThan(50);
+    const missing = live.filter(t => !listed.has(t) && !excluded.has(t));
+    expect(missing, 'tables in neither the backup nor the exclusion list').toEqual([]);
+    const phantom = [...listed, ...excluded].filter(t => !live.includes(t));
+    expect(phantom, 'manifest names tables that do not exist').toEqual([]);
+  });
+
+  it('the line-item tables are in the backup', async () => {
+    // The trap this feature was one loop away from shipping: every *_items
+    // table is scoped through its parent and has NO company_id, so the
+    // obvious "export all company_id tables" build saves invoice headers
+    // with no lines on them.
+    const { listed } = await manifest();
+    for (const t of ['invoice_items', 'vendor_bill_items', 'credit_note_items',
+                     'purchase_order_items', 'goods_receipt_items', 'expense_items',
+                     'stock_transfer_items', 'inventory_adjustment_items']) {
+      expect(listed.has(t), `${t} is backed up`).toBe(true);
+    }
+  });
+
+  it('every backed-up table is RLS-protected', async () => {
+    // The export runs as the signed-in user with no company filter on the
+    // unscoped tables, so RLS is the ONLY thing standing between a backup
+    // and another tenant's books. A table without it is a cross-tenant read.
+    const { listed } = await manifest();
+    const rows = await sql<{ table_name: string; rls: boolean }>(`
+      SELECT c.relname AS table_name, c.relrowsecurity AS rls
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relkind = 'r'`);
+    const unprotected = rows.filter(r => listed.has(r.table_name) && !r.rls)
+      .map(r => r.table_name);
+    expect(unprotected, 'backed-up tables without RLS').toEqual([]);
+  });
+
+  it('the export PAGES instead of taking the default 1000 rows', async () => {
+    // PostgREST caps a response at 1000 rows and returns success. A plain
+    // select would give a backup that is short, silent and plausible - the
+    // precise failure this feature exists to prevent.
+    const src = await read('src/data/supabaseAdapter.ts');
+    const start = src.indexOf('async exportAll');
+    expect(start, 'exportAll exists').toBeGreaterThan(-1);
+    const body = src.slice(start, start + 3500);
+    expect(body, 'pages explicitly').toMatch(/\.range\(page \* PAGE/);
+    expect(body, 'and reports hitting the ceiling').toMatch(/truncated = true/);
+    // Truncation has to reach the operator, not just the object.
+    const card = await read('src/modules/settings/import-export/_backup-card.tsx');
+    expect(card, 'the UI shows truncation').toMatch(/truncated_tables\.length > 0/);
+    const en = JSON.parse(await read('src/i18n/en.json')).backup;
+    expect(en.truncated, 'and says it plainly').toMatch(/INCOMPLETE/);
+  });
+
+  it('the backup never reaches for the service key', async () => {
+    // It runs as the signed-in user so RLS applies. Service-role code has no
+    // safety net: one missing filter there is a breach, not a bug.
+    const src = await read('src/data/supabaseAdapter.ts');
+    const body = src.slice(src.indexOf('async exportAll'), src.indexOf('async exportAll') + 3500);
+    expect(body, 'no service key anywhere near the export')
+      .not.toMatch(/SERVICE_ROLE|service_role|SUPABASE_SECRET/);
+  });
+
+  it('it is gated, and it does not claim to be a restore', async () => {
+    const card = await read('src/modules/settings/import-export/_backup-card.tsx');
+    expect(card, 'owner-level action').toMatch(/hasPerm\(role, permissions, 'settings\.write'\)/);
+    expect(card, 'hidden when not permitted').toMatch(/if \(!allowed\) return null/);
+    // Promising a restore we cannot perform is the one claim that would make
+    // this feature harmful rather than merely incomplete.
+    const en = JSON.parse(await read('src/i18n/en.json')).backup;
+    expect(en.not_a_restore, 'says so in the UI').toMatch(/not a restore/i);
+  });
+
+  it('every backup string exists in both languages, placeholders intact', async () => {
+    const en = JSON.parse(await read('src/i18n/en.json')).backup;
+    const ar = JSON.parse(await read('src/i18n/ar.json')).backup;
+    expect(Object.keys(en).sort()).toEqual(Object.keys(ar).sort());
+    for (const k of Object.keys(en)) {
+      expect(ar[k], `ar.backup.${k} is translated`).not.toBe(en[k]);
+      const ph = (v: string) => [...v.matchAll(/\{\{(\w+)\}\}/g)].map(m => m[1]).sort();
+      // A dropped placeholder renders a literal {{table}} at the operator.
+      expect(ph(ar[k]), `ar.backup.${k} keeps its placeholders`).toEqual(ph(en[k]));
+    }
+  });
+});

@@ -1889,6 +1889,76 @@ export function createSupabaseAdapter(
     },
 
     // ── Phase 4: Bank Accounts ────────────────────────────────────────────
+    backup: {
+      async exportAll(company_id, onProgress): Promise<import('./adapter').BackupResult> {
+        const { BACKUP_TABLES, BACKUP_UNSCOPED } = await import('@/lib/backup-manifest');
+
+        // PostgREST caps a response at 1000 rows. A plain select therefore
+        // SUCCEEDS and returns a short answer, which is the exact failure a
+        // backup must never have: complete-looking and missing data. So every
+        // table is paged explicitly, and hitting the ceiling is reported
+        // rather than silently accepted.
+        const PAGE = 1000;
+        const MAX_PAGES = 200;            // 200k rows per table
+
+        // The generated DB types restrict `from()` to a literal union of table
+        // names, and they are also stale (they predate several migrations).
+        // The backup walks a manifest of table names, so it needs the string
+        // form. Narrow, `any`-free, and justified per AGENTS.md 9.1.
+        type Pageable = {
+          eq: (col: string, val: string) => Pageable;
+          range: (from: number, to: number) => Promise<{
+            data: unknown; error: { message: string } | null;
+          }>;
+        };
+        const fromAnyTable = (t: string) =>
+          (client.from as unknown as (name: string) => { select: (cols: string) => Pageable })(t);
+
+        const out: import('./adapter').BackupTable[] = [];
+        for (let i = 0; i < BACKUP_TABLES.length; i++) {
+          const table = BACKUP_TABLES[i]!;
+          onProgress?.(table, i, BACKUP_TABLES.length);
+
+          const rows: Record<string, unknown>[] = [];
+          let truncated = false;
+          let failure: string | undefined;
+
+          for (let page = 0; page < MAX_PAGES; page++) {
+            let q = fromAnyTable(table).select('*');
+            // Defence in depth. RLS already scopes every one of these; the
+            // explicit filter means a future policy mistake degrades to an
+            // empty backup rather than someone else's books.
+            if (!BACKUP_UNSCOPED.has(table)) {
+              q = q.eq('company_id', company_id);
+            }
+            const { data, error } = await q.range(page * PAGE, (page + 1) * PAGE - 1);
+
+            if (error) { failure = error.message; break; }
+            const batch = (data ?? []) as Record<string, unknown>[];
+            rows.push(...batch);
+            if (batch.length < PAGE) break;
+            if (page === MAX_PAGES - 1) truncated = true;
+          }
+
+          out.push({ table, rows, truncated, ...(failure ? { error: failure } : {}) });
+        }
+
+        // The company's own name, for the filename and the manifest header.
+        const { data: co } = await client
+          .from('companies').select('name').eq('id', company_id).maybeSingle();
+
+        return {
+          company_id,
+          company_name: (co as { name?: string } | null)?.name ?? 'company',
+          generated_at: new Date().toISOString(),
+          tables: out,
+          total_rows: out.reduce((n, t) => n + t.rows.length, 0),
+          truncated_tables: out.filter(t => t.truncated).map(t => t.table),
+          failed_tables: out.filter(t => t.error).map(t => t.table),
+        };
+      },
+    },
+
     bankAccounts: {
       async list(company_id, opts): Promise<BankAccountRow[]> {
         let q = client.from('bank_accounts').select('*').eq('company_id', company_id);

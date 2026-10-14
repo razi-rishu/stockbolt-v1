@@ -217,6 +217,9 @@ export function createSelfHostedAdapter(): DataAdapter {
       update:       () => notImplemented('taxRates.update'),
       seedDefaults: () => notImplemented('taxRates.seedDefaults'),
     },
+    backup: {
+      exportAll: () => notImplemented('backup.exportAll'),
+    },
     bankAccounts: {
       list:         () => notImplemented('bankAccounts.list'),
       listActivity: () => notImplemented('bankAccounts.listActivity'),

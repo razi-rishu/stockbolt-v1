@@ -1562,6 +1562,47 @@ export interface ProductIdentityRow {
   sku: string | null; oe_number: string | null; barcode: string | null;
 }
 
+/** One table's worth of a company backup. */
+export interface BackupTable {
+  table: string;
+  rows: Record<string, unknown>[];
+  /** True when the hard row cap was reached and rows are MISSING. Surfaced
+   *  loudly: a backup that is quietly short is worse than no backup. */
+  truncated: boolean;
+  /** Set when the table could not be read at all (e.g. the role may not).
+   *  Recorded rather than thrown, so one unreadable table cannot deny the
+   *  user the other 88. */
+  error?: string;
+}
+
+export interface BackupResult {
+  company_id: string;
+  company_name: string;
+  generated_at: string;
+  tables: BackupTable[];
+  total_rows: number;
+  truncated_tables: string[];
+  failed_tables: string[];
+}
+
+export interface BackupAPI {
+  /**
+   * Read every table this company owns, as the signed-in user, through RLS.
+   *
+   * Never uses the service key: the rows a user can export are exactly the
+   * rows they could already read in the app. The export adds reach, not
+   * access.
+   *
+   * @param onProgress called before each table so the UI can show which one
+   *        is in flight — a 89-table read is long enough that a frozen
+   *        button looks broken.
+   */
+  exportAll(
+    company_id: string,
+    onProgress?: (table: string, index: number, total: number) => void,
+  ): Promise<BackupResult>;
+}
+
 export interface BankAccountsAPI {
   /** Active bank accounts. Default `includeInactive=false` keeps pickers clean. */
   list(company_id: string, opts?: { includeInactive?: boolean }): Promise<BankAccountRow[]>;
@@ -3060,6 +3101,7 @@ export interface DataAdapter {
   tds: TdsAPI;                   // AC-7A — India TDS (withholding)
   salesQuotes: SalesQuotesAPI;
   payments: PaymentsAPI;
+  backup: BackupAPI;
   bankAccounts: BankAccountsAPI;
   taxRates: TaxRatesAPI;
   reports: ReportsAPI;
