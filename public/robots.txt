@@ -1,0 +1,33 @@
+User-agent: *
+
+# The marketing page is the only thing worth indexing.
+Allow: /$
+Allow: /landing
+
+# Everything below is behind a login. Crawling it just redirects to /login,
+# which wastes crawl budget and can look like broken pages to Google.
+Disallow: /dashboard
+Disallow: /sales/
+Disallow: /purchasing/
+Disallow: /inventory/
+Disallow: /accounting/
+Disallow: /banking/
+Disallow: /payroll/
+Disallow: /reports/
+Disallow: /contacts/
+Disallow: /products
+Disallow: /pos
+Disallow: /settings/
+Disallow: /admin
+Disallow: /print/
+
+# Auth pages: no SEO value, and reset links carry single-use tokens
+# that should never end up in an index.
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /verify-email
+Disallow: /auth/
+
+Sitemap: https://www.stockbolt.online/sitemap.xml
