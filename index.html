@@ -2,7 +2,15 @@
 <html lang="en" dir="ltr">
   <head>
     <meta charset="UTF-8" />
+    <!-- /favicon.ico first: Google's favicon crawler requests that exact
+         path by convention, and the SPA rewrite used to answer it with
+         index.html — a 200 carrying HTML, which reads as a successful fetch
+         of something that is not an image. Hence the generic globe in search
+         results. The 96px PNG is for Google's "multiple of 48" preference. -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <title>StockBolt — Auto Parts ERP for the GCC &amp; India</title>
