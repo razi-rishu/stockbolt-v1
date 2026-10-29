@@ -5,8 +5,10 @@ import { SETTINGS_SECTIONS } from './_nav';
  * Settings two-pane layout — pinned left nav rail + content Outlet.
  *
  * Wraps every /settings/* route so the section list stays visible while a
- * setting opens beside it (no more bouncing back to the hub). On narrow
- * screens the rail stacks above the content.
+ * setting opens beside it (no more bouncing back to the hub). Below lg the
+ * rail is hidden: stacked above the content it filled a phone screen and the
+ * opened setting landed out of sight underneath. There, the hub (/settings)
+ * is the menu and Back returns to it.
  */
 export default function SettingsLayout() {
   const { pathname } = useLocation();
@@ -17,7 +19,7 @@ export default function SettingsLayout() {
   return (
     <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
       {/* Left rail */}
-      <aside className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-5rem)] lg:w-60 lg:shrink-0 lg:overflow-y-auto lg:pr-1">
+      <aside className="hidden lg:sticky lg:block lg:top-4 lg:max-h-[calc(100vh-5rem)] lg:w-60 lg:shrink-0 lg:overflow-y-auto lg:pr-1">
         <nav className="flex flex-col gap-5">
           {SETTINGS_SECTIONS.map((section) => (
             <div key={section.title}>

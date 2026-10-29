@@ -12,6 +12,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useBackHandler } from '@/navigation/use-back-handler';
 
 interface Result { id: string; label: string; sub: string; route: string; }
 
@@ -83,6 +84,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   // Reset + focus on open; clamp active when results change.
   useEffect(() => { if (open) { setQuery(''); setActive(0); setTimeout(() => inputRef.current?.focus(), 0); } }, [open]);
   useEffect(() => { setActive(0); }, [query]);
+  useBackHandler(open, onClose);
 
   if (!open) return null;
 

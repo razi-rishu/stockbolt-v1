@@ -22,6 +22,7 @@
  * rows by completing the employee's MOL ID / IBAN / routing code.
  */
 import type { EmployeeRow, PayrollRunRow, PayrollRunItemRow } from '@/data/adapter';
+import { downloadBlob } from '@/lib/io-export';
 
 export interface SifEmployer {
   molEstablishmentId: string;
@@ -119,10 +120,5 @@ export function buildSif(
 }
 
 export function downloadSif(result: SifResult) {
-  const blob = new Blob([result.content], { type: 'text/plain;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = result.fileName;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  downloadBlob(result.content, result.fileName, 'text/plain;charset=utf-8');
 }

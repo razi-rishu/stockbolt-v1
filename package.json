@@ -35,6 +35,10 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/browser": "^8.0.5",
+    "@capacitor/core": "^8.5.3",
     "@floating-ui/react": "^0.27.19",
     "@hookform/resolvers": "^5.2.2",
     "@supabase/supabase-js": "^2.45.4",
@@ -57,6 +61,8 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.3",
     "@eslint/js": "^9.11.1",
     "@types/node": "^22.7.4",
     "@types/react": "^18.3.10",

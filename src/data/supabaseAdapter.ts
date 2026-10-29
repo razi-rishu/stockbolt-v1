@@ -6,6 +6,7 @@ import { sha256Hex } from '@/lib/einvoice';   // AC-4C — content hash for e-in
 // below sums the ledger in JavaScript, so an uncapped .select() would have
 // started understating silently once a company outgrew that.
 import { fetchAllPages } from '@/lib/paging';
+import { authRedirectOrigin, isNative } from '@/lib/platform';
 // R6a — the Returns Analysis fold lives in a pure module so it can be unit
 // tested without a database; the whole risk in a report is the arithmetic.
 import {
@@ -306,7 +307,7 @@ export function createSupabaseAdapter(
         // "Email verified" page. (The redirect URL must be allow-listed in
         // Supabase → Auth → URL Configuration.)
         const emailRedirectTo = typeof window !== 'undefined'
-          ? `${window.location.origin}/verify-email`
+          ? `${authRedirectOrigin()}/verify-email`
           : undefined;
         const full_name = [first_name, last_name].filter(Boolean).join(' ');
         const { data, error } = await client.auth.signUp({
@@ -329,6 +330,16 @@ export function createSupabaseAdapter(
       async signInWithOAuth(provider) {
         // The redirect URL must be allow-listed in Supabase → Auth →
         // URL Configuration (same rule as /verify-email above).
+        if (isNative()) {
+          // Android app: Custom Tab + deep link back into the app (native/oauth.ts).
+          const { startNativeOAuth } = await import('@/native/oauth');
+          try {
+            await startNativeOAuth(provider);
+          } catch (err) {
+            throw new SupabaseAuthError(err instanceof Error ? err.message : String(err));
+          }
+          return;
+        }
         const { error } = await client.auth.signInWithOAuth({
           provider,
           options: { redirectTo: `${window.location.origin}/auth/callback` },
@@ -361,7 +372,7 @@ export function createSupabaseAdapter(
       },
       async sendPasswordResetEmail(email) {
         const { error } = await client.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/reset-password`,
+          redirectTo: `${authRedirectOrigin()}/reset-password`,
         });
         if (error) throw new SupabaseAuthError(error.message);
       },

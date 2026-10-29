@@ -154,7 +154,9 @@ interface AuthShellProps {
 export function AuthShell({ marketing, topQuestion, topLinkLabel, topLinkTo, children }: AuthShellProps) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#ECEEF9] p-3 sm:p-6">
-      <div className="grid w-full max-w-[1240px] overflow-hidden rounded-[24px] bg-white shadow-[0_24px_64px_-16px_rgba(76,29,149,0.18)] lg:min-h-[680px] lg:grid-cols-[46%_54%]">
+      {/* grid-cols-[minmax(0,1fr)] below lg: the single column is the screen
+          width, not the width of its widest row (which ran off a phone). */}
+      <div className="grid w-full max-w-[1240px] grid-cols-[minmax(0,1fr)] overflow-hidden rounded-[24px] bg-white shadow-[0_24px_64px_-16px_rgba(76,29,149,0.18)] lg:min-h-[680px] lg:grid-cols-[46%_54%]">
         {/* ── Left: marketing panel ── */}
         <div className="relative hidden flex-col overflow-hidden bg-gradient-to-br from-[#F7F5FE] via-[#F3EFFD] to-[#ECE5FB] p-10 lg:flex">
           {/* decorative dot grid */}
@@ -211,10 +213,10 @@ export function AuthShell({ marketing, topQuestion, topLinkLabel, topLinkTo, chi
         </div>
 
         {/* ── Right: form panel ── */}
-        <div className="flex flex-col p-6 sm:p-10">
-          <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-col p-5 sm:p-10">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <LanguageToggle />
-            <span className="text-sm text-ink-secondary">
+            <span className="text-end text-sm text-ink-secondary">
               {topQuestion}{' '}
               <Link to={topLinkTo} className="font-semibold text-brand-500 hover:underline">
                 {topLinkLabel}

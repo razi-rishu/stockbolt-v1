@@ -18,6 +18,8 @@
  */
 
 import Papa from 'papaparse';
+import { isNative } from '@/lib/platform';
+import { shareBlob } from '@/native/document';
 
 /** A single row from a parsed file. Keys = column headers as found in
  *  the file; values = string (even numbers are kept as strings so the
@@ -168,6 +170,11 @@ export async function downloadWorkbook(
 // ── Browser download helper ────────────────────────────────────────────────
 export function downloadBlob(data: BlobPart, filename: string, mime: string) {
   const blob = new Blob([data], { type: mime });
+  // Android app: <a download> does nothing in a WebView — save + share sheet instead.
+  if (isNative()) {
+    void shareBlob(blob, filename).catch((err) => console.error('[native] share failed', err));
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

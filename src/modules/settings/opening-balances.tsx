@@ -36,6 +36,7 @@ import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
+import { downloadBlob } from '@/lib/io-export';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
 import { Tabs } from '@/ui/tabs';
@@ -118,12 +119,7 @@ const INV_CSV_HEADERS = ['SKU', 'Warehouse', 'Date (YYYY-MM-DD)', 'Quantity', 'U
 
 function downloadInvTemplate() {
   const rows = [INV_CSV_HEADERS.join(','), 'BRK-001,Main Warehouse,2026-01-01,1500,100.00'];
-  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'opening_inventory_template.csv';
-  a.click();
-  URL.revokeObjectURL(a.href);
+  downloadBlob(rows.join('\n'), 'opening_inventory_template.csv', 'text/csv');
 }
 
 // Phase 14.09b — default direction based on account type. Normal balance:

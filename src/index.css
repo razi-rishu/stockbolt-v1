@@ -389,6 +389,11 @@ h1.text-xl.font-semibold.text-ink-primary + p.text-sm.text-ink-secondary {
     display: none !important;
   }
 
+  /* Phone screens shrink A4 templates to fit (ui/fit-to-width); paper gets full size. */
+  [data-fit-zoom] {
+    zoom: 1 !important;
+  }
+
   /* Show print-only elements */
   [data-print-only] {
     display: block !important;
@@ -445,4 +450,102 @@ h1.text-xl.font-semibold.text-ink-primary + p.text-sm.text-ink-secondary {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
+}
+
+/* ── Android app shell (src/app-shell) ─────────────────────────────────────
+   Everything below is scoped to html.app-shell, which only the Android app
+   (or a dev build opened with ?app=1) sets. The website never matches it. */
+@media screen {
+  html.app-shell,
+  html.app-shell body {
+    overflow-x: hidden;
+    overscroll-behavior-y: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Pages sized for a wide monitor: no fixed widths, no wide paddings. */
+  html.app-shell .app-main .ui-page-shell { padding: 0 !important; max-width: 100% !important; }
+  html.app-shell .app-main > div { max-width: 100% !important; }
+
+  /* Page title row: actions drop under the title instead of off the screen. */
+  html.app-shell .ui-page-header { margin-bottom: 12px !important; }
+  html.app-shell .ui-page-header > div:last-child { flex-wrap: wrap; }
+  html.app-shell .ui-page-header h1 { font-size: 19px !important; }
+  html.app-shell .ui-page-actions { flex-wrap: wrap; flex-shrink: 1 !important; width: 100%; }
+
+  /* Form grids → one column; filter bars stack. */
+  html.app-shell .ui-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  html.app-shell .ui-panel-compact { flex-wrap: wrap; }
+  html.app-shell .ui-panel-compact > .ui-panel-chip { width: 100%; padding: 8px 14px !important; border-inline-end: 0 !important; }
+
+  /* Comfortable touch targets; 16px stops Android zooming into fields. */
+  html.app-shell .app-main input:not([type='checkbox']):not([type='radio']),
+  html.app-shell .app-main select,
+  html.app-shell .app-main textarea { font-size: 16px; min-height: 40px; max-width: 100%; }
+
+  /* Wide tables become cards (data-phone-cards set by use-phone-tables):
+     the first cell is the card's heading, the rest flow in two columns with
+     a small label above each value. Line-item inputs keep working in place. */
+  html.app-shell table[data-phone-cards] { display: block; width: 100% !important; min-width: 0 !important; border: 0 !important; background: transparent !important; table-layout: auto !important; }
+  html.app-shell table[data-phone-cards] > thead { display: none; }
+  html.app-shell table[data-phone-cards] > tbody,
+  html.app-shell table[data-phone-cards] > tfoot { display: block; }
+  html.app-shell table[data-phone-cards] > tbody > tr,
+  html.app-shell table[data-phone-cards] > tfoot > tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px 14px;
+    margin: 0 0 10px;
+    padding: 12px 14px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+  }
+  html.app-shell table[data-phone-cards] > tfoot > tr { background: #f5f3ff; border-color: #ddd6fe; }
+  html.app-shell table[data-phone-cards] > * > tr > td,
+  html.app-shell table[data-phone-cards] > * > tr > th {
+    display: block;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: auto !important;
+    padding: 0 !important;
+    border: 0 !important;
+    text-align: start !important;
+    white-space: normal !important;
+    word-break: break-word;
+    position: static !important;
+    font-size: 14px;
+    background: transparent !important;
+  }
+  html.app-shell table[data-phone-cards] > * > tr > td::before,
+  html.app-shell table[data-phone-cards] > * > tr > th::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 2px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: #9ca3af;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  html.app-shell table[data-phone-cards] td[data-label='']::before,
+  html.app-shell table[data-phone-cards] th[data-label='']::before { display: none; }
+  /* Empty cells add nothing to a card. */
+  html.app-shell table[data-phone-cards] td:empty { display: none; }
+  /* Heading: the first cell (document number, name…) and spanning cells (totals, empty state). */
+  html.app-shell table[data-phone-cards] > * > tr > td:first-child,
+  html.app-shell table[data-phone-cards] > * > tr > th:first-child,
+  html.app-shell table[data-phone-cards] > * > tr > td[colspan] { grid-column: 1 / -1; font-size: 15px; font-weight: 600; }
+  html.app-shell table[data-phone-cards] > tbody > tr > td:first-child::before { display: none; }
+  html.app-shell table[data-phone-cards] td input:not([type='checkbox']):not([type='radio']),
+  html.app-shell table[data-phone-cards] td select,
+  html.app-shell table[data-phone-cards] td textarea { width: 100% !important; text-align: start !important; }
+
+  /* Narrow tables stay tables but never push the page sideways. */
+  html.app-shell .app-main table:not([data-phone-cards]) { max-width: 100%; }
+
+  /* Floating buttons sit above the bottom tabs. */
+  html.app-shell .app-fab { bottom: calc(84px + env(safe-area-inset-bottom)) !important; }
 }

@@ -33,6 +33,25 @@ import {
 // Statements are a running-balance ledger, not a line-item document, so they
 // keep their dedicated classic template. All other docs render via the engine.
 import { StatementClassicTemplate }   from './templates/statement-classic';
+import { isNative } from '@/lib/platform';
+import { shareCurrentPageAsPdf } from '@/native/document';
+
+/** "invoice-INV-0012.pdf" — the name the customer sees in WhatsApp. */
+function pdfFileName(
+  docType: string | undefined,
+  id: string | undefined,
+  s: {
+    invoice?: InvoiceRow; quote?: SalesQuoteRow; creditNote?: CreditNoteRow;
+    debitNote?: DebitNoteRow; po?: PurchaseOrderRow; bill?: VendorBillRow;
+    contact?: ContactRow | null;
+  },
+): string {
+  const number =
+    s.invoice?.invoice_number ?? s.quote?.quote_number ?? s.creditNote?.credit_note_number ??
+    s.debitNote?.debit_note_number ?? s.po?.po_number ?? s.bill?.bill_number ??
+    s.contact?.name ?? id?.slice(0, 8) ?? 'document';
+  return `${docType ?? 'document'}-${number}.pdf`;
+}
 
 // ── Shared props passed to every template ────────────────────────────────────
 export interface PrintDocProps {
@@ -306,6 +325,15 @@ export default function PrintPage() {
       >
         🖨 Print / Save PDF
       </button>
+      {/* Android app: PDF straight to the share sheet (WhatsApp, email…). */}
+      {isNative() && (
+        <button
+          onClick={() => void shareCurrentPageAsPdf(pdfFileName(docType, id, state))}
+          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-emerald-700"
+        >
+          ↗ Share PDF
+        </button>
+      )}
     </div>
   );
 

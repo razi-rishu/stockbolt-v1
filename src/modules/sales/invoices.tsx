@@ -160,7 +160,9 @@ export default function InvoicesPage() {
       {/* ── list (full-width until an invoice is opened, then side-by-side) ── */}
       <div className={selectedId ? 'flex flex-col lg:flex-row' : ''} style={{ gap: '16px' }}>
         {/* LEFT — list */}
-        <aside className={`flex flex-col ${selectedId ? 'lg:w-[340px] lg:shrink-0' : 'w-full'}`} style={{ gap: '10px' }}>
+        {/* Below lg the opened invoice replaces the list (it used to open
+            underneath it, off-screen on a phone); Back returns to the list. */}
+        <aside className={`flex-col ${selectedId ? 'hidden lg:flex lg:w-[340px] lg:shrink-0' : 'flex w-full'}`} style={{ gap: '10px' }}>
           <ListFilters
             search={search}
             onSearch={setSearch}
@@ -223,8 +225,8 @@ export default function InvoicesPage() {
             moves only this pane, not the whole page or the left list. */}
         {selectedId && (
           <div
-            className="min-w-0 flex-1"
-            style={{ maxHeight: '82vh', overflowY: 'auto', overscrollBehavior: 'contain' }}
+            className="min-w-0 flex-1 lg:max-h-[82vh] lg:overflow-y-auto"
+            style={{ overscrollBehavior: 'contain' }}
           >
             <Outlet />
           </div>

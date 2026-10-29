@@ -181,7 +181,7 @@ function FloatingActionButton() {
   ];
 
   return (
-    <div ref={containerRef} style={{ position: 'fixed', bottom: '24px', insetInlineEnd: '24px', zIndex: 40 }}>
+    <div ref={containerRef} className="app-fab" style={{ position: 'fixed', bottom: '24px', insetInlineEnd: '24px', zIndex: 40 }}>
       {open && (
         <div style={{
           marginBottom: '12px',

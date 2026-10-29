@@ -24,6 +24,9 @@ import { NotificationsBell } from '@/components/notifications-bell';
 import { BrandMark } from '@/components/brand-logo';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { fiscalYearLabel } from '@/lib/locale';
+import { useBackHandler } from '@/navigation/use-back-handler';
+import { isAppShell } from '@/lib/platform';
+import { AppShell } from '@/app-shell/AppShell';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 interface NavItem {
@@ -398,6 +401,24 @@ function SidebarSection({
   );
 }
 
+/** Quick-create links — sidebar "Shortcuts" on the web, quick actions in the app menu. */
+function buildShortcuts(canSales: boolean, canPurchasing: boolean) {
+  return [
+    ...(canSales ? [
+      { to: '/sales/invoices/new', label: 'New Invoice', icon: <InvoicePlusIcon /> },
+    ] : []),
+    ...(canPurchasing ? [
+      { to: '/purchasing/bills/new', label: 'New Bill', icon: <BillIcon /> },
+    ] : []),
+    ...(canSales ? [
+      { to: '/sales/payments/new', label: 'Record Receipt', icon: <ReceiptIcon /> },
+    ] : []),
+    ...(canPurchasing ? [
+      { to: '/purchasing/payments/new', label: 'New Payment', icon: <PaymentIcon /> },
+    ] : []),
+  ];
+}
+
 function SidebarContent({
   sections,
   onNavigate,
@@ -425,20 +446,7 @@ function SidebarContent({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
-  const shortcuts = [
-    ...(canSales ? [
-      { to: '/sales/invoices/new', label: 'New Invoice', icon: <InvoicePlusIcon /> },
-    ] : []),
-    ...(canPurchasing ? [
-      { to: '/purchasing/bills/new', label: 'New Bill', icon: <BillIcon /> },
-    ] : []),
-    ...(canSales ? [
-      { to: '/sales/payments/new', label: 'Record Receipt', icon: <ReceiptIcon /> },
-    ] : []),
-    ...(canPurchasing ? [
-      { to: '/purchasing/payments/new', label: 'New Payment', icon: <PaymentIcon /> },
-    ] : []),
-  ];
+  const shortcuts = buildShortcuts(canSales, canPurchasing);
 
   return (
     <div className="flex h-full flex-col">
@@ -513,10 +521,11 @@ function SearchBar() {
       type="button"
       onClick={openPalette}
       aria-label="Open global search"
-      className="flex h-11 w-full max-w-[520px] items-center gap-3 rounded-xl border border-border-subtle bg-white px-4 text-sm text-ink-tertiary transition-colors hover:border-border-strong"
+      className="flex h-9 w-9 shrink-0 items-center justify-center gap-3 rounded-xl border border-border-subtle bg-white text-sm text-ink-tertiary transition-colors hover:border-border-strong sm:h-11 sm:w-full sm:max-w-[520px] sm:shrink sm:justify-start sm:px-4"
     >
       <span className="text-ink-tertiary"><SearchIcon /></span>
-      <span className="flex-1 truncate text-start">Search anything...</span>
+      {/* Phones get the icon only, so the top bar fits the screen width. */}
+      <span className="hidden flex-1 truncate text-start sm:block">Search anything...</span>
       <kbd className="hidden rounded-md border border-border-subtle bg-surface-subtle px-1.5 py-0.5 text-[11px] font-medium text-ink-tertiary sm:inline">
         Ctrl + K
       </kbd>
@@ -628,11 +637,30 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   // Close the mobile drawer whenever the route changes.
   useEffect(() => { setDrawerOpen(false); }, [location.pathname]);
+  useBackHandler(drawerOpen, () => setDrawerOpen(false));
 
   async function handleSignOut() {
     await getAdapter().auth.signOut();
     clear();
     navigate('/login', { replace: true });
+  }
+
+  // Android app: phone layout with bottom tabs (src/app-shell). The website never takes this branch.
+  if (isAppShell()) {
+    return (
+      <AppShell
+        sections={sections}
+        shortcuts={buildShortcuts(canSales, canPurchasing)}
+        companyName={companyName}
+        companySub={companySub}
+        email={email}
+        canSales={canSales}
+        canInventory={hasPerm(role, permissions, 'inventory.read')}
+        onSignOut={handleSignOut}
+      >
+        {children}
+      </AppShell>
+    );
   }
 
   const sidebarContent = (
@@ -698,9 +726,10 @@ export function AppLayout({ children }: AppLayoutProps) {
           <div className="ms-auto flex items-center gap-1.5">
             <LanguageToggle />
             <NotificationsBell />
+            {/* Hidden on phones to fit the bar — Settings stays in the menu drawer and user menu. */}
             <Link
               to="/settings"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-ink-secondary hover:bg-surface-muted hover:text-ink-primary"
+              className="hidden h-9 w-9 items-center justify-center rounded-full text-ink-secondary hover:bg-surface-muted hover:text-ink-primary sm:flex"
               aria-label="Settings"
             >
               <CogIcon />

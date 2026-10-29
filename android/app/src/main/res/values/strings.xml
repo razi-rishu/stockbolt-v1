@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">StockBolt</string>
+    <string name="title_activity_main">StockBolt</string>
+    <string name="package_name">online.stockbolt.app</string>
+    <string name="custom_url_scheme">online.stockbolt.app</string>
+</resources>

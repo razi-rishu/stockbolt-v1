@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useBackHandler } from '@/navigation/use-back-handler';
 
 interface ModalProps {
   open: boolean;
@@ -23,6 +24,7 @@ export function Modal({ open, onClose, title, children, width = 'md' }: ModalPro
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [open, onClose]);
+  useBackHandler(open, onClose);
 
   if (!open) return null;
 

@@ -302,13 +302,15 @@ export default function POSScreen() {
   const warehouseName = warehouses.find(w => w.id === session.warehouse_id)?.name ?? session.warehouse_id;
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] bg-surface-page overflow-hidden -m-6">
+    // Phones (below md): search + results on top, cart underneath, in one
+    // scrolling column. md and up: the original side-by-side till.
+    <div className="flex flex-col bg-surface-page md:-m-6 md:h-[calc(100vh-3.5rem)] md:flex-row md:overflow-hidden">
       {/* ── Left panel: Search + Results ─────────────────────────────────── */}
-      <div className="flex flex-1 flex-col overflow-hidden border-e border-border-subtle">
+      <div className="flex flex-col border-b border-border-subtle md:flex-1 md:overflow-hidden md:border-b-0 md:border-e">
 
         {/* Session bar */}
-        <div className="flex items-center justify-between bg-surface-card border-b border-border-subtle px-4 py-2.5">
-          <div className="flex items-center gap-3 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-surface-card border-b border-border-subtle px-4 py-2.5">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
             <span className="font-semibold text-brand-600">{session.session_number}</span>
             <span className="text-ink-tertiary">·</span>
             <span className="text-ink-secondary">{warehouseName}</span>
@@ -342,9 +344,9 @@ export default function POSScreen() {
         </div>
 
         {/* Product grid */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="max-h-[45vh] overflow-y-auto p-4 md:max-h-none md:flex-1">
           {search.trim() === '' ? (
-            <div className="flex items-center justify-center h-full text-sm text-ink-tertiary">
+            <div className="flex items-center justify-center h-full py-6 text-sm text-ink-tertiary md:py-0">
               {t('pos.search_hint')}
             </div>
           ) : filtered.length === 0 ? (
@@ -368,7 +370,7 @@ export default function POSScreen() {
       </div>
 
       {/* ── Right panel: Cart + Payment ───────────────────────────────────── */}
-      <div className="flex w-80 flex-col bg-surface-card">
+      <div className="flex w-full flex-col bg-surface-card md:w-80">
         {/* Cart items */}
         <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
           {cart.length === 0 ? (

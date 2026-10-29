@@ -212,7 +212,7 @@ export function Panel({
 }: { icon?: ReactNode; title: string; right?: ReactNode; children: ReactNode; compact?: boolean }) {
   if (compact) {
     return (
-      <div style={{
+      <div className="ui-panel-compact" style={{
         display: 'flex',
         alignItems: 'center',
         border: `1px solid ${theme.border}`,
@@ -222,7 +222,7 @@ export function Panel({
         minHeight: '50px',
       }}>
         {/* Label chip — left side */}
-        <div style={{
+        <div className="ui-panel-chip" style={{
           display: 'flex', alignItems: 'center', gap: '6px',
           padding: '0 14px',
           borderInlineEnd: `1px solid ${theme.border}`,
@@ -286,7 +286,7 @@ export function Grid({
   cols = 2, gap, children,
 }: { cols?: number; gap?: string; children: ReactNode }) {
   return (
-    <div style={{
+    <div className="ui-grid" style={{
       display: 'grid',
       gridTemplateColumns: `repeat(${cols}, 1fr)`,
       gap: gap ?? '12px',
@@ -299,7 +299,7 @@ export function Grid({
 // ── Page shell ─────────────────────────────────────────────────────────────
 export function PageShell({ children, style }: { children: ReactNode; style?: CSSProperties }) {
   return (
-    <div style={{
+    <div className="ui-page-shell" style={{
       maxWidth: '1280px',
       margin: '0 auto',
       padding: '20px 24px',
@@ -317,7 +317,7 @@ export function PageHeader({
   title, crumb, actions, subtitle,
 }: { title: string; crumb?: ReactNode; actions?: ReactNode; subtitle?: ReactNode }) {
   return (
-    <div style={{ marginBottom: '20px' }}>
+    <div className="ui-page-header" style={{ marginBottom: '20px' }}>
       {crumb && (
         <div style={{ fontSize: theme.fontXs, color: theme.inkFaint, marginBottom: '6px' }}>
           {crumb}
@@ -338,7 +338,7 @@ export function PageHeader({
             </div>
           )}
         </div>
-        {actions && <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>{actions}</div>}
+        {actions && <div className="ui-page-actions" style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>{actions}</div>}
       </div>
     </div>
   );

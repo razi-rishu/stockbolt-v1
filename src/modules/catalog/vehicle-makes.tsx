@@ -9,6 +9,7 @@ import { Select } from '@/ui/select';
 import { Modal } from '@/ui/modal';
 import { Table, type Column } from '@/ui/table';
 import Papa from 'papaparse';
+import { downloadBlob } from '@/lib/io-export';
 import type {
   VehicleMakeRow,
   VehicleModelRow,
@@ -293,10 +294,7 @@ export default function VehicleMakesPage() {
 
   function downloadImportTemplate() {
     const csv = 'Make,Model,Generation,Year From,Year To,Engine Code,Fuel,Transmission,Drive,Chassis\nToyota,Corolla,E170,2013,2018,2ZR-FE,Petrol,Automatic,FWD,NRE170\n';
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    const a = document.createElement('a');
-    a.href = url; a.download = 'vehicle-import-template.csv'; a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(csv, 'vehicle-import-template.csv', 'text/csv');
   }
 
   function openImport() { setImportRows([]); setImportErr(''); setImportResult(null); setImportOpen(true); }
