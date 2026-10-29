@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { SETTINGS_SECTIONS } from './_nav';
+import { visibleSettingsSections } from './_nav';
 
 /**
  * Settings two-pane layout — pinned left nav rail + content Outlet.
@@ -21,7 +21,7 @@ export default function SettingsLayout() {
       {/* Left rail */}
       <aside className="hidden lg:sticky lg:block lg:top-4 lg:max-h-[calc(100vh-5rem)] lg:w-60 lg:shrink-0 lg:overflow-y-auto lg:pr-1">
         <nav className="flex flex-col gap-5">
-          {SETTINGS_SECTIONS.map((section) => (
+          {visibleSettingsSections().map((section) => (
             <div key={section.title}>
               <div className="mb-1.5 px-2.5 text-[10px] font-bold uppercase tracking-[0.08em] text-ink-tertiary">
                 {section.title}

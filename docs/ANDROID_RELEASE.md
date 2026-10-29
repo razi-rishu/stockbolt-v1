@@ -46,8 +46,10 @@ Supabase → Authentication → URL Configuration → Redirect URLs → Add
    npm run build
    npx cap sync android
    cd android
-   gradlew assembleRelease
+   gradlew bundleRelease assembleRelease
    ```
+   Google Play takes `app/build/outputs/bundle/release/app-release.aab`;
+   `app/build/outputs/apk/release/app-release.apk` is for direct installs.
 3. Verify the signature:
    ```
    %ANDROID_HOME%\build-tools\<version>\apksigner verify --print-certs app\build\outputs\apk\release\app-release.apk
@@ -59,6 +61,18 @@ Supabase → Authentication → URL Configuration → Redirect URLs → Add
    place, still signed in), sign in with email and Google, open an invoice,
    Share PDF, Back button, export a report.
 5. Distribute `app-release.apk` (renamed `StockBolt-<versionName>.apk`).
+
+## Google Play
+
+- Play App Signing is on: the key above is the *upload* key; Google signs
+  what users download. So a Play install cannot update a directly-installed
+  APK (different signature) — those users uninstall once, then use Play.
+- Store graphics: `assets/play/icon-512.png`, `assets/play/feature-graphic-1024x500.png`.
+- Privacy policy: https://www.stockbolt.online/privacy ·
+  account deletion: https://www.stockbolt.online/delete-account
+  (both live only after this branch is merged and deployed).
+- Payments policy: the app never shows billing / PayPal (`webOnly` settings
+  items, `/settings/billing` redirects in the app). Keep it that way.
 
 ## Notes
 

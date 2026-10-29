@@ -7,6 +7,8 @@
  * original routes (e.g. /products/categories, /accounting/chart-of-accounts) still
  * exist for the Inventory / Accounting menus.
  */
+import { isAppShell } from '@/lib/platform';
+
 export interface SettingsNavItem {
   to: string;
   icon: string;
@@ -14,6 +16,8 @@ export interface SettingsNavItem {
   desc: string;
   /** Not-yet-built — shown muted, not navigable. */
   comingSoon?: boolean;
+  /** Website only — hidden in the Android app (see visibleSettingsSections). */
+  webOnly?: boolean;
 }
 export interface SettingsNavSection {
   title: string;
@@ -25,7 +29,7 @@ export const SETTINGS_SECTIONS: SettingsNavSection[] = [
     title: 'Company & Location',
     items: [
       { to: '/settings/company',    icon: '🏢', title: 'Company Profile',       desc: 'Name, logo, tax number, currency, fiscal year start.' },
-      { to: '/settings/billing',    icon: '💳', title: 'Billing & Subscription', desc: 'Your plan, trial, payment history and billing address.' },
+      { to: '/settings/billing',    icon: '💳', title: 'Billing & Subscription', desc: 'Your plan, trial, payment history and billing address.', webOnly: true },
       { to: '/settings/warehouses', icon: '🏬', title: 'Warehouses & Branches',  desc: 'Storage locations and default branch for new documents.' },
     ],
   },
@@ -89,3 +93,13 @@ export const SETTINGS_SECTIONS: SettingsNavSection[] = [
     ],
   },
 ];
+
+/**
+ * The sections to show. In the Android app, web-only items are dropped:
+ * subscriptions are bought on the website (PayPal), and Google Play does not
+ * allow an app to sell them through another payment system.
+ */
+export function visibleSettingsSections(): SettingsNavSection[] {
+  if (!isAppShell()) return SETTINGS_SECTIONS;
+  return SETTINGS_SECTIONS.map((s) => ({ ...s, items: s.items.filter((it) => !it.webOnly) }));
+}

@@ -602,7 +602,8 @@ export default function LandingPage() {
           <div className="mx-auto flex flex-wrap items-center justify-between gap-3 px-5 md:px-8" style={{ maxWidth: 1240, paddingTop: 18, paddingBottom: 18, fontSize: 12.5, color: C.muted }}>
             <span>© {new Date().getFullYear()} StockBolt. All rights reserved.</span>
             <span style={{ display: 'flex', gap: 22 }}>
-              <a href={DEMO_MAILTO} style={{ color: C.muted, textDecoration: 'none' }}>Privacy Policy</a>
+              <Link to="/privacy" style={{ color: C.muted, textDecoration: 'none' }}>Privacy Policy</Link>
+              <Link to="/delete-account" style={{ color: C.muted, textDecoration: 'none' }}>Delete account</Link>
               <a href={DEMO_MAILTO} style={{ color: C.muted, textDecoration: 'none' }}>Terms of Service</a>
             </span>
           </div>

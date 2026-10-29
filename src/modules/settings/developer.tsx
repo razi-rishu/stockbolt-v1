@@ -15,6 +15,7 @@ import { Modal } from '@/ui/modal';
 import { Input } from '@/ui/input';
 import { BackButton } from '@/ui/back-button';
 import { theme } from '@/ui/theme';
+import { isAppShell } from '@/lib/platform';
 import type { ApiScope, ApiKeyRow } from '@/data/adapter';
 
 const SCOPES: { key: ApiScope; label: string; desc: string }[] = [
@@ -111,7 +112,8 @@ export default function DeveloperSettingsPage() {
           <p style={{ margin: '6px 0 12px', fontSize: '13px', color: theme.brand }}>
             Upgrade your subscription to generate API keys and connect external apps.
           </p>
-          <Link to="/settings/billing"><Button size="sm">View plans</Button></Link>
+          {/* Android app: no link into billing — plans are bought on the website (Google Play payments policy). */}
+          {!isAppShell() && <Link to="/settings/billing"><Button size="sm">View plans</Button></Link>}
         </div>
       )}
 

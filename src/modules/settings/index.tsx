@@ -11,7 +11,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
-import { SETTINGS_SECTIONS, type SettingsNavSection } from './_nav';
+import { visibleSettingsSections, type SettingsNavSection } from './_nav';
 
 interface TileSpec {
   to:        string;
@@ -154,7 +154,7 @@ export default function SettingsHubPage() {
     '/settings/chart-of-accounts': coa.length,
   };
 
-  const sections: SectionSpec[] = SETTINGS_SECTIONS.map((s: SettingsNavSection) => ({
+  const sections: SectionSpec[] = visibleSettingsSections().map((s: SettingsNavSection) => ({
     title: s.title,
     tiles: s.items.map((it) => ({ ...it, count: countByPath[it.to] })),
   }));

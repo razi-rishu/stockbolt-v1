@@ -318,6 +318,12 @@ function MenuSheet({
             Sign out
           </button>
         </div>
+
+        {/* Google Play requires the privacy policy and account deletion to be reachable in the app. */}
+        <div className="mt-3 flex flex-wrap justify-center gap-x-5 gap-y-1 text-[13px] text-ink-tertiary">
+          <Link to="/privacy" onClick={onClose} className="py-2">Privacy Policy</Link>
+          <Link to="/delete-account" onClick={onClose} className="py-2">Delete account</Link>
+        </div>
       </div>
     </div>
   );

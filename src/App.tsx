@@ -10,12 +10,14 @@ import { RequirePermission } from '@/components/require-permission';
 import { UnsavedNavGuard } from '@/components/unsaved-nav-guard';
 import { BackButtonHandler } from '@/navigation/BackButtonHandler';
 import { NativeBridge } from '@/native/NativeBridge';
-import { isNative } from '@/lib/platform';
+import { isAppShell, isNative } from '@/lib/platform';
 import { AppLayout } from '@/components/app-layout';
 import { ErrorBoundary } from '@/components/error-boundary';
 
 // Marketing — public landing page (Phase 14.14c)
 const LandingPage       = lazy(() => import('@/modules/marketing/landing-page'));
+const PrivacyPolicyPage = lazy(() => import('@/modules/marketing/legal/privacy-policy'));
+const DeleteAccountPage = lazy(() => import('@/modules/marketing/legal/delete-account'));
 
 // Auth routes
 const LoginPage          = lazy(() => import('@/modules/auth/login'));
@@ -273,7 +275,8 @@ function AppRoutes() {
                 <Route element={<RequirePermission perm="settings.read" />}>
                   <Route index                   element={<SettingsHubPage />} />
                   <Route path="company"          element={<CompanySettingsPage />} />
-                  <Route path="billing"          element={<BillingPage />} />
+                  {/* Website only: the Android app never shows billing (Google Play payments policy). */}
+                  <Route path="billing"          element={isAppShell() ? <Navigate to="/settings" replace /> : <BillingPage />} />
                   <Route path="warehouses"       element={<WarehousesPage />} />
                   <Route path="units"            element={<UnitsPage />} />
                   <Route path="price-levels"     element={<PriceLevelsPage />} />
@@ -483,6 +486,9 @@ function AppRoutes() {
                            logging out). */}
         <Route path="/" element={<LandingGateway />} />
         <Route path="/landing" element={<LandingPage />} />
+        {/* Public legal pages — no login; Google Play links to both. */}
+        <Route path="/privacy" element={<PrivacyPolicyPage />} />
+        <Route path="/delete-account" element={<DeleteAccountPage />} />
         {/* Phase 14.12 — catch-all now shows a visible 404 instead of
              silently bouncing to /dashboard. The previous redirect
              masked routing bugs ("refresh always goes to dashboard"
