@@ -67,6 +67,16 @@ export interface TemplateSettings {
   bankIban:              string;
   /** Label under the signature line (defaults to "Authorised Signatory"). */
   signatureLabel:        string;
+  /**
+   * Letterhead — the company's own designed A4 page (image), printed behind
+   * the document. Empty = no letterhead. The top/bottom space keeps the
+   * document clear of the letterhead's own header and footer artwork.
+   */
+  letterheadUrl:         string;
+  letterheadTopMm:       number;
+  letterheadBottomMm:    number;
+  /** Hide StockBolt's logo + company block — the letterhead already shows them. */
+  letterheadHideCompany: boolean;
 }
 
 /** A saved print template row (mirrors the print_templates table). */
@@ -116,6 +126,10 @@ export const DEFAULT_TEMPLATE_SETTINGS: TemplateSettings = {
   bankAccountNumber:     '',
   bankIban:              '',
   signatureLabel:        '',
+  letterheadUrl:         '',
+  letterheadTopMm:       45,
+  letterheadBottomMm:    30,
+  letterheadHideCompany: true,
 };
 
 /**

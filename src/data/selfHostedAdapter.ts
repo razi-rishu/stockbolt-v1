@@ -45,6 +45,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       setDocTypeDefault: () => notImplemented('printTemplates.setDocTypeDefault'),
       listDocTypeDefaults: () => notImplemented('printTemplates.listDocTypeDefaults'),
       clearDocTypeDefault: () => notImplemented('printTemplates.clearDocTypeDefault'),
+      uploadLetterhead: () => notImplemented('printTemplates.uploadLetterhead'),
     },
     geography: {
       listRegions: () => notImplemented('geography.listRegions'),

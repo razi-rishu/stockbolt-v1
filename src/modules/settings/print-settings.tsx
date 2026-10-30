@@ -57,6 +57,9 @@ const DOC_TYPES: { key: PrintDocumentType; label: string }[] = [
   { key: 'debit_note',       label: 'Debit Note' },
   { key: 'purchase_order',   label: 'Purchase Order' },
   { key: 'purchase_invoice', label: 'Purchase Invoice (Bill)' },
+  { key: 'payment_receipt',  label: 'Payment Receipt' },
+  { key: 'payment_voucher',  label: 'Payment Voucher' },
+  { key: 'delivery_note',    label: 'Goods Receipt' },
 ];
 
 function newTemplateDraft(): Partial<PrintTemplate> & { name: string } {
@@ -84,6 +87,7 @@ export default function PrintSettingsPage() {
   const [needsMigration, setNeedsMigration] = useState(false);
   const [company, setCompany] = useState<{ name?: string; logo_url?: string | null; tax_id?: string | null; country_code?: string | null } | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadingLh, setUploadingLh] = useState(false);
 
   const reload = useCallback(async (selectId?: string) => {
     if (!company_id) return;
@@ -114,6 +118,18 @@ export default function PrintSettingsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [company_id]);
 
+  async function handleLetterheadUpload(file: File | null) {
+    if (!file || !company_id) return;
+    if (!/^image\/(png|jpe?g)$/.test(file.type)) { setError('Letterhead must be a PNG or JPG image.'); return; }
+    if (file.size > 5 * 1024 * 1024) { setError('Letterhead image must be 5 MB or smaller.'); return; }
+    setUploadingLh(true); setError(null);
+    try {
+      const url = await adapter.printTemplates.uploadLetterhead(company_id, file);
+      setSetting('letterheadUrl', url);
+    } catch (e) { setError(String(e)); }
+    finally { setUploadingLh(false); }
+  }
+
   async function handleLogoUpload(file: File | null) {
     if (!file || !company_id) return;
     setUploading(true); setError(null);
@@ -131,6 +147,9 @@ export default function PrintSettingsPage() {
     setTpl(t => t ? { ...t, settings: { ...t.settings, [key]: value } } : t);
   }
   function setFooter(key: 'footerEn' | 'footerAr' | 'paymentTermsEn' | 'paymentTermsAr' | 'bankAccountName' | 'bankName' | 'bankAccountNumber' | 'bankIban' | 'signatureLabel', value: string) {
+    setTpl(t => t ? { ...t, settings: { ...t.settings, [key]: value } } : t);
+  }
+  function setSetting<K extends keyof TemplateSettings>(key: K, value: TemplateSettings[K]) {
     setTpl(t => t ? { ...t, settings: { ...t.settings, [key]: value } } : t);
   }
   function chooseStyle(style: TemplateStyle) {
@@ -332,6 +351,49 @@ export default function PrintSettingsPage() {
                       onChange={e => handleLogoUpload(e.target.files?.[0] ?? null)} />
                   </label>
                 </div>
+              </div>
+
+              <div className={card}>
+                <h2 className="text-sm font-semibold text-ink-primary">Letterhead (your own design)</h2>
+                <p className="mt-1 mb-3 text-xs text-ink-tertiary">
+                  Already have a designed letterhead? Upload it as an A4 portrait image (PNG or JPG, ideally 2480 × 3508 px)
+                  and every document using this template prints on top of it. Exporting a PDF letterhead? Save its first page as an image.
+                </p>
+                <div className="flex flex-wrap items-center gap-4">
+                  <div style={{ width: 84, height: 119, border: `1px dashed ${theme.border}`, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: '#fff' }}>
+                    {tpl.settings.letterheadUrl
+                      ? <img src={tpl.settings.letterheadUrl} alt="letterhead" style={{ width: '100%', height: '100%', objectFit: 'fill' }} />
+                      : <span className="px-1 text-center text-[11px] text-ink-tertiary">No letterhead</span>}
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="cursor-pointer rounded-card border border-border-subtle bg-surface-card px-3 py-2 text-sm text-ink-primary hover:bg-surface-hover">
+                      {uploadingLh ? 'Uploading…' : (tpl.settings.letterheadUrl ? 'Replace letterhead' : 'Upload letterhead')}
+                      <input type="file" accept="image/png,image/jpeg" className="hidden" disabled={uploadingLh}
+                        onChange={e => { handleLetterheadUpload(e.target.files?.[0] ?? null); e.target.value = ''; }} />
+                    </label>
+                    {tpl.settings.letterheadUrl && (
+                      <button type="button" className="text-start text-sm text-danger-600 hover:underline" onClick={() => setSetting('letterheadUrl', '')}>
+                        Remove letterhead
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {tpl.settings.letterheadUrl && (
+                  <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div><label className={labelCls}>Space for letterhead header (mm)</label>
+                      <input type="number" min={0} max={150} className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-3 text-sm"
+                        value={tpl.settings.letterheadTopMm} onChange={e => setSetting('letterheadTopMm', Math.max(0, Math.min(150, Number(e.target.value) || 0)))} /></div>
+                    <div><label className={labelCls}>Space for letterhead footer (mm)</label>
+                      <input type="number" min={0} max={150} className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-3 text-sm"
+                        value={tpl.settings.letterheadBottomMm} onChange={e => setSetting('letterheadBottomMm', Math.max(0, Math.min(150, Number(e.target.value) || 0)))} /></div>
+                    <label className="flex cursor-pointer items-center gap-2 sm:col-span-2">
+                      <input type="checkbox" className="h-4 w-4 rounded border-border-subtle accent-brand-600"
+                        checked={tpl.settings.letterheadHideCompany} onChange={e => setSetting('letterheadHideCompany', e.target.checked)} />
+                      <span className="text-sm text-ink-primary">Hide StockBolt’s logo and company details (my letterhead already shows them)</span>
+                    </label>
+                    <p className="text-xs text-ink-tertiary sm:col-span-2">Adjust the spaces until the preview’s text sits clear of your letterhead’s design. Remember to save the template.</p>
+                  </div>
+                )}
               </div>
 
               <div className={card}>

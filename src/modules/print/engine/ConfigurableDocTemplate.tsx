@@ -73,6 +73,9 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
     letterSpacing:  preset.uppercaseLabels ? '0.1em' : 'normal',
   };
 
+  // The company's own designed page, drawn behind the document (see Page).
+  const letterhead = s.letterheadUrl || null;
+
   // ── Logo + company identity block ─────────────────────────────────────────
   const logo = s.showLogo && data.company.logo_url
     ? <img src={data.company.logo_url} alt="logo" style={{ height: logoPx, width: 'auto', objectFit: 'contain' }} />
@@ -126,6 +129,11 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
 
   // ── Header (varies by preset) ─────────────────────────────────────────────
   function Header() {
+    // Letterhead pages already carry the logo and company details in their
+    // artwork; only the document's own title / number / dates are printed.
+    if (letterhead && s.letterheadHideCompany) {
+      return <div style={{ display: 'flex', justifyContent: 'flex-end' }}>{docMeta(false)}</div>;
+    }
     if (preset.headerVariant === 'band') {
       return (
         <div style={{
@@ -369,13 +377,26 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
     <div className="signature-page" style={{
       position: 'relative', width: '210mm', minHeight: '297mm', background: C.paper,
       fontFamily: fontStack, fontSize: baseFont, color: C.text,
-      padding: '16mm 16mm 16mm', boxSizing: 'border-box',
+      // A letterhead reserves its own header / footer bands; content stays between them.
+      padding: letterhead ? `${s.letterheadTopMm}mm 16mm ${s.letterheadBottomMm}mm` : '16mm 16mm 16mm',
+      boxSizing: 'border-box',
+      // Own stacking context, so the letterhead (z-index -1) sits above the
+      // paper colour but below every line of the document.
+      isolation: 'isolate',
       // Flex column so the Payment Details / Signatory / QR block can be pinned to
       // the bottom of the page (marginTop:auto below) — identical in preview + print,
       // regardless of how many line items the document has.
       display: 'flex', flexDirection: 'column',
     }}>
-      {preset.accentStrip && (
+      {/* An <img>, not a CSS background: browsers print images by default but
+          drop background images unless the user ticks "Background graphics". */}
+      {letterhead && (
+        <img src={letterhead} alt="" aria-hidden="true" style={{
+          position: 'absolute', top: 0, left: 0, width: '210mm', height: '297mm',
+          objectFit: 'fill', zIndex: -1, pointerEvents: 'none',
+        }} />
+      )}
+      {preset.accentStrip && !letterhead && (
         <div style={{ position: 'absolute', insetBlock: 0, insetInlineStart: 0, width: '4mm', background: C.accent }} />
       )}
 
@@ -468,7 +489,7 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
       </>}
 
       {/* Footer strip */}
-      {s.showFooter && (s.footerEn || s.footerAr) && (
+      {s.showFooter && !letterhead && (s.footerEn || s.footerAr) && (
         <div style={{
           position: 'absolute', insetInline: 0, bottom: 0, background: C.primary, color: '#fff',
           padding: '8px 16mm', fontSize: baseFont * 0.78, display: 'flex', justifyContent: 'space-between', gap: 12,

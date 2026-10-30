@@ -520,6 +520,16 @@ export function createSupabaseAdapter(
             .delete().eq('company_id', company_id).eq('document_type', documentType);
           assertNoError(error, 'printTemplates.clearDocTypeDefault');
         },
+
+        async uploadLetterhead(company_id: string, file: File): Promise<string> {
+          // Same public `logos` bucket and company-prefixed path as the logo;
+          // a fresh name per upload so a replaced letterhead is never served stale.
+          const ext = (file.name.split('.').pop() ?? 'png').toLowerCase();
+          const path = `${company_id}/letterheads/${Date.now()}.${ext}`;
+          const { error } = await client.storage.from('logos').upload(path, file, { upsert: false, contentType: file.type });
+          if (error) throw new SupabaseDataError(`printTemplates.uploadLetterhead: ${error.message}`);
+          return client.storage.from('logos').getPublicUrl(path).data.publicUrl;
+        },
       };
     })(),
 

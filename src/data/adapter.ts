@@ -204,6 +204,8 @@ export interface PrintTemplatesAPI {
   listDocTypeDefaults(company_id: string): Promise<Record<string, string>>;
   /** Remove a per-document-type default (falls back to the global default). */
   clearDocTypeDefault(company_id: string, documentType: PrintDocType): Promise<void>;
+  /** Upload a letterhead image (the company's own A4 design); returns its public URL. */
+  uploadLetterhead(company_id: string, file: File): Promise<string>;
 }
 
 // ── Profiles API ──────────────────────────────────────────────────────────────
