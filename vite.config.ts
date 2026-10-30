@@ -1,9 +1,27 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
 
+// Each production build gets an id, baked into the app and also written to
+// /version.json. An open website tab polls that file: a different id means a
+// newer deploy is live (src/lib/update-check.ts).
+const BUILD_ID = new Date().toISOString();
+
+function versionFile(): Plugin {
+  return {
+    name: 'stockbolt-version-file',
+    apply: 'build',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ build_id: BUILD_ID }) });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), versionFile()],
+  define: {
+    __BUILD_ID__: JSON.stringify(BUILD_ID),
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

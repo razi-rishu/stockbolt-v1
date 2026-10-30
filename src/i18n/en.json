@@ -1901,5 +1901,13 @@
     "gl_hint_vendor": "Posts Dr the selected account / Cr 1400 Vendor Advances.",
     "confirm": "Refund",
     "refund_cta": "Refund"
+  },
+  "update": {
+    "title": "A new version is available",
+    "body_web": "Reload to get the latest StockBolt.",
+    "body_app": "Update StockBolt from Google Play.",
+    "action_web": "Reload",
+    "action_app": "Update",
+    "dismiss": "Dismiss"
   }
 }

@@ -11,6 +11,7 @@ import { UnsavedNavGuard } from '@/components/unsaved-nav-guard';
 import { BackButtonHandler } from '@/navigation/BackButtonHandler';
 import { NativeBridge } from '@/native/NativeBridge';
 import { isAppShell, isNative } from '@/lib/platform';
+import { UpdateBanner } from '@/components/update-banner';
 import { AppLayout } from '@/components/app-layout';
 import { ErrorBoundary } from '@/components/error-boundary';
 
@@ -563,6 +564,7 @@ export default function App() {
       */}
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AppRoutes />
+        <UpdateBanner />
       </BrowserRouter>
     </ErrorBoundary>
   );

@@ -1901,5 +1901,13 @@
     "gl_hint_vendor": "يُرحّل مدين الحساب المحدد / دائن 1400 دفعات الموردين المقدمة.",
     "confirm": "إرجاع",
     "refund_cta": "إرجاع"
+  },
+  "update": {
+    "title": "يتوفر إصدار جديد",
+    "body_web": "أعد التحميل للحصول على أحدث إصدار من StockBolt.",
+    "body_app": "حدّث StockBolt من Google Play.",
+    "action_web": "إعادة التحميل",
+    "action_app": "تحديث",
+    "dismiss": "إغلاق"
   }
 }
