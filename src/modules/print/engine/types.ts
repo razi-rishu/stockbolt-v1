@@ -77,6 +77,20 @@ export interface TemplateSettings {
   letterheadBottomMm:    number;
   /** Hide StockBolt's logo + company block — the letterhead already shows them. */
   letterheadHideCompany: boolean;
+  /**
+   * Page layout. 'elegant' swaps in ElegantDocTemplate (header photo, rounded
+   * panels, contact footer bar). Kept in settings rather than template_style
+   * so it needs no change to that column's CHECK constraint.
+   */
+  layout:                'standard' | 'elegant';
+  /** Elegant layout wording + header photo. One entry per line where noted. */
+  tagline:               string;
+  subtitle:              string;
+  heroImageUrl:          string;
+  heroWords:             string;   // one word per line, beside the photo
+  introText:             string;
+  termsEn:               string;   // one term per line; the document's own terms win
+  showCustomerAcceptance: boolean;
 }
 
 /** A saved print template row (mirrors the print_templates table). */
@@ -130,6 +144,14 @@ export const DEFAULT_TEMPLATE_SETTINGS: TemplateSettings = {
   letterheadTopMm:       45,
   letterheadBottomMm:    30,
   letterheadHideCompany: true,
+  layout:                'standard',
+  tagline:               '',
+  subtitle:              '',
+  heroImageUrl:          '',
+  heroWords:             '',
+  introText:             '',
+  termsEn:               '',
+  showCustomerAcceptance: true,
 };
 
 /**

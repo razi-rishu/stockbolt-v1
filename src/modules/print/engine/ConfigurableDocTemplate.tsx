@@ -19,6 +19,7 @@ import {
 } from './presets';
 import { amountInWords } from './amount-in-words';
 import { FitToWidth } from '@/ui/fit-to-width';
+import { ElegantDocTemplate } from './ElegantDocTemplate';
 
 interface Props {
   data:     DocumentData;
@@ -33,6 +34,7 @@ const num = (n: number) =>
 export function ConfigurableDocTemplate({ data, template }: Props) {
   const preset   = STYLE_PRESETS[template.template_style] ?? STYLE_PRESETS.classic;
   const s        = normalizeSettings(template.settings);
+  if (s.layout === 'elegant') return <ElegantDocTemplate data={data} template={template} settings={s} />;
   const fontStack = FONT_STACK[template.font_family] ?? FONT_STACK.Inter;
   const baseFont  = FONT_SIZE_PX[template.font_size] ?? FONT_SIZE_PX.medium;
   const logoPx    = LOGO_SIZE_PX[template.logo_size] ?? LOGO_SIZE_PX.medium;

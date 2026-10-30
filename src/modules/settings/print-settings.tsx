@@ -62,6 +62,9 @@ const DOC_TYPES: { key: PrintDocumentType; label: string }[] = [
   { key: 'delivery_note',    label: 'Goods Receipt' },
 ];
 
+// The Elegant layout's starting palette: deep green, warm gold, slate text.
+const ELEGANT_COLORS = { primary: '#103F37', secondary: '#5B6863', accent: '#C6A36B', text: '#1F2A27' };
+
 function newTemplateDraft(): Partial<PrintTemplate> & { name: string } {
   const c = STYLE_PRESETS.classic.defaultColors;
   return {
@@ -88,6 +91,7 @@ export default function PrintSettingsPage() {
   const [company, setCompany] = useState<{ name?: string; logo_url?: string | null; tax_id?: string | null; country_code?: string | null } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadingLh, setUploadingLh] = useState(false);
+  const [uploadingHero, setUploadingHero] = useState(false);
 
   const reload = useCallback(async (selectId?: string) => {
     if (!company_id) return;
@@ -130,6 +134,18 @@ export default function PrintSettingsPage() {
     finally { setUploadingLh(false); }
   }
 
+  async function handleHeroUpload(file: File | null) {
+    if (!file || !company_id) return;
+    if (!/^image\/(png|jpe?g)$/.test(file.type)) { setError('Header photo must be a PNG or JPG image.'); return; }
+    if (file.size > 5 * 1024 * 1024) { setError('Header photo must be 5 MB or smaller.'); return; }
+    setUploadingHero(true); setError(null);
+    try {
+      const url = await adapter.printTemplates.uploadLetterhead(company_id, file);
+      setSetting('heroImageUrl', url);
+    } catch (e) { setError(String(e)); }
+    finally { setUploadingHero(false); }
+  }
+
   async function handleLogoUpload(file: File | null) {
     if (!file || !company_id) return;
     setUploading(true); setError(null);
@@ -154,7 +170,11 @@ export default function PrintSettingsPage() {
   }
   function chooseStyle(style: TemplateStyle) {
     const c = STYLE_PRESETS[style].defaultColors;
-    setTpl(t => t ? { ...t, template_style: style, primary_color: c.primary, secondary_color: c.secondary, accent_color: c.accent, text_color: c.text } : t);
+    setTpl(t => t ? { ...t, template_style: style, primary_color: c.primary, secondary_color: c.secondary, accent_color: c.accent, text_color: c.text, settings: { ...t.settings, layout: 'standard' } } : t);
+  }
+  function chooseElegant() {
+    const c = ELEGANT_COLORS;
+    setTpl(t => t ? { ...t, primary_color: c.primary, secondary_color: c.secondary, accent_color: c.accent, text_color: c.text, settings: { ...t.settings, layout: 'elegant' } } : t);
   }
 
   async function withBusy(fn: () => Promise<void>) {
@@ -289,7 +309,7 @@ export default function PrintSettingsPage() {
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {STYLE_ORDER.map(style => {
                     const preset = STYLE_PRESETS[style];
-                    const active = tpl.template_style === style;
+                    const active = tpl.settings.layout !== 'elegant' && tpl.template_style === style;
                     return (
                       <button key={style} type="button" onClick={() => chooseStyle(style)} className="rounded-card border p-3 text-left transition"
                         style={{ borderColor: active ? preset.defaultColors.accent : '#e2e8f0', boxShadow: active ? `0 0 0 2px ${preset.defaultColors.accent}` : 'none', background: active ? '#fff' : 'transparent' }}>
@@ -303,8 +323,69 @@ export default function PrintSettingsPage() {
                       </button>
                     );
                   })}
+                  {(() => {
+                    const active = tpl.settings.layout === 'elegant';
+                    return (
+                      <button type="button" onClick={chooseElegant} className="rounded-card border p-3 text-left transition"
+                        style={{ borderColor: active ? ELEGANT_COLORS.accent : '#e2e8f0', boxShadow: active ? `0 0 0 2px ${ELEGANT_COLORS.accent}` : 'none', background: active ? '#fff' : 'transparent' }}>
+                        <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+                          {[ELEGANT_COLORS.primary, ELEGANT_COLORS.accent, ELEGANT_COLORS.secondary].map((c, i) => (
+                            <span key={i} style={{ width: 14, height: 14, borderRadius: 3, background: c, border: '1px solid rgba(0,0,0,.08)' }} />
+                          ))}
+                        </div>
+                        <div className="text-sm font-medium text-ink-primary">Elegant</div>
+                        <div className="text-[11px] leading-snug text-ink-tertiary">Big title beside a header photo, rounded panels, contact footer bar.</div>
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
+
+              {tpl.settings.layout === 'elegant' && (
+                <div className={card}>
+                  <h2 className="text-sm font-semibold text-ink-primary">Elegant layout</h2>
+                  <p className="mt-1 mb-3 text-xs text-ink-tertiary">
+                    Wording and photo for the Elegant design. Tip: write extra details in a document’s Notes as
+                    “Label: value” separated by semicolons (e.g. “Event Date: 15 Nov 2026; Venue: City Hall”) and they print as rows under the client details.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-4">
+                    <div style={{ width: 120, height: 84, border: `1px dashed ${theme.border}`, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: '#fff' }}>
+                      {tpl.settings.heroImageUrl
+                        ? <img src={tpl.settings.heroImageUrl} alt="header" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <span className="px-1 text-center text-[11px] text-ink-tertiary">No header photo</span>}
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="cursor-pointer rounded-card border border-border-subtle bg-surface-card px-3 py-2 text-sm text-ink-primary hover:bg-surface-hover">
+                        {uploadingHero ? 'Uploading…' : (tpl.settings.heroImageUrl ? 'Replace header photo' : 'Upload header photo')}
+                        <input type="file" accept="image/png,image/jpeg" className="hidden" disabled={uploadingHero}
+                          onChange={e => { handleHeroUpload(e.target.files?.[0] ?? null); e.target.value = ''; }} />
+                      </label>
+                      {tpl.settings.heroImageUrl && (
+                        <button type="button" className="text-start text-sm text-danger-600 hover:underline" onClick={() => setSetting('heroImageUrl', '')}>
+                          Remove header photo
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div><label className={labelCls}>Tagline (under the logo)</label>
+                      <input className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-3 text-sm" value={tpl.settings.tagline} onChange={e => setSetting('tagline', e.target.value)} placeholder="PEOPLE | MOMENTS | EVENTS" /></div>
+                    <div><label className={labelCls}>Subtitle (under the title)</label>
+                      <input className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-3 text-sm" value={tpl.settings.subtitle} onChange={e => setSetting('subtitle', e.target.value)} placeholder="Events that bring people together" /></div>
+                    <div><label className={labelCls}>Words beside the photo (one per line)</label>
+                      <textarea className="w-full rounded-input border border-border-subtle bg-surface-input p-2 text-sm" rows={4} value={tpl.settings.heroWords} onChange={e => setSetting('heroWords', e.target.value)} placeholder={'Plan\nCreate\nCelebrate'} /></div>
+                    <div><label className={labelCls}>Intro text (beside the document details)</label>
+                      <textarea className="w-full rounded-input border border-border-subtle bg-surface-input p-2 text-sm" rows={4} value={tpl.settings.introText} onChange={e => setSetting('introText', e.target.value)} placeholder="Thank you for considering us. We are pleased to provide the following quotation." /></div>
+                    <div className="sm:col-span-2"><label className={labelCls}>Terms &amp; conditions (one per line — a document’s own terms replace these)</label>
+                      <textarea className="w-full rounded-input border border-border-subtle bg-surface-input p-2 text-sm" rows={4} value={tpl.settings.termsEn} onChange={e => setSetting('termsEn', e.target.value)} /></div>
+                    <label className="flex cursor-pointer items-center gap-2 sm:col-span-2">
+                      <input type="checkbox" className="h-4 w-4 rounded border-border-subtle accent-brand-600"
+                        checked={tpl.settings.showCustomerAcceptance} onChange={e => setSetting('showCustomerAcceptance', e.target.checked)} />
+                      <span className="text-sm text-ink-primary">Show a customer acceptance box (name, date, signature)</span>
+                    </label>
+                  </div>
+                </div>
+              )}
 
               <div className={card}>
                 <h2 className="text-sm font-semibold text-ink-primary">Colours</h2>
@@ -353,7 +434,7 @@ export default function PrintSettingsPage() {
                 </div>
               </div>
 
-              <div className={card}>
+              {tpl.settings.layout !== 'elegant' && <div className={card}>
                 <h2 className="text-sm font-semibold text-ink-primary">Letterhead (your own design)</h2>
                 <p className="mt-1 mb-3 text-xs text-ink-tertiary">
                   Already have a designed letterhead? Upload it as an A4 portrait image (PNG or JPG, ideally 2480 × 3508 px)
@@ -394,7 +475,7 @@ export default function PrintSettingsPage() {
                     <p className="text-xs text-ink-tertiary sm:col-span-2">Adjust the spaces until the preview’s text sits clear of your letterhead’s design. Remember to save the template.</p>
                   </div>
                 )}
-              </div>
+              </div>}
 
               <div className={card}>
                 <h2 className="text-sm font-semibold text-ink-primary">Footer line</h2>
@@ -408,7 +489,7 @@ export default function PrintSettingsPage() {
 
               <div className={card}>
                 <h2 className="text-sm font-semibold text-ink-primary">Payment terms</h2>
-                <p className="mt-1 mb-3 text-xs text-ink-tertiary">The text shown on documents when “Payment terms” is enabled below.</p>
+                <p className="mt-1 mb-3 text-xs text-ink-tertiary">The text shown on documents when “Payment terms” is enabled below. In the Elegant layout each line becomes a bullet.</p>
                 <div className="mt-1 grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div><label className={labelCls}>Terms (English)</label>
                     <textarea className="w-full rounded-input border border-border-subtle bg-surface-input p-2 text-sm" rows={2} value={tpl.settings.paymentTermsEn} onChange={e => setFooter('paymentTermsEn', e.target.value)} placeholder="Payment due within 30 days of invoice date." /></div>
