@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactNode, CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/auth';
 import { runOnboarding, type WizardData } from '@/core/onboarding';
 import { LanguageToggle } from '@/components/language-toggle';
 import { BrandLogo } from '@/components/brand-logo';
+import { isAppShell } from '@/lib/platform';
 
 // ── Country / currency data ────────────────────────────────────────────────
 const COUNTRIES = [
@@ -225,12 +226,15 @@ export default function SetupWizardPage() {
   const progress = ((step + 1) / TOTAL_STEPS) * 100;
   const meta = STEPS[step];
   const isLast = step === TOTAL_STEPS - 1;
+  // Phones (the Android app, or a narrow browser) drop the side rail: the
+  // steps move into a brand header and the buttons pin to the bottom.
+  const isPhone = useIsPhone();
 
   return (
-    <div style={pageWrapStyle}>
-      <div style={cardWrapStyle}>
+    <div style={isPhone ? phonePageStyle : pageWrapStyle}>
+      <div style={isPhone ? phoneCardStyle : cardWrapStyle}>
         {/* LEFT SIDEBAR — step indicator */}
-        <aside style={sidebarStyle}>
+        {!isPhone && <aside style={sidebarStyle}>
           {/* Decorative circles */}
           <div style={{ ...decorCircleStyle, width: 180, height: 180, top: -50, right: -60, background: 'rgba(255,255,255,0.07)' }} />
           <div style={{ ...decorCircleStyle, width: 120, height: 120, bottom: 40, left: -30, background: 'rgba(255,255,255,0.05)' }} />
@@ -283,10 +287,11 @@ export default function SetupWizardPage() {
           <div style={{ marginTop: 'auto', fontSize: 11, color: 'rgba(255,255,255,0.35)', paddingTop: '1rem', position: 'relative', zIndex: 1 }}>
             StockBolt ERP · Auto Parts
           </div>
-        </aside>
+        </aside>}
 
         {/* RIGHT PANEL — form */}
-        <div style={rightPanelStyle}>
+        <div style={isPhone ? phonePanelStyle : rightPanelStyle}>
+          {isPhone ? <PhoneHeader step={step} /> : <>
           {/* Top row — language toggle */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1.5rem' }}>
             <LanguageToggle />
@@ -302,23 +307,26 @@ export default function SetupWizardPage() {
               transition: 'width 0.4s ease',
             }} />
           </div>
+          </>}
 
           {/* Heading */}
-          <div style={{ marginBottom: '1.75rem' }}>
+          <div style={isPhone
+            ? { marginTop: -24, padding: '26px 20px 1.5rem', background: '#fff', borderRadius: '24px 24px 0 0', position: 'relative' }
+            : { marginBottom: '1.75rem' }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: '#6c63ff', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
               {meta.eyebrow}
             </div>
-            <div style={{ fontSize: 22, fontWeight: 600, color: '#111827', letterSpacing: '-0.02em', lineHeight: 1.2, whiteSpace: 'pre-line' }}>
-              {meta.heading}
+            <div style={{ fontSize: isPhone ? 24 : 22, fontWeight: isPhone ? 700 : 600, color: '#111827', letterSpacing: '-0.02em', lineHeight: 1.2, whiteSpace: isPhone ? 'normal' : 'pre-line' }}>
+              {isPhone ? meta.heading.replace('\n', ' ') : meta.heading}
             </div>
-            <div style={{ fontSize: 13, color: '#6b7280', marginTop: 6 }}>
+            <div style={{ fontSize: isPhone ? 14 : 13, color: '#6b7280', marginTop: 6, lineHeight: 1.45 }}>
               {meta.sub}
             </div>
           </div>
 
           <form onSubmit={handleSubmit(onSubmit, onInvalid)} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
             {/* Fields */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem', flex: 1 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem', flex: 1, padding: isPhone ? '0 20px 1.5rem' : undefined }}>
 
               {/* ── Step 1 — Company basics ───────────────────────────── */}
               {step === 0 && (
@@ -453,7 +461,12 @@ export default function SetupWizardPage() {
             </div>
 
             {/* Actions */}
-            <div style={actionsRowStyle}>
+            <div style={isPhone ? phoneActionsStyle : actionsRowStyle}>
+              {isPhone ? (step > 0 && (
+                <button type="button" onClick={goBack} disabled={submitting} aria-label="Back" style={phoneBackBtnStyle}>
+                  ←
+                </button>
+              )) : (
               <button
                 type="button"
                 onClick={goBack}
@@ -462,12 +475,13 @@ export default function SetupWizardPage() {
               >
                 ← Back
               </button>
+              )}
 
               {isLast ? (
                 <button
                   type="submit"
                   disabled={submitting}
-                  style={primaryBtnStyle(submitting)}
+                  style={{ ...primaryBtnStyle(submitting), ...(isPhone ? phonePrimaryExtra : {}) }}
                 >
                   {submitting ? 'Creating…' : 'Create company →'}
                 </button>
@@ -475,7 +489,7 @@ export default function SetupWizardPage() {
                 <button
                   type="button"
                   onClick={goNext}
-                  style={primaryBtnStyle(false)}
+                  style={{ ...primaryBtnStyle(false), ...(isPhone ? phonePrimaryExtra : {}) }}
                 >
                   Continue →
                 </button>
@@ -489,6 +503,43 @@ export default function SetupWizardPage() {
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────
+
+/** The Android app, or any browser narrower than a tablet. */
+function useIsPhone(): boolean {
+  const query = '(max-width: 767px)';
+  const [narrow, setNarrow] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const update = () => setNarrow(mq.matches);
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+  return narrow || isAppShell();
+}
+
+/** Phone header: logo + language toggle, then the three steps as a segmented bar. */
+function PhoneHeader({ step }: { step: number }) {
+  return (
+    <header style={{
+      background: 'linear-gradient(160deg, #6c63ff 0%, #5b5bd6 100%)', color: '#fff',
+      padding: 'calc(env(safe-area-inset-top) + 16px) 20px 44px', position: 'relative', overflow: 'hidden',
+    }}>
+      <div style={{ ...decorCircleStyle, width: 160, height: 160, top: -60, right: -40, background: 'rgba(255,255,255,0.08)' }} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, position: 'relative' }}>
+        <BrandLogo mark={26} text={13} tone="white" />
+        <div style={{ background: '#fff', borderRadius: 99 }}><LanguageToggle /></div>
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 24, position: 'relative' }}>
+        {STEPS.map((_, i) => (
+          <div key={i} style={{ flex: 1, height: 4, borderRadius: 99, background: i <= step ? '#fff' : 'rgba(255,255,255,0.28)', transition: 'background 0.3s ease' }} />
+        ))}
+      </div>
+      <div style={{ marginTop: 12, fontSize: 13, color: 'rgba(255,255,255,0.85)', position: 'relative' }}>
+        Step {step + 1} of {STEPS.length} · <span style={{ fontWeight: 600, color: '#fff' }}>{STEPS[step].title}</span>
+      </div>
+    </header>
+  );
+}
 interface FieldProps {
   label:    string;
   required?: boolean;
@@ -548,6 +599,58 @@ const cardWrapStyle: CSSProperties = {
   maxWidth: 760,
   boxShadow: '0 8px 40px rgba(108,99,255,0.10)',
   minHeight: 560,
+};
+
+// Phone layout: full screen, the form on a white sheet that overlaps the
+// header's rounded bottom edge, the buttons pinned above the gesture bar.
+const phonePageStyle: CSSProperties = {
+  minHeight: '100dvh',
+  background: '#6c63ff',
+  fontFamily: "'DM Sans', system-ui, -apple-system, sans-serif",
+};
+
+const phoneCardStyle: CSSProperties = {
+  minHeight: '100dvh',
+  display: 'flex',
+  flexDirection: 'column',
+  background: '#fff',
+};
+
+const phonePanelStyle: CSSProperties = {
+  flex: 1,
+  display: 'flex',
+  flexDirection: 'column',
+  background: '#fff',
+};
+
+const phoneActionsStyle: CSSProperties = {
+  position: 'sticky',
+  bottom: 0,
+  display: 'flex',
+  gap: 10,
+  padding: '12px 20px calc(env(safe-area-inset-bottom) + 12px)',
+  background: '#fff',
+  borderTop: '1px solid #f0f0f0',
+  boxShadow: '0 -6px 20px rgba(17,24,39,0.04)',
+};
+
+const phonePrimaryExtra: CSSProperties = {
+  flex: 1,
+  justifyContent: 'center',
+  height: 52,
+  fontSize: 15,
+};
+
+const phoneBackBtnStyle: CSSProperties = {
+  width: 52,
+  height: 52,
+  flexShrink: 0,
+  borderRadius: 99,
+  border: '1px solid #e5e7eb',
+  background: '#fff',
+  color: '#374151',
+  fontSize: 20,
+  cursor: 'pointer',
 };
 
 const sidebarStyle: CSSProperties = {
