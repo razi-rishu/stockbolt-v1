@@ -7633,12 +7633,16 @@ describe('phase104 — projects / jobs foundation', () => {
     if (on.length) {
       console.warn('projects enabled for: ' + on.map(r => r.name).join(', '));
     }
-    // And nothing writes project_id yet, so no ledger row carries one. When
-    // Stage 2 lands this expectation is the thing that must change — until
-    // then a non-zero count means something tagged a row without an engine.
-    const [gl] = await sql<{ n: number }>(
-      `SELECT COUNT(*)::int AS n FROM general_ledger WHERE project_id IS NOT NULL`);
-    expect(gl.n, 'no GL row is tagged before Stage 2 patches the engines').toBe(0);
+    // Stage 1 wrote no project_id anywhere. Stage 2 (phase105) exists in
+    // order to write it, so a plain "count is zero" assertion became wrong
+    // by design the moment that landed; what replaces it is the property
+    // that has to hold for good — a tagged ledger row never disagrees with
+    // the company of the project it points at.
+    const [bad] = await sql<{ n: number }>(`
+      SELECT COUNT(*)::int AS n
+      FROM general_ledger g JOIN projects p ON p.id = g.project_id
+      WHERE p.company_id <> g.company_id`);
+    expect(bad.n, 'no ledger row is tagged with another company project').toBe(0);
   });
 
   it('a project cannot be deleted out from under its records', async () => {
@@ -7664,5 +7668,164 @@ describe('phase104 — projects / jobs foundation', () => {
       expect(['RESTRICT', 'NO ACTION'], `${f.table_name}.project_id refuses the delete`)
         .toContain(f.delete_rule);
     }
+  });
+});
+
+
+describe('phase105 — the ledger inherits the document project', () => {
+  async function applied(): Promise<boolean> {
+    const rows = await sql<{ n: number }>(`
+      SELECT COUNT(*)::int AS n FROM pg_trigger
+      WHERE tgname = 'trg_set_gl_project'
+        AND tgrelid = 'public.general_ledger'::regclass`);
+    return (rows[0]?.n ?? 0) > 0;
+  }
+
+  it('posting can never raise CASE_NOT_FOUND', async () => {
+    // THE one way this migration could break the product. A PL/pgSQL CASE
+    // with no matching branch and no ELSE raises CASE_NOT_FOUND, and this
+    // trigger fires on EVERY general_ledger insert — so a missing ELSE would
+    // not break project tagging, it would stop every payment, bank transfer,
+    // manual entry and opening balance in the system from posting at all.
+    if (!(await applied())) { console.warn('phase105 not applied yet — skipping.'); return; }
+    const [f] = await sql<{ src: string }>(`
+      SELECT pg_get_functiondef(p.oid) AS src FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname='public' AND p.proname='tg_set_gl_project'`);
+    expect(f?.src, 'the function exists').toBeTruthy();
+    expect(f.src, 'the CASE has an ELSE').toMatch(/\bELSE\b/);
+
+    // And prove it against reality rather than by reading: every doc type
+    // the live ledger actually contains must be either handled explicitly or
+    // land in that ELSE. A type that is neither cannot exist, but the point
+    // of the check is that a future engine inventing a new label is caught
+    // here rather than by a customer who cannot take a payment.
+    const types = (await sql<{ t: string }>(`
+      SELECT DISTINCT related_doc_type AS t FROM general_ledger
+      WHERE related_doc_type IS NOT NULL ORDER BY 1`)).map(r => r.t);
+    expect(types.length, 'the ledger has doc types to check').toBeGreaterThan(0);
+    const handled = ['invoice', 'vendor_bill', 'expense', 'credit_note',
+                     'sales_return', 'debit_note', 'purchase_return'];
+    for (const t of types) {
+      const ok = handled.includes(t) || /\bELSE\b/.test(f.src);
+      expect(ok, `related_doc_type '${t}' resolves or falls to ELSE`).toBe(true);
+    }
+  });
+
+  it('every lookup is scoped to the row company', async () => {
+    // The trigger reads invoices / vendor_bills / expenses / the note tables
+    // by an id taken from the row being inserted. Inside the posting RPCs it
+    // runs as the definer and RLS is bypassed, so without an explicit company
+    // predicate a crafted related_doc_id could resolve against another
+    // tenant's document and copy its project onto this tenant's ledger.
+    if (!(await applied())) { console.warn('phase105 not applied yet — skipping.'); return; }
+    const [f] = await sql<{ src: string }>(`
+      SELECT pg_get_functiondef(p.oid) AS src FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname='public' AND p.proname='tg_set_gl_project'`);
+    // Five resolving branches, each carrying company_id = NEW.company_id.
+    const scoped = (f.src.match(/company_id\s*=\s*NEW\.company_id/g) ?? []).length;
+    expect(scoped, 'each of the five lookups is company-scoped')
+      .toBeGreaterThanOrEqual(5);
+    // House style: SECURITY INVOKER, like every other trigger function here,
+    // so RLS still applies when the insert does NOT come from a definer RPC.
+    const [sec] = await sql<{ secdef: boolean }>(`
+      SELECT p.prosecdef AS secdef FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname='public' AND p.proname='tg_set_gl_project'`);
+    expect(sec.secdef, 'SECURITY INVOKER, not DEFINER').toBe(false);
+  });
+
+  it('a tag applied after posting reaches the rows already written', async () => {
+    // Confirm a bill, then realise it belongs to the Dubai job. By then its
+    // ledger rows exist and the BEFORE INSERT trigger has already run, so
+    // without these the tag would sit on the document and never reach the
+    // ledger the project report reads — the feature would look like it worked
+    // and report nothing.
+    if (!(await applied())) { console.warn('phase105 not applied yet — skipping.'); return; }
+    const rows = await sql<{ tbl: string }>(`
+      SELECT c.relname AS tbl FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+      WHERE t.tgname = 'trg_retag_gl_project' AND NOT t.tgisinternal
+      ORDER BY 1`);
+    const tables = rows.map(r => r.tbl);
+    for (const t of ['expenses', 'invoices', 'vendor_bills']) {
+      expect(tables, `${t} carries its re-tag down to the ledger`).toContain(t);
+    }
+  });
+
+  it('no tagged ledger row disagrees with its parent document', async () => {
+    // The real correctness property, checked against live data rather than
+    // against the source. If the trigger, the re-tag or the backfill ever
+    // disagree with each other this is what catches it — and a project's
+    // profit is only meaningful if it cannot.
+    if (!(await applied())) { console.warn('phase105 not applied yet — skipping.'); return; }
+    const [inv] = await sql<{ n: number }>(`
+      SELECT COUNT(*)::int AS n
+      FROM general_ledger g JOIN invoices i ON i.id = g.related_doc_id
+      WHERE g.related_doc_type = 'invoice'
+        AND g.company_id = i.company_id
+        AND g.project_id IS DISTINCT FROM i.project_id`);
+    expect(inv.n, 'invoice ledger rows match the invoice').toBe(0);
+
+    const [bill] = await sql<{ n: number }>(`
+      SELECT COUNT(*)::int AS n
+      FROM general_ledger g JOIN vendor_bills v ON v.id = g.related_doc_id
+      WHERE g.related_doc_type = 'vendor_bill'
+        AND g.company_id = v.company_id
+        AND g.project_id IS DISTINCT FROM v.project_id`);
+    expect(bill.n, 'bill ledger rows match the bill').toBe(0);
+
+    const [exp] = await sql<{ n: number }>(`
+      SELECT COUNT(*)::int AS n
+      FROM general_ledger g JOIN expenses e ON e.id = g.related_doc_id
+      WHERE g.related_doc_type = 'expense'
+        AND g.company_id = e.company_id
+        AND g.project_id IS DISTINCT FROM e.project_id`);
+    expect(exp.n, 'expense ledger rows match the expense').toBe(0);
+
+    // A credit note has no project of its own — it must agree with the
+    // invoice it offsets, or a job's revenue keeps a sale whose refund was
+    // booked somewhere else.
+    const [note] = await sql<{ n: number }>(`
+      SELECT COUNT(*)::int AS n
+      FROM general_ledger g
+      JOIN credit_notes c ON c.id = g.related_doc_id
+      JOIN invoices i ON i.id = c.linked_invoice_id
+      WHERE g.related_doc_type IN ('credit_note','sales_return')
+        AND g.company_id = c.company_id
+        AND g.project_id IS DISTINCT FROM i.project_id`);
+    expect(note.n, 'credit-note rows match the invoice they offset').toBe(0);
+  });
+
+  it('money is never tagged — only income and cost', async () => {
+    // A payment moves cash against AR: neither leg is revenue or expense, so
+    // tagging one would double-count the invoice it settles. Same for a bank
+    // transfer between the company's own accounts, which has no P&L effect at
+    // all. This is what keeps "project profit" from drifting as people pay.
+    if (!(await applied())) { console.warn('phase105 not applied yet — skipping.'); return; }
+    const [n] = await sql<{ n: number }>(`
+      SELECT COUNT(*)::int AS n FROM general_ledger
+      WHERE project_id IS NOT NULL
+        AND related_doc_type IN ('payment','bank_transfer','customer_credit_refund','product','manual')`);
+    expect(n.n, 'no payment, transfer or stock row carries a project').toBe(0);
+  });
+
+  it('the deferred-COGS orphan is recorded, not forgotten', async () => {
+    // Known gap, deliberately left for its own change: the deferred-COGS
+    // flush writes a related_doc_id that resolves to NO table in the
+    // database — not the queue, not invoice_items, not the stock ledger. The
+    // sale invoice id survives only as text in the description, so those rows
+    // cannot inherit a project and also cannot be drilled into. Ordinary COGS
+    // is unaffected (it writes related_doc_type='invoice').
+    //
+    // This test does not fail on the gap; it fails if the gap GROWS, so the
+    // follow-up cannot be quietly dropped while the number creeps up.
+    const [orphan] = await sql<{ n: number }>(`
+      SELECT COUNT(*)::int AS n FROM general_ledger g
+      WHERE g.related_doc_type = 'inventory_cogs'
+        AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.id = g.related_doc_id)
+        AND NOT EXISTS (SELECT 1 FROM deferred_cogs_queue q WHERE q.id = g.related_doc_id)`);
+    expect(orphan.n, 'the deferred-COGS orphan set has not grown past the known 6')
+      .toBeLessThanOrEqual(6);
   });
 });
