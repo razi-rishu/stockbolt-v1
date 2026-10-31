@@ -7658,7 +7658,11 @@ describe('phase104 — projects / jobs foundation', () => {
     expect(fks.length, 'the documents and the ledger reference projects')
       .toBeGreaterThanOrEqual(5);
     for (const f of fks) {
-      expect(f.delete_rule, `${f.table_name}.project_id is RESTRICT`).toBe('NO ACTION');
+      // information_schema reports this as 'RESTRICT' here; some Postgres
+      // versions normalise it to 'NO ACTION'. Either means the same thing:
+      // the delete is refused rather than cascading or nulling the tag.
+      expect(['RESTRICT', 'NO ACTION'], `${f.table_name}.project_id refuses the delete`)
+        .toContain(f.delete_rule);
     }
   });
 });

@@ -61,6 +61,12 @@ export const BACKUP_TABLES: readonly string[] = [
   'vehicle_makes',
   'vehicle_engines',
 
+  // ── Projects / jobs ────────────────────────────────────────────
+  // Listed before Sales and Purchasing on purpose: the documents in those
+  // sections carry a project_id that points here, so a reader restoring by
+  // hand meets the parent before the rows that reference it.
+  'projects',
+
   // ── Sales ─────────────────────────────────────────────────────────────
   'sales_quotes',        'sales_quote_items',
   'sales_orders',        'sales_order_items',
