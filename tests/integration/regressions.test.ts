@@ -7580,3 +7580,85 @@ describe('phase103 — delete_bank_reconciliation refuses callers it should refu
       'delete_bank_reconciliation must not be among them').not.toContain('delete_bank_reconciliation');
   });
 });
+
+describe('phase104 — projects / jobs foundation', () => {
+  async function applied(): Promise<boolean> {
+    const rows = await sql<{ n: number }>(`
+      SELECT COUNT(*)::int AS n FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='general_ledger' AND column_name='project_id'`);
+    return (rows[0]?.n ?? 0) > 0;
+  }
+
+  it('the projects table is tenant-isolated and RBAC-gated', async () => {
+    if (!(await applied())) { console.warn('phase104 not applied yet — skipping.'); return; }
+    const [rls] = await sql<{ enabled: boolean }>(`
+      SELECT relrowsecurity AS enabled FROM pg_class WHERE oid='public.projects'::regclass`);
+    expect(rls.enabled, 'RLS is on').toBe(true);
+    const pol = await sql<{ policyname: string; cmd: string }>(`
+      SELECT policyname, cmd FROM pg_policies
+      WHERE schemaname='public' AND tablename='projects'`);
+    const names = pol.map(p => p.policyname);
+    expect(names, 'tenant isolation').toContain('tenant_isolation');
+    // Writes need sales.write, same as every other master table.
+    for (const c of ['rbac_w_ins_projects', 'rbac_w_upd_projects', 'rbac_w_del_projects']) {
+      expect(names, c).toContain(c);
+    }
+  });
+
+  it('gl_active EXPOSES project_id — the frozen-view trap', async () => {
+    // A view's column list is fixed at creation. Adding project_id to
+    // general_ledger does not make it visible through gl_active, and every
+    // report reads the view because that is what drops reversed rows. Miss
+    // this and the project report either cannot be written or reads the raw
+    // table and silently counts voided documents.
+    if (!(await applied())) { console.warn('phase104 not applied yet — skipping.'); return; }
+    const cols = (await sql<{ column_name: string }>(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='gl_active'`)).map(r => r.column_name);
+    expect(cols, 'gl_active carries project_id').toContain('project_id');
+    // The same omission already happened to reconciliation_id.
+    expect(cols, 'and reconciliation_id, fixed in passing').toContain('reconciliation_id');
+    // The view must still exclude reversals — that is its whole job.
+    const [d] = await sql<{ def: string }>(
+      `SELECT pg_get_viewdef('public.gl_active'::regclass, true) AS def`);
+    expect(d.def, 'still drops reversed rows').toMatch(/reversed_by_id IS NULL/);
+    expect(d.def, 'and reversal entries').toMatch(/reversal_of_id IS NULL/);
+  });
+
+  it('Stage 1 changes NOTHING for existing tenants', async () => {
+    if (!(await applied())) { console.warn('phase104 not applied yet — skipping.'); return; }
+    // The switch is off everywhere except where it was deliberately turned on.
+    const on = await sql<{ name: string }>(
+      `SELECT name FROM companies WHERE projects_enabled ORDER BY name`);
+    if (on.length) {
+      console.warn('projects enabled for: ' + on.map(r => r.name).join(', '));
+    }
+    // And nothing writes project_id yet, so no ledger row carries one. When
+    // Stage 2 lands this expectation is the thing that must change — until
+    // then a non-zero count means something tagged a row without an engine.
+    const [gl] = await sql<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM general_ledger WHERE project_id IS NOT NULL`);
+    expect(gl.n, 'no GL row is tagged before Stage 2 patches the engines').toBe(0);
+  });
+
+  it('a project cannot be deleted out from under its records', async () => {
+    if (!(await applied())) { console.warn('phase104 not applied yet — skipping.'); return; }
+    // ON DELETE RESTRICT everywhere: orphaning a tagged ledger row would
+    // silently drop revenue or cost out of a job's figures.
+    const fks = await sql<{ table_name: string; delete_rule: string }>(`
+      SELECT tc.table_name, rc.delete_rule
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.referential_constraints rc
+        ON rc.constraint_name = tc.constraint_name
+      JOIN information_schema.key_column_usage kcu
+        ON kcu.constraint_name = tc.constraint_name
+      WHERE tc.table_schema='public' AND tc.constraint_type='FOREIGN KEY'
+        AND kcu.column_name='project_id'
+      ORDER BY tc.table_name`);
+    expect(fks.length, 'the documents and the ledger reference projects')
+      .toBeGreaterThanOrEqual(5);
+    for (const f of fks) {
+      expect(f.delete_rule, `${f.table_name}.project_id is RESTRICT`).toBe('NO ACTION');
+    }
+  });
+});
