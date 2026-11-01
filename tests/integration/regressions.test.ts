@@ -8185,3 +8185,148 @@ describe('phase107 — the ledger views never lose their RLS again', () => {
       .toMatch(/project_id/);
   });
 });
+
+
+describe('phase108 — project profitability agrees with the ledger', () => {
+  const read = async (f: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(resolve(process.cwd(), f), 'utf8');
+  };
+  async function applied(): Promise<boolean> {
+    const r = await sql<{ n: number }>(`
+      SELECT COUNT(*)::int AS n FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public' AND p.proname='get_project_profitability'`);
+    return (r[0]?.n ?? 0) > 0;
+  }
+
+  it('classifies revenue and cost exactly as the P&L does', async () => {
+    // THE test for this feature. A project report that disagreed with the
+    // Profit & Loss would be worse than no report at all, because both numbers
+    // would be defensible and only one could be right.
+    //
+    // Same rules applied company-wide, with the per-project grouping removed,
+    // must reproduce the company's own income/expense totals. Note the P&L
+    // reads raw general_ledger while this reads gl_active — they agree because
+    // a reversal and its original net to zero, and if that ever stops being
+    // true this is where it surfaces.
+    if (!(await applied())) { console.warn('phase108 not applied yet — skipping.'); return; }
+    const rows = await sql<{ name: string; rev_diff: number; cost_diff: number }>(`
+      WITH v AS (
+        SELECT g.company_id,
+               SUM(CASE WHEN coa.type='income'  THEN g.credit-g.debit ELSE 0 END) AS rev,
+               SUM(CASE WHEN coa.type='expense' THEN g.debit-g.credit ELSE 0 END) AS cost
+        FROM gl_active g
+        JOIN journal_entries je ON je.id=g.journal_entry_id
+        JOIN chart_of_accounts coa ON coa.id=g.account_id
+        WHERE je.source_type IS DISTINCT FROM 'year_end_close'
+        GROUP BY 1),
+      r AS (
+        SELECT g.company_id,
+               SUM(CASE WHEN coa.type='income'  THEN g.credit-g.debit ELSE 0 END) AS rev,
+               SUM(CASE WHEN coa.type='expense' THEN g.debit-g.credit ELSE 0 END) AS cost
+        FROM general_ledger g
+        JOIN journal_entries je ON je.id=g.journal_entry_id
+        JOIN chart_of_accounts coa ON coa.id=g.account_id
+        WHERE je.source_type IS DISTINCT FROM 'year_end_close'
+        GROUP BY 1)
+      SELECT c.name, (v.rev - r.rev) AS rev_diff, (v.cost - r.cost) AS cost_diff
+      FROM v JOIN r ON r.company_id=v.company_id
+      JOIN companies c ON c.id=v.company_id`);
+    for (const row of rows) {
+      expect(Number(row.rev_diff), `${row.name}: view and raw GL agree on revenue`).toBe(0);
+      expect(Number(row.cost_diff), `${row.name}: view and raw GL agree on cost`).toBe(0);
+    }
+  });
+
+  it('excludes the year-end close, or a job spanning a year-end reads zero', async () => {
+    // The close entry debits and credits income and expense to zero them into
+    // Retained Earnings. Counting it would make any job whose range crosses the
+    // fiscal year-end report ~zero profit — plausible-looking and wrong.
+    if (!(await applied())) { console.warn('phase108 not applied yet — skipping.'); return; }
+    const [f] = await sql<{ src: string }>(`
+      SELECT pg_get_functiondef(p.oid) AS src FROM pg_proc p
+      JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public' AND p.proname='get_project_profitability'`);
+    expect(f.src, 'the close entry is excluded')
+      .toMatch(/source_type IS DISTINCT FROM 'year_end_close'/);
+    // IS DISTINCT FROM, not <>: with a LEFT JOIN the source_type can be NULL,
+    // and NULL <> 'x' is NULL, which would silently drop the row from the sum.
+    expect(f.src, 'and NULL-safely').not.toMatch(/source_type\s*<>\s*'year_end_close'/);
+  });
+
+  it('classifies by account TYPE, never by code range', async () => {
+    // Tenants add their own accounts across 4xxx-6xxx; a hardcoded code range
+    // would silently miss them. chart_of_accounts.type is the only safe source.
+    if (!(await applied())) { console.warn('phase108 not applied yet — skipping.'); return; }
+    const [f] = await sql<{ src: string }>(`
+      SELECT pg_get_functiondef(p.oid) AS src FROM pg_proc p
+      JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public' AND p.proname='get_project_profitability'`);
+    expect(f.src, "reads coa.type = 'income'").toMatch(/type = 'income'/);
+    expect(f.src, "reads coa.type = 'expense'").toMatch(/type = 'expense'/);
+    expect(f.src, 'does not switch on account_code prefixes')
+      .not.toMatch(/account_code LIKE '[456]/);
+  });
+
+  it('a project with no postings is still returned, as zeros', async () => {
+    // A planned job with a budget and nothing posted is a thing an operator
+    // wants to see. Every GL predicate must sit in the LEFT JOIN's ON clause —
+    // moved to WHERE, the join turns inner and those rows vanish silently.
+    if (!(await applied())) { console.warn('phase108 not applied yet — skipping.'); return; }
+    const [f] = await sql<{ src: string }>(`
+      SELECT pg_get_functiondef(p.oid) AS src FROM pg_proc p
+      JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public' AND p.proname='get_project_profitability'`);
+    expect(f.src, 'gl_active is LEFT JOINed').toMatch(/LEFT JOIN public\.gl_active/);
+    // The only WHERE clause filters projects, not ledger rows.
+    const whereClause = f.src.slice(f.src.indexOf('WHERE p.company_id'));
+    expect(whereClause.slice(0, 120), 'WHERE filters the project, not the GL')
+      .not.toMatch(/g\.date|coa\.type|je\.source_type/);
+  });
+
+  it('is guarded against cross-tenant reads', async () => {
+    // SECURITY DEFINER bypasses RLS — and gl_active now carries
+    // security_invoker, which inside a definer function resolves to the
+    // DEFINER, so RLS is bypassed there too. The explicit guard and the
+    // company_id predicates are the only isolation.
+    if (!(await applied())) { console.warn('phase108 not applied yet — skipping.'); return; }
+    const [f] = await sql<{ src: string; secdef: boolean }>(`
+      SELECT pg_get_functiondef(p.oid) AS src, p.prosecdef AS secdef FROM pg_proc p
+      JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public' AND p.proname='get_project_profitability'`);
+    expect(f.secdef, 'SECURITY DEFINER').toBe(true);
+    expect(f.src, 'carries the Phase 65 cross-tenant guard')
+      .toMatch(/cross-tenant access denied/);
+    expect(f.src, 'and joins the ledger on company_id as well as project_id')
+      .toMatch(/g\.company_id = p\.company_id/);
+    const [g] = await sql<{ anon: boolean; auth: boolean }>(`
+      SELECT has_function_privilege('anon', p.oid, 'EXECUTE')          AS anon,
+             has_function_privilege('authenticated', p.oid, 'EXECUTE')  AS auth
+      FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public' AND p.proname='get_project_profitability'`);
+    expect(g.anon, 'anon cannot read job revenue').toBe(false);
+    expect(g.auth, 'the app can').toBe(true);
+  });
+
+  it('stores no actuals — the report derives them', async () => {
+    // Rule 1, restated at the point it would be tempting to break: caching
+    // revenue on the project would make this report instant and wrong.
+    const iface = await read('src/data/adapter.ts');
+    const body = iface.slice(iface.indexOf('export interface ProjectRow'),
+                             iface.indexOf('export type ProjectStatus'));
+    for (const banned of ['actual_revenue', 'realised_revenue', 'total_revenue', 'margin']) {
+      expect(body, `ProjectRow must not cache ${banned}`).not.toContain(banned);
+    }
+  });
+
+  it('the report strings exist in both languages', async () => {
+    const en = JSON.parse(await read('src/i18n/en.json'));
+    const ar = JSON.parse(await read('src/i18n/ar.json'));
+    for (const k of ['report_title', 'report_desc', 'revenue', 'cost', 'margin', 'nothing_posted']) {
+      expect(en.projects[k], `en projects.${k}`).toBeTruthy();
+      expect(ar.projects[k], `ar projects.${k}`).toBeTruthy();
+      expect(/^[\x00-\x7F]*$/.test(String(ar.projects[k])),
+        `ar projects.${k} is actually translated`).toBe(false);
+    }
+  });
+});

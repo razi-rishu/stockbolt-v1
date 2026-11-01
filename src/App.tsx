@@ -54,6 +54,7 @@ const ImportExportPage    = lazy(() => import('@/modules/settings/import-export'
 const DeveloperSettingsPage = lazy(() => import('@/modules/settings/developer'));
 const CategoriesPage     = lazy(() => import('@/modules/catalog/categories'));
 const ProjectsListPage   = lazy(() => import('@/modules/projects/projects-list'));
+const ProjectProfitPage  = lazy(() => import('@/modules/reports/project-profitability'));
 const BrandsPage         = lazy(() => import('@/modules/catalog/brands'));
 const VehicleMakesPage   = lazy(() => import('@/modules/catalog/vehicle-makes'));
 const PartsCatalogPage   = lazy(() => import('@/modules/catalog/parts-catalog'));
@@ -316,6 +317,7 @@ function AppRoutes() {
               {/* phase104 Stage 3 — the page itself re-checks projects_enabled,
                   so a hand-typed URL cannot reach it with the module off. */}
               <Route path="/projects"                 element={<ProjectsListPage />} />
+              <Route path="/reports/project-profitability" element={<ProjectProfitPage />} />
               <Route path="/products/categories"      element={<CategoriesPage />} />
               <Route path="/products/brands"          element={<BrandsPage />} />
               <Route path="/products/vehicles"        element={<VehicleMakesPage />} />

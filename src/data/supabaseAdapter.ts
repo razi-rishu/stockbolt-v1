@@ -21,7 +21,7 @@ import type {
   CoaRow, CoaInsert, TaxRateInsert, PaymentMethodInsert, UnitInsert,
   WarehouseInsert, BankAccountInsert, CompanyUpdate, OnboardingRpcInput,
   CategoryRow, CategoryInsert,
-  ProjectRow, ProjectInsert, ProjectUpdate, CategoryUpdate,
+  ProjectRow, ProjectInsert, ProjectUpdate, ProjectProfitabilityRow, CategoryUpdate,
   BrandRow, BrandInsert, BrandUpdate,
   WarehouseRow, UnitRow,
   VehicleMakeRow, VehicleMakeInsert, VehicleModelRow, VehicleModelInsert,
@@ -3817,6 +3817,24 @@ export function createSupabaseAdapter(
         });
         assertNoError(error, 'reports.dailyCash');
         return (data ?? []) as DailyCashLine[];
+      },
+
+      // phase108 — project profitability. Aggregated in the database: the
+      // result is one row per job, so this never approaches the PostgREST
+      // 1000-row cap that a client-side aggregation over GL rows would.
+      async projectProfitability(company_id, from, to): Promise<ProjectProfitabilityRow[]> {
+        // rpcAny because get_project_profitability is absent from the
+        // generated database types (they predate phase108) — the same helper
+        // the API-key and fiscal-year RPCs already use. The RESULT is still
+        // typed: it is cast to ProjectProfitabilityRow[], which the report page
+        // is checked against.
+        const { data, error } = await rpcAny('get_project_profitability', {
+          p_company_id: company_id,
+          p_from: from,
+          p_to: to,
+        });
+        assertNoError(error as Error | null, 'reports.projectProfitability');
+        return (data ?? []) as unknown as ProjectProfitabilityRow[];
       },
 
       // Phase 8 — Bank Reconciliation

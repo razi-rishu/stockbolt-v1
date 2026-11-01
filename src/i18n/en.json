@@ -1388,6 +1388,12 @@
     "no_project": "No project",
     "none_yet": "No projects yet",
     "select": "Select project",
+    "report_title": "Project Profitability",
+    "report_desc": "Revenue, cost and margin per job, derived from the general ledger. Revenue is invoiced, not collected.",
+    "revenue": "Revenue",
+    "cost": "Cost",
+    "margin": "Margin",
+    "nothing_posted": "nothing posted yet",
     "delete_blocked": "This project cannot be deleted because documents are linked to it. Mark it completed or cancelled instead."
   },
   "banking": {

@@ -342,6 +342,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       getStockAging:              () => notImplemented('reports.getStockAging'),
       getInventoryAdjustmentReport: () => notImplemented('reports.getInventoryAdjustmentReport'),
       dailyCash: () => notImplemented('reports.dailyCash'),
+      projectProfitability: () => notImplemented('reports.projectProfitability'),
       bankRecon: () => notImplemented('reports.bankRecon'),
       getSalesByCustomer:   () => notImplemented('reports.getSalesByCustomer'),
       getSalesReturnsByReason:    () => notImplemented('reports.getSalesReturnsByReason'),

@@ -367,6 +367,39 @@ export type ProjectStatus = 'planned' | 'active' | 'completed' | 'cancelled';
 export type ProjectInsert = Omit<ProjectRow, 'id' | 'created_at' | 'updated_at'>;
 export type ProjectUpdate = Partial<Omit<ProjectRow, 'id' | 'company_id' | 'created_at' | 'updated_at'>>;
 
+/**
+ * One row of the project profitability report (phase108).
+ *
+ * revenue / cost / margin are DERIVED from gl_active at read time — there is
+ * deliberately no stored column for any of them (Rule 1). estimated_* are the
+ * operator's budget, so the two sit side by side for comparison.
+ *
+ * revenue is INVOICED, not collected: income accounts are credited when an
+ * invoice is confirmed, so a job can show revenue with nothing yet received.
+ * That matches the P&L; collection is an AR-aging question.
+ */
+export interface ProjectProfitabilityRow {
+  project_id:        string;
+  name:              string;
+  name_ar:           string | null;
+  status:            ProjectStatus;
+  contact_id:        string | null;
+  contact_name:      string | null;
+  start_date:        string | null;
+  end_date:          string | null;
+  estimated_revenue: number;
+  estimated_cost:    number;
+  revenue:           number;
+  cost:              number;
+  margin:            number;
+  /**
+   * How many ledger rows backed these figures. Lets the UI tell "nothing
+   * posted yet" apart from "posted and nets to zero" — identical in the
+   * numbers, very different in meaning.
+   */
+  gl_rows:           number;
+}
+
 export interface ProjectsAPI {
   list(company_id: string): Promise<ProjectRow[]>;
   getById(id: string): Promise<ProjectRow | null>;
@@ -1742,6 +1775,15 @@ export interface ReportsAPI {
   getInventoryAdjustmentReport(company_id: string, params: { date_from: string; date_to: string }): Promise<InventoryAdjustmentReportLine[]>;
   // Phase 8 reports
   dailyCash(company_id: string, date: string): Promise<DailyCashLine[]>;
+  /**
+   * phase108 — revenue, cost and margin per project. Pass null for from/to to
+   * get a job's whole life, which is the usual job-costing question.
+   */
+  projectProfitability(
+    company_id: string,
+    from: string | null,
+    to: string | null,
+  ): Promise<ProjectProfitabilityRow[]>;
   bankRecon(company_id: string, account_id: string, date_from: string, date_to: string): Promise<BankReconLine[]>;
   // Phase 10 reports
   getSalesByCustomer(company_id: string, from: string, to: string): Promise<SalesByCustomerLine[]>;

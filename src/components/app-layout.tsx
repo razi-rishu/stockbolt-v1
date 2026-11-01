@@ -269,6 +269,14 @@ function useNavSections(t: (k: string) => string): NavSection[] {
             { to: '/reports/vat-return', label: t('reports.vat_return') },
           ],
         },
+        ...(projectsEnabled
+          ? [{
+              label: t('projects.title'),
+              items: [
+                { to: '/reports/project-profitability', label: t('projects.report_title') },
+              ],
+            }]
+          : []),
         {
           label: 'Sales',
           items: [
