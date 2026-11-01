@@ -8129,3 +8129,59 @@ describe('phase106 — the Projects module is available to every tenant', () => 
     expect(gl.n, 'no money-movement row was tagged by the switch').toBe(0);
   });
 });
+
+
+describe('phase107 — the ledger views never lose their RLS again', () => {
+  // This is the SECOND time gl_active has lost security_invoker. phase71 set
+  // it after finding the view readable by anon; phase104 stripped it by
+  // recreating the view to add a column, because CREATE OR REPLACE VIEW keeps
+  // a view's grants but RESETS its reloptions. The mechanism is silent and
+  // will keep working on whoever adds the next column, so the only durable
+  // defence is a test.
+  it('both ledger views run as the CALLER, not as their owner', async () => {
+    const rows = await sql<{ relname: string; opts: string | null }>(`
+      SELECT c.relname, array_to_string(c.reloptions, ',') AS opts
+      FROM pg_class c WHERE c.relname IN ('gl_active','stock_active')
+      ORDER BY c.relname`);
+    expect(rows.length, 'both views exist').toBe(2);
+    for (const r of rows) {
+      // Without this the view ignores general_ledger's RLS entirely and any
+      // authenticated user can read every tenant's ledger.
+      expect(r.opts ?? '', `${r.relname} must set security_invoker`)
+        .toMatch(/security_invoker=true/);
+    }
+  });
+
+  it('anon cannot reach either view', async () => {
+    // The anon key ships inside the browser bundle, so a grant here is a
+    // public endpoint. security_invoker alone would already return zero rows,
+    // but nothing should be reaching for these unauthenticated at all.
+    const [g] = await sql<{ gl_anon: boolean; stock_anon: boolean }>(`
+      SELECT has_table_privilege('anon','public.gl_active','SELECT')    AS gl_anon,
+             has_table_privilege('anon','public.stock_active','SELECT') AS stock_anon`);
+    expect(g.gl_anon, 'anon cannot read gl_active').toBe(false);
+    expect(g.stock_anon, 'anon cannot read stock_active').toBe(false);
+  });
+
+  it('the app can still read them', async () => {
+    // The fix must not break the reports. security_invoker changes WHOSE rights
+    // apply, not whether the grant exists — so authenticated keeps SELECT and
+    // simply sees its own company only.
+    const [g] = await sql<{ gl: boolean; stock: boolean }>(`
+      SELECT has_table_privilege('authenticated','public.gl_active','SELECT')    AS gl,
+             has_table_privilege('authenticated','public.stock_active','SELECT') AS stock`);
+    expect(g.gl, 'authenticated can read gl_active').toBe(true);
+    expect(g.stock, 'authenticated can read stock_active').toBe(true);
+  });
+
+  it('gl_active still does its actual job', async () => {
+    // Guard against "fixing" the option by redefining the view and losing the
+    // reversal exclusion, which is the only reason the view exists.
+    const [d] = await sql<{ def: string }>(
+      `SELECT pg_get_viewdef('public.gl_active'::regclass, true) AS def`);
+    expect(d.def, 'excludes reversed entries').toMatch(/reversed_by_id IS NULL/);
+    expect(d.def, 'and the reversals themselves').toMatch(/reversal_of_id IS NULL/);
+    expect(d.def, 'and still exposes project_id for the project report')
+      .toMatch(/project_id/);
+  });
+});
