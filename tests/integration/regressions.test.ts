@@ -7926,3 +7926,59 @@ describe('phase104 stage 3 — the Projects module is per-tenant and bilingual',
     expect(body, 'the budget fields are the only numbers').toContain('estimated_cost');
   });
 });
+
+
+describe('i18n — no duplicate keys', () => {
+  const read = async (f: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(resolve(process.cwd(), f), 'utf8');
+  };
+  const FILES = ['src/i18n/en.json', 'src/i18n/ar.json'];
+
+  it('no translation key is defined twice', async () => {
+    // Both files carried a top-level "dashboard" TWICE for a long time: a dead
+    // Phase 2 stub ("Welcome to StockBolt") and the real block. It was
+    // invisible because JSON parsing is last-wins and the real one came
+    // second, so the app always read the right values — but the stub was one
+    // reordering away from replacing the dashboard with a Phase 2 placeholder,
+    // and nothing would have failed to warn anyone.
+    //
+    // JSON.parse cannot see this: by the time you have an object the duplicate
+    // is gone. The raw text is the only place the truth survives, so this test
+    // scans the text rather than the parsed result.
+    for (const f of FILES) {
+      const src = await read(f);
+
+      // Top level: keys at exactly two spaces of indentation.
+      const top = [...src.matchAll(/^ {2}"([^"]+)":/gm)].map(m => m[1]);
+      const topDups = [...new Set(top.filter(k => top.filter(x => x === k).length > 1))];
+      expect(topDups, `${f}: duplicate top-level namespace`).toEqual([]);
+
+      // And one level in, per namespace, so a repeated key inside a single
+      // namespace is caught too. Lines at four spaces belong to whichever
+      // two-space namespace most recently opened.
+      const perNs = new Map<string, string[]>();
+      let ns = '';
+      for (const line of src.split(/\r?\n/)) {
+        const openTop = /^ {2}"([^"]+)": \{/.exec(line);
+        if (openTop) { ns = openTop[1]; if (!perNs.has(ns)) perNs.set(ns, []); continue; }
+        if (/^ {2}"/.test(line)) { ns = ''; continue; }   // a scalar at top level
+        const child = /^ {4}"([^"]+)":/.exec(line);
+        if (child && ns) perNs.get(ns)!.push(child[1]);
+      }
+      for (const [name, keys] of perNs) {
+        const dups = [...new Set(keys.filter(k => keys.filter(x => x === k).length > 1))];
+        expect(dups, `${f}: duplicate key inside "${name}"`).toEqual([]);
+      }
+    }
+  });
+
+  it('the two languages describe the same namespaces', async () => {
+    // A namespace present in only one language means an Arabic user reads raw
+    // keys for a whole screen. AGENTS.md 7.6 — no fallback to English.
+    const en = JSON.parse(await read('src/i18n/en.json'));
+    const ar = JSON.parse(await read('src/i18n/ar.json'));
+    expect(Object.keys(ar).sort(), 'top-level namespaces match')
+      .toEqual(Object.keys(en).sort());
+  });
+});

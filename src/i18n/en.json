@@ -259,10 +259,6 @@
       "load_sample_hint": "Adds demo brands (Bosch, Mahle, Mann), categories, and sample products."
     }
   },
-  "dashboard": {
-    "title": "Welcome to StockBolt",
-    "phase_note": "Phase 2 complete — master data, products & contacts ready."
-  },
   "settings": {
     "company": {
       "title": "Company settings",
@@ -797,9 +793,7 @@
     "reason_none": "Not given",
     "date": "Date",
     "trial_balance": "Trial Balance",
-    "as_of_date": "As of date",
     "as_of": "As of",
-    "run": "Run",
     "tb_empty": "No GL activity for this period.",
     "tb_unbalanced": "Warning: trial balance does not balance.",
     "pl_title": "Profit & Loss",
@@ -833,15 +827,11 @@
     "ds_empty": "No depreciation posted in this period.",
     "ds_tie_hint": "Reversed charges are shown struck through and excluded from the totals. The period total should agree with account 6750 Depreciation Expense on the Profit & Loss for the same range.",
     "customer_statement": "Customer Statement",
-    "period": "Period",
     "from": "From",
     "to": "To",
-    "revenue": "Revenue",
     "total_revenue": "Total Revenue",
     "cogs": "Cost of Goods Sold",
-    "gross_profit": "Gross Profit",
     "expenses": "Operating Expenses",
-    "net_profit": "Net Profit",
     "assets": "Assets",
     "total_assets": "Total Assets",
     "liabilities": "Liabilities",
@@ -881,7 +871,6 @@
     "run": "Run Report",
     "from_date": "From",
     "to_date": "To",
-    "as_of_date": "As Of Date",
     "stock_movement": "Stock Movement",
     "slow_moving": "Slow-Moving Stock",
     "reorder": "Reorder Report",
@@ -1112,7 +1101,6 @@
     "quote_details": "Quote Details"
   },
   "payments": {
-    "apply_advance": "Apply Advance",
     "apply_advance_hint": "Apply money already on account ({{number}}) against this document",
     "title": "Receipts",
     "new_payment": "New Receipt",
