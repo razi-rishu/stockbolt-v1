@@ -7829,3 +7829,100 @@ describe('phase105 — the ledger inherits the document project', () => {
       .toBeLessThanOrEqual(6);
   });
 });
+
+
+describe('phase104 stage 3 — the Projects module is per-tenant and bilingual', () => {
+  const read = async (f: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(resolve(process.cwd(), f), 'utf8');
+  };
+
+  it('the module is gated in BOTH the nav and the page', async () => {
+    // Gating only the nav would leave the page reachable by a bookmarked or
+    // hand-typed /projects URL for a tenant that never asked for job costing.
+    // Two independent checks, so neither alone is load-bearing.
+    const nav = await read('src/components/app-layout.tsx');
+    expect(nav, 'the nav reads the company flag').toMatch(/useProjectsEnabled\(\)/);
+    expect(nav, 'and the section is conditional on it')
+      .toMatch(/projectsEnabled[\s\S]{0,80}nav\.projects/);
+
+    const page = await read('src/modules/projects/projects-list.tsx');
+    expect(page, 'the page reads the flag too').toMatch(/useProjectsEnabled\(\)/);
+    expect(page, 'and refuses to render without it')
+      .toMatch(/if \(!projectsEnabled\)/);
+  });
+
+  it('the flag defaults to OFF and survives a database without the column', async () => {
+    // Every existing tenant must see no change. The column is absent from the
+    // generated types, so the read goes through a cast — if that cast ever
+    // became a non-optional field access, a tenant on an older database would
+    // get undefined rather than false, and `undefined` is falsy today but the
+    // Boolean() is what makes that a guarantee rather than a coincidence.
+    const hook = await read('src/hooks/use-company-currency.ts');
+    expect(hook, 'the hook exists').toMatch(/export function useProjectsEnabled/);
+    expect(hook, 'and coerces to a real boolean, defaulting to false')
+      .toMatch(/Boolean\(\(company as \{ projects_enabled\?: boolean \} \| null\)\?\.projects_enabled\)/);
+  });
+
+  it('every projects string exists in BOTH languages', async () => {
+    // AGENTS.md 7.6: no fallback to English in Arabic mode. A key present only
+    // in en.json renders as the raw key for an Arabic user.
+    const en = JSON.parse(await read('src/i18n/en.json'));
+    const ar = JSON.parse(await read('src/i18n/ar.json'));
+    expect(en.projects, 'en has the namespace').toBeTruthy();
+    expect(ar.projects, 'ar has the namespace').toBeTruthy();
+    expect(Object.keys(ar.projects).sort(), 'the two namespaces match exactly')
+      .toEqual(Object.keys(en.projects).sort());
+    expect(en.nav.projects, 'en nav label').toBeTruthy();
+    expect(ar.nav.projects, 'ar nav label').toBeTruthy();
+
+    // An Arabic value identical to its English one is an untranslated stub
+    // that would silently ship. Arabic text is never pure ASCII.
+    const stubs = Object.keys(en.projects).filter(
+      k => /^[\x00-\x7F]*$/.test(String(ar.projects[k])));
+    expect(stubs, 'no Arabic value is left as ASCII/untranslated').toEqual([]);
+  });
+
+  it('every key the page calls is defined', async () => {
+    // Catches the reverse of the parity test: a t() call with no entry at all,
+    // which renders the bare key to the user in both languages.
+    const page = await read('src/modules/projects/projects-list.tsx');
+    const en = JSON.parse(await read('src/i18n/en.json'));
+    const ar = JSON.parse(await read('src/i18n/ar.json'));
+    const used = [...page.matchAll(/t\('projects\.([a-z_]+)'\)/g)].map(m => m[1]);
+    // The status labels are built dynamically from the status list.
+    const dynamic = ['planned', 'active', 'completed', 'cancelled'].map(x => 'status_' + x);
+    const missing = [...new Set([...used, ...dynamic])]
+      .filter(k => !(k in en.projects) || !(k in ar.projects));
+    expect(missing, 'no t() call is missing its translation').toEqual([]);
+  });
+
+  it('both deployment modes implement the projects API', async () => {
+    // DataAdapter is the contract. Adding a section to the interface without
+    // stubbing the self-hosted adapter breaks that build, and self-hosted is
+    // the one nobody runs locally — so it rots silently.
+    const self = await read('src/data/selfHostedAdapter.ts');
+    expect(self, 'self-hosted stubs projects').toMatch(/projects:\s*\{/);
+    for (const m of ['list', 'getById', 'create', 'update', 'remove']) {
+      expect(self, `self-hosted stubs projects.${m}`).toContain(`projects.${m}`);
+    }
+    const iface = await read('src/data/adapter.ts');
+    expect(iface, 'the interface declares it').toMatch(/projects:\s*ProjectsAPI;/);
+  });
+
+  it('the project stores no actuals — only a budget', async () => {
+    // Rule 1. The moment someone adds a realised_revenue column and writes to
+    // it, the project page stops agreeing with the ledger and this whole
+    // design collapses into the cached-aggregate bug it was built to avoid.
+    const iface = await read('src/data/adapter.ts');
+    const body = iface.slice(iface.indexOf('export interface ProjectRow'),
+                             iface.indexOf('export type ProjectStatus'));
+    for (const banned of ['actual_revenue', 'actual_cost', 'realised_revenue',
+                          'realized_revenue', 'total_revenue', 'total_cost',
+                          'margin', 'profit']) {
+      expect(body, `ProjectRow must not cache ${banned}`).not.toContain(banned);
+    }
+    expect(body, 'the budget fields are the only numbers').toContain('estimated_revenue');
+    expect(body, 'the budget fields are the only numbers').toContain('estimated_cost');
+  });
+});

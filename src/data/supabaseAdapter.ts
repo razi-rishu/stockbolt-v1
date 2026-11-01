@@ -20,7 +20,8 @@ import type {
   ApiKeyRow, ApiScope,
   CoaRow, CoaInsert, TaxRateInsert, PaymentMethodInsert, UnitInsert,
   WarehouseInsert, BankAccountInsert, CompanyUpdate, OnboardingRpcInput,
-  CategoryRow, CategoryInsert, CategoryUpdate,
+  CategoryRow, CategoryInsert,
+  ProjectRow, ProjectInsert, ProjectUpdate, CategoryUpdate,
   BrandRow, BrandInsert, BrandUpdate,
   WarehouseRow, UnitRow,
   VehicleMakeRow, VehicleMakeInsert, VehicleModelRow, VehicleModelInsert,
@@ -676,6 +677,49 @@ export function createSupabaseAdapter(
     },
 
     // ── Phase 2: Categories ────────────────────────────────────────────────
+    /* eslint-disable @typescript-eslint/no-explicit-any --
+       The five casts below exist only because `projects` is missing from the
+       generated database types; they are removed wholesale when those are
+       regenerated. Disabled narrowly so they do not hide anything else. */
+    projects: {
+      // `projects` is not in the generated database types (they predate
+      // phase104), so the table name is reached through the same cast already
+      // used for company_invites / roles / user_permission_overrides. Only the
+      // table NAME loses typing — every result is cast to the hand-written
+      // ProjectRow, so the row shape is still checked at every call site.
+      // Drop the casts when the types are regenerated.
+      //
+      // RLS scopes by company; the explicit eq states the intent and lets the
+      // (company_id, status) index be used.
+      async list(company_id): Promise<ProjectRow[]> {
+        const { data, error } = await (client as any).from('projects').select('*')
+          .eq('company_id', company_id).order('created_at', { ascending: false });
+        assertNoError(error, 'projects.list');
+        return (data ?? []) as ProjectRow[];
+      },
+      async getById(id): Promise<ProjectRow | null> {
+        const { data, error } = await (client as any).from('projects')
+          .select('*').eq('id', id).maybeSingle();
+        assertNoError(error, 'projects.getById');
+        return (data ?? null) as ProjectRow | null;
+      },
+      async create(row: ProjectInsert): Promise<ProjectRow> {
+        const { data, error } = await (client as any).from('projects')
+          .insert(row).select().single();
+        assertNoError(error, 'projects.create');
+        return data! as ProjectRow;
+      },
+      async update(id, row: ProjectUpdate) {
+        const { error } = await (client as any).from('projects').update(row).eq('id', id);
+        assertNoError(error, 'projects.update');
+      },
+      async remove(id) {
+        const { error } = await (client as any).from('projects').delete().eq('id', id);
+        assertNoError(error, 'projects.remove');
+      },
+    },
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+
     categories: {
       async list(company_id): Promise<CategoryRow[]> {
         const { data, error } = await client.from('categories').select('*').eq('company_id', company_id).order('sort_order').order('name');

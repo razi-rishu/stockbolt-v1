@@ -335,6 +335,52 @@ export interface OnboardingAPI {
 
 // ── Phase 2 APIs ──────────────────────────────────────────────────────────────
 
+/**
+ * A project / job (phase104). Hand-written rather than Tables['projects'],
+ * because the generated database types predate the migration — the same
+ * treatment FixedAssetRow and CompanyInviteRow already get.
+ *
+ * Holds NO money. estimated_revenue / estimated_cost are a budget the operator
+ * types; every ACTUAL figure is derived from gl_active at read time, because
+ * the ledger is the only source of financial truth (AGENTS.md Rule 1).
+ */
+export interface ProjectRow {
+  id: string;
+  company_id: string;
+  name: string;
+  name_ar: string | null;
+  contact_id: string | null;
+  status: ProjectStatus;
+  estimated_revenue: number;
+  estimated_cost: number;
+  start_date: string | null;
+  end_date: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+}
+
+/** Mirrors the CHECK constraint on projects.status. */
+export type ProjectStatus = 'planned' | 'active' | 'completed' | 'cancelled';
+
+export type ProjectInsert = Omit<ProjectRow, 'id' | 'created_at' | 'updated_at'>;
+export type ProjectUpdate = Partial<Omit<ProjectRow, 'id' | 'company_id' | 'created_at' | 'updated_at'>>;
+
+export interface ProjectsAPI {
+  list(company_id: string): Promise<ProjectRow[]>;
+  getById(id: string): Promise<ProjectRow | null>;
+  create(row: ProjectInsert): Promise<ProjectRow>;
+  update(id: string, row: ProjectUpdate): Promise<void>;
+  /**
+   * Deleting is expected to FAIL once the project has been used: every
+   * project_id foreign key is ON DELETE RESTRICT, so the database refuses
+   * rather than orphaning a tagged ledger row. Callers surface the error;
+   * the normal way to retire a job is status 'completed' or 'cancelled'.
+   */
+  remove(id: string): Promise<void>;
+}
+
 export interface CategoriesAPI {
   list(company_id: string): Promise<CategoryRow[]>;
   create(row: CategoryInsert): Promise<CategoryRow>;
@@ -3082,6 +3128,7 @@ export interface DataAdapter {
   onboarding: OnboardingAPI;
   // Phase 2
   categories: CategoriesAPI;
+  projects: ProjectsAPI;          // phase104 — projects / jobs
   brands: BrandsAPI;
   warehouses: WarehousesManagementAPI;
   units: UnitsManagementAPI;

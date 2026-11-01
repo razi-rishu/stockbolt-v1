@@ -15,6 +15,13 @@ export function createSelfHostedAdapter(): DataAdapter {
       create:       () => notImplemented('apiKeys.create'),
       revoke:       () => notImplemented('apiKeys.revoke'),
     },
+    projects: {
+      list:    () => notImplemented('projects.list'),
+      getById: () => notImplemented('projects.getById'),
+      create:  () => notImplemented('projects.create'),
+      update:  () => notImplemented('projects.update'),
+      remove:  () => notImplemented('projects.remove'),
+    },
     auth: {
       signUp: () => notImplemented('auth.signUp'),
       signIn: () => notImplemented('auth.signIn'),

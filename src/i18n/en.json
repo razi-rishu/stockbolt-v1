@@ -103,7 +103,8 @@
     "customer_statement": "Customer Statement",
     "inventory": "Inventory",
     "pos": "POS",
-    "banking": "Banking"
+    "banking": "Banking",
+    "projects": "Projects"
   },
   "auth": {
     "email": "Email address",
@@ -1372,6 +1373,31 @@
     "truncated": "INCOMPLETE: these tables hit the row limit and are missing data \u2014 {{tables}}. Tell your administrator before relying on this file.",
     "failed": "Could not read: {{tables}}. Everything else is included.",
     "not_a_restore": "This is a copy for your records, your accountant, or moving to another system. It is not a restore file \u2014 putting transactions back requires re-posting them, not re-inserting them."
+  },
+  "projects": {
+    "title": "Projects",
+    "singular": "Project",
+    "disabled": "The Projects module is not enabled for this company.",
+    "empty": "No projects yet. Create one to start tracking a job.",
+    "add": "New Project",
+    "edit": "Edit Project",
+    "name": "Project name",
+    "name_ar": "Project name (Arabic)",
+    "customer": "Customer",
+    "no_customer": "No customer",
+    "status": "Status",
+    "all_statuses": "All statuses",
+    "status_planned": "Planned",
+    "status_active": "Active",
+    "status_completed": "Completed",
+    "status_cancelled": "Cancelled",
+    "dates": "Dates",
+    "start_date": "Start date",
+    "end_date": "End date",
+    "est_revenue": "Est. revenue",
+    "est_cost": "Est. cost",
+    "notes": "Notes",
+    "delete_blocked": "This project cannot be deleted because documents are linked to it. Mark it completed or cancelled instead."
   },
   "banking": {
     "accounts_subtitle": "Manage cash and bank ledgers, opening balances, and account activity.",

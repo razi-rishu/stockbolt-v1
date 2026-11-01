@@ -74,6 +74,20 @@ export function useCompanyRoundingStep(): number {
 }
 
 /**
+ * useProjectsEnabled — phase104. Whether this tenant has the projects / jobs
+ * module switched on (companies.projects_enabled).
+ *
+ * Defaults to FALSE, and deliberately reads through a cast: the column is not
+ * in the generated database types yet, and a tenant whose database predates the
+ * migration must simply see no Projects module rather than a crash. Same
+ * treatment as useCompanyRoundingStep above.
+ */
+export function useProjectsEnabled(): boolean {
+  const company = useCompany();
+  return Boolean((company as { projects_enabled?: boolean } | null)?.projects_enabled);
+}
+
+/**
  * useCompany — the full active-tenant company row (name, logo_url, currency,
  * country_code, fiscal_year_start, …). Shares the same cached
  * ['company', company_id] query as the currency/country hooks, so it's a free

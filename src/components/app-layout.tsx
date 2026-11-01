@@ -22,7 +22,7 @@ import { CompanyAvatar } from '@/components/company-avatar';
 import { useShortcutContext } from '@/keyboard/shortcut-registry';
 import { NotificationsBell } from '@/components/notifications-bell';
 import { BrandMark } from '@/components/brand-logo';
-import { useCompanyCurrency } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useProjectsEnabled } from '@/hooks/use-company-currency';
 import { fiscalYearLabel } from '@/lib/locale';
 import { useBackHandler } from '@/navigation/use-back-handler';
 import { isAppShell } from '@/lib/platform';
@@ -72,6 +72,7 @@ const AccountingIcon = () => icn(<><rect x="4" y="2.5" width="16" height="19" rx
 const PayrollIcon    = () => icn(<><circle cx="9" cy="8.5" r="3.2" /><path d="M3.5 19.5c.9-3 3-4.5 5.5-4.5s4.6 1.5 5.5 4.5" /><circle cx="17" cy="9.5" r="2.4" /><path d="M16 14.6c2.3.2 3.9 1.6 4.6 4" /></>);
 // A bank front: columns under a pediment. Deliberately not a card or a
 // wallet — those read as payment, and this section is the institution.
+const ProjectsIcon   = () => icn(<><rect x="2.5" y="7" width="19" height="13" rx="2" /><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" /><path d="M2.5 12h19" /></>);
 const BankIcon       = () => icn(<><path d="M3 10h18M4 10 12 4l8 6" /><path d="M6 10v7M10 10v7M14 10v7M18 10v7" /><path d="M3 20h18" /></>);
 const ReportsIcon    = () => icn(<><path d="M4 20V10M10 20V4M16 20v-7M21 20H3" /></>);
 const ContactsIcon   = () => icn(<><circle cx="12" cy="8" r="3.5" /><path d="M5 19.5c1.2-3 4-4.5 7-4.5s5.8 1.5 7 4.5" /></>);
@@ -111,6 +112,11 @@ function XIcon() {
 
 // ── Build the nav structure once per render (translated labels) ──────────────
 function useNavSections(t: (k: string) => string): NavSection[] {
+  // phase104 — Projects is a per-tenant module. A company that has not asked
+  // for job costing never sees the section at all; the page re-checks the same
+  // flag, so a bookmarked URL cannot get in either. `perm` is filtered
+  // separately below, so this is the module switch, not the permission check.
+  const projectsEnabled = useProjectsEnabled();
   return [
     { label: t('nav.dashboard'), to: '/dashboard', icon: <HomeIcon /> },
 
@@ -133,6 +139,15 @@ function useNavSections(t: (k: string) => string): NavSection[] {
         ],
       }],
     },
+
+    ...(projectsEnabled
+      ? [{
+          label: t('nav.projects'),
+          to: '/projects',
+          icon: <ProjectsIcon />,
+          perm: 'sales.read',
+        } as NavSection]
+      : []),
 
     {
       label: t('purchasing.nav_title'),

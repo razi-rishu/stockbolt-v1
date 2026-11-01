@@ -37,6 +37,10 @@ const palette: Record<string, { bg: string; text: string; border: string; dot: s
   cleared:      { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0', dot: '#16a34a' },
   bounced:      { bg: '#fff1f2', text: '#be123c', border: '#fecdd3', dot: '#be123c' },
 
+  // Projects / jobs (phase104)
+  planned:   { bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe', dot: '#2563eb' },
+  completed: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0', dot: '#16a34a' },
+
   // Boolean-ish
   active:   { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0', dot: '#16a34a' },
   inactive: { bg: '#f4f4f5', text: '#71717a', border: '#d4d4d8', dot: '#a1a1aa' },
