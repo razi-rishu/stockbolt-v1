@@ -10,6 +10,7 @@ import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
+import { ProjectPicker } from '@/components/project-picker';
 import { ContactPicker } from '@/components/contact-picker';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
@@ -110,7 +111,7 @@ export default function QuoteEditorPage() {
   // Phase 14.04 — view-first mode (saved quotes open in template view).
   const [viewMode, setViewMode] = useState(!isNew);
 
-  const [header, setHeader] = useState({ contact_id: '', salesperson_id: '', date: todayIso(), expiry_date: '', reference: '', notes: '', currency: companyCurrency ?? 'AED' });
+  const [header, setHeader] = useState({ contact_id: '', salesperson_id: '', project_id: '', date: todayIso(), expiry_date: '', reference: '', notes: '', currency: companyCurrency ?? 'AED' });
 
   // Arriving from a contact's page already names the party; making you pick
   // them again is the kind of small friction that adds up. Only on a NEW
@@ -136,7 +137,7 @@ export default function QuoteEditorPage() {
 
   useEffect(() => {
     if (existing) {
-      setHeader({ contact_id: existing.contact_id, salesperson_id: existing.salesperson_id ?? '', date: existing.date as string, expiry_date: (existing.expiry_date as string | null) ?? '', reference: existing.reference ?? '', notes: existing.notes ?? '', currency: existing.currency });
+      setHeader({ contact_id: existing.contact_id, salesperson_id: existing.salesperson_id ?? '', project_id: (existing as { project_id?: string | null }).project_id ?? '', date: existing.date as string, expiry_date: (existing.expiry_date as string | null) ?? '', reference: existing.reference ?? '', notes: existing.notes ?? '', currency: existing.currency });
     }
   }, [existing]);
 
@@ -232,7 +233,7 @@ export default function QuoteEditorPage() {
       if (!header.contact_id) throw new Error(t('sales.error_contact_required'));
       if (!header.salesperson_id) throw new Error('Salesperson is required');
       const quoteNum = isNew ? await getAdapter().salesQuotes.getNextNumber(company_id!) : existing!.quote_number;
-      const row = { company_id: company_id!, quote_number: quoteNum, contact_id: header.contact_id, salesperson_id: header.salesperson_id, date: header.date, expiry_date: header.expiry_date || null, reference: header.reference || null, price_level_id: null, currency: header.currency, exchange_rate: 1, prices_inclusive: false, subtotal: +subtotal.toFixed(2), discount_amount: +discountTotal.toFixed(2), tax_amount: +taxTotal.toFixed(2), ...(roundOff !== 0 ? { round_off_amount: +roundOff.toFixed(2) } : {}), total_amount: +roundedTotal.toFixed(2), status: isNew ? 'draft' : existing!.status, invoiced_amount: existing?.invoiced_amount ?? 0, terms: null, terms_ar: null, notes: header.notes || null };
+      const row = { company_id: company_id!, quote_number: quoteNum, contact_id: header.contact_id, salesperson_id: header.salesperson_id, project_id: header.project_id || null, date: header.date, expiry_date: header.expiry_date || null, reference: header.reference || null, price_level_id: null, currency: header.currency, exchange_rate: 1, prices_inclusive: false, subtotal: +subtotal.toFixed(2), discount_amount: +discountTotal.toFixed(2), tax_amount: +taxTotal.toFixed(2), ...(roundOff !== 0 ? { round_off_amount: +roundOff.toFixed(2) } : {}), total_amount: +roundedTotal.toFixed(2), status: isNew ? 'draft' : existing!.status, invoiced_amount: existing?.invoiced_amount ?? 0, terms: null, terms_ar: null, notes: header.notes || null };
       if (isNew) return getAdapter().salesQuotes.create(row, buildItems());
       await getAdapter().salesQuotes.update(id!, row, buildItems());
       return null;
@@ -416,6 +417,12 @@ export default function QuoteEditorPage() {
               panelWidth={280}
             />
           </div>
+          {/* Renders nothing unless the tenant has the Projects module on. */}
+          <ProjectPicker
+            value={header.project_id}
+            disabled={!canEdit}
+            onChange={(v) => setHeader(h => ({ ...h, project_id: v }))}
+          />
           <Input label={t('sales.date')} type="date" required value={header.date} disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, date: e.target.value }))} />
           <Input label={t('sales.expiry_date')} type="date" value={header.expiry_date} disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, expiry_date: e.target.value }))} />
           <Input label={t('sales.reference')} value={header.reference} disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, reference: e.target.value }))} />

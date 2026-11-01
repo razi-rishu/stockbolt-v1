@@ -1385,6 +1385,9 @@
     "est_revenue": "Est. revenue",
     "est_cost": "Est. cost",
     "notes": "Notes",
+    "no_project": "No project",
+    "none_yet": "No projects yet",
+    "select": "Select project",
     "delete_blocked": "This project cannot be deleted because documents are linked to it. Mark it completed or cancelled instead."
   },
   "banking": {

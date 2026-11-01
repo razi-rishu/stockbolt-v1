@@ -18,6 +18,7 @@ import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Modal } from '@/ui/modal';
 import { SearchableSelect } from '@/ui/searchable-select';
+import { ProjectPicker } from '@/components/project-picker';
 import { AddNewButton } from '@/ui/add-new-button';
 import { SmartEntitySearch, highlightMatch } from '@/components/smart-entity-search';
 import { ContactPicker } from '@/components/contact-picker';
@@ -52,6 +53,9 @@ interface LineRow {
 interface InvHeader {
   contact_id: string;
   salesperson_id: string;
+  /** phase104 — optional job tag; '' when untagged. The ledger picks
+   *  this up by itself via the phase105 trigger. */
+  project_id: string;
   date: string;
   due_date: string;
   warehouse_id: string;
@@ -176,6 +180,7 @@ export default function InvoiceEditorPage() {
   const defaultHeader: InvHeader = {
     contact_id: '',
     salesperson_id: '',
+    project_id: '',
     date: todayIso(),
     due_date: '',
     warehouse_id: '',
@@ -252,6 +257,7 @@ export default function InvoiceEditorPage() {
       setHeader({
         contact_id:     existing.contact_id,
         salesperson_id: existing.salesperson_id ?? '',
+        project_id: (existing as { project_id?: string | null }).project_id ?? '',
         date:           existing.date as string,
         due_date:       (existing.due_date as string | null) ?? '',
         warehouse_id:   existing.warehouse_id ?? '',
@@ -466,6 +472,7 @@ export default function InvoiceEditorPage() {
         invoice_number:  isNew ? await getAdapter().invoices.getNextNumber(company_id!) : existing!.invoice_number,
         contact_id:      header.contact_id,
         salesperson_id:  header.salesperson_id,
+        project_id:      header.project_id || null,
         warehouse_id:    resolvedWarehouseId,
         date:            header.date,
         due_date:        header.due_date || null,
@@ -562,6 +569,7 @@ export default function InvoiceEditorPage() {
         invoice_number:  existing!.invoice_number,
         contact_id:      header.contact_id,
         salesperson_id:  header.salesperson_id,
+        project_id:      header.project_id || null,
         warehouse_id:    resolvedWarehouseId,
         date:            header.date,
         due_date:        header.due_date || null,
@@ -741,6 +749,7 @@ export default function InvoiceEditorPage() {
                     header: {
                       contact_id:     existing.contact_id,
                       salesperson_id: existing.salesperson_id ?? '',
+                      project_id: (existing as { project_id?: string | null }).project_id ?? '',
                       warehouse_id:   existing.warehouse_id ?? '',
                       reference:      existing.reference ?? '',
                       notes:          existing.notes ?? '',
@@ -1002,6 +1011,12 @@ export default function InvoiceEditorPage() {
               panelWidth={280}
             />
           </div>
+          {/* Renders nothing unless the tenant has the Projects module on. */}
+          <ProjectPicker
+            value={header.project_id}
+            disabled={!canEdit || isVoid}
+            onChange={(v) => setHeader(h => ({ ...h, project_id: v }))}
+          />
           <Input
             label={t('sales.date')}
             type="date"

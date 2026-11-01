@@ -60,6 +60,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useProjectsEnabled } from '@/hooks/use-company-currency';
 import { useCompanyCurrency, useCompanyCountry } from '@/hooks/use-company-currency';
 import { defaultTaxRate } from '@/lib/locale';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
@@ -69,6 +70,7 @@ import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { ContactPicker } from '@/components/contact-picker';
+import { ProjectPicker } from '@/components/project-picker';
 import { CoaQuickCreate } from '@/components/quick-create/coa-quick-create';
 import { theme } from '@/ui/theme';
 // Phase 14.06 — Signature template view mode for saved expenses.
@@ -177,6 +179,7 @@ export default function ExpenseEditorPage() {
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
   const canEditExpenses = useHasPermission('purchasing.write');   // Phase 25 — gate Edit
   const { company_id } = useAuthStore();
+  const projectsEnabled = useProjectsEnabled();
   const isNew = !id || id === 'new';
   const today = new Date().toISOString().slice(0, 10);
 
@@ -184,6 +187,7 @@ export default function ExpenseEditorPage() {
   const [date, setDate]           = useState(today);
   const [paidFromId, setPaidFromId] = useState('');
   const [supplierId, setSupplierId] = useState('');
+  const [projectId, setProjectId]   = useState('');
   const [reference, setReference] = useState('');
   const [description, setDescription] = useState('');
   const [voidReason, setVoidReason] = useState('');
@@ -271,6 +275,7 @@ export default function ExpenseEditorPage() {
     setDate(expense.date);
     setPaidFromId(expense.paid_from_account_id);
     setSupplierId(expense.supplier_id ?? '');
+    setProjectId((expense as { project_id?: string | null }).project_id ?? '');
     setReference(expense.reference ?? '');
     setDescription(expense.description ?? '');
   }, [expense]);
@@ -377,6 +382,7 @@ export default function ExpenseEditorPage() {
         date,
         paid_from_account_id: paidFromId,
         supplier_id:          supplierId || null,
+        project_id:           projectId || null,
         reference:            reference || null,
         description:          description || '(no description)',
         expense_account_id:   itemInserts[0].expense_account_id,
@@ -856,6 +862,19 @@ export default function ExpenseEditorPage() {
               placeholder="Optional"
             />
           </Field>
+          {/* ProjectPicker renders nothing when the module is off, which would
+              leave this <Field> as a label with no control — so the flag is
+              read here too, purely for the wrapper. */}
+          {projectsEnabled && (
+            <Field label={t('projects.singular')}>
+              <ProjectPicker
+                noLabel
+                value={projectId}
+                disabled={!isDraft}
+                onChange={setProjectId}
+              />
+            </Field>
+          )}
           <Field label="Reference / invoice #">
             <input
               type="text" value={reference} disabled={!isDraft}

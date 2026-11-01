@@ -16,6 +16,7 @@ import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 import { ContactPicker } from '@/components/contact-picker';
+import { ProjectPicker } from '@/components/project-picker';
 import { AccountingPreview, buildVendorBillPreview } from '@/components/accounting-preview';
 // Phase 14.03 — Signature template view mode for saved bills.
 import { ApplyAdvanceButton } from '@/components/apply-advance-button';
@@ -194,7 +195,7 @@ export default function VendorBillEditorPage() {
   };
 
   const [header, setHeader] = useState({
-    supplier_id: '', date: todayIso(), due_date: '', reference: '',
+    supplier_id: '', project_id: '', date: todayIso(), due_date: '', reference: '',
     supplier_bill_number: '', notes: '', currency: companyCurrency,
     linked_grn_id: linkedGrnId ?? '',
     landed_cost_total: '0',          // Phase 12.17 — freight + duty + customs
@@ -237,6 +238,7 @@ export default function VendorBillEditorPage() {
     if (existing) {
       setHeader({
         supplier_id: existing.supplier_id,
+        project_id: (existing as { project_id?: string | null }).project_id ?? '',
         date: existing.date as string,
         due_date: (existing.due_date as string | null) ?? '',
         reference: existing.reference ?? '',
@@ -471,6 +473,7 @@ export default function VendorBillEditorPage() {
       company_id: company_id!, bill_number: billNum,
       supplier_bill_number: header.supplier_bill_number || null,
       supplier_id: header.supplier_id, date: header.date,
+      project_id: header.project_id || null,
       due_date: header.due_date || null, reference: header.reference || null,
       currency: header.currency, exchange_rate: 1,
       prices_inclusive: pricesInclusive,
@@ -821,6 +824,15 @@ export default function VendorBillEditorPage() {
               panelWidth={380}
             />
           </div>
+          {/* Renders nothing unless the tenant has the Projects module on. A
+              bill tagged to a job is what gives that job a cost at a services
+              tenant; at a trading tenant the purchase goes to inventory and
+              the cost reaches the job later as COGS, at moving-average cost. */}
+          <ProjectPicker
+            value={header.project_id}
+            disabled={!canEdit}
+            onChange={(v) => { setHeader(h => ({ ...h, project_id: v })); setDirty(true); }}
+          />
           <Input label={t('purchasing.date')} type="date" required value={header.date}
             disabled={!canEdit} onChange={e => setHeader(h => ({ ...h, date: e.target.value }))} />
           <Input label={t('purchasing.due_date')} type="date" value={header.due_date}

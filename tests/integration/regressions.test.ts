@@ -7982,3 +7982,94 @@ describe('i18n — no duplicate keys', () => {
       .toEqual(Object.keys(en).sort());
   });
 });
+
+
+describe('phase104 stage 3b — the Project field round-trips on every document', () => {
+  const read = async (f: string) => {
+    const { readFileSync } = await import('node:fs');
+    return readFileSync(resolve(process.cwd(), f), 'utf8');
+  };
+
+  // The four documents that carry project_id (phase104 added the column to
+  // invoices, sales_quotes, vendor_bills and expenses). Quotes do not post to
+  // the GL, but they convert into invoices, so a quote that loses its job tag
+  // produces an untagged invoice.
+  const EDITORS = [
+    'src/modules/sales/invoice-editor.tsx',
+    'src/modules/sales/quote-editor.tsx',
+    'src/modules/purchasing/vendor-bill-editor.tsx',
+    'src/modules/purchasing/expense-editor.tsx',
+  ];
+
+  it('every editor READS the saved project back', async () => {
+    // Without this an editor shows a blank Project on an existing document and
+    // then writes that blank back, so opening a tagged invoice and pressing
+    // Save silently untags it. Worse than never offering the field.
+    for (const f of EDITORS) {
+      const src = await read(f);
+      expect(src, `${f} loads project_id from the existing row`)
+        .toMatch(/project_id\?: string \| null \}\)\.project_id \?\? ''/);
+    }
+  });
+
+  it('every editor WRITES the project on save', async () => {
+    // The other half. A picker that renders but never reaches the payload
+    // looks like it works and discards the choice on every save — and nothing
+    // errors, so it would be found by a customer, not by us.
+    for (const f of EDITORS) {
+      const src = await read(f);
+      expect(src, `${f} sends project_id in its save payload`)
+        .toMatch(/project_id:\s*(header\.project_id|projectId)\s*\|\|\s*null/);
+    }
+  });
+
+  it('every editor renders the shared picker', async () => {
+    for (const f of EDITORS) {
+      const src = await read(f);
+      expect(src, `${f} imports the shared picker`)
+        .toContain("from '@/components/project-picker'");
+      expect(src, `${f} renders it`).toMatch(/<ProjectPicker/);
+    }
+  });
+
+  it('the module switch is read by the picker, not copied into the editors', async () => {
+    // One component owns the gate. Four copies of `projectsEnabled &&` drift
+    // apart the moment somebody adds a fifth editor — which is the whole
+    // reason the picker returns null instead of the editors branching.
+    const picker = await read('src/components/project-picker.tsx');
+    expect(picker, 'the picker reads the flag').toMatch(/useProjectsEnabled\(\)/);
+    expect(picker, 'and renders nothing when it is off')
+      .toMatch(/if \(!projectsEnabled\) return null/);
+
+    // The expense editor is the single allowed exception: its <Field> wrapper
+    // supplies the label, so an invisible picker would leave a label with no
+    // control. If a SECOND editor starts reading the flag, the gate has begun
+    // to spread and this test should be reconsidered deliberately.
+    const readers: string[] = [];
+    for (const f of EDITORS) {
+      if (/useProjectsEnabled/.test(await read(f))) readers.push(f);
+    }
+    expect(readers, 'only the expense editor reads the flag directly')
+      .toEqual(['src/modules/purchasing/expense-editor.tsx']);
+  });
+
+  it('a closed job stays selectable when it is already on the document', async () => {
+    // Filtering strictly to planned/active would blank the Project on an old
+    // invoice whose job has since been completed, and the next save would drop
+    // the tag — the same silent-untag bug as above, by a different route.
+    const picker = await read('src/components/project-picker.tsx');
+    expect(picker, 'the filter keeps the currently-selected project')
+      .toMatch(/p\.id === value/);
+  });
+
+  it('the picker strings exist in both languages', async () => {
+    const en = JSON.parse(await read('src/i18n/en.json'));
+    const ar = JSON.parse(await read('src/i18n/ar.json'));
+    for (const k of ['no_project', 'none_yet', 'select', 'singular']) {
+      expect(en.projects[k], `en projects.${k}`).toBeTruthy();
+      expect(ar.projects[k], `ar projects.${k}`).toBeTruthy();
+      expect(/^[\x00-\x7F]*$/.test(String(ar.projects[k])),
+        `ar projects.${k} is actually translated`).toBe(false);
+    }
+  });
+});
