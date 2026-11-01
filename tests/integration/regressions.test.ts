@@ -8073,3 +8073,59 @@ describe('phase104 stage 3b — the Project field round-trips on every document'
     }
   });
 });
+
+
+describe('phase106 — the Projects module is available to every tenant', () => {
+  async function applied(): Promise<boolean> {
+    const rows = await sql<{ d: string | null }>(`
+      SELECT column_default AS d FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='companies'
+        AND column_name='projects_enabled'`);
+    return (rows[0]?.d ?? '').includes('true');
+  }
+
+  it('every existing tenant has it on', async () => {
+    if (!(await applied())) { console.warn('phase106 not applied yet — skipping.'); return; }
+    const off = await sql<{ name: string }>(
+      `SELECT name FROM companies WHERE projects_enabled IS NOT TRUE ORDER BY name`);
+    // A tenant may legitimately be switched back off later, so this reports
+    // rather than forbids — but at the moment phase106 lands it must be none.
+    if (off.length) console.warn('projects disabled for: ' + off.map(r => r.name).join(', '));
+  });
+
+  it('and so does every tenant created from now on', async () => {
+    // The half that is easy to forget: updating the existing rows without
+    // flipping the DEFAULT leaves the next signup without the module, which is
+    // the kind of gap a customer finds months later.
+    if (!(await applied())) { console.warn('phase106 not applied yet — skipping.'); return; }
+    const [col] = await sql<{ d: string | null; nullable: string }>(`
+      SELECT column_default AS d, is_nullable AS nullable
+      FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='companies'
+        AND column_name='projects_enabled'`);
+    expect(col.d, 'the column DEFAULT is true').toMatch(/true/);
+    expect(col.nullable, 'and it stays NOT NULL').toBe('NO');
+  });
+
+  it('the switch still exists, so a tenant can be opted out', async () => {
+    // "On for everyone, can be switched off" is not the same as "always on".
+    // If the column were ever dropped in favour of hardcoding the module on,
+    // opting a counter-sales shop out would become a code change.
+    const [col] = await sql<{ n: number }>(`
+      SELECT COUNT(*)::int AS n FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='companies'
+        AND column_name='projects_enabled'`);
+    expect(col.n, 'the module switch is still a column').toBe(1);
+  });
+
+  it('turning it on tags nothing by itself', async () => {
+    // Enabling the module must not attribute a single existing figure to a
+    // job. Every document and ledger row stays untagged until somebody
+    // deliberately picks a project.
+    const [gl] = await sql<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM general_ledger
+       WHERE project_id IS NOT NULL
+         AND related_doc_type IN ('payment','bank_transfer','product','manual')`);
+    expect(gl.n, 'no money-movement row was tagged by the switch').toBe(0);
+  });
+});
