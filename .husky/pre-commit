@@ -1,33 +1,36 @@
 #!/usr/bin/env sh
 # ─────────────────────────────────────────────────────────────────────────
-# Pre-commit hook — locks every fix we've shipped against regressions.
+# Pre-commit hook — production-independent checks only.
 #
 # What runs:
-#   1. `npm run test:regressions` — 12 tripwires against the live Supabase
-#      DB (~5 seconds). Each one asserts that a previously-fixed bug is
-#      still fixed. If any fail, the commit is blocked.
+#   `npm run test:security-static` — static security regression checks
+#   (tests/unit/finding-e-definer-guards.test.ts). They read the repo's
+#   migration files and source, never a database, need no credentials and
+#   work offline. CI runs the same command (.github/workflows/ci.yml).
 #
-# When NOT to run:
-#   The regression suite hits a real database, so it needs internet.
-#   If you genuinely need to commit offline (rare), use:
-#       git commit --no-verify -m "..."
-#   Use this escape hatch sparingly — the next online commit should
-#   restore safety.
+# What does NOT run here, and why:
+#   `npm run test:regressions` (tests/integration/regressions.test.ts) is NOT
+#   run by this hook. That suite loads .env.local and queries the database it
+#   points at with the service-role key - which is production. Until
+#   2026-11-02 this hook ran it on every commit, so each commit read
+#   production with a secret key from the developer machine. Its assertions
+#   are unchanged and it still runs on demand:
+#       npm run test:regressions
+#   Point it at an isolated staging project before running it; it is meant to
+#   move to staging (security backlog INFRA-1). A commit passing this hook
+#   says nothing about that suite - it was not executed.
 #
-# Why not run the full test suite:
-#   The phase0-12 verification tests are slower and assume a clean DB
-#   state. They are still runnable via `npm test` when needed. The
-#   regressions file is purpose-built for this hook: cheap, read-only,
-#   and exhaustive over the bugs we've fixed.
+# Escape hatch (rare): git commit --no-verify -m "..."
 # ─────────────────────────────────────────────────────────────────────────
 
 set -e
 
-echo "→ Running regression suite (locks every fix we have shipped)..."
-echo "  (Skip with: git commit --no-verify  — only if you're offline.)"
+echo "→ Running static security checks (no database, no credentials)..."
 echo ""
 
-npm run test:regressions --silent
+npm run test:security-static --silent
 
 echo ""
-echo "✓ All regressions clean. Proceeding with commit."
+echo "✓ Static security checks passed."
+echo "  Note: the database regression suite (npm run test:regressions) was NOT run."
+echo "  Proceeding with commit."

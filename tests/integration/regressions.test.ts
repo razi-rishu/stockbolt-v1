@@ -7535,65 +7535,16 @@ describe('phase102 — "Download my data" backs up the whole company', () => {
   });
 });
 
-describe('phase103 — delete_bank_reconciliation refuses callers it should refuse', () => {
-  async function applied(): Promise<boolean> {
-    const [row] = await sql<{ src: string }>(
-      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
-         WHERE proname = 'delete_bank_reconciliation'`);
-    return /Phase 103/.test(row?.src ?? '');
-  }
-
-  it('the function checks permission AND tenant', async () => {
-    if (!(await applied())) { console.warn('phase103 not applied yet — skipping.'); return; }
-    const [row] = await sql<{ src: string }>(
-      `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
-         WHERE proname = 'delete_bank_reconciliation'`);
-    expect(row.src, 'requires accounting.write').toMatch(/auth_require\('accounting\.write'\)/);
-    expect(row.src, 'and scopes to the caller company').toMatch(/current_user_company_id\(\)/);
-    // Permission before lookup, or the not-found error leaks which ids exist.
-    expect(row.src.indexOf('auth_require'), 'permission is checked FIRST')
-      .toBeLessThan(row.src.indexOf('FROM public.bank_reconciliations'));
-  });
-
-  it('anon cannot execute it', async () => {
-    // The half that makes the in-function guard sound. has_perm() returns
-    // FALSE when auth.uid() is NULL, and anon ALSO has a null uid — so the
-    // service-role carve-out would wave anon through if the grant remained.
-    if (!(await applied())) { console.warn('phase103 not applied yet — skipping.'); return; }
-    const [row] = await sql<{ anon: boolean; auth: boolean }>(`
-      SELECT has_function_privilege('anon', p.oid, 'EXECUTE')          AS anon,
-             has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth
-      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-      WHERE n.nspname = 'public' AND p.proname = 'delete_bank_reconciliation'`);
-    expect(row.anon, 'anon must NOT be able to execute').toBe(false);
-    expect(row.auth, 'the app still can').toBe(true);
-  });
-
-  it('no anon-reachable definer function deletes without a guard', async () => {
-    // The class, not the instance. A SECURITY DEFINER function bypasses RLS,
-    // so one that anon can call and that writes without checking the caller
-    // is an unauthenticated write to any tenant. Reported as a warning rather
-    // than a failure: the surface is 45 functions wide and curating it is its
-    // own piece of work — but a NEW one should be noticed the day it lands.
-    const rows = await sql<{ function_name: string }>(`
-      SELECT p.proname AS function_name
-      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-      WHERE n.nspname = 'public' AND p.prosecdef
-        AND has_function_privilege('anon', p.oid, 'EXECUTE')
-        AND pg_get_functiondef(p.oid) ~* '(DELETE FROM|UPDATE )'
-        AND pg_get_functiondef(p.oid) !~* '(auth_require|auth\.uid\(\)|current_user_company_id)'
-      ORDER BY 1`);
-    if (rows.length) {
-      console.warn('⚠ anon-callable SECURITY DEFINER functions that write without any caller check: '
-        + rows.map(r => r.function_name).join(', '));
-    }
-    // Soft until phase103 lands, hard after: once the fix is applied this
-    // function must never reappear in that list.
-    if (!(await applied())) { console.warn('phase103 not applied yet — list is advisory.'); return; }
-    expect(rows.map(r => r.function_name),
-      'delete_bank_reconciliation must not be among them').not.toContain('delete_bank_reconciliation');
-  });
-});
+// phase103 — delete_bank_reconciliation. These checks used to live here and
+// read the production function, but each one first asked whether the live body
+// said "Phase 103" and returned early when it did not. phase103 never reached
+// production, so all three skipped silently for as long as the fix was missing.
+// phase109c restores the intent. Its checks now live in
+// tests/unit/finding-e-definer-guards.test.ts: they read the repo, never a
+// database, run unconditionally in CI (security-static), and parse the
+// function's authorisation branches. The live state is verified by the staging
+// suite (tests/integration/finding-e-verification.test.ts, E7) and by the
+// read-only post-deploy checks in the security report.
 
 describe('phase104 — projects / jobs foundation', () => {
   async function applied(): Promise<boolean> {

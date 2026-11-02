@@ -208,34 +208,102 @@ describe('Finding E — the old carve-out survives only where no client can call
   }
 });
 
-// phase103 meant this function to require accounting.write; it never reached
-// production and phase109 dropped it from the repo. phase109c restores it.
-describe('Finding E — delete_bank_reconciliation authorises before touching data (phase109c)', () => {
-  const body = () => stripComments(def('delete_bank_reconciliation').text);
+// ── delete_bank_reconciliation (phase103 intent, restored by phase109c) ─────
+// phase103 meant this function to require accounting.write. It never reached
+// production, and its production regression tests only ran if the live body
+// said "Phase 103", so they skipped silently for as long as the fix was
+// missing. These checks replace them. They read the repo, run unconditionally,
+// and parse the function's own authorisation branches rather than searching
+// the whole body for the first table access: in phase109c the operator-only
+// branch legitimately reads the table before the signed-in branch's check.
 
-  it('refuses every API caller without a user', () => {
+/** Any statement that touches a table (not the auth helper calls). */
+const TABLE_ACCESS = /\b(?:FROM|UPDATE|INSERT\s+INTO|DELETE\s+FROM|JOIN)\s+public\.(?!current_user_company_id\b|auth_require\b)/i;
+
+interface AuthBranches { preamble: string; noUser: string; user: string; after: string; elseKeyword: string }
+
+/**
+ * Splits a body's top-level `IF auth.uid() IS NULL THEN ... ELSE ... END IF;`
+ * into the code before it, the no-user branch, the signed-in branch and the
+ * code after it. Nested IF ... END IF blocks are matched by depth. Returns null
+ * when the structure is not there, which every caller treats as a failure.
+ */
+function authBranches(body: string): AuthBranches | null {
+  const begin = body.search(/\bBEGIN\b/i);
+  if (begin === -1) return null;
+  const rel = body.slice(begin).search(/\bIF\s+auth\.uid\(\)\s+IS\s+NULL\s+THEN\b/i);
+  if (rel === -1) return null;
+  const start = begin + rel;
+  const tokens = /\bEND\s+IF\b|\bELSIF\b|\bELSE\b|\bIF\b/gi;
+  tokens.lastIndex = start;
+  let depth = 0;
+  let elseAt = -1;
+  let elseKeyword = '';
+  let endAt = -1;
+  for (let m = tokens.exec(body); m; m = tokens.exec(body)) {
+    const t = m[0].toUpperCase().replace(/\s+/g, ' ');
+    if (t === 'IF') depth++;
+    else if (t === 'END IF') {
+      depth--;
+      if (depth === 0) { endAt = m.index; break; }
+    } else if (depth === 1 && elseAt === -1) { elseAt = m.index; elseKeyword = t; }
+  }
+  if (elseAt === -1 || endAt === -1) return null;
+  return {
+    preamble: body.slice(begin + 'BEGIN'.length, start),
+    noUser: body.slice(start, elseAt),
+    user: body.slice(elseAt, endAt),
+    after: body.slice(endAt),
+    elseKeyword,
+  };
+}
+
+describe('phase103/109c — delete_bank_reconciliation authorises before touching data', () => {
+  const body = () => stripComments(def('delete_bank_reconciliation').text);
+  const branches = () => {
+    const b = authBranches(body());
+    if (!b) throw new Error('delete_bank_reconciliation has no top-level IF auth.uid() IS NULL THEN ... ELSE ... END IF');
+    return b;
+  };
+
+  it('opens with the authorisation split, before any table access', () => {
+    const b = branches();
+    expect(b.elseKeyword, 'the signed-in branch is a plain ELSE').toBe('ELSE');
+    expect(TABLE_ACCESS.test(b.preamble), 'nothing reads a table before the split').toBe(false);
+  });
+
+  it('refuses every API caller without a user, before reading anything', () => {
+    // First statement of the no-user branch; only a direct database session passes.
     expect(
-      /IF\s+auth\.uid\(\)\s+IS\s+NULL\s+THEN\s+IF\s+session_user\s*=\s*'authenticator'\s+THEN\s+RAISE\s+EXCEPTION[^;]*ERRCODE\s*=\s*'42501'\s*;\s*END\s+IF\s*;/i.test(body()),
+      /^IF\s+auth\.uid\(\)\s+IS\s+NULL\s+THEN\s+IF\s+session_user\s*=\s*'authenticator'\s+THEN\s+RAISE\s+EXCEPTION[^;]*ERRCODE\s*=\s*'42501'\s*;\s*END\s+IF\s*;/i.test(branches().noUser),
+      'IF session_user = authenticator THEN RAISE 42501 is the first statement',
     ).toBe(true);
   });
 
-  it('requires accounting.write from a signed-in user before any table access', () => {
-    const b = body();
-    const elseAt = b.search(/\bELSE\s+PERFORM\s+public\.auth_require\('accounting\.write'\)\s*;/i);
-    expect(elseAt, 'ELSE PERFORM public.auth_require(accounting.write)').toBeGreaterThan(-1);
-    // Nothing between the start of that branch and the permission check reads a table.
-    const branch = b.slice(b.search(/IF\s+auth\.uid\(\)\s+IS\s+NULL\s+THEN/i));
-    const userBranch = branch.slice(branch.search(/\bELSE\b/i));
-    const permAt = userBranch.search(/auth_require/i);
-    const tableAt = userBranch.search(/\b(?:FROM|UPDATE|DELETE\s+FROM)\s+public\.(?!current_user_company_id)/i);
-    expect(tableAt === -1 || permAt < tableAt, 'permission check precedes the lookup').toBe(true);
+  it('does not exempt the service_role key', () => {
+    expect(/service_role|auth\.role\(\)/i.test(body()), 'no service_role carve-out in this function').toBe(false);
   });
 
-  it("scopes a signed-in user's lookup to their company, and deletes only the row it found", () => {
-    const b = body();
-    expect(/WHERE\s+id\s*=\s*p_id\s+AND\s+company_id\s*=\s*public\.current_user_company_id\(\)/i.test(b), 'company-scoped lookup').toBe(true);
-    expect(/DELETE\s+FROM\s+public\.bank_reconciliations\s+WHERE\s+id\s*=\s*p_id\s+AND\s+company_id\s*=\s*v_company\s*;/i.test(b), 'delete bound to the looked-up company').toBe(true);
-    expect(/DELETE\s+FROM\s+public\.bank_reconciliations\s+WHERE\s+id\s*=\s*p_id\s*;/i.test(b), 'no unscoped delete').toBe(false);
+  it('requires accounting.write as the very first statement of the signed-in branch', () => {
+    expect(
+      /^ELSE\s+PERFORM\s+public\.auth_require\('accounting\.write'\)\s*;/i.test(branches().user),
+      'ELSE PERFORM public.auth_require(accounting.write);',
+    ).toBe(true);
+  });
+
+  it("limits the signed-in branch to a read of the caller's own company", () => {
+    const u = branches().user;
+    expect(/WHERE\s+id\s*=\s*p_id\s+AND\s+company_id\s*=\s*public\.current_user_company_id\(\)/i.test(u), 'company-scoped lookup').toBe(true);
+    expect(/\b(?:UPDATE|INSERT\s+INTO|DELETE\s+FROM)\s+public\./i.test(u), 'no write inside the branch').toBe(false);
+  });
+
+  it('deletes only the row it found, after the not-found and locked checks', () => {
+    const a = branches().after;
+    const del = a.search(/DELETE\s+FROM\s+public\.bank_reconciliations\s+WHERE\s+id\s*=\s*p_id\s+AND\s+company_id\s*=\s*v_company\s*;/i);
+    expect(del, 'delete bound to the looked-up company').toBeGreaterThan(-1);
+    expect(a.search(/IF\s+NOT\s+FOUND\s+THEN/i), 'not-found check precedes the delete').toBeLessThan(del);
+    expect(a.search(/v_status\s*=\s*'locked'/i), 'locked check precedes the delete').toBeLessThan(del);
+    expect(/DELETE\s+FROM\s+public\.bank_reconciliations\s+WHERE\s+id\s*=\s*p_id\s*;/i.test(body()), 'no unscoped delete anywhere').toBe(false);
   });
 
   it('is executable by signed-in users only (not PUBLIC, anon or service_role)', () => {
@@ -246,6 +314,22 @@ describe('Finding E — delete_bank_reconciliation authorises before touching da
     expect(after(revokeSr!, d.pos), 'service_role revoke follows the latest definition').toBe(true);
     expect(grantSr === null || after(revokeSr!, grantSr), 'service_role not re-granted').toBe(true);
     expect(anonRevoked('delete_bank_reconciliation'), 'anon and PUBLIC revoked').toBe(true);
+  });
+
+  it('is not among anon-callable SECURITY DEFINER functions that write without a caller check', () => {
+    // Static port of the phase103 production tripwire: a SECURITY DEFINER
+    // function bypasses RLS, so one that anon can call and that writes without
+    // checking the caller is an unauthenticated write to any tenant. Other
+    // members are reported (the class is not yet curated); this one must never
+    // appear.
+    const unguarded = [...latest.entries()]
+      .filter(([, d]) => d.definer)
+      .filter(([, d]) => /\b(?:DELETE\s+FROM|UPDATE)\s+/i.test(stripComments(d.text)))
+      .filter(([, d]) => !/auth_require|auth\.uid\(\)|current_user_company_id/i.test(stripComments(d.text)))
+      .map(([name]) => name)
+      .filter((name) => !anonRevoked(name));
+    if (unguarded.length) console.warn(`anon-callable SECURITY DEFINER writers without a caller check: ${unguarded.join(', ')}`);
+    expect(unguarded).not.toContain('delete_bank_reconciliation');
   });
 });
 
