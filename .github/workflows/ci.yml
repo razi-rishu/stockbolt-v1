@@ -13,6 +13,10 @@
 #     target (Audit H4 staging), which is deferred. That is why this workflow
 #     uses NO secrets and touches NO database.
 #
+# The security-static job runs tests that read only the repo (migration files
+# and source), never a database. It is fail-closed: vitest exits non-zero if the
+# test file is missing, and the test itself fails if the migrations are absent.
+#
 # This workflow needs no secrets and connects to no external service.
 
 name: CI
@@ -54,3 +58,24 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  security-static:
+    name: security regression checks (static)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Finding E (phase109): SECURITY DEFINER functions taking a company id
+      # must keep their cross-tenant guard and stay revoked from anon.
+      - name: Finding E definer guards
+        run: npm run test:security-static

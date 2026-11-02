@@ -40,7 +40,8 @@ const after = (a: Pos, b: Pos) => a[0] > b[0] || (a[0] === b[0] && a[1] > b[1]);
 
 interface Definition { file: string; pos: Pos; text: string; params: string[]; definer: boolean }
 
-const stripComments = (sql: string) => sql.replace(/--[^\n]*/g, '');
+/** Blanks `--` comments with spaces of the same length, so offsets still line up with the raw file. */
+const stripComments = (sql: string) => sql.replace(/--[^\n]*/g, (c) => ' '.repeat(c.length));
 
 /** Parameter names from a signature such as `(p_a uuid, p_b text DEFAULT NULL::text)`. */
 function paramNames(signature: string): string[] {
@@ -201,18 +202,50 @@ describe('Finding E — the old carve-out survives only where no client can call
     it(`${name} is not executable by authenticated or anon`, () => {
       const revokeAuth = lastOf(statementsFor(name, REVOKE_AUTH));
       expect(revokeAuth, `${name}: REVOKE ... FROM authenticated`).not.toBeNull();
-      expect(after(revokeAuth!, def(name).pos) || !statementsFor(name, DROP_FN).length, `${name}: revoke after last definition`).toBe(true);
+      expect(after(revokeAuth!, def(name).pos), `${name}: revoke after last definition`).toBe(true);
       expect(anonRevoked(name), `${name}: revoked from anon`).toBe(true);
     });
   }
 });
 
-describe('Finding E — delete_bank_reconciliation is scoped to the caller', () => {
-  it('both its lookup and its delete filter by the caller company', () => {
-    const body = stripComments(def('delete_bank_reconciliation').text);
-    const scoped = /WHERE\s+id\s*=\s*p_id\s+AND\s+company_id\s*=\s*public\.current_user_company_id\(\)/gi;
-    expect(body.match(scoped)?.length ?? 0, 'SELECT and DELETE both scoped').toBe(2);
-    expect(/DELETE\s+FROM\s+public\.bank_reconciliations\s+WHERE\s+id\s*=\s*p_id\s*;/i.test(body), 'no unscoped delete').toBe(false);
+// phase103 meant this function to require accounting.write; it never reached
+// production and phase109 dropped it from the repo. phase109c restores it.
+describe('Finding E — delete_bank_reconciliation authorises before touching data (phase109c)', () => {
+  const body = () => stripComments(def('delete_bank_reconciliation').text);
+
+  it('refuses every API caller without a user', () => {
+    expect(
+      /IF\s+auth\.uid\(\)\s+IS\s+NULL\s+THEN\s+IF\s+session_user\s*=\s*'authenticator'\s+THEN\s+RAISE\s+EXCEPTION[^;]*ERRCODE\s*=\s*'42501'\s*;\s*END\s+IF\s*;/i.test(body()),
+    ).toBe(true);
+  });
+
+  it('requires accounting.write from a signed-in user before any table access', () => {
+    const b = body();
+    const elseAt = b.search(/\bELSE\s+PERFORM\s+public\.auth_require\('accounting\.write'\)\s*;/i);
+    expect(elseAt, 'ELSE PERFORM public.auth_require(accounting.write)').toBeGreaterThan(-1);
+    // Nothing between the start of that branch and the permission check reads a table.
+    const branch = b.slice(b.search(/IF\s+auth\.uid\(\)\s+IS\s+NULL\s+THEN/i));
+    const userBranch = branch.slice(branch.search(/\bELSE\b/i));
+    const permAt = userBranch.search(/auth_require/i);
+    const tableAt = userBranch.search(/\b(?:FROM|UPDATE|DELETE\s+FROM)\s+public\.(?!current_user_company_id)/i);
+    expect(tableAt === -1 || permAt < tableAt, 'permission check precedes the lookup').toBe(true);
+  });
+
+  it("scopes a signed-in user's lookup to their company, and deletes only the row it found", () => {
+    const b = body();
+    expect(/WHERE\s+id\s*=\s*p_id\s+AND\s+company_id\s*=\s*public\.current_user_company_id\(\)/i.test(b), 'company-scoped lookup').toBe(true);
+    expect(/DELETE\s+FROM\s+public\.bank_reconciliations\s+WHERE\s+id\s*=\s*p_id\s+AND\s+company_id\s*=\s*v_company\s*;/i.test(b), 'delete bound to the looked-up company').toBe(true);
+    expect(/DELETE\s+FROM\s+public\.bank_reconciliations\s+WHERE\s+id\s*=\s*p_id\s*;/i.test(b), 'no unscoped delete').toBe(false);
+  });
+
+  it('is executable by signed-in users only (not PUBLIC, anon or service_role)', () => {
+    const d = def('delete_bank_reconciliation');
+    const revokeSr = lastOf(statementsFor('delete_bank_reconciliation', /REVOKE[^;]*?ON\s+FUNCTION[^;]*?FROM[^;]*?\bservice_role\b[^;]*;/gi));
+    const grantSr = lastOf(statementsFor('delete_bank_reconciliation', /GRANT[^;]*?ON\s+FUNCTION[^;]*?TO[^;]*?\bservice_role\b[^;]*;/gi));
+    expect(revokeSr, 'revoked from service_role').not.toBeNull();
+    expect(after(revokeSr!, d.pos), 'service_role revoke follows the latest definition').toBe(true);
+    expect(grantSr === null || after(revokeSr!, grantSr), 'service_role not re-granted').toBe(true);
+    expect(anonRevoked('delete_bank_reconciliation'), 'anon and PUBLIC revoked').toBe(true);
   });
 });
 
@@ -247,6 +280,29 @@ describe('Finding E — grants', () => {
     expect(/RAISE\s+EXCEPTION\s+'reset_company_data:\s*caller not in company/i.test(body)).toBe(true);
     expect(/RAISE\s+EXCEPTION\s+'reset_company_data:\s*only admin can reset/i.test(body)).toBe(true);
   });
+});
+
+// ── Rollback files cannot run by accident ───────────────────────────────────
+// phase109_e2_rollback.sql was run by mistake on 2026-11-02 and silently
+// re-opened Finding E on production. A security rollback must refuse to run
+// until someone deliberately removes its guard.
+describe('Finding E — security rollbacks refuse to run by accident', () => {
+  const MANUAL = resolve(process.cwd(), 'supabase/manual-apply');
+  const rollbacks = readdirSync(MANUAL).filter((f) => /^phase109.*rollback\.sql$/.test(f));
+
+  it('the phase109 rollbacks exist', () => {
+    expect(rollbacks.sort()).toEqual(['phase109_e2_rollback.sql', 'phase109c_rollback.sql']);
+  });
+
+  for (const file of rollbacks) {
+    it(`${file} raises before it changes anything`, () => {
+      const src = stripComments(readFileSync(resolve(MANUAL, file), 'utf8'));
+      const guard = src.search(/DO\s+\$\$\s*BEGIN\s+RAISE\s+EXCEPTION\s+'ROLLBACK GUARD:/i);
+      const firstChange = src.search(/\b(?:CREATE|GRANT|REVOKE|ALTER|DROP)\b/i);
+      expect(guard, `${file}: ROLLBACK GUARD block`).toBeGreaterThan(-1);
+      expect(guard, `${file}: guard precedes the first change`).toBeLessThan(firstChange);
+    });
+  }
 });
 
 // ── Compatibility: the web app, Android 1.0.3 and the public API ────────────

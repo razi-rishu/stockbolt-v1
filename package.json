@@ -33,6 +33,7 @@
     "test:tds": "vitest run tests/integration/tds-verification.test.ts",
     "test:deferred-cogs": "vitest run tests/integration/deferred-cogs-verification.test.ts",
     "test:finding-e": "vitest run tests/integration/finding-e-verification.test.ts",
+    "test:security-static": "vitest run tests/unit/finding-e-definer-guards.test.ts",
     "prepare": "husky"
   },
   "dependencies": {

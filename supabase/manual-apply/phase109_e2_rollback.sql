@@ -7,6 +7,13 @@
 
 BEGIN;
 
+-- ROLLBACK GUARD - this file was run by mistake once (2026-11-02) and silently
+-- re-opened a cross-tenant hole. It now refuses to run. To roll back on purpose,
+-- delete this DO block, run the file, and record why in the security report.
+DO $$ BEGIN
+  RAISE EXCEPTION 'ROLLBACK GUARD: this rollback re-opens phase109 (Finding E) for signed-up users without a company, on eight SECURITY DEFINER functions. Delete this block to run it deliberately.';
+END $$;
+
 
 CREATE OR REPLACE FUNCTION public.get_bank_recon(p_company_id uuid, p_account_id uuid, p_date_from date, p_date_to date)
  RETURNS TABLE(date date, je_number text, source_type text, description text, debit numeric, credit numeric, running_balance numeric)

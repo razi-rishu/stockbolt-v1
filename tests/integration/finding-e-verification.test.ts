@@ -15,6 +15,9 @@
  *   E5  the service role keeps the maintenance path (recompute)
  *   E6  seed_default_tax_rates is trigger-only, and onboarding still seeds
  *       tax rates through the trigger
+ *   E7  delete_bank_reconciliation (phase109c) needs accounting.write: a
+ *       Viewer or Salesperson of the same company is refused, an Accountant is
+ *       allowed, and the service_role key is refused
  *
  * WHERE IT RUNS
  * Only against a non-production Supabase project. It reads its connection from
@@ -25,7 +28,8 @@
  *     npm run test:finding-e
  *
  * It creates and deletes users and companies, so it is NOT in the pre-commit
- * hook or CI. Requires phase109 and phase109b applied to the staging database.
+ * hook or CI. Requires phase109, phase109b and phase109c applied to the staging
+ * database.
  */
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -111,12 +115,27 @@ async function createTenant(label: string): Promise<Tenant> {
   return { ...user, companyId: company_id, bankCoaId: coa.id, bankAccountId: (bank as { id: string }).id };
 }
 
+/** A user who belongs to `t`'s company with the given role. */
+async function addMember(t: Tenant, role: 'accountant' | 'sales' | 'viewer'): Promise<User> {
+  const user = await signUp(role);
+  const { error } = await admin.from('profiles').insert({
+    id: user.userId, company_id: t.companyId, full_name: `Finding E ${role}`,
+    email: `${user.userId}@stockbolt.test`, role, is_active: true,
+  } as never);
+  if (error) throw new Error(`add ${role}: ${error.message}`);
+  return user;
+}
+
+const members: User[] = [];
+
 async function destroy(t: Tenant | null): Promise<void> {
   if (!t) return;
+  // Users first: deleting an auth user cascades to its profile, and profiles
+  // hold the company with ON DELETE RESTRICT.
+  await admin.auth.admin.deleteUser(t.userId).catch(() => undefined);
   await admin.from('bank_reconciliations' as never).delete().eq('company_id', t.companyId);
   await admin.from('bank_accounts').delete().eq('company_id', t.companyId);
   await admin.from('companies').delete().eq('id', t.companyId);
-  await admin.auth.admin.deleteUser(t.userId).catch(() => undefined);
 }
 
 // ── The calls under test, each aimed at one company ─────────────────────────
@@ -159,6 +178,7 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
+  for (const m of members) await admin.auth.admin.deleteUser(m.userId).catch(() => undefined);
   await destroy(A);
   await destroy(B);
   if (C) await admin.auth.admin.deleteUser(C.userId).catch(() => undefined);
@@ -180,8 +200,8 @@ describe('E2 — a signed-up user without a company is refused', () => {
   });
 
   it("cannot delete company A's reconciliation", async () => {
-    const res = await rpcOf(C!.client)('delete_bank_reconciliation', { p_id: reconA });
-    expect(res.error, 'delete must fail').not.toBeNull();
+    // No company means no profile, so the accounting.write check refuses first.
+    expectRefused(await rpcOf(C!.client)('delete_bank_reconciliation', { p_id: reconA }), 'no-company delete');
     const { count } = await admin.from('bank_reconciliations' as never).select('id', { count: 'exact', head: true }).eq('id', reconA);
     expect(count, 'A reconciliation still exists').toBe(1);
   });
@@ -247,5 +267,41 @@ describe('E6 — seed_default_tax_rates is trigger-only', () => {
   it('onboarding still seeded tax rates through the trigger', async () => {
     const { count } = await admin.from('tax_rates').select('id', { count: 'exact', head: true }).eq('company_id', A!.companyId);
     expect(count ?? 0, 'tax rates seeded at onboarding').toBeGreaterThan(0);
+  });
+});
+
+describe('E7 — deleting a reconciliation needs accounting.write (phase109c)', () => {
+  const stillThere = async (id: string) => {
+    const { count } = await admin.from('bank_reconciliations' as never).select('id', { count: 'exact', head: true }).eq('id', id);
+    return count;
+  };
+
+  it('a Viewer of the same company is refused, and the reconciliation survives', async () => {
+    const viewer = await addMember(A!, 'viewer');
+    members.push(viewer);
+    const res = await rpcOf(viewer.client)('delete_bank_reconciliation', { p_id: reconA });
+    expectRefused(res, 'viewer delete');
+    expect(res.error!.message).toMatch(/accounting\.write/);
+    expect(await stillThere(reconA)).toBe(1);
+  });
+
+  it('a Salesperson of the same company is refused', async () => {
+    const sales = await addMember(A!, 'sales');
+    members.push(sales);
+    expectRefused(await rpcOf(sales.client)('delete_bank_reconciliation', { p_id: reconA }), 'sales delete');
+    expect(await stillThere(reconA)).toBe(1);
+  });
+
+  it('the service_role key is refused', async () => {
+    expectRefused(await rpcOf(admin)('delete_bank_reconciliation', { p_id: reconA }), 'service_role delete');
+    expect(await stillThere(reconA)).toBe(1);
+  });
+
+  it('an Accountant of the same company can delete it', async () => {
+    const accountant = await addMember(A!, 'accountant');
+    members.push(accountant);
+    const res = await rpcOf(accountant.client)('delete_bank_reconciliation', { p_id: reconA });
+    expect(res.error, res.error?.message).toBeNull();
+    expect(await stillThere(reconA)).toBe(0);
   });
 });

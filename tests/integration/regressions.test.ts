@@ -2834,21 +2834,35 @@ describe('AC-V2 — cross-tenant guards (soft until applied)', () => {
     }
   });
 
-  it('phase65: the guard keeps its two carve-outs (service_role + onboarding)', async () => {
-    if (!(await applied())) { console.warn('⚠ AC-V2 not applied yet'); return; }
-    // Tightening the guard by dropping either condition would break real flows:
-    //   auth.uid() IS NULL              -> service_role, SQL editor, test harness
-    //   current_user_company_id() NULL  -> onboarding; seed_default_tax_rates runs
-    //                                     from a trigger on companies INSERT
-    //                                     before the profile is linked
+  // phase109 (Finding E) replaced the phase65 carve-outs. They waved through the
+  // anon key and any signed-up user with no company, so this test used to lock
+  // the vulnerability in. It now locks the fix: a missing user passes only from
+  // the service role or a direct database session, and every signed-in caller -
+  // company or not - must match p_company_id. seed_default_tax_rates keeps the
+  // old text because only the companies INSERT trigger may call it; clients hold
+  // no EXECUTE on it. On 2026-11-02 this test passing on the old text was the
+  // evidence of when the accidental rollback ran.
+  it('phase109: no client-callable guard keeps the phase65 carve-outs', async () => {
     for (const fn of GUARDED) {
-      const def = await sql<{ src: string }>(
-        `SELECT pg_get_functiondef(oid) AS src FROM pg_proc
+      const def = await sql<{ src: string; anon_exec: boolean; auth_exec: boolean }>(
+        `SELECT pg_get_functiondef(oid) AS src,
+                has_function_privilege('anon', oid, 'EXECUTE')          AS anon_exec,
+                has_function_privilege('authenticated', oid, 'EXECUTE') AS auth_exec
+           FROM pg_proc
           WHERE proname='${fn}' AND pronamespace='public'::regnamespace`);
-      const src = def[0]!.src;
-      expect(src, `${fn} exempts service_role`).toMatch(/auth\.uid\(\) IS NOT NULL/);
-      expect(src, `${fn} exempts a caller with no company yet`)
-        .toMatch(/public\.current_user_company_id\(\) IS NOT NULL/);
+      expect(def.length, `${fn} exists`).toBe(1);
+      const { src, anon_exec, auth_exec } = def[0]!;
+      expect(anon_exec, `${fn} not executable by anon`).toBe(false);
+      if (fn === 'seed_default_tax_rates') {
+        expect(auth_exec, 'seed_default_tax_rates is trigger-only').toBe(false);
+        continue;
+      }
+      expect(src, `${fn} keeps the phase65 carve-out`)
+        .not.toMatch(/auth\.uid\(\) IS NOT NULL\s+AND public\.current_user_company_id\(\) IS NOT NULL/);
+      expect(src, `${fn} refuses API callers without a user`)
+        .toMatch(/IF auth\.uid\(\) IS NULL THEN\s+IF session_user = 'authenticator' AND coalesce\(auth\.role\(\), ''\) <> 'service_role' THEN/);
+      expect(src, `${fn} refuses any other company, including none`)
+        .toMatch(/ELSIF p_company_id IS DISTINCT FROM public\.current_user_company_id\(\) THEN/);
     }
   });
 

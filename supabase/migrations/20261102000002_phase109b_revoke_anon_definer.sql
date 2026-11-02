@@ -17,9 +17,9 @@
 --   * Section 1 (the eight E1 functions): ALREADY APPLIED on production
 --     2026-11-02 and verified (anon_exec = false on all eight). Re-running is a
 --     no-op.
---   * Section 2 (delete_bank_reconciliation): NOT YET APPLIED. Harmless today -
---     since phase109 an anon caller has no company, so the scoped lookup finds
---     nothing - but nothing should be reachable unauthenticated. Needs applying.
+--   * Section 2 (delete_bank_reconciliation): APPLIED on production 2026-11-02
+--     ~21:40 IST and verified (anon_exec = false), after phase109 was
+--     re-applied following the accidental rollback (see the security report).
 --
 -- Idempotent: REVOKE of a privilege that is not held is a no-op.
 -- Rollback: GRANT EXECUTE ON FUNCTION <fn> TO anon - re-opens the unauthenticated
