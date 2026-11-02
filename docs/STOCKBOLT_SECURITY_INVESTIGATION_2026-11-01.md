@@ -185,7 +185,7 @@ Hourly API volume: 04:00 UTC 2,679 · 05:00 1,505 · 06:00 681 · 16:00 11. Ther
 | Evidence | Value |
 |---|---|
 | Postgres log: phase12_12 run over the database protocol, then "already exists" | 05:07:01.714 / .722 UTC |
-| `C:\Users\rashi\.supabase\telemetry.json`: last written by the Supabase CLI; `session_last_active` | **05:07:01.997 UTC** (file time 10:37:01.996 IST). The CLI folder itself changed at 10:36:50 IST. |
+| `%USERPROFILE%\.supabase\telemetry.json` (the Supabase CLI settings file on the owner's computer): `session_last_active` | **05:07:01.997 UTC** (file time 10:37:01.996 IST). The CLI folder itself changed at 10:36:50 IST. |
 | `supabase/.temp/project-ref` in the repo (CLI link, set 2026-05-18) | **The production project.** Any `supabase db push` / `migration up` run from this folder targets production. |
 | Records of the Claude Code sessions on this computer, 04:55–05:09 UTC | No Supabase CLI command. The only actions were a `git push` at about 05:07:31 and read-only queries through the app's own client. |
 | Supabase GitHub integration | **Not connected**, so a push doesn't apply migrations |
