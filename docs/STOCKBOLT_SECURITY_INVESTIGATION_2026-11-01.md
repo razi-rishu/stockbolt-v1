@@ -16,7 +16,7 @@
 | A2 | In the same window, `stock_active` may also have allowed anon to **write** (update or delete) any tenant's `stock_ledger` rows. | **Potential exposure, now more likely.** Production confirms `stock_active` **can be written through** (`is_updatable = YES`, 2026-11-02). Whether anon had write grants before phase71 is unknown, but Supabase's default grants usually include them. **Not exploitable today**: anon has no rights on the view. |
 | B | phase104 removed `security_invoker` from `gl_active`. Any signed-in user of any company could read every company's general ledger until phase107. | **Confirmed vulnerability.** phase107 records measuring the stripped setting on the live database, and the fix ran successfully at **2026-11-01 05:44:12 UTC**. **API logs show zero requests to `gl_active` or `stock_active` from 2026-10-31 17:00 UTC until the fix** (a positive control passed). phase104 most likely ran **before** 17:00 UTC on Oct 31, so the earlier part of the window falls outside log retention: **insufficient evidence** for that part. **No unauthorized access was found.** |
 | D | At 05:07 UTC on Nov 1, an outside client (not the dashboard SQL editor) tried to re-run the **phase12 bank-reconciliation migration** from May against production. It failed immediately ("relation already exists"). | **Confirmed event; source traced to the Supabase CLI on the owner's own computer** (section 4.6). The exact command isn't recorded. It is the migration-replay hazard flagged in the earlier audit (F7). |
-| **E** | Eight SECURITY DEFINER functions taking `p_company_id` skip their company check when `auth.uid()` is NULL (anon key) or the caller has no company yet: `search_contacts`, `search_products`, `get_daily_cash_report`, `get_bank_recon`, `get_project_profitability` (reads); `save_bank_reconciliation`, `recompute_stock_valuation`, `seed_default_tax_rates` (writes). Company UUIDs are public via `logos/{company_id}/…`. | **Confirmed vulnerability, 2026-11-02 (cross-tenant).** Live code has the gap; 7 of 8 were executable by `anon`. **E1 contained 2026-11-02:** EXECUTE revoked from `anon`/PUBLIC; verified `anon_exec = false` on all 8. **E2 applied 2026-11-02** (`20261102000001_phase109_e2_cross_tenant_guard.sql`): the 7 guards now refuse any signed-in caller whose company differs from `p_company_id`, including callers with no company; `delete_bank_reconciliation` (which had **no** company check) is scoped to the caller's company; `seed_default_tax_rates` is no longer executable by clients. Verified 2026-11-02: metadata (`has_fix = true` on 8 functions, `has_gap = false` on all callable ones); a simulated signed-in user with no company is now refused (`search_contacts: cross-tenant access denied`); app smoke test passed (customer/product search, Daily Cash, Bank Reconciliation open/save/delete, project profitability). **Finding E: remediated and verified.** **Incident 2026-11-02:** `phase109_e2_rollback.sql` was run on production by mistake after verification, silently restoring the pre-phase109 code (detected at 16:00 by the function drift check: `delete_bank_reconciliation` and the `get_*` functions matched the rollback). Exposure window: about **15:26 to 21:40 IST** - the pre-commit suite's phase65 tripwire, which asserted the old carve-out, passed at 15:26:48 and again for the next commit, so the rollback was already in effect then - during which company-less users could cross tenants and anon could delete any unlocked reconciliation by id. phase109 was re-applied and phase109b section 2 (anon revoke on `delete_bank_reconciliation`) applied; verified 21:44 IST (`has_fix = true` on 8, `anon_exec = false` on all 9). Both rollback files now refuse to run until their ROLLBACK GUARD block is deleted, and a static test enforces it. Logs for the window are retained for 24 h; review them for calls to these functions before they expire. `anon` revoked on `delete_bank_reconciliation` too (phase109b section 2, applied 2026-11-02). **Open:** phase109c restores the `accounting.write` check that phase103 intended but which never reached production. No evidence of use; only 24 h of logs exist. |
+| **E** | Eight SECURITY DEFINER functions taking `p_company_id` skip their company check when `auth.uid()` is NULL (anon key) or the caller has no company yet: `search_contacts`, `search_products`, `get_daily_cash_report`, `get_bank_recon`, `get_project_profitability` (reads); `save_bank_reconciliation`, `recompute_stock_valuation`, `seed_default_tax_rates` (writes). Company UUIDs are public via `logos/{company_id}/…`. | **Confirmed vulnerability, 2026-11-02 (cross-tenant).** Live code has the gap; 7 of 8 were executable by `anon`. **E1 contained 2026-11-02:** EXECUTE revoked from `anon`/PUBLIC; verified `anon_exec = false` on all 8. **E2 applied 2026-11-02** (`20261102000001_phase109_e2_cross_tenant_guard.sql`): the 7 guards now refuse any signed-in caller whose company differs from `p_company_id`, including callers with no company; `delete_bank_reconciliation` (which had **no** company check) is scoped to the caller's company; `seed_default_tax_rates` is no longer executable by clients. Verified 2026-11-02: metadata (`has_fix = true` on 8 functions, `has_gap = false` on all callable ones); a simulated signed-in user with no company is now refused (`search_contacts: cross-tenant access denied`); app smoke test passed (customer/product search, Daily Cash, Bank Reconciliation open/save/delete, project profitability). **Finding E: remediated and verified.** **Incident 2026-11-02:** `phase109_e2_rollback.sql` was run on production by mistake after verification, silently restoring the pre-phase109 code (detected at 16:00 by the function drift check: `delete_bank_reconciliation` and the `get_*` functions matched the rollback). Exposure window (exact, from the Postgres log): **15:26:10 to 21:43:28 IST**; the logged-out delete path only until 15:45:55 IST (section 4.7) - during which company-less users could cross tenants and anon could delete any unlocked reconciliation by id. phase109 was re-applied and phase109b section 2 (anon revoke on `delete_bank_reconciliation`) applied; verified 21:44 IST (`has_fix = true` on 8, `anon_exec = false` on all 9). Both rollback files now refuse to run until their ROLLBACK GUARD block is deleted, and a static test enforces it. Logs for the window are retained for 24 h; review them for calls to these functions before they expire. `anon` revoked on `delete_bank_reconciliation` too (phase109b section 2, applied 2026-11-02). **Open:** phase109c restores the `accounting.write` check that phase103 intended but which never reached production. No evidence of use; only 24 h of logs exist. |
 | B2 | The V-RLS1 and V-RLS2 tests that should have caught B **switched themselves off** once the setting disappeared. | **Confirmed defect in the safeguard.** This corrects the earlier audits, which said V-RLS1 was added with phase107 (section 2.6). |
 | C | Ledger tables can be **updated and deleted directly** by any role with any write permission, inside its own company. | **Confirmed vulnerability (current), 2026-11-02.** Live policies gate UPDATE/DELETE on `general_ledger`, `journal_entries` and `stock_ledger` only by `has_any_write()`. `stock_active` can also be written through. Limited to the user's own company, so not cross-tenant, but it bypasses the posting engine and leaves no trace (no `updated_at`). |
 | — | Current production state of A and B | **Remediated and verified, 2026-11-02** (section 6.0): all four views have `security_invoker = true`; anon is refused (`permission denied for view gl_active`); a signed-in owner sees exactly **1** company in `gl_active`, `stock_active` and `general_ledger`. |
@@ -206,6 +206,65 @@ Hourly API volume: 04:00 UTC 2,679 · 05:00 1,505 · 06:00 681 · 16:00 11. Ther
   - Verified: `supabase db push --dry-run` now refuses with `ProjectRefNotLinkedError`.
   - Neither Claude worktree (`gallant-pasteur-50bf78`, `optimistic-hodgkin-a35968`) has a link of its own.
   - Running `supabase link` again would restore the risk. Link only to a staging project.
+
+### 4.7 Rollback exposure window, 2026-11-02: log investigation
+
+Run 2026-11-02 in the Supabase Log Explorer, read-only and count-only (range 09:50-16:15 UTC). No IPs, tokens, user ids or customer records were read. Only aggregate counts, statuses, timestamps and SQL first lines were.
+
+**Timeline (Postgres log, exact):**
+
+| UTC | IST | Event |
+|---|---|---|
+| 09:52:19 | 15:22:19 | phase109 applied |
+| **09:56:10** | **15:26:10** | `phase109_e2_rollback.sql` run: **exposure starts** |
+| 10:15:55 | 15:45:55 | `REVOKE EXECUTE ... delete_bank_reconciliation FROM anon, PUBLIC` run, which closes the logged-out delete path |
+| **16:13:28** | **21:43:28** | phase109 re-applied: **exposure ends** |
+| 16:14:05 | 21:44:05 | anon revoke re-run |
+
+**What was exposed:**
+- Logged-out (`anon`) callers could delete any company's unlocked reconciliation by id from 15:26:10 to 15:45:55 IST (about 20 minutes).
+- Signed-in users with no company could cross tenants through the eight phase109 functions from 15:26:10 to 21:43:28 IST (about 6 h 17 min).
+
+**Coverage:** 1,531 API gateway rows from 09:52 to 16:13 UTC; the whole window is covered.
+
+**Function calls observed (API gateway, whole window):**
+
+| Function | POST (real calls) | OPTIONS (browser preflight, no token) | Signed-in | Anon | Distinct users | Status |
+|---|---|---|---|---|---|---|
+| `delete_bank_reconciliation` | **0** | 0 | - | - | - | - |
+| `get_bank_recon`, `get_daily_cash_report`, `get_project_profitability`, `save_bank_reconciliation`, `recompute_stock_valuation`, `search_contacts`, `seed_default_tax_rates` | **0** | 0 | - | - | - | - |
+| `search_products` (affected) | 1 | 1 | 1 | 0 | 1 | 200 |
+| `complete_onboarding` | 1 | 1 | 1 | 0 | 1 | 200 |
+| `get_dashboard_cards` | 2 | 1 | 2 | 0 | 1 | 200 |
+| `my_pending_invite` | 4 | 2 | 4 | 0 | 1 | 200 |
+| `_regression_test_query` (pre-commit suite) | 1,368 | 0 | no user token (secret API key) | 0 | - | 200 |
+
+The 8 POSTs other than the test helper came from **one single signed-in user**:
+- 16:34-17:40 IST: invite checks;
+- **17:41:58 IST**: created a company (`complete_onboarding`);
+- **17:42:25 IST**: called `search_products` once, 27 seconds later.
+
+**Classification:**
+- **`delete_bank_reconciliation`: no calls of any kind in the window.** There is no evidence of unauthorized deletion.
+- **No anonymous calls** to any function in the window.
+- **`search_products`: observed, assessed as legitimate.** The caller had already created a company. Under the rolled-back phase65 guard, a caller *with* a company who asks for another company is refused (42501), so the 200 response means the request named the caller's own company. This is inference, not proof: request bodies (the `p_company_id` sent) are not logged.
+- **No confirmed unauthorized access. No evidence of successful unauthorized operations.**
+
+**Gaps:**
+- Request bodies are not logged, so the company id sent cannot be read directly (see the inference above).
+- Logs older than 24 hours are gone. `delete_bank_reconciliation` was executable by `anon` with **no company check at all** from its creation until phase109 (09:52 UTC 2026-11-02), because phase103 was never applied. That longer historical exposure cannot be assessed.
+- Direct database sessions (SQL editor) appear only as statements, not as API calls.
+- Whether the 17:41 IST sign-up was a real customer or an owner test was not determined, because that would need identity data. The owner can check Authentication -> Users for a sign-up at about 17:30-17:42 IST.
+
+**Evidence preserved:**
+- the aggregates above (this report);
+- **raw rows exported privately by the owner before the 24-hour retention expired**, kept outside the repository and never shared:
+  - `api_rpc_calls.csv`: API gateway RPC calls, excluding the test helper;
+  - `postgres_statements.csv`: the database statement log;
+  - `auth_events.csv`: auth and audit events;
+  - optionally `hashes.txt`, SHA-256 fingerprints of the files.
+
+These contain IPs, user ids and emails, so they are not reproduced or referenced here beyond their file names.
 
 ### 4.5 Earlier exports in the Downloads folder (for completeness)
 
