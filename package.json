@@ -32,6 +32,7 @@
     "test:amortization": "vitest run tests/integration/amortization-verification.test.ts",
     "test:tds": "vitest run tests/integration/tds-verification.test.ts",
     "test:deferred-cogs": "vitest run tests/integration/deferred-cogs-verification.test.ts",
+    "test:finding-e": "vitest run tests/integration/finding-e-verification.test.ts",
     "prepare": "husky"
   },
   "dependencies": {
