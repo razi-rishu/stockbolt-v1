@@ -1,0 +1,295 @@
+STOCKBOLT GLOBAL - SAFETY FOUNDATION AUDIT (READ-ONLY)
+Date: 2026-11-01
+Baseline: docs/STOCKBOLT_GLOBAL_AUDIT_2026-11-01.txt
+
+Scope: files were only read. No tests, SQL, migrations or builds were run, and
+no database was connected to. NO TEST HAS PASSED IN THIS AUDIT - NONE WAS RUN.
+The only thing written was a pattern-matching scan script in the scratch
+folder. Its function findings are pattern matches, not proofs.
+
+
+================================================================================
+PART A - FINDINGS, MOST URGENT FIRST
+================================================================================
+
+CRITICAL
+--------
+
+F1. Every tenant's ledger may have been readable by any signed-in user from
+    about Oct 31 to Nov 1.
+  - What happened: 20261031000001_phase104_projects_foundation.sql:163
+    recreated gl_active with CREATE OR REPLACE VIEW. That silently removed
+    security_invoker. Without it, the view runs as its owner and RLS no longer
+    filters by company.
+  - Who could see it: anon was still blocked (phase71's REVOKE survived). Any
+    logged-in user of any company still had SELECT on the view.
+  - Status: 20261101000002_phase107_...:50 fixes it and adds tripwire V-RLS1
+    (regressions.test.ts:3414). The file dates are the only timing evidence.
+    Whether phase107 is applied live is UNVERIFIED.
+  - Missing: nobody has checked whether the gap was actually used. Only the
+    Supabase API/Postgres logs can show that, and Rashid would have to look.
+
+F2. The posting engines have never actually run. There are SIX suites waiting
+    for staging, not five. TDS was added after the note that said five.
+    docs/STAGING_SETUP.txt lists only four.
+
+    Suite (tests/integration/)          Script               Tests  Needs
+    year-end-close-verification.test.ts test:year-end-close  18*    phase56
+      proves: close/reopen, Retained Earnings roll-forward, period lock
+      (* T13e skipped)
+    tax-return-verification.test.ts     test:tax-return      8      phase57
+      proves: file -> lock -> reopen; filing posts no journal entry
+    fixed-assets-verification.test.ts   test:fixed-assets    11     phase60
+      proves: straight-line and reducing-balance depreciation, salvage cap,
+      disposal gain/loss
+    amortization-verification.test.ts   test:amortization    9      phase61
+      proves: prepaid/deferred/accrual direction, final-instalment remainder
+    tds-verification.test.ts            test:tds             7      phase62
+      (India tenant)
+      proves: Dr AP / Cr 2320, the no-PAN rate, caps, reversal
+    deferred-cogs-verification.test.ts  test:deferred-cogs   10     phase63+64
+      proves: selling before buying - cost recognised when stock arrives,
+      repair function
+
+  - Prerequisites for all six: a Supabase project that isn't production;
+    .env.local with VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY and
+    SUPABASE_SECRET_KEY; an authenticated test user created inside each suite.
+  - Production guard: tests/integration/_env-guard.ts makes each suite refuse
+    to run against gzpkuaioibqrdppjdbwz.
+  - Also blocked: phase0-rls, phase1 and phase2 change data too and are behind
+    the same guard. phase3 to phase12 are pure unit tests needing no database.
+
+F3. Restoring the books has never been shown to work.
+  - The only backup is the per-company export (src/lib/backup-manifest.ts,
+    settings/import-export/_backup-card.tsx). It reads 89 tables and
+    explicitly says it is NOT a restore.
+  - No docs/DISASTER_RECOVERY.md, and no record that point-in-time recovery is
+    on. Backlog item INFRA-2 (docs/SECURITY_INFRA_BACKLOG_2026-07-24.md:52) is
+    still open.
+  - No restore drill has ever been done.
+
+F4. GCC tax rates are seeded wrong, through four separate paths.
+  - The rate: Saudi Arabia gets 5% (should be 15%), Bahrain gets 5% (should
+    be 10%), and Kuwait and Qatar get VAT although they don't levy it. (From
+    training data - please confirm.) Every path applies the same 5%:
+      1. Database trigger companies_seed_tax_rates, in
+         20260619000012_phase21_seed_tax_rates.sql:25; the function was
+         redefined at 20260731000003_phase65...:482. Fires on every new
+         company and also ran a one-time backfill.
+      2. src/core/seeds/seedTaxRates.ts, called from src/core/onboarding.ts:76.
+      3. The "seed defaults" button, supabaseAdapter.ts:1938 (inserts VAT 5%).
+      4. The master-data import, import-export/_adapters/simple-masters.ts:92.
+         It writes whatever rates are in the file - a fourth write path.
+  - Likely duplicates: the trigger (path 1) seeds rates first.
+    seedTaxRates.ts (path 2) never checks whether rates exist, so new
+    companies probably get both sets. Only the second set is linked to tax
+    accounts. NOT CONFIRMED on a live database.
+  - The return is UAE-only too: src/lib/tax-return.ts:104 reports every
+    non-India country as "UAE VAT".
+  - Past documents keep the old rate: each line stores its own tax_rate.
+    Fixing the seed won't touch documents already posted at the wrong rate.
+
+HIGH
+----
+
+F5. Many actions don't check the user's permission. 83 change-making
+    functions never call has_perm.
+  - The engine functions are covered by RLS: post_journal_entry,
+    confirm_invoice, void_invoice and reverse_journal_entry run as the calling
+    user, so table permissions still apply.
+  - But the ledger tables let any writing role in. phase24
+    (20260619000017...) lets anyone with ANY write permission insert into the
+    ledger tables (has_any_write()). So a Counter or Sales user can probably
+    post or reverse manual journal entries by calling the function directly.
+    This is the deferred "posting-gates" item. Static evidence only; confirm
+    on staging.
+  - Three functions bypass RLS and check no permission at all:
+      * delete_role (phase23_custom_roles.sql): any user, even a Viewer, can
+        delete a custom role in their own company.
+      * record_einvoice_document and cancel_einvoice_document
+        (phase59_ac4c...): any role can record or cancel an e-invoice.
+      * All three stay inside the caller's own company.
+  - Checked and fine: all 74 functions that bypass RLS set search_path. The
+    two that take a company ID as input, api_current_stock and
+    company_has_api_access, are locked to service_role.
+
+F6. Tests read production with the master key, and CI runs no tests at all.
+  - Pre-commit hook: .husky/pre-commit runs test:regressions (402 tests)
+    against production using SUPABASE_SECRET_KEY. That reads across every
+    company, including verify_invariants for each one.
+  - CI: .github/workflows/ci.yml only typechecks and builds.
+
+F7. The staging runbook has risks of its own (docs/STAGING_SETUP.txt):
+  - It overwrites .env.local in place, so forgetting to switch back is easy.
+  - It says 150 migrations; there are 191.
+  - `npx supabase link` decides where `db push` goes. Many prod changes were
+    applied by hand in the SQL editor, so prod's migration history probably
+    doesn't match the files. A `db push` while linked to prod could try to
+    replay migrations on live data.
+  - The runbook already warns prod functions were patched from their live
+    code, so a database rebuilt from the files may differ from prod.
+
+F8. Onboarding isn't all-or-nothing (src/core/onboarding.ts). Setup runs as
+    separate calls from the browser, so a failure partway leaves a
+    half-set-up company.
+
+MEDIUM
+------
+
+F9. The health check misses several reconciliations. verify_invariants
+    (latest version in phase94...:31) checks A1, A4, B1, B2, E1, ADV_CUST,
+    ADV_VEND, D4, G2 (informational only), JE_BAL and B3. Nothing checks bank
+    accounts, PDC, tax accounts or the deferred-COGS queue (see Part C).
+
+F10. Android has no way to force an update.
+  - Release 1.0.3 (22a96a8, 2026-10-30) was built before phase104 to phase108,
+    so it doesn't know about Projects.
+  - It calls 57 database functions and touches 81 tables directly.
+  - src/lib/update-check.ts asks Google Play whether an update exists, but
+    nothing on the server sets a minimum version. Old copies keep running
+    indefinitely.
+
+F11. get_dashboard_cards can be called by anyone, even when not logged in
+     (phase100...:120-121).
+  - Safe today, because it runs as the caller and depends on RLS.
+  - Would leak again if gl_active lost security_invoker a third time.
+
+F12. The production guard only recognises standard Supabase addresses. It
+     matches *.supabase.co. A custom domain or proxy pointing at prod would
+     get past it.
+
+
+================================================================================
+PART B - BUILDING STAGING SAFELY, WITHOUT TOUCHING PRODUCTION SECRETS
+================================================================================
+1. Create the project yourself: new Supabase project stockbolt-staging, free
+   tier. Never copy prod data into it (customer data). Use only made-up data
+   from the suites and seedSampleData.ts.
+2. Use a separate env file: a new .env.staging.local (git-ignored) holding only
+   staging keys, rather than overwriting .env.local. Needs a small code change:
+   a TEST_ENV_FILE switch in the suites' dotenv path.
+3. Link only to staging: `npx supabase link --project-ref <staging-ref>`, then
+   `npx supabase db push`. If the replay fails, that's a finding in itself.
+   Never run `db push` while linked to prod.
+4. Optional parity check: Rashid runs a schema-only dump of prod (no data) and
+   compares its function code with staging. Needs the prod database password,
+   so Rashid runs it.
+5. Make the guard stricter: allow only an explicit list of staging project
+   IDs, rather than blocking just the prod ID.
+6. Afterwards: set `supabase link` back, confirm .env.local was never touched,
+   and delete any @stockbolt.test users left on staging.
+
+
+================================================================================
+PART C - PROPOSED RECONCILIATION TESTS (read-only, per company, to 0.01)
+================================================================================
+General ledger  Total debits = total credits; every journal entry balances;
+                Assets = Liabilities + Equity + current-year profit
+                [EXISTS: A1, JE_BAL, A4]
+Receivables     AR aging = account 1200; every 1200 line names a customer
+                [EXISTS: B1, B3]
+Payables        AP aging = account 2100; goods-received accrual 2150 = goods
+                received but not yet billed
+                [EXISTS: B2, D4]
+Inventory       Stock value (quantity x average cost per warehouse) = account
+                1300; no average cost on stock that doesn't exist
+                [EXISTS: E1, with a tolerance]
+Deferred COGS   Pending queue rows -> product has stock coming or no stock.
+                Every 'flushed' row has one active cost-of-sales entry for
+                qty x flush_unit_cost. No pending row older than its covering
+                bill.
+                [NEW]
+Bank            Each bank account's balance = its own linked GL account
+                (coa_account_id); reconciled balance = statement balance
+                [NEW]
+PDC             Pending received cheques = account 1250; pending issued
+                cheques = account 2450; bounced cheques = account 1260
+                [NEW]
+Tax             Output VAT (2200 or 2210/2220/2230) = tax on confirmed sales
+                minus credit notes; input VAT (1500 or 1510/1520/1530) = tax
+                on bills minus debit notes; a filed period never changes
+                afterwards
+                [NEW]
+Advances        Customer advances (2400) always a credit; vendor advances
+                (1400) always a debit
+                [EXISTS: ADV_CUST, ADV_VEND]
+Cash            Cash in hand plus banks = daily cash report closing figure;
+                cash never goes negative (G2, informational only)
+                [PARTLY]
+
+How to run them: as authenticated tests on staging after every suite step,
+plus a read-only, warn-only version in regressions.test.ts.
+
+
+================================================================================
+PART D - CHECKING THE TAX IMPACT WITHOUT READING CUSTOMER DATA
+================================================================================
+Rashid can run one query in the SQL editor. It returns only counts - no names,
+amounts or IDs:
+
+SELECT c.country_code,
+       count(DISTINCT c.id)                                   AS companies,
+       count(DISTINCT tr.id) FILTER (WHERE tr.rate = 5)       AS rates_at_5pct,
+       count(DISTINCT c.id) FILTER (WHERE EXISTS (SELECT 1 FROM tax_rates t2
+             WHERE t2.company_id = c.id GROUP BY t2.rate HAVING count(*) > 1)) AS companies_with_dup_rates,
+       count(ii.id) FILTER (WHERE ii.tax_rate = 5)            AS invoice_lines_at_5pct
+FROM companies c
+LEFT JOIN tax_rates tr     ON tr.company_id = c.id
+LEFT JOIN invoices i       ON i.company_id = c.id AND i.status = 'confirmed'
+LEFT JOIN invoice_items ii ON ii.invoice_id = i.id
+WHERE c.country_code IN ('SA','BH','KW','QA')
+GROUP BY c.country_code;
+
+- All four counts zero: fixing the seed going forward is enough.
+- Otherwise: any correction to posted documents must go through credit notes
+  or reversals that follow Doc 3. Rashid decides, per company.
+
+
+================================================================================
+PART E - WHAT THE OLD ANDROID APP STILL NEEDS FROM THE BACKEND
+================================================================================
+- Every one of the 57 functions and 81 tables that the 1.0.3 adapter uses
+  (git show 22a96a8:src/data/supabaseAdapter.ts) must keep its name, its
+  parameters and the shape of what it returns.
+- Database changes must only add, never remove:
+    * New columns must allow empty values or have a default. phase104's
+      project_id does this.
+    * New function parameters need defaults. Never drop and recreate a
+      function under the same name without keeping the old version.
+    * Never rename a column or a source_type.
+- Not confirmed: whether editing a project-tagged invoice in 1.0.3 keeps its
+  project_id. Test on staging.
+- The online.stockbolt.app://auth-callback sign-in link and the Supabase
+  project address are fixed inside each released app and must not change.
+- Recommended: a server-side "minimum app version" setting, so a future
+  breaking change can tell old copies to update.
+
+
+================================================================================
+PART F - PROPOSED IMPLEMENTATION PLAN (nothing starts without approval)
+================================================================================
+Step  Work                                                    Touches prod?
+S0    Rashid checks the logs for the F1 exposure window and   Read-only, run
+      runs the Part D query. Claude writes both scripts;      by Rashid
+      Rashid runs them.
+S1    Staging runbook v2: separate env file, allow-list       No
+      guard, corrected migration count, a warning never to
+      db push against prod
+S2    Rashid creates staging. Migrations replayed; the 6      No
+      suites plus phase0 to 2 run. Failures triaged, not
+      patched over.
+S3    New checks in verify_invariants: bank, PDC, tax,        Later, by hand
+      deferred COGS. Built and tested on staging first.
+S4    Permission gates on the posting functions and on the    Later, by hand
+      3 functions that bypass RLS; tighten has_any_write for
+      ledger tables. Tested per role on staging.
+S5    Fix the GCC tax seed (one source instead of four, no    Later, by hand
+      duplicates) and label the tax return per country
+S6    Disaster-recovery doc, a decision on point-in-time      No
+      recovery, a restore drill on staging
+S7    CI test job against staging, with no prod key on        No
+      developer machines for tests
+S8    Android minimum-version setting, plus a compatibility   Later, by hand
+      check of the 57 functions and 81 tables
+
+No code changes will be made without explicit approval.

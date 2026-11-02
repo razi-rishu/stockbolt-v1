@@ -1,0 +1,517 @@
+STOCKBOLT - PRODUCTION SAFETY VERIFICATION PLAN
+Date: 2026-11-01
+Source: docs/STOCKBOLT_SAFETY_FOUNDATION_AUDIT_2026-11-01.txt, plus a fresh
+read of the migration files and git history.
+
+Planning only. Nothing was run, no project file was changed, nothing connected
+to production. Every procedure below is for Rashid to run, and each needs
+separate approval. Nothing here asks for or shows a secret, password, customer
+record or signing key.
+
+
+================================================================================
+0. TWO THINGS FOUND WHILE PREPARING THIS
+================================================================================
+
+A larger, older exposure window.
+  - 20260917000005_phase71_view_rls_leak.sql:4-16 records that from phase0
+    (Apr 30) to phase71 (Sep 17), both gl_active and stock_active were
+    readable with the PUBLIC ANON KEY.
+  - That key ships in the browser bundle, so anyone on the internet could
+    read them, with no login. phase71 confirmed 336 ledger rows across 3
+    companies were readable that way.
+  - phase71 says "blast radius: none". That meant nothing in the app broke.
+    It didn't mean nobody read the data.
+  - Logs from that period are almost certainly gone. It should still be
+    recorded as an incident of unknown extent (section 3.6).
+
+The Oct 31 - Nov 1 window may be shorter than the file name suggests.
+  - The phase104 file is dated 2026-10-31.
+  - But the commits were 2026-11-01 10:26 IST (phase104) and 11:16 IST
+    (phase107).
+  - When each was actually applied isn't recorded anywhere in the repo.
+    Section 3.2 shows how to find it.
+  - phase107's header says it measured the live database: gl_active had no
+    options, held 456 rows across 4 companies, and authenticated had SELECT.
+    So the gap really was live on prod.
+
+Normal app use didn't leak data during the window.
+  - The app reads gl_active in exactly one place,
+    src/data/supabaseAdapter.ts:2041, which always filters
+    .eq('company_id', ...) and .limit(1).
+  - The only database function that reads gl_active,
+    get_project_profitability, bypasses RLS but scopes to the caller's
+    company itself.
+  - So exposure needed someone to query the view on purpose, using a valid
+    login. Anyone can sign up, so a valid login is easy to get.
+
+
+================================================================================
+1. READ-ONLY CHECKS: SECURITY_INVOKER, RLS AND GRANTS
+================================================================================
+How to run: Supabase SQL editor, each block wrapped in BEGIN READ ONLY; ...
+ROLLBACK;. A read-only transaction makes any accidental write fail.
+
+D1a - settings on every view
+----------------------------
+BEGIN READ ONLY;
+SET LOCAL statement_timeout = '15s';
+SELECT c.relname,
+       c.relkind,                                   -- v = view, m = materialized view
+       pg_get_userbyid(c.relowner) AS owner,
+       COALESCE((SELECT option_value FROM pg_options_to_table(c.reloptions)
+                 WHERE option_name = 'security_invoker'), '(not set)') AS security_invoker
+FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public' AND c.relkind IN ('v','m')
+ORDER BY 1;
+ROLLBACK;
+
+Expected: four rows. gl_active, stock_active, v_invoice_line_returnable and
+v_bill_line_returnable all show security_invoker = true. Owner postgres. No
+'m' rows.
+Escalate if:
+  - any view shows (not set) or false -> P0, the leak is live;
+  - any materialized view exists (they always ignore RLS).
+
+D1b - who can read or write the two views
+-----------------------------------------
+BEGIN READ ONLY;
+SELECT v.relname, r.rolname,
+       has_table_privilege(r.rolname, 'public.' || v.relname, 'SELECT')                  AS can_select,
+       has_table_privilege(r.rolname, 'public.' || v.relname, 'INSERT, UPDATE, DELETE')  AS can_write
+FROM (VALUES ('gl_active'), ('stock_active')) v(relname)
+CROSS JOIN (VALUES ('anon'), ('authenticated')) r(rolname)
+ORDER BY 1, 2;
+
+SELECT table_name, is_updatable, is_insertable_into
+FROM information_schema.views
+WHERE table_schema = 'public' AND table_name IN ('gl_active','stock_active');
+ROLLBACK;
+
+Expected: anon can neither read nor write. authenticated can read. Both views
+show is_updatable = NO and is_insertable_into = NO.
+Escalate if:
+  - anon can read -> P0;
+  - authenticated can write AND a view is updatable -> High (a write would
+    skip the posting engine). phase107 granted SELECT but never revoked the
+    default write grants.
+
+D1c - RLS on every base table
+-----------------------------
+BEGIN READ ONLY;
+-- tables with RLS off, or RLS on but no policy
+SELECT c.relname, c.relrowsecurity AS rls_on,
+       (SELECT count(*) FROM pg_policies p
+        WHERE p.schemaname = 'public' AND p.tablename = c.relname) AS policy_count
+FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public' AND c.relkind IN ('r','p')
+  AND (NOT c.relrowsecurity
+       OR NOT EXISTS (SELECT 1 FROM pg_policies p
+                      WHERE p.schemaname = 'public' AND p.tablename = c.relname))
+ORDER BY 1;
+
+-- policies that let every row through for reads
+SELECT tablename, policyname, cmd, roles
+FROM pg_policies
+WHERE schemaname = 'public' AND cmd IN ('SELECT','ALL')
+  AND (qual IS NULL OR btrim(qual) = 'true');
+
+-- the ledger policies themselves
+SELECT tablename, policyname, cmd, roles, qual, with_check
+FROM pg_policies
+WHERE schemaname = 'public'
+  AND tablename IN ('general_ledger','stock_ledger','journal_entries')
+ORDER BY 1, 2;
+ROLLBACK;
+
+Expected:
+  - first query: zero rows;
+  - second: only subscription_plans, tax_profiles and
+    payment_provider_configs (global settings readable by design, phase31);
+  - third: every SELECT/ALL rule refers to current_user_company_id().
+Escalate if:
+  - a business table has RLS off -> P0;
+  - any other table lets every row through -> P0;
+  - a ledger rule doesn't limit rows to the caller's company -> P0;
+  - RLS on but no rule -> Medium (blocks all access; breaks, doesn't leak).
+
+D1d - functions anyone can call, including logged-out users
+-----------------------------------------------------------
+BEGIN READ ONLY;
+SELECT p.proname, pg_get_function_identity_arguments(p.oid) AS args, p.prosecdef AS bypasses_rls
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public'
+  AND has_function_privilege('anon', p.oid, 'EXECUTE')
+  AND p.prosecdef                     -- only the ones that bypass RLS matter here
+ORDER BY 1;
+ROLLBACK;
+
+Expected: only onboarding and invite helpers that check auth.uid() before
+doing anything. Each needs a manual review against its migration.
+Escalate if: any function that bypasses RLS and reads or writes company data
+is callable by anon -> High.
+
+D2 - live check that the protection actually works
+--------------------------------------------------
+Counts only, never row contents. Use your OWN user ID (your own admin login,
+never a customer's).
+
+BEGIN READ ONLY;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claims',
+       json_build_object('sub', '<YOUR-OWN-AUTH-USER-ID>', 'role', 'authenticated')::text, true);
+SELECT 'gl_active' AS v, count(DISTINCT company_id) AS companies_visible FROM public.gl_active
+UNION ALL
+SELECT 'stock_active', count(DISTINCT company_id) FROM public.stock_active;
+ROLLBACK;
+
+BEGIN READ ONLY;
+SET LOCAL ROLE anon;
+SELECT count(*) FROM public.gl_active;    -- expected: ERROR permission denied
+ROLLBACK;
+
+Expected: 1 (or 0 if your company has no rows) for each view. The anon query
+fails with "permission denied".
+Escalate if:
+  - either view shows more than 1 company -> P0, live cross-tenant read;
+  - the anon query returns a number -> P0, the view is public.
+
+
+================================================================================
+2. WHICH MIGRATIONS SET AND REPAIR THESE CONTROLS
+================================================================================
+20260430121500_phase0_16_views.sql:14, :41
+    Creates gl_active and stock_active. No security_invoker, readable by
+    anon - leaking from day one.
+20260430121600_phase0_17_rls_policies.sql
+    Company-isolation RLS rules on the base tables.
+20260619000014_phase22b_rls_write_lockdown.sql,
+20260619000015_phase22c_rls_read_lockdown.sql
+    Write and read gated by permission (has_perm).
+20260619000017_phase24_fix_posting_rls.sql
+    Ledger tables gated by has_any_write(), so any role with any write
+    permission can write them (audit F5).
+20260731000003_phase65_acv2_cross_tenant_guards.sql
+    Checks that a caller can't act on another company, inside functions that
+    bypass RLS.
+20260917000005_phase71_view_rls_leak.sql:43-47
+    FIRST REPAIR: sets security_invoker on both views and revokes anon.
+20260917000006_phase72_r2a_return_line_linkage.sql:128, :145
+    New views created with security_invoker from the start.
+20261031000001_phase104_projects_foundation.sql:163
+    REGRESSION: CREATE OR REPLACE VIEW gl_active silently drops the setting.
+    Grants survive, so anon stays blocked.
+20261101000002_phase107_restore_gl_active_security_invoker.sql:50-64
+    SECOND REPAIR: sets the option on both views, re-revokes anon, grants
+    SELECT to authenticated.
+tests/integration/regressions.test.ts:3414 (V-RLS1)
+    A test that fails if any view loses the setting. Added with phase107, so
+    it didn't exist when phase104 broke things.
+
+The migration history can't prove what's live, for four reasons:
+  1. Many migrations were pasted by hand into the SQL editor. Those aren't
+     recorded in supabase_migrations.schema_migrations, so a missing entry
+     doesn't mean the change wasn't applied.
+  2. An entry that is there only proves a statement ran once. A later
+     hand-run CREATE OR REPLACE, or a dashboard edit, can undo it - exactly
+     how phase104 undid phase71.
+  3. phase107's "measured" notes describe one moment in time, not now.
+  4. Only the catalog checks in D1 and the live check in D2 prove the current
+     state.
+
+D3 - supporting check (optional; shows only which migrations are recorded)
+BEGIN READ ONLY;
+SELECT version, name FROM supabase_migrations.schema_migrations
+WHERE version >= '20260917000000' ORDER BY version;
+ROLLBACK;
+Use it only to spot drift between the repo and the record. Not proof.
+
+
+================================================================================
+3. REVIEWING THE OCT 31 - NOV 1 EXPOSURE
+================================================================================
+
+3.1 Save the evidence first (URGENT, today)
+-------------------------------------------
+- How long Supabase keeps logs depends on the plan. As I understand it, about
+  1 day on Free and 7 days on Pro. Check the plan's billing page.
+- Today is Nov 1, so the logs for this window may disappear within hours.
+  Before analysing anything, export the results of 3.2 and 3.3 to CSV from
+  the Log Explorer.
+- Store the files somewhere private and record the export time.
+
+3.2 Pin down when the gap opened and closed (Postgres logs)
+-----------------------------------------------------------
+Dashboard -> Logs -> Postgres. If schema-change statements are logged (usually
+the case on Supabase), this gives the exact times phase104 and phase107 ran:
+
+select timestamp, event_message
+from postgres_logs
+where timestamp between '2026-10-30T18:30:00Z' and '2026-11-01T08:00:00Z'
+  and (event_message ilike '%gl_active%' or event_message ilike '%security_invoker%')
+order by timestamp
+
+Expected: a CREATE OR REPLACE VIEW public.gl_active entry (phase104), then
+ALTER VIEW ... SET (security_invoker = true) (phase107). Their timestamps are
+the exposure window.
+
+3.3 Requests that reached the view (API gateway logs)
+-----------------------------------------------------
+select timestamp, request.method, request.path, request.search,
+       response.status_code, h.user_agent, h.x_client_info, h.cf_connecting_ip,
+       payload.subject, payload.role
+from edge_logs
+  cross join unnest(metadata)           as m
+  cross join unnest(m.request)          as request
+  cross join unnest(m.response)         as response
+  cross join unnest(request.headers)    as h
+  left join unnest(request.sb)          as sb      on true
+  left join unnest(sb.jwt)              as jwt     on true
+  left join unnest(jwt.authorization)   as authz   on true
+  left join unnest(authz.payload)       as payload on true
+where timestamp between '<OPENED>' and '<CLOSED>'      -- from 3.2; else 2026-10-30T18:30Z -> 2026-11-01T08:00Z
+  and (request.path like '%/rest/v1/gl_active%' or request.path like '%/rest/v1/stock_active%')
+order by timestamp
+
+These field names follow the Supabase Log Explorer schema. If the schema
+browser names them differently, adjust them.
+
+How to read the results:
+  - Normal app traffic looks like the request from supabaseAdapter.ts:2041:
+      select=date,related_doc_type,related_doc_id,description
+      company_id=eq...., account_id=eq...., limit=1
+      a supabase-js x-client-info
+  - Suspicious traffic:
+      no company_id filter, or select=*
+      a large limit or none
+      many requests in a burst
+      a curl, python or other non-browser user agent
+      an IP address you don't recognise
+      a company_id=eq.X that doesn't match the caller's own company (needs 3.4)
+  - 401 or 403 responses mean someone tried and was refused. Record them as
+    attempts.
+
+3.4 Work out whose logins they were
+-------------------------------------
+Privileged and minimal. Only if 3.3 finds anything suspicious.
+For each suspicious payload.subject only, check whether its company matches
+the company_id it asked for. Return a yes/no, not the profile:
+
+BEGIN READ ONLY;
+SELECT (SELECT company_id FROM public.profiles WHERE id = '<SUBJECT>') = '<COMPANY_ID_IN_REQUEST>'::uuid AS own_company;
+SELECT count(*) AS signups_in_window FROM auth.users
+WHERE created_at BETWEEN '<OPENED>' AND '<CLOSED>';
+ROLLBACK;
+
+Escalate if own_company = false, or a request had no company filter and came
+from any login outside the platform owner's. A new sign-up during the window
+that never created a company, then queried the view, is a strong sign of
+deliberate probing.
+
+3.5 What the logs can't tell you
+--------------------------------
+- Ordinary SELECT queries aren't logged in Postgres. pgaudit isn't enabled,
+  so a read made any other way leaves no record.
+- Response bodies aren't logged. A 200 doesn't show which rows came back. If
+  the response headers include content-range, that gives a row count, and
+  nothing more.
+- POST bodies of function calls aren't logged. Not a gap here, because no
+  function was a route in (section 0).
+- Once retention expires, the window can't be investigated. No evidence then
+  means UNKNOWN, not "nothing happened".
+- IP addresses can be behind proxies or shared networks.
+
+3.6 If exposure is confirmed (or can't be ruled out)
+----------------------------------------------------
+1. Contain:
+   - Confirm D1 and D2 pass, so the gap is closed now.
+   - Block the suspicious login (Auth -> Users -> ban). Don't delete it;
+     that would destroy evidence.
+   - No key rotation needed. The anon key was never granted access during
+     this window, and login tokens expire on their own.
+   - Rotate the JWT secret only if there's evidence a token was stolen.
+     Rotating it signs out every user.
+2. Scope: list which companies' rows could have been returned and which
+   kinds of data they hold. Ledger rows contain amounts, contact_ids and
+   free-text descriptions, which may include personal names.
+3. Legal: get legal advice on breach-notification duties. UAE PDPL, Saudi
+   PDPL and India's DPDP Act may all apply depending on where tenants are.
+   Some regimes have short deadlines, as short as 72 hours.
+4. Notify affected tenants as legal advice directs.
+5. Record it: an incident record (timeline, evidence files, decisions).
+   Include the Apr 30 - Sep 17 anon window, with its exposure marked unknown.
+6. Stop it happening again (needs separate approval):
+   - a database trigger that refuses any view created without
+     security_invoker;
+   - the V-RLS1 check in CI against staging;
+   - a rule that any migration adding a column to a view must re-set the
+     option.
+
+
+================================================================================
+4. CORRECTED GCC TAX IMPACT QUERY
+================================================================================
+What was wrong with the earlier query:
+  1. It double-counted. tax_rates and invoice_items were joined in the same
+     query, so every invoice line was counted once per tax rate.
+  2. It flagged false duplicates. It grouped by rate only, so "Zero-rated 0%"
+     and "Exempt" (both 0) looked like a duplicate. It also counted inactive
+     rates.
+  3. It checked too little. Only invoices, missing credit notes, vendor bills
+     and debit notes. It only asked "is the rate 5%?" rather than "is it the
+     wrong rate for this country?". (POS sales are invoices, so included.)
+  4. Small counts could identify a tenant. With only a handful of companies,
+     an exact count per country can point to one tenant.
+
+Corrected version: yes/no flags per company using EXISTS, with no joins that
+multiply rows. Returns only yes/no values and rounded bands per country - no
+IDs, names or amounts.
+
+BEGIN READ ONLY;
+SET LOCAL statement_timeout = '60s';
+
+-- Standard rates to confirm with your tax adviser before running.
+WITH expected(country_code, std_rate) AS (
+  VALUES ('SA', 15.00), ('BH', 10.00), ('KW', 0.00), ('QA', 0.00),
+         ('OM',  5.00), ('AE',  5.00)          -- AE and OM are the control group
+),
+co AS (
+  SELECT c.id, c.country_code, e.std_rate
+  FROM public.companies c JOIN expected e USING (country_code)
+),
+flags AS (
+  SELECT co.country_code,
+    EXISTS (SELECT 1 FROM public.tax_rates t
+            WHERE t.company_id = co.id AND t.is_active
+              AND t.rate > 0 AND t.rate <> co.std_rate)                         AS wrong_rate_configured,
+    (co.std_rate > 0 AND NOT EXISTS (SELECT 1 FROM public.tax_rates t
+            WHERE t.company_id = co.id AND t.is_active AND t.rate = co.std_rate)) AS standard_rate_missing,
+    EXISTS (SELECT 1 FROM public.tax_rates t
+            WHERE t.company_id = co.id AND t.is_active AND t.rate > 0
+            GROUP BY t.rate HAVING count(*) > 1)                                AS possible_duplicates,
+    (EXISTS (SELECT 1 FROM public.invoices d JOIN public.invoice_items x ON x.invoice_id = d.id
+             WHERE d.company_id = co.id AND d.status = 'confirmed'
+               AND x.tax_rate > 0 AND x.tax_rate <> co.std_rate)
+     OR EXISTS (SELECT 1 FROM public.credit_notes d JOIN public.credit_note_items x ON x.credit_note_id = d.id
+             WHERE d.company_id = co.id AND d.status = 'confirmed'
+               AND x.tax_rate > 0 AND x.tax_rate <> co.std_rate))              AS posted_sales_affected,
+    (EXISTS (SELECT 1 FROM public.vendor_bills d JOIN public.vendor_bill_items x ON x.bill_id = d.id
+             WHERE d.company_id = co.id AND d.status = 'confirmed'
+               AND x.tax_rate > 0 AND x.tax_rate <> co.std_rate)
+     OR EXISTS (SELECT 1 FROM public.debit_notes d JOIN public.debit_note_items x ON x.debit_note_id = d.id
+             WHERE d.company_id = co.id AND d.status = 'confirmed'
+               AND x.tax_rate > 0 AND x.tax_rate <> co.std_rate))              AS posted_purchases_affected
+  FROM co
+)
+SELECT country_code,
+       CASE WHEN count(*) < 3 THEN 'fewer than 3' ELSE count(*)::text END       AS companies,
+       bool_or(wrong_rate_configured)                                           AS any_wrong_rate_configured,
+       bool_or(standard_rate_missing)                                           AS any_standard_rate_missing,
+       bool_or(possible_duplicates)                                             AS any_possible_duplicates,
+       bool_or(posted_sales_affected)                                           AS any_posted_sales_affected,
+       bool_or(posted_purchases_affected)                                       AS any_posted_purchases_affected,
+       CASE WHEN count(*) FILTER (WHERE posted_sales_affected OR posted_purchases_affected) = 0 THEN '0'
+            WHEN count(*) FILTER (WHERE posted_sales_affected OR posted_purchases_affected) < 3 THEN '1-2'
+            ELSE '3 or more' END                                                AS companies_with_posted_impact
+FROM flags
+GROUP BY country_code
+ORDER BY country_code;
+
+ROLLBACK;
+
+Expected:
+  - AE and OM: every flag false.
+  - SA, BH, KW and QA: probably any_wrong_rate_configured = true, from the 5%
+    seed.
+How to interpret it:
+  - Any true in AE or OM probably means a rate the user created on purpose,
+    not the seed. Review it, but it's out of scope here.
+  - any_possible_duplicates is a hint, not proof. A user may have created two
+    rates at the same percentage deliberately.
+  - Lines with no tax rate, and expenses, aren't included. The expenses
+    status values weren't checked, so add them only after confirming those.
+  - For a country with fewer than 3 companies, a true still points to one
+    tenant's settings. It contains no identifiers or amounts, but share the
+    output on that basis.
+Escalate if any_posted_sales_affected or any_posted_purchases_affected is
+true: tax returns may already be wrong. Corrections would go through
+credit/debit notes or reversals that follow Doc 3, decided per company, under
+separate approval.
+
+
+================================================================================
+5 AND 6. MINIMUM PERMISSIONS, AND METADATA VERSUS LIVE DATA
+================================================================================
+D1a-D1d (catalog, grants, policies, function access)
+    Reads: METADATA ONLY (pg_class, pg_policies, pg_proc, has_*_privilege).
+    Access: any database role that can connect; the system catalogs are
+    readable by everyone, so a dedicated read-only role is enough. In
+    practice, the SQL editor inside BEGIN READ ONLY.
+    Privileged? No (though the SQL editor itself runs as postgres).
+
+D2 (live check of the protection)
+    Reads: counts only, under your OWN identity.
+    Access: a session allowed to SET ROLE authenticated/anon (the SQL editor
+    allows it).
+    Privileged? Session is privileged; output limited to your own company.
+
+D3 (migration history)
+    Reads: metadata.
+    Access: read on the supabase_migrations schema (postgres or service_role).
+    `supabase migration list` would need the database password, so use the
+    SQL editor.
+    Privileged? Yes.
+
+3.2 and 3.3 (logs)
+    Reads: log records, which include IPs and user IDs.
+    Access: Supabase organisation member with access to the Logs page. No
+    database access needed.
+    Privileged? Dashboard access, not database.
+
+3.4 (whose logins)
+    Reads: LIVE DATA (profiles, auth.users), returning yes/no and counts.
+    Access: postgres or service_role (bypasses RLS).
+    Privileged? YES - only if 3.3 finds anything.
+
+Section 4 (tax impact)
+    Reads: LIVE DATA across all companies, returning yes/no flags and bands.
+    Access: postgres or service_role (bypasses RLS).
+    Privileged? YES.
+
+Rules for every privileged check:
+  - wrap it in BEGIN READ ONLY ... ROLLBACK;
+  - set statement_timeout;
+  - never use SELECT * on business tables;
+  - don't paste the results anywhere public.
+
+
+================================================================================
+7. ESCALATION SUMMARY
+================================================================================
+P0      A view without security_invoker. anon can read a view. A business
+        table without RLS. A rule that lets every row through on a non-global
+        table. D2 shows more than 1 company.
+        -> Stop. Containment migration under separate approval. Incident
+           record.
+P0      Logs show a cross-tenant read, or an unfiltered read by a non-owner
+        login.
+        -> Run 3.6 (contain, scope, legal, notify).
+High    A view that can be written through by authenticated. A function that
+        bypasses RLS and that anon can call. Posted documents at the wrong
+        tax rate.
+        -> Fix plan to approve, tested on staging first.
+Medium  A table with RLS on but no rule. Possible duplicate tax rates. The
+        migration record doesn't match the repo.
+        -> Log it and schedule the fix.
+Unknown Logs expired before they could be saved.
+        -> Record "exposure undetermined" in the incident record and add the
+           prevention steps from 3.6.
+
+
+================================================================================
+8. WHAT'S NEEDED FROM RASHID
+================================================================================
+Nothing runs until approved. The decisions:
+  - MOST URGENT: whether to save the logs (3.1) now, before retention expires.
+  - When to run D1/D2.
+  - Whether to run the privileged checks (3.4, section 4).

@@ -1,0 +1,223 @@
+STOCKBOLT GLOBAL v1.0 - READ-ONLY TECHNICAL AUDIT
+Date: 2026-11-01
+Scope: read-only inspection of code and migration files. No files edited, no
+builds, tests, SQL or migrations run. Anything about the LIVE database is
+marked "unverified" (I did not connect to it).
+
+SUMMARY
+-------
+The accounting core is solid and worth protecting. The biggest blockers for
+"Global" are:
+  - The database only accepts 7 countries.
+  - Tax handling is built around VAT and GST, and seeds two wrong GCC rates.
+  - Each user can belong to only one company, and there are no branches.
+  - Product and onboarding data assume auto parts.
+
+
+1. CURRENT ARCHITECTURE
+-----------------------
+- Stack: React 18, Vite 5, TypeScript, Tailwind, TanStack Query, Zustand,
+  react-hook-form with zod, i18next (English and Arabic), and Supabase.
+  Web app on Vercel at stockbolt.online. Android app is a Capacitor 8 wrapper.
+- The database holds the business logic. About 163 functions are defined in
+  migrations, 52 of them confirm, post, void or reverse documents. Triggers
+  handle stock and costing. src/core/gl/posting-engine.ts is a thin
+  client-side check that calls a database function (RPC).
+  * AGENTS.md still describes src/core/accountingEngine.ts, stockLedger.ts
+    and invariants.ts. Those files don't exist - docs no longer match code.
+- Data layer:
+  * src/data/adapter.ts (3,576 lines) defines the interface.
+    src/data/supabaseAdapter.ts (7,110 lines) implements it.
+  * src/data/selfHostedAdapter.ts is a stub. Self-hosted mode doesn't work.
+- Database files: supabase/migrations/ has 191 files (phase0 to phase108).
+  supabase/manual-apply/ holds hand-applied hotfixes. One Edge Function,
+  supabase/functions/api/index.ts, is the public REST API.
+- Two conflicting design rulebooks:
+  * E:\stockbolt_clean\AGENTS.md: dark theme, amber accent, inline styles.
+  * stockbolt-v1/AGENTS.md section 7.1: light theme, indigo accent, Tailwind.
+  * The setup wizard follows dark/amber. Needs one decision before new UI.
+
+
+2. FEATURES CONFIRMED IN CODE
+-----------------------------
+Sales        Quotes, invoices, payments, credit notes (now covering sales
+             returns), customer advances and refunds, e-invoice panel
+Purchasing   POs, goods receipts, vendor bills (with landed costs), vendor
+             payments, debit notes, expenses, India TDS panel
+Inventory    Stock ledger, adjustments, warehouse transfers, moving-average
+             costing, deferred COGS, serial numbers
+Accounting   Chart of accounts, journal entries, general ledger, period lock,
+             year-end close, fixed assets, amortization, VAT/GST return, TDS
+Banking      Bank accounts, transfers, reconciliation, post-dated cheques
+Reports      34 report screens in src/modules/reports/ (Trial Balance,
+             Balance Sheet, P&L, cash flow, aging, stock valuation...).
+             Clicking a figure opens its source document.
+Other        POS, payroll (UAE WPS export, gratuity, leave salary),
+             Projects/job costing, print templates, import/export, System
+             Health, SaaS billing (PayPal), platform admin, public API + keys
+Roles        5 fixed roles + custom roles + per-user overrides
+             (src/lib/permissions.ts), invites (accept-invite.tsx)
+
+Partly built (from code and project notes):
+- India TDS: written but shelved until a staging environment exists.
+- E-invoicing: live tax-portal connection and invoice number on print not done.
+- Payroll: loans screen and leave-taken tracking missing.
+- Automotive catalog: stages C7 and C8 left.
+- Self-hosted mode: stub only.
+- SaaS billing: invoices, emails and subscription enforcement missing.
+
+
+3. ORGANIZATION SETUP AND BUSINESS SETTINGS
+-------------------------------------------
+- src/modules/onboarding/setup-wizard.tsx has 3 steps: company,
+  country/tax, review. No save-and-resume - progress lives only in React
+  state, so closing the page loses it.
+- src/core/onboarding.ts -> runOnboarding() creates company + profile in one
+  database function, then seeds chart of accounts, tax rates, payment
+  methods, units and a warehouse ONE CALL AT A TIME FROM THE BROWSER.
+  RISK: if any step fails partway, the company is left half-set-up with no
+  automatic rollback.
+- companies table (20260430120100_phase0_02_section_a_core.sql:13): one
+  country_code, one currency, one tax_id, one fiscal-year start.
+  costing_method locked to MAC. No fields for industry, business activities
+  or enabled modules.
+
+
+4. SUPABASE, DATABASE AND RLS
+-----------------------------
+- About 100 business tables, all with company_id.
+- Every table created in the migration files turns RLS on (checked file by
+  file). Whether the live database matches is UNVERIFIED.
+- Isolation: current_user_company_id() returns profiles.company_id for the
+  signed-in user. Permission-based write/read lockdown came in phase22b and
+  phase22c, which call has_perm().
+- Known trap: recreating the gl_active view silently removes the
+  security_invoker setting, letting one company read another's ledger. It has
+  broken twice (phase104, fixed in phase107).
+  Recommendation: add an automatic check that fails if the setting is missing.
+- Secrets: .env.local, android/keystore.properties and files.zip are all
+  git-ignored and none are committed. Not opened.
+
+
+5. ACCOUNTING, INVENTORY AND REPORTING DESIGN
+---------------------------------------------
+- general_ledger and stock_ledger are the only source of truth. Reports read
+  from gl_active / stock_active views. Balances are not stored as columns.
+- Confirmed documents are fixed by reverse-and-repost, never by deleting rows.
+  Reversals use the original voucher date (phase43).
+- A trigger rejects unbalanced journal entries (phase38). A database rule
+  limits which source types can post (phase87).
+- Costing: moving average only. Selling before buying creates deferred COGS,
+  cleared later (phase63/64).
+- Known open accounting risks (project notes):
+  * Selling before buying, or editing a purchase cost after the stock is sold,
+    understates COGS. The stock-valuation check can't catch it.
+  * Negative cash (check G2) still open.
+  * FIVE AUTOMATED TEST SUITES HAVE NEVER BEEN RUN (no staging database).
+    This is the main quality risk.
+
+
+6. HARDCODED UAE, INDIA AND AUTOMOTIVE ASSUMPTIONS
+--------------------------------------------------
+Countries
+- Database only accepts AE, SA, KW, BH, OM, QA, IN (companies.country_code
+  CHECK). Any other country fails at the database level.
+- COUNTRIES list in setup-wizard.tsx:16 matches. Financial-year default is
+  "April for India, January for everyone else".
+
+Tax
+- Tax types limited to VAT, GST, CGST, SGST, IGST, none.
+- VAT accounts 1500 and 2200 hardcoded in about 65 places in migrations.
+- SEEDED RATES ARE WRONG IN PLACES. seedTaxRates.ts gives every non-UAE GCC
+  country 5% VAT. Saudi Arabia is 15%, Bahrain is 10%; Kuwait and Qatar
+  don't levy VAT. (Current as of my training data - please confirm.)
+  Existing Saudi/Bahrain/Kuwait/Qatar companies may have wrong rates seeded.
+- About 25 files branch on 'IN', 'AE' or 'AED' - mainly print signature
+  adapters, payment editors, import adapters and e-invoicing.
+
+Payroll
+- UAE WPS export, 21/30-day end-of-service gratuity, GCC/India daily-wage
+  rules (pay /30 for GCC, basic /26 for India).
+
+Automotive
+- products.oe_number; vehicle make/model/generation/engine/variant tables;
+  parts-compatibility table; "Sales by Vehicle" report; parts catalog;
+  auto-parts sample data. About 37 files reference automotive terms.
+
+Missing for retail/pharmacy
+- No batch, lot or expiry tracking. Only serial numbers.
+
+
+7. USERS, ROLES AND ISOLATION
+-----------------------------
+- Each profile has ONE company_id. A user can't belong to two companies or
+  switch between them.
+- NO BRANCHES. Warehouses have no branch link; permissions can't be limited
+  to a branch or warehouse.
+- Permissions are checked in the database (has_perm). The browser keeps a
+  copy only to show/hide buttons; it must be kept in sync by hand
+  (permissions.ts:4).
+- Open from project notes: some posting functions don't check permissions;
+  general-ledger read lock not done; payroll gated only at module level.
+
+
+8. ANDROID
+----------
+- capacitor.config.ts: app ID online.stockbolt.app, webDir 'dist'.
+- THE APP BUNDLES ITS WEB FILES (dist copied in by cap sync). It does not
+  load stockbolt.online live.
+- Same Supabase project as the website - web and Android already share one
+  backend.
+- Current release 1.0.3 (versionCode 4) in android/app/build.gradle.
+- Google sign-in returns via online.stockbolt.app://auth-callback
+  (src/native/oauth.ts). In-app updates via @capawesome/capacitor-app-update.
+- Implication: every web change needs a new Play release to reach Android
+  users. Database changes must stay backward-compatible with older installs.
+
+
+9. MUST BE PRESERVED DURING MIGRATION
+-------------------------------------
+- Existing companies, ledger and stock-ledger history, document numbering.
+- Reverse-and-repost rule, voucher-date reversals, balance trigger.
+- security_invoker on gl_active and stock_active.
+- Public API response formats and existing API keys.
+- Android signing key (SHA-256 46:37:10...). If lost, installed apps can
+  never be updated.
+- English + Arabic support (language files currently equal size).
+- Existing GCC/India behaviour incl. UAE and India e-invoicing, TDS and WPS.
+
+
+10. MISSING FOR STOCKBOLT GLOBAL
+--------------------------------
+1. Open country list + per-country tax profiles (rates, account mapping,
+   return formats, a rule engine instead of `if 'IN'` checks).
+2. Industry: 18 categories, multiple business activities per company,
+   module recommendations and on/off switches. None exists today.
+3. Branches, branch/warehouse-scoped permissions, possibly multi-company
+   membership.
+4. 7-step setup wizard with save-and-resume (server-side draft) and
+   all-or-nothing seeding.
+5. Industry-neutral products: automotive fields as an optional add-on;
+   batch/expiry tracking.
+6. Configurable accounting templates by industry and country
+   ("Smart Hybrid") instead of hardcoded account codes.
+7. A staging environment and automated tests that actually run.
+
+
+RECOMMENDED IMPLEMENTATION ORDER
+--------------------------------
+1. Staging and safety net: staging database, run the five unrun suites, add
+   automatic checks for security_invoker and RLS coverage.
+2. Fix the tax seed data: correct GCC rates and check existing tenants.
+   Small and urgent.
+3. Country and tax profile foundation: allow more countries, move hardcoded
+   'IN'/'AE' checks into data. Additive only - current tenants keep behaviour.
+4. Industry, activity and module registry + module gate in nav and routes.
+5. Branches and scoped permissions.
+6. New 7-step wizard with server-side draft and one all-or-nothing setup
+   function.
+7. Move automotive features into an optional module; add batch/expiry.
+8. Android: ship database changes older app versions can still use, then a
+   Play release.
+
+No code changes will be made without explicit approval.
