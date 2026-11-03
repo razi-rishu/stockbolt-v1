@@ -36,12 +36,15 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { createClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-dotenv.config({ path: resolve(process.cwd(), '.env.local') });
+// Parsed into a local object, not process.env: vitest.config.ts puts a dead
+// sentinel URL there on purpose, and dotenv.config() would not override it.
+const prodEnv = dotenv.parse(readFileSync(resolve(process.cwd(), '.env.local'), 'utf8'));
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
-const SECRET_KEY   = process.env.SUPABASE_SECRET_KEY;
+const SUPABASE_URL = prodEnv.VITE_SUPABASE_URL;
+const SECRET_KEY   = prodEnv.SUPABASE_SECRET_KEY;
 
 if (!SUPABASE_URL || !SECRET_KEY) {
   throw new Error('Missing VITE_SUPABASE_URL or SUPABASE_SECRET_KEY in .env.local');
