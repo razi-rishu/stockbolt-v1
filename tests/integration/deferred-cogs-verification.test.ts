@@ -130,7 +130,7 @@ async function createScratch(): Promise<Scratch> {
   const customer = await adapter.contacts.create({
     company_id, type: 'customer', name: 'DC Customer', name_ar: null,
     email: null, phone: null, mobile: null, tax_id: null,
-    billing_address: null, shipping_address: null, city: null, country: 'AE',
+    address_city: null, address_country: 'AE', currency: 'AED', // the scratch company's base currency
     contact_person_name: null, contact_person_phone: null, contact_person_email: null,
     credit_limit: 0, payment_terms_days: 30,
     notes: null, is_active: true, default_price_level_id: null,
@@ -139,7 +139,7 @@ async function createScratch(): Promise<Scratch> {
   const supplier = await adapter.contacts.create({
     company_id, type: 'supplier', name: 'DC Supplier', name_ar: null,
     email: null, phone: null, mobile: null, tax_id: null,
-    billing_address: null, shipping_address: null, city: null, country: 'AE',
+    address_city: null, address_country: 'AE', currency: 'AED', // the scratch company's base currency
     contact_person_name: null, contact_person_phone: null, contact_person_email: null,
     credit_limit: 0, payment_terms_days: 30,
     notes: null, is_active: true, default_price_level_id: null,
@@ -170,7 +170,7 @@ async function makeProduct(s: Scratch, sellingPrice = 100): Promise<string> {
     description: null, description_ar: null,
     oe_number: null, replacement_numbers: null,
     brand_id: null, category_id: null, unit_id: null,
-    quality_tier: 'aftermarket',
+    quality_tier: null, // optional; 'aftermarket' was never an allowed tier (genuine|oem|premium|economy)
     selling_price: sellingPrice,
     tax_category: 'standard',
     min_stock_level: 0,
