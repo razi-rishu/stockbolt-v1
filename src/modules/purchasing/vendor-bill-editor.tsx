@@ -119,6 +119,12 @@ export default function VendorBillEditorPage() {
     queryFn: () => getAdapter().payments.getAppliedMap(company_id!, 'vendor_bill'),
     enabled: !!company_id,
   });
+  // phase114 — posted TDS per bill; it settles the bill like a payment.
+  const { data: tdsMap = {} } = useQuery<Record<string, number>>({
+    queryKey: ['bill_tds_map', company_id],
+    queryFn: () => getAdapter().tds.getWithheldMap(company_id!),
+    enabled: !!company_id,
+  });
 
   const { data: warehouses = [] } = useQuery({
     queryKey: ['warehouses', company_id],
@@ -677,7 +683,7 @@ export default function VendorBillEditorPage() {
               <ApplyAdvanceButton
                 side="vendor"
                 contactId={existing.supplier_id}
-                outstanding={Number(existing.total_amount ?? 0) - (appliedMap[existing.id] ?? 0)}
+                outstanding={Number(existing.total_amount ?? 0) - (appliedMap[existing.id] ?? 0) - (tdsMap[existing.id] ?? 0)}
               />
             )}
             {existing.status === 'confirmed' && (
@@ -1157,17 +1163,25 @@ export default function VendorBillEditorPage() {
               const thisBill = openSupplierBills.find(b => b.id === id);
               if (!thisBill) return null;
               const outstanding = Number(thisBill.outstanding ?? 0);
-              // paid = what has already been paid (DB total minus DB outstanding).
-              const paid       = Number(thisBill.total_amount ?? 0) - outstanding;
+              // phase114 — TDS withheld settles the bill but is not a payment.
+              const tdsWithheld = Number(thisBill.tds_withheld ?? 0);
+              // paid = what has already been paid (DB total minus DB outstanding minus TDS).
+              const paid       = Number(thisBill.total_amount ?? 0) - outstanding - tdsWithheld;
               // balanceDue = what we owe THIS supplier (goods + tax + round-off,
-              // landed excluded — phase 47) minus what's already paid.
-              const balanceDue = (grandTotal + roundOff) - paid;
+              // landed excluded — phase 47) minus what's paid and withheld.
+              const balanceDue = (grandTotal + roundOff) - paid - tdsWithheld;
               return (
                 <>
                   <div className="flex justify-between text-ink-secondary border-t border-border-subtle pt-2.5">
                     <span>Paid</span>
                     <span className="font-mono text-emerald-700">{fmt(paid)}</span>
                   </div>
+                  {tdsWithheld > 0.005 && (
+                    <div className="flex justify-between text-ink-secondary">
+                      <span>{t('tds.withheld')}</span>
+                      <span className="font-mono">{fmt(tdsWithheld)}</span>
+                    </div>
+                  )}
                   <div className={`flex justify-between font-semibold ${balanceDue > 0.005 ? 'text-amber-700' : 'text-emerald-700'}`}>
                     <span>Balance Due</span>
                     <span className="font-mono">{header.currency} {fmt(balanceDue)}</span>

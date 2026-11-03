@@ -23,6 +23,7 @@ const statusColor: Record<string, string> = {
 
 // ── Payment-status badge (same semantics as the Invoices list: "is it paid?") ──
 function PayBadge({ status, total, applied, dueDate, today }: {
+  // applied = payments + cash discount + posted TDS (phase114): all settle the bill.
   status: string; total: number; applied: number; dueDate: string | null; today: string;
 }) {
   if (status !== 'confirmed') return <Badge variant={statusColor[status] as 'muted' | 'success' | 'danger'}>{status}</Badge>;
@@ -91,6 +92,12 @@ export default function VendorBillsPage() {
   const { data: appliedMap = {} } = useQuery<Record<string, number>>({
     queryKey: ['bill_applied_map', company_id],
     queryFn: () => getAdapter().payments.getAppliedMap(company_id!, 'vendor_bill'),
+    enabled: !!company_id,
+  });
+  // phase114 — posted TDS settles the bill like a payment.
+  const { data: tdsMap = {} } = useQuery<Record<string, number>>({
+    queryKey: ['bill_tds_map', company_id],
+    queryFn: () => getAdapter().tds.getWithheldMap(company_id!),
     enabled: !!company_id,
   });
   const today = new Date().toISOString().slice(0, 10);
@@ -206,7 +213,7 @@ export default function VendorBillsPage() {
                     <PayBadge
                       status={bill.status}
                       total={Number(bill.total_amount ?? 0)}
-                      applied={appliedMap[bill.id] ?? 0}
+                      applied={(appliedMap[bill.id] ?? 0) + (tdsMap[bill.id] ?? 0)}
                       dueDate={(bill.due_date as string) ?? null}
                       today={today}
                     />

@@ -287,6 +287,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       removeSection:         () => notImplemented('tds.removeSection'),
       listDeductions:        () => notImplemented('tds.listDeductions'),
       listDeductionsForBill: () => notImplemented('tds.listDeductionsForBill'),
+      getWithheldMap:        () => notImplemented('tds.getWithheldMap'),
       ytdBaseForContact:     () => notImplemented('tds.ytdBaseForContact'),
       record:                () => notImplemented('tds.record'),
       reverse:               () => notImplemented('tds.reverse'),

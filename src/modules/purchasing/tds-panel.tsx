@@ -59,6 +59,14 @@ export function TdsPanel({ bill, supplier }: TdsPanelProps) {
     enabled: !!bill.id,
   });
 
+  // phase114 — payments settle the bill too; TDS can only come out of what is
+  // still unpaid (record_tds_deduction enforces the same ceiling).
+  const { data: appliedMap = {} } = useQuery<Record<string, number>>({
+    queryKey: ['bill_applied_map', company_id],
+    queryFn: () => getAdapter().payments.getAppliedMap(company_id!, 'vendor_bill'),
+    enabled: !!company_id,
+  });
+
   const effectiveSectionCode = sectionCode || supplier?.tds_section_code || sections[0]?.code || '';
   const section = sections.find((s) => s.code === effectiveSectionCode) ?? null;
 
@@ -96,11 +104,16 @@ export function TdsPanel({ bill, supplier }: TdsPanelProps) {
   const alreadyDeducted = round2(
     deductions.filter((d) => d.status === 'posted').reduce((a, d) => a + Number(d.amount), 0),
   );
-  const roomLeft = round2(Number(bill.total_amount) - alreadyDeducted);
+  const roomLeft = round2(Number(bill.total_amount) - (appliedMap[bill.id] ?? 0) - alreadyDeducted);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['tds_deductions_bill', bill.id] });
     qc.invalidateQueries({ queryKey: ['tds_ytd', company_id, supplier?.id, fyFrom] });
+    // phase114 — a deduction changes what is still owed on the bill.
+    qc.invalidateQueries({ queryKey: ['bill_tds_map', company_id] });
+    qc.invalidateQueries({ queryKey: ['open_bills_for_supplier_insight', company_id] });
+    qc.invalidateQueries({ queryKey: ['open_bills_for_supplier', company_id] });
+    qc.invalidateQueries({ queryKey: ['open_bills', company_id] });
   };
 
   const recordMutation = useMutation({

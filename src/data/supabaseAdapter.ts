@@ -236,6 +236,27 @@ export function createSupabaseAdapter(
   // functions). Mirrors the cast used for save_expense_with_items.
   const rpcAny = (fn: string, args: Record<string, unknown>) =>
     (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)(fn, args);
+  // phase114 — TDS withheld per bill. A posted deduction settles part of the
+  // bill (Dr 2100) exactly like a payment; a reversed one never counts. The
+  // same rule as verify_invariants B2 and record_tds_deduction's ceiling.
+  const tdsWithheldByBill = async (company_id: string, bill_ids?: string[]): Promise<Record<string, number>> => {
+    if (bill_ids && bill_ids.length === 0) return {};
+    // `as any` — tds_deductions is not in the generated types; a reassigned builder collapses its generics.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let q = (client.from('tds_deductions' as any) as any)
+      .select('vendor_bill_id, amount').eq('company_id', company_id).eq('status', 'posted');
+    if (bill_ids) q = q.in('vendor_bill_id', bill_ids);
+    const { data, error } = await q;
+    if (error) {
+      if (isMissingRelation(error)) return {};
+      throw new SupabaseDataError(`tds.withheldByBill: ${error.message}`);
+    }
+    const map: Record<string, number> = {};
+    for (const r of (data ?? []) as { vendor_bill_id: string; amount: number }[]) {
+      map[r.vendor_bill_id] = (map[r.vendor_bill_id] ?? 0) + Number(r.amount);
+    }
+    return map;
+  };
   return {
     // ── Phase 49 — Public API keys (per-company) ────────────────────────────
     apiKeys: {
@@ -2563,6 +2584,10 @@ export function createSupabaseAdapter(
           throw new SupabaseDataError(`tds.listDeductionsForBill: ${error.message}`);
         }
         return (data ?? []) as unknown as TdsDeductionRow[];
+      },
+
+      async getWithheldMap(company_id): Promise<Record<string, number>> {
+        return tdsWithheldByBill(company_id);
       },
 
       async ytdBaseForContact(company_id, contact_id, from, to): Promise<number> {
@@ -5435,11 +5460,13 @@ export function createSupabaseAdapter(
         for (const a of (allocs ?? []) as { doc_id: string; amount_applied: number; discount_amount: number }[]) {
           appliedById[a.doc_id] = (appliedById[a.doc_id] ?? 0) + Number(a.amount_applied) + Number(a.discount_amount ?? 0);
         }
+        const tdsById = await tdsWithheldByBill(company_id, ids);
 
         return rows
           .map(r => ({
             ...r,
-            outstanding: Number(r.total_amount) - (appliedById[r.id] ?? 0),
+            tds_withheld: tdsById[r.id] ?? 0,
+            outstanding: Number(r.total_amount) - (appliedById[r.id] ?? 0) - (tdsById[r.id] ?? 0),
           }))
           .filter(r => r.outstanding > 0.005);
       },

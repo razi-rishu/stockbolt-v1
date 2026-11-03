@@ -30,6 +30,9 @@
  *   T7  reversal flips the legs and restores the payable
  *   T8  a reversed deduction cannot be reversed twice
  *   T9  India-gating: 2320 exists for IN and not for AE
+ *   T10-T17 (phase114) TDS settles the bill: bill, supplier, AP aging and the
+ *           2100 ledger agree through payments, reversal, edit, currency,
+ *           period lock, tenant isolation and a UAE company
  */
 
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
@@ -137,8 +140,10 @@ async function makeSupplier(
  * than re-testing the purchasing engine.
  */
 async function makeConfirmedBill(s: Scratch, supplierId: string, amount: number, status = 'confirmed'): Promise<string> {
+  // vendor_bills.currency is required; a bill is in the company's base currency.
+  const { data: co } = await (admin.from('companies') as Untyped).select('base_currency').eq('id', s.companyId).single();
   const { data, error } = await (admin.from('vendor_bills') as any).insert({
-    company_id: s.companyId, supplier_id: supplierId,
+    company_id: s.companyId, supplier_id: supplierId, currency: co.base_currency,
     bill_number: `BILL-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
     date: '2025-06-15', status,
     subtotal: amount, tax_amount: 0, total_amount: amount,
@@ -146,12 +151,14 @@ async function makeConfirmedBill(s: Scratch, supplierId: string, amount: number,
   if (error) throw new Error(`makeConfirmedBill: ${error.message}`);
 
   if (status === 'confirmed') {
-    // Dr expense / Cr AP — the position TDS will later reduce.
+    // Dr expense / Cr AP — the position TDS will later reduce. The AP line
+    // names the supplier and the bill, as confirm_vendor_bill's does; without
+    // it the payable belongs to nobody and B3 (party attribution) fails.
     await s.adapter.accounting.postJE({
       source_type: 'manual', date: '2025-06-15', description: 'Bill booking',
       lines: [
         { account_code: '6500', debit: amount, credit: 0 },
-        { account_code: '2100', debit: 0, credit: amount },
+        { account_code: '2100', debit: 0, credit: amount, contact_id: supplierId },
       ],
     });
   }
@@ -336,5 +343,229 @@ describe('AC-7A.2/G4 — TDS is India-only', () => {
       await destroyScratch(inCo);
       await destroyScratch(aeCo);
     }
+  }, 120_000);
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// G5 — phase114: TDS settles the bill (T10–T17)
+//
+// One rule everywhere: bill outstanding = total − payments applied − posted
+// TDS. Each step checks that the bill balance, the supplier balance (open
+// bills), the AP aging report and the supplier's 2100 ledger all agree, and
+// that every invariant still holds.
+// ════════════════════════════════════════════════════════════════════════════
+
+// PostgREST builders on tables missing from the generated types, and rows
+// read through them.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Untyped = any;
+
+/** A cash account on 1100 so vendor payments can be confirmed. */
+async function makeCashAccount(s: Scratch): Promise<string> {
+  const { data: co } = await (admin.from('companies') as Untyped).select('base_currency').eq('id', s.companyId).single();
+  const { data: coa } = await (admin.from('chart_of_accounts') as Untyped)
+    .select('id').eq('company_id', s.companyId).eq('code', '1100').single();
+  const { data, error } = await (admin.from('bank_accounts') as Untyped).insert({
+    company_id: s.companyId, name: 'Cash', account_type: 'cash',
+    currency: co.base_currency, coa_account_id: coa.id,
+  }).select('id').single();
+  if (error) throw new Error(`makeCashAccount: ${error.message}`);
+  // Fund it with owner's equity so payments never drive cash negative (G2).
+  await s.adapter.accounting.postJE({
+    source_type: 'manual', date: '2025-06-01', description: 'Owner funds cash',
+    lines: [
+      { account_code: '1100', debit: 500000, credit: 0 },
+      { account_code: '3200', debit: 0, credit: 500000 },
+    ],
+  });
+  return (data as { id: string }).id;
+}
+
+/** Pay `amount` to the supplier against one bill, through the real confirm RPC. */
+async function payBill(
+  s: Scratch, supplierId: string, billId: string, amount: number, applied: number, cashId: string,
+): Promise<void> {
+  const pmt = await s.adapter.vendorPayments.create({
+    company_id: s.companyId,
+    payment_number: `PAY-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+    type: 'outbound', contact_id: supplierId, date: '2025-06-25',
+    amount, currency: 'INR', classification: 'against_invoice', bank_account_id: cashId,
+  } as Untyped, [{ doc_type: 'vendor_bill', doc_id: billId, amount_applied: applied } as Untyped]);
+  await s.adapter.vendorPayments.confirm(pmt.id);
+}
+
+/** Every view of what we owe this supplier, side by side. */
+async function payableViews(s: Scratch, supplierId: string, billId: string, asOf = '2025-07-31') {
+  const open = await s.adapter.vendorBills.listOpenForSupplier(s.companyId, supplierId);
+  const aging = await s.adapter.reports.getAPAgingReport(s.companyId, asOf);
+  const { data: gl } = await (admin.from('general_ledger') as Untyped)
+    .select('debit, credit').eq('company_id', s.companyId).eq('contact_id', supplierId)
+    .eq('account_code', '2100').lte('date', asOf);
+  return {
+    bill: open.find((b) => b.id === billId)?.outstanding ?? 0,
+    supplier: open.reduce((a, b) => a + b.outstanding, 0),
+    aging: aging.buckets.find((b) => b.contact_id === supplierId)?.total ?? 0,
+    ledger: (gl ?? []).reduce((a: number, r: Untyped) => a + Number(r.credit) - Number(r.debit), 0),
+  };
+}
+async function expectPayable(s: Scratch, supplierId: string, billId: string, expected: number): Promise<void> {
+  const v = await payableViews(s, supplierId, billId);
+  expect(v.bill, `bill outstanding ${JSON.stringify(v)}`).toBeCloseTo(expected, 2);
+  expect(v.supplier, `supplier balance ${JSON.stringify(v)}`).toBeCloseTo(expected, 2);
+  expect(v.aging, `AP aging ${JSON.stringify(v)}`).toBeCloseTo(expected, 2);
+  expect(v.ledger, `2100 ledger ${JSON.stringify(v)}`).toBeCloseTo(expected, 2);
+}
+
+describe('AC-7A.2/G5 — phase114: a TDS deduction settles the bill everywhere', () => {
+  let s: Scratch | null = null;
+  let cashId = '';
+  beforeAll(async () => { s = await createScratch('IN'); cashId = await makeCashAccount(s); }, 60_000);
+  afterAll(async () => { await destroyScratch(s); s = null; });
+
+  it('T10: TDS with no payment — every view shows the net payable', async () => {
+    const vendor = await makeSupplier(s!, { pan: 'ABCDE1234F' });
+    const bill = await makeConfirmedBill(s!, vendor, 100000);
+    await s!.adapter.tds.record({ vendor_bill_id: bill, section_code: '194C', base_amount: 100000, rate: 2, deduction_date: '2025-06-20' });
+
+    await expectPayable(s!, vendor, bill, 98000);
+    const open = await s!.adapter.vendorBills.listOpenForSupplier(s!.companyId, vendor);
+    expect(open[0].tds_withheld).toBeCloseTo(2000, 2);
+    expect(await glCreditNet(s!.companyId, '2320')).toBeCloseTo(2000, 2); // TDS Payable kept separately
+    await assertInvariants(s!.companyId, '2025-07-31');
+  }, 60_000);
+
+  it('T11: partial then full net payment leaves nothing owed; further TDS is refused', async () => {
+    const vendor = await makeSupplier(s!, { pan: 'ABCDE1234F' });
+    const bill = await makeConfirmedBill(s!, vendor, 100000);
+    await s!.adapter.tds.record({ vendor_bill_id: bill, section_code: '194C', base_amount: 100000, rate: 2, deduction_date: '2025-06-20' });
+
+    await payBill(s!, vendor, bill, 40000, 40000, cashId);
+    await expectPayable(s!, vendor, bill, 58000);
+    await assertInvariants(s!.companyId, '2025-07-31');
+
+    // the payment screen caps an allocation at the bill's outstanding: 58,000, not 60,000
+    const open = await s!.adapter.vendorBills.listOpenForSupplier(s!.companyId, vendor);
+    expect(open.find((b) => b.id === bill)!.outstanding).toBeCloseTo(58000, 2);
+
+    await payBill(s!, vendor, bill, 58000, 58000, cashId);
+    await expectPayable(s!, vendor, bill, 0);
+    expect(await s!.adapter.vendorBills.listOpenForSupplier(s!.companyId, vendor)).toHaveLength(0);
+
+    // settled by payments + TDS: withholding again would count the same money twice
+    await expect(s!.adapter.tds.record({
+      vendor_bill_id: bill, section_code: '194C', base_amount: 50000, rate: 2, deduction_date: '2025-06-26',
+    })).rejects.toThrow(/still unpaid/i);
+    await expectPayable(s!, vendor, bill, 0);
+    await assertInvariants(s!.companyId, '2025-07-31');
+  }, 90_000);
+
+  it('T12: TDS on a bill already paid in full is refused (no double subtraction)', async () => {
+    const vendor = await makeSupplier(s!, { pan: 'ABCDE1234F' });
+    const bill = await makeConfirmedBill(s!, vendor, 10000);
+    await payBill(s!, vendor, bill, 10000, 10000, cashId);
+    await expect(s!.adapter.tds.record({
+      vendor_bill_id: bill, section_code: '194C', base_amount: 10000, rate: 2, deduction_date: '2025-06-26',
+    })).rejects.toThrow(/still unpaid/i);
+    await expectPayable(s!, vendor, bill, 0);
+    expect(await s!.adapter.tds.listDeductionsForBill(bill)).toHaveLength(0);
+    await assertInvariants(s!.companyId, '2025-07-31');
+  }, 60_000);
+
+  it('T13: two deductions, one reversed — only the posted one counts', async () => {
+    const vendor = await makeSupplier(s!, { pan: 'ABCDE1234F' });
+    const bill = await makeConfirmedBill(s!, vendor, 100000);
+    const a = await s!.adapter.tds.record({ vendor_bill_id: bill, section_code: '194C', base_amount: 50000, rate: 2, deduction_date: '2025-06-20' });
+    await s!.adapter.tds.record({ vendor_bill_id: bill, section_code: '194J', base_amount: 20000, rate: 10, deduction_date: '2025-06-21' });
+    await expectPayable(s!, vendor, bill, 97000); // 100,000 − 1,000 − 2,000
+    await assertInvariants(s!.companyId, '2025-07-31');
+
+    await s!.adapter.tds.reverse(a.deduction_id);
+    await expectPayable(s!, vendor, bill, 98000); // the 1,000 is owed to the vendor again
+    const open = await s!.adapter.vendorBills.listOpenForSupplier(s!.companyId, vendor);
+    expect(open.find((b) => b.id === bill)!.tds_withheld).toBeCloseTo(2000, 2);
+    await assertInvariants(s!.companyId, '2025-07-31');
+  }, 60_000);
+
+  it('T14: a bill without TDS, and the other supplier, are unaffected', async () => {
+    const plain = await makeSupplier(s!, { pan: 'ABCDE1234F' });
+    const plainBill = await makeConfirmedBill(s!, plain, 25000);
+    const other = await makeSupplier(s!, { pan: 'ABCDE1234F' });
+    const otherBill = await makeConfirmedBill(s!, other, 30000);
+    await s!.adapter.tds.record({ vendor_bill_id: otherBill, section_code: '194C', base_amount: 30000, rate: 2, deduction_date: '2025-06-20' });
+
+    await expectPayable(s!, plain, plainBill, 25000);
+    const open = await s!.adapter.vendorBills.listOpenForSupplier(s!.companyId, plain);
+    expect(open[0].tds_withheld).toBe(0);
+    await expectPayable(s!, other, otherBill, 29400);
+    await assertInvariants(s!.companyId, '2025-07-31');
+  }, 60_000);
+
+  it('T15: a bill with TDS cannot be edited until the deduction is reversed', async () => {
+    const vendor = await makeSupplier(s!, { pan: 'ABCDE1234F' });
+    const bill = await makeConfirmedBill(s!, vendor, 10000);
+    await s!.adapter.tds.record({ vendor_bill_id: bill, section_code: '194C', base_amount: 10000, rate: 2, deduction_date: '2025-06-20' });
+    const { error } = await (s!.userClient.rpc as Untyped)('edit_vendor_bill', { p_bill_id: bill });
+    expect(error?.message ?? '').toMatch(/TDS deducted/i);
+    await expectPayable(s!, vendor, bill, 9800);
+  }, 60_000);
+
+  it('T16: currency and period lock are enforced', async () => {
+    const vendor = await makeSupplier(s!, { pan: 'ABCDE1234F' });
+    // a bill in a foreign currency: the deduction would post at face value in base
+    const { data: usd, error } = await (admin.from('vendor_bills') as Untyped).insert({
+      company_id: s!.companyId, supplier_id: vendor, currency: 'USD', exchange_rate: 83,
+      bill_number: `BILL-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+      date: '2025-06-15', status: 'draft', subtotal: 1000, tax_amount: 0, total_amount: 1000,
+    }).select('id').single();
+    expect(error).toBeFalsy();
+    const usdId = (usd as { id: string }).id;
+    // confirmed only for the guard check; it has no AP leg, so it is removed before the invariants
+    await (admin.from('vendor_bills') as Untyped).update({ status: 'confirmed' }).eq('id', usdId);
+    try {
+      await expect(s!.adapter.tds.record({
+        vendor_bill_id: usdId, section_code: '194C', base_amount: 1000, rate: 2, deduction_date: '2025-06-20',
+      })).rejects.toThrow(/base currency/i);
+    } finally {
+      await (admin.from('vendor_bills') as Untyped).delete().eq('id', usdId);
+    }
+
+    const bill = await makeConfirmedBill(s!, vendor, 10000);
+    await (admin.from('companies') as Untyped).update({ period_lock_date: '2025-06-30' }).eq('id', s!.companyId);
+    try {
+      await expect(s!.adapter.tds.record({
+        vendor_bill_id: bill, section_code: '194C', base_amount: 10000, rate: 2, deduction_date: '2025-06-20',
+      })).rejects.toThrow(/period lock/i);
+    } finally {
+      await (admin.from('companies') as Untyped).update({ period_lock_date: null }).eq('id', s!.companyId);
+    }
+    await expectPayable(s!, vendor, bill, 10000);
+    await assertInvariants(s!.companyId, '2025-07-31');
+  }, 60_000);
+
+  it("T17: another company cannot deduct on, or see, this company's bill; UAE unaffected", async () => {
+    const vendor = await makeSupplier(s!, { pan: 'ABCDE1234F' });
+    const bill = await makeConfirmedBill(s!, vendor, 10000);
+    await s!.adapter.tds.record({ vendor_bill_id: bill, section_code: '194C', base_amount: 10000, rate: 2, deduction_date: '2025-06-20' });
+
+    const ae = await createScratch('AE');
+    try {
+      await expect(ae.adapter.tds.record({
+        vendor_bill_id: bill, section_code: '194C', base_amount: 10000, rate: 2, deduction_date: '2025-06-20',
+      })).rejects.toThrow(/not found/i);
+      expect(await ae.adapter.tds.listDeductionsForBill(bill)).toHaveLength(0);
+      expect(await ae.adapter.tds.getWithheldMap(s!.companyId)).toEqual({});
+
+      // a UAE company's own bill: no TDS anywhere, outstanding is the plain total
+      const aeVendor = (await ae.adapter.contacts.create({
+        company_id: ae.companyId, name: 'UAE Vendor', type: 'supplier', currency: 'AED',
+        credit_limit: 0, payment_terms_days: 0, is_active: true,
+      } as Untyped)).id;
+      const aeBill = await makeConfirmedBill(ae, aeVendor, 5000);
+      await expectPayable(ae, aeVendor, aeBill, 5000);
+      await assertInvariants(ae.companyId, '2025-07-31');
+    } finally { await destroyScratch(ae); }
+
+    await expectPayable(s!, vendor, bill, 9800);
+    await assertInvariants(s!.companyId, '2025-07-31');
   }, 120_000);
 });

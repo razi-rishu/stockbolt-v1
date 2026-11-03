@@ -1484,6 +1484,8 @@ export interface TdsAPI {
   removeSection(id: string): Promise<void>;
   listDeductions(company_id: string, from?: string, to?: string): Promise<TdsDeductionRow[]>;
   listDeductionsForBill(vendor_bill_id: string): Promise<TdsDeductionRow[]>;
+  /** phase114 — posted (unreversed) TDS per bill id; settles the bill like a payment. */
+  getWithheldMap(company_id: string): Promise<Record<string, number>>;
   /** Base already deducted against this vendor in the given window (threshold check). */
   ytdBaseForContact(company_id: string, contact_id: string, from: string, to: string): Promise<number>;
   /** Post Dr AP / Cr TDS Payable against a confirmed vendor bill. */
@@ -2415,7 +2417,10 @@ export interface GoodsReceiptsAPI {
 
 /** Vendor bill + computed outstanding (total_amount minus sum of payment_allocations) */
 export interface OpenVendorBill extends VendorBillRow {
+  /** total − payments applied (incl. discount) − posted TDS (phase114). */
   outstanding: number;
+  /** Posted, unreversed TDS withheld on this bill (0 outside India). */
+  tds_withheld: number;
 }
 
 export interface VendorBillsAPI {
