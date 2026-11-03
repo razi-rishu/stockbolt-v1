@@ -119,14 +119,29 @@ async function addMember(t: Tenant, role: 'accountant' | 'sales' | 'viewer'): Pr
 
 const members: User[] = [];
 
-async function destroy(t: Tenant | null): Promise<void> {
-  if (!t) return;
+// Rows that hold the company with ON DELETE RESTRICT, children before parents:
+// what this suite adds, then what onboarding seeds. tax_rates point at
+// chart_of_accounts, so they go first.
+const TENANT_TABLES = [
+  'bank_reconciliations', 'bank_accounts', 'payment_methods', 'units_of_measure',
+  'warehouses', 'tax_rates', 'chart_of_accounts',
+] as const;
+
+/** Deletes `t` and everything it owns. Returns what failed instead of hiding it. */
+async function destroy(t: Tenant | null): Promise<string[]> {
+  if (!t) return [];
+  const failed: string[] = [];
   // Users first: deleting an auth user cascades to its profile, and profiles
   // hold the company with ON DELETE RESTRICT.
-  await admin.auth.admin.deleteUser(t.userId).catch(() => undefined);
-  await admin.from('bank_reconciliations' as never).delete().eq('company_id', t.companyId);
-  await admin.from('bank_accounts').delete().eq('company_id', t.companyId);
-  await admin.from('companies').delete().eq('id', t.companyId);
+  const { error: uErr } = await admin.auth.admin.deleteUser(t.userId);
+  if (uErr) failed.push(`auth user ${t.userId}: ${uErr.message}`);
+  for (const table of TENANT_TABLES) {
+    const { error } = await admin.from(table as never).delete().eq('company_id', t.companyId);
+    if (error) failed.push(`${table}: ${error.message}`);
+  }
+  const { error } = await admin.from('companies').delete().eq('id', t.companyId);
+  if (error) failed.push(`companies ${t.companyId}: ${error.message}`);
+  return failed;
 }
 
 // ── The calls under test, each aimed at one company ─────────────────────────
@@ -169,10 +184,17 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
-  for (const m of members) await admin.auth.admin.deleteUser(m.userId).catch(() => undefined);
-  await destroy(A);
-  await destroy(B);
-  if (C) await admin.auth.admin.deleteUser(C.userId).catch(() => undefined);
+  const failed: string[] = [];
+  const dropUser = async (u: User | null) => {
+    if (!u) return;
+    const { error } = await admin.auth.admin.deleteUser(u.userId);
+    if (error) failed.push(`auth user ${u.userId}: ${error.message}`);
+  };
+  for (const m of members) await dropUser(m);
+  failed.push(...(await destroy(A)), ...(await destroy(B)));
+  await dropUser(C);
+  // Fail the run rather than leave residue silently.
+  if (failed.length) throw new Error(`[Finding E] cleanup left residue:\n  ${failed.join('\n  ')}`);
 }, 60_000);
 
 describe('E1 — the anon key cannot execute any affected function', () => {
