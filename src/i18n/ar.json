@@ -1935,5 +1935,40 @@
     "action_web": "إعادة التحميل",
     "action_app": "تحديث",
     "dismiss": "إغلاق"
+  },
+  "global_config": {
+    "title": "الإعداد العالمي — معاينة محرك التهيئة",
+    "subtitle": "معاينة للتطوير. لا يُحفظ أي شيء هنا؛ تعرض الإعدادات التي ستحصل عليها منشأة جديدة.",
+    "country": "الدولة",
+    "compliance_statutory": "حزمة ضريبية نظامية",
+    "compliance_tax_configuration": "إعداد ضريبي فقط — دون ادعاء الامتثال",
+    "compliance_generic": "عام — غير متاح بعد",
+    "single_entity": "كيان قانوني واحد لكل مساحة عمل",
+    "step2": "الخطوة 2 · الأنشطة التجارية ({{count}} مختارة)",
+    "step5": "الخطوة 5 · الوحدات ({{count}} مفعّلة)",
+    "step7": "الخطوة 7 · المراجعة",
+    "valid": "جاهز للتفعيل",
+    "invalid": "لا يمكن التفعيل",
+    "primary": "رئيسي",
+    "essential": "أساسية",
+    "recommended": "موصى بها",
+    "because": "بسبب",
+    "reason_essential": "مطلوبة لكل منشأة",
+    "reason_dependency": "تحتاجها {{module}}",
+    "reason_country": "قواعد الضرائب في {{country}}",
+    "on": "مفعّلة",
+    "off": "معطّلة",
+    "issue": {
+      "no_activities": "اختر نشاطًا تجاريًا واحدًا على الأقل.",
+      "too_many_activities": "اختر {{detail}} أنشطة كحد أقصى.",
+      "unknown_activity": "نشاط غير معروف: {{detail}}.",
+      "duplicate_activity": "النشاط مختار مرتين: {{detail}}.",
+      "primary_not_selected": "يجب أن يكون النشاط الرئيسي من بين الأنشطة المختارة.",
+      "unknown_module": "وحدة غير معروفة: {{detail}}.",
+      "essential_module": "هذه الوحدة أساسية وتبقى مفعّلة.",
+      "required_by": "تبقى مفعّلة: تحتاجها {{detail}}.",
+      "not_available_in_country": "غير متاحة في {{detail}}.",
+      "country_not_activatable": "لا يمكن إنشاء منشآت في {{detail}} بعد."
+    }
   }
 }

@@ -37,6 +37,10 @@ const UsersRolesPage     = lazy(() => import('@/modules/settings/users/index'));
 // App shell pages
 const DashboardPage      = lazy(() => import('@/modules/dashboard/index'));
 const DesignSystemPage   = lazy(() => import('@/modules/design-system/index'));
+// Global v1 — dev-only preview of the configuration engine (never in production builds).
+const GlobalConfigPreviewPage = import.meta.env.DEV
+  ? lazy(() => import('@/modules/onboarding/global-config/global-config-preview'))
+  : null;
 const SignatureTemplateGalleryPage = lazy(() => import('@/modules/print/_signature/gallery'));
 const SettingsHubPage    = lazy(() => import('@/modules/settings/index'));
 const SettingsLayout     = lazy(() => import('@/modules/settings/_layout'));
@@ -239,6 +243,8 @@ function AppRoutes() {
       {isNative() && <NativeBridge />}
       <Routes>
         {/* ── Public auth routes ───────────────────────────────────── */}
+        {/* Global v1 preview: registered only by the Vite dev server (import.meta.env.DEV). */}
+        {GlobalConfigPreviewPage && <Route path="/dev/global-config" element={<GlobalConfigPreviewPage />} />}
         <Route path="/login"            element={<LoginPage />} />
         <Route path="/register"         element={<RegisterPage />} />
         <Route path="/forgot-password"  element={<ForgotPasswordPage />} />

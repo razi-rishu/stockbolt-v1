@@ -1935,5 +1935,40 @@
     "action_web": "Reload",
     "action_app": "Update",
     "dismiss": "Dismiss"
+  },
+  "global_config": {
+    "title": "Global setup — configuration engine preview",
+    "subtitle": "Development preview. Nothing here is saved; it shows what a new organization would be configured with.",
+    "country": "Country",
+    "compliance_statutory": "Statutory tax pack",
+    "compliance_tax_configuration": "Tax configuration only — no compliance claim",
+    "compliance_generic": "Generic — not yet available",
+    "single_entity": "One legal entity per workspace",
+    "step2": "Step 2 · Business activities ({{count}} selected)",
+    "step5": "Step 5 · Modules ({{count}} on)",
+    "step7": "Step 7 · Review",
+    "valid": "Ready to activate",
+    "invalid": "Cannot be activated",
+    "primary": "Primary",
+    "essential": "Essential",
+    "recommended": "Recommended",
+    "because": "Because of",
+    "reason_essential": "required for every organization",
+    "reason_dependency": "needed by {{module}}",
+    "reason_country": "{{country}} tax rules",
+    "on": "On",
+    "off": "Off",
+    "issue": {
+      "no_activities": "Select at least one business activity.",
+      "too_many_activities": "Select at most {{detail}} activities.",
+      "unknown_activity": "Unknown activity: {{detail}}.",
+      "duplicate_activity": "Activity selected twice: {{detail}}.",
+      "primary_not_selected": "The primary activity must be one of the selected activities.",
+      "unknown_module": "Unknown module: {{detail}}.",
+      "essential_module": "This module is essential and stays on.",
+      "required_by": "Stays on: needed by {{detail}}.",
+      "not_available_in_country": "Not available in {{detail}}.",
+      "country_not_activatable": "Organizations in {{detail}} can't be created yet."
+    }
   }
 }
