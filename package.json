@@ -33,7 +33,7 @@
     "test:tds": "vitest run tests/integration/tds-verification.test.ts",
     "test:deferred-cogs": "vitest run tests/integration/deferred-cogs-verification.test.ts",
     "test:finding-e": "vitest run tests/integration/finding-e-verification.test.ts",
-    "test:security-static": "vitest run tests/unit/finding-e-definer-guards.test.ts tests/unit/staging-target-guard.test.ts tests/unit/integration-env-isolation.test.ts tests/unit/vitest-env-sentinel.test.ts tests/unit/staging-seed.test.ts tests/unit/tenant-cleanup.test.ts tests/unit/audit-action-check.test.ts tests/unit/onboarding-recovery.test.ts",
+    "test:security-static": "vitest run tests/unit/finding-e-definer-guards.test.ts tests/unit/staging-target-guard.test.ts tests/unit/integration-env-isolation.test.ts tests/unit/vitest-env-sentinel.test.ts tests/unit/staging-seed.test.ts tests/unit/tenant-cleanup.test.ts tests/unit/audit-action-check.test.ts tests/unit/onboarding-recovery.test.ts tests/unit/reversal-repost.test.ts",
     "staging:seed": "node scripts/staging-seed.mjs",
     "prepare": "husky"
   },
