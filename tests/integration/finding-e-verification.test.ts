@@ -33,24 +33,15 @@
  */
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import * as dotenv from 'dotenv';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import type { Database } from '../../src/types/database';
 import { createSupabaseAdapter } from '../../src/data/supabaseAdapter';
 import { runOnboarding, type WizardData } from '../../src/core/onboarding';
-import { assertNotProductionTarget } from './_env-guard';
+import { assertNotProductionTarget, loadStagingEnv } from './_env-guard';
 
-const STAGING_ENV = resolve(process.cwd(), process.env.STAGING_ENV_FILE ?? '.env.staging.local');
-if (!existsSync(STAGING_ENV)) {
-  throw new Error(
-    `[Finding E] ${STAGING_ENV} not found. This suite runs only against a staging ` +
-      'Supabase project, configured in its own env file. It never reads .env.local.',
-  );
-}
-// Parsed into a local object, not process.env, so nothing else in the run can
-// pick up these credentials by accident.
-const env = dotenv.parse(readFileSync(STAGING_ENV, 'utf8'));
+// Reads .env.staging.local only, never .env.local, and refuses it unless every
+// target is the local Supabase stack on this machine. The values stay in this
+// object, not process.env, so nothing else in the run can pick them up.
+const env = loadStagingEnv();
 
 const SUPABASE_URL        = env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY   = env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -58,7 +49,7 @@ const SUPABASE_SECRET_KEY = env.SUPABASE_SECRET_KEY;
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SECRET_KEY) {
   throw new Error('[Finding E] .env.staging.local needs VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY and SUPABASE_SECRET_KEY');
 }
-assertNotProductionTarget(SUPABASE_URL); // refuse before any client exists
+assertNotProductionTarget(SUPABASE_URL); // belt and braces: never the production ref
 
 const noSession = { auth: { autoRefreshToken: false, persistSession: false } };
 const admin = createClient<Database>(SUPABASE_URL, SUPABASE_SECRET_KEY, noSession);
