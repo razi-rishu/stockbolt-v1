@@ -16,7 +16,7 @@
  */
 
 import * as dotenv from 'dotenv';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 /** The live production Supabase project ref (host of VITE_SUPABASE_URL). */
@@ -119,8 +119,9 @@ export function assertLocalStagingEnv(env: Record<string, string>, prodEnv: Reco
  * pick them up. Throws before any client could be created.
  */
 export function loadStagingEnv(cwd: string = process.cwd()): Record<string, string> {
-  const file = resolve(cwd, process.env.STAGING_ENV_FILE ?? '.env.staging.local');
-  if (!existsSync(file)) throw new StagingTargetError(`${file} not found.`);
+  // An empty STAGING_ENV_FILE means "not set", not "the current directory".
+  const file = resolve(cwd, process.env.STAGING_ENV_FILE || '.env.staging.local');
+  if (!existsSync(file) || !statSync(file).isFile()) throw new StagingTargetError(`${file} not found.`);
   const env = dotenv.parse(readFileSync(file, 'utf8'));
   const prodFile = resolve(cwd, '.env.local');
   const prodEnv = existsSync(prodFile) ? dotenv.parse(readFileSync(prodFile, 'utf8')) : {};

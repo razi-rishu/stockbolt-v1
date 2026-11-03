@@ -10,33 +10,32 @@
  *
  * SECRET KEY: required for the admin operations (creating users with
  * email auto-confirmed and creating the bootstrap company/profile rows
- * before the user exists in any tenant). Loaded from .env.local. The
+ * before the user exists in any tenant). Loaded from .env.staging.local. The
  * non-VITE-prefixed name keeps Vite from ever shipping it to a browser
  * build — this key bypasses RLS and must never reach client code.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import * as dotenv from 'dotenv';
-import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 import type { Database } from '@/types/database';
-import { assertNotProductionTarget } from './_env-guard';
+import { assertNotProductionTarget, loadStagingEnv } from './_env-guard';
 
-// Load .env.local explicitly (Vitest runs in Node, no Vite env loading).
-dotenv.config({ path: resolve(process.cwd(), '.env.local') });
+// INFRA-1: .env.staging.local only, never .env.local (production). Refused
+// unless every target is the local Supabase stack (127.0.0.1:54321/54322).
+const env = loadStagingEnv();
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
-const PUBLISHABLE_KEY = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
+const SUPABASE_URL = env.VITE_SUPABASE_URL;
+const PUBLISHABLE_KEY = env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const SECRET_KEY = env.SUPABASE_SECRET_KEY;
 
-if (!SUPABASE_URL) throw new Error('Missing VITE_SUPABASE_URL in .env.local');
-if (!PUBLISHABLE_KEY) throw new Error('Missing VITE_SUPABASE_PUBLISHABLE_KEY in .env.local');
+if (!SUPABASE_URL) throw new Error('Missing VITE_SUPABASE_URL in .env.staging.local');
+if (!PUBLISHABLE_KEY) throw new Error('Missing VITE_SUPABASE_PUBLISHABLE_KEY in .env.staging.local');
 if (!SECRET_KEY) {
   throw new Error(
-    'Missing SUPABASE_SECRET_KEY in .env.local. ' +
-      'Copy the Secret key from Supabase dashboard → API Keys → Secret keys (default).',
+    'Missing SUPABASE_SECRET_KEY in .env.staging.local. ' +
+      'Take the local Secret key from `supabase status` in the stockbolt_local project.',
   );
 }
 

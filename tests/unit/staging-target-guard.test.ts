@@ -107,6 +107,21 @@ describe('loadStagingEnv', () => {
     expect(process.env.SUPABASE_SECRET_KEY).toBe(before);
   });
 
+  it('treats an empty STAGING_ENV_FILE as unset, and refuses a directory', () => {
+    dir = mkdtempSync(join(tmpdir(), 'sb-staging-'));
+    write('.env.staging.local', good());
+    const saved = process.env.STAGING_ENV_FILE;
+    try {
+      process.env.STAGING_ENV_FILE = '';
+      expect(loadStagingEnv(dir).VITE_SUPABASE_URL).toBe('http://127.0.0.1:54321');
+      process.env.STAGING_ENV_FILE = dir;
+      expect(() => loadStagingEnv(dir)).toThrow(StagingTargetError);
+    } finally {
+      if (saved === undefined) delete process.env.STAGING_ENV_FILE;
+      else process.env.STAGING_ENV_FILE = saved;
+    }
+  });
+
   it('refuses when the file is missing', () => {
     dir = mkdtempSync(join(tmpdir(), 'sb-staging-'));
     expect(() => loadStagingEnv(dir)).toThrow(StagingTargetError);

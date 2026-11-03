@@ -25,22 +25,22 @@
 
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import * as dotenv from 'dotenv';
-import { resolve } from 'node:path';
 import type { Database } from '../../src/types/database';
 import { createSupabaseAdapter } from '../../src/data/supabaseAdapter';
 import { runOnboarding, type WizardData } from '../../src/core/onboarding';
-import { assertNotProductionTarget } from './_env-guard';
+import { assertNotProductionTarget, loadStagingEnv } from './_env-guard';
 
-dotenv.config({ path: resolve(process.cwd(), '.env.local') });
+// INFRA-1: .env.staging.local only, never .env.local (production). Refused
+// unless every target is the local Supabase stack (127.0.0.1:54321/54322).
+const env = loadStagingEnv();
 
-const SUPABASE_URL        = process.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY   = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
+const SUPABASE_URL        = env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY   = env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const SUPABASE_SECRET_KEY = env.SUPABASE_SECRET_KEY;
 
-if (!SUPABASE_URL)        throw new Error('Missing VITE_SUPABASE_URL in .env.local');
-if (!SUPABASE_ANON_KEY)   throw new Error('Missing VITE_SUPABASE_PUBLISHABLE_KEY in .env.local');
-if (!SUPABASE_SECRET_KEY) throw new Error('Missing SUPABASE_SECRET_KEY in .env.local');
+if (!SUPABASE_URL)        throw new Error('Missing VITE_SUPABASE_URL in .env.staging.local');
+if (!SUPABASE_ANON_KEY)   throw new Error('Missing VITE_SUPABASE_PUBLISHABLE_KEY in .env.staging.local');
+if (!SUPABASE_SECRET_KEY) throw new Error('Missing SUPABASE_SECRET_KEY in .env.staging.local');
 
 const admin = createClient<Database>(SUPABASE_URL, SUPABASE_SECRET_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
