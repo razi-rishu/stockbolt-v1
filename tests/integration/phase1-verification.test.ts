@@ -27,6 +27,7 @@ import type { Database } from '../../src/types/database';
 import { createSupabaseAdapter } from '../../src/data/supabaseAdapter';
 import { runOnboarding, type WizardData } from '../../src/core/onboarding';
 import { assertNotProductionTarget, loadStagingEnv } from './_env-guard';
+import { destroyTenantOrThrow } from './_tenant-cleanup';
 
 // INFRA-1: .env.staging.local only, never .env.local (production). Refused
 // unless every target is the local Supabase stack (127.0.0.1:54321/54322).
@@ -106,11 +107,12 @@ beforeAll(async () => {
 
 // ── Cleanup -------------------------------------------------------------------
 afterAll(async () => {
+  // INFRA-1: every row the tenant owns, children first; throws if anything is left.
   if (testCompanyId) {
-    await adminClient.from('companies').delete().eq('id', testCompanyId);
-  }
-  if (testUserId) {
-    await adminClient.auth.admin.deleteUser(testUserId);
+    await destroyTenantOrThrow(adminClient, { companyId: testCompanyId, userIds: testUserId ? [testUserId] : [], namePrefix: 'Phase 1 Test Auto Parts' });
+  } else if (testUserId) {
+    const { error } = await adminClient.auth.admin.deleteUser(testUserId);
+    if (error) throw new Error(`[cleanup] auth user ${testUserId}: ${error.message}`);
   }
 });
 

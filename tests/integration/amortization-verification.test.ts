@@ -39,6 +39,7 @@ import type { Database } from '../../src/types/database';
 import { createSupabaseAdapter } from '../../src/data/supabaseAdapter';
 import { runOnboarding, type WizardData } from '../../src/core/onboarding';
 import { assertNotProductionTarget, loadStagingEnv } from './_env-guard';
+import { destroyTenantOrThrow } from './_tenant-cleanup';
 import type { AmortizationScheduleInsert } from '../../src/data/adapter';
 
 // INFRA-1: .env.staging.local only, never .env.local (production). Refused
@@ -108,15 +109,8 @@ async function createScratch(): Promise<Scratch> {
 
 async function destroyScratch(s: Scratch | null): Promise<void> {
   if (!s) return;
-  const { companyId, userId } = s;
-  await admin.from('general_ledger').delete().eq('company_id', companyId);
-  await admin.from('journal_entries').delete().eq('company_id', companyId);
-  // phase61 tables are not in the generated types (applied by hand).
-  await (admin.from('amortization_entries' as any) as any).delete().eq('company_id', companyId);
-  await (admin.from('amortization_schedules' as any) as any).delete().eq('company_id', companyId);
-  await admin.from('audit_logs').delete().eq('company_id', companyId);
-  await admin.from('companies').delete().eq('id', companyId);
-  await admin.auth.admin.deleteUser(userId).catch(() => undefined);
+  // INFRA-1: every row the tenant owns, children first; throws if anything is left.
+  await destroyTenantOrThrow(admin, { companyId: s.companyId, userIds: [s.userId], namePrefix: 'AM Scratch ' });
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

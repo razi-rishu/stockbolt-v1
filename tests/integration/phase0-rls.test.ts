@@ -21,6 +21,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { Database } from '@/types/database';
 import { assertNotProductionTarget, loadStagingEnv } from './_env-guard';
+import { destroyTenant } from './_tenant-cleanup';
 
 // INFRA-1: .env.staging.local only, never .env.local (production). Refused
 // unless every target is the local Supabase stack (127.0.0.1:54321/54322).
@@ -97,11 +98,11 @@ async function provisionTenant(label: 'A' | 'B'): Promise<Tenant> {
   return { id: tag, email, password, user_id, company_id, client };
 }
 
-async function teardownTenant(t: Tenant): Promise<void> {
-  await t.client.auth.signOut().catch(() => undefined);
-  await ADMIN.from('profiles').delete().eq('id', t.user_id);
-  await ADMIN.from('companies').delete().eq('id', t.company_id);
-  await ADMIN.auth.admin.deleteUser(t.user_id).catch(() => undefined);
+async function teardownTenant(t: Tenant): Promise<string[]> {
+  await t.client.auth.signOut().catch(() => undefined); // the session only; nothing to clean up
+  // INFRA-1: every row the tenant owns (incl. trigger-seeded tax rates and
+  // subscription), children first. Returns what was left instead of hiding it.
+  return destroyTenant(ADMIN, { companyId: t.company_id, userIds: [t.user_id], namePrefix: 'Phase 0 Test Company ' });
 }
 
 describe('Phase 0 — RLS multi-tenant isolation', () => {
@@ -116,8 +117,8 @@ describe('Phase 0 — RLS multi-tenant isolation', () => {
   });
 
   afterAll(async () => {
-    if (A) await teardownTenant(A);
-    if (B) await teardownTenant(B);
+    const failed = [...(A ? await teardownTenant(A) : []), ...(B ? await teardownTenant(B) : [])];
+    if (failed.length) throw new Error(`[Phase 0] cleanup left residue:\n  ${failed.join('\n  ')}`);
   });
 
   it('Tenant A sees its own company (sanity check)', async () => {
