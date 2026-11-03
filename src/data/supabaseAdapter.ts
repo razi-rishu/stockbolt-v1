@@ -16,6 +16,7 @@ import {
   type SalesReturnRaw, type PurchaseReturnRaw, type CreditNoteRaw, type DebitNoteRaw,
 } from '@/lib/returns-analysis';
 import type {
+  CompanyConfigurationRow,
   DataAdapter, Company, Profile, AppRole, CompanyInviteRow, PendingInvite, RoleRow,
   ApiKeyRow, ApiScope,
   CoaRow, CoaInsert, TaxRateInsert, PaymentMethodInsert, UnitInsert,
@@ -719,6 +720,26 @@ export function createSupabaseAdapter(
        The five casts below exist only because `projects` is missing from the
        generated database types; they are removed wholesale when those are
        regenerated. Disabled narrowly so they do not hide anything else. */
+    companyConfiguration: {
+      // Global v1 (draft migration global01): not in the generated types yet, so
+      // the table name goes through the same cast as projects. Results are
+      // cast to the hand-written row type.
+      async get(company_id): Promise<CompanyConfigurationRow | null> {
+        const { data, error } = await (client as any).from('company_configurations').select('*')
+          .eq('company_id', company_id).maybeSingle();
+        assertNoError(error, 'companyConfiguration.get');
+        return (data ?? null) as CompanyConfigurationRow | null;
+      },
+      async save(input): Promise<void> {
+        const { error } = await rpcAny('save_company_configuration', {
+          p_taxonomy_version: input.taxonomy_version,
+          p_activity_keys: input.activity_keys,
+          p_primary_activity_key: input.primary_activity_key,
+          p_enabled_modules: input.enabled_modules,
+        });
+        assertNoError(error as Error | null, 'companyConfiguration.save');
+      },
+    },
     projects: {
       // `projects` is not in the generated database types (they predate
       // phase104), so the table name is reached through the same cast already

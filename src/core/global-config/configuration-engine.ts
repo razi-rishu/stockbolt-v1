@@ -204,3 +204,47 @@ export const WIZARD_STEPS = [
 ] as const;
 
 export const ACTIVITY_COUNT = BUSINESS_ACTIVITIES.length;
+
+/** Recorded with every saved configuration, so a later taxonomy change can be detected. */
+export const TAXONOMY_VERSION = 'global-v1.0';
+
+/** The stored shape (company_configurations) the engine reads and writes. */
+export interface StoredConfiguration {
+  taxonomy_version: string;
+  activity_keys: string[];
+  primary_activity_key: string;
+  enabled_modules: string[];
+}
+
+/**
+ * The configuration a company runs with. No stored row means the company was
+ * set up before Global v1: it gets legacyConfiguration(), which changes
+ * nothing for it. A stored row is rebuilt through the engine, so unknown keys
+ * from an older taxonomy are reported instead of trusted.
+ */
+export function effectiveConfiguration(
+  stored: StoredConfiguration | null,
+  company: { country_code: string; projects_enabled?: boolean | null },
+): GlobalConfiguration {
+  if (!stored) return legacyConfiguration(company);
+  const enable = stored.enabled_modules;
+  const disable = MODULE_KEYS.filter((k) => !enable.includes(k));
+  const config = buildConfiguration({
+    country_code: company.country_code,
+    activities: { activity_keys: stored.activity_keys, primary_activity_key: stored.primary_activity_key },
+    modules: { enable, disable },
+  });
+  // What was saved is what runs: drop recommendations the user had switched off.
+  return { ...config, modules: config.modules.filter((m) => enable.includes(m) || getModule(m).essential) };
+}
+
+/** The payload for save_company_configuration. Throws if the configuration isn't activatable. */
+export function toStoredConfiguration(config: GlobalConfiguration): StoredConfiguration {
+  if (!config.valid) throw new Error(`Configuration is not valid: ${config.issues.map((i) => i.code).join(', ')}`);
+  return {
+    taxonomy_version: TAXONOMY_VERSION,
+    activity_keys: config.activity_keys,
+    primary_activity_key: config.primary_activity_key,
+    enabled_modules: config.modules,
+  };
+}

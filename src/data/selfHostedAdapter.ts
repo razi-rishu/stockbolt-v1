@@ -15,6 +15,10 @@ export function createSelfHostedAdapter(): DataAdapter {
       create:       () => notImplemented('apiKeys.create'),
       revoke:       () => notImplemented('apiKeys.revoke'),
     },
+    companyConfiguration: {
+      get:  () => notImplemented('companyConfiguration.get'),
+      save: () => notImplemented('companyConfiguration.save'),
+    },
     projects: {
       list:    () => notImplemented('projects.list'),
       getById: () => notImplemented('projects.getById'),

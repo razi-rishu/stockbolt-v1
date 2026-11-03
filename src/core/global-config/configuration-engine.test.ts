@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ACTIVITY_COUNT, BUSINESS_ACTIVITIES, COUNTRY_PACKS, INDUSTRY_FAMILIES, MODULES, MODULE_KEYS, WIZARD_STEPS,
-  activitiesOf, buildConfiguration, dependencyClosure, getCountryPack, legacyConfiguration,
+  TAXONOMY_VERSION, activitiesOf, buildConfiguration, dependencyClosure, effectiveConfiguration, getCountryPack, legacyConfiguration, toStoredConfiguration,
   recommendModules, resolveModules, validateActivities,
 } from './index';
 
@@ -223,4 +223,32 @@ it('the seven approved wizard steps, in order', () => {
     'organization_identity', 'business_activities', 'accounting_setup', 'taxation_compliance',
     'module_configuration', 'branches_team', 'review_activation',
   ]);
+});
+
+describe('stored configuration (draft global01)', () => {
+  it('no stored row = legacy: an existing company keeps everything', () => {
+    const c = effectiveConfiguration(null, { country_code: 'AE', projects_enabled: true });
+    expect(c.modules).toEqual([...MODULE_KEYS]);
+    expect(c.activity_keys).toEqual(['automotive_parts_trading']);
+  });
+
+  it('save then read back gives the same modules and activities', () => {
+    const built = buildConfiguration({ country_code: 'AE', activities: { activity_keys: ['consulting', 'retail_store'], primary_activity_key: 'consulting' }, modules: { disable: ['expenses'], enable: ['payroll'] } });
+    const stored = toStoredConfiguration(built);
+    expect(stored.taxonomy_version).toBe(TAXONOMY_VERSION);
+    const back = effectiveConfiguration(stored, { country_code: 'AE' });
+    expect(back.modules).toEqual(built.modules);
+    expect(back.activity_keys).toEqual(['consulting', 'retail_store']);
+    expect(back.primary_activity_key).toBe('consulting');
+    expect(back.modules).not.toContain('expenses');
+  });
+
+  it('a stored row missing an essential module still runs with it', () => {
+    const back = effectiveConfiguration({ taxonomy_version: TAXONOMY_VERSION, activity_keys: ['consulting'], primary_activity_key: 'consulting', enabled_modules: ['sales'] }, { country_code: 'AE' });
+    expect(back.modules).toEqual(expect.arrayContaining(['accounting', 'contacts', 'banking', 'sales']));
+  });
+
+  it('refuses to save an invalid configuration', () => {
+    expect(() => toStoredConfiguration(buildConfiguration({ country_code: 'GB', activities: { activity_keys: ['consulting'] } }))).toThrow(/country_not_activatable/);
+  });
 });

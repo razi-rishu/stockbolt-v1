@@ -3180,6 +3180,31 @@ export interface ApiKeysAPI {
   revoke(id: string): Promise<void>;
 }
 
+// ── Global v1 — company configuration (draft migration global01) ───────────
+/** One row per company. No row = a company set up before Global v1 (legacy). */
+export interface CompanyConfigurationRow {
+  company_id: string;
+  taxonomy_version: string;
+  activity_keys: string[];
+  primary_activity_key: string;
+  enabled_modules: string[];
+  configured_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface CompanyConfigurationSave {
+  taxonomy_version: string;
+  activity_keys: string[];
+  primary_activity_key: string;
+  enabled_modules: string[];
+}
+export interface CompanyConfigurationAPI {
+  /** The caller's company configuration, or null for a legacy company (read it with legacyConfiguration()). */
+  get(company_id: string): Promise<CompanyConfigurationRow | null>;
+  /** Writes the caller's own company through save_company_configuration (needs settings.write). */
+  save(input: CompanyConfigurationSave): Promise<void>;
+}
+
 export interface DataAdapter {
   auth: AuthAPI;
   companies: CompaniesAPI;
@@ -3191,6 +3216,7 @@ export interface DataAdapter {
   // Phase 2
   categories: CategoriesAPI;
   projects: ProjectsAPI;          // phase104 — projects / jobs
+  companyConfiguration: CompanyConfigurationAPI; // Global v1 — activities + enabled modules
   brands: BrandsAPI;
   warehouses: WarehousesManagementAPI;
   units: UnitsManagementAPI;
