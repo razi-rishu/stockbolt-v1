@@ -640,8 +640,25 @@ export function createSupabaseAdapter(
       async createCompanyAndProfile(input: OnboardingRpcInput) {
         const { data, error } = await client.rpc('complete_onboarding', { p_data: input as any });
         if (error) throw new SupabaseDataError(`complete_onboarding: ${error.message}`);
-        const result = (data as unknown) as { company_id: string };
-        return { company_id: result.company_id };
+        const result = (data as unknown) as { company_id: string; resumed?: boolean; country_updated?: boolean };
+        return { company_id: result.company_id, resumed: Boolean(result.resumed), country_updated: Boolean(result.country_updated) };
+      },
+      async getSetupState(company_id) {
+        const [coa, tax, pm, units, wh] = await Promise.all([
+          client.from('chart_of_accounts').select('*').eq('company_id', company_id),
+          client.from('tax_rates').select('id', { count: 'exact', head: true }).eq('company_id', company_id).not('coa_output_account_id', 'is', null),
+          client.from('payment_methods').select('name').eq('company_id', company_id),
+          client.from('units_of_measure').select('code').eq('company_id', company_id),
+          client.from('warehouses').select('id', { count: 'exact', head: true }).eq('company_id', company_id),
+        ]);
+        for (const r of [coa, tax, pm, units, wh]) assertNoError(r.error, 'onboarding.getSetupState');
+        return {
+          coa: (coa.data ?? []) as CoaRow[],
+          linked_tax_rates: tax.count ?? 0,
+          payment_method_names: (pm.data ?? []).map((r) => r.name),
+          unit_codes: (units.data ?? []).map((r) => r.code),
+          warehouses: wh.count ?? 0,
+        };
       },
       async insertCoaBatch(rows: CoaInsert[]): Promise<CoaRow[]> {
         const { data, error } = await client.from('chart_of_accounts').insert(rows).select();

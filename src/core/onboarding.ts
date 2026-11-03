@@ -69,16 +69,25 @@ export async function runOnboarding(
     tax_id: wizard.tax_id,
     full_name: wizard.full_name,
   };
-  const { company_id } = await adapter.onboarding.createCompanyAndProfile(rpcInput);
+  const { company_id, resumed } = await adapter.onboarding.createCompanyAndProfile(rpcInput);
+
+  // phase111 — a retry after a lost response (or a setup interrupted half-way)
+  // resumes: only the steps that never ran are done now, so nothing is
+  // seeded twice. Each step below is skipped when its rows already exist.
+  const state = resumed
+    ? await adapter.onboarding.getSetupState(company_id)
+    : { coa: [], linked_tax_rates: 0, payment_method_names: [], unit_codes: [], warehouses: 0 };
 
   // B — Seed foundational data (anon key, RLS now functional)
-  const coa_map = await seedCOA(company_id, wizard.country_code, adapter);
-  await seedTaxRates(company_id, wizard.country_code, coa_map, adapter);
-  await seedPaymentMethods(company_id, adapter);
-  await seedUnits(company_id, adapter);
+  const coa_map = state.coa.length > 0
+    ? Object.fromEntries(state.coa.map((r) => [r.code, r.id]))
+    : await seedCOA(company_id, wizard.country_code, adapter);
+  if (state.linked_tax_rates === 0) await seedTaxRates(company_id, wizard.country_code, coa_map, adapter);
+  await seedPaymentMethods(company_id, adapter, state.payment_method_names);
+  await seedUnits(company_id, adapter, state.unit_codes);
 
   // C — Create first warehouse
-  await adapter.onboarding.insertWarehouse({
+  if (state.warehouses === 0) await adapter.onboarding.insertWarehouse({
     company_id,
     name: wizard.warehouse_name,
     name_ar: wizard.warehouse_name_ar,

@@ -213,7 +213,10 @@
     "finish": "Finish setup",
     "step_of": "Step {{current}} of {{total}}",
     "error": {
-      "generic": "Setup failed. Please try again."
+      "generic": "Setup failed. Please try again.",
+      "account_not_found": "This sign-in belongs to an account that no longer exists, so nothing was created. You've been signed out — sign in again with your new account to continue.",
+      "full_name_required": "We couldn't find your name on your account. Sign out, then register again with your first and last name.",
+      "network": "Connection lost while saving. Your setup is safe — press Finish Setup again to continue where it stopped."
     },
     "step1": {
       "title": "Company basics",

@@ -204,6 +204,26 @@ export default function SetupWizardPage() {
       navigate('/dashboard', { replace: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
+      // phase111 — the session belongs to an Auth account that was deleted:
+      // nothing was created. Sign out so the next sign-in gets a fresh session.
+      if (msg.includes('account_not_found')) {
+        setError(t('wizard.error.account_not_found'));
+        setSubmitting(false);
+        await getAdapter().auth.signOut().catch(() => undefined); // already invalid; the guard then shows sign-in
+        return;
+      }
+      if (msg.includes('full_name_required')) {
+        setError(t('wizard.error.full_name_required'));
+        setSubmitting(false);
+        return;
+      }
+      // A lost network response: the server may or may not have saved. Retrying
+      // is safe since phase111 (it resumes instead of creating a second company).
+      if (/failed to fetch|network|load failed/i.test(msg)) {
+        setError(t('wizard.error.network'));
+        setSubmitting(false);
+        return;
+      }
       if (msg.toLowerCase().includes('already onboarded')) {
         try {
           const adapter = getAdapter();

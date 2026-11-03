@@ -322,8 +322,23 @@ export interface OnboardingRpcInput {
   full_name: string;
 }
 
+/** What a previous, interrupted onboarding already created (phase111 resume). */
+export interface OnboardingSetupState {
+  coa: CoaRow[];
+  /** Tax rates seeded by onboarding (linked to COA accounts), not the trigger defaults. */
+  linked_tax_rates: number;
+  payment_method_names: string[];
+  unit_codes: string[];
+  warehouses: number;
+}
+
 export interface OnboardingAPI {
-  createCompanyAndProfile(input: OnboardingRpcInput): Promise<{ company_id: string }>;
+  /**
+   * phase111: `resumed` is true when this user's company already exists (a
+   * retry after a lost response); the caller then finishes the missing setup.
+   */
+  createCompanyAndProfile(input: OnboardingRpcInput): Promise<{ company_id: string; resumed: boolean; country_updated: boolean }>;
+  getSetupState(company_id: string): Promise<OnboardingSetupState>;
   insertCoaBatch(rows: CoaInsert[]): Promise<CoaRow[]>;
   insertTaxRate(row: TaxRateInsert): Promise<void>;
   insertPaymentMethod(row: PaymentMethodInsert): Promise<void>;

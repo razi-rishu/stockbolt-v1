@@ -87,6 +87,7 @@ export function createSelfHostedAdapter(): DataAdapter {
     },
     onboarding: {
       createCompanyAndProfile: () => notImplemented('onboarding.createCompanyAndProfile'),
+      getSetupState: () => notImplemented('onboarding.getSetupState'),
       insertCoaBatch: () => notImplemented('onboarding.insertCoaBatch'),
       insertTaxRate: () => notImplemented('onboarding.insertTaxRate'),
       insertPaymentMethod: () => notImplemented('onboarding.insertPaymentMethod'),

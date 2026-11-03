@@ -11,8 +11,10 @@ const PAYMENT_METHODS = [
 export async function seedPaymentMethods(
   company_id: string,
   adapter: DataAdapter,
+  existing_names: string[] = [],
 ): Promise<void> {
-  for (const pm of PAYMENT_METHODS) {
+  // A resumed onboarding may have inserted some already (one row per request).
+  for (const pm of PAYMENT_METHODS.filter((p) => !existing_names.includes(p.name))) {
     await adapter.onboarding.insertPaymentMethod({
       company_id,
       name: pm.name,

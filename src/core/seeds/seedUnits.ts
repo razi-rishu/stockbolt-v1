@@ -9,8 +9,9 @@ const UNITS = [
 ] as const;
 
 /** Seeds default units of measure. Per Doc 5 Phase 1 backend logic. */
-export async function seedUnits(company_id: string, adapter: DataAdapter): Promise<void> {
-  for (const u of UNITS) {
+export async function seedUnits(company_id: string, adapter: DataAdapter, existing_codes: string[] = []): Promise<void> {
+  // A resumed onboarding may have inserted some already (one row per request).
+  for (const u of UNITS.filter((x) => !existing_codes.includes(x.code))) {
     await adapter.onboarding.insertUnit({
       company_id,
       code: u.code,
