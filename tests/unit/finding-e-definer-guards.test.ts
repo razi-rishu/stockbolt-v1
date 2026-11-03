@@ -136,7 +136,7 @@ const PHASE109_GUARDED = [
 /** Called only by the Edge Function with the service role key. */
 const SERVICE_ROLE_ONLY = ['api_current_stock', 'company_has_api_access'] as const;
 /** Called only by the companies INSERT trigger; clients hold no EXECUTE. */
-const TRIGGER_ONLY = ['seed_default_tax_rates'] as const;
+const TRIGGER_ONLY = ['seed_default_tax_rates', 'seed_default_tds_sections'] as const; // phase113: TDS sections for India companies
 /** Guarded by its own admin-of-this-company check. */
 const OWN_ADMIN_CHECK = ['reset_company_data'] as const;
 
