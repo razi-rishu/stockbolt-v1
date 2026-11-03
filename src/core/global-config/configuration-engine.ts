@@ -248,3 +248,33 @@ export function toStoredConfiguration(config: GlobalConfiguration): StoredConfig
     enabled_modules: config.modules,
   };
 }
+
+/** Wizard state rebuilt from a configuration (saved, or the legacy fallback). */
+export interface WizardChoices {
+  activity_keys: string[];
+  primary_activity_key: string;
+  enable: ModuleKey[];
+  disable: ModuleKey[];
+}
+
+/**
+ * The wizard's starting choices for `config`. Modules the country pack doesn't
+ * allow are left out (a legacy UAE company can open TDS today, but TDS is
+ * India-only), so the start is always a valid configuration. droppedModules()
+ * tells the user what saving would turn off.
+ */
+export function choicesFrom(config: GlobalConfiguration): WizardChoices {
+  const pack = getCountryPack(config.country.code);
+  const allowed = config.modules.filter((k) => countryAllowsModule(pack, k, getModule(k).countries));
+  return {
+    activity_keys: [...config.activity_keys],
+    primary_activity_key: config.primary_activity_key,
+    enable: allowed,
+    disable: MODULE_KEYS.filter((k) => !allowed.includes(k)),
+  };
+}
+
+/** Modules on today that `next` would turn off. The Review step shows them before saving. */
+export function droppedModules(current: GlobalConfiguration, next: GlobalConfiguration): ModuleKey[] {
+  return current.modules.filter((k) => !next.modules.includes(k));
+}

@@ -41,6 +41,10 @@ const DesignSystemPage   = lazy(() => import('@/modules/design-system/index'));
 const GlobalConfigPreviewPage = import.meta.env.DEV
   ? lazy(() => import('@/modules/onboarding/global-config/global-config-preview'))
   : null;
+// Global v1 — dev-only seven-step business configuration wizard (needs a signed-in company).
+const GlobalSetupWizardPage = import.meta.env.DEV
+  ? lazy(() => import('@/modules/onboarding/global-config/global-setup-wizard'))
+  : null;
 const SignatureTemplateGalleryPage = lazy(() => import('@/modules/print/_signature/gallery'));
 const SettingsHubPage    = lazy(() => import('@/modules/settings/index'));
 const SettingsLayout     = lazy(() => import('@/modules/settings/_layout'));
@@ -277,6 +281,7 @@ function AppRoutes() {
             <Route element={<WithAppLayout />}>
               <Route path="/dashboard"                element={<DashboardPage />} />
               <Route path="/design-system"            element={<DesignSystemPage />} />
+              {GlobalSetupWizardPage && <Route path="/dev/global-setup" element={<GlobalSetupWizardPage />} />}
               <Route path="/print-templates"          element={<SignatureTemplateGalleryPage />} />
 
               {/* Settings — two-pane layout with a pinned left nav rail */}

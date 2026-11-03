@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ACTIVITY_COUNT, BUSINESS_ACTIVITIES, COUNTRY_PACKS, INDUSTRY_FAMILIES, MODULES, MODULE_KEYS, WIZARD_STEPS,
-  TAXONOMY_VERSION, activitiesOf, buildConfiguration, dependencyClosure, effectiveConfiguration, getCountryPack, legacyConfiguration, toStoredConfiguration,
+  TAXONOMY_VERSION, activitiesOf, choicesFrom, droppedModules, buildConfiguration, dependencyClosure, effectiveConfiguration, getCountryPack, legacyConfiguration, toStoredConfiguration,
   recommendModules, resolveModules, validateActivities,
 } from './index';
 
@@ -250,5 +250,25 @@ describe('stored configuration (draft global01)', () => {
 
   it('refuses to save an invalid configuration', () => {
     expect(() => toStoredConfiguration(buildConfiguration({ country_code: 'GB', activities: { activity_keys: ['consulting'] } }))).toThrow(/country_not_activatable/);
+  });
+});
+
+describe('wizard choices', () => {
+  it('a legacy company opens the wizard with exactly what it has today', () => {
+    const legacy = effectiveConfiguration(null, { country_code: 'AE', projects_enabled: false });
+    const ch = choicesFrom(legacy);
+    const rebuilt = buildConfiguration({ country_code: 'AE', activities: { activity_keys: ch.activity_keys, primary_activity_key: ch.primary_activity_key }, modules: { enable: ch.enable, disable: ch.disable } });
+    expect(rebuilt.valid).toBe(true);
+    expect(rebuilt.modules).not.toContain('projects');
+    // Everything stays except the India-only TDS screen, and the wizard says so.
+    expect(droppedModules(legacy, rebuilt)).toEqual(['tds']);
+  });
+
+  it('an India legacy company keeps TDS too: nothing is dropped', () => {
+    const legacy = effectiveConfiguration(null, { country_code: 'IN', projects_enabled: true });
+    const ch = choicesFrom(legacy);
+    const rebuilt = buildConfiguration({ country_code: 'IN', activities: { activity_keys: ch.activity_keys, primary_activity_key: ch.primary_activity_key }, modules: { enable: ch.enable, disable: ch.disable } });
+    expect(droppedModules(legacy, rebuilt)).toEqual([]);
+    expect(rebuilt.valid).toBe(true);
   });
 });
