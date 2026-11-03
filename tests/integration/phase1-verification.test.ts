@@ -143,14 +143,17 @@ describe('Phase 1 — Onboarding Verification', () => {
     expect(data!.company_id).toBe(testCompanyId);
   });
 
-  it('chart_of_accounts: 32 system accounts for UAE', async () => {
+  // seedCOA.ts: 58 accounts, 7 of them India-only (GST 1510-1530/2210-2230, TDS 2320),
+  // so a UAE company gets 51. The 32 of Phase 1 grew with approved later phases
+  // (fixed assets, amortization, opening balances, payroll).
+  it('chart_of_accounts: 51 system accounts for UAE', async () => {
     const { data } = await adminClient
       .from('chart_of_accounts')
       .select('code')
       .eq('company_id', testCompanyId!)
       .eq('is_system', true);
     expect(data).toBeTruthy();
-    expect(data!.length).toBe(32);
+    expect(data!.length).toBe(51);
     const codes = data!.map((r) => r.code);
     // Key accounts present
     expect(codes).toContain('1100'); // Cash in Hand
@@ -163,8 +166,8 @@ describe('Phase 1 — Onboarding Verification', () => {
     // India GST accounts must NOT be present for UAE
     expect(codes).not.toContain('1510');
     expect(codes).not.toContain('2210');
-    // Salaries (v2-deferred) must NOT be present
-    expect(codes).not.toContain('6100');
+    // Salaries: payroll moved into v1 (AGENTS.md section 6, amended 2026-06-13), so 6100 is seeded
+    expect(codes).toContain('6100');
   });
 
   it('warehouses: 1 row, is_default=true', async () => {
@@ -209,15 +212,21 @@ describe('Phase 1 — Onboarding Verification', () => {
     expect(codes).toEqual(['BOX', 'KG', 'LITRE', 'PCS', 'SET']);
   });
 
-  it('bank_accounts: 1 row linked to COA 1110 (Bank Account Main)', async () => {
+  // Phase 14.13h (f912fb7) removed the "first bank account" onboarding step: the
+  // operator adds bank accounts through the chart of accounts afterwards. So
+  // onboarding creates none, but the 1110 bank GL account they hang off exists.
+  it('bank_accounts: none created by onboarding; COA 1110 is ready for one', async () => {
     const { data } = await adminClient
       .from('bank_accounts')
-      .select('*, chart_of_accounts!bank_accounts_coa_account_id_fkey(code)')
+      .select('id')
       .eq('company_id', testCompanyId!);
-    expect(data!.length).toBe(1);
-    const coa = data![0].chart_of_accounts as { code: string } | null;
-    expect(coa?.code).toBe('1110');
-    expect(data![0].is_default).toBe(true);
-    expect(data![0].account_type).toBe('bank');
+    expect(data!.length).toBe(0);
+    const { data: coa } = await adminClient
+      .from('chart_of_accounts')
+      .select('code, type')
+      .eq('company_id', testCompanyId!)
+      .eq('code', '1110')
+      .single();
+    expect(coa?.type).toBe('asset');
   });
 });
