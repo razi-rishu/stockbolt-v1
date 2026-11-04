@@ -39,6 +39,7 @@
  *   D7  flush_stranded_deferred_cogs dry-run reports a plan and posts nothing
  *   D8  the repair posts once and is idempotent on a second run
  *   D9  (phase64) the flush costs the sale row, so the average is not inflated
+ *       (D5 also covers phase115: two partial receipts together flush the row)
  *   D10 (phase64) the subledger repair backfills without touching the GL
  *
  * D9 is the one D1–D8 could not catch: those assert the GENERAL LEDGER, and the
@@ -212,7 +213,8 @@ async function buy(
     const { data: acct } = await (admin.from('chart_of_accounts') as any)
       .select('id').eq('company_id', s.companyId).eq('code', landed.credit_account_code).single();
     landedCosts = [{
-      bill_id: '', label: landed.label, amount: landed.amount,
+      // company_id is required (RLS checks it), as the bill editor sends it.
+      company_id: s.companyId, bill_id: '', label: landed.label, amount: landed.amount,
       credit_account_id: acct.id, contact_id: null, sort_order: 0,
     }];
   }
@@ -444,40 +446,46 @@ describe('Phase 63/G3 — flush_stranded_deferred_cogs repairs stranded rows', (
   }, 60_000);
 
   it('D8: the repair posts once, clears the drift, and is idempotent', async () => {
-    const pid = await makeProduct(s!);
-    const before1300 = await glNet(s!.companyId, '1300');
-    const before5100 = await glNet(s!.companyId, '5100');
+    // Its own tenant: the repair is company-wide, and D7 deliberately leaves a
+    // stranded row behind (dry run only). Sharing D7's tenant made this test
+    // repair that row too and count its 27.92 against D8's own deltas.
+    const own = await createScratch();
+    try {
+    const pid = await makeProduct(own);
+    const before1300 = await glNet(own.companyId, '1300');
+    const before5100 = await glNet(own.companyId, '5100');
 
-    await sell(s!, pid, 2, 400, '2025-10-01');
-    await buy(s!, pid, 2, 163.10, '2025-10-02');
-    await strand(s!.companyId, pid);
+    await sell(own, pid, 2, 400, '2025-10-01');
+    await buy(own, pid, 2, 163.10, '2025-10-02');
+    await strand(own.companyId, pid);
 
     // Stranded: 1300 holds 326.20 with no stock behind it, COGS is 0.
-    expect(round2((await glNet(s!.companyId, '1300')) - before1300)).toBeCloseTo(326.20, 2);
-    expect(round2((await glNet(s!.companyId, '5100')) - before5100)).toBeCloseTo(0, 2);
+    expect(round2((await glNet(own.companyId, '1300')) - before1300)).toBeCloseTo(326.20, 2);
+    expect(round2((await glNet(own.companyId, '5100')) - before5100)).toBeCloseTo(0, 2);
 
-    const { data, error } = await s!.userClient.rpc(
+    const { data, error } = await own.userClient.rpc(
       'flush_stranded_deferred_cogs' as any, { p_dry_run: false } as any);
     expect(error, `repair error: ${error?.message}`).toBeFalsy();
     expect((data as any).entries_posted).toBeGreaterThanOrEqual(1);
 
     // Repaired: stock is zero, so 1300 is back to base and COGS carries it.
-    expect(round2((await glNet(s!.companyId, '1300')) - before1300)).toBeCloseTo(0, 2);
-    expect(round2((await glNet(s!.companyId, '5100')) - before5100)).toBeCloseTo(326.20, 2);
+    expect(round2((await glNet(own.companyId, '1300')) - before1300)).toBeCloseTo(0, 2);
+    expect(round2((await glNet(own.companyId, '5100')) - before5100)).toBeCloseTo(326.20, 2);
 
-    const q = await queueRows(s!.companyId, pid);
+    const q = await queueRows(own.companyId, pid);
     expect(q[0].status).toBe('flushed');
     expect(Number(q[0].flush_unit_cost)).toBeCloseTo(163.10, 2);
 
     // Second run must find nothing left to do.
-    const after5100 = await glNet(s!.companyId, '5100');
-    const { data: again } = await s!.userClient.rpc(
+    const after5100 = await glNet(own.companyId, '5100');
+    const { data: again } = await own.userClient.rpc(
       'flush_stranded_deferred_cogs' as any, { p_dry_run: false } as any);
     expect((again as any).entries_posted, 'idempotent').toBe(0);
-    expect(await glNet(s!.companyId, '5100'), 'no double post').toBeCloseTo(after5100, 2);
+    expect(await glNet(own.companyId, '5100'), 'no double post').toBeCloseTo(after5100, 2);
 
-    await assertInvariants(s!.companyId, '2025-10-02');
-  }, 60_000);
+    await assertInvariants(own.companyId, '2025-10-02');
+    } finally { await destroyScratch(own); }
+  }, 90_000);
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -520,24 +528,29 @@ describe('Phase 64/G4 — flush writes the cost back to the subledger', () => {
 
   it('D9: after a flush the sale row is costed and the average is not inflated', async () => {
     // The IMBD123 shape: sell 1 with no stock, then receive 20 @ 200 and
-    // 10 @ 250. Correct end state is 29 on hand at 216.88 (6289.47 / 29),
-    // NOT 224.14 (6500 / 29) — the latter is what an uncosted sale row gives.
+    // 10 @ 250. Per Doc 3 A1 the backorder is costed at the new MAC when the
+    // goods arrive: purchase cost / purchase quantity = 4000 / 20 = 200, the
+    // arriving cost phase63 posts (D2-D4 assert the same rule). Correct end
+    // state: 29 on hand at 217.24 (6300 / 29), NOT 224.14 (6500 / 29), which
+    // is what an uncosted sale row gives. (These expectations once used
+    // 210.53 = 4000 / 19 and 216.88: the old average that counted the sale,
+    // taken from production's pre-phase63 flush, not a correct flush.)
     const pid = await makeProduct(s!);
     await sell(s!, pid, 1, 400, '2025-11-01');
     await buy(s!, pid, 20, 200, '2025-11-02');
     await buy(s!, pid, 10, 250, '2025-11-03');
 
     const sr = await saleRow(s!.companyId, pid);
-    expect(Number(sr.unit_cost), 'sale row was written back').toBeCloseTo(210.53, 2);
-    expect(Number(sr.total_cost)).toBeCloseTo(210.53, 2);
+    expect(Number(sr.unit_cost), 'sale row was written back').toBeCloseTo(200, 2);
+    expect(Number(sr.total_cost)).toBeCloseTo(200, 2);
 
     const last = await latestRow(s!.companyId, pid);
     expect(Number(last.running_qty)).toBeCloseTo(29, 3);
-    expect(Number(last.running_avg_cost), 'average excludes the relieved sale').toBeCloseTo(216.88, 2);
+    expect(Number(last.running_avg_cost), 'average excludes the relieved sale').toBeCloseTo(217.24, 2);
 
     // The whole point: subledger and GL must now agree (within rounding).
     const gl = await glNet(s!.companyId, '1300');
-    expect(gl).toBeCloseTo(6289.47, 2);
+    expect(gl).toBeCloseTo(6300, 2);   // 6500 bought − 200 relieved
     expect(Math.abs(await subledgerValue(s!.companyId) - gl), 'subledger ties to GL').toBeLessThan(0.10);
 
     await assertInvariants(s!.companyId, '2025-11-03');
@@ -557,7 +570,10 @@ describe('Phase 64/G4 — flush writes the cost back to the subledger', () => {
 
     const glBefore = await glNet(s!.companyId, '1300');
     const inflated = await latestRow(s!.companyId, pid);
-    expect(Number(inflated.running_avg_cost), 'average is inflated while uncosted').toBeCloseTo(50, 2);
+    // Uncosted, the sale relieves nothing: 500 of cost over 8 units = 62.5,
+    // not the true 50 ((500 − 2 × 50) / 8). (This once expected 50, the
+    // corrected value, under a label that says inflated.)
+    expect(Number(inflated.running_avg_cost), 'average is inflated while uncosted').toBeCloseTo(62.5, 2);
     expect(Math.abs(await subledgerValue(s!.companyId) - glBefore), 'subledger drifts').toBeGreaterThan(50);
 
     // Dry run reports but changes nothing.
