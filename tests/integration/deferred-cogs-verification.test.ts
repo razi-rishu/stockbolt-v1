@@ -41,6 +41,8 @@
  *   D9  (phase64) the flush costs the sale row, so the average is not inflated
  *       (D5 also covers phase115: two partial receipts together flush the row)
  *   D10 (phase64) the subledger repair backfills without touching the GL
+ *   D6b (phase116) a landed cost cannot credit AP 2100
+ *   D11 (phase117) the repair covers a backorder stranded across two receipts
  *
  * D9 is the one D1–D8 could not catch: those assert the GENERAL LEDGER, and the
  * ledger was already right. The defect lived in the subledger — an uncosted sale
@@ -258,6 +260,10 @@ async function assertInvariants(companyId: string, asOf: string): Promise<void> 
   expect(failed, `failing invariants @${asOf}: ${JSON.stringify(failed)}`).toHaveLength(0);
 }
 
+// RPCs missing from the generated types, and their untyped results (D11).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Untyped = any;
+
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -386,17 +392,31 @@ describe('Phase 63/G2 — over-supply, partial supply and landed cost', () => {
     const before5100 = await glNet(s!.companyId, '5100');
 
     await sell(s!, pid, 10, 100, '2025-08-01');
-    // 10 @ 20 = 200 goods + 50 freight → effective unit cost 25.
+    // 10 @ 20 = 200 goods + 50 freight → effective unit cost 25. The freight
+    // is still owed to the forwarder, so it accrues to 2300 Accrued Expenses:
+    // phase116 refuses AP 2100 for a landed cost (no bill would carry it).
     await buy(s!, pid, 10, 20, '2025-08-02', {
-      label: 'Freight', amount: 50, credit_account_code: '2100',
+      label: 'Freight', amount: 50, credit_account_code: '2300',
     });
 
     const q = await queueRows(s!.companyId, pid);
     expect(q[0].status).toBe('flushed');
     expect(Number(q[0].flush_unit_cost), 'landed cost included').toBeCloseTo(25, 2);
     expect(round2((await glNet(s!.companyId, '5100')) - before5100)).toBeCloseTo(250, 2);
+    // the freight is owed in 2300, and the supplier is owed only its own 200
+    expect(-(await glNet(s!.companyId, '2300'))).toBeCloseTo(50, 2);
 
     await assertInvariants(s!.companyId, '2025-08-02');
+  }, 60_000);
+
+  it('D6b: a landed cost cannot credit Accounts Payable 2100 (phase116)', async () => {
+    const pid = await makeProduct(s!);
+    const before2100 = await glNet(s!.companyId, '2100');
+    await expect(buy(s!, pid, 10, 20, '2025-08-03', {
+      label: 'Freight', amount: 50, credit_account_code: '2100',
+    })).rejects.toThrow(/cannot credit Accounts Payable 2100/i);
+    expect(await glNet(s!.companyId, '2100'), 'nothing posted to AP').toBeCloseTo(before2100, 2);
+    await assertInvariants(s!.companyId, '2025-08-03');
   }, 60_000);
 });
 
@@ -484,6 +504,42 @@ describe('Phase 63/G3 — flush_stranded_deferred_cogs repairs stranded rows', (
     expect(await glNet(own.companyId, '5100'), 'no double post').toBeCloseTo(after5100, 2);
 
     await assertInvariants(own.companyId, '2025-10-02');
+    } finally { await destroyScratch(own); }
+  }, 90_000);
+
+  it('D11: the repair covers a backorder stranded across two receipts (phase117)', async () => {
+    const own = await createScratch();
+    try {
+      const pid = await makeProduct(own);
+      const before1300 = await glNet(own.companyId, '1300');
+      const before5100 = await glNet(own.companyId, '5100');
+
+      // sell 10, receive 3 then 7: no single bill covers the sale
+      await sell(own, pid, 10, 100, '2025-10-10');
+      await buy(own, pid, 3, 30, '2025-10-11');
+      await buy(own, pid, 7, 30, '2025-10-12');
+      await strand(own.companyId, pid);
+      expect(round2((await glNet(own.companyId, '1300')) - before1300), 'stranded in 1300').toBeCloseTo(300, 2);
+
+      const { data: dry } = await own.userClient.rpc('flush_stranded_deferred_cogs' as Untyped, {} as Untyped);
+      expect(Number((dry as Untyped).total), 'plan totals 10 × 30').toBeCloseTo(300, 2);
+      expect((dry as Untyped).entries_posted).toBe(0);
+
+      const { data, error } = await own.userClient.rpc(
+        'flush_stranded_deferred_cogs' as Untyped, { p_dry_run: false } as Untyped);
+      expect(error, `repair error: ${error?.message}`).toBeFalsy();
+      expect((data as Untyped).entries_posted).toBeGreaterThanOrEqual(1);
+
+      expect(round2((await glNet(own.companyId, '1300')) - before1300), 'stock is zero → 1300 back to base').toBeCloseTo(0, 2);
+      expect(round2((await glNet(own.companyId, '5100')) - before5100), 'COGS 10 × 30').toBeCloseTo(300, 2);
+      const q = await queueRows(own.companyId, pid);
+      expect(q[0].status).toBe('flushed');
+      expect(Number(q[0].flush_unit_cost)).toBeCloseTo(30, 2);
+
+      const { data: again } = await own.userClient.rpc(
+        'flush_stranded_deferred_cogs' as Untyped, { p_dry_run: false } as Untyped);
+      expect((again as Untyped).entries_posted, 'idempotent').toBe(0);
+      await assertInvariants(own.companyId, '2025-10-12');
     } finally { await destroyScratch(own); }
   }, 90_000);
 });
