@@ -4,6 +4,7 @@ import { useAuthInit } from '@/hooks/use-auth-init';
 import { useAuthStore } from '@/store/auth';
 import { RequireAuth } from '@/components/require-auth';
 import { RequireOnboarded } from '@/components/require-onboarded';
+import { ModuleGate } from '@/components/module-gate';
 import { KeyboardShortcutProvider } from '@/keyboard/shortcut-registry';
 import { RequireNotOnboarded } from '@/components/require-not-onboarded';
 import { RequirePermission } from '@/components/require-permission';
@@ -215,7 +216,8 @@ function Loading() {
 function WithAppLayout() {
   return (
     <KeyboardShortcutProvider>
-      <AppLayout><Outlet /></AppLayout>
+      {/* Global v1 — routes into a disabled module are refused here. */}
+      <AppLayout><ModuleGate><Outlet /></ModuleGate></AppLayout>
     </KeyboardShortcutProvider>
   );
 }

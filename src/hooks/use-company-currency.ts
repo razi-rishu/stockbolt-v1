@@ -25,6 +25,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import type { Company } from '@/data/adapter';
+import { useEnabledModules } from '@/hooks/use-enabled-modules';
 
 const FALLBACK_CURRENCY = 'AED';
 
@@ -84,7 +85,11 @@ export function useCompanyRoundingStep(): number {
  */
 export function useProjectsEnabled(): boolean {
   const company = useCompany();
-  return Boolean((company as { projects_enabled?: boolean } | null)?.projects_enabled);
+  // Global v1 — a saved configuration can switch Projects off too. With no
+  // saved configuration the module list follows this same flag, so legacy
+  // companies see no change.
+  const { isEnabled } = useEnabledModules();
+  return Boolean((company as { projects_enabled?: boolean } | null)?.projects_enabled) && isEnabled('projects');
 }
 
 /**

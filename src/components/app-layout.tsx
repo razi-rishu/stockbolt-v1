@@ -18,6 +18,8 @@ import { useAuthStore } from '@/store/auth';
 import { getAdapter } from '@/data/index';
 import { LanguageToggle } from '@/components/language-toggle';
 import { hasPerm, type Permission } from '@/lib/permissions';
+import { navLinkEnabled } from '@/core/global-config';
+import { useEnabledModules } from '@/hooks/use-enabled-modules';
 import { CompanyAvatar } from '@/components/company-avatar';
 import { useShortcutContext } from '@/keyboard/shortcut-registry';
 import { NotificationsBell } from '@/components/notifications-bell';
@@ -639,16 +641,25 @@ export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
   const currency = useCompanyCurrency();
 
+  // Global v1 — links into a module the company has switched off are hidden;
+  // ModuleGate refuses the same URLs. A legacy company has every module on.
+  const { modules } = useEnabledModules();
+  const linkOn = (to: string) => navLinkEnabled(to, modules);
+
   // Phase 22 — hide nav sections/groups the role can't read (admin sees all).
   const sections = useNavSections(t)
     .filter((s) => !s.perm || hasPerm(role, permissions, s.perm))
+    .filter((s) => !s.to || linkOn(s.to))
     .map((s) => s.groups
-      ? { ...s, groups: s.groups.filter((g) => !g.perm || hasPerm(role, permissions, g.perm)) }
+      ? { ...s, groups: s.groups
+          .filter((g) => !g.perm || hasPerm(role, permissions, g.perm))
+          .map((g) => ({ ...g, items: g.items.filter((it) => linkOn(it.to)) }))
+          .filter((g) => g.items.length > 0) }
       : s)
     .filter((s) => s.to || (s.groups != null && s.groups.length > 0));
 
-  const canSales = hasPerm(role, permissions, 'sales.read');
-  const canPurchasing = hasPerm(role, permissions, 'purchasing.read');
+  const canSales = hasPerm(role, permissions, 'sales.read') && linkOn('/sales/invoices');
+  const canPurchasing = hasPerm(role, permissions, 'purchasing.read') && linkOn('/purchasing/bills');
 
   const { data: company } = useQuery({
     queryKey: ['company', company_id],
@@ -678,7 +689,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         companySub={companySub}
         email={email}
         canSales={canSales}
-        canInventory={hasPerm(role, permissions, 'inventory.read')}
+        canInventory={hasPerm(role, permissions, 'inventory.read') && linkOn('/products')}
         onSignOut={handleSignOut}
       >
         {children}

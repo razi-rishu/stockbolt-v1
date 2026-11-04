@@ -1937,6 +1937,24 @@
     "dismiss": "Dismiss"
   },
   "global_config": {
+    "gate": {
+      "title": "This module is turned off",
+      "body": "{{module}} is not enabled for your company. Records already created stay safe and readable; an administrator can turn the module on in the business configuration.",
+      "back": "Back to dashboard",
+      "loading": "Loading…"
+    },
+    "onboarding": {
+      "activities_title": "Business activities",
+      "activities_heading": "What does your\nbusiness do?",
+      "activities_sub": "Pick every activity you run. We recommend modules from them.",
+      "modules_title": "Modules",
+      "modules_heading": "Choose your\nmodules",
+      "modules_sub": "Recommended for your activities and country. Switch any optional module on or off.",
+      "need_activity": "Choose at least one business activity.",
+      "invalid": "This configuration can't be activated yet. Review the issues on the Modules step.",
+      "review_activities": "Business activities",
+      "review_modules": "Modules"
+    },
     "title": "Global setup — configuration engine preview",
     "subtitle": "Development preview. Nothing here is saved; it shows what a new organization would be configured with.",
     "country": "Country",

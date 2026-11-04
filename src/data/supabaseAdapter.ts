@@ -727,6 +727,9 @@ export function createSupabaseAdapter(
       async get(company_id): Promise<CompanyConfigurationRow | null> {
         const { data, error } = await (client as any).from('company_configurations').select('*')
           .eq('company_id', company_id).maybeSingle();
+        // A database without global01 has no configurations: every company
+        // is then a legacy company (legacyConfiguration), exactly as today.
+        if (error && isMissingRelation(error)) return null;
         assertNoError(error, 'companyConfiguration.get');
         return (data ?? null) as CompanyConfigurationRow | null;
       },

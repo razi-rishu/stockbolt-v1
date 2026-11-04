@@ -11,6 +11,7 @@ import { runOnboarding, type WizardData } from '@/core/onboarding';
 import { LanguageToggle } from '@/components/language-toggle';
 import { BrandLogo } from '@/components/brand-logo';
 import { isAppShell } from '@/lib/platform';
+import { GLOBAL_ONBOARDING, useGlobalOnboarding } from './global-config/onboarding-steps';
 
 // ── Country / currency data ────────────────────────────────────────────────
 const COUNTRIES = [
@@ -45,7 +46,13 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
-const TOTAL_STEPS = 3;
+// Global v1 — with VITE_GLOBAL_ONBOARDING on, business activities and modules
+// come between country and review. Off (the default), the three base steps.
+type StepKey = 'basics' | 'country' | 'activities' | 'modules' | 'review';
+const STEP_KEYS: readonly StepKey[] = GLOBAL_ONBOARDING
+  ? ['basics', 'country', 'activities', 'modules', 'review']
+  : ['basics', 'country', 'review'];
+const TOTAL_STEPS = STEP_KEYS.length;
 
 function fiscalYearMonthFor(country_code: string): string {
   return country_code === 'IN' ? '04' : '01';
@@ -74,7 +81,8 @@ function fyRangeLabel(month: string): string {
 }
 
 // ── Step metadata used by both the sidebar and the right-panel heading ────
-const STEPS: ReadonlyArray<{ label: string; title: string; eyebrow: string; heading: string; sub: string }> = [
+type StepMeta = { label: string; title: string; eyebrow: string; heading: string; sub: string };
+const BASE_STEPS: ReadonlyArray<StepMeta> = [
   {
     label:   'Step 1',
     title:   'Company basics',
@@ -137,15 +145,29 @@ export default function SetupWizardPage() {
   const inferredCurrency =
     COUNTRIES.find((c) => c.value === country_code)?.currency ?? 'AED';
 
-  // Phase 14.14e — 3 steps; tax_id validated on step 1 so the superRefine fires.
-  const stepFields: (keyof FormValues)[][] = [
-    ['company_name'],
-    ['country_code', 'tax_id'],
-    [],
-  ];
+  const globalSetup = useGlobalOnboarding(country_code);
+  const stepKey = STEP_KEYS[step];
+  const STEPS: StepMeta[] = STEP_KEYS.map((k, i) => {
+    if (k === 'activities') return { label: `Step ${i + 1}`, title: t('global_config.onboarding.activities_title'), eyebrow: t('global_config.onboarding.activities_title'), heading: t('global_config.onboarding.activities_heading'), sub: t('global_config.onboarding.activities_sub') };
+    if (k === 'modules') return { label: `Step ${i + 1}`, title: t('global_config.onboarding.modules_title'), eyebrow: t('global_config.onboarding.modules_title'), heading: t('global_config.onboarding.modules_heading'), sub: t('global_config.onboarding.modules_sub') };
+    return { ...BASE_STEPS[k === 'basics' ? 0 : k === 'country' ? 1 : 2], label: `Step ${i + 1}` };
+  });
+
+  // Phase 14.14e — tax_id validated on the country step so the superRefine fires.
+  const stepFields: Record<StepKey, (keyof FormValues)[]> = {
+    basics: ['company_name'],
+    country: ['country_code', 'tax_id'],
+    activities: [],
+    modules: [],
+    review: [],
+  };
 
   async function goNext() {
-    const valid = await trigger(stepFields[step]);
+    const valid = await trigger(stepFields[stepKey]);
+    if (valid && stepKey === 'activities') {
+      const msg = globalSetup.activitiesError();
+      if (msg) { setError(msg); return; }
+    }
     if (valid) {
       setError('');
       setStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
@@ -174,6 +196,10 @@ export default function SetupWizardPage() {
       await goNext();
       return;
     }
+    if (GLOBAL_ONBOARDING && !globalSetup.config.valid) {
+      setError(t('global_config.onboarding.invalid'));
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
@@ -195,6 +221,8 @@ export default function SetupWizardPage() {
 
       const adapter = getAdapter();
       const { company_id } = await runOnboarding(wizard, adapter);
+      // Global v1 — only now does the company exist for the RPC to write to.
+      if (GLOBAL_ONBOARDING) await globalSetup.saveAfterCreate();
 
       const profile = await adapter.profiles.getCurrent();
       if (profile) {
@@ -311,7 +339,7 @@ export default function SetupWizardPage() {
 
         {/* RIGHT PANEL — form */}
         <div style={isPhone ? phonePanelStyle : rightPanelStyle}>
-          {isPhone ? <PhoneHeader step={step} /> : <>
+          {isPhone ? <PhoneHeader step={step} steps={STEPS} /> : <>
           {/* Top row — language toggle */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1.5rem' }}>
             <LanguageToggle />
@@ -349,7 +377,7 @@ export default function SetupWizardPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem', flex: 1, padding: isPhone ? '0 20px 1.5rem' : undefined }}>
 
               {/* ── Step 1 — Company basics ───────────────────────────── */}
-              {step === 0 && (
+              {stepKey === 'basics' && (
                 <>
                   <Field label="Company Name (English)" required error={errors.company_name?.message}>
                     <input
@@ -382,7 +410,7 @@ export default function SetupWizardPage() {
               )}
 
               {/* ── Step 2 — Country & tax ────────────────────────────── */}
-              {step === 1 && (
+              {stepKey === 'country' && (
                 <>
                   <Field label="Country" required hint={`Sets your currency (${inferredCurrency}). Change anytime in Settings → Company.`}>
                     <select
@@ -438,8 +466,12 @@ export default function SetupWizardPage() {
                 </>
               )}
 
-              {/* ── Step 3 — Review & create ──────────────────────────── */}
-              {step === 2 && (
+              {/* ── Global v1 — business activities and modules ──────── */}
+              {stepKey === 'activities' && globalSetup.activitiesStep}
+              {stepKey === 'modules' && globalSetup.modulesStep}
+
+              {/* ── Last step — Review & create ───────────────────────── */}
+              {stepKey === 'review' && (
                 <>
                   <div style={summaryBoxStyle}>
                     <SummaryRow label="Company name" value={watch('company_name') || '—'} mono={false} />
@@ -464,6 +496,12 @@ export default function SetupWizardPage() {
                       value={is_tax_registered ? (watch('tax_id') || '—') : 'No'}
                       mono={is_tax_registered}
                     />
+                    {GLOBAL_ONBOARDING && (
+                      <>
+                        <SummaryRow label={t('global_config.onboarding.review_activities')} value={globalSetup.summary.activities || '—'} mono={false} />
+                        <SummaryRow label={t('global_config.onboarding.review_modules')} value={globalSetup.summary.modules} mono={false} />
+                      </>
+                    )}
                   </div>
 
                   <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
@@ -545,7 +583,7 @@ function useIsPhone(): boolean {
 }
 
 /** Phone header: logo + language toggle, then the three steps as a segmented bar. */
-function PhoneHeader({ step }: { step: number }) {
+function PhoneHeader({ step, steps: STEPS }: { step: number; steps: StepMeta[] }) {
   return (
     <header style={{
       background: 'linear-gradient(160deg, #6c63ff 0%, #5b5bd6 100%)', color: '#fff',

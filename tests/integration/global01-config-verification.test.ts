@@ -10,7 +10,7 @@ import { loadStagingEnv } from './_env-guard';
 import { destroyTenant } from './_tenant-cleanup';
 import { createSupabaseAdapter } from '@/data/supabaseAdapter';
 import { runOnboarding } from '@/core/onboarding';
-import { buildConfiguration, effectiveConfiguration, toStoredConfiguration, MODULE_KEYS, TAXONOMY_VERSION } from '@/core/global-config';
+import { buildConfiguration, effectiveConfiguration, toStoredConfiguration, navLinkEnabled, pathAccess, MODULE_KEYS, TAXONOMY_VERSION } from '@/core/global-config';
 
 const env = loadStagingEnv();
 const opts = { auth: { autoRefreshToken: false, persistSession: false } };
@@ -53,6 +53,16 @@ describe('global01 company configuration on local staging', () => {
     expect(row).toBeNull();
     const c = effectiveConfiguration(row, { country_code: 'AE', projects_enabled: true });
     expect(c.modules).toEqual([...MODULE_KEYS]);
+  });
+
+  it('a legacy company keeps every link and route it has today', async () => {
+    const row = await createSupabaseAdapter(B.client as never).companyConfiguration.get(B.companyId);
+    const c = effectiveConfiguration(row, { country_code: 'AE', projects_enabled: true });
+    for (const p of ['/sales/invoices', '/pos', '/purchasing/bills', '/purchasing/expenses', '/payroll/runs', '/accounting/tds',
+      '/accounting/fixed-assets', '/projects', '/products/vehicles', '/settings/developer', '/reports/vat-return']) {
+      expect(navLinkEnabled(p, c.modules), p).toBe(true);
+      expect(pathAccess(p, c.modules), p).toBe('allowed');
+    }
   });
 
   it('admin saves an India configuration and reads back the same thing', async () => {
@@ -112,5 +122,29 @@ describe('global01 company configuration on local staging', () => {
     expect(badPrimary.error?.message).toMatch(/activities_ck|check constraint/i);
     const badKey = await A.client.rpc('save_company_configuration' as never, { p_taxonomy_version: TAXONOMY_VERSION, p_activity_keys: ['Drop Table'], p_primary_activity_key: 'Drop Table', p_enabled_modules: ['accounting', 'contacts', 'banking'] } as never);
     expect(badKey.error?.code).toBe('22023');
+  });
+
+  it('new-company onboarding: the configuration saved right after creation drives the gate', async () => {
+    // What setup-wizard does with VITE_GLOBAL_ONBOARDING on: complete_onboarding
+    // first, then save_company_configuration as the new owner.
+    const C = await tenant('AE', 'C');
+    const ad = createSupabaseAdapter(C.client as never);
+    expect(await ad.companyConfiguration.get(C.companyId)).toBeNull();          // legacy until saved
+    const built = buildConfiguration({ country_code: 'AE',
+      activities: { activity_keys: ['automotive_parts_trading'], primary_activity_key: 'automotive_parts_trading' },
+      modules: { disable: ['pos', 'projects', 'payroll'] } });
+    expect(built.valid).toBe(true);
+    await ad.companyConfiguration.save(toStoredConfiguration(built));
+    const c = effectiveConfiguration(await ad.companyConfiguration.get(C.companyId), { country_code: 'AE', projects_enabled: true });
+
+    expect(c.modules).not.toContain('tds');                                  // India-only, never for AE
+    for (const p of ['/pos', '/projects', '/payroll/runs', '/accounting/tds']) expect(pathAccess(p, c.modules), p).toBe('module_disabled');
+    for (const p of ['/sales/invoices', '/purchasing/bills', '/products', '/dashboard', '/reports/trial-balance', '/accounting/journal-entries'])
+      expect(pathAccess(p, c.modules), p).toBe('allowed');
+    // a record that already exists stays readable even in a disabled module
+    expect(pathAccess('/payroll/runs/0b7c6f3e-1d2a-4c5b-9e8f-7a6b5c4d3e2f', c.modules)).toBe('record_view');
+    // switching an essential module off is impossible
+    const forced = buildConfiguration({ country_code: 'AE', activities: { activity_keys: ['consulting'] }, modules: { disable: ['accounting', 'banking'] } });
+    expect(forced.modules).toEqual(expect.arrayContaining(['accounting', 'contacts', 'banking']));
   });
 });
