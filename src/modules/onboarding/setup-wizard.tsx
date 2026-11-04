@@ -497,8 +497,14 @@ export default function SetupWizardPage() {
               </button>
               )}
 
+              {/* Separate keys: without them React turns the clicked Continue
+                  button into this submit button while the click is still being
+                  handled (goNext's microtasks run before the browser's default
+                  action), so arriving on the last step created the company
+                  without the user ever pressing Create. */}
               {isLast ? (
                 <button
+                  key="create"
                   type="submit"
                   disabled={submitting}
                   style={{ ...primaryBtnStyle(submitting), ...(isPhone ? phonePrimaryExtra : {}) }}
@@ -507,6 +513,7 @@ export default function SetupWizardPage() {
                 </button>
               ) : (
                 <button
+                  key="next"
                   type="button"
                   onClick={goNext}
                   style={{ ...primaryBtnStyle(false), ...(isPhone ? phonePrimaryExtra : {}) }}
