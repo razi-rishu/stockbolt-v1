@@ -22,7 +22,7 @@ import {
 import { ActivityPicker } from './activity-picker';
 import { ModulePanel } from './module-panel';
 
-export const GLOBAL_ONBOARDING = import.meta.env.VITE_GLOBAL_ONBOARDING === 'true';
+export { GLOBAL_ONBOARDING } from '@/core/global-config/flag';
 
 export function useGlobalOnboarding(country_code: string) {
   const { t, i18n } = useTranslation();

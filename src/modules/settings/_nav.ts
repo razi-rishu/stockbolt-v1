@@ -8,6 +8,8 @@
  * exist for the Inventory / Accounting menus.
  */
 import { isAppShell } from '@/lib/platform';
+import { navLinkEnabled, type ModuleKey } from '@/core/global-config';
+import { GLOBAL_ONBOARDING } from '@/core/global-config/flag';
 
 export interface SettingsNavItem {
   to: string;
@@ -18,6 +20,8 @@ export interface SettingsNavItem {
   comingSoon?: boolean;
   /** Website only — hidden in the Android app (see visibleSettingsSections). */
   webOnly?: boolean;
+  /** Global v1 — shown only while VITE_GLOBAL_ONBOARDING is on. */
+  globalOnly?: boolean;
 }
 export interface SettingsNavSection {
   title: string;
@@ -31,6 +35,7 @@ export const SETTINGS_SECTIONS: SettingsNavSection[] = [
       { to: '/settings/company',    icon: '🏢', title: 'Company Profile',       desc: 'Name, logo, tax number, currency, fiscal year start.' },
       { to: '/settings/billing',    icon: '💳', title: 'Billing & Subscription', desc: 'Your plan, trial, payment history and billing address.', webOnly: true },
       { to: '/settings/warehouses', icon: '🏬', title: 'Warehouses & Branches',  desc: 'Storage locations and default branch for new documents.' },
+      { to: '/settings/business-configuration', icon: '🧭', title: 'Business Configuration', desc: 'Your business activities and the modules your company uses.', globalOnly: true },
     ],
   },
   {
@@ -97,9 +102,15 @@ export const SETTINGS_SECTIONS: SettingsNavSection[] = [
 /**
  * The sections to show. In the Android app, web-only items are dropped:
  * subscriptions are bought on the website (PayPal), and Google Play does not
- * allow an app to sell them through another payment system.
+ * allow an app to sell them through another payment system. Global v1: items
+ * that belong to a module the company switched off are dropped (the route is
+ * refused by ModuleGate anyway), and the Business Configuration entry only
+ * appears while the Global flag is on.
  */
-export function visibleSettingsSections(): SettingsNavSection[] {
-  if (!isAppShell()) return SETTINGS_SECTIONS;
-  return SETTINGS_SECTIONS.map((s) => ({ ...s, items: s.items.filter((it) => !it.webOnly) }));
+export function visibleSettingsSections(enabled?: readonly ModuleKey[]): SettingsNavSection[] {
+  const app = isAppShell();
+  return SETTINGS_SECTIONS
+    .map((s) => ({ ...s, items: s.items.filter((it) =>
+      !(app && it.webOnly) && !(it.globalOnly && !GLOBAL_ONBOARDING) && (!enabled || navLinkEnabled(it.to, enabled))) }))
+    .filter((s) => s.items.length > 0);
 }

@@ -1985,6 +1985,7 @@
       "costing_mac": "Moving average (v1)",
       "compliance": "Tax compliance",
       "tax_system": "Tax system",
+      "read_only": "Only users who can change settings can save the business configuration.",
       "branches_v1": "Global v1 has one legal entity per workspace. Branches, locations and team roles come in the next milestone; your current users and permissions are unchanged.",
       "modules_on": "{{count}} modules on",
       "will_turn_off": "Saving will turn off",

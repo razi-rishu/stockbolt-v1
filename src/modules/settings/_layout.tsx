@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { visibleSettingsSections } from './_nav';
+import { useEnabledModules } from '@/hooks/use-enabled-modules';
 
 /**
  * Settings two-pane layout — pinned left nav rail + content Outlet.
@@ -12,6 +13,7 @@ import { visibleSettingsSections } from './_nav';
  */
 export default function SettingsLayout() {
   const { pathname } = useLocation();
+  const { modules } = useEnabledModules();
   // The hub (/settings) shows the cards full-width; the pinned nav rail appears
   // only once you drill into a specific setting.
   if (pathname === '/settings' || pathname === '/settings/') return <Outlet />;
@@ -21,7 +23,7 @@ export default function SettingsLayout() {
       {/* Left rail */}
       <aside className="hidden lg:sticky lg:block lg:top-4 lg:max-h-[calc(100vh-5rem)] lg:w-60 lg:shrink-0 lg:overflow-y-auto lg:pr-1">
         <nav className="flex flex-col gap-5">
-          {visibleSettingsSections().map((section) => (
+          {visibleSettingsSections(modules).map((section) => (
             <div key={section.title}>
               <div className="mb-1.5 px-2.5 text-[10px] font-bold uppercase tracking-[0.08em] text-ink-tertiary">
                 {section.title}

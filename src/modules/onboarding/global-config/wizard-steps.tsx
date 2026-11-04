@@ -55,10 +55,11 @@ interface ReviewStepProps {
   saving: boolean;
   saved: boolean;
   error: string;
+  canWrite: boolean;
   onSave: () => void;
 }
 
-export function ReviewStep({ config, dropped, saving, saved, error, onSave }: ReviewStepProps) {
+export function ReviewStep({ config, dropped, saving, saved, error, canWrite, onSave }: ReviewStepProps) {
   const { t, i18n } = useTranslation();
   const name = (k: ModuleKey) => getModule(k)[i18n.language === 'ar' ? 'name_ar' : 'name'];
   return (
@@ -75,10 +76,14 @@ export function ReviewStep({ config, dropped, saving, saved, error, onSave }: Re
       )}
       {error && <p className="text-danger-500">{error}</p>}
       {saved && <p className="text-success-500" data-testid="saved">{t('global_config.wizard.saved')}</p>}
-      <button type="button" disabled={!config.valid || saving} onClick={onSave} data-testid="save"
-        className="rounded-pill bg-brand-500 px-4 py-2 text-white disabled:opacity-50">
-        {saving ? t('global_config.wizard.saving') : t('global_config.wizard.save')}
-      </button>
+      {canWrite ? (
+        <button type="button" disabled={!config.valid || saving} onClick={onSave} data-testid="save"
+          className="rounded-pill bg-brand-500 px-4 py-2 text-white disabled:opacity-50">
+          {saving ? t('global_config.wizard.saving') : t('global_config.wizard.save')}
+        </button>
+      ) : (
+        <p className="text-ink-secondary" data-testid="read-only">{t('global_config.wizard.read_only')}</p>
+      )}
     </div>
   );
 }

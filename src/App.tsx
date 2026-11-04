@@ -5,6 +5,7 @@ import { useAuthStore } from '@/store/auth';
 import { RequireAuth } from '@/components/require-auth';
 import { RequireOnboarded } from '@/components/require-onboarded';
 import { ModuleGate } from '@/components/module-gate';
+import { GLOBAL_ONBOARDING } from '@/core/global-config/flag';
 import { KeyboardShortcutProvider } from '@/keyboard/shortcut-registry';
 import { RequireNotOnboarded } from '@/components/require-not-onboarded';
 import { RequirePermission } from '@/components/require-permission';
@@ -42,8 +43,11 @@ const DesignSystemPage   = lazy(() => import('@/modules/design-system/index'));
 const GlobalConfigPreviewPage = import.meta.env.DEV
   ? lazy(() => import('@/modules/onboarding/global-config/global-config-preview'))
   : null;
-// Global v1 — dev-only seven-step business configuration wizard (needs a signed-in company).
-const GlobalSetupWizardPage = import.meta.env.DEV
+// Global v1 — the seven-step business configuration wizard for an existing
+// company: /dev/global-setup in development, and Settings → Business
+// Configuration while the Global flag is on. Neither exists in a production
+// build with the flag off.
+const GlobalSetupWizardPage = import.meta.env.DEV || GLOBAL_ONBOARDING
   ? lazy(() => import('@/modules/onboarding/global-config/global-setup-wizard'))
   : null;
 const SignatureTemplateGalleryPage = lazy(() => import('@/modules/print/_signature/gallery'));
@@ -301,6 +305,9 @@ function AppRoutes() {
                   <Route path="opening-balances" element={<OpeningBalancesPage />} />
                   <Route path="numbering"        element={<DocumentNumberingPage />} />
                   <Route path="import-export"    element={<ImportExportPage />} />
+                  {GLOBAL_ONBOARDING && GlobalSetupWizardPage && (
+                    <Route path="business-configuration" element={<GlobalSetupWizardPage />} />
+                  )}
                   <Route path="users" element={<RequirePermission perm="users.manage" />}>
                     <Route index element={<UsersRolesPage />} />
                   </Route>

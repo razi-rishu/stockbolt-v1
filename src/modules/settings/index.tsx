@@ -12,6 +12,7 @@ import { useAuthStore } from '@/store/auth';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
 import { visibleSettingsSections, type SettingsNavSection } from './_nav';
+import { useEnabledModules } from '@/hooks/use-enabled-modules';
 
 interface TileSpec {
   to:        string;
@@ -154,7 +155,8 @@ export default function SettingsHubPage() {
     '/settings/chart-of-accounts': coa.length,
   };
 
-  const sections: SectionSpec[] = visibleSettingsSections().map((s: SettingsNavSection) => ({
+  const { modules } = useEnabledModules();
+  const sections: SectionSpec[] = visibleSettingsSections(modules).map((s: SettingsNavSection) => ({
     title: s.title,
     tiles: s.items.map((it) => ({ ...it, count: countByPath[it.to] })),
   }));
