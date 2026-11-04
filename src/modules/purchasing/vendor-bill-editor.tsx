@@ -174,8 +174,10 @@ export default function VendorBillEditorPage() {
   // Phase 47 — accounts a landed cost can be CREDITED to: a bank/cash account
   // (paid at clearing), or a liability (a payable you settle later — customs,
   // freight forwarder…). Assets (bank/cash) + liabilities only.
+  // phase116 — never AP 2100: a landed cost there is owed in the ledger but on
+  // no bill, payment or AP aging. Paid → bank/cash; still owed → 2300.
   const landedCreditOpts = coaAccounts.filter(a =>
-    a.is_active && (a.type === 'asset' || a.type === 'liability')
+    a.is_active && (a.type === 'asset' || a.type === 'liability') && a.code !== '2100'
   );
 
   // Look up an account by id (for the inline label when product is selected)
