@@ -1,4 +1,5 @@
--- global01: persist the Global v1 company configuration (DRAFT — NOT APPLIED)
+-- global01: persist the Global v1 company configuration
+-- (applied to LOCAL STAGING only; production needs separate approval)
 --
 -- StockBolt Global Architecture v1.0, Phases 1 and 5. Stores what the
 -- configuration engine (src/core/global-config) decided for a company: its
@@ -23,7 +24,8 @@
 --    one of them. The engine in the app does the recommendation logic.
 --
 -- Applies to LOCAL STAGING first. Production needs separate approval.
--- Rollback: the commented block at the end.
+-- Safe to re-run: every object is created IF NOT EXISTS or dropped first.
+-- Rollback: supabase/manual-apply/global01_rollback.sql (guarded).
 
 BEGIN;
 
@@ -42,12 +44,14 @@ CREATE TABLE IF NOT EXISTS public.company_configurations (
     CHECK (enabled_modules @> ARRAY['accounting', 'contacts', 'banking']::text[])
 );
 
+DROP TRIGGER IF EXISTS company_configurations_set_updated_at ON public.company_configurations;
 CREATE TRIGGER company_configurations_set_updated_at
   BEFORE UPDATE ON public.company_configurations
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 ALTER TABLE public.company_configurations ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS tenant_isolation ON public.company_configurations;
 CREATE POLICY tenant_isolation ON public.company_configurations
   FOR SELECT TO authenticated
   USING (company_id = public.current_user_company_id());
@@ -109,9 +113,3 @@ REVOKE ALL ON FUNCTION public.save_company_configuration(text, text[], text, tex
 GRANT EXECUTE ON FUNCTION public.save_company_configuration(text, text[], text, text[]) TO authenticated;
 
 COMMIT;
-
--- ── Rollback (dev/staging) ──────────────────────────────────────────────────
--- BEGIN;
--- DROP FUNCTION IF EXISTS public.save_company_configuration(text, text[], text, text[]);
--- DROP TABLE IF EXISTS public.company_configurations;
--- COMMIT;
