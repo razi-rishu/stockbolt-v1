@@ -81,7 +81,9 @@ export function useGlobalOnboarding(country_code: string) {
       const existing = await ad.branches.list(company_id);
       const hq = existing.find((b) => b.is_default);
       const name = branches.head_office.trim();
-      if (hq && name && name !== hq.name) await ad.branches.update(hq.id, { name });
+      // A custom name replaces the default's Arabic name too, or Arabic users would
+      // keep seeing 'المكتب الرئيسي' for a branch the owner renamed.
+      if (hq && name && name !== hq.name) await ad.branches.update(hq.id, { name, name_ar: null });
       const taken = existing.map((b) => b.code);
       for (const extra of branches.extra) {
         if (existing.some((b) => b.name === extra)) continue; // resumed activation: already created

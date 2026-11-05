@@ -247,6 +247,7 @@ export default function SetupWizardPage() {
     try {
       const currentYear = new Date().getFullYear();
       const fyMonth = values.fiscal_year_start_month;
+      const customWarehouse = GLOBAL_ONBOARDING ? globalSetup.branches.main_warehouse.trim() : '';
       const wizard: WizardData = {
         ...values,
         // Issue 2 — production companies always start empty. Sample data is
@@ -256,8 +257,9 @@ export default function SetupWizardPage() {
         currency:          inferredCurrency,
         fiscal_year_start: `${currentYear}-${fyMonth}-01`,
         full_name:         '',
-        warehouse_name:    (GLOBAL_ONBOARDING && globalSetup.branches.main_warehouse.trim()) || 'Main Warehouse',
-        warehouse_name_ar: 'المستودع الرئيسي',
+        warehouse_name:    customWarehouse || 'Main Warehouse',
+        // A custom name has no Arabic translation: leave it empty so Arabic shows the name given.
+        warehouse_name_ar: customWarehouse ? '' : 'المستودع الرئيسي',
         warehouse_code:    'MAIN',
       };
 
@@ -560,6 +562,11 @@ export default function SetupWizardPage() {
                       <>
                         <SummaryRow label={t('global_config.onboarding.review_activities')} value={globalSetup.summary.activities || '—'} mono={false} />
                         <SummaryRow label={t('global_config.onboarding.review_modules')} value={globalSetup.summary.modules} mono={false} />
+                        <SummaryRow label={t('global_config.branches.head_office')}
+                          value={[globalSetup.branches.head_office.trim() || t('global_config.branches.head_office'), ...globalSetup.branches.extra].join(', ')} mono={false} />
+                        {globalSetup.config.modules.includes('inventory') && (
+                          <SummaryRow label={t('global_config.branches.main_warehouse')} value={globalSetup.branches.main_warehouse.trim() || 'Main Warehouse'} mono={false} />
+                        )}
                       </>
                     )}
                   </div>
