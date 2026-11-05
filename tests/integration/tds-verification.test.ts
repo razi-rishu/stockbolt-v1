@@ -339,6 +339,18 @@ describe('AC-7A.2/G4 — TDS is India-only', () => {
       expect(inSections.length, 'IN company has seeded TDS sections').toBeGreaterThan(0);
       expect(inSections.map((x) => x.code)).toContain('194C');
       expect(aeSections.length, 'AE company has no TDS sections').toBe(0);
+
+      // phase118: one tax-rate set per company, no duplicates. India: the five
+      // GST rates from the database seed plus IGST, linked to the GST accounts.
+      const inRates = await inCo.adapter.taxRates.listAll(inCo.companyId);
+      expect(inRates.map((r) => `${r.tax_type} ${Number(r.rate)}`).sort())
+        .toEqual(['GST 0', 'GST 12', 'GST 18', 'GST 28', 'GST 5', 'IGST 18']);
+      const inCodes = new Map(inCoa.map((c) => [c.id, c.code]));
+      for (const r of inRates) {
+        expect(inCodes.get(r.coa_output_account_id ?? ''), `${r.name} output account`).toBe(r.tax_type === 'IGST' ? '2230' : '2210');
+      }
+      const aeRates = await aeCo.adapter.taxRates.listAll(aeCo.companyId);
+      expect(aeRates.filter((r) => Number(r.rate) === 5), 'AE: exactly one 5% rate').toHaveLength(1);
     } finally {
       await destroyScratch(inCo);
       await destroyScratch(aeCo);

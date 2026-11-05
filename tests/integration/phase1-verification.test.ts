@@ -9,7 +9,8 @@
  * Per Doc 5 §"PHASE 1" verification test:
  *   - chart_of_accounts: 32 system accounts (UAE: excl. India GST + Salaries)
  *   - warehouses: 1 row, is_default=true
- *   - tax_rates: 1 row "UAE VAT 5%"
+ *   - tax_rates: one set (phase118) — Standard Rate 5% (linked to 1500/2200),
+ *     Zero-rated 0%, Exempt; exactly one 5% rate, typed by product tax category
  *   - payment_methods: 4 rows
  *   - units_of_measure: 5 rows
  *
@@ -181,15 +182,29 @@ describe('Phase 1 — Onboarding Verification', () => {
     expect(data![0].name).toBe('Main Warehouse');
   });
 
-  it('tax_rates: 1 row "UAE VAT 5%"', async () => {
+  // phase118: the company's rates come from ONE seed (seed_default_tax_rates on
+  // company insert); onboarding links them to the tax accounts instead of
+  // inserting a second 'UAE VAT 5%'. This expected exactly that single row
+  // before the database seed existed; since phase21 both ran and every UAE
+  // company got two 5% rates.
+  it('tax_rates: one set, exactly one 5% rate, linked to the VAT accounts', async () => {
     const { data } = await adminClient
       .from('tax_rates')
       .select('*')
       .eq('company_id', testCompanyId!);
-    expect(data!.length).toBe(1);
-    expect(data![0].name).toBe('UAE VAT 5%');
-    expect(data![0].rate).toBe(5);
-    expect(data![0].tax_type).toBe('VAT');
+    const { data: accts } = await adminClient
+      .from('chart_of_accounts').select('id, code')
+      .eq('company_id', testCompanyId!).in('code', ['1500', '2200']);
+    const id = (code: string) => accts!.find((a) => a.code === code)!.id;
+
+    expect(data!.length).toBe(3);
+    const five = data!.filter((r) => Number(r.rate) === 5);
+    expect(five, 'no duplicate 5% rate').toHaveLength(1);
+    expect(five[0].tax_type, 'matches products.tax_category').toBe('standard');
+    expect(five[0].coa_input_account_id).toBe(id('1500'));
+    expect(five[0].coa_output_account_id).toBe(id('2200'));
+    expect(data!.map((r) => r.tax_type).sort()).toEqual(['exempt', 'standard', 'zero_rated']);
+    expect(new Set(data!.map((r) => r.name)).size, 'no duplicate names').toBe(3);
   });
 
   it('payment_methods: 4 rows (Cash, Bank Transfer, Cheque, Card)', async () => {

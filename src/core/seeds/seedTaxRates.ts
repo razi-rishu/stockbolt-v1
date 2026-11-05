@@ -1,9 +1,19 @@
-import type { DataAdapter, CoaMap } from '@/data/adapter';
+import type { DataAdapter, CoaMap, TaxRateRow } from '@/data/adapter';
 
 /**
- * Seeds default tax rates per country.
- * Links each rate to the correct Input/Output tax COA accounts.
- * Per Doc 3 Part A tax codes.
+ * Links a new company's tax rates to its tax accounts (Doc 3 Part A tax codes).
+ *
+ * phase118 — the rates themselves come from the database: the trigger on
+ * companies (seed_default_tax_rates) creates them the moment the company is
+ * inserted. This used to insert a second set ('UAE VAT 5%' on top of
+ * 'Standard Rate 5%'), which is how every company since phase21 ended up with
+ * two 5% rates. Now it only fills in the account links, and adds India's
+ * IGST rate, which the database set doesn't carry.
+ *
+ * Only when a database has no seed trigger at all (no rates exist) does it
+ * insert the set itself, typed by product tax category like the trigger.
+ * Rows typed 'VAT' / 'none' by the pre-phase118 trigger are linked too, so no
+ * duplicate appears whichever version of the trigger is installed.
  */
 export async function seedTaxRates(
   company_id: string,
@@ -11,74 +21,36 @@ export async function seedTaxRates(
   coa_map: CoaMap,
   adapter: DataAdapter,
 ): Promise<void> {
-  if (country_code === 'IN') {
-    // India GST — three rates (CGST, SGST pair + IGST)
-    const rates = [
-      {
-        name: 'GST 18% (CGST 9% + SGST 9%)',
-        rate: 18,
-        tax_type: 'GST',
-        coa_input_account_id: coa_map['1510'] ?? null,
-        coa_output_account_id: coa_map['2210'] ?? null,
-      },
-      {
-        name: 'IGST 18% (Interstate)',
-        rate: 18,
-        tax_type: 'IGST',
-        coa_input_account_id: coa_map['1530'] ?? null,
-        coa_output_account_id: coa_map['2230'] ?? null,
-      },
-      {
-        name: 'GST 5% (Reduced)',
-        rate: 5,
-        tax_type: 'GST',
-        coa_input_account_id: coa_map['1510'] ?? null,
-        coa_output_account_id: coa_map['2210'] ?? null,
-      },
-      {
-        name: 'GST 12%',
-        rate: 12,
-        tax_type: 'GST',
-        coa_input_account_id: coa_map['1510'] ?? null,
-        coa_output_account_id: coa_map['2210'] ?? null,
-      },
-    ];
-    for (const r of rates) {
-      await adapter.onboarding.insertTaxRate({ company_id, is_active: true, ...r });
-    }
-    return;
+  const india = country_code === 'IN';
+  const acc = (code: string) => coa_map[code] ?? null;
+
+  let rates: TaxRateRow[] = await adapter.taxRates.listAll(company_id);
+  if (rates.length === 0) {
+    const fallback = india
+      ? [0, 5, 12, 18, 28].map((r) => ({ name: `GST ${r}%`, rate: r, tax_type: 'GST' }))
+      : [
+          { name: 'Standard Rate 5%', rate: 5, tax_type: 'standard' },
+          { name: 'Zero-rated 0%', rate: 0, tax_type: 'zero_rated' },
+          { name: 'Exempt', rate: 0, tax_type: 'exempt' },
+        ];
+    for (const r of fallback) await adapter.onboarding.insertTaxRate({ company_id, is_active: true, ...r });
+    rates = await adapter.taxRates.listAll(company_id);
   }
 
-  // UAE: 5% VAT standard
-  if (country_code === 'AE') {
+  if (india && !rates.some((r) => r.tax_type === 'IGST')) {
     await adapter.onboarding.insertTaxRate({
-      company_id,
-      name: 'UAE VAT 5%',
-      rate: 5,
-      tax_type: 'VAT',
-      is_active: true,
-      coa_input_account_id: coa_map['1500'] ?? null,
-      coa_output_account_id: coa_map['2200'] ?? null,
+      company_id, name: 'IGST 18% (Interstate)', rate: 18, tax_type: 'IGST', is_active: true,
+      coa_input_account_id: acc('1530'), coa_output_account_id: acc('2230'),
     });
-    return;
   }
 
-  // Other GCC — all levy VAT at 5% (KSA, KW, BH, OM, QA all have VAT now)
-  const gccCountryNames: Record<string, string> = {
-    SA: 'KSA',
-    KW: 'Kuwait',
-    BH: 'Bahrain',
-    OM: 'Oman',
-    QA: 'Qatar',
-  };
-  const label = gccCountryNames[country_code] ?? country_code;
-  await adapter.onboarding.insertTaxRate({
-    company_id,
-    name: `${label} VAT 5%`,
-    rate: 5,
-    tax_type: 'VAT',
-    is_active: true,
-    coa_input_account_id: coa_map['1500'] ?? null,
-    coa_output_account_id: coa_map['2200'] ?? null,
-  });
+  // Input / output accounts by tax type. Exempt carries no tax: no accounts.
+  const links: Record<string, [string, string]> = india
+    ? { GST: ['1510', '2210'], IGST: ['1530', '2230'] }
+    : { standard: ['1500', '2200'], zero_rated: ['1500', '2200'], VAT: ['1500', '2200'] };
+  for (const r of rates) {
+    const pair = links[r.tax_type];
+    if (!pair || r.coa_output_account_id) continue;
+    await adapter.taxRates.update(r.id, { coa_input_account_id: acc(pair[0]), coa_output_account_id: acc(pair[1]) });
+  }
 }
