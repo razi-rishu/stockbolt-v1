@@ -13,9 +13,13 @@ const code = sql.replace(/--[^\n]*/g, '');
 const fn = /CREATE OR REPLACE FUNCTION public\.save_company_configuration\(([\s\S]*?)\)[\s\S]*?AS \$function\$([\s\S]*?)\$function\$/.exec(code)!;
 
 describe('global01 company_configurations', () => {
-  it('is one transaction, with a rollback block', () => {
+  it('is one transaction, safe to re-run, with a guarded rollback file', () => {
     expect(code.trim()).toMatch(/^BEGIN;[\s\S]*COMMIT;$/);
-    expect(sql).toMatch(/-- DROP TABLE IF EXISTS public\.company_configurations;/);
+    expect(code).toMatch(/DROP TRIGGER IF EXISTS company_configurations_set_updated_at/);
+    expect(code).toMatch(/DROP POLICY IF EXISTS tenant_isolation ON public\.company_configurations/);
+    const rb = readFileSync(resolve(__dirname, '../../supabase/manual-apply/global01_rollback.sql'), 'utf8');
+    expect(rb).toMatch(/ROLLBACK GUARD/);
+    expect(rb).toMatch(/DROP TABLE IF EXISTS public\.company_configurations;/);
   });
 
   it('touches no existing row: no backfill, no UPDATE/DELETE of other tables', () => {
