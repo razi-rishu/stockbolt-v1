@@ -958,6 +958,82 @@ In-app notifications (low stock, overdue invoices, period close reminders).
 
 ---
 
+## SECTION M — STOCKBOLT GLOBAL v1 (migrations global01–global04)
+
+Added for the approved nine-phase Global architecture. All additive: no
+existing column, row or permission changes meaning. A company with no
+`company_configurations` row is a legacy company and keeps every module.
+
+### `company_configurations` (global01, Phases 1 and 5)
+One row per company: business activities and enabled modules. Written only
+through `save_company_configuration()` (own company, `settings.write`);
+clients have SELECT only.
+
+| Column | Type | Notes |
+|---|---|---|
+| company_id | UUID PK FK → companies | ON DELETE CASCADE |
+| taxonomy_version | text NOT NULL | e.g. 'global-v1.0' |
+| activity_keys | text[] NOT NULL | 1–10 keys; CHECK |
+| primary_activity_key | text NOT NULL | must be one of activity_keys |
+| enabled_modules | text[] NOT NULL | must contain accounting, contacts, banking |
+| configured_by | UUID FK → auth.users | |
+| created_at / updated_at | timestamptz | |
+
+### `branches` (global03, Phase 6)
+Company locations. Exactly one default (Head Office, code HQ) per company,
+created by a trigger with the company; it cannot be deleted, deactivated or
+un-defaulted. Writes need `settings.write`.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID PK | |
+| company_id | UUID FK | UNIQUE (company_id, code); UNIQUE (company_id, id) |
+| code | text NOT NULL | `^[A-Z0-9][A-Z0-9_-]{0,19}$` |
+| name / name_ar | text | name required |
+| address | text | |
+| is_default | bool | one per company (partial unique index) |
+| is_active | bool | the default is always active |
+| created_at / updated_at | timestamptz | |
+
+`warehouses.branch_id` (UUID NOT NULL) — FK (company_id, branch_id) →
+branches(company_id, id), so a warehouse can only belong to a branch of its
+own company. A warehouse inserted without a branch goes to the default.
+
+### `profile_branches` (global03, Phase 6)
+Which branches a user is assigned to (several allowed). **Recorded only in
+v1: assignments do not restrict access**; every user keeps company-wide
+access until branch restriction ships with server-side enforcement.
+Writes need `users.manage`.
+
+| Column | Type | Notes |
+|---|---|---|
+| company_id | UUID | FK (company_id, branch_id) → branches |
+| profile_id | UUID FK → profiles | ON DELETE CASCADE; PK (profile_id, branch_id) |
+| branch_id | UUID | |
+| created_at | timestamptz | |
+
+### `setup_drafts` (global04, Phase 7)
+Per-user wizard drafts for save and resume. **Deliberate exception to "every
+table has company_id"**: a new-company draft exists before the company. Each
+row is visible only to its user; `company_id` (optional) may only be the
+user's own company. Never read by posting, reports or permissions.
+
+| Column | Type | Notes |
+|---|---|---|
+| user_id | UUID FK → auth.users | PK (user_id, kind) |
+| kind | text | 'onboarding' / 'configuration' |
+| company_id | UUID FK → companies | NULL until the company exists |
+| step | text NOT NULL | wizard step key |
+| payload | jsonb NOT NULL | object, ≤ 64 KB |
+| created_at / updated_at | timestamptz | |
+
+### Guard: company financial settings (global02, Phase 3)
+`currency`, `base_currency`, `fiscal_year_start`, `costing_method` and
+`country_code` on `companies` cannot change once the company has any journal
+entry or stock movement (trigger `companies_guard_financial_settings`).
+
+---
+
 ## Row Level Security (Cloud Mode Only)
 
 Every table gets a single RLS policy:

@@ -17,10 +17,11 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import {
-  buildConfiguration, getActivity, getModule, toStoredConfiguration, validateActivities, type ModuleKey,
+  buildConfiguration, getActivity, getModule, isModuleKey, toStoredConfiguration, validateActivities, type ModuleKey,
 } from '@/core/global-config';
 import { ActivityPicker } from './activity-picker';
 import { ModulePanel } from './module-panel';
+import { BranchesOnboardingForm, branchCodeFrom, type BranchesDraft } from './branches-step';
 
 export { GLOBAL_ONBOARDING } from '@/core/global-config/flag';
 
@@ -31,6 +32,7 @@ export function useGlobalOnboarding(country_code: string) {
   const [primary, setPrimary] = useState('');
   const [enable, setEnable] = useState<ModuleKey[]>([]);
   const [disable, setDisable] = useState<ModuleKey[]>([]);
+  const [branches, setBranches] = useState<BranchesDraft>({ head_office: '', main_warehouse: '', extra: [] });
 
   // Rebuilt whenever the country or a choice changes: changing the country on
   // step 2 re-runs the recommendations, and country-only modules follow it.
@@ -68,10 +70,59 @@ export function useGlobalOnboarding(country_code: string) {
     }
   };
 
+  /**
+   * Phase 6, after the company exists: name the Head Office (created by the
+   * database with the company) and add the other branches. Never throws; a
+   * failure leaves the default Head Office, which is a working setup.
+   */
+  const applyBranches = async (company_id: string): Promise<boolean> => {
+    try {
+      const ad = getAdapter();
+      const existing = await ad.branches.list(company_id);
+      const hq = existing.find((b) => b.is_default);
+      const name = branches.head_office.trim();
+      if (hq && name && name !== hq.name) await ad.branches.update(hq.id, { name });
+      const taken = existing.map((b) => b.code);
+      for (const extra of branches.extra) {
+        if (existing.some((b) => b.name === extra)) continue; // resumed activation: already created
+        const code = branchCodeFrom(extra, taken);
+        taken.push(code);
+        await ad.branches.create({ company_id, code, name: extra });
+      }
+      return true;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[setup-wizard] company created; branches not fully set up:', err);
+      return false;
+    }
+  };
+
+  /** Phase 7: everything this hook holds, for the draft. */
+  const snapshot = () => ({ activity_keys: activityKeys, primary, enable, disable, branches });
+  /** Phase 7: restore a snapshot from a saved draft (unknown keys are re-validated by the engine). */
+  const restore = (s: Partial<ReturnType<typeof snapshot>>) => {
+    if (Array.isArray(s.activity_keys)) setActivityKeys(s.activity_keys.filter((k): k is string => typeof k === 'string'));
+    if (typeof s.primary === 'string') setPrimary(s.primary);
+    if (Array.isArray(s.enable)) setEnable(s.enable.filter(isModuleKey));
+    if (Array.isArray(s.disable)) setDisable(s.disable.filter(isModuleKey));
+    if (s.branches && typeof s.branches === 'object') {
+      const b = s.branches;
+      setBranches({ head_office: String(b.head_office ?? ''), main_warehouse: String(b.main_warehouse ?? ''),
+        extra: Array.isArray(b.extra) ? b.extra.map(String).slice(0, 20) : [] });
+    }
+  };
+
   return {
     config,
     activitiesError,
     saveAfterCreate,
+    applyBranches,
+    snapshot,
+    restore,
+    branches,
+    branchesStep: (
+      <BranchesOnboardingForm value={branches} showWarehouse={config.modules.includes('inventory')} onChange={setBranches} />
+    ),
     activitiesStep: (
       <ActivityPicker selected={activityKeys} primary={primary} onToggle={toggleActivity} onPrimary={setPrimary} />
     ),

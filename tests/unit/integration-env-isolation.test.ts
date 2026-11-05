@@ -30,7 +30,7 @@ describe('integration suites resolve to local staging only', () => {
     expect(dbSuites.map((s) => s.name).sort()).toEqual([
       'amortization-verification.test.ts', 'deferred-cogs-verification.test.ts', 'finding-c-verification.test.ts',
       'finding-e-verification.test.ts',
-      'fixed-assets-verification.test.ts', 'global01-config-verification.test.ts', 'phase0-rls.test.ts', 'phase1-verification.test.ts',
+      'fixed-assets-verification.test.ts', 'global-wizard-verification.test.ts', 'global01-config-verification.test.ts', 'phase0-rls.test.ts', 'phase1-verification.test.ts',
       'phase2-verification.test.ts', 'tax-return-verification.test.ts', 'tds-verification.test.ts',
       'year-end-close-verification.test.ts',
     ]);

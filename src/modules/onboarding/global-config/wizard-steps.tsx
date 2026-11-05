@@ -1,6 +1,7 @@
 /**
- * Global v1 wizard — the information steps (1, 3, 4, 6) and the Review step
- * (7). Steps 2 and 5 reuse ActivityPicker and ModulePanel.
+ * Global v1 wizard — the information steps (1, 4) and the Review step (7).
+ * Steps 2 and 5 reuse ActivityPicker and ModulePanel; step 3 is
+ * accounting-step.tsx (Phase 3) and step 6 is branches-step.tsx (Phase 6).
  */
 import { useTranslation } from 'react-i18next';
 import { Badge } from '@/ui/badge';
@@ -20,17 +21,6 @@ export function IdentityStep({ company_name, pack }: { company_name: string; pac
   );
 }
 
-export function AccountingStep({ pack }: { pack: CountryPack }) {
-  const { t } = useTranslation();
-  return (
-    <div>
-      <div className={row}><span className="text-ink-secondary">{t('global_config.wizard.base_currency')}</span><span dir="ltr">{pack.currency}</span></div>
-      <div className={row}><span className="text-ink-secondary">{t('global_config.wizard.fiscal_start_month')}</span><span dir="ltr">{pack.fiscal_year_start_month}</span></div>
-      <div className={row}><span className="text-ink-secondary">{t('global_config.wizard.costing')}</span><span>{t('global_config.wizard.costing_mac')}</span></div>
-    </div>
-  );
-}
-
 export function TaxStep({ pack }: { pack: CountryPack }) {
   const { t } = useTranslation();
   return (
@@ -42,11 +32,6 @@ export function TaxStep({ pack }: { pack: CountryPack }) {
       <div className={row}><span className="text-ink-secondary">{t('global_config.wizard.tax_system')}</span><span dir="ltr">{pack.tax_system.toUpperCase()}</span></div>
     </div>
   );
-}
-
-export function BranchesStep() {
-  const { t } = useTranslation();
-  return <p className="text-sm text-ink-secondary">{t('global_config.wizard.branches_v1')}</p>;
 }
 
 interface ReviewStepProps {

@@ -16,7 +16,7 @@ import {
   type SalesReturnRaw, type PurchaseReturnRaw, type CreditNoteRaw, type DebitNoteRaw,
 } from '@/lib/returns-analysis';
 import type {
-  CompanyConfigurationRow,
+  CompanyConfigurationRow, BranchRow, BranchInsert, BranchUpdate, ProfileBranchRow, SetupDraftRow,
   DataAdapter, Company, Profile, AppRole, CompanyInviteRow, PendingInvite, RoleRow,
   ApiKeyRow, ApiScope,
   CoaRow, CoaInsert, TaxRateInsert, PaymentMethodInsert, UnitInsert,
@@ -741,6 +741,78 @@ export function createSupabaseAdapter(
           p_enabled_modules: input.enabled_modules,
         });
         assertNoError(error as Error | null, 'companyConfiguration.save');
+      },
+      async hasTransactions(company_id): Promise<boolean> {
+        // Same test as global02's guard: any journal entry or stock movement.
+        const [je, sl] = await Promise.all([
+          client.from('journal_entries').select('id', { count: 'exact', head: true }).eq('company_id', company_id).limit(1),
+          client.from('stock_ledger').select('id', { count: 'exact', head: true }).eq('company_id', company_id).limit(1),
+        ]);
+        assertNoError(je.error, 'companyConfiguration.hasTransactions');
+        assertNoError(sl.error, 'companyConfiguration.hasTransactions');
+        return (je.count ?? 0) > 0 || (sl.count ?? 0) > 0;
+      },
+    },
+    // Global v1 Phase 6 (global03): not in the generated types yet — same cast
+    // as company_configurations; results are cast to the hand-written rows.
+    branches: {
+      async list(company_id): Promise<BranchRow[]> {
+        const { data, error } = await (client as any).from('branches').select('*')
+          .eq('company_id', company_id).order('is_default', { ascending: false }).order('name');
+        if (error && isMissingRelation(error)) return [];
+        assertNoError(error, 'branches.list');
+        return (data ?? []) as BranchRow[];
+      },
+      async create(row: BranchInsert): Promise<BranchRow> {
+        const { data, error } = await (client as any).from('branches').insert(row).select().single();
+        assertNoError(error, 'branches.create');
+        return data as BranchRow;
+      },
+      async update(id, row: BranchUpdate): Promise<void> {
+        const { error } = await (client as any).from('branches').update(row).eq('id', id);
+        assertNoError(error, 'branches.update');
+      },
+      async assignWarehouse(warehouse_id, branch_id): Promise<void> {
+        const { error } = await (client as any).from('warehouses').update({ branch_id }).eq('id', warehouse_id);
+        assertNoError(error, 'branches.assignWarehouse');
+      },
+      async listAssignments(company_id): Promise<ProfileBranchRow[]> {
+        const { data, error } = await (client as any).from('profile_branches').select('company_id, profile_id, branch_id')
+          .eq('company_id', company_id);
+        if (error && isMissingRelation(error)) return [];
+        assertNoError(error, 'branches.listAssignments');
+        return (data ?? []) as ProfileBranchRow[];
+      },
+      async setAssignments(company_id, profile_id, branch_ids): Promise<void> {
+        const { error: dErr } = await (client as any).from('profile_branches').delete()
+          .eq('company_id', company_id).eq('profile_id', profile_id);
+        assertNoError(dErr, 'branches.setAssignments delete');
+        if (branch_ids.length === 0) return;
+        const { error } = await (client as any).from('profile_branches')
+          .insert(branch_ids.map((branch_id) => ({ company_id, profile_id, branch_id })));
+        assertNoError(error, 'branches.setAssignments insert');
+      },
+    },
+    // Global v1 Phase 7 (global04): one draft per signed-in user and kind.
+    setupDrafts: {
+      async get(kind): Promise<SetupDraftRow | null> {
+        const { data, error } = await (client as any).from('setup_drafts').select('*').eq('kind', kind).maybeSingle();
+        if (error && isMissingRelation(error)) return null;
+        assertNoError(error, 'setupDrafts.get');
+        return (data ?? null) as SetupDraftRow | null;
+      },
+      async save(kind, step, payload, company_id = null): Promise<void> {
+        const { data: auth } = await client.auth.getUser();
+        if (!auth.user) throw new SupabaseDataError('setupDrafts.save: not signed in');
+        const { error } = await (client as any).from('setup_drafts')
+          .upsert({ user_id: auth.user.id, kind, step, payload, company_id }, { onConflict: 'user_id,kind' });
+        if (error && isMissingRelation(error)) return;
+        assertNoError(error, 'setupDrafts.save');
+      },
+      async remove(kind): Promise<void> {
+        const { error } = await (client as any).from('setup_drafts').delete().eq('kind', kind);
+        if (error && isMissingRelation(error)) return;
+        assertNoError(error, 'setupDrafts.remove');
       },
     },
     projects: {

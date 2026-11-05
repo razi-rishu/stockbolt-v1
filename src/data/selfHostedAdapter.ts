@@ -18,6 +18,20 @@ export function createSelfHostedAdapter(): DataAdapter {
     companyConfiguration: {
       get:  () => notImplemented('companyConfiguration.get'),
       save: () => notImplemented('companyConfiguration.save'),
+      hasTransactions: () => notImplemented('companyConfiguration.hasTransactions'),
+    },
+    branches: {
+      list:             () => notImplemented('branches.list'),
+      create:           () => notImplemented('branches.create'),
+      update:           () => notImplemented('branches.update'),
+      assignWarehouse:  () => notImplemented('branches.assignWarehouse'),
+      listAssignments:  () => notImplemented('branches.listAssignments'),
+      setAssignments:   () => notImplemented('branches.setAssignments'),
+    },
+    setupDrafts: {
+      get:    () => notImplemented('setupDrafts.get'),
+      save:   () => notImplemented('setupDrafts.save'),
+      remove: () => notImplemented('setupDrafts.remove'),
     },
     projects: {
       list:    () => notImplemented('projects.list'),

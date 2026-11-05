@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode, CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -12,6 +12,8 @@ import { LanguageToggle } from '@/components/language-toggle';
 import { BrandLogo } from '@/components/brand-logo';
 import { isAppShell } from '@/lib/platform';
 import { GLOBAL_ONBOARDING, useGlobalOnboarding } from './global-config/onboarding-steps';
+import { AccountingStep } from './global-config/accounting-step';
+import { useSetupDraft } from './global-config/use-setup-draft';
 
 // ── Country / currency data ────────────────────────────────────────────────
 const COUNTRIES = [
@@ -45,12 +47,17 @@ const schema = z.object({
   }
 });
 type FormValues = z.infer<typeof schema>;
+// The draft restores only these: anything else in a stored draft is ignored.
+const FORM_KEYS: (keyof FormValues)[] = ['company_name', 'company_name_ar', 'address', 'country_code',
+  'fiscal_year_start_month', 'is_tax_registered', 'tax_id', 'load_sample_data'];
 
-// Global v1 — with VITE_GLOBAL_ONBOARDING on, business activities and modules
-// come between country and review. Off (the default), the three base steps.
-type StepKey = 'basics' | 'country' | 'activities' | 'modules' | 'review';
+// Global v1 — with VITE_GLOBAL_ONBOARDING on, the seven-step Smart Hybrid
+// wizard: activities, modules, accounting (Phase 3) and branches (Phase 6)
+// come between country and review, and the draft is saved and resumed
+// (Phase 7). Off (the default), the three base steps exactly as before.
+type StepKey = 'basics' | 'country' | 'activities' | 'modules' | 'accounting' | 'branches' | 'review';
 const STEP_KEYS: readonly StepKey[] = GLOBAL_ONBOARDING
-  ? ['basics', 'country', 'activities', 'modules', 'review']
+  ? ['basics', 'country', 'activities', 'modules', 'accounting', 'branches', 'review']
   : ['basics', 'country', 'review'];
 const TOTAL_STEPS = STEP_KEYS.length;
 
@@ -121,6 +128,7 @@ export default function SetupWizardPage() {
     watch,
     setValue,
     trigger,
+    getValues,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -150,6 +158,8 @@ export default function SetupWizardPage() {
   const STEPS: StepMeta[] = STEP_KEYS.map((k, i) => {
     if (k === 'activities') return { label: `Step ${i + 1}`, title: t('global_config.onboarding.activities_title'), eyebrow: t('global_config.onboarding.activities_title'), heading: t('global_config.onboarding.activities_heading'), sub: t('global_config.onboarding.activities_sub') };
     if (k === 'modules') return { label: `Step ${i + 1}`, title: t('global_config.onboarding.modules_title'), eyebrow: t('global_config.onboarding.modules_title'), heading: t('global_config.onboarding.modules_heading'), sub: t('global_config.onboarding.modules_sub') };
+    if (k === 'accounting') return { label: `Step ${i + 1}`, title: t('global_config.accounting.title'), eyebrow: t('global_config.accounting.title'), heading: t('global_config.onboarding_more.accounting_heading'), sub: t('global_config.onboarding_more.accounting_sub') };
+    if (k === 'branches') return { label: `Step ${i + 1}`, title: t('global_config.branches.title'), eyebrow: t('global_config.branches.title'), heading: t('global_config.onboarding_more.branches_heading'), sub: t('global_config.onboarding_more.branches_sub') };
     return { ...BASE_STEPS[k === 'basics' ? 0 : k === 'country' ? 1 : 2], label: `Step ${i + 1}` };
   });
 
@@ -159,8 +169,40 @@ export default function SetupWizardPage() {
     country: ['country_code', 'tax_id'],
     activities: [],
     modules: [],
+    accounting: ['fiscal_year_start_month'],
+    branches: [],
     review: [],
   };
+
+  // ── Phase 7: save and resume ──────────────────────────────────────────────
+  // The draft is this wizard's input only; the company is created solely by
+  // the explicit Create step. Restored once, then saved after every change.
+  const draft = useSetupDraft('onboarding', GLOBAL_ONBOARDING);
+  const restored = useRef(false);
+  const [resumed, setResumed] = useState(false);
+  const formValues = watch();
+  const draftPayload = () => ({ form: getValues(), global: globalSetup.snapshot() });
+  useEffect(() => {
+    if (!GLOBAL_ONBOARDING || !draft.loaded || restored.current) return;
+    restored.current = true;
+    const d = draft.draft;
+    if (!d || d.company_id) return; // an activated company finishes from Settings
+    const form = (d.payload.form ?? {}) as Partial<FormValues>;
+    for (const k of Object.keys(form) as (keyof FormValues)[]) {
+      if (FORM_KEYS.includes(k)) setValue(k, form[k] as never);
+    }
+    globalSetup.restore((d.payload.global ?? {}) as Parameters<typeof globalSetup.restore>[0]);
+    const at = STEP_KEYS.indexOf(d.step as StepKey);
+    if (at >= 0 && at < TOTAL_STEPS - 1) setStep(at);
+    setResumed(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- restore exactly once, when the draft has loaded
+  }, [draft.loaded]);
+  const snapshotKey = JSON.stringify([formValues, globalSetup.snapshot(), step]);
+  useEffect(() => {
+    if (!GLOBAL_ONBOARDING || !restored.current || submitting) return;
+    draft.save(STEP_KEYS[step], draftPayload());
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- snapshotKey captures every input
+  }, [snapshotKey]);
 
   async function goNext() {
     const valid = await trigger(stepFields[stepKey]);
@@ -214,15 +256,25 @@ export default function SetupWizardPage() {
         currency:          inferredCurrency,
         fiscal_year_start: `${currentYear}-${fyMonth}-01`,
         full_name:         '',
-        warehouse_name:    'Main Warehouse',
+        warehouse_name:    (GLOBAL_ONBOARDING && globalSetup.branches.main_warehouse.trim()) || 'Main Warehouse',
         warehouse_name_ar: 'المستودع الرئيسي',
         warehouse_code:    'MAIN',
       };
 
       const adapter = getAdapter();
+      // Phase 7: the draft is saved before activation, so an interruption at
+      // any point leaves something to resume from.
+      if (GLOBAL_ONBOARDING) await draft.saveNow('review', draftPayload());
       const { company_id } = await runOnboarding(wizard, adapter);
       // Global v1 — only now does the company exist for the RPC to write to.
-      if (GLOBAL_ONBOARDING) await globalSetup.saveAfterCreate();
+      if (GLOBAL_ONBOARDING) {
+        await draft.saveNow('activating', draftPayload(), company_id);
+        const saved = await globalSetup.saveAfterCreate();
+        const located = await globalSetup.applyBranches(company_id);
+        // All done: the draft goes. Otherwise it stays, pointing at the new
+        // company, and Settings → Business Configuration offers to finish.
+        if (saved && located) await draft.remove();
+      }
 
       const profile = await adapter.profiles.getCurrent();
       if (profile) {
@@ -467,8 +519,16 @@ export default function SetupWizardPage() {
               )}
 
               {/* ── Global v1 — business activities and modules ──────── */}
+              {resumed && stepKey !== 'review' && (
+                <p style={{ fontSize: 12, color: '#6b7280' }} data-testid="draft-resumed">{t('global_config.draft.resumed')}</p>
+              )}
               {stepKey === 'activities' && globalSetup.activitiesStep}
               {stepKey === 'modules' && globalSetup.modulesStep}
+              {stepKey === 'accounting' && (
+                <AccountingStep country_code={country_code} currency={inferredCurrency} fy_month={fiscal_year_start_month}
+                  onFyMonth={(m) => setValue('fiscal_year_start_month', m)} />
+              )}
+              {stepKey === 'branches' && globalSetup.branchesStep}
 
               {/* ── Last step — Review & create ───────────────────────── */}
               {stepKey === 'review' && (

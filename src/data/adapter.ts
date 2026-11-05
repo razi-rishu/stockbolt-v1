@@ -3203,6 +3203,60 @@ export interface CompanyConfigurationAPI {
   get(company_id: string): Promise<CompanyConfigurationRow | null>;
   /** Writes the caller's own company through save_company_configuration (needs settings.write). */
   save(input: CompanyConfigurationSave): Promise<void>;
+  /**
+   * Global v1 Phase 3 — whether the company has any journal entry or stock
+   * movement. Once it does, global02 refuses changes to currency, financial
+   * year, costing method and country; the wizard shows them locked.
+   */
+  hasTransactions(company_id: string): Promise<boolean>;
+}
+
+// ── Global v1 Phase 6 — branches (global03) ────────────────────────────────
+/** A company location. Every warehouse belongs to one; exactly one is the default Head Office. */
+export interface BranchRow {
+  id: string;
+  company_id: string;
+  code: string;
+  name: string;
+  name_ar: string | null;
+  address: string | null;
+  is_default: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+export type BranchInsert = Pick<BranchRow, 'company_id' | 'code' | 'name'> & Partial<Pick<BranchRow, 'name_ar' | 'address' | 'is_active'>>;
+export type BranchUpdate = Partial<Pick<BranchRow, 'name' | 'name_ar' | 'address' | 'is_active'>>;
+/** A user's branch assignment. Recorded only: it does NOT restrict access in v1. */
+export interface ProfileBranchRow { company_id: string; profile_id: string; branch_id: string }
+export interface BranchesAPI {
+  /** All branches of the company, default first. Empty on a database without global03. */
+  list(company_id: string): Promise<BranchRow[]>;
+  create(row: BranchInsert): Promise<BranchRow>;
+  update(id: string, row: BranchUpdate): Promise<void>;
+  /** Moves a warehouse to a branch of the same company (needs settings.write). */
+  assignWarehouse(warehouse_id: string, branch_id: string): Promise<void>;
+  listAssignments(company_id: string): Promise<ProfileBranchRow[]>;
+  /** Replaces a user's branch assignments (needs users.manage). */
+  setAssignments(company_id: string, profile_id: string, branch_ids: string[]): Promise<void>;
+}
+
+// ── Global v1 Phase 7 — wizard drafts (global04) ───────────────────────────
+export type SetupDraftKind = 'onboarding' | 'configuration';
+/** One per user and kind; visible only to that user. Wizard input only, never business data. */
+export interface SetupDraftRow {
+  user_id: string;
+  kind: SetupDraftKind;
+  company_id: string | null;
+  step: string;
+  payload: Record<string, unknown>;
+  updated_at: string;
+}
+export interface SetupDraftsAPI {
+  /** The signed-in user's draft of this kind, or null (also on a database without global04). */
+  get(kind: SetupDraftKind): Promise<SetupDraftRow | null>;
+  save(kind: SetupDraftKind, step: string, payload: Record<string, unknown>, company_id?: string | null): Promise<void>;
+  remove(kind: SetupDraftKind): Promise<void>;
 }
 
 export interface DataAdapter {
@@ -3217,6 +3271,8 @@ export interface DataAdapter {
   categories: CategoriesAPI;
   projects: ProjectsAPI;          // phase104 — projects / jobs
   companyConfiguration: CompanyConfigurationAPI; // Global v1 — activities + enabled modules
+  branches: BranchesAPI;         // Global v1 Phase 6 — branches, warehouse links, user assignments
+  setupDrafts: SetupDraftsAPI;   // Global v1 Phase 7 — wizard save and resume
   brands: BrandsAPI;
   warehouses: WarehousesManagementAPI;
   units: UnitsManagementAPI;

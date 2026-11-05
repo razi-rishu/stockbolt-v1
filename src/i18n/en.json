@@ -1937,6 +1937,61 @@
     "dismiss": "Dismiss"
   },
   "global_config": {
+    "accounting": {
+      "title": "Accounting setup",
+      "base_currency": "Base currency",
+      "financial_year": "Financial year starts",
+      "chart": "Chart of accounts",
+      "chart_gcc_vat": "GCC VAT chart",
+      "chart_india_gst": "India GST chart",
+      "accounts_count": "{{count}} standard accounts",
+      "existing_accounts": "{{count}} accounts in your chart today",
+      "no_new_accounts": "Postings keep using this chart: no account is added or renamed by this setup.",
+      "costing": "Inventory costing",
+      "costing_mac": "Moving average cost (the supported method)",
+      "locked": "Locked: this company already has transactions, so currency, financial year, costing method and country can't change.",
+      "editable_hint": "You can change the financial year until the first transaction.",
+      "save_fy": "Save financial year",
+      "saved": "Saved",
+      "month": "Month"
+    },
+    "branches": {
+      "title": "Branches & team",
+      "head_office": "Head Office",
+      "head_office_name": "Head Office name",
+      "main_warehouse": "Main warehouse name",
+      "extra": "Other branches (optional)",
+      "add": "Add branch",
+      "name": "Branch name",
+      "code": "Code",
+      "default": "Default",
+      "inactive": "Inactive",
+      "activate": "Activate",
+      "deactivate": "Deactivate",
+      "warehouses": "Warehouses",
+      "warehouse_branch": "Branch",
+      "users": "Users",
+      "user_branches": "Assigned branches",
+      "not_restricted": "Branch assignments are recorded for each user. They don't limit access yet: every user keeps company-wide access until branch restriction is enabled.",
+      "invite": "Invite people in Settings → Users & Roles.",
+      "need_settings": "You need settings permission to change branches and warehouses.",
+      "need_users": "You need user-management permission to change assignments.",
+      "saved": "Saved",
+      "code_hint": "Capitals and numbers, e.g. DXB",
+      "remove": "Remove"
+    },
+    "draft": {
+      "resumed": "Your unfinished setup was restored.",
+      "saved": "Draft saved",
+      "unfinished": "Setup wasn't finished: the company exists but its business configuration wasn't saved. Review and save to finish.",
+      "discard": "Start over"
+    },
+    "onboarding_more": {
+      "accounting_heading": "Review your\naccounting setup",
+      "accounting_sub": "Currency, financial year, chart of accounts and costing method.",
+      "branches_heading": "Your locations",
+      "branches_sub": "Name your Head Office and main warehouse. Add other branches now or later."
+    },
     "gate": {
       "title": "This module is turned off",
       "body": "{{module}} is not enabled for your company. Records already created stay safe and readable; an administrator can turn the module on in the business configuration.",

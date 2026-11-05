@@ -103,6 +103,25 @@ function getAccountsForCountry(country_code: string): AccountDef[] {
     .map(({ gcc_only: _g, india_only: _i, ...rest }) => rest);
 }
 
+/** Global v1 Phase 3 — the chart template a country gets, as the wizard shows it. */
+export interface ChartTemplateSummary {
+  /** 'india_gst' for India, 'gcc_vat' for every other country. */
+  key: 'india_gst' | 'gcc_vat';
+  account_count: number;
+  by_type: Record<'asset' | 'liability' | 'equity' | 'income' | 'expense', number>;
+}
+
+/**
+ * The template seedCOA installs for `country_code`, summarised. Reads the same
+ * list onboarding seeds, so the review can never disagree with what is created.
+ */
+export function chartTemplateFor(country_code: string): ChartTemplateSummary {
+  const defs = getAccountsForCountry(country_code);
+  const by_type = { asset: 0, liability: 0, equity: 0, income: 0, expense: 0 };
+  for (const d of defs) by_type[d.type as keyof typeof by_type] += 1;
+  return { key: country_code === 'IN' ? 'india_gst' : 'gcc_vat', account_count: defs.length, by_type };
+}
+
 /**
  * Seeds the standard chart of accounts for a newly onboarded company.
  * Per Doc 3 Part A. Returns a code→id map for use by subsequent seed functions.
