@@ -17,6 +17,9 @@
  *   G6  a debit note with tax can be confirmed and reverses input GST
  *   G7  an expense with tax books input GST instead of folding it into expense
  *   G8  (control) a UAE invoice still posts its VAT to 2200
+ *   G9  a credit note on an intra-state invoice reverses CGST + SGST
+ *   G10 editing an inter-state invoice re-posts its tax as IGST
+ *   G11 the Indian company's books still pass every invariant
  *
  * Reads .env.staging.local only (loadStagingEnv); refuses any non-local target.
  * Creates and deletes users and companies: not in the pre-commit hook.
@@ -190,6 +193,43 @@ describe('India GST posting follows Doc 3 Part K', () => {
     await india.adapter.expenses.confirm(exp.id);
     const lines = await taxLines(india.companyId, exp.id, '15');
     expect(Object.values(lines).reduce((s, v) => s + v, 0)).toBe(180);
+  });
+
+  it('G9 a credit note on an intra-state invoice reverses CGST + SGST', async () => {
+    const invId = await invoice(india, india.localCustomer, 18);
+    const items = await india.adapter.invoices.getItems(invId);
+    const cn = await india.adapter.creditNotes.create({
+      company_id: india.companyId, credit_note_number: `CN-GST-${seq++}`, contact_id: india.localCustomer,
+      linked_invoice_id: invId, date: DATE, currency: 'INR', exchange_rate: 1, subtotal: 1000, tax_amount: 180,
+      discount_amount: 0, total_amount: 1180, status: 'draft', restock: false,
+    } as any, [{
+      credit_note_id: '', product_id: india.productId, invoice_item_id: items[0].id, quantity: 1, unit_price: 1000,
+      tax_rate: 18, tax_amount: 180, line_subtotal: 1000, line_total: 1180, discount_amount: 0, discount_percent: 0, sort_order: 0,
+    } as any]);
+    await india.adapter.creditNotes.confirm(cn.id);
+    expect(await taxLines(india.companyId, cn.id, '22')).toEqual({ '2210@2210': -90, '2220@2220': -90 });
+  });
+
+  it('G10 editing an inter-state invoice re-posts its tax as IGST', async () => {
+    const id = await invoice(india, india.otherStateCustomer, 18);
+    const inv = (await india.adapter.invoices.getById(id))!;
+    await india.adapter.invoices.update(id, { ...inv, subtotal: 2000, tax_amount: 360, total_amount: 2360 } as any, [{
+      invoice_id: '', product_id: india.productId, quantity: 2, unit_price: 1000, line_subtotal: 2000,
+      line_total: 2360, tax_amount: 360, tax_rate: 18, discount_amount: 0, discount_percent: 0, sort_order: 0,
+    } as any]);
+    await india.adapter.invoices.edit(id);
+    // The old 180 is reversed and 360 re-posted, all on IGST: net 360.
+    expect(await taxLines(india.companyId, id, '22')).toEqual({ '2230@2230': 360 });
+  });
+
+  it('G11 the books of the Indian company still pass every invariant', async () => {
+    const { data, error } = await admin.rpc('verify_invariants', { p_company_id: india.companyId, p_as_of_date: '2026-12-31' } as any);
+    expect(error).toBeNull();
+    // G2 "Cash balance >= 0" is informational: G7 pays an expense from an empty
+    // cash account on purpose. Every accounting invariant must pass.
+    const failed = ((data ?? []) as { name: string; pass: boolean }[])
+      .filter((c) => !c.pass && !/informational/i.test(c.name));
+    expect(failed).toEqual([]);
   });
 
   it('G8 (control) a UAE invoice still posts its VAT to 2200', async () => {

@@ -1278,12 +1278,21 @@ Dr  1200 AR                       11,800
     Cr  2230 Output IGST              1,800
 ```
 
-**Determination logic:**
-- Compare `company.state` with `contact.address_state`.
-- Same → CGST + SGST split.
+**Determination logic** (decided 2026-11-06, D1/D2 — the same rule e-invoicing uses):
+- Supplier state = the first two digits of the company GSTIN (`companies.tax_id`).
+- Place of supply = the document's `place_of_supply_code`, else the party's
+  `contacts.place_of_supply_code` (two-digit GST state code).
+- Export (`is_export`) → IGST.
+- Same state → CGST + SGST split evenly (SGST takes any rounding cent).
 - Different → IGST.
+- **Unknown** place of supply or supplier state (walk-in / B2C without a
+  recorded state, unregistered company) → intra-state, CGST + SGST.
+- Every GL line carries its own account's code (2210/2220/2230, 1510/1520/1530).
 
-**Same logic mirrors for purchases:** Input CGST/SGST/IGST.
+**Same logic mirrors for purchases:** Input CGST/SGST/IGST (1510/1520/1530),
+with the supplier's state as the counterparty. Applies to invoices (and their
+edits), POS sales, credit notes, vendor bills, debit notes and expenses.
+An expense's GST is input tax credit, never folded into the expense.
 
 ---
 
