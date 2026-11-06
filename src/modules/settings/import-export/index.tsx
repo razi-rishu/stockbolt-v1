@@ -18,6 +18,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth';
+import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { BackupCard } from './_backup-card';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
@@ -161,6 +162,7 @@ interface PreviewRow {
 
 export default function ImportExportHub() {
   const { company_id } = useAuthStore();
+  const company_currency = useCompanyCurrency();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [searchParams] = useSearchParams();
@@ -246,7 +248,7 @@ export default function ImportExportHub() {
       const extra = entry.enrichExisting ? entry.enrichExisting(r) : {};
       existingMap.set(entry.naturalKey(r), { ...base, ...extra });
     }
-    const ctx: ImportContext = { company_id, existing: existingMap, lookups };
+    const ctx: ImportContext = { company_id, company_currency, existing: existingMap, lookups };
 
     const preview: PreviewRow[] = result.rows.map(raw => {
       const v = adapter.validate(raw, ctx);
@@ -275,7 +277,7 @@ export default function ImportExportHub() {
       for (const r of existingRows) {
         existingMap.set(entry.naturalKey(r), { id: (r as { id: string }).id });
       }
-      const ctx: ImportContext = { company_id, existing: existingMap, lookups };
+      const ctx: ImportContext = { company_id, company_currency, existing: existingMap, lookups };
       const result = await adapter.apply(valid as unknown[], ctx, policy);
       setApplyResult(result);
       setStep('done');

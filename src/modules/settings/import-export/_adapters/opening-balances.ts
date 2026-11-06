@@ -176,7 +176,7 @@ export const openingBalancesAdapter: ModuleAdapter<
         date,
         due_date:   due || null,
         amount:     amtR.ok ? amtR.value : 0,
-        currency:   raw.currency?.trim() || 'AED',
+        currency:   raw.currency?.trim() || ctx.company_currency,
         notes:      raw.notes?.trim() || null,
       },
     };

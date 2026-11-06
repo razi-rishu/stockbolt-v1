@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useMatch, Outlet } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { VoidedToggle } from '@/ui/voided-toggle';
 import { useHideVoided } from '@/hooks/use-hide-voided';
@@ -69,6 +70,7 @@ function FilterPill({ label, active, onClick }: { label: string; active: boolean
 export default function InvoicesPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
+  const companyCurrency = useCompanyCurrency();
   const navigate = useNavigate();
   const selMatch = useMatch('/sales/invoices/:id');
   const selectedId = selMatch?.params.id;
@@ -123,7 +125,9 @@ export default function InvoicesPage() {
   const totalOverdue = allRows.filter(i => i.status === 'confirmed' && i.due_date && i.due_date < today).reduce((s, i) => s + outstandingOf(i), 0);
   const countConfirmed = allRows.filter(i => i.status === 'confirmed').length;
   const countOverdue = allRows.filter(i => i.status === 'confirmed' && i.due_date && i.due_date < today).length;
-  const currency = allRows[0]?.currency ?? 'AED';
+  // With no invoices yet there is no row to read; the company's own currency
+  // is the honest label, not a fixed 'AED'.
+  const currency = allRows[0]?.currency ?? companyCurrency;
 
   // A single-line stat segment inside the slim strip below — label, value
   // and sub-count share one row instead of stacking across three.

@@ -141,7 +141,7 @@ export const contactsAdapter: ModuleAdapter<ContactRow, ContactInsert & { __exis
       email:              raw.email?.trim() || null,
       phone:              raw.phone?.trim() || null,
       mobile:             raw.mobile?.trim() || null,
-      currency:           raw.currency?.trim() || 'AED',
+      currency:           raw.currency?.trim() || ctx.company_currency,
       payment_terms_days: ptR.ok ? ptR.value : 0,
       credit_limit:       clR.ok ? clR.value : 0,
       address_street:     raw.address_street?.trim() || null,

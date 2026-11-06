@@ -7000,7 +7000,7 @@ export function createSupabaseAdapter(
         // CRITICAL: client.from() called as a method (not extracted to a variable)
         // so `this` remains bound — see getDashboardCards comment.
         const jeQR = await (client.from('journal_entries') as any)
-          .select('id, entry_number, date, description, source_type, source_id, created_at')
+          .select('id, entry_number, date, description, source_type, source_id, currency, created_at')
           .eq('company_id', company_id)
           .in('source_type', ['opening_gl', 'opening_bank'])
           .is('reversed_by_id', null)
@@ -7010,7 +7010,7 @@ export function createSupabaseAdapter(
         type RawOpenJE = {
           id: string; entry_number: string; date: string; description: string;
           source_type: 'opening_gl' | 'opening_bank';
-          source_id: string | null; created_at: string;
+          source_id: string | null; currency: string | null; created_at: string;
         };
         const openingJEs: RawOpenJE[] = jeQR.data ?? [];
 
@@ -7062,7 +7062,7 @@ export function createSupabaseAdapter(
                 account_code: target.account_code,
                 account_name: bankName || target.account_code,
                 date: je.date, due_date: null,
-                amount, currency: 'AED',
+                amount, currency: je.currency ?? '',
                 outstanding: amount,
                 status: 'confirmed',
                 posted_at: je.created_at,
@@ -7077,7 +7077,7 @@ export function createSupabaseAdapter(
                 account_code: target.account_code,
                 account_name: (je.description ?? '').replace(/^Opening balance — \d+ /, '') || target.account_code,
                 date: je.date, due_date: null,
-                amount, currency: 'AED',
+                amount, currency: je.currency ?? '',
                 outstanding: amount,
                 status: 'confirmed',
                 posted_at: je.created_at,

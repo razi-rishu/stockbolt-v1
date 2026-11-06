@@ -83,6 +83,10 @@ export interface ModuleAdapter<DBRow, ValidatedRow = DBRow> {
  *  tables here so each adapter doesn't re-fetch per row. */
 export interface ImportContext {
   company_id: string;
+  /** The company's own currency (INR, SAR, …): the fallback when a row has
+   *  no currency column. A literal 'AED' imported Indian contacts and
+   *  opening balances as dirhams. */
+  company_currency: string;
   /** Existing rows of THIS module, indexed by natural key (e.g. SKU
    *  for products, code for COA). Used for duplicate detection. The
    *  value carries `id` always plus any module-specific flags the

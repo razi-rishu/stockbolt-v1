@@ -18,6 +18,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
@@ -56,6 +57,10 @@ const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2,
 export default function BankAccountsPage() {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
+  // The company's own currency (INR for an Indian company). A literal 'AED'
+  // here labelled every Indian company's balances in dirhams and pre-filled
+  // new bank accounts with the wrong currency.
+  const companyCurrency = useCompanyCurrency();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
@@ -111,7 +116,7 @@ export default function BankAccountsPage() {
   const defaults: FormValues = {
     name: '', name_ar: '', account_type: 'bank',
     bank_name: '', account_number: '', iban: '', swift_code: '', branch: '',
-    currency: 'AED', coa_account_id: '', opening_balance: 0,
+    currency: companyCurrency, coa_account_id: '', opening_balance: 0,
     is_default: false, is_active: true,
   };
 
@@ -309,7 +314,7 @@ export default function BankAccountsPage() {
   const combined     = sumBalances(accounts as BankAccountRow[]);
   const cashOnHand   = sumBalances((accounts as BankAccountRow[]).filter(a => a.account_type === 'cash'));
   // Until the aggregate lands, say nothing rather than claim zero.
-  const money = (n: number | null) => n === null ? '\u2014' : `${n < 0 ? '-' : ''}AED ${fmt(Math.abs(n))}`;
+  const money = (n: number | null) => n === null ? '\u2014' : `${n < 0 ? '-' : ''}${companyCurrency} ${fmt(Math.abs(n))}`;
 
   const AccountIcon = ({ kind }: { kind: string }) => (
     <span

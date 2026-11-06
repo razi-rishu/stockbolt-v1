@@ -848,6 +848,9 @@ export default function OpeningBalancesPage() {
             date:       r.date,
             due_date:   r.due_date || null,
             amount:     parseFloat(r.amount),
+            // Without this the RPC's own default ('AED') tagged an Indian
+            // company's opening invoices, bills and payments as dirhams.
+            currency:   companyCurrency,
             notes:      r.notes.trim() || null,
           };
           await adapter.openingBalances.post(input);
