@@ -1,15 +1,17 @@
 -- phase120 — GL opening balances carry the company's currency, not 'AED'.
 --
--- post_gl_opening_balance stamped a literal 'AED' on its journal entry, so an
--- Indian (INR) company's GL openings were labelled dirhams. Amounts were always
--- right (base currency, rate 1.0); only the currency label was wrong.
--- post_bank_opening_balance already reads the company currency; this copies it.
+-- The committed 14.14m version of post_gl_opening_balance already reads the
+-- company currency, and production ran it (found 2026-11-06). Local staging
+-- held an older copy with a literal 'AED', which is what this was first built
+-- from. Applied on production it is therefore functionally a no-op (same
+-- lookup, two comment lines fewer); on any database still holding the old
+-- copy it fixes the label. Amounts were never affected (base currency,
+-- rate 1.0).
 --
--- Built from the live definition (pg_get_functiondef), one literal changed.
 -- CREATE OR REPLACE keeps the owner (ledger_writer, phase119) and the grants;
 -- SECURITY DEFINER and the pinned search_path are restated below.
--- Existing rows are NOT changed. Re-runnable. Rollback:
--- supabase/manual-apply/phase120_rollback.sql.
+-- Existing rows are NOT changed. Re-runnable. Rollback (restores the 14.14m
+-- version, never the 'AED' one): supabase/manual-apply/phase120_rollback.sql.
 
 BEGIN;
 
