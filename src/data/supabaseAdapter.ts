@@ -2262,9 +2262,21 @@ export function createSupabaseAdapter(
         //      - reverse the original JE incl. any flushed COGS JEs
         //      - re-queue deferred COGS for the new items if needed
         //    So the old queue entries are safely disposable here.
-        const { error: dcqErr } = await client.from('deferred_cogs_queue')
-          .delete().eq('sale_invoice_id', id);
-        assertNoError(dcqErr, 'invoices.update clear deferred_cogs_queue');
+        //    phase121 — clients may no longer write deferred_cogs_queue (Finding C,
+        //    phase119), and Postgres refuses a DELETE before looking at rows, so
+        //    the old direct delete broke every save of an existing invoice. Read
+        //    first (still allowed): drafts and fully-costed invoices have nothing
+        //    queued and need no call at all. Otherwise the posting function
+        //    clears this invoice's rows, checking sales.write and the company.
+        const { count: queued, error: dcqReadErr } = await client.from('deferred_cogs_queue')
+          .select('id', { count: 'exact', head: true }).eq('sale_invoice_id', id);
+        assertNoError(dcqReadErr, 'invoices.update read deferred_cogs_queue');
+        if ((queued ?? 0) > 0) {
+          const { error: dcqErr } = await (
+            client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ error: Error | null }>
+          )('clear_invoice_deferred_cogs', { p_invoice_id: id });
+          assertNoError(dcqErr, 'invoices.update clear deferred_cogs_queue');
+        }
 
         // R1 — phase72 put ON DELETE RESTRICT on the return links, so replacing
         // items on an invoice that has been returned against is refused by the

@@ -26,11 +26,11 @@ describe('integration suites resolve to local staging only', () => {
 
   const dbSuites = suites.filter((s) => talksToSupabase(s.code) && !PRODUCTION_READERS.has(s.name));
 
-  it('the nine mutating suites plus Finding E, Finding C, Global01 and company currency are covered', () => {
+  it('the nine mutating suites plus Finding E, Finding C, Global01, company currency and invoice edits are covered', () => {
     expect(dbSuites.map((s) => s.name).sort()).toEqual([
       'amortization-verification.test.ts', 'company-currency-verification.test.ts', 'deferred-cogs-verification.test.ts', 'finding-c-verification.test.ts',
       'finding-e-verification.test.ts',
-      'fixed-assets-verification.test.ts', 'global-wizard-verification.test.ts', 'global01-config-verification.test.ts', 'phase0-rls.test.ts', 'phase1-verification.test.ts',
+      'fixed-assets-verification.test.ts', 'global-wizard-verification.test.ts', 'global01-config-verification.test.ts', 'invoice-edit-verification.test.ts', 'phase0-rls.test.ts', 'phase1-verification.test.ts',
       'phase2-verification.test.ts', 'tax-return-verification.test.ts', 'tds-verification.test.ts',
       'year-end-close-verification.test.ts',
     ]);

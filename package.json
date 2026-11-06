@@ -38,6 +38,7 @@
     "test:global01": "vitest run tests/integration/global01-config-verification.test.ts",
     "test:global-wizard": "vitest run tests/integration/global-wizard-verification.test.ts",
     "test:company-currency": "vitest run tests/integration/company-currency-verification.test.ts",
+    "test:invoice-edit": "vitest run tests/integration/invoice-edit-verification.test.ts",
     "staging:seed": "node scripts/staging-seed.mjs",
     "prepare": "husky"
   },
