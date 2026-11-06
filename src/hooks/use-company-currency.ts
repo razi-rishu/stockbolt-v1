@@ -23,6 +23,8 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
+import { useTranslation } from 'react-i18next';
+import { getTaxLabels } from '@/lib/locale';
 import { useAuthStore } from '@/store/auth';
 import type { Company } from '@/data/adapter';
 import { useEnabledModules } from '@/hooks/use-enabled-modules';
@@ -109,4 +111,15 @@ export function useCompany(): Company | null {
   });
 
   return company ?? null;
+}
+
+/**
+ * useTaxName — the company's tax called by its own name, translated: "GST"
+ * for India, "VAT" for the GCC (getTaxLabels decides). Screens used to print
+ * a fixed "VAT", which is wrong for every Indian company (Global pilot finding).
+ */
+export function useTaxName(): string {
+  const { t } = useTranslation();
+  const country = useCompanyCountry();
+  return getTaxLabels(country).taxName === 'GST' ? t('common.tax_name_gst') : t('common.tax_name_vat');
 }

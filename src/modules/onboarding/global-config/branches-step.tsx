@@ -11,7 +11,7 @@
  * restrict access in v1, and the screen says so — it never presents them as
  * security.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Badge } from '@/ui/badge';
@@ -97,14 +97,35 @@ export function BranchesManager({ company_id, canSettings, canUsers, showWarehou
     for (const k of ['branches', 'warehouses', 'branch_assignments']) qc.invalidateQueries({ queryKey: [k, company_id] });
   };
   const fail = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
+  // The warehouse and user-branch selects save the moment they change; say so,
+  // briefly, or it looks as if nothing happened.
+  const [saved, setSaved] = useState(false);
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (savedTimer.current) clearTimeout(savedTimer.current); }, []);
+  const refreshSaved = () => {
+    refresh();
+    setSaved(true);
+    if (savedTimer.current) clearTimeout(savedTimer.current);
+    savedTimer.current = setTimeout(() => setSaved(false), 2500);
+  };
+  const roleName = (role: string | null | undefined) => {
+    switch (role) {
+      case 'admin': return t('global_config.branches.role.admin');
+      case 'accountant': return t('global_config.branches.role.accountant');
+      case 'sales': return t('global_config.branches.role.sales');
+      case 'counter': return t('global_config.branches.role.counter');
+      case 'viewer': return t('global_config.branches.role.viewer');
+      default: return role ?? '';
+    }
+  };
 
   const create = useMutation({
     mutationFn: () => ad.branches.create({ company_id, name: name.trim(), code: branchCodeFrom(name, branches.map((b) => b.code)) }),
     onSuccess: () => { setName(''); refresh(); }, onError: fail,
   });
   const toggle = useMutation({ mutationFn: (b: BranchRow) => ad.branches.update(b.id, { is_active: !b.is_active }), onSuccess: refresh, onError: fail });
-  const move = useMutation({ mutationFn: (v: { w: string; b: string }) => ad.branches.assignWarehouse(v.w, v.b), onSuccess: refresh, onError: fail });
-  const assign = useMutation({ mutationFn: (v: { p: string; ids: string[] }) => ad.branches.setAssignments(company_id, v.p, v.ids), onSuccess: refresh, onError: fail });
+  const move = useMutation({ mutationFn: (v: { w: string; b: string }) => ad.branches.assignWarehouse(v.w, v.b), onSuccess: refreshSaved, onError: fail });
+  const assign = useMutation({ mutationFn: (v: { p: string; ids: string[] }) => ad.branches.setAssignments(company_id, v.p, v.ids), onSuccess: refreshSaved, onError: fail });
   const label = (b: BranchRow) => (ar && b.name_ar ? b.name_ar : b.name);
   const active = branches.filter((b) => b.is_active);
 
@@ -173,7 +194,7 @@ export function BranchesManager({ company_id, canSettings, canUsers, showWarehou
               <li key={u.id} data-user={u.email ?? u.id} className="rounded-card border border-border-subtle px-3 py-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>{u.full_name || u.email}</span>
-                  <span className="text-xs text-ink-tertiary">{u.role}</span>
+                  <span className="text-xs text-ink-tertiary">{roleName(u.role)}</span>
                 </div>
                 <div className="mt-1 flex flex-wrap gap-3" aria-label={t('global_config.branches.user_branches')}>
                   {active.map((b) => (
@@ -192,6 +213,7 @@ export function BranchesManager({ company_id, canSettings, canUsers, showWarehou
         <p className="mt-2 text-xs text-ink-tertiary">{t('global_config.branches.invite')}</p>
       </section>
       {error && <p className="text-xs text-danger-500">{error}</p>}
+      {saved && !error && <p role="status" data-testid="branches-saved" className="text-xs text-success-500">{t('global_config.branches.saved')}</p>}
     </div>
   );
 }

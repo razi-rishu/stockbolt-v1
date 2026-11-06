@@ -28,7 +28,7 @@ import {
 } from 'recharts';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
-import { useCompanyCurrency } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useTaxName } from '@/hooks/use-company-currency';
 import { formatCurrency, fiscalYearLabel } from '@/lib/locale';
 import type { OwnerDashboard } from '@/data/adapter';
 import DashboardSummaryCards from './_summary-cards';
@@ -400,6 +400,7 @@ migrateLegacyPeriod();
 
 // ── Main component ──────────────────────────────────────────────────────────
 export default function DashboardPage() {
+  const taxName = useTaxName();   // GST for India, VAT for the GCC
   const { t } = useTranslation();
   const adapter = getAdapter();
   const company_id = useAuthStore(s => s.company_id);
@@ -560,8 +561,8 @@ export default function DashboardPage() {
            the screen. Explicit breakpoints instead - 2 up on a phone, 3 on a
            tablet, all 6 across on a wide screen. */}
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3.5 xl:grid-cols-6">
-        <KpiTile label={`${periodWord} Sales`}     value={formatCurrency(ps.sales, currency)}     sub="Revenue (excl. VAT)" delta={dSales}     icon={<TrendingUpIcon />} tone="emerald" href="/sales/invoices" />
-        <KpiTile label={`${periodWord} Purchases`} value={formatCurrency(ps.purchases, currency)} sub="Bills (excl. VAT)"   delta={dPurchases} icon={<CartIcon />}       tone="violet"  href="/purchasing/bills" />
+        <KpiTile label={`${periodWord} Sales`}     value={formatCurrency(ps.sales, currency)}     sub={t('dashboard.revenue_excl_tax', { tax: taxName })} delta={dSales}     icon={<TrendingUpIcon />} tone="emerald" href="/sales/invoices" />
+        <KpiTile label={`${periodWord} Purchases`} value={formatCurrency(ps.purchases, currency)} sub={t('dashboard.bills_excl_tax', { tax: taxName })}   delta={dPurchases} icon={<CartIcon />}       tone="violet"  href="/purchasing/bills" />
         <KpiTile label="Inventory Value"  value={formatCurrency(data.inventory_value, currency)}         sub="Asset Value"         delta={dInventory} icon={<WalletIcon />}     tone="slate"   href="/reports/stock-valuation" />
         <KpiTile label="SKU Count"        value={fmtInt(data.sku_count)}                     sub="Unique Parts"        delta={dSku}       icon={<StoreIcon />}      tone="sky"     href="/products" />
         <KpiTile label="Receivables"      value={formatCurrency(data.outstanding_ar, currency)}          sub="Outstanding"         delta={dAR}        icon={<CoinIcon />}       tone="orange"  href="/reports/ar-aging" />

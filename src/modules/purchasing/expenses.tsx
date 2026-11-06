@@ -19,7 +19,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { useCompanyCurrency } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useTaxName } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
@@ -75,6 +75,7 @@ function TileLabel({ children }: { children: React.ReactNode }) {
 type Filter = 'all' | 'draft' | 'confirmed' | 'void' | 'this_month';
 
 export default function ExpensesPage() {
+  const taxName = useTaxName();   // GST for India, VAT for the GCC
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const navigate = useNavigate();
@@ -227,9 +228,9 @@ export default function ExpensesPage() {
             <div style={{ fontSize: '11px', color: theme.warn }}>{money(m.draftValue)}</div>
           </Tile>
 
-          {/* Input VAT */}
+          {/* Input tax (VAT / GST) */}
           <Tile span={1} style={{ justifyContent: 'center' }}>
-            <TileLabel>🧮 Input VAT</TileLabel>
+            <TileLabel>🧮 {t('common.input_tax', { tax: taxName })}</TileLabel>
             <div style={{ fontSize: '20px', fontWeight: 700, color: theme.ink, marginTop: '4px' }}>{money(m.inputVat)}</div>
             <div style={{ fontSize: '11px', color: theme.inkFaint }}>this month</div>
           </Tile>

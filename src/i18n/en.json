@@ -21,6 +21,9 @@
     "subtotal": "Subtotal",
     "supplier": "Supplier",
     "tax": "Tax",
+    "tax_name_vat": "VAT",
+    "tax_name_gst": "GST",
+    "input_tax": "Input {{tax}}",
     "unit_cost": "Unit cost",
     "unit_price": "Unit price",
     "void": "Void",
@@ -1600,6 +1603,8 @@
     "no": "No"
   },
   "dashboard": {
+    "revenue_excl_tax": "Revenue (excl. {{tax}})",
+    "bills_excl_tax": "Bills (excl. {{tax}})",
     "title": "Dashboard",
     "today_sales": "Today's Sales",
     "invoices": "invoices",
@@ -1972,6 +1977,8 @@
       "warehouse_branch": "Branch",
       "users": "Users",
       "user_branches": "Assigned branches",
+      "role": { "admin": "Admin", "accountant": "Accountant", "sales": "Salesperson", "counter": "Counter / Cashier", "viewer": "Viewer" },
+      "saved": "Saved",
       "not_restricted": "Branch assignments are recorded for each user. They don't limit access yet: every user keeps company-wide access until branch restriction is enabled.",
       "invite": "Invite people in Settings → Users & Roles.",
       "need_settings": "You need settings permission to change branches and warehouses.",

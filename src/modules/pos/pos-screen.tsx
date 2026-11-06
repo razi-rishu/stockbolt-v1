@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
-import { useCompanyCountry, useCompanyRoundingStep } from '@/hooks/use-company-currency';
+import { useCompanyCountry, useCompanyRoundingStep, useTaxName } from '@/hooks/use-company-currency';
 import { applyRoundOff } from '@/core/sales/invoice-calc';
 import { defaultTaxRate as countryStdTaxRate } from '@/lib/locale';
 import { Input } from '@/ui/input';
@@ -89,6 +89,7 @@ function CloseSessionDialog({ session, onClose, onCancel }: {
 
 // ── Main POS Screen ────────────────────────────────────────────────────────────
 export default function POSScreen() {
+  const taxName = useTaxName();   // GST for India, VAT for the GCC
   const { t } = useTranslation();
   const qc = useQueryClient();
   const invalidateBooks = useInvalidateBooks();   // Phase 14.14k
@@ -406,7 +407,7 @@ export default function POSScreen() {
           </div>
           {totals.tax_amount > 0 && (
             <div className="flex justify-between text-ink-secondary">
-              <span>{t('pos.tax')}</span><span>{fmt(totals.tax_amount)}</span>
+              <span>{taxName}</span><span>{fmt(totals.tax_amount)}</span>
             </div>
           )}
           {roundOff !== 0 && (

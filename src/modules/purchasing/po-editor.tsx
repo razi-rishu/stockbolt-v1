@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { useCompanyCurrency, useCompanyCountry } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useCompanyCountry, useTaxName } from '@/hooks/use-company-currency';
 import { defaultTaxRate } from '@/lib/locale';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
@@ -56,6 +56,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2,
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
 export default function POEditorPage() {
+  const taxName = useTaxName();   // GST for India, VAT for the GCC
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const companyCurrency = useCompanyCurrency();    // Phase 14.14m
@@ -516,7 +517,7 @@ export default function POEditorPage() {
           <div className="ms-auto w-60 space-y-1.5 text-sm">
             <div className="flex justify-between text-ink-secondary"><span>{t('purchasing.subtotal')}</span><span className="font-mono">{fmt(subtotal)}</span></div>
             {discountTotal > 0 && <div className="flex justify-between text-ink-secondary"><span>{t('purchasing.discount')}</span><span className="font-mono text-red-600">−{fmt(discountTotal)}</span></div>}
-            {taxTotal > 0 && <div className="flex justify-between text-ink-secondary"><span>{t('purchasing.vat')}</span><span className="font-mono">{fmt(taxTotal)}</span></div>}
+            {taxTotal > 0 && <div className="flex justify-between text-ink-secondary"><span>{taxName}</span><span className="font-mono">{fmt(taxTotal)}</span></div>}
             <div className="flex justify-between border-t border-border-subtle pt-1.5 font-semibold text-ink-primary">
               <span>{t('purchasing.total_amount')}</span>
               <span className="font-mono">{header.currency} {fmt(grandTotal)}</span>

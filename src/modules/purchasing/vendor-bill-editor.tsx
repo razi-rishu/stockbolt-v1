@@ -6,7 +6,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useShortcutAction } from '@/keyboard/use-shortcut-action';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
-import { useCompanyCurrency, useCompanyCountry } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useCompanyCountry, useTaxName } from '@/hooks/use-company-currency';
 import { defaultTaxRate } from '@/lib/locale';
 import { TdsPanel } from './tds-panel';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
@@ -73,6 +73,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2,
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
 export default function VendorBillEditorPage() {
+  const taxName = useTaxName();   // GST for India, VAT for the GCC
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const { id } = useParams<{ id: string }>();
@@ -1125,7 +1126,7 @@ export default function VendorBillEditorPage() {
             )}
             {taxTotal > 0 && (
               <div className="flex justify-between text-ink-secondary">
-                <span>{t('purchasing.vat')}</span>
+                <span>{taxName}</span>
                 <span className="font-mono">{fmt(taxTotal)}</span>
               </div>
             )}

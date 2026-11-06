@@ -133,26 +133,28 @@ export default function SettingsHubPage() {
   const { company_id } = useAuthStore();
 
   // Live counts — labelled as a pill on the relevant tile.
-  const { data: warehouses  = [] } = useQuery({ queryKey: ['warehouses',   company_id], queryFn: () => getAdapter().warehouses.list(company_id!),  enabled: !!company_id });
-  const { data: units       = [] } = useQuery({ queryKey: ['units',        company_id], queryFn: () => getAdapter().units.list(company_id!),       enabled: !!company_id });
-  const { data: categories  = [] } = useQuery({ queryKey: ['categories',   company_id], queryFn: () => getAdapter().categories.list(company_id!),  enabled: !!company_id });
-  const { data: brands      = [] } = useQuery({ queryKey: ['brands',       company_id], queryFn: () => getAdapter().brands.list(company_id!),      enabled: !!company_id });
-  const { data: vehicles    = [] } = useQuery({ queryKey: ['vehicleMakes', company_id], queryFn: () => getAdapter().vehicleMakes.list(company_id!), enabled: !!company_id });
-  const { data: priceLevels = [] } = useQuery({ queryKey: ['priceLevels',  company_id], queryFn: () => getAdapter().priceLevels.list(company_id!), enabled: !!company_id });
-  const { data: salespeople = [] } = useQuery({ queryKey: ['salespeople',  company_id], queryFn: () => getAdapter().salespeople.list(company_id!), enabled: !!company_id });
-  const { data: taxRates    = [] } = useQuery({ queryKey: ['taxRates',     company_id], queryFn: () => getAdapter().taxRates.list(company_id!),    enabled: !!company_id });
-  const { data: coa         = [] } = useQuery({ queryKey: ['coa',          company_id], queryFn: () => getAdapter().coa.list(company_id!),         enabled: !!company_id });
+  const { data: warehouses      } = useQuery({ queryKey: ['warehouses',   company_id], queryFn: () => getAdapter().warehouses.list(company_id!),  enabled: !!company_id });
+  const { data: units           } = useQuery({ queryKey: ['units',        company_id], queryFn: () => getAdapter().units.list(company_id!),       enabled: !!company_id });
+  const { data: categories      } = useQuery({ queryKey: ['categories',   company_id], queryFn: () => getAdapter().categories.list(company_id!),  enabled: !!company_id });
+  const { data: brands          } = useQuery({ queryKey: ['brands',       company_id], queryFn: () => getAdapter().brands.list(company_id!),      enabled: !!company_id });
+  const { data: vehicles        } = useQuery({ queryKey: ['vehicleMakes', company_id], queryFn: () => getAdapter().vehicleMakes.list(company_id!), enabled: !!company_id });
+  const { data: priceLevels     } = useQuery({ queryKey: ['priceLevels',  company_id], queryFn: () => getAdapter().priceLevels.list(company_id!), enabled: !!company_id });
+  const { data: salespeople     } = useQuery({ queryKey: ['salespeople',  company_id], queryFn: () => getAdapter().salespeople.list(company_id!), enabled: !!company_id });
+  const { data: taxRates        } = useQuery({ queryKey: ['taxRates',     company_id], queryFn: () => getAdapter().taxRates.list(company_id!),    enabled: !!company_id });
+  const { data: coa             } = useQuery({ queryKey: ['coa',          company_id], queryFn: () => getAdapter().coa.list(company_id!),         enabled: !!company_id });
 
-  const countByPath: Record<string, number> = {
-    '/settings/warehouses':       warehouses.length,
-    '/settings/units':            units.length,
-    '/settings/categories':       categories.length,
-    '/settings/brands':           brands.length,
-    '/settings/vehicles':         vehicles.length,
-    '/settings/price-levels':     priceLevels.length,
-    '/settings/salespeople':      salespeople.length,
-    '/settings/tax-rates':        taxRates.length,
-    '/settings/chart-of-accounts': coa.length,
+  // undefined while a list is still loading, so the tile shows no pill rather
+  // than a misleading 0 (pilot finding: Units of Measure flashed 0, then 5).
+  const countByPath: Record<string, number | undefined> = {
+    '/settings/warehouses':       warehouses?.length,
+    '/settings/units':            units?.length,
+    '/settings/categories':       categories?.length,
+    '/settings/brands':           brands?.length,
+    '/settings/vehicles':         vehicles?.length,
+    '/settings/price-levels':     priceLevels?.length,
+    '/settings/salespeople':      salespeople?.length,
+    '/settings/tax-rates':        taxRates?.length,
+    '/settings/chart-of-accounts': coa?.length,
   };
 
   const { modules } = useEnabledModules();

@@ -44,6 +44,13 @@ const STEP_LABEL: Record<(typeof WIZARD_STEPS)[number]['key'], string> = {
 };
 
 /** Choices from a stored draft, keeping only well-formed keys (the engine re-validates the rest). */
+/** Same activities, primary activity and module choices, ignoring order. */
+function sameChoices(a: WizardChoices, b: WizardChoices): boolean {
+  const set = (x: string[]) => [...new Set(x)].sort().join(',');
+  return set(a.activity_keys) === set(b.activity_keys) && a.primary_activity_key === b.primary_activity_key
+    && set(a.enable) === set(b.enable) && set(a.disable) === set(b.disable);
+}
+
 function choicesFromDraft(raw: unknown): WizardChoices | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
@@ -109,8 +116,18 @@ export default function GlobalSetupWizardPage() {
     }
   }, [current, own.loaded, onboarding.loaded, own.draft, onboarding.draft, company, stored]);
 
+  // Only unsaved work is worth resuming. Moving between tabs with nothing
+  // changed used to leave a draft behind, so the next visit reopened on a
+  // random tab; now a draft exists only while the choices differ from the
+  // saved configuration, and going back to them clears it.
+  const hadDraft = useRef(false);
   useEffect(() => {
-    if (!choices || !company || !canWrite || !started.current) return;
+    if (!choices || !company || !canWrite || !started.current || !current) return;
+    if (sameChoices(choices, choicesFrom(current))) {
+      if (hadDraft.current || own.draft?.company_id === company.id) { hadDraft.current = false; void own.remove(); }
+      return;
+    }
+    hadDraft.current = true;
     own.save(WIZARD_STEPS[step].key, { choices }, company.id);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- save on every change of what the user chose
   }, [choices, step]);

@@ -6,7 +6,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useShortcutAction } from '@/keyboard/use-shortcut-action';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
-import { useCompanyCurrency, useCompanyCountry, useCompanyRoundingStep } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useCompanyCountry, useCompanyRoundingStep, useTaxName } from '@/hooks/use-company-currency';
 import { applyRoundOff } from '@/core/sales/invoice-calc';
 import { defaultTaxRate } from '@/lib/locale';
 import { eInvoiceReadiness } from '@/lib/einvoice-metadata';
@@ -95,6 +95,7 @@ function todayIso() {
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function InvoiceEditorPage() {
+  const taxName = useTaxName();   // GST for India, VAT for the GCC
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const companyCurrency = useCompanyCurrency();   // Phase 14.14m — reads companies.currency, falls back to AED
@@ -1370,7 +1371,7 @@ export default function InvoiceEditorPage() {
             )}
             {taxTotal > 0 && (
               <div className="flex justify-between text-ink-secondary">
-                <span>{t('sales.vat')}</span>
+                <span>{taxName}</span>
                 <span className="font-mono">{fmt(taxTotal)}</span>
               </div>
             )}

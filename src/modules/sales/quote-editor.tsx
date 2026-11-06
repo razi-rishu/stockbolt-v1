@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { useCompanyCurrency, useCompanyCountry, useCompanyRoundingStep } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useCompanyCountry, useCompanyRoundingStep, useTaxName } from '@/hooks/use-company-currency';
 import { defaultTaxRate } from '@/lib/locale';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
@@ -53,6 +53,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2,
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
 export default function QuoteEditorPage() {
+  const taxName = useTaxName();   // GST for India, VAT for the GCC
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const companyCurrency = useCompanyCurrency();   // Issue 1 — was hardcoded 'AED'
@@ -489,7 +490,7 @@ export default function QuoteEditorPage() {
           <div className="ms-auto w-60 space-y-1.5 text-sm">
             <div className="flex justify-between text-ink-secondary"><span>{t('sales.subtotal')}</span><span className="font-mono">{fmt(subtotal)}</span></div>
             {discountTotal > 0 && <div className="flex justify-between text-ink-secondary"><span>{t('sales.discount')}</span><span className="font-mono text-red-600">−{fmt(discountTotal)}</span></div>}
-            {taxTotal > 0 && <div className="flex justify-between text-ink-secondary"><span>{t('sales.vat')}</span><span className="font-mono">{fmt(taxTotal)}</span></div>}
+            {taxTotal > 0 && <div className="flex justify-between text-ink-secondary"><span>{taxName}</span><span className="font-mono">{fmt(taxTotal)}</span></div>}
             {roundOff !== 0 && (
               <div className="flex justify-between text-ink-secondary"><span>{t('sales.round_off')}</span><span className="font-mono">{roundOff > 0 ? '+' : '−'}{fmt(Math.abs(roundOff))}</span></div>
             )}
