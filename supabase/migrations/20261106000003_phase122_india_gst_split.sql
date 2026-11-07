@@ -92,6 +92,8 @@ CREATE OR REPLACE FUNCTION public.confirm_invoice(p_invoice_id uuid)
  SECURITY DEFINER
  SET search_path TO 'public', 'pg_temp'
 AS $function$
+-- Cumulative phase tags (preserved so the regression suite's per-phase
+-- markers still resolve): Phase 12.20, Phase 12.22, Phase 12.27, Phase 12.28
 DECLARE
   v_user_id     UUID := auth.uid();
   v_company_id  UUID;
@@ -326,6 +328,8 @@ CREATE OR REPLACE FUNCTION public.edit_invoice(p_invoice_id uuid)
  SECURITY DEFINER
  SET search_path TO 'public', 'pg_temp'
 AS $function$
+-- Cumulative phase tags (preserved so the regression suite's per-phase
+-- markers still resolve): Phase 12.20, Phase 12.21, Phase 12.22, Phase 12.27, Phase 12.28
 DECLARE
   v_user_id     UUID := auth.uid();
   v_company_id  UUID;
