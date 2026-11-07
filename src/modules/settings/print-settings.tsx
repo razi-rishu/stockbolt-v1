@@ -88,6 +88,10 @@ export default function PrintSettingsPage() {
   const [saved,   setSaved]   = useState(false);
   const [error,   setError]   = useState<string | null>(null);
   const [needsMigration, setNeedsMigration] = useState(false);
+  // A company created after the phase15 seed has no templates yet: that is
+  // not a missing migration. A settings.write user gets a default created on
+  // first visit; anyone else sees that documents use the standard layout.
+  const [noTemplates, setNoTemplates] = useState(false);
   const [company, setCompany] = useState<{ name?: string; logo_url?: string | null; tax_id?: string | null; country_code?: string | null } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadingLh, setUploadingLh] = useState(false);
@@ -100,14 +104,32 @@ export default function PrintSettingsPage() {
         adapter.printTemplates.list(company_id),
         adapter.printTemplates.listDocTypeDefaults(company_id).catch(() => ({})),
       ]);
-      if (rows.length === 0) { setNeedsMigration(true); return; }
       setNeedsMigration(false);
+      if (rows.length === 0) {
+        try {
+          const created = await adapter.printTemplates.create(company_id, { ...newTemplateDraft(), name: 'Default Template', is_default: true });
+          rows.push(created);
+        } catch {
+          // Either another load created it first (one default per company), or
+          // this user lacks settings.write. Re-read before deciding.
+          rows.push(...await adapter.printTemplates.list(company_id));
+          if (rows.length === 0) {
+            setNoTemplates(true);   // nothing to edit; printing still uses the standard layout
+            return;
+          }
+        }
+      }
+      setNoTemplates(false);
       setTemplates(rows.map(r => ({ ...r, settings: normalizeSettings(r.settings) })));
       setDocDefaults(defaults);
       const pick = rows.find(r => r.id === selectId) ?? rows.find(r => r.is_default) ?? rows[0];
       setTpl({ ...pick, settings: normalizeSettings(pick.settings) });
-    } catch {
-      setNeedsMigration(true);
+    } catch (e) {
+      // Only a genuinely missing table means the migration is absent; any other
+      // failure is shown as it is.
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/print_templates/.test(msg) && /does not exist|schema cache/i.test(msg)) setNeedsMigration(true);
+      else setError(msg);
     }
   }, [company_id, adapter]);
 
@@ -251,6 +273,12 @@ export default function PrintSettingsPage() {
         <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '10px 16px', fontSize: 13, color: '#92400E' }}>
           Template customization needs the Phase 15 database migration
           (<code>20260617000001_phase15_print_templates.sql</code>). Run it in Supabase to enable this page.
+        </div>
+      )}
+      {noTemplates && (
+        <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: '10px 16px', fontSize: 13, color: '#334155' }}>
+          No print templates have been set up for this company yet, so documents print with the standard layout.
+          An administrator can create and customise templates here.
         </div>
       )}
       {error && <div style={{ background: theme.dangerSoft, border: `1px solid ${theme.dangerBorder}`, borderRadius: 8, padding: '10px 16px', fontSize: 13, color: theme.danger }}>{error}</div>}
