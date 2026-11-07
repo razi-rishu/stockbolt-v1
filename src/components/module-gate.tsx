@@ -13,12 +13,30 @@ import { useTranslation } from 'react-i18next';
 import { Card } from '@/ui/card';
 import { getModule, moduleForPath, pathAccess } from '@/core/global-config';
 import { useEnabledModules } from '@/hooks/use-enabled-modules';
+import { useBranchRestricted } from '@/hooks/use-branch-restricted';
+
+/** global06 (B2): company-wide financial areas. A branch-restricted user is
+ *  refused their data by the database; this says so instead of showing zeros. */
+const COMPANY_WIDE_FINANCE = ['/reports', '/accounting', '/banking'];
 
 export function ModuleGate({ children }: { children: ReactNode }) {
   const { t, i18n } = useTranslation();
   const { pathname } = useLocation();
   const { ready, modules } = useEnabledModules();
+  const branch = useBranchRestricted();
   const owner = moduleForPath(pathname);
+
+  if (branch.restricted && COMPANY_WIDE_FINANCE.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
+    return (
+      <Card padding="md" data-testid="branch-restricted" className="mx-auto max-w-xl space-y-3">
+        <h1 className="text-lg font-semibold text-ink-primary">{t('global_config.branch_access.report_title')}</h1>
+        <p className="text-sm text-ink-secondary">{t('global_config.branch_access.report_body')}</p>
+        <Link to="/dashboard" className="inline-block rounded-pill bg-brand-500 px-4 py-2 text-sm text-white">
+          {t('global_config.gate.back')}
+        </Link>
+      </Card>
+    );
+  }
 
   // Unowned paths render at once; owned ones wait for the configuration so a
   // disabled page never flashes before it is refused.

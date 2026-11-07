@@ -3227,7 +3227,8 @@ export interface BranchRow {
 }
 export type BranchInsert = Pick<BranchRow, 'company_id' | 'code' | 'name'> & Partial<Pick<BranchRow, 'name_ar' | 'address' | 'is_active'>>;
 export type BranchUpdate = Partial<Pick<BranchRow, 'name' | 'name_ar' | 'address' | 'is_active'>>;
-/** A user's branch assignment. Recorded only: it does NOT restrict access in v1. */
+/** A user's branch assignment. It restricts access only for a user whose
+ *  branch_access is 'restricted' while the company's enforcement is on (global06). */
 export interface ProfileBranchRow { company_id: string; profile_id: string; branch_id: string }
 export interface BranchesAPI {
   /** All branches of the company, default first. Empty on a database without global03. */
@@ -3239,6 +3240,13 @@ export interface BranchesAPI {
   listAssignments(company_id: string): Promise<ProfileBranchRow[]>;
   /** Replaces a user's branch assignments (needs users.manage). */
   setAssignments(company_id: string, profile_id: string, branch_ids: string[]): Promise<void>;
+  /** global06: is the signed-in user branch-restricted right now? (the database's own
+   *  _branch_restricted(); false on a database without global06) */
+  isRestricted(): Promise<boolean>;
+  /** global06: admin only (trigger-enforced) — a user's explicit access state. */
+  setAccess(profile_id: string, access: 'unrestricted' | 'restricted'): Promise<void>;
+  /** global06: admin only — the company's enforcement switch (default off). */
+  setEnforcement(company_id: string, enabled: boolean): Promise<void>;
 }
 
 // ── Global v1 Phase 7 — wizard drafts (global04) ───────────────────────────

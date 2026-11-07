@@ -17,6 +17,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Badge } from '@/ui/badge';
 import { getAdapter } from '@/data/index';
 import type { BranchRow } from '@/data/adapter';
+import { BRANCH_RESTRICTION_UI } from '@/core/global-config/flag';
+import { useAuthStore } from '@/store/auth';
 
 const input = 'w-full rounded-pill border border-border-subtle bg-surface-card px-3 py-1.5 text-sm';
 const btn = 'rounded-pill bg-brand-500 px-3 py-1.5 text-xs text-white disabled:opacity-50';
@@ -126,6 +128,28 @@ export function BranchesManager({ company_id, canSettings, canUsers, showWarehou
   const toggle = useMutation({ mutationFn: (b: BranchRow) => ad.branches.update(b.id, { is_active: !b.is_active }), onSuccess: refresh, onError: fail });
   const move = useMutation({ mutationFn: (v: { w: string; b: string }) => ad.branches.assignWarehouse(v.w, v.b), onSuccess: refreshSaved, onError: fail });
   const assign = useMutation({ mutationFn: (v: { p: string; ids: string[] }) => ad.branches.setAssignments(company_id, v.p, v.ids), onSuccess: refreshSaved, onError: fail });
+
+  // Phase 6 (global06): access states and the enforcement switch. Admin only -
+  // the database refuses anyone else (trigger) whatever this screen shows.
+  const isAdmin = useAuthStore((s) => s.role) === 'admin';
+  const showAccess = BRANCH_RESTRICTION_UI;
+  const { data: company } = useQuery({
+    queryKey: ['company', company_id], queryFn: () => ad.companies.getById(company_id), enabled: showAccess,
+  });
+  const enforced = Boolean((company as { branch_restriction_enabled?: boolean } | null | undefined)?.branch_restriction_enabled);
+  const refreshAccess = () => {
+    qc.invalidateQueries({ queryKey: ['company_users', company_id] });
+    qc.invalidateQueries({ queryKey: ['company', company_id] });
+    qc.invalidateQueries({ queryKey: ['branch_restricted'] });
+    refreshSaved();
+  };
+  const setAccess = useMutation({
+    mutationFn: (v: { p: string; access: 'unrestricted' | 'restricted' }) => ad.branches.setAccess(v.p, v.access),
+    onSuccess: refreshAccess, onError: fail,
+  });
+  const setEnforcement = useMutation({
+    mutationFn: (on: boolean) => ad.branches.setEnforcement(company_id, on), onSuccess: refreshAccess, onError: fail,
+  });
   const label = (b: BranchRow) => (ar && b.name_ar ? b.name_ar : b.name);
   const active = branches.filter((b) => b.is_active);
 
@@ -186,7 +210,25 @@ export function BranchesManager({ company_id, canSettings, canUsers, showWarehou
 
       <section>
         <h3 className="mb-2 font-semibold text-ink-primary">{t('global_config.branches.users')}</h3>
-        <p className="mb-2 text-xs text-ink-tertiary" data-testid="not-restricted">{t('global_config.branches.not_restricted')}</p>
+        {showAccess ? (
+          <div className="mb-3 space-y-2 rounded-card border border-border-subtle bg-surface-subtle p-3" data-testid="branch-enforcement">
+            <p className="text-xs text-ink-secondary">{t('global_config.branch_access.explain')}</p>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" data-testid="enforce-switch" checked={enforced} disabled={!isAdmin || setEnforcement.isPending}
+                onChange={(e) => {
+                  if (e.target.checked && !window.confirm(t('global_config.branch_access.enforce_confirm'))) return;
+                  setEnforcement.mutate(e.target.checked);
+                }} />
+              <span className="font-medium">{t('global_config.branch_access.enforce')}</span>
+              <Badge variant={enforced ? 'warning' : 'muted'}>
+                {enforced ? t('global_config.branch_access.enforce_on') : t('global_config.branch_access.enforce_off')}
+              </Badge>
+            </label>
+            {!isAdmin && <p className="text-xs text-ink-tertiary">{t('global_config.branch_access.admin_only')}</p>}
+          </div>
+        ) : (
+          <p className="mb-2 text-xs text-ink-tertiary" data-testid="not-restricted">{t('global_config.branches.not_restricted')}</p>
+        )}
         <ul className="space-y-1">
           {users.map((u) => {
             const mine = assignments.filter((a) => a.profile_id === u.id).map((a) => a.branch_id);
@@ -194,8 +236,25 @@ export function BranchesManager({ company_id, canSettings, canUsers, showWarehou
               <li key={u.id} data-user={u.email ?? u.id} className="rounded-card border border-border-subtle px-3 py-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>{u.full_name || u.email}</span>
-                  <span className="text-xs text-ink-tertiary">{roleName(u.role)}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="text-xs text-ink-tertiary">{roleName(u.role)}</span>
+                    {showAccess && (u.role === 'admin' ? (
+                      <Badge variant="muted">{t('global_config.branch_access.admin_always')}</Badge>
+                    ) : (
+                      <select aria-label={t('global_config.branch_access.access')} data-access={u.email ?? u.id}
+                        className="rounded-pill border border-border-subtle bg-surface-card px-2 py-0.5 text-xs"
+                        value={(u as { branch_access?: string }).branch_access === 'restricted' ? 'restricted' : 'unrestricted'}
+                        disabled={!isAdmin || setAccess.isPending}
+                        onChange={(e) => setAccess.mutate({ p: u.id, access: e.target.value as 'unrestricted' | 'restricted' })}>
+                        <option value="unrestricted">{t('global_config.branch_access.unrestricted')}</option>
+                        <option value="restricted">{t('global_config.branch_access.restricted')}</option>
+                      </select>
+                    ))}
+                  </span>
                 </div>
+                {showAccess && u.role !== 'admin' && (u as { branch_access?: string }).branch_access === 'restricted' && mine.length === 0 && (
+                  <p className="mt-1 text-xs text-warning-500" data-testid="zero-branches">{t('global_config.branch_access.zero_branches')}</p>
+                )}
                 <div className="mt-1 flex flex-wrap gap-3" aria-label={t('global_config.branches.user_branches')}>
                   {active.map((b) => (
                     <label key={b.id} className="flex items-center gap-1 text-xs">

@@ -792,6 +792,23 @@ export function createSupabaseAdapter(
           .insert(branch_ids.map((branch_id) => ({ company_id, profile_id, branch_id })));
         assertNoError(error, 'branches.setAssignments insert');
       },
+      async isRestricted(): Promise<boolean> {
+        const { data, error } = await (client as any).rpc('_branch_restricted');
+        // Before global06 is applied the function does not exist: nobody is restricted.
+        if (error) {
+          if (error.code === 'PGRST202' || error.code === '42883') return false;
+          assertNoError(error, 'branches.isRestricted');
+        }
+        return data === true;
+      },
+      async setAccess(profile_id, access): Promise<void> {
+        const { error } = await (client as any).from('profiles').update({ branch_access: access }).eq('id', profile_id);
+        assertNoError(error, 'branches.setAccess');
+      },
+      async setEnforcement(company_id, enabled): Promise<void> {
+        const { error } = await (client as any).from('companies').update({ branch_restriction_enabled: enabled }).eq('id', company_id);
+        assertNoError(error, 'branches.setEnforcement');
+      },
     },
     // Global v1 Phase 7 (global04): one draft per signed-in user and kind.
     setupDrafts: {

@@ -27,6 +27,9 @@ export function createSelfHostedAdapter(): DataAdapter {
       assignWarehouse:  () => notImplemented('branches.assignWarehouse'),
       listAssignments:  () => notImplemented('branches.listAssignments'),
       setAssignments:   () => notImplemented('branches.setAssignments'),
+      isRestricted:     async () => false,
+      setAccess:        () => notImplemented('branches.setAccess'),
+      setEnforcement:   () => notImplemented('branches.setEnforcement'),
     },
     setupDrafts: {
       get:    () => notImplemented('setupDrafts.get'),
