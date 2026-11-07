@@ -36,6 +36,11 @@ The root tenant. One row per signup. Everything else hangs off this.
 | currency | text NOT NULL | 'AED', 'SAR', 'INR', etc. |
 | tax_id | text | TRN/VAT number/GSTIN |
 | is_tax_registered | bool DEFAULT false | |
+| legal_form | text | global05 (Global Phase 2). NULL or one of: sole_proprietorship, partnership, llp, private_limited, public_limited, one_person_company, llc, free_zone_entity, branch_of_foreign_company, civil_company, joint_stock_company, nonprofit, government, other. The UI offers the country's subset (`legal-structure.ts`) |
+| legal_name | text | global05. Registered legal name when it differs from `name` (≤ 200) |
+| registration_number | text | global05. GCC: trade licence / CR no. (free text). India: CIN for private/public limited and OPC, LLPIN (AAA-0000) for LLP — format CHECKed (`companies_india_registration_format`) (≤ 50) |
+| registration_authority | text | global05. Issuing body (≤ 120) |
+| incorporation_date | date | global05. 1800-01-01 … 2100-12-31 |
 | address | text | |
 | address_ar | text | |
 | city | text | |

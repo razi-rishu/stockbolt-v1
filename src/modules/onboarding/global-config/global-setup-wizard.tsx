@@ -35,6 +35,8 @@ import { IdentityStep, ReviewStep, TaxStep } from './wizard-steps';
 import { AccountingStep } from './accounting-step';
 import { BranchesManager } from './branches-step';
 import { useSetupDraft } from './use-setup-draft';
+import { LegalStructureForm } from './legal-structure-form';
+import type { LegalForm, LegalStructure } from '@/core/global-config';
 
 const STEP_LABEL: Record<(typeof WIZARD_STEPS)[number]['key'], string> = {
   organization_identity: 'global_config.wizard.s1', business_activities: 'global_config.wizard.s2',
@@ -44,6 +46,16 @@ const STEP_LABEL: Record<(typeof WIZARD_STEPS)[number]['key'], string> = {
 };
 
 /** Choices from a stored draft, keeping only well-formed keys (the engine re-validates the rest). */
+/** The company's legal-structure columns (global05; not yet in generated types). */
+function legalFromCompany(c: object): LegalStructure {
+  const r = c as Partial<Record<keyof LegalStructure, string | null>>;
+  return {
+    legal_form: (r.legal_form ?? null) as LegalForm | null, legal_name: r.legal_name ?? null,
+    registration_number: r.registration_number ?? null, registration_authority: r.registration_authority ?? null,
+    incorporation_date: r.incorporation_date ?? null,
+  };
+}
+
 /** Same activities, primary activity and module choices, ignoring order. */
 function sameChoices(a: WizardChoices, b: WizardChoices): boolean {
   const set = (x: string[]) => [...new Set(x)].sort().join(',');
@@ -186,7 +198,15 @@ export default function GlobalSetupWizardPage() {
         ))}
       </ol>
       <Card padding="md" data-testid={`step-${key}`}>
-        {key === 'organization_identity' && <IdentityStep company_name={company.name} pack={pack} />}
+        {key === 'organization_identity' && (
+          <>
+            <IdentityStep company_name={company.name} pack={pack} />
+            {/* Phase 2 (global05): legal structure, saved on its own. */}
+            <LegalStructureForm key={company.id}
+              company_id={company.id} country_code={country} canWrite={canWrite}
+              initial={legalFromCompany(company)} />
+          </>
+        )}
         {key === 'business_activities' && <ActivityPicker selected={choices.activity_keys} primary={choices.primary_activity_key}
           onToggle={toggleActivity} onPrimary={(k) => setChoices((c) => ({ ...c!, primary_activity_key: k }))} />}
         {key === 'accounting_setup' && (
