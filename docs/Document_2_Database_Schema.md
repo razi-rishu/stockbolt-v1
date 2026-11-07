@@ -41,6 +41,7 @@ The root tenant. One row per signup. Everything else hangs off this.
 | registration_number | text | global05. GCC: trade licence / CR no. (free text). India: CIN for private/public limited and OPC, LLPIN (AAA-0000) for LLP — format CHECKed (`companies_india_registration_format`) (≤ 50) |
 | registration_authority | text | global05. Issuing body (≤ 120) |
 | incorporation_date | date | global05. 1800-01-01 … 2100-12-31 |
+| branch_restriction_enabled | bool NOT NULL DEFAULT false | global06 (Phase 6). Turns branch enforcement on for this company. Only an admin may change it (trigger). Off until production activation is approved |
 | address | text | |
 | address_ar | text | |
 | city | text | |
@@ -69,6 +70,7 @@ User accounts. Linked to Supabase Auth in cloud mode.
 | email | text NOT NULL | |
 | role | text NOT NULL DEFAULT 'admin' | CHECK IN ('admin', 'accountant', 'sales', 'counter', 'viewer') |
 | assigned_warehouse_id | UUID FK → warehouses | NULLABLE; for sales/counter staff |
+| branch_access | text NOT NULL DEFAULT 'unrestricted' | global06. 'unrestricted' or 'restricted'. When the company's enforcement is on, a restricted non-admin sees only the warehouses of the branches in `profile_branches` (zero assignments = zero branch-scoped access) and cannot read the company-wide GL / journal entries or company-wide report functions. Admins are never restricted. Only an admin may change it |
 | phone | text | |
 | is_active | bool DEFAULT true | |
 | last_login_at | timestamptz | |
@@ -1117,3 +1119,7 @@ Read this schema carefully. Flag:
 - Missing fields (especially auto-parts-specific things you've encountered in real Pro Parts work)
 - Field types that look wrong
 - Anything you don't understand and want explained
+
+### Branch scope (global06, Global Phase 6)
+RESTRICTIVE RLS policy `branch_scope` (reads and writes) on: invoices, credit_notes, debit_notes, goods_receipts, inventory_adjustments, pos_sessions, purchase_orders, purchase_returns, sales_orders, sales_returns, stock_ledger, product_serials, deferred_cogs_queue, warehouses, stock_transfers (either side), and the line tables of those documents plus e_invoice_documents (via their parent). `branch_scope_read` (SELECT) on general_ledger and journal_entries, waived for the posting role `ledger_writer`. A document with no warehouse belongs to Head Office. Company-wide by design: contacts, products, payments, expenses, bank, **vendor bills** (B3). Helpers: `_branch_restricted()`, `_branch_allows_warehouse(uuid)`, `_branch_require_unrestricted()` (called by close/reopen_fiscal_year, get_bank_recon, get_daily_cash_report, get_project_profitability, save_bank_reconciliation).
+

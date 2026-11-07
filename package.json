@@ -41,6 +41,7 @@
     "test:invoice-edit": "vitest run tests/integration/invoice-edit-verification.test.ts",
     "test:india-gst": "vitest run tests/integration/india-gst-verification.test.ts",
     "test:global05": "vitest run tests/integration/global05-legal-verification.test.ts",
+    "test:global06": "vitest run tests/integration/global06-branch-verification.test.ts",
     "staging:seed": "node scripts/staging-seed.mjs",
     "prepare": "husky"
   },
