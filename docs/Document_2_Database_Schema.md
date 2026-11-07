@@ -935,10 +935,10 @@ Configurable tax rates beyond the country defaults.
 | AE, OM | Standard Rate 5% (standard), Zero-rated 0% (zero_rated), Exempt (exempt) |
 | SA | Standard Rate 15% · zero-rated · exempt |
 | BH | Standard Rate 10% · zero-rated · exempt |
-| KW, QA | Standard Rate 0% (no VAT law in force) · zero-rated · exempt |
-| IN | GST 0% / 5% / 18% / 40% (GST 2.0, from 2025-09-22) + IGST 18% added by the app |
+| KW, QA | **None** — no VAT law in force. No tax codes, no VAT accounts (1500 / 2200), no VAT registration; documents show no tax column or total |
+| IN | GST 0% / 5% / 18% / 40% (GST 2.0, from 2025-09-22) + specials 3% (gold, silver, jewellery), 1.5% (cut & polished diamonds), 0.25% (rough diamonds) — Notification 9/2025-IT(R). Specials are selectable, never the default. No manual IGST row: the posting engine (phase122) chooses CGST + SGST or IGST from the place of supply |
 
-Existing companies keep the rates they were created with; correcting those is a separate data change.
+Existing companies keep the rates they were created with (including any IGST row, which stays linked to 1530 / 2230); correcting those is a separate data change. A KW / QA company that already holds a non-zero rate keeps seeing tax on its documents.
 
 ---
 

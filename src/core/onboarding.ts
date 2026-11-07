@@ -3,6 +3,7 @@ import { seedCOA } from './seeds/seedCOA';
 import { seedTaxRates } from './seeds/seedTaxRates';
 import { seedPaymentMethods } from './seeds/seedPaymentMethods';
 import { seedUnits } from './seeds/seedUnits';
+import { vatApplies } from './global-config/country-packs';
 import { seedSampleData } from './seeds/seedSampleData';
 
 export interface WizardData {
@@ -65,8 +66,9 @@ export async function runOnboarding(
     country_code: wizard.country_code,
     currency: wizard.currency,
     fiscal_year_start: wizard.fiscal_year_start,
-    is_tax_registered: wizard.is_tax_registered,
-    tax_id: wizard.tax_id,
+    // phase123 — no VAT in Kuwait / Qatar: a company there is never VAT-registered.
+    is_tax_registered: vatApplies(wizard.country_code) && wizard.is_tax_registered,
+    tax_id: vatApplies(wizard.country_code) ? wizard.tax_id : '',
     full_name: wizard.full_name,
   };
   const { company_id, resumed } = await adapter.onboarding.createCompanyAndProfile(rpcInput);

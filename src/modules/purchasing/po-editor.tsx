@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { useCompanyCurrency, useCompanyCountry, useTaxName } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useCompanyCountry, useTaxName, useVatApplies } from '@/hooks/use-company-currency';
 import { defaultTaxRate } from '@/lib/locale';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
@@ -118,6 +118,9 @@ export default function POEditorPage() {
     expected_delivery_date: '', reference: '', notes: '', currency: companyCurrency,
   });
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
+  // phase123 — no tax column for a no-VAT company (Kuwait / Qatar), unless a
+  // line already carries tax (existing records are never hidden).
+  const showTax = useVatApplies() || lines.some(l => Number(l.tax_rate) > 0);
 
   // Arriving from a contact's page already names the party; making you pick
   // them again is the kind of small friction that adds up. Only on a NEW
@@ -436,7 +439,7 @@ export default function POEditorPage() {
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '72px' }}>{t('purchasing.qty')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('purchasing.unit_cost')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '84px' }}>{t('purchasing.disc_pct')}</th>
-                <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('purchasing.tax')}</th>
+                {showTax && <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('purchasing.tax')}</th>}
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('purchasing.line_total')}</th>
                 {canEdit && <th style={{ width: '36px' }} />}
               </tr>
@@ -485,6 +488,7 @@ export default function POEditorPage() {
                       value={line.discount_percent} disabled={!canEdit}
                       onChange={e => updateLine(line._key, { discount_percent: e.target.value })} />
                   </td>
+                  {showTax && (
                   <td className="px-3 py-1.5 align-top">
                     <select className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60"
                       value={line.tax_rate} disabled={!canEdit}
@@ -492,6 +496,7 @@ export default function POEditorPage() {
                       {taxOpts.map(o => <option key={o.key} value={o.value}>{o.label}</option>)}
                     </select>
                   </td>
+                  )}
                   <td className="px-3 py-1.5 align-top text-end font-mono text-ink-primary">{fmt(line.line_total)}</td>
                   {canEdit && (
                     <td className="px-3 py-1.5 align-top">

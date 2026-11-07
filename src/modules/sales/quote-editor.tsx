@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { useCompanyCurrency, useCompanyCountry, useCompanyRoundingStep, useTaxName } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useCompanyCountry, useCompanyRoundingStep, useTaxName, useVatApplies } from '@/hooks/use-company-currency';
 import { defaultTaxRate } from '@/lib/locale';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
@@ -126,6 +126,9 @@ export default function QuoteEditorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
+  // phase123 — no tax column for a no-VAT company (Kuwait / Qatar), unless a
+  // line already carries tax (existing records are never hidden).
+  const showTax = useVatApplies() || lines.some(l => Number(l.tax_rate) > 0);
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const confirmLeave = useUnsavedChangesGuard(dirty);
@@ -447,7 +450,7 @@ export default function QuoteEditorPage() {
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '72px' }}>{t('sales.qty')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('sales.unit_price')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '84px' }}>{t('sales.disc_pct')}</th>
-                <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('sales.tax')}</th>
+                {showTax && <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('sales.tax')}</th>}
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('sales.line_total')}</th>
                 {canEdit && <th style={{ width: '36px' }} />}
               </tr>
@@ -477,7 +480,7 @@ export default function QuoteEditorPage() {
                   <td className="px-3 py-1.5 align-top"><input type="number" min="0" step="1" className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60" value={line.quantity} disabled={!canEdit} onChange={e => updateLine(line._key, { quantity: e.target.value })} /></td>
                   <td className="px-3 py-1.5 align-top"><input type="number" min="0" step="0.01" className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60" value={line.unit_price} disabled={!canEdit} onChange={e => updateLine(line._key, { unit_price: e.target.value })} /></td>
                   <td className="px-3 py-1.5 align-top"><input type="number" min="0" max="100" step="0.01" className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60" value={line.discount_percent} disabled={!canEdit} onChange={e => updateLine(line._key, { discount_percent: e.target.value })} /></td>
-                  <td className="px-3 py-1.5 align-top"><select className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60" value={line.tax_rate} disabled={!canEdit} onChange={e => updateLine(line._key, { tax_rate: e.target.value })}>{taxOpts.map(o => <option key={o.key} value={o.value}>{o.label}</option>)}</select></td>
+                  {showTax && <td className="px-3 py-1.5 align-top"><select className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60" value={line.tax_rate} disabled={!canEdit} onChange={e => updateLine(line._key, { tax_rate: e.target.value })}>{taxOpts.map(o => <option key={o.key} value={o.value}>{o.label}</option>)}</select></td>}
                   <td className="px-3 py-1.5 align-top text-end font-mono text-ink-primary">{fmt(line.line_total)}</td>
                   {canEdit && <td className="px-3 py-1.5 align-top"><button className="text-red-400 hover:text-red-600 disabled:opacity-30" disabled={lines.length === 1} onClick={() => { setLines(prev => prev.filter(l => l._key !== line._key)); setDirty(true); }}>×</button></td>}
                 </tr>

@@ -89,6 +89,17 @@ export function getCountryPack(code: string): CountryPack {
   };
 }
 
+/**
+ * Does this country have a VAT / GST in force? (Phase 4 decision 1.) False for
+ * Kuwait and Qatar: no tax codes are seeded, no VAT accounts, no VAT
+ * registration or returns, and ordinary documents show no tax.
+ */
+export function vatApplies(code: string | null | undefined): boolean {
+  const c = (code ?? '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(c)) return true;
+  return getCountryPack(c).tax_system !== 'none';
+}
+
 /** Modules that only make sense, or only exist, in some countries. */
 export function countryAllowsModule(pack: CountryPack, module: ModuleKey, countries?: string[]): boolean {
   if (countries && !countries.includes(pack.code)) return false;

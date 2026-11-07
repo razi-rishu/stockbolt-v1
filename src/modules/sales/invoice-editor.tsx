@@ -6,7 +6,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useShortcutAction } from '@/keyboard/use-shortcut-action';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
-import { useCompanyCurrency, useCompanyCountry, useCompanyRoundingStep, useTaxName } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useCompanyCountry, useCompanyRoundingStep, useTaxName, useVatApplies } from '@/hooks/use-company-currency';
 import { applyRoundOff } from '@/core/sales/invoice-calc';
 import { defaultTaxRate } from '@/lib/locale';
 import { eInvoiceReadiness } from '@/lib/einvoice-metadata';
@@ -204,6 +204,9 @@ export default function InvoiceEditorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
+  // phase123 — no tax column for a no-VAT company (Kuwait / Qatar), unless a
+  // line already carries tax (existing records are never hidden).
+  const showTax = useVatApplies() || lines.some(l => Number(l.tax_rate) > 0);
   // Product Quick Create state — shared across all line pickers.
   // We remember which line opened the modal so onCreated updates THAT line.
   const [productQcOpen,    setProductQcOpen]    = useState(false);
@@ -1092,7 +1095,7 @@ export default function InvoiceEditorPage() {
       <div className="glass-card">
         <div className="border-b border-border-subtle px-5 py-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-ink-primary">{t('sales.line_items')}</h2>
-          {canEdit && (
+          {canEdit && showTax && (
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
               <span style={{ fontSize: '12px', color: pricesInclusive ? '#7c3aed' : '#64748b', fontWeight: 500 }}>
                 {pricesInclusive ? 'Tax-inclusive prices' : 'Tax-exclusive prices'}
@@ -1124,7 +1127,7 @@ export default function InvoiceEditorPage() {
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '72px' }}>{t('sales.qty')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('sales.unit_price')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '84px' }}>{t('sales.disc_pct')}</th>
-                <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('sales.tax')}</th>
+                {showTax && <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('sales.tax')}</th>}
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '76px' }} title="Available stock (sum across warehouses)">Stock</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '76px' }} title="Margin % vs MAC. Negative = selling at a loss.">Margin</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('sales.line_total')}</th>
@@ -1269,6 +1272,7 @@ export default function InvoiceEditorPage() {
                       onChange={e => updateLine(line._key, { discount_percent: e.target.value })}
                     />
                   </td>
+                  {showTax && (
                   <td className="px-3 py-1.5 align-top">
                     <select
                       className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-ink-primary disabled:opacity-60"
@@ -1279,6 +1283,7 @@ export default function InvoiceEditorPage() {
                       {taxOpts.map(o => <option key={o.key} value={o.value}>{o.label}</option>)}
                     </select>
                   </td>
+                  )}
                   {(() => {
                     // Live stock + margin per line.
                     const pid = line.product_id ?? '';

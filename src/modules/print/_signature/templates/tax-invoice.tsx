@@ -24,6 +24,7 @@ import {
 import { tokens } from '../tokens';
 import type { DocumentData } from '../types';
 import { getTaxLabels } from '@/lib/locale';
+import { vatApplies } from '@/core/global-config/country-packs';
 
 export interface TaxInvoiceTemplateProps {
   data:    DocumentData;
@@ -93,7 +94,7 @@ export function TaxInvoiceTemplate({ data, qrSrc }: TaxInvoiceTemplateProps) {
           {!!data.discount_total && data.discount_total > 0 && (
             <TotalLine label="Discount"           amount={-data.discount_total} />
           )}
-          <TotalLine label={`${tax.taxName} (${(data.tax_total / Math.max(data.subtotal, 1) * 100).toFixed(0)}%)`} amount={data.tax_total} />
+          {(vatApplies(data.company.country) || !!data.tax_total) && <TotalLine label={`${tax.taxName} (${(data.tax_total / Math.max(data.subtotal, 1) * 100).toFixed(0)}%)`} amount={data.tax_total} />}
           {!!data.round_off && data.round_off !== 0 && (
             <TotalLine label="Round Off"          amount={data.round_off} />
           )}

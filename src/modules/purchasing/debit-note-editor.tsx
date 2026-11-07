@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
-import { useCompanyCurrency, useCompanyCountry } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useCompanyCountry, useVatApplies } from '@/hooks/use-company-currency';
 import { defaultTaxRate } from '@/lib/locale';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
@@ -82,6 +82,9 @@ export default function DebitNoteEditorPage() {
   // Phase 46 — manual round-off so the note matches the supplier's paper figure.
   const [roundOffInput, setRoundOffInput] = useState('0');
   const [lines,        setLines]        = useState<LineItem[]>([]);
+  // phase123 — no tax column for a no-VAT company (Kuwait / Qatar), unless a
+  // line already carries tax (existing records are never hidden).
+  const showTax = useVatApplies() || lines.some(l => Number(l.tax_rate) > 0);
   const [voidReason,   setVoidReason]   = useState('');
   const [showVoidDlg,  setShowVoidDlg]  = useState(false);
 
@@ -466,7 +469,7 @@ export default function DebitNoteEditorPage() {
                 <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.qty')}</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.unit_cost')}</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.discount')} %</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.tax')} %</th>
+                {showTax && <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.tax')} %</th>}
                 <th className="px-3 py-2 text-left text-xs font-medium text-ink-tertiary">{t('returns.ship_from')}</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.total')}</th>
                 {isDraft && <th className="px-3 py-2" />}
@@ -505,11 +508,13 @@ export default function DebitNoteEditorPage() {
                         onChange={e => updateLine(i, 'discount_percent', Number(e.target.value))}
                         disabled={!isDraft} className="w-20 border border-border-strong rounded px-2 py-1 text-sm text-right" />
                     </td>
+                    {showTax && (
                     <td className="px-3 py-2">
                       <input type="number" min="0" max="100" step="0.1" value={l.tax_rate}
                         onChange={e => updateLine(i, 'tax_rate', Number(e.target.value))}
                         disabled={!isDraft} className="w-20 border border-border-strong rounded px-2 py-1 text-sm text-right" />
                     </td>
+                    )}
                     <td className="px-3 py-2">
                       <select value={l.restock_warehouse_id ?? ''}
                         onChange={e => updateLine(i, 'restock_warehouse_id', e.target.value || null)}

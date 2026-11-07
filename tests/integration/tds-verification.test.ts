@@ -341,11 +341,12 @@ describe('AC-7A.2/G4 — TDS is India-only', () => {
       expect(aeSections.length, 'AE company has no TDS sections').toBe(0);
 
       // phase118: one tax-rate set per company, no duplicates. phase123: India
-      // gets the GST 2.0 slabs (0/5/18/40) from the database seed plus IGST,
-      // linked to the GST accounts.
+      // gets the GST 2.0 slabs (0/5/18/40) plus the 3 / 1.5 / 0.25 specials from
+      // the database seed, no manual IGST row (the engine splits), all linked to
+      // the GST accounts.
       const inRates = await inCo.adapter.taxRates.listAll(inCo.companyId);
       expect(inRates.map((r) => `${r.tax_type} ${Number(r.rate)}`).sort())
-        .toEqual(['GST 0', 'GST 18', 'GST 40', 'GST 5', 'IGST 18']);
+        .toEqual(['GST 0', 'GST 0.25', 'GST 1.5', 'GST 18', 'GST 3', 'GST 40', 'GST 5']);
       const inCodes = new Map(inCoa.map((c) => [c.id, c.code]));
       for (const r of inRates) {
         expect(inCodes.get(r.coa_output_account_id ?? ''), `${r.name} output account`).toBe(r.tax_type === 'IGST' ? '2230' : '2210');

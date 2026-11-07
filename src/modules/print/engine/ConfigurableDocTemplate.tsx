@@ -12,6 +12,7 @@
 import type { CSSProperties } from 'react';
 import type { DocumentData, LineItem } from '../_signature/types';
 import { getTaxLabels, formatDate } from '@/lib/locale';
+import { vatApplies } from '@/core/global-config/country-packs';
 import type { PrintTemplate } from './types';
 import { normalizeSettings } from './types';
 import {
@@ -51,6 +52,9 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
   // Tax terminology: India-GST preset forces GST/GSTIN; otherwise company country.
   const taxCountry = preset.forceGstLabels ? 'IN' : (data.company.country ?? undefined);
   const tax = getTaxLabels(taxCountry);
+  // phase123 — a no-VAT company (Kuwait / Qatar) prints no tax column or row,
+  // unless the document itself carries tax (historical records stay as they were).
+  const showTax = vatApplies(data.company.country) || !!data.tax_total;
   const cur = data.currency;
   const money = (n: number) => `${cur} ${num(n)}`;
   // Payment receipts/vouchers carry `allocations` instead of line items.
@@ -228,7 +232,7 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
   cols.push({ key: 'qty', head: 'Qty', align: 'end', render: (it) => `${num(it.quantity)}${it.unit_code ? ' ' + it.unit_code : ''}` });
   if (s.showUnitPrice) cols.push({ key: 'price', head: 'Unit price', align: 'end', render: (it) => num(it.unit_price) });
   if (s.showDiscount) cols.push({ key: 'disc', head: 'Disc', align: 'end', render: (it) => it.discount_amount ? num(it.discount_amount) : '—' });
-  if (s.showTaxBreakdown) cols.push({ key: 'tax', head: tax.taxName, align: 'end', render: (it) => it.tax_amount != null ? num(it.tax_amount) : '—' });
+  if (s.showTaxBreakdown && showTax) cols.push({ key: 'tax', head: tax.taxName, align: 'end', render: (it) => it.tax_amount != null ? num(it.tax_amount) : '—' });
   cols.push({ key: 'amt', head: 'Amount', align: 'end', render: (it) => num(it.line_total) });
 
   const thStyle: CSSProperties = {
@@ -280,7 +284,7 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
       <div style={{ width: '64mm', marginInlineStart: 'auto', marginTop: 10 }}>
         {row('Subtotal', money(data.subtotal))}
         {!!data.discount_total && data.discount_total > 0 && row('Discount', `(${num(data.discount_total)})`)}
-        {row(tax.taxName, money(data.tax_total))}
+        {showTax && row(tax.taxName, money(data.tax_total))}
         {!!data.round_off && data.round_off !== 0 && row('Round Off', `${data.round_off > 0 ? '+' : '−'}${num(Math.abs(data.round_off))}`)}
         {!!data.shipping_total && data.shipping_total > 0 && row('Shipping', money(data.shipping_total))}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, padding: '8px 12px', borderRadius: 6, background: C.accent, color: '#fff', fontWeight: 800, fontSize: baseFont * 1.05 }}>

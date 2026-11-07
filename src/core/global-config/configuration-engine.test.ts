@@ -283,3 +283,13 @@ describe('wizard choices', () => {
     expect(rebuilt.valid).toBe(true);
   });
 });
+
+describe('vatApplies (phase123 decision 1)', () => {
+  it('is false only for the no-VAT countries, Kuwait and Qatar', async () => {
+    const { vatApplies } = await import('./country-packs');
+    for (const c of ['AE', 'SA', 'BH', 'OM', 'IN', 'ae']) expect(vatApplies(c), c).toBe(true);
+    for (const c of ['KW', 'QA', 'kw', ' qa ']) expect(vatApplies(c), c).toBe(false);
+    // Unknown / missing codes never hide tax.
+    for (const c of [null, undefined, '', 'X', 'ZZZ']) expect(vatApplies(c), String(c)).toBe(true);
+  });
+});

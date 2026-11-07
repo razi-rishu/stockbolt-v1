@@ -14,6 +14,7 @@ import { isAppShell } from '@/lib/platform';
 import { GLOBAL_ONBOARDING, useGlobalOnboarding } from './global-config/onboarding-steps';
 import { AccountingStep } from './global-config/accounting-step';
 import { useSetupDraft } from './global-config/use-setup-draft';
+import { vatApplies } from '@/core/global-config/country-packs';
 
 // ── Country / currency data ────────────────────────────────────────────────
 const COUNTRIES = [
@@ -473,6 +474,8 @@ export default function SetupWizardPage() {
                         setValue('country_code', e.target.value);
                         // Suggest the country's usual financial-year start; user can still change it.
                         setValue('fiscal_year_start_month', fiscalYearMonthFor(e.target.value));
+                        // phase123 — no VAT in Kuwait / Qatar: nothing to register for.
+                        if (!vatApplies(e.target.value)) { setValue('is_tax_registered', false); setValue('tax_id', ''); }
                       }}
                       style={inputStyle}
                     >
@@ -498,16 +501,16 @@ export default function SetupWizardPage() {
                     </select>
                   </Field>
 
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '4px 0' }}>
+                  {vatApplies(country_code) && <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '4px 0' }}>
                     <input
                       type="checkbox"
                       style={{ width: 16, height: 16, accentColor: '#6c63ff', cursor: 'pointer' }}
                       {...register('is_tax_registered')}
                     />
                     <span style={{ fontSize: 13, color: '#111827' }}>Registered for VAT / GST</span>
-                  </label>
+                  </label>}
 
-                  {is_tax_registered && (
+                  {is_tax_registered && vatApplies(country_code) && (
                     <Field label="Tax Registration Number" required error={errors.tax_id?.message}>
                       <input
                         type="text"

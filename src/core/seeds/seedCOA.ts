@@ -1,3 +1,4 @@
+import { vatApplies } from '@/core/global-config/country-packs';
 import type { DataAdapter, CoaMap, CoaInsert } from '@/data/adapter';
 
 type AccountDef = Omit<CoaInsert, 'company_id'>;
@@ -92,12 +93,18 @@ const ALL_ACCOUNTS: (AccountDef & { gcc_only?: true; india_only?: true })[] = [
   { code: '6910', name: 'Loss on Asset Disposal',      name_ar: 'خسائر بيع الأصول',        type: 'expense', sub_type: 'indirect' },
 ];
 
+// Phase 4 decision 1: a country without VAT (Kuwait, Qatar) gets no VAT
+// accounts, so there is no VAT liability or input-tax account to post to.
+const VAT_ACCOUNTS = new Set(['1500', '2200']);
+
 function getAccountsForCountry(country_code: string): AccountDef[] {
   const is_india = country_code === 'IN';
+  const has_vat = vatApplies(country_code);
   return ALL_ACCOUNTS
     .filter((a) => {
       if (a.gcc_only && is_india) return false;
       if (a.india_only && !is_india) return false;
+      if (!has_vat && VAT_ACCOUNTS.has(a.code)) return false;
       return true;
     })
     .map(({ gcc_only: _g, india_only: _i, ...rest }) => rest);

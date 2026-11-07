@@ -25,6 +25,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useTranslation } from 'react-i18next';
 import { getTaxLabels } from '@/lib/locale';
+import { vatApplies } from '@/core/global-config/country-packs';
 import { useAuthStore } from '@/store/auth';
 import type { Company } from '@/data/adapter';
 import { useEnabledModules } from '@/hooks/use-enabled-modules';
@@ -122,4 +123,26 @@ export function useTaxName(): string {
   const { t } = useTranslation();
   const country = useCompanyCountry();
   return getTaxLabels(country).taxName === 'GST' ? t('common.tax_name_gst') : t('common.tax_name_vat');
+}
+
+/**
+ * useVatApplies — phase123 (Global decision 1). False for a company in a
+ * country with no VAT in force (Kuwait, Qatar) that has no non-zero tax rate:
+ * its documents then show no tax column and no tax total, and calculate none.
+ *
+ * An existing company that already holds a non-zero rate keeps seeing tax —
+ * its records and historical documents are preserved, never hidden. Screens
+ * also keep tax visible on any document that already carries tax.
+ * True while the company is loading, so nothing flickers away on VAT tenants.
+ */
+export function useVatApplies(): boolean {
+  const company_id = useAuthStore((s) => s.company_id);
+  const country = useCompanyCountry();
+  const { data: rates = [] } = useQuery({
+    queryKey: ['taxRates', company_id],
+    queryFn:  () => getAdapter().taxRates.list(company_id!),
+    enabled:  !!company_id,
+  });
+  if (!country) return true;
+  return vatApplies(country) || rates.some((r) => Number(r.rate) > 0);
 }

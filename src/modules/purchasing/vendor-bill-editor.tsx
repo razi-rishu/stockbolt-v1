@@ -6,7 +6,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useShortcutAction } from '@/keyboard/use-shortcut-action';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
-import { useCompanyCurrency, useCompanyCountry, useTaxName } from '@/hooks/use-company-currency';
+import { useCompanyCurrency, useCompanyCountry, useTaxName, useVatApplies } from '@/hooks/use-company-currency';
 import { defaultTaxRate } from '@/lib/locale';
 import { TdsPanel } from './tds-panel';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
@@ -210,6 +210,9 @@ export default function VendorBillEditorPage() {
     landed_cost_total: '0',          // Phase 12.17 — freight + duty + customs
   });
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
+  // phase123 — no tax column for a no-VAT company (Kuwait / Qatar), unless a
+  // line already carries tax (existing records are never hidden).
+  const showTax = useVatApplies() || lines.some(l => Number(l.tax_rate) > 0);
 
   // Arriving from a contact's page already names the party; making you pick
   // them again is the kind of small friction that adds up. Only on a NEW
@@ -914,7 +917,7 @@ export default function VendorBillEditorPage() {
       <div className="glass-card">
         <div className="border-b border-border-subtle px-5 py-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-ink-primary">{t('purchasing.line_items')}</h2>
-          {canEdit && (
+          {canEdit && showTax && (
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
               <span style={{ fontSize: '12px', color: pricesInclusive ? '#7c3aed' : '#64748b', fontWeight: 500 }}>
                 {pricesInclusive ? 'Tax-inclusive prices' : 'Tax-exclusive prices'}
@@ -947,7 +950,7 @@ export default function VendorBillEditorPage() {
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '72px' }}>{t('purchasing.qty')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('purchasing.unit_cost')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '84px' }}>{t('purchasing.disc_pct')}</th>
-                <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('purchasing.tax')}</th>
+                {showTax && <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('purchasing.tax')}</th>}
                 <th className="px-3 py-2 text-start font-medium" style={{ width: '128px' }} title="Destination warehouse for this line">Warehouse</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '76px' }} title="On-hand stock">Stock</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '96px' }} title="Projected MAC after this purchase">MAC →</th>
@@ -1021,6 +1024,7 @@ export default function VendorBillEditorPage() {
                       value={line.discount_percent} disabled={!canEdit}
                       onChange={e => updateLine(line._key, { discount_percent: e.target.value })} />
                   </td>
+                  {showTax && (
                   <td className="px-3 py-1.5 align-top">
                     <select className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60"
                       value={line.tax_rate} disabled={!canEdit}
@@ -1028,6 +1032,7 @@ export default function VendorBillEditorPage() {
                       {taxOpts.map(o => <option key={o.key} value={o.value}>{o.label}</option>)}
                     </select>
                   </td>
+                  )}
                   {/* Warehouse picker — only meaningful for product lines on
                        standalone bills (no GRN). For GRN-linked bills the
                        GRN's warehouse already governs; leave disabled. */}

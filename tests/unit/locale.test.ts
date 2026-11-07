@@ -57,7 +57,7 @@ describe('getTaxLabels', () => {
 });
 
 describe('defaultTaxRate', () => {
-  it('is each country's verified standard rate (Phase 4, 2026-11-07)', () => {
+  it('is the verified standard rate of each country (Phase 4, 2026-11-07)', () => {
     expect(defaultTaxRate('AE')).toBe(5);
     expect(defaultTaxRate('OM')).toBe(5);
     expect(defaultTaxRate('SA')).toBe(15);
