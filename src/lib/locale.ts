@@ -1,3 +1,4 @@
+import { getCountryPack } from '@/core/global-config/country-packs';
 /**
  * Localization helpers — currency + tax terminology.
  *
@@ -90,9 +91,16 @@ export function getRegionLabel(country?: string | null): string {
   }
 }
 
-/** Default tax rate (%) for a country — used only to pre-fill new setups. */
+/**
+ * Default tax rate (%) for a country — pre-fills new document lines. It comes
+ * from the verified country pack (Phase 4): SA 15, BH 10, AE / OM 5, IN 18,
+ * KW / QA 0 (no VAT). It used to be "18 for India, 5 everywhere else", which
+ * pre-filled 5 % on Saudi and Bahraini documents and on VAT-free countries.
+ */
 export function defaultTaxRate(country?: string | null): number {
-  return (country ?? '').toUpperCase() === 'IN' ? 18 : 5;
+  const c = (country ?? '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(c)) return 0;
+  return getCountryPack(c).standard_vat_rate ?? 0;
 }
 
 /**

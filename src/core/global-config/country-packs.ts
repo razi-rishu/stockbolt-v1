@@ -14,10 +14,13 @@
  *   and the company can't be activated yet: companies.country_code only
  *   accepts the 7 codes above (database CHECK), which needs a migration.
  *
- * `standard_vat_rate` with rate_status 'needs_review' is reference
- * information for review, NOT what onboarding seeds today: seedTaxRates.ts
- * still seeds 5% for every GCC country. The Global audit flagged that, and
- * correcting it changes production data, so it waits for separate approval.
+ * Phase 4 (2026-11-07): every rate below was checked against the tax
+ * authority's own publication (`rate_source`) and is `verified` as of
+ * `rate_verified_on`. It drives both the database seed for NEW companies
+ * (seed_default_tax_rates, phase123) and the default rate on new document
+ * lines (defaultTaxRate in lib/locale). Existing companies' rates are never
+ * rewritten by this. A verified RATE is not a compliance claim: SA / BH / OM
+ * stay `tax_configuration` (no ZATCA e-invoicing, no official return format).
  */
 import type { ModuleKey } from './module-registry';
 
@@ -34,27 +37,43 @@ export interface CountryPack {
   compliance: ComplianceLevel;
   tax_system: 'vat' | 'gst' | 'none' | 'user_defined';
   standard_vat_rate: number | null;
-  rate_status: 'seeded_today' | 'needs_review' | 'user_defined';
+  rate_status: 'verified' | 'needs_review' | 'user_defined';
+  /** Where the rate was checked (official publication). */
+  rate_source?: string;
+  /** YYYY-MM-DD the rate was last checked. */
+  rate_verified_on?: string;
   features: Partial<Record<'tax_returns' | 'e_invoicing' | 'tds' | 'wps_payroll_export', FeatureStatus>>;
   /** Can a company be created for this country without a schema change? */
   activation_supported: boolean;
 }
 
-const GCC_REVIEW = { compliance: 'tax_configuration', fiscal_year_start_month: 1, activation_supported: true,
-  rate_status: 'needs_review', features: { tax_returns: 'partial' } } as const;
+const VERIFIED_ON = '2026-11-07';
+const GCC_CONFIG = { compliance: 'tax_configuration', fiscal_year_start_month: 1, activation_supported: true,
+  rate_status: 'verified', rate_verified_on: VERIFIED_ON, features: { tax_returns: 'partial' } } as const;
 
 export const COUNTRY_PACKS: readonly CountryPack[] = [
   { code: 'AE', name: 'United Arab Emirates', name_ar: 'الإمارات العربية المتحدة', currency: 'AED', fiscal_year_start_month: 1,
-    compliance: 'statutory', tax_system: 'vat', standard_vat_rate: 5, rate_status: 'seeded_today', activation_supported: true,
+    compliance: 'statutory', tax_system: 'vat', standard_vat_rate: 5, rate_status: 'verified', activation_supported: true,
+    rate_source: 'FTA - Federal Decree-Law No. 8 of 2017 (tax.gov.ae)', rate_verified_on: VERIFIED_ON,
     features: { tax_returns: 'supported', e_invoicing: 'partial', wps_payroll_export: 'supported' } },
   { code: 'IN', name: 'India', name_ar: 'الهند', currency: 'INR', fiscal_year_start_month: 4,
-    compliance: 'statutory', tax_system: 'gst', standard_vat_rate: null, rate_status: 'seeded_today', activation_supported: true,
+    // GST 2.0 (56th GST Council, effective 2025-09-22): slabs 0 / 5 / 18 / 40;
+    // 12 % and 28 % abolished. 18 % is the standard rate.
+    compliance: 'statutory', tax_system: 'gst', standard_vat_rate: 18, rate_status: 'verified', activation_supported: true,
+    rate_source: 'GST Council 56th meeting / PIB (gstcouncil.gov.in, pib.gov.in)', rate_verified_on: VERIFIED_ON,
     features: { tax_returns: 'supported', e_invoicing: 'partial', tds: 'supported' } },
-  { ...GCC_REVIEW, code: 'SA', name: 'Saudi Arabia', name_ar: 'المملكة العربية السعودية', currency: 'SAR', tax_system: 'vat', standard_vat_rate: 15 },
-  { ...GCC_REVIEW, code: 'BH', name: 'Bahrain', name_ar: 'البحرين', currency: 'BHD', tax_system: 'vat', standard_vat_rate: 10 },
-  { ...GCC_REVIEW, code: 'OM', name: 'Oman', name_ar: 'عُمان', currency: 'OMR', tax_system: 'vat', standard_vat_rate: 5 },
-  { ...GCC_REVIEW, code: 'KW', name: 'Kuwait', name_ar: 'الكويت', currency: 'KWD', tax_system: 'none', standard_vat_rate: null, features: {} },
-  { ...GCC_REVIEW, code: 'QA', name: 'Qatar', name_ar: 'قطر', currency: 'QAR', tax_system: 'none', standard_vat_rate: null, features: {} },
+  { ...GCC_CONFIG, code: 'SA', name: 'Saudi Arabia', name_ar: 'المملكة العربية السعودية', currency: 'SAR', tax_system: 'vat', standard_vat_rate: 15,
+    rate_source: 'ZATCA VAT guidelines (zatca.gov.sa)' },
+  { ...GCC_CONFIG, code: 'BH', name: 'Bahrain', name_ar: 'البحرين', currency: 'BHD', tax_system: 'vat', standard_vat_rate: 10,
+    rate_source: 'NBR - 10 % since 2022-01-01 (nbr.gov.bh)' },
+  { ...GCC_CONFIG, code: 'OM', name: 'Oman', name_ar: 'عُمان', currency: 'OMR', tax_system: 'vat', standard_vat_rate: 5,
+    rate_source: 'Oman Tax Authority - Tax Rate (tms.taxoman.gov.om)' },
+  // No VAT law in force (verified 2026-11-07). Re-check when the GTA (Qatar) or
+  // the Ministry of Finance (Kuwait) announces a start date.
+  { ...GCC_CONFIG, code: 'KW', name: 'Kuwait', name_ar: 'الكويت', currency: 'KWD', tax_system: 'none', standard_vat_rate: 0,
+    rate_source: 'No VAT law in force', features: {} },
+  { ...GCC_CONFIG, code: 'QA', name: 'Qatar', name_ar: 'قطر', currency: 'QAR', tax_system: 'none', standard_vat_rate: 0,
+    rate_source: 'No VAT law in force', features: {} },
 ];
 
 const BY_CODE = new Map(COUNTRY_PACKS.map((p) => [p.code, p]));

@@ -1,3 +1,4 @@
+import { defaultTaxRate } from '@/lib/locale';
 import type { DataAdapter, CoaMap, TaxRateRow } from '@/data/adapter';
 
 /**
@@ -27,9 +28,10 @@ export async function seedTaxRates(
   let rates: TaxRateRow[] = await adapter.taxRates.listAll(company_id);
   if (rates.length === 0) {
     const fallback = india
-      ? [0, 5, 12, 18, 28].map((r) => ({ name: `GST ${r}%`, rate: r, tax_type: 'GST' }))
+      ? [0, 5, 18, 40].map((r) => ({ name: `GST ${r}%`, rate: r, tax_type: 'GST' }))   // GST 2.0 slabs (2025-09-22)
       : [
-          { name: 'Standard Rate 5%', rate: 5, tax_type: 'standard' },
+          // Phase 4: the country's verified standard rate (SA 15, BH 10, AE/OM 5, KW/QA 0).
+          { name: `Standard Rate ${defaultTaxRate(country_code)}%`, rate: defaultTaxRate(country_code), tax_type: 'standard' },
           { name: 'Zero-rated 0%', rate: 0, tax_type: 'zero_rated' },
           { name: 'Exempt', rate: 0, tax_type: 'exempt' },
         ];

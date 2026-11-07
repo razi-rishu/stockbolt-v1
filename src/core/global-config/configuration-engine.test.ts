@@ -81,8 +81,19 @@ describe('country packs', () => {
     for (const c of ['AE', 'SA', 'KW', 'BH', 'OM', 'QA']) expect(getCountryPack(c).fiscal_year_start_month).toBe(1);
   });
 
-  it('rates that differ from what onboarding seeds today are flagged for review, not used', () => {
-    for (const c of ['SA', 'BH', 'OM', 'KW', 'QA']) expect(getCountryPack(c).rate_status).toBe('needs_review');
+  it('every pack rate is verified against its tax authority, with a source and date (Phase 4)', () => {
+    for (const c of ['AE', 'IN', 'SA', 'BH', 'OM', 'KW', 'QA']) {
+      const p = getCountryPack(c);
+      expect(p.rate_status, c).toBe('verified');
+      expect(p.rate_source, c).toBeTruthy();
+      expect(p.rate_verified_on, c).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+    expect([getCountryPack('SA').standard_vat_rate, getCountryPack('BH').standard_vat_rate]).toEqual([15, 10]);
+    expect([getCountryPack('KW').tax_system, getCountryPack('QA').tax_system]).toEqual(['none', 'none']);
+  });
+
+  it('a verified rate is not a compliance claim: SA, BH, OM stay tax_configuration', () => {
+    for (const c of ['SA', 'BH', 'OM', 'KW', 'QA']) expect(getCountryPack(c).compliance, c).toBe('tax_configuration');
   });
 });
 

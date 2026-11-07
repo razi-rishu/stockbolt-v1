@@ -57,9 +57,15 @@ describe('getTaxLabels', () => {
 });
 
 describe('defaultTaxRate', () => {
-  it('is 5% for UAE/GCC and 18% for India', () => {
+  it('is each country's verified standard rate (Phase 4, 2026-11-07)', () => {
     expect(defaultTaxRate('AE')).toBe(5);
-    expect(defaultTaxRate('SA')).toBe(5);
+    expect(defaultTaxRate('OM')).toBe(5);
+    expect(defaultTaxRate('SA')).toBe(15);
+    expect(defaultTaxRate('BH')).toBe(10);
+    expect(defaultTaxRate('KW')).toBe(0);   // no VAT law in force
+    expect(defaultTaxRate('QA')).toBe(0);   // no VAT law in force
     expect(defaultTaxRate('IN')).toBe(18);
+    expect(defaultTaxRate('sa')).toBe(15);
+    expect(defaultTaxRate(null)).toBe(0);
   });
 });

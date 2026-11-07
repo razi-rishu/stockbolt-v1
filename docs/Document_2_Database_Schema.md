@@ -928,6 +928,18 @@ Configurable tax rates beyond the country defaults.
 | is_active | bool DEFAULT true | |
 | created_at, updated_at | | |
 
+**Seeded for a new company** (`seed_default_tax_rates`, phase123 — rates verified 2026-11-07 against each tax authority, see `country-packs.ts`):
+
+| Country | Rows (tax_type) |
+|---|---|
+| AE, OM | Standard Rate 5% (standard), Zero-rated 0% (zero_rated), Exempt (exempt) |
+| SA | Standard Rate 15% · zero-rated · exempt |
+| BH | Standard Rate 10% · zero-rated · exempt |
+| KW, QA | Standard Rate 0% (no VAT law in force) · zero-rated · exempt |
+| IN | GST 0% / 5% / 18% / 40% (GST 2.0, from 2025-09-22) + IGST 18% added by the app |
+
+Existing companies keep the rates they were created with; correcting those is a separate data change.
+
 ---
 
 ## SECTION L — SYSTEM TABLES
