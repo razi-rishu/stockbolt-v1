@@ -975,7 +975,8 @@ export function expenseToDocumentData({
     currency: company?.base_currency ?? 'AED',
 
     company: companyToInfo(company),
-    bill_to: contactToParty(supplier),
+    // No supplier picked = the payee was never recorded; say so rather than "—".
+    bill_to: supplier ? contactToParty(supplier) : { ...contactToParty(null), name: 'Not recorded' },
     ship_to: null,
 
     items: lines,
