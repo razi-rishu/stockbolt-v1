@@ -1,0 +1,444 @@
+/* StockBolt UI Design System v1.1
+   Ocean Teal — approved theme
+
+   Everything below is scoped to `.sb-ocean`, so importing this file changes
+   nothing on screens that do not opt in. Applied so far to:
+   Customer Details → Overview (src/modules/contacts/customer-overview-ocean.tsx). */
+
+:root {
+  --sb-primary: #008F87;
+  --sb-primary-hover: #00776F;
+  --sb-primary-dark: #006A65;
+  --sb-primary-light: #D7F4F1;
+  --sb-primary-soft: #EFFAF8;
+
+  --sb-background: #F6FAFC;
+  --sb-surface: #FFFFFF;
+  --sb-text: #0D1935;
+  --sb-text-secondary: #607185;
+  --sb-border: #E1E9ED;
+
+  --sb-success: #15803D;
+  --sb-success-bg: #DCFCE7;
+  --sb-danger: #DC2626;
+  --sb-danger-bg: #FEE2E2;
+  --sb-warning: #B45309;
+
+  --sb-radius-sm: 10px;
+  --sb-radius-md: 16px;
+  --sb-radius-lg: 22px;
+
+  --sb-shadow:
+    0 3px 12px rgba(13, 25, 53, 0.06),
+    0 1px 3px rgba(13, 25, 53, 0.04);
+
+  --sb-font: Inter, system-ui, sans-serif;
+}
+
+/* Scope to redesigned screens only */
+.sb-ocean {
+  font-family: var(--sb-font);
+  color: var(--sb-text);
+  background: var(--sb-background);
+  min-height: 100%;
+}
+
+.sb-ocean .sb-card {
+  background: var(--sb-surface);
+  border: 1px solid var(--sb-border);
+  border-radius: var(--sb-radius-lg);
+  box-shadow: var(--sb-shadow);
+  padding: 16px;
+}
+
+.sb-ocean .sb-primary-btn {
+  background: var(--sb-primary);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 11px 20px;
+  font: inherit;
+  font-weight: 600;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.sb-ocean .sb-primary-btn:hover {
+  background: var(--sb-primary-hover);
+}
+
+.sb-ocean .sb-secondary-btn {
+  background: var(--sb-primary-soft);
+  color: var(--sb-primary-dark);
+  border: 1px solid var(--sb-primary-light);
+  border-radius: 999px;
+  padding: 10px 18px;
+  min-height: 44px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sb-ocean .sb-secondary-btn:hover {
+  background: var(--sb-primary-light);
+}
+
+.sb-ocean .sb-hero {
+  background:
+    radial-gradient(
+      ellipse at top right,
+      #B7ECE6 0%,
+      transparent 60%
+    );
+  padding: 20px 16px;
+}
+
+.sb-ocean .sb-field {
+  background: #fff;
+  border: 1px solid var(--sb-border);
+  border-radius: var(--sb-radius-md);
+  padding: 12px 14px;
+  color: var(--sb-text);
+  min-height: 44px;
+}
+
+.sb-ocean .sb-field:focus {
+  outline: 2px solid var(--sb-primary);
+  outline-offset: 2px;
+}
+
+.sb-ocean .sb-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--sb-border);
+}
+
+.sb-ocean .sb-tab {
+  flex: 1;
+  padding: 14px 8px;
+  text-align: center;
+  color: var(--sb-text-secondary);
+  border-bottom: 3px solid transparent;
+}
+
+.sb-ocean .sb-tab.active {
+  color: var(--sb-primary);
+  border-bottom-color: var(--sb-primary);
+  font-weight: 600;
+}
+
+.sb-ocean .sb-badge-success {
+  color: var(--sb-success);
+  background: var(--sb-success-bg);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-weight: 600;
+}
+
+.sb-ocean .sb-amount-positive {
+  color: var(--sb-success);
+  font-weight: 700;
+}
+
+.sb-ocean .sb-amount-negative {
+  color: var(--sb-danger);
+  font-weight: 700;
+}
+
+.sb-ocean .sb-credit-card {
+  background: #E8FAF0;
+  border: 1px solid #B8E9CF;
+  border-radius: var(--sb-radius-lg);
+  padding: 16px;
+}
+
+.sb-ocean .sb-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sb-ocean .sb-stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.sb-ocean .sb-bottom-nav .active {
+  color: var(--sb-primary);
+  background: var(--sb-primary-light);
+  border-radius: 999px;
+}
+
+@media (max-width: 360px) {
+  .sb-ocean .sb-stat-grid {
+    gap: 8px;
+  }
+
+  .sb-ocean .sb-card {
+    padding: 12px;
+  }
+
+  .sb-ocean .sb-stat-value {
+    font-size: 19px;
+  }
+}
+
+/* ── Additions for Customer Details → Overview ─────────────────────────────
+   Same tokens; nothing outside `.sb-ocean`. */
+
+/* Visible keyboard focus on every interactive element in the scope. */
+.sb-ocean button:focus-visible,
+.sb-ocean a:focus-visible,
+.sb-ocean [role="tab"]:focus-visible,
+.sb-ocean [tabindex]:focus-visible {
+  outline: 2px solid var(--sb-primary);
+  outline-offset: 2px;
+}
+
+.sb-ocean.sb-page {
+  border-radius: var(--sb-radius-lg);
+  padding-bottom: 24px;
+}
+
+.sb-ocean .sb-hero {
+  border-radius: var(--sb-radius-lg) var(--sb-radius-lg) 0 0;
+  padding: 18px 16px 8px;
+}
+
+.sb-ocean .sb-back-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 8px 16px 8px 12px;
+  border: none;
+  border-radius: 999px;
+  background: var(--sb-primary-light);
+  color: var(--sb-primary-dark);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sb-ocean .sb-back-pill:hover { background: #C4EDE8; }
+[dir="rtl"] .sb-ocean .sb-flip { transform: scaleX(-1); }
+
+.sb-ocean .sb-title {
+  margin: 14px 0 0;
+  font-size: clamp(22px, 5.4vw, 30px);
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--sb-text);
+  overflow-wrap: anywhere;
+}
+.sb-ocean .sb-title-ar {
+  margin-top: 4px;
+  font-size: 15px;
+  color: var(--sb-text-secondary);
+}
+
+.sb-ocean .sb-meta {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 22px;
+  font-size: 15px;
+  color: var(--sb-text-secondary);
+}
+.sb-ocean .sb-meta-item { display: inline-flex; align-items: center; gap: 8px; }
+.sb-ocean .sb-meta-item strong { color: var(--sb-text); font-weight: 700; }
+
+.sb-ocean .sb-actions {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.sb-ocean .sb-actions .sb-primary-btn,
+.sb-ocean .sb-actions .sb-secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.sb-ocean .sb-body {
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sb-ocean .sb-icon { color: var(--sb-primary); flex: none; }
+
+/* Contact card: two columns on wide screens, one on narrow phones. */
+.sb-ocean .sb-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 24px;
+}
+.sb-ocean .sb-info-row { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.sb-ocean .sb-info-label { font-size: 13px; color: var(--sb-text-secondary); }
+.sb-ocean .sb-info-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--sb-text);
+  overflow-wrap: anywhere;
+}
+.sb-ocean .sb-info-value.sb-muted { font-weight: 500; color: var(--sb-text-secondary); }
+.sb-ocean .sb-info-wide { grid-column: 1 / -1; }
+.sb-ocean .sb-pill {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: var(--sb-primary-light);
+  color: var(--sb-primary-dark);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* Credit-available panel (customer advance on 2400). */
+.sb-ocean .sb-credit-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
+.sb-ocean .sb-credit-icon {
+  width: 52px; height: 52px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px;
+  background: #CDF3DF;
+  color: var(--sb-success);
+}
+.sb-ocean .sb-credit-title { font-size: 19px; font-weight: 800; color: var(--sb-success); }
+.sb-ocean .sb-credit-text { font-size: 14px; color: var(--sb-text); line-height: 1.45; }
+
+/* KPI tiles. */
+.sb-ocean .sb-stat {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+}
+.sb-ocean .sb-stat-label { font-size: 14px; color: var(--sb-text); font-weight: 500; }
+.sb-ocean .sb-stat-value { line-height: 1.25; margin-top: 2px; color: var(--sb-text); }
+.sb-ocean .sb-stat-value .sb-ccy { font-size: 0.72em; font-weight: 700; margin-inline-end: 4px; }
+.sb-ocean .sb-stat-sub { font-size: 13px; color: var(--sb-text-secondary); margin-top: 2px; }
+.sb-ocean .sb-tone-good { color: var(--sb-success); }
+.sb-ocean .sb-tone-danger { color: var(--sb-danger); }
+.sb-ocean .sb-tone-warn { color: var(--sb-warning); }
+
+/* Ageing bar. */
+.sb-ocean .sb-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--sb-text);
+}
+.sb-ocean .sb-section-head small { font-size: 13px; font-weight: 500; color: var(--sb-text-secondary); }
+.sb-ocean .sb-aging-track {
+  margin-top: 12px;
+  display: flex;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--sb-primary-soft);
+}
+.sb-ocean .sb-aging-legend {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.sb-ocean .sb-aging-item { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sb-ocean .sb-aging-key { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--sb-text-secondary); }
+.sb-ocean .sb-aging-dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+.sb-ocean .sb-aging-amt { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Notes (read-only). */
+.sb-ocean .sb-note { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; }
+.sb-ocean .sb-note-text { font-size: 14px; color: var(--sb-text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.sb-ocean .sb-note-empty { font-size: 14px; color: var(--sb-text-secondary); }
+
+/* Tabs — buttons, keyboard-reachable, 44px tall. */
+.sb-ocean .sb-tabs { margin-top: 4px; }
+.sb-ocean .sb-tab {
+  min-height: 48px;
+  background: none;
+  border-top: none; border-left: none; border-right: none;
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.sb-ocean .sb-tab-count {
+  min-width: 26px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--sb-primary-light);
+  color: var(--sb-primary-dark);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* Open invoices (Overview tab content). */
+.sb-ocean .sb-list { padding: 0; overflow: hidden; }
+.sb-ocean .sb-list-head { padding: 14px 16px; border-bottom: 1px solid var(--sb-border); }
+.sb-ocean .sb-link {
+  background: none; border: none; padding: 4px 6px; font: inherit; min-height: 44px;
+  font-size: 14px; font-weight: 600; color: var(--sb-primary); cursor: pointer;
+}
+.sb-ocean .sb-link:hover { color: var(--sb-primary-dark); text-decoration: underline; }
+.sb-ocean .sb-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--sb-border);
+  cursor: pointer;
+}
+.sb-ocean .sb-row:last-child { border-bottom: none; }
+.sb-ocean .sb-row:hover { background: var(--sb-primary-soft); }
+.sb-ocean .sb-row-no { font-weight: 700; color: var(--sb-primary-dark); font-size: 14px; }
+.sb-ocean .sb-row-meta { font-size: 13px; color: var(--sb-text-secondary); }
+.sb-ocean .sb-row-amt { text-align: end; font-weight: 700; font-variant-numeric: tabular-nums; font-size: 15px; }
+.sb-ocean .sb-row-sub { text-align: end; font-size: 12px; color: var(--sb-text-secondary); font-variant-numeric: tabular-nums; }
+.sb-ocean .sb-empty { padding: 18px 16px; font-size: 14px; color: var(--sb-text-secondary); }
+
+/* Wider screens: more room, four KPI tiles in a row. */
+@media (min-width: 900px) {
+  .sb-ocean .sb-hero { padding: 24px 28px 10px; }
+  .sb-ocean .sb-body { padding: 0 28px; }
+  .sb-ocean .sb-stat-grid.sb-stat-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* Small phones. */
+@media (max-width: 420px) {
+  /* Two columns like the mockup; values wrap rather than overflow. */
+  .sb-ocean .sb-info-grid { gap: 12px 14px; }
+  .sb-ocean .sb-info-value { font-size: 14px; }
+  .sb-ocean .sb-aging-legend { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* Half-width tiles are ~150px: icon above, currency on its own line, so
+     even seven-figure amounts fit without overflowing. */
+  .sb-ocean .sb-stat { padding: 12px; gap: 6px; flex-direction: column; }
+  .sb-ocean .sb-stat-value { font-size: 20px; overflow-wrap: anywhere; }
+  .sb-ocean .sb-stat-value .sb-ccy { display: block; font-size: 12px; margin: 0; }
+  .sb-ocean .sb-tab { font-size: 15px; padding: 12px 4px; }
+}
+@media (max-width: 340px) {
+  .sb-ocean .sb-info-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 360px) {
+  .sb-ocean .sb-actions .sb-primary-btn,
+  .sb-ocean .sb-actions .sb-secondary-btn { padding-inline: 14px; }
+}

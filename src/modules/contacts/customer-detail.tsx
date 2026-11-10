@@ -25,6 +25,7 @@ import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
 import { RefundAdvanceModal } from './refund-advance-modal';
 import { RefundDueBanner } from '@/components/refund-due-banner';
+import { CustomerOverviewOcean } from './customer-overview-ocean';
 import { Tabs } from '@/ui/tabs';
 import { theme } from '@/ui/theme';
 import { StatusBadge } from '@/ui/status-badge';
@@ -328,6 +329,39 @@ export default function CustomerDetailPage() {
   }, [openInvoices, today]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
+  // Overview: Ocean Teal design (UI v1.1). Same figures, same actions — the
+  // component only presents what is computed above. Documents and Statement
+  // keep the layout below, unchanged.
+  if (tab === 'overview') {
+    return (
+      <div className="pb-16">
+        <CustomerOverviewOcean
+          id={id!}
+          company_id={company_id}
+          contact={contact}
+          currency={contact?.currency ?? companyCurrency}
+          openInvoices={openInvoices}
+          paymentsForCustomer={paymentsForCustomer}
+          outstandingTotal={outstandingTotal}
+          overdueTotal={overdueTotal}
+          advanceCredit={advanceCredit}
+          sales12mo={sales12mo}
+          confirmedInvoiceCount={confirmedInvoiceCount}
+          aging={aging}
+          docsCount={invoicesForCustomer.length + quotesForCustomer.length + paymentsForCustomer.length + allCreditNotes.length + salesReturnsForCustomer.length}
+          refundOpen={refundOpen}
+          setRefundOpen={setRefundOpen}
+          onRefundDone={() => {
+            void qc.invalidateQueries({ queryKey: ['advance_balance'] });
+            void qc.invalidateQueries({ queryKey: ['payments'] });
+          }}
+          onTab={setTab}
+          fmt={fmt}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pb-16">
       {/* Header */}
@@ -519,49 +553,6 @@ export default function CustomerDetailPage() {
           { value: 'stmt',     label: 'Statement' },
         ]}
       />
-
-      {tab === 'overview' && (
-      <>
-
-      {/* ── Open Invoices ──────────────────────────────────────────────── */}
-      <Section
-        title={`Open Invoices (${openInvoices.length})`}
-        action={openInvoices.length > 0 && (
-          <button onClick={() => navigate('/sales/invoices')} className="text-xs text-brand-600 hover:underline">See all →</button>
-        )}
-      >
-        {openInvoices.length === 0 ? (
-          <div className="px-5 py-6 text-sm text-ink-tertiary">No outstanding invoices.</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
-                <th className="px-4 py-2 text-start font-medium">Invoice #</th>
-                <th className="px-4 py-2 text-start font-medium">Date</th>
-                <th className="px-4 py-2 text-start font-medium">Due date</th>
-                <th className="px-4 py-2 text-end font-medium">Total</th>
-                <th className="px-4 py-2 text-end font-medium">Outstanding</th>
-              </tr>
-            </thead>
-            <tbody>
-              {openInvoices.map(inv => (
-                <tr key={inv.id}
-                  onClick={() => navigate(`/sales/invoices/${inv.id}`)}
-                  className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
-                  <td className="px-4 py-2 font-mono text-xs text-brand-600">{inv.invoice_number}</td>
-                  <td className="px-4 py-2 text-ink-secondary">{formatDate(inv.date as unknown as string)}</td>
-                  <td className="px-4 py-2 text-ink-secondary">{(inv.due_date as unknown as string | null) ?? '—'}</td>
-                  <td className="px-4 py-2 text-end font-mono text-ink-secondary">{fmt(Number(inv.total_amount))}</td>
-                  <td className="px-4 py-2 text-end font-mono font-medium text-ink-primary">{fmt(inv.outstanding)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Section>
-
-      </>
-      )}
 
       {tab === 'docs' && (
       <>
