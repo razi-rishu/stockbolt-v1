@@ -263,7 +263,11 @@ export default function PayrollRunEditorPage() {
       {(run.journal_entry_id || run.payment_journal_entry_id) && (
         <div style={{ fontSize: '12px', color: theme.inkMuted }}>
           {run.journal_entry_id && <span>Accrual posted to the books (see Accounting → Journal Entries). </span>}
-          {run.payment_journal_entry_id && <span>Salary payment posted{run.bank_account_id ? ' from bank' : ''}.</span>}
+          {run.payment_journal_entry_id && (() => {
+            // Name the account the salaries were actually paid from.
+            const ba = banks.find(b => b.id === run.bank_account_id);
+            return <span>Salary payment posted{ba ? ` from ${ba.name} (${ba.account_type === 'cash' ? 'Cash' : 'Bank'})` : run.bank_account_id ? ' from a bank account no longer listed' : ' (paying account not recorded)'}.</span>;
+          })()}
         </div>
       )}
 

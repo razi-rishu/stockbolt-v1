@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useDocumentPayments } from '@/hooks/use-document-payments';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -14,7 +15,7 @@ import { SearchableSelect } from '@/ui/searchable-select';
 // Phase 14.04 — Signature template view mode for saved credit notes.
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
-import { creditNoteToDocumentData } from '@/modules/print/_signature/adapters';
+import { creditNoteToDocumentData, withPaymentDetails } from '@/modules/print/_signature/adapters';
 import { RefundDueBanner } from '@/components/refund-due-banner';
 import { RefundedBadge, RefundedPill } from '@/components/refunded-badge';
 import '@/modules/print/_signature/print.css';
@@ -372,11 +373,13 @@ export default function CreditNoteEditorPage() {
   // Phase 14.04 — view-mode renderer (Signature template).
   // Drafts open in the editable form (single Save posts them); only posted
   // credit notes show the read-only template view.
+  // Verified payments / refunds / bank-cash lines for the Payment details section.
+  const docPayments = useDocumentPayments('credit_note', existing?.id, !!existing && existing.status !== 'draft');
   if (viewMode && !isNew && existing && existing.status !== 'draft') {
     const linkedInv = existing.linked_invoice_id
       ? invoices.find(i => i.id === existing.linked_invoice_id)
       : null;
-    const doc = creditNoteToDocumentData({
+    const docBase = creditNoteToDocumentData({
       creditNote: existing,
       items: existingItems,
       contact: contacts.find(c => c.id === existing.contact_id) ?? null,
@@ -384,6 +387,7 @@ export default function CreditNoteEditorPage() {
       products,
       linkedInvoiceNumber: linkedInv?.invoice_number ?? null,
     });
+    const doc = withPaymentDetails(docBase, 'credit_note', docPayments);
     return (
       <div className="signature-print-scope" style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
         <div

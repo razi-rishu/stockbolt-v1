@@ -29,6 +29,7 @@ import type { PrintTemplate, PrintDocumentType } from './engine/types';
 import {
   invoiceToDocumentData, quoteToDocumentData, creditNoteToDocumentData,
   debitNoteToDocumentData, purchaseOrderToDocumentData, vendorBillToDocumentData,
+  withPaymentDetails,
 } from './_signature/adapters';
 // Statements are a running-balance ledger, not a line-item document, so they
 // keep their dedicated classic template. All other docs render via the engine.
@@ -141,6 +142,8 @@ export default function PrintPage() {
     salespersonName?: string | null;
     // Payments applied to the doc (drives Paid / Balance due on the print).
     paidAmount?:      number;
+    // Verified payments / refunds behind the doc (Payment details section).
+    docPayments?:     import('@/data/adapter').DocumentPaymentLine[];
   }>({
     loading: true,
     error:   null,
@@ -270,6 +273,13 @@ export default function PrintPage() {
           patch = { ...patch, contact, statementLines: stmt.lines, statementMeta: stmt };
         }
 
+        // The printout / PDF carries the same Payment details as the screen.
+        const traceKind = docType === 'invoice' ? 'invoice' : docType === 'bill' ? 'vendor_bill'
+          : docType === 'credit-note' ? 'credit_note' : docType === 'debit-note' ? 'debit_note' : null;
+        if (traceKind && id) {
+          patch = { ...patch, docPayments: await adapter.documentPayments.list(traceKind, id) };
+        }
+
         setState(s => ({ ...s, ...patch, loading: false }));
       } catch (err) {
         setState(s => ({ ...s, loading: false, error: String(err) }));
@@ -341,7 +351,7 @@ export default function PrintPage() {
   const baseProps = { company, printConfig };
 
   if (docType === 'invoice' && state.invoice && state.invoiceItems && state.printTemplate) {
-    const docData = invoiceToDocumentData({ invoice: state.invoice, items: state.invoiceItems, contact, company, warehouseName: state.warehouseName, salespersonName: state.salespersonName, paidAmount: state.paidAmount });
+    const docData = withPaymentDetails(invoiceToDocumentData({ invoice: state.invoice, items: state.invoiceItems, contact, company, warehouseName: state.warehouseName, salespersonName: state.salespersonName, paidAmount: state.paidAmount }), 'invoice', state.docPayments);
     return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
   }
 
@@ -351,12 +361,12 @@ export default function PrintPage() {
   }
 
   if (docType === 'credit-note' && state.creditNote && state.creditNoteItems && state.printTemplate) {
-    const docData = creditNoteToDocumentData({ creditNote: state.creditNote, items: state.creditNoteItems, contact, company });
+    const docData = withPaymentDetails(creditNoteToDocumentData({ creditNote: state.creditNote, items: state.creditNoteItems, contact, company }), 'credit_note', state.docPayments);
     return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
   }
 
   if (docType === 'debit-note' && state.debitNote && state.debitNoteItems && state.printTemplate) {
-    const docData = debitNoteToDocumentData({ debitNote: state.debitNote, items: state.debitNoteItems, supplier: contact, company });
+    const docData = withPaymentDetails(debitNoteToDocumentData({ debitNote: state.debitNote, items: state.debitNoteItems, supplier: contact, company }), 'debit_note', state.docPayments);
     return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
   }
 
@@ -366,7 +376,7 @@ export default function PrintPage() {
   }
 
   if (docType === 'bill' && state.bill && state.billItems && state.printTemplate) {
-    const docData = vendorBillToDocumentData({ bill: state.bill, items: state.billItems, supplier: contact, company, warehouseName: state.warehouseName, paidAmount: state.paidAmount });
+    const docData = withPaymentDetails(vendorBillToDocumentData({ bill: state.bill, items: state.billItems, supplier: contact, company, warehouseName: state.warehouseName, paidAmount: state.paidAmount }), 'vendor_bill', state.docPayments);
     return <>{ActionBar}<ConfigurableDocTemplate data={docData} template={state.printTemplate} /></>;
   }
 

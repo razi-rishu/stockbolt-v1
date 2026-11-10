@@ -44,6 +44,7 @@
     "test:global06": "vitest run tests/integration/global06-branch-verification.test.ts",
     "test:country-rates": "vitest run tests/integration/country-rates-verification.test.ts",
     "test:tax-inclusive": "vitest run tests/integration/tax-inclusive-posting-verification.test.ts",
+    "test:document-payments": "vitest run tests/integration/document-payments-verification.test.ts",
     "staging:seed": "node scripts/staging-seed.mjs",
     "prepare": "husky"
   },

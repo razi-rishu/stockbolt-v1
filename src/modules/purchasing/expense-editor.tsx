@@ -55,6 +55,7 @@
  * legacy single-line.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDocumentPayments } from '@/hooks/use-document-payments';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -76,7 +77,7 @@ import { theme } from '@/ui/theme';
 // Phase 14.06 — Signature template view mode for saved expenses.
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
-import { expenseToDocumentData } from '@/modules/print/_signature/adapters';
+import { expenseToDocumentData, withPaymentDetails } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type {
   BankAccountRow, CoaRow, ExpenseRow, ExpenseItemRow,
@@ -488,8 +489,10 @@ export default function ExpenseEditorPage() {
   // Phase 14.06 — view-mode renderer (Signature template).
   // Drafts open in the editable form (single Save posts them); only posted
   // expenses show the read-only template view.
+  // Verified payments / refunds / bank-cash lines for the Payment details section.
+  const docPayments = useDocumentPayments('expense', expense?.id, !!expense && expense.status !== 'draft');
   if (viewMode && !isNew && expense && expense.status !== 'draft') {
-    const doc = expenseToDocumentData({
+    const docBase = expenseToDocumentData({
       expense,
       items,
       supplier: expense.supplier_id ? suppliers.find(s => s.id === expense.supplier_id) ?? null : null,
@@ -497,6 +500,7 @@ export default function ExpenseEditorPage() {
       coa,
       bankAccounts,
     });
+    const doc = withPaymentDetails(docBase, 'expense', docPayments);
     return (
       <div className="signature-print-scope" style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
         <div

@@ -139,6 +139,15 @@ export interface DocumentData {
   payment_method?: string | null;
   /** Bank account this payment hit (label, masked digits). */
   bank_account?:   string | null;
+  /** Verified money movements behind this document — receipts, payments,
+   *  refunds or the bank/cash ledger line — rendered as "Payment details".
+   *  Built from the settling records, never from the status. */
+  payment_details?: PaymentDetailRow[] | null;
+  /** Shown in place of the table when nothing was recorded (legacy record,
+   *  unposted document) — an honest "not available", never an invented row. */
+  payment_details_note?: string | null;
+  /** Label of the party block when "Bill To" would be wrong (an expense's payee). */
+  party_label?: string | null;
   /** Allocations against invoices/bills. Renders as a small table. */
   allocations?:    Array<{
     doc_number:      string;
@@ -147,4 +156,19 @@ export interface DocumentData {
     applied_amount:  number;
     discount_amount?:number;
   }>;
+}
+
+/** One row of the "Payment details" section. */
+export interface PaymentDetailRow {
+  /** 'Receipt' | 'Payment' | 'Refund' | 'Paid' (ledger). */
+  kind:      string;
+  date:      string;
+  number:    string | null;
+  /** Bank / cash account label, or null when not recorded. */
+  account:   string | null;
+  method:    string | null;
+  reference: string | null;
+  amount:    number;
+  /** '' when normal; 'Void' / 'Reversed' / 'Reversal' otherwise. */
+  status:    string;
 }

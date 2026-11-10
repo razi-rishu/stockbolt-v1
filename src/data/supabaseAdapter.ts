@@ -440,6 +440,88 @@ export function createSupabaseAdapter(
       },
     },
 
+    // ── Document payment trace ───────────────────────────────────────────────
+    // What actually settled a document, read from the settling records
+    // themselves (allocations, refunds, bank/cash GL lines) — never from a
+    // status flag. Plain client reads, so RLS keeps every row in the caller's
+    // own company; nothing here writes.
+    documentPayments: {
+      async list(doc_type, doc_id) {
+        const db = client as unknown as SupabaseClient;
+        type Embedded = {
+          id: string; payment_number: string | null; date: string; status: string; amount: number;
+          reference: string | null; currency: string | null;
+          bank_accounts: { name: string; account_type: string | null; account_number: string | null } | null;
+          payment_methods: { name: string } | null;
+          contacts: { name: string } | null;
+        };
+        const PAY = 'id, payment_number, date, status, amount, reference, currency, '
+          + 'bank_accounts(name, account_type, account_number), payment_methods(name), contacts(name)';
+        const fromPayment = (kind: 'payment' | 'refund', p: Embedded, amount: number, discount: number) => ({
+          kind, id: p.id, number: p.payment_number, date: p.date, status: p.status,
+          amount, discount, currency: p.currency,
+          account_name: p.bank_accounts?.name ?? null,
+          account_type: p.bank_accounts?.account_type ?? null,
+          account_number: p.bank_accounts?.account_number ?? null,
+          method: p.payment_methods?.name ?? null,
+          reference: p.reference || null,
+          counterparty: p.contacts?.name ?? null,
+        });
+
+        const out: import('./adapter').DocumentPaymentLine[] = [];
+
+        // 1. Receipts / vendor payments allocated to the document.
+        if (doc_type === 'invoice' || doc_type === 'vendor_bill' || doc_type === 'credit_note' || doc_type === 'debit_note') {
+          const { data, error } = await db.from('payment_allocations')
+            .select(`amount_applied, discount_amount, payments(${PAY})`)
+            .eq('doc_type', doc_type).eq('doc_id', doc_id);
+          assertNoError(error, 'documentPayments.list allocations');
+          for (const r of (data ?? []) as unknown as { amount_applied: number; discount_amount: number | null; payments: Embedded | null }[]) {
+            if (r.payments) out.push(fromPayment('payment', r.payments, Number(r.amount_applied), Number(r.discount_amount ?? 0)));
+          }
+        }
+
+        // 2. Refunds raised against the document (credit / debit notes).
+        if (doc_type === 'credit_note' || doc_type === 'debit_note') {
+          const { data, error } = await db.from('payments').select(PAY)
+            .eq('source_doc_type', doc_type).eq('source_doc_id', doc_id);
+          assertNoError(error, 'documentPayments.list refunds');
+          for (const p of (data ?? []) as unknown as Embedded[]) out.push(fromPayment('refund', p, Number(p.amount), 0));
+        }
+
+        // 3. Expenses are paid when posted: the bank / cash GL line is the proof.
+        if (doc_type === 'expense') {
+          const { data: banks, error: bErr } = await db.from('bank_accounts')
+            .select('coa_account_id, name, account_type, account_number');
+          assertNoError(bErr, 'documentPayments.list bank accounts');
+          const byCoa = new Map(((banks ?? []) as { coa_account_id: string | null; name: string; account_type: string | null; account_number: string | null }[])
+            .filter(b => b.coa_account_id).map(b => [b.coa_account_id as string, b]));
+          if (byCoa.size > 0) {
+            const { data, error } = await db.from('general_ledger')
+              .select('id, date, debit, credit, account_id, reversal_of_id, journal_entries(entry_number, reversed_by_id, reversal_of_id)')
+              .eq('related_doc_type', 'expense').eq('related_doc_id', doc_id)
+              .in('account_id', [...byCoa.keys()])
+              .order('date').order('created_at');
+            assertNoError(error, 'documentPayments.list ledger');
+            for (const g of (data ?? []) as unknown as { id: string; date: string; debit: number; credit: number; account_id: string; reversal_of_id: string | null;
+                journal_entries: { entry_number: string | null; reversed_by_id: string | null; reversal_of_id: string | null } | null }[]) {
+              const b = byCoa.get(g.account_id)!;
+              const je = g.journal_entries;
+              out.push({
+                kind: 'ledger', id: g.id, number: je?.entry_number ?? null, date: g.date,
+                status: (je?.reversal_of_id || g.reversal_of_id) ? 'reversal' : je?.reversed_by_id ? 'reversed' : 'posted',
+                amount: Number(g.credit) - Number(g.debit), discount: 0, currency: null,
+                account_name: b.name, account_type: b.account_type, account_number: b.account_number,
+                method: null, reference: null, counterparty: null,
+              });
+            }
+          }
+        }
+
+        return out.sort((a, b) => a.date.localeCompare(b.date));
+      },
+    },
+
     // ── Print Templates (Phase 15) ───────────────────────────────────────────
     // The print_templates / print_template_defaults tables are added by the
     // Phase 15 migration and may not be in the generated Database types until

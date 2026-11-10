@@ -37,6 +37,7 @@ interface PmtHeader {
   amount: string;
   currency: string;
   bank_account_id: string;
+  payment_method_id: string;
   classification: 'against_invoice' | 'advance' | 'on_account';
   reference: string;
   notes: string;
@@ -145,6 +146,7 @@ export default function PaymentEditorPage() {
     amount: '',
     currency: companyCurrency ?? 'AED',
     bank_account_id: '',
+    payment_method_id: '',
     classification: 'against_invoice',
     reference: '',
     notes: '',
@@ -193,6 +195,7 @@ export default function PaymentEditorPage() {
         amount:          String(existing.amount),
         currency:        existing.currency,
         bank_account_id: existing.bank_account_id ?? '',
+        payment_method_id: existing.payment_method_id ?? '',
         classification:  existing.classification as PmtHeader['classification'],
         reference:       existing.reference ?? '',
         notes:           existing.notes ?? '',
@@ -345,7 +348,8 @@ export default function PaymentEditorPage() {
             classification:    header.classification,
             status:            'draft',
             notes:             header.notes || null,
-            payment_method_id: null,
+            // Recorded so the receipt shows how it was paid (it was always null before).
+            payment_method_id: header.payment_method_id || null,
             void_reason:       null,
             voided_at:         null,
             voided_by:         null,
@@ -369,6 +373,7 @@ export default function PaymentEditorPage() {
         amount:            parseFloat(header.amount),
         currency:          header.currency,
         bank_account_id:   header.bank_account_id || null,
+        payment_method_id: header.payment_method_id || null,
         reference:         header.reference || null,
         classification:    header.classification,
         notes:             header.notes || null,
@@ -811,6 +816,13 @@ export default function PaymentEditorPage() {
               </p>
             )}
           </div>
+          <Select
+            label={t('purchasing.payment_method')}
+            options={[{ value: '', label: '—' }, ...paymentMethods.filter(m => m.is_active || m.id === header.payment_method_id).map(m => ({ value: m.id, label: m.name }))]}
+            value={header.payment_method_id}
+            disabled={!canEdit || isVoid}
+            onChange={e => setHeader(h => ({ ...h, payment_method_id: e.target.value }))}
+          />
           <Select
             label={t('payments.classification')}
             required

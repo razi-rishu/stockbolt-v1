@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useDocumentPayments } from '@/hooks/use-document-payments';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
@@ -22,7 +23,7 @@ import { AccountingPreview, buildVendorBillPreview } from '@/components/accounti
 import { ApplyAdvanceButton } from '@/components/apply-advance-button';
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
-import { vendorBillToDocumentData } from '@/modules/print/_signature/adapters';
+import { vendorBillToDocumentData, withPaymentDetails } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type { VendorBillRow, VendorBillItemInsert, VendorBillLandedCostInsert, ContactRow, ProductRow, TaxRateRow, CoaRow } from '@/data/adapter';
 import { calcPurchaseLine as _calc } from '@/core/purchasing/purchase-calc';
@@ -622,8 +623,10 @@ export default function VendorBillEditorPage() {
   // on saved bills where viewMode hasn't been toggled off.
   // Drafts open in the editable form (single Save posts them); only posted
   // bills show the read-only template view.
+  // Verified payments / refunds / bank-cash lines for the Payment details section.
+  const docPayments = useDocumentPayments('vendor_bill', existing?.id, !!existing && existing.status !== 'draft');
   if (viewMode && !isNew && existing && existing.status !== 'draft') {
-    const doc = vendorBillToDocumentData({
+    const docBase = vendorBillToDocumentData({
       bill: existing,
       items: existingItems as Parameters<typeof vendorBillToDocumentData>[0]['items'],
       supplier: suppliers.find(s => s.id === existing.supplier_id) ?? null,
@@ -632,6 +635,7 @@ export default function VendorBillEditorPage() {
       warehouseName: warehouses.find(w => w.id === (existing as { warehouse_id?: string | null }).warehouse_id)?.name ?? null,
       paidAmount: appliedMap[existing.id] ?? 0,
     });
+    const doc = withPaymentDetails(docBase, 'vendor_bill', docPayments);
     return (
       <div className="signature-print-scope" style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
         <div

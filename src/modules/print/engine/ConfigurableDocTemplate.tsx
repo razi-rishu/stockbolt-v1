@@ -21,6 +21,7 @@ import {
 import { amountInWords } from './amount-in-words';
 import { FitToWidth } from '@/ui/fit-to-width';
 import { ElegantDocTemplate } from './ElegantDocTemplate';
+import { PaymentDetailsSection } from './payment-details';
 
 interface Props {
   data:     DocumentData;
@@ -316,12 +317,17 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
     return (
       <>
         {/* Payment method */}
-        {s.showBankDetails && (data.payment_method || data.bank_account) && (
+        {/* The account and method are part of the payment record itself, so they
+            are always printed (showBankDetails is about the company's own bank
+            details block). Missing ones read "Not recorded". */}
+        {(
+
           <div style={{ marginTop: 18 }}>
             <div style={labelStyle}>Payment Method</div>
             <div style={{ fontSize: baseFont * 0.9, color: C.text, lineHeight: 1.7, marginTop: 4 }}>
-              {data.payment_method && <div>Mode: {data.payment_method}</div>}
-              {data.bank_account && <div>Account: {data.bank_account}</div>}
+              <div>Mode: {data.payment_method ?? 'Not recorded'}</div>
+              <div>Account: {data.bank_account ?? 'Not recorded'}</div>
+              {data.reference && <div>Reference: {data.reference}</div>}
             </div>
           </div>
         )}
@@ -409,7 +415,7 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
       <Header />
 
       <div style={{ display: 'flex', gap: 16, marginTop: 20 }}>
-        <Party label="Bill To" p={data.bill_to} />
+        <Party label={data.party_label ?? 'Bill To'} p={data.bill_to} />
         {data.ship_to && data.ship_to.address !== data.bill_to.address && (
           <Party label="Ship To" p={data.ship_to} />
         )}
@@ -434,6 +440,9 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
       </div>
 
       <Totals />
+
+      <PaymentDetailsSection data={data} colors={{ text: C.text, muted: C.secondary, hairline: C.hairline }}
+        baseFont={baseFont} money={money} labelStyle={labelStyle} />
 
       {/* Per-rate tax breakdown */}
       {s.showTaxBreakdown && data.vat_breakdown && data.vat_breakdown.length > 0 && (

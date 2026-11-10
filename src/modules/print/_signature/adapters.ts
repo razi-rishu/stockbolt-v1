@@ -23,13 +23,13 @@ import type {
   PaymentRow, PaymentAllocationRow,
   BankAccountRow, PaymentMethodRow,
   ExpenseRow, ExpenseItemRow, CoaRow,
-  GoodsReceiptRow, GoodsReceiptItemRow,
+  GoodsReceiptRow, GoodsReceiptItemRow, DocumentPaymentLine,
 } from '@/data/adapter';
 
 // Local alias so the file reads consistently with *Row naming elsewhere.
 type CompanyRow = Company;
 import type {
-  DocumentData, DocumentStatus, LineItem, CompanyInfo, PartyInfo,
+  DocumentData, DocumentStatus, LineItem, CompanyInfo, PartyInfo, PaymentDetailRow,
 } from './types';
 // P1 — one formula for a return line, shared by the editor grid, this
 // printout and (by construction) the posting engines. See return-line-math.
@@ -901,12 +901,13 @@ export interface ExpenseToDocInput {
   company:  Company | null;
   /** Chart of accounts — used to resolve expense account names. */
   coa?:     CoaRow[];
-  /** Bank accounts — used to label the "Paid from" slot. */
+  /** No longer read: the paid-from account comes from the posted ledger line
+   *  (withPaymentDetails). Kept so existing callers still compile. */
   bankAccounts?: BankAccountRow[];
 }
 
 export function expenseToDocumentData({
-  expense, items, supplier, company, coa, bankAccounts,
+  expense, items, supplier, company, coa,
 }: ExpenseToDocInput): DocumentData {
   const coaById: Record<string, CoaRow> = {};
   for (const a of coa ?? []) coaById[a.id] = a;
@@ -955,14 +956,10 @@ export function expenseToDocumentData({
   const taxTotal = Number(expense.tax_amount ?? 0);
   const total    = Number(expense.total_amount ?? subtotal + taxTotal);
 
-  const paidFrom = bankAccounts?.find(b => b.id === expense.paid_from_account_id);
-
-  // Stuff the "Paid from" account into the reference line so it shows on
-  // the printout even though the TaxInvoiceTemplate doesn't have a
-  // dedicated slot for it.
+  // The paid-from account now has its own "Payment details" section
+  // (withPaymentDetails); the reference line carries only the reference.
   const refBits: string[] = [];
-  if (paidFrom) refBits.push(`Paid from: ${paidFrom.name}`);
-  if (expense.reference) refBits.push(`Ref: ${expense.reference}`);
+  if (expense.reference) refBits.push(expense.reference);
 
   return {
     type:   'standard_invoice',                 // template shape
@@ -988,8 +985,11 @@ export function expenseToDocumentData({
     tax_total:      taxTotal,
     shipping_total: 0,
     grand_total:    total,
-    paid_amount:    total,                      // expenses are settled at confirm
-    balance_due:    0,
+    // Not assumed: withPaymentDetails() sets paid / due from the posted
+    // bank-cash ledger line. Until that is loaded nothing is shown as paid.
+    paid_amount:    0,
+    balance_due:    total,
+    party_label:    'Paid To',
 
     vat_breakdown: [],
 
@@ -1080,4 +1080,66 @@ export function grnToDocumentData({
     notes: grn.notes ?? null,
     terms: null,
   };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Payment details — the verified money movements behind a document
+// ────────────────────────────────────────────────────────────────────────────
+
+export type PaymentTraceKind = 'invoice' | 'vendor_bill' | 'expense' | 'credit_note' | 'debit_note';
+
+function accountLabel(l: DocumentPaymentLine): string | null {
+  if (!l.account_name) return null;
+  const type = l.account_type === 'cash' ? 'Cash' : l.account_type === 'bank' ? 'Bank' : (l.account_type ?? '');
+  const digits = (l.account_number ?? '').replace(/\s+/g, '');
+  const masked = digits.length > 4 ? `••${digits.slice(-4)}` : digits;
+  return [l.account_name, type && `(${type})`, masked && `· ${masked}`].filter(Boolean).join(' ');
+}
+
+const STATUS_LABEL: Record<string, string> = { void: 'Void', reversed: 'Reversed', reversal: 'Reversal' };
+
+/** Maps verified payment lines to printable rows. Exported for tests. */
+export function toPaymentDetailRows(kind: PaymentTraceKind, lines: DocumentPaymentLine[]): PaymentDetailRow[] {
+  const inbound = kind === 'invoice' || kind === 'debit_note';
+  return lines.map(l => ({
+    kind: l.kind === 'refund' ? 'Refund' : l.kind === 'ledger' ? 'Paid' : inbound ? 'Receipt' : 'Payment',
+    date: l.date,
+    number: l.number,
+    account: accountLabel(l),
+    method: l.method,
+    reference: l.reference,
+    amount: l.amount + (l.kind === 'payment' ? l.discount : 0),
+    status: STATUS_LABEL[l.status] ?? '',
+  }));
+}
+
+/**
+ * Adds the "Payment details" section to a document, from the records that
+ * actually settle it. `lines` undefined = not loaded yet: the document is
+ * returned unchanged. For an expense the paid / due figures themselves come
+ * from the posted bank-cash line (credit − debit of the active entries), so a
+ * voided or never-posted expense is never shown as PAID.
+ */
+export function withPaymentDetails(doc: DocumentData, kind: PaymentTraceKind, lines: DocumentPaymentLine[] | undefined): DocumentData {
+  if (!lines) return doc;
+  const rows = toPaymentDetailRows(kind, lines)
+    // An expense's own reference (the supplier receipt no.) is the payment's reference.
+    .map(r => (kind === 'expense' && !r.reference && doc.reference ? { ...r, reference: doc.reference } : r));
+  const out: DocumentData = { ...doc, payment_details: rows };
+  if (kind === 'expense') {
+    const paid = Math.round(lines.filter(l => l.kind === 'ledger' && l.status === 'posted')
+      .reduce((s, l) => s + l.amount, 0) * 100) / 100;
+    out.paid_amount = paid;
+    out.balance_due = Math.max(Math.round((doc.grand_total - paid) * 100) / 100, 0);
+    if (rows.length === 0) {
+      out.payment_details_note = doc.status === 'draft'
+        ? 'Not paid yet — a draft expense is paid when it is posted.'
+        : 'No posted bank or cash entry was found for this expense.';
+    }
+  } else if (rows.length === 0 && doc.status !== 'draft') {
+    out.payment_details_note = kind === 'credit_note' || kind === 'debit_note'
+      ? 'No refunds or applications recorded.'
+      : 'No payments recorded.';
+  }
+  return out;
 }

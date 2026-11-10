@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useDocumentPayments } from '@/hooks/use-document-payments';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useLocation, useSearchParams } from 'react-router-dom';
@@ -28,7 +29,7 @@ import { AccountingPreview, buildSalesInvoicePreview } from '@/components/accoun
 import { ApplyAdvanceButton } from '@/components/apply-advance-button';
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
-import { invoiceToDocumentData } from '@/modules/print/_signature/adapters';
+import { invoiceToDocumentData, withPaymentDetails } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type { InvoiceRow, InvoiceItemInsert, ContactRow, ProductRow, WarehouseRow, TaxRateRow, ProductSearchRow } from '@/data/adapter';
 import { calcLine as _calcLine } from '@/core/sales/invoice-calc';
@@ -700,8 +701,10 @@ export default function InvoiceEditorPage() {
   // saved invoices where viewMode hasn't been toggled off.
   // Drafts open in the editable form (single Save posts them); only posted
   // documents show the read-only template view.
+  // Verified payments / refunds / bank-cash lines for the Payment details section.
+  const docPayments = useDocumentPayments('invoice', existing?.id, !!existing && existing.status !== 'draft');
   if (viewMode && !isNew && existing && existing.status !== 'draft') {
-    const doc = invoiceToDocumentData({
+    const docBase = invoiceToDocumentData({
       invoice: existing,
       items: (existingItems as InvoiceItemInsert[] as unknown as Parameters<typeof invoiceToDocumentData>[0]['items']),
       contact: contacts.find(c => c.id === existing.contact_id) ?? null,
@@ -711,6 +714,7 @@ export default function InvoiceEditorPage() {
       salespersonName: salespeople.find(p => p.id === existing.salesperson_id)?.name ?? null,
       paidAmount: appliedMap[existing.id] ?? 0,
     });
+    const doc = withPaymentDetails(docBase, 'invoice', docPayments);
     return (
       <div className="signature-print-scope" style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
         {/* Top action bar (hidden when printing) */}

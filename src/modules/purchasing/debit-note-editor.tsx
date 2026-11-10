@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useDocumentPayments } from '@/hooks/use-document-payments';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -13,7 +14,7 @@ import { SearchableSelect } from '@/ui/searchable-select';
 // Phase 14.04 — Signature template view mode for saved debit notes.
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
-import { debitNoteToDocumentData } from '@/modules/print/_signature/adapters';
+import { debitNoteToDocumentData, withPaymentDetails } from '@/modules/print/_signature/adapters';
 import { RefundDueBanner } from '@/components/refund-due-banner';
 import { RefundedBadge, RefundedPill } from '@/components/refunded-badge';
 import '@/modules/print/_signature/print.css';
@@ -306,11 +307,13 @@ export default function DebitNoteEditorPage() {
   // Phase 14.04 — view-mode renderer (Signature template).
   // Drafts open in the editable form (single Save posts them); only posted
   // debit notes show the read-only template view.
+  // Verified payments / refunds / bank-cash lines for the Payment details section.
+  const docPayments = useDocumentPayments('debit_note', existing?.id, !!existing && existing.status !== 'draft');
   if (viewMode && !isNew && existing && existing.status !== 'draft') {
     const linkedBill = existing.linked_bill_id
       ? bills.find(b => b.id === existing.linked_bill_id)
       : null;
-    const doc = debitNoteToDocumentData({
+    const docBase = debitNoteToDocumentData({
       debitNote: existing,
       items: existingItems,
       supplier: suppliers.find(s => s.id === existing.supplier_id) ?? null,
@@ -318,6 +321,7 @@ export default function DebitNoteEditorPage() {
       products,
       linkedBillNumber: linkedBill?.bill_number ?? null,
     });
+    const doc = withPaymentDetails(docBase, 'debit_note', docPayments);
     return (
       <div className="signature-print-scope" style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
         <div

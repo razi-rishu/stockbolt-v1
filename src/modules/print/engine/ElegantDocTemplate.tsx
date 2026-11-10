@@ -22,6 +22,7 @@ import { STYLE_PRESETS, FONT_STACK, FONT_SIZE_PX } from './presets';
 import { amountInWords } from './amount-in-words';
 import { splitNoteDetails } from './note-details';
 import { FitToWidth } from '@/ui/fit-to-width';
+import { PaymentDetailsSection } from './payment-details';
 
 interface Props {
   data:     DocumentData;
@@ -171,8 +172,8 @@ export function ElegantDocTemplate({ data, template, settings: s }: Props) {
   const DetailsPanel = (
     <div style={{ position: 'relative', zIndex: 3, margin: '0 12mm', background: panel, borderRadius: '4mm', padding: '4.5mm 7mm', display: 'flex', gap: '7mm', breakInside: 'avoid' }}>
       <div style={{ flex: 1.1, minWidth: 0 }}>
-        <SectionHead>{isPurchase ? 'Supplier Details' : 'Client Details'}</SectionHead>
-        <DetailRow icon={User} label={isPurchase ? 'Supplier' : 'Client Name'} value={p.name} />
+        <SectionHead>{data.party_label ? `${data.party_label}` : isPurchase ? 'Supplier Details' : 'Client Details'}</SectionHead>
+        <DetailRow icon={User} label={data.party_label ? 'Name' : isPurchase ? 'Supplier' : 'Client Name'} value={p.name} />
         {p.phone && <DetailRow icon={Phone} label="Phone" value={p.phone} />}
         {p.email && <DetailRow icon={Mail} label="Email" value={p.email} />}
         {address && <DetailRow icon={Building2} label="Address" value={address} />}
@@ -190,7 +191,8 @@ export function ElegantDocTemplate({ data, template, settings: s }: Props) {
         {s.showReferenceNumber && data.reference && <DetailRow icon={Hash} label="Reference" value={data.reference} />}
         {s.showSalesperson && data.salesperson_name && <DetailRow icon={User} label="Salesperson" value={data.salesperson_name} />}
         {s.showWarehouse && data.warehouse_name && <DetailRow icon={Building2} label="Warehouse" value={data.warehouse_name} />}
-        {isPayment && data.payment_method && <DetailRow icon={CreditCard} label="Method" value={data.payment_method} />}
+        {isPayment && <DetailRow icon={CreditCard} label="Method" value={data.payment_method ?? 'Not recorded'} />}
+        {isPayment && <DetailRow icon={Building2} label="Account" value={data.bank_account ?? 'Not recorded'} />}
         {s.introText && <>{bar}<div style={{ fontSize: base * 0.9, color: C.muted, lineHeight: 1.5 }}>{s.introText}</div></>}
       </div>
     </div>
@@ -402,6 +404,10 @@ export function ElegantDocTemplate({ data, template, settings: s }: Props) {
             <div style={{ display: 'flex', gap: '5mm', margin: '4mm 12mm 0', alignItems: 'flex-start', justifyContent: 'flex-end', breakInside: 'avoid' }}>
               {SidePanel}
               {Totals}
+            </div>
+            <div style={{ margin: '0 12mm' }}>
+              <PaymentDetailsSection data={data} colors={{ text: C.text, muted: C.muted, hairline: mix('#FFFFFF', C.muted, 0.25) }}
+                baseFont={base} money={money} />
             </div>
             {Closing}
           </td></tr></tbody>

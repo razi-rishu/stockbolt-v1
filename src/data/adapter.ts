@@ -1610,6 +1610,43 @@ export interface RefundAdvanceInput {
 export type RefundSourceDocType =
   | 'credit_note' | 'sales_return' | 'debit_note' | 'purchase_return';
 
+/** A document type whose money movements can be shown on it. */
+export type PaymentTraceDocType = 'invoice' | 'vendor_bill' | 'expense' | 'credit_note' | 'debit_note';
+
+/**
+ * One verified money movement behind a document, read from the records that
+ * actually settle it — never inferred from a status:
+ *  - 'payment': a receipt / vendor payment allocated to the document
+ *    (payment_allocations → payments);
+ *  - 'refund':  a refund raised against the document (payments.source_doc_*);
+ *  - 'ledger':  a posted GL line on a bank / cash account tagged with the
+ *    document (used for expenses, which are paid when they are posted).
+ * Fields a document never recorded are null — the UI says "Not recorded".
+ */
+export interface DocumentPaymentLine {
+  kind:           'payment' | 'refund' | 'ledger';
+  id:             string;
+  number:         string | null;
+  date:           string;
+  /** payments.status, or for ledger lines: 'posted' | 'reversed' | 'reversal'. */
+  status:         string;
+  /** Applied to this document (payment), refunded (refund), or bank/cash movement (ledger: credit − debit). */
+  amount:         number;
+  discount:       number;
+  currency:       string | null;
+  account_name:   string | null;
+  account_type:   string | null;
+  account_number: string | null;
+  method:         string | null;
+  reference:      string | null;
+  counterparty:   string | null;
+}
+
+export interface DocumentPaymentsAPI {
+  /** RLS-scoped: only the caller's own company rows are ever returned. */
+  list(doc_type: PaymentTraceDocType, doc_id: string): Promise<DocumentPaymentLine[]>;
+}
+
 /** Z5 — a refund already raised against a document. */
 export interface DocumentRefund {
   id:             string;
@@ -3271,6 +3308,7 @@ export interface DataAdapter {
   auth: AuthAPI;
   companies: CompaniesAPI;
   printTemplates: PrintTemplatesAPI;
+  documentPayments: DocumentPaymentsAPI;
   profiles: ProfilesAPI;
   users: UsersAPI;
   apiKeys: ApiKeysAPI;

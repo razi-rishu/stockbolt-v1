@@ -62,6 +62,9 @@ export function createSelfHostedAdapter(): DataAdapter {
       getPrintConfig: () => notImplemented('companies.getPrintConfig'),
       savePrintConfig: () => notImplemented('companies.savePrintConfig'),
     },
+    documentPayments: {
+      list: () => notImplemented('documentPayments.list'),
+    },
     printTemplates: {
       list: () => notImplemented('printTemplates.list'),
       getResolved: () => notImplemented('printTemplates.getResolved'),
