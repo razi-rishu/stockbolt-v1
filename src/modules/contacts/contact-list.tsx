@@ -26,6 +26,7 @@ import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
 import { FormErrorBanner } from '@/ui/form-error-banner';
 import { DuplicateWarning } from '@/ui/duplicate-warning';
 import { findContactDuplicates } from '@/lib/duplicate-check';
+import { CustomerListOcean } from './customer-list-ocean';
 
 const PAGE_SIZE = 50;
 
@@ -269,8 +270,27 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
     },
   ];
 
+  // Ocean Teal (UI v1.1) — customers only. Same rows, search, pagination,
+  // add / edit / delete and Import / Export; the Suppliers list below is
+  // unchanged.
+  const oceanList = defaultType === 'customer' ? (
+    <CustomerListOcean
+      rows={filtered}
+      isLoading={isLoading}
+      search={search}
+      onSearch={(q) => { setSearch(q); setPage(1); }}
+      page={page}
+      pageSize={PAGE_SIZE}
+      onPage={setPage}
+      onAdd={openAdd}
+      onEdit={openEdit}
+      onDelete={(r) => deleteMutation.mutate(r.id)}
+    />
+  ) : null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {oceanList ?? (<>
       <PageHeader
         title={t(titleKey)}
         subtitle={`${filtered.length} ${filtered.length === 1 ? 'contact' : 'contacts'}`}
@@ -327,6 +347,7 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
           </>
         )
       }
+      </>)}
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? t('contacts.edit') : `${t('common.add')} ${t(singularKey)}`} width="xl">
         <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v as FormValues); }, onInvalid)} className="flex flex-col gap-4">

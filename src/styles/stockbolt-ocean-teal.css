@@ -442,3 +442,160 @@
   .sb-ocean .sb-actions .sb-primary-btn,
   .sb-ocean .sb-actions .sb-secondary-btn { padding-inline: 14px; }
 }
+
+/* ── Additions for the Customers listing (customer-list-ocean.tsx) ──────── */
+
+.sb-ocean .sb-clist-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+.sb-ocean .sb-clist-count { margin-top: 4px; font-size: 14px; color: var(--sb-text-secondary); }
+
+/* Import / Export keeps its own component and behaviour; only its look
+   follows the secondary button here. */
+.sb-ocean .sb-clist-io button {
+  min-height: 44px;
+  border-radius: 999px !important;
+  background: var(--sb-primary-soft) !important;
+  color: var(--sb-primary-dark) !important;
+  border: 1px solid var(--sb-primary-light) !important;
+  font-weight: 600;
+  padding-inline: 16px;
+}
+
+.sb-ocean .sb-search {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 16px;
+  background: var(--sb-surface);
+  border: 1px solid var(--sb-border);
+  border-radius: 999px;
+  box-shadow: var(--sb-shadow);
+}
+.sb-ocean .sb-search:focus-within { outline: 2px solid var(--sb-primary); outline-offset: 2px; }
+.sb-ocean .sb-search input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  color: var(--sb-text);
+}
+
+.sb-ocean .sb-chips { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+.sb-ocean .sb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--sb-border);
+  background: var(--sb-surface);
+  color: var(--sb-text-secondary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sb-ocean .sb-chip.active { background: var(--sb-primary); border-color: var(--sb-primary); color: #fff; }
+.sb-ocean .sb-chip-count {
+  min-width: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--sb-primary-light);
+  color: var(--sb-primary-dark);
+  font-size: 12px;
+  text-align: center;
+}
+.sb-ocean .sb-chip.active .sb-chip-count { background: rgba(255, 255, 255, 0.22); color: #fff; }
+
+/* Phone cards. */
+.sb-ocean .sb-clist-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.sb-ocean .sb-ccard { padding: 0; overflow: hidden; }
+.sb-ocean .sb-ccard-main {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px 10px;
+  background: none;
+  border: none;
+  font: inherit;
+  text-align: start;
+  color: inherit;
+  cursor: pointer;
+}
+.sb-ocean .sb-avatar {
+  width: 42px; height: 42px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px;
+  background: var(--sb-primary-light);
+  color: var(--sb-primary-dark);
+  font-weight: 800;
+  font-size: 17px;
+}
+.sb-ocean .sb-ccard-name { display: block; font-size: 16px; font-weight: 700; color: var(--sb-text); overflow-wrap: anywhere; }
+.sb-ocean .sb-ccard-ar { display: block; font-size: 13px; color: var(--sb-text-secondary); margin-top: 1px; }
+.sb-ocean .sb-ccard-meta {
+  display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px;
+  font-size: 13px; color: var(--sb-text-secondary);
+}
+.sb-ocean .sb-ccard-meta span { display: inline-flex; align-items: center; gap: 4px; }
+.sb-ocean .sb-ccard-foot {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px 10px 16px;
+  border-top: 1px solid var(--sb-border);
+}
+.sb-ocean .sb-pill-muted { background: var(--sb-background); color: var(--sb-text-secondary); border: 1px solid var(--sb-border); }
+
+.sb-ocean .sb-icon-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 44px; padding: 0 12px;
+  border: none; border-radius: 999px;
+  background: none;
+  color: var(--sb-primary-dark);
+  font: inherit; font-size: 14px; font-weight: 600;
+  cursor: pointer;
+}
+.sb-ocean .sb-icon-btn:hover { background: var(--sb-primary-soft); }
+.sb-ocean .sb-icon-btn.sb-danger { color: var(--sb-danger); }
+.sb-ocean .sb-icon-btn.sb-danger:hover { background: var(--sb-danger-bg); }
+
+/* Desktop table. */
+.sb-ocean .sb-ctable-wrap { display: none; padding: 0; overflow-x: auto; }
+.sb-ocean .sb-ctable { width: 100%; border-collapse: collapse; font-size: 14px; }
+.sb-ocean .sb-ctable th {
+  padding: 12px 16px;
+  text-align: start;
+  font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--sb-text-secondary);
+  background: var(--sb-primary-soft);
+  border-bottom: 1px solid var(--sb-border);
+  white-space: nowrap;
+}
+.sb-ocean .sb-ctable td { padding: 8px 16px; border-bottom: 1px solid var(--sb-border); color: var(--sb-text); vertical-align: middle; }
+.sb-ocean .sb-ctable tbody tr:last-child td { border-bottom: none; }
+.sb-ocean .sb-ctable tbody tr:hover { background: var(--sb-primary-soft); }
+.sb-ocean .sb-ctable .sb-link { min-height: 40px; text-align: start; }
+.sb-ocean .sb-row-actions { display: flex; justify-content: flex-end; gap: 2px; }
+
+@media (min-width: 768px) {
+  .sb-ocean .sb-clist-cards { display: none; }
+  .sb-ocean .sb-ctable-wrap { display: block; }
+}
+/* Pills never wrap mid-label (long Arabic terms such as COD). */
+.sb-ocean .sb-pill { white-space: nowrap; }
+/* Desktop table: tighter cells so the seven columns fit without a scrollbar. */
+.sb-ocean .sb-ctable th { padding: 12px 12px; }
+.sb-ocean .sb-ctable td { padding: 6px 12px; }
+.sb-ocean .sb-ctable .sb-icon-btn { padding: 0 8px; }

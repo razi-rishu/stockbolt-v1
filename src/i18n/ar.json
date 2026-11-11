@@ -2124,5 +2124,12 @@
     "action_quote": "عرض سعر",
     "action_receipt": "تسجيل سند قبض",
     "action_credit_note": "إشعار دائن"
+  },
+  "customerList": {
+    "filter_all": "الكل",
+    "filter_cod": "نقدًا عند الاستلام",
+    "filter_credit": "بشروط ائتمان",
+    "count": "العملاء: {{count}}",
+    "empty_filter": "لا يوجد عملاء يطابقون هذه التصفية."
   }
 }

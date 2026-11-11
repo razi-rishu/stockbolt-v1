@@ -2124,5 +2124,12 @@
     "action_quote": "Quote",
     "action_receipt": "Record receipt",
     "action_credit_note": "Credit note"
+  },
+  "customerList": {
+    "filter_all": "All",
+    "filter_cod": "COD",
+    "filter_credit": "Credit terms",
+    "count": "Customers: {{count}}",
+    "empty_filter": "No customers match this filter."
   }
 }
