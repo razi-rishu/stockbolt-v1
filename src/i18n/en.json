@@ -2215,5 +2215,13 @@
     "docs_none_pos": "No purchase orders yet.",
     "docs_none_payments": "No payments yet.",
     "docs_none_debit_notes": "No debit notes yet."
+  },
+  "appNav": {
+    "main": "Main navigation",
+    "home": "Home",
+    "sales": "Sales",
+    "stock": "Stock",
+    "contacts": "Contacts",
+    "menu": "Menu"
   }
 }

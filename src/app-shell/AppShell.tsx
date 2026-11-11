@@ -17,6 +17,8 @@ import { CompanyAvatar } from '@/components/company-avatar';
 import { BrandMark } from '@/components/brand-logo';
 import { useBackHandler } from '@/navigation/use-back-handler';
 import { usePhoneTables } from './use-phone-tables';
+import { useTranslation } from 'react-i18next';
+import '@/styles/stockbolt-ocean-teal.css';
 
 export interface ShellNavItem { to: string; label: string }
 export interface ShellNavGroup { label?: string; items: ShellNavItem[] }
@@ -105,6 +107,7 @@ export function AppShell({
   const navigate = useNavigate();
   const { openPalette } = useShortcutContext();
   const [menuOpen, setMenuOpen] = useState(false);
+  const { t: tr } = useTranslation();
 
   usePhoneTables();
 
@@ -130,10 +133,10 @@ export function AppShell({
   };
 
   const tabs = [
-    { to: '/dashboard', label: 'Home', icon: <HomeIcon />, match: ['/dashboard'] },
-    ...(canSales ? [{ to: '/sales/invoices', label: 'Sales', icon: <SalesIcon />, match: ['/sales', '/pos'] }] : []),
-    ...(canInventory ? [{ to: '/products', label: 'Stock', icon: <StockIcon />, match: ['/products', '/inventory', '/catalog'] }] : []),
-    { to: '/contacts/customers', label: 'Contacts', icon: <ContactsIcon />, match: ['/contacts'] },
+    { to: '/dashboard', label: tr('appNav.home'), icon: <HomeIcon />, match: ['/dashboard'] },
+    ...(canSales ? [{ to: '/sales/invoices', label: tr('appNav.sales'), icon: <SalesIcon />, match: ['/sales', '/pos'] }] : []),
+    ...(canInventory ? [{ to: '/products', label: tr('appNav.stock'), icon: <StockIcon />, match: ['/products', '/inventory', '/catalog'] }] : []),
+    { to: '/contacts/customers', label: tr('appNav.contacts'), icon: <ContactsIcon />, match: ['/contacts'] },
   ];
   const activeTab = tabs.find((t) => t.match.some((m) => location.pathname.startsWith(m)));
 
@@ -167,11 +170,13 @@ export function AppShell({
       </main>
 
       {/* ── Bottom tabs ────────────────────────────────────────────────── */}
+      {/* Ocean Teal (UI v1.1): same tabs, routes and behaviour; only the look
+          comes from .sb-ocean-nav in stockbolt-ocean-teal.css. */}
       <nav
         data-print-hide
-        className="fixed inset-x-0 bottom-0 z-40 flex border-t border-border-subtle bg-surface-card"
+        className="sb-ocean-nav fixed inset-x-0 bottom-0 z-40 flex"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-        aria-label="Main"
+        aria-label={tr('appNav.main')}
       >
         {tabs.map((t) => {
           const active = activeTab?.to === t.to;
@@ -179,20 +184,22 @@ export function AppShell({
             <NavLink
               key={t.to}
               to={t.to}
-              className={`flex h-16 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium ${active ? 'text-brand-600' : 'text-ink-tertiary'}`}
+              aria-current={active ? 'page' : undefined}
+              className={`sb-nav-item ${active ? 'active' : ''}`}
             >
-              <span className={`flex h-7 w-14 items-center justify-center rounded-full ${active ? 'bg-brand-50' : ''}`}>{t.icon}</span>
-              {t.label}
+              <span className="sb-nav-pill">{t.icon}</span>
+              <span className="sb-nav-label">{t.label}</span>
             </NavLink>
           );
         })}
         <button
           type="button"
           onClick={() => setMenuOpen(true)}
-          className={`flex h-16 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium ${!activeTab ? 'text-brand-600' : 'text-ink-tertiary'}`}
+          aria-expanded={menuOpen}
+          className={`sb-nav-item ${!activeTab ? 'active' : ''}`}
         >
-          <span className={`flex h-7 w-14 items-center justify-center rounded-full ${!activeTab ? 'bg-brand-50' : ''}`}><MenuIcon /></span>
-          Menu
+          <span className="sb-nav-pill"><MenuIcon /></span>
+          <span className="sb-nav-label">{tr('appNav.menu')}</span>
         </button>
       </nav>
 

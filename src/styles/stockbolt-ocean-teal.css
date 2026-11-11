@@ -711,3 +711,32 @@
 }
 /* Bigger tap target on ledger document links without moving the layout. */
 .sb-ocean .sb-ledger-doc a { display: inline-block; padding: 10px 2px; margin: -10px 0; }
+
+/* ── Android app bottom navigation (app-shell/AppShell.tsx) ───────────────
+   Applies app-wide in the phone shell; same tabs and behaviour as before. */
+.sb-ocean-nav {
+  background: var(--sb-surface);
+  border-top: 1px solid var(--sb-border);
+  box-shadow: 0 -4px 16px rgba(13, 25, 53, 0.06);
+  font-family: var(--sb-font);
+}
+.sb-ocean-nav .sb-nav-item {
+  flex: 1;
+  min-width: 0;
+  height: 68px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  background: none; border: none; cursor: pointer;
+  color: var(--sb-text-secondary);
+  font: inherit; font-size: 12px; font-weight: 500;
+  -webkit-tap-highlight-color: transparent;
+}
+.sb-ocean-nav .sb-nav-pill {
+  display: flex; align-items: center; justify-content: center;
+  width: 60px; height: 30px; border-radius: 999px;
+  transition: background-color .15s ease;
+}
+.sb-ocean-nav .sb-nav-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
+.sb-ocean-nav .sb-nav-item.active { color: var(--sb-primary); font-weight: 700; }
+.sb-ocean-nav .sb-nav-item.active .sb-nav-pill { background: var(--sb-primary-light); color: var(--sb-primary-dark); }
+.sb-ocean-nav .sb-nav-item:focus-visible { outline: none; }
+.sb-ocean-nav .sb-nav-item:focus-visible .sb-nav-pill { outline: 2px solid var(--sb-primary); outline-offset: 2px; }
