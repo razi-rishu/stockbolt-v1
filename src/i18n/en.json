@@ -2222,6 +2222,14 @@
     "sales": "Sales",
     "stock": "Stock",
     "contacts": "Contacts",
-    "menu": "Menu"
+    "menu": "Menu",
+    "open_menu": "Open menu",
+    "back": "Back",
+    "search": "Search",
+    "close_menu": "Close menu",
+    "settings": "Settings",
+    "sign_out": "Sign out",
+    "privacy": "Privacy Policy",
+    "delete_account": "Delete account"
   }
 }

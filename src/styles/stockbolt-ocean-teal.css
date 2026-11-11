@@ -740,3 +740,58 @@
 .sb-ocean-nav .sb-nav-item.active .sb-nav-pill { background: var(--sb-primary-light); color: var(--sb-primary-dark); }
 .sb-ocean-nav .sb-nav-item:focus-visible { outline: none; }
 .sb-ocean-nav .sb-nav-item:focus-visible .sb-nav-pill { outline: 2px solid var(--sb-primary); outline-offset: 2px; }
+
+/* ── Android app top bar + menu sheet (app-shell/AppShell.tsx) ─────────── */
+.sb-ocean-top {
+  background: var(--sb-surface);
+  border-bottom: 1px solid var(--sb-border);
+  font-family: var(--sb-font);
+}
+.sb-ocean-top .sb-top-btn {
+  width: 44px; height: 44px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: 999px; background: none; cursor: pointer;
+  color: var(--sb-text-secondary);
+}
+.sb-ocean-top .sb-top-btn:active, .sb-ocean-top .sb-top-btn:hover { background: var(--sb-primary-soft); color: var(--sb-primary-dark); }
+.sb-ocean-top .sb-top-btn:focus-visible { outline: 2px solid var(--sb-primary); outline-offset: 2px; }
+.sb-ocean-top .sb-top-back { color: var(--sb-primary-dark); }
+[dir="rtl"] .sb-ocean-top .sb-flip { transform: scaleX(-1); display: inline-flex; }
+.sb-ocean-top .sb-top-title { font-size: 18px; font-weight: 700; color: var(--sb-text); letter-spacing: -0.01em; }
+
+.sb-ocean-menu { background: var(--sb-background); font-family: var(--sb-font); color: var(--sb-text); }
+.sb-ocean-menu .sb-menu-brand { font-size: 15px; font-weight: 800; letter-spacing: 0.08em; color: var(--sb-text); }
+.sb-ocean-menu .sb-menu-card {
+  background: var(--sb-surface); border: 1px solid var(--sb-border);
+  border-radius: var(--sb-radius-lg); box-shadow: var(--sb-shadow);
+}
+.sb-ocean-menu .sb-menu-company-name { font-size: 15px; font-weight: 700; color: var(--sb-text); }
+.sb-ocean-menu .sb-menu-muted { font-size: 12px; color: var(--sb-text-secondary); }
+.sb-ocean-menu .sb-menu-shortcut {
+  display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 10px 14px;
+  border-radius: var(--sb-radius-md); background: var(--sb-primary); color: #fff;
+  font-size: 13px; font-weight: 600;
+}
+.sb-ocean-menu .sb-menu-shortcut:active { background: var(--sb-primary-hover); }
+.sb-ocean-menu .sb-menu-shortcut span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-ocean-menu .sb-menu-row {
+  display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px;
+  background: none; border: none; font: inherit; font-size: 15px; font-weight: 600; color: var(--sb-text); cursor: pointer;
+}
+.sb-ocean-menu .sb-menu-row.open { color: var(--sb-primary-dark); }
+.sb-ocean-menu .sb-menu-divider { border-top: 1px solid var(--sb-border); }
+.sb-ocean-menu .sb-menu-icon { color: var(--sb-primary); display: inline-flex; }
+.sb-ocean-menu .sb-menu-chevron { color: var(--sb-text-secondary); display: inline-flex; }
+.sb-ocean-menu .sb-menu-group {
+  padding: 8px 48px 4px; margin: 0;
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--sb-text-secondary);
+}
+.sb-ocean-menu .sb-menu-sub {
+  display: flex; align-items: center; min-height: 44px; margin: 0 8px; padding: 0 40px;
+  border-radius: 12px; font-size: 14px; color: var(--sb-text-secondary);
+}
+.sb-ocean-menu .sb-menu-sub.active { background: var(--sb-primary-light); color: var(--sb-primary-dark); font-weight: 700; }
+.sb-ocean-menu .sb-menu-danger { color: var(--sb-danger); }
+.sb-ocean-menu .sb-menu-legal { font-size: 13px; color: var(--sb-text-secondary); }
+.sb-ocean-menu .sb-menu-legal a { padding: 10px 4px; }
+.sb-ocean-menu a:focus-visible, .sb-ocean-menu button:focus-visible { outline: 2px solid var(--sb-primary); outline-offset: 2px; }

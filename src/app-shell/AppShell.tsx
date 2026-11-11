@@ -145,20 +145,20 @@ export function AppShell({
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
       <header
         data-print-hide
-        className="z-30 flex shrink-0 items-center gap-1 border-b border-border-subtle bg-surface-card px-2"
+        className="sb-ocean-top z-30 flex shrink-0 items-center gap-1 px-2"
         style={{ paddingTop: 'env(safe-area-inset-top)', minHeight: 56 }}
       >
         {isTopPage ? (
-          <button type="button" onClick={() => setMenuOpen(true)} className="flex h-11 w-11 items-center justify-center rounded-full" aria-label="Open menu">
+          <button type="button" onClick={() => setMenuOpen(true)} className="sb-top-btn" aria-label={tr('appNav.open_menu')}>
             <CompanyAvatar size={32} fallbackText={companyName || email || undefined} />
           </button>
         ) : (
-          <button type="button" onClick={goBack} className="flex h-11 w-11 items-center justify-center rounded-full text-ink-primary active:bg-surface-muted" aria-label="Back">
-            <BackIcon />
+          <button type="button" onClick={goBack} className="sb-top-btn sb-top-back" aria-label={tr('appNav.back')}>
+            <span className="sb-flip"><BackIcon /></span>
           </button>
         )}
-        <h1 className="min-w-0 flex-1 truncate px-1 text-[17px] font-semibold text-ink-primary">{title}</h1>
-        <button type="button" onClick={openPalette} className="flex h-11 w-11 items-center justify-center rounded-full text-ink-secondary active:bg-surface-muted" aria-label="Search">
+        <h1 className="sb-top-title min-w-0 flex-1 truncate px-1">{title}</h1>
+        <button type="button" onClick={openPalette} className="sb-top-btn" aria-label={tr('appNav.search')}>
           <SearchIcon />
         </button>
         <NotificationsBell />
@@ -232,27 +232,28 @@ function MenuSheet({
   onClose: () => void;
   onSignOut: () => void;
 }) {
+  const { t: tr } = useTranslation();
   const owner = sections.find((s) => (s.groups ?? []).some((g) => g.items.some((it) => pathname.startsWith(it.to))));
   const [open, setOpen] = useState<string | null>(owner?.label ?? null);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-surface-page" role="dialog" aria-label="Menu">
-      <div className="flex shrink-0 items-center gap-2 border-b border-border-subtle bg-surface-card px-4" style={{ paddingTop: 'env(safe-area-inset-top)', minHeight: 56 }}>
+    <div className="sb-ocean-menu fixed inset-0 z-50 flex flex-col" role="dialog" aria-label={tr('appNav.menu')}>
+      <div className="sb-ocean-top flex shrink-0 items-center gap-2 px-4" style={{ paddingTop: 'env(safe-area-inset-top)', minHeight: 56 }}>
         <BrandMark size={28} />
-        <span className="flex-1 text-[15px] font-extrabold tracking-[0.08em] text-ink-primary">STOCKBOLT</span>
-        <button type="button" onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-full text-ink-secondary active:bg-surface-muted" aria-label="Close menu">
+        <span className="sb-menu-brand flex-1">STOCKBOLT</span>
+        <button type="button" onClick={onClose} className="sb-top-btn" aria-label={tr('appNav.close_menu')}>
           <CloseIcon />
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-3" style={{ paddingBottom: 'calc(24px + env(safe-area-inset-bottom))' }}>
         {/* Company */}
-        <Link to="/settings/company" onClick={onClose} className="mb-3 flex items-center gap-3 rounded-2xl border border-border-subtle bg-surface-card p-3">
+        <Link to="/settings/company" onClick={onClose} className="sb-menu-card sb-menu-company mb-3 flex items-center gap-3 p-3">
           <CompanyAvatar size={44} fallbackText={companyName || email || undefined} />
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate text-[15px] font-semibold text-ink-primary">{companyName || '—'}</span>
-            <span className="truncate text-xs text-ink-tertiary">{companySub}</span>
-            {email && <span className="truncate text-xs text-ink-tertiary">{email}</span>}
+            <span className="sb-menu-company-name truncate">{companyName || '—'}</span>
+            <span className="sb-menu-muted truncate">{companySub}</span>
+            {email && <span className="sb-menu-muted truncate">{email}</span>}
           </span>
         </Link>
 
@@ -260,7 +261,7 @@ function MenuSheet({
         {shortcuts.length > 0 && (
           <div className="mb-4 grid grid-cols-2 gap-2">
             {shortcuts.map((s) => (
-              <Link key={s.to} to={s.to} onClick={onClose} className="flex items-center gap-2.5 rounded-2xl bg-brand-600 px-3 py-3 text-[13px] font-semibold text-white active:opacity-90">
+              <Link key={s.to} to={s.to} onClick={onClose} className="sb-menu-shortcut">
                 {s.icon}
                 <span className="truncate">{s.label}</span>
               </Link>
@@ -269,13 +270,13 @@ function MenuSheet({
         )}
 
         {/* Sections */}
-        <div className="overflow-hidden rounded-2xl border border-border-subtle bg-surface-card">
+        <div className="sb-menu-card overflow-hidden">
           {sections.map((s, i) => {
-            const border = i > 0 ? 'border-t border-border-subtle' : '';
+            const border = i > 0 ? 'sb-menu-divider' : '';
             if (s.to) {
               return (
-                <Link key={s.label} to={s.to} onClick={onClose} className={`flex min-h-[52px] items-center gap-3 px-4 text-[15px] font-medium text-ink-primary ${border}`}>
-                  <span className="text-ink-secondary">{s.icon}</span>{s.label}
+                <Link key={s.label} to={s.to} onClick={onClose} className={`sb-menu-row ${border}`}>
+                  <span className="sb-menu-icon">{s.icon}</span>{s.label}
                 </Link>
               );
             }
@@ -286,17 +287,17 @@ function MenuSheet({
                   type="button"
                   onClick={() => setOpen(isOpen ? null : s.label)}
                   aria-expanded={isOpen}
-                  className="flex min-h-[52px] w-full items-center gap-3 px-4 text-start text-[15px] font-medium text-ink-primary"
+                  className={`sb-menu-row w-full text-start ${isOpen ? 'open' : ''}`}
                 >
-                  <span className="text-ink-secondary">{s.icon}</span>
+                  <span className="sb-menu-icon">{s.icon}</span>
                   <span className="flex-1">{s.label}</span>
-                  <span className="text-ink-tertiary"><ChevronIcon open={isOpen} /></span>
+                  <span className="sb-menu-chevron"><ChevronIcon open={isOpen} /></span>
                 </button>
                 {isOpen && (
                   <div className="pb-2">
                     {(s.groups ?? []).map((g, gi) => (
                       <div key={gi}>
-                        {g.label && <p className="px-12 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-ink-tertiary">{g.label}</p>}
+                        {g.label && <p className="sb-menu-group">{g.label}</p>}
                         {g.items.map((it) => {
                           const active = pathname === it.to || pathname.startsWith(it.to + '/');
                           return (
@@ -304,7 +305,8 @@ function MenuSheet({
                               key={it.to}
                               to={it.to}
                               onClick={onClose}
-                              className={`flex min-h-[44px] items-center px-12 text-[14px] ${active ? 'font-semibold text-brand-600' : 'text-ink-secondary'}`}
+                              aria-current={active ? 'page' : undefined}
+                              className={`sb-menu-sub ${active ? 'active' : ''}`}
                             >
                               {it.label}
                             </Link>
@@ -319,17 +321,17 @@ function MenuSheet({
           })}
         </div>
 
-        <div className="mt-3 overflow-hidden rounded-2xl border border-border-subtle bg-surface-card">
-          <Link to="/settings" onClick={onClose} className="flex min-h-[52px] items-center px-4 text-[15px] font-medium text-ink-primary">Settings</Link>
-          <button type="button" onClick={onSignOut} className="flex min-h-[52px] w-full items-center border-t border-border-subtle px-4 text-start text-[15px] font-medium text-danger-600">
-            Sign out
+        <div className="sb-menu-card mt-3 overflow-hidden">
+          <Link to="/settings" onClick={onClose} className="sb-menu-row">{tr('appNav.settings')}</Link>
+          <button type="button" onClick={onSignOut} className="sb-menu-row sb-menu-divider sb-menu-danger w-full text-start">
+            {tr('appNav.sign_out')}
           </button>
         </div>
 
         {/* Google Play requires the privacy policy and account deletion to be reachable in the app. */}
-        <div className="mt-3 flex flex-wrap justify-center gap-x-5 gap-y-1 text-[13px] text-ink-tertiary">
-          <Link to="/privacy" onClick={onClose} className="py-2">Privacy Policy</Link>
-          <Link to="/delete-account" onClick={onClose} className="py-2">Delete account</Link>
+        <div className="sb-menu-legal mt-3 flex flex-wrap justify-center gap-x-5 gap-y-1">
+          <Link to="/privacy" onClick={onClose}>{tr('appNav.privacy')}</Link>
+          <Link to="/delete-account" onClick={onClose}>{tr('appNav.delete_account')}</Link>
         </div>
       </div>
     </div>
