@@ -1,0 +1,39 @@
+-- ─────────────────────────────────────────────────────────────────────────
+-- StockBolt v1 — Phase 124: let custom roles store their permissions
+-- ─────────────────────────────────────────────────────────────────────────
+-- Bug: Settings → Users & roles cannot create any custom role. create_role()
+-- fails with
+--   new row for relation "role_permissions" violates check constraint
+--   "role_permissions_role_check"
+--
+-- Cause: phase22 created role_permissions.role with an inline CHECK that only
+-- allows the 5 system role keys (admin, accountant, sales, counter, viewer).
+-- Phase23 introduced custom roles, whose key is a uuid, and relaxed the same
+-- fixed-role CHECK on profiles and company_invites — but missed this one on
+-- role_permissions. So every custom role's permission insert is rejected and
+-- the whole create_role / update_role call rolls back.
+--
+-- Fix: drop that CHECK, exactly as phase23 did for the other two tables.
+--
+-- Why this is safe:
+--   • role_permissions has RLS enabled with a SELECT-only policy, so clients
+--     cannot write to it directly.
+--   • Its only writers are the SECURITY DEFINER RPCs create_role (key = a fresh
+--     uuid) and update_role (key must be a custom role of the caller's
+--     company), both gated by auth_require('users.manage'), and both refuse
+--     'users.manage' as a grantable permission. Unchanged by this migration.
+--   • No rows are added, changed or removed. Existing system rows keep working.
+--
+-- Idempotent: DROP CONSTRAINT IF EXISTS — safe to run twice.
+-- Undo path: none needed in practice (only relaxes a check). If ever required,
+--   ALTER TABLE public.role_permissions ADD CONSTRAINT role_permissions_role_check
+--     CHECK (role = ANY (ARRAY['admin','accountant','sales','counter','viewer']))
+--   would only succeed while no custom role has permissions stored.
+-- ─────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE public.role_permissions DROP CONSTRAINT IF EXISTS role_permissions_role_check;
+
+-- Verification (run after applying; expect 0 rows):
+--   SELECT conname FROM pg_constraint
+--   WHERE conrelid = 'public.role_permissions'::regclass
+--     AND conname = 'role_permissions_role_check';
