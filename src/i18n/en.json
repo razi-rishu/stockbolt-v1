@@ -2231,5 +2231,124 @@
     "sign_out": "Sign out",
     "privacy": "Privacy Policy",
     "delete_account": "Delete account"
+  },
+  "settingsNav": {
+    "title": "Settings",
+    "subtitle": "Configure every area of StockBolt from one place — company, inventory, accounting, printing and users.",
+    "search": "Search settings",
+    "no_match": "No settings match your search.",
+    "coming_soon": "Coming soon",
+    "sections": {
+      "company_location": "Company and location",
+      "inventory_catalog": "Inventory and catalog",
+      "sales_customers_tax": "Sales, customers and tax",
+      "accounting_banking": "Accounting and banking",
+      "printing_hardware": "Printing and hardware",
+      "users_permissions": "Users and permissions",
+      "developer": "Developer",
+      "system_admin": "System and admin"
+    },
+    "items": {
+      "company": {
+        "title": "Company profile",
+        "desc": "Name, logo, tax number, currency and fiscal year start."
+      },
+      "billing": {
+        "title": "Billing and subscription",
+        "desc": "Your plan, trial, payment history and billing address."
+      },
+      "warehouses": {
+        "title": "Warehouses and branches",
+        "desc": "Storage locations and the default branch for new documents."
+      },
+      "business_configuration": {
+        "title": "Business configuration",
+        "desc": "Your business activities and the modules your company uses."
+      },
+      "units": {
+        "title": "Units of measure",
+        "desc": "pcs, kg, m, box — used on product cards and invoices."
+      },
+      "categories": {
+        "title": "Categories",
+        "desc": "Product categories such as Engine or Brakes."
+      },
+      "brands": {
+        "title": "Brands",
+        "desc": "Manufacturer brands such as Bosch, Denso or Genuine."
+      },
+      "vehicles": {
+        "title": "Vehicle makes",
+        "desc": "Vehicle compatibility list for the parts catalog."
+      },
+      "price_levels": {
+        "title": "Price levels",
+        "desc": "Retail, wholesale, trade and counter pricing tiers."
+      },
+      "salespeople": {
+        "title": "Salespeople",
+        "desc": "Tagged on invoices and quotes for commission reports."
+      },
+      "tax_rates": {
+        "title": "Tax rates",
+        "desc": "VAT / GST rates used on document lines."
+      },
+      "exchange_rates": {
+        "title": "Exchange rates",
+        "desc": "Currency rates used to convert foreign documents to your base currency."
+      },
+      "numbering": {
+        "title": "Document numbering",
+        "desc": "Format, padding and next number for every document type."
+      },
+      "chart_of_accounts": {
+        "title": "Chart of accounts",
+        "desc": "GL accounts grouped by asset, liability, equity, income and expense."
+      },
+      "period_lock": {
+        "title": "Period lock",
+        "desc": "Close accounting periods so no one back-dates entries."
+      },
+      "opening_balances": {
+        "title": "Opening balances",
+        "desc": "Bring in unpaid invoices, bills and credits from a previous system."
+      },
+      "import_export": {
+        "title": "Import / export",
+        "desc": "Bulk-load master data from CSV or Excel, or export your data."
+      },
+      "print": {
+        "title": "Print templates",
+        "desc": "Design and choose the templates for invoices, receipts and other documents."
+      },
+      "hardware": {
+        "title": "Barcode and printer setup",
+        "desc": "Barcode scanner and receipt printer for this device."
+      },
+      "users": {
+        "title": "Users and roles",
+        "desc": "Invite teammates and assign Admin, Accountant, Sales, Counter or Viewer roles."
+      },
+      "developer": {
+        "title": "Developer and API",
+        "desc": "API keys to connect your store or other software to StockBolt."
+      },
+      "system_health": {
+        "title": "System health",
+        "desc": "Checks that the books balance: trial balance, receivables, stock against the ledger."
+      },
+      "maintenance": {
+        "title": "Accounting maintenance",
+        "desc": "Preview and apply cost-of-sales repairs when System health reports an issue."
+      },
+      "audit_log": {
+        "title": "Audit log",
+        "desc": "Read-only record of who did what across StockBolt."
+      },
+      "reset_data": {
+        "title": "Reset company data",
+        "desc": "Destructive admin operation that wipes transactions."
+      }
+    }
   }
 }

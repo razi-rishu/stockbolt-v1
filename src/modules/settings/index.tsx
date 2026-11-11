@@ -5,128 +5,17 @@
  * spec lives in ./_nav so the hub cards and the pinned left rail stay in sync;
  * this file only layers the live row-counts onto each tile.
  */
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { Search, ChevronRight } from 'lucide-react';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
-import { visibleSettingsSections, type SettingsNavSection } from './_nav';
+import { visibleSettingsSections } from './_nav';
+import { itemIcon, itemTitle, itemDesc, sectionTitle, itemKey } from './_nav-ocean';
 import { useEnabledModules } from '@/hooks/use-enabled-modules';
-
-interface TileSpec {
-  to:        string;
-  icon:      string;
-  title:     string;
-  desc:      string;
-  count?:    number | string;
-  comingSoon?: boolean;
-}
-
-interface SectionSpec {
-  title: string;
-  tiles: TileSpec[];
-}
-
-// ── Tile component ─────────────────────────────────────────────────────
-function Tile({ tile }: { tile: TileSpec }) {
-  const content = (
-    <div
-      style={{
-        background: theme.card,
-        border: `1px solid ${theme.border}`,
-        borderRadius: '12px',
-        boxShadow: theme.shadowSm,
-        padding: '16px 18px',
-        height: '100%',
-        display: 'flex',
-        gap: '12px',
-        alignItems: 'flex-start',
-        transition: 'box-shadow .15s, transform .15s, border-color .15s',
-        cursor: tile.comingSoon ? 'not-allowed' : 'pointer',
-        opacity: tile.comingSoon ? 0.55 : 1,
-      }}
-      onMouseEnter={(e) => {
-        if (tile.comingSoon) return;
-        (e.currentTarget as HTMLElement).style.boxShadow = theme.shadowMd;
-        (e.currentTarget as HTMLElement).style.borderColor = theme.brand;
-        (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)';
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.boxShadow = theme.shadowSm;
-        (e.currentTarget as HTMLElement).style.borderColor = theme.border;
-        (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
-      }}
-    >
-      {/* Icon tile */}
-      <div style={{
-        height: '40px', width: '40px',
-        background: 'linear-gradient(135deg, #f5f3ff, #ede9fe)',
-        color: '#7c3aed',
-        borderRadius: '10px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '20px',
-        flexShrink: 0,
-      }}>{tile.icon}</div>
-
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'space-between' }}>
-          <h3 style={{
-            margin: 0, fontSize: '13px', fontWeight: 700, color: theme.ink,
-            letterSpacing: '-.005em',
-          }}>{tile.title}</h3>
-          {tile.comingSoon ? (
-            <span style={{
-              fontSize: '10px', fontWeight: 600,
-              color: theme.warn, background: theme.warnSoft,
-              border: `1px solid ${theme.warnBorder}`,
-              padding: '2px 7px', borderRadius: '999px',
-              whiteSpace: 'nowrap',
-            }}>Coming soon</span>
-          ) : tile.count !== undefined && (
-            <span style={{
-              fontSize: '11px', fontWeight: 700,
-              color: theme.brandSoftText, background: theme.brandSoft,
-              padding: '2px 7px', borderRadius: '999px',
-              fontFamily: theme.fontMono,
-            }}>{tile.count}</span>
-          )}
-        </div>
-        <p style={{
-          margin: '4px 0 0', fontSize: '12px', color: theme.inkMuted,
-          lineHeight: 1.45,
-        }}>{tile.desc}</p>
-      </div>
-    </div>
-  );
-  if (tile.comingSoon) return content;
-  return <Link to={tile.to} style={{ textDecoration: 'none', color: 'inherit' }}>{content}</Link>;
-}
-
-// ── Section ────────────────────────────────────────────────────────────
-function Section({ spec }: { spec: SectionSpec }) {
-  return (
-    <div>
-      <h2 style={{
-        margin: '0 0 12px',
-        fontSize: '11px',
-        fontWeight: 700,
-        color: theme.inkMuted,
-        textTransform: 'uppercase',
-        letterSpacing: '.08em',
-      }}>{spec.title}</h2>
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-        gap: '12px',
-      }}>
-        {spec.tiles.map((t) => <Tile key={t.to} tile={t} />)}
-      </div>
-    </div>
-  );
-}
+import '@/styles/stockbolt-ocean-teal.css';
 
 // ── Page ───────────────────────────────────────────────────────────────
 export default function SettingsHubPage() {
@@ -158,19 +47,62 @@ export default function SettingsHubPage() {
   };
 
   const { modules } = useEnabledModules();
-  const sections: SectionSpec[] = visibleSettingsSections(modules).map((s: SettingsNavSection) => ({
-    title: s.title,
-    tiles: s.items.map((it) => ({ ...it, count: countByPath[it.to] })),
-  }));
+  const { t } = useTranslation();
+  const [q, setQ] = useState('');
+  const query = q.trim().toLowerCase();
+
+  // Same entries and visibility rules as before (./_nav); the search box only
+  // filters what is shown, by the translated title and description.
+  const sections = visibleSettingsSections(modules)
+    .map((sec) => ({
+      key: sec.title,
+      title: sectionTitle(t, sec),
+      tiles: sec.items.filter((it) => !query ||
+        `${itemTitle(t, it)} ${itemDesc(t, it)} ${it.title}`.toLowerCase().includes(query)),
+    }))
+    .filter((sec) => sec.tiles.length > 0);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', paddingBottom: '48px' }}>
-      <PageHeader
-        title="Settings"
-        subtitle="Configure every area of StockBolt from one place — company, inventory, accounting, printing, users."
-      />
-
-      {sections.map((s) => <Section key={s.title} spec={s} />)}
+    <div className="sb-ocean sb-page sb-settings" data-testid="settings-hub-ocean" style={{ paddingBottom: 48 }}>
+      <div className="sb-hero">
+        <h1 className="sb-title" style={{ marginTop: 0 }}>{t('settingsNav.title')}</h1>
+        <div className="sb-clist-count">{t('settingsNav.subtitle')}</div>
+        <label className="sb-search">
+          <Search size={18} className="sb-icon" aria-hidden="true" />
+          <span className="sr-only">{t('settingsNav.search')}</span>
+          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('settingsNav.search')} />
+        </label>
+      </div>
+      <div className="sb-body" style={{ gap: 22 }}>
+        {sections.length === 0 && <div className="sb-card sb-empty">{t('settingsNav.no_match')}</div>}
+        {sections.map((sec) => (
+          <section key={sec.key} aria-label={sec.title}>
+            <h2 className="sb-set-section">{sec.title}</h2>
+            <div className="sb-set-grid">
+              {sec.tiles.map((it) => {
+                const count = countByPath[it.to];
+                const body = (
+                  <>
+                    <span className="sb-set-icon" aria-hidden="true">{itemIcon(it, 22)}</span>
+                    <span className="sb-set-text">
+                      <span className="sb-set-title">
+                        {itemTitle(t, it)}
+                        {count !== undefined && <span className="sb-tab-count">{count}</span>}
+                        {it.comingSoon && <span className="sb-pill sb-pill-muted">{t('settingsNav.coming_soon')}</span>}
+                      </span>
+                      <span className="sb-set-desc">{itemDesc(t, it)}</span>
+                    </span>
+                    {!it.comingSoon && <ChevronRight size={18} className="sb-set-chevron sb-flip" aria-hidden="true" />}
+                  </>
+                );
+                return it.comingSoon
+                  ? <div key={it.to} className="sb-card sb-set-tile is-disabled" data-key={itemKey(it)}>{body}</div>
+                  : <Link key={it.to} to={it.to} className="sb-card sb-set-tile" data-key={itemKey(it)}>{body}</Link>;
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
     </div>
   );
 }

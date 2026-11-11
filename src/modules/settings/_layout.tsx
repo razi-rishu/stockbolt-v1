@@ -1,6 +1,9 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { visibleSettingsSections } from './_nav';
 import { useEnabledModules } from '@/hooks/use-enabled-modules';
+import { useTranslation } from 'react-i18next';
+import { itemIcon, itemTitle, sectionTitle } from './_nav-ocean';
+import '@/styles/stockbolt-ocean-teal.css';
 
 /**
  * Settings two-pane layout — pinned left nav rail + content Outlet.
@@ -14,6 +17,7 @@ import { useEnabledModules } from '@/hooks/use-enabled-modules';
 export default function SettingsLayout() {
   const { pathname } = useLocation();
   const { modules } = useEnabledModules();
+  const { t } = useTranslation();
   // The hub (/settings) shows the cards full-width; the pinned nav rail appears
   // only once you drill into a specific setting.
   if (pathname === '/settings' || pathname === '/settings/') return <Outlet />;
@@ -21,38 +25,31 @@ export default function SettingsLayout() {
   return (
     <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
       {/* Left rail */}
-      <aside className="hidden lg:sticky lg:block lg:top-4 lg:max-h-[calc(100vh-5rem)] lg:w-60 lg:shrink-0 lg:overflow-y-auto lg:pr-1">
-        <nav className="flex flex-col gap-5">
+      {/* Ocean Teal (UI v1.1) rail: same entries, routes and visibility. */}
+      <aside className="sb-srail hidden lg:sticky lg:block lg:top-4 lg:max-h-[calc(100vh-5rem)] lg:w-64 lg:shrink-0 lg:overflow-y-auto lg:pe-1">
+        <nav className="flex flex-col gap-5" aria-label={t('settingsNav.title')}>
           {visibleSettingsSections(modules).map((section) => (
             <div key={section.title}>
-              <div className="mb-1.5 px-2.5 text-[10px] font-bold uppercase tracking-[0.08em] text-ink-tertiary">
-                {section.title}
-              </div>
+              <div className="sb-srail-section">{sectionTitle(t, section)}</div>
               <div className="flex flex-col gap-0.5">
                 {section.items.map((item) =>
                   item.comingSoon ? (
                     <span
                       key={item.to}
-                      className="flex cursor-not-allowed items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm text-ink-tertiary opacity-50"
+                      className="sb-srail-item is-disabled"
                     >
-                      <span className="text-base leading-none">{item.icon}</span>
-                      {item.title}
+                      <span className="sb-srail-icon">{itemIcon(item, 18)}</span>
+                      {itemTitle(t, item)}
                     </span>
                   ) : (
                     <NavLink
                       key={item.to}
                       to={item.to}
                       end
-                      className={({ isActive }) =>
-                        `flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
-                          isActive
-                            ? 'bg-brand-50 font-semibold text-brand-700'
-                            : 'text-ink-secondary hover:bg-slate-50 hover:text-ink-primary'
-                        }`
-                      }
+                      className={({ isActive }) => `sb-srail-item ${isActive ? 'active' : ''}`}
                     >
-                      <span className="text-base leading-none">{item.icon}</span>
-                      {item.title}
+                      <span className="sb-srail-icon">{itemIcon(item, 18)}</span>
+                      {itemTitle(t, item)}
                     </NavLink>
                   ),
                 )}
