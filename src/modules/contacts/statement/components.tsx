@@ -33,8 +33,12 @@ import { DocLink } from '@/ui/doc-link';
 // ── Design tokens (mirror of _signature/tokens.ts, narrowed to what
 //    statements actually need) ──────────────────────────────────────────────
 export const stmt = {
-  brand:        '#7c3aed',
-  brandSoft:    '#f5f3ff',
+  // CSS variables with the original violet as fallback: a page that sets
+  // --stmt-brand / --stmt-brand-soft (the Ocean Teal customer statement,
+  // via .sb-ocean) recolours the statement; every other page (suppliers)
+  // keeps the violet exactly as before.
+  brand:        'var(--stmt-brand, #7c3aed)',
+  brandSoft:    'var(--stmt-brand-soft, #f5f3ff)',
   ink:          '#0F172A',
   inkBody:      '#334155',
   inkMuted:     '#475569',
@@ -71,7 +75,9 @@ export function StatementShell({ children }: { children: ReactNode }) {
         position: 'absolute', top: 0, bottom: 0, left: 0,
         width: '4px', background: stmt.brand,
       }} />
-      <div style={{ padding: '28px 32px 32px 36px' }}>
+      {/* Class names are hooks for page-scoped responsive overrides (the Ocean
+          customer statement); on their own they change nothing. */}
+      <div className="stmt-shell-body" style={{ padding: '28px 32px 32px 36px' }}>
         {children}
       </div>
     </div>
@@ -117,7 +123,7 @@ export function RelationshipHeader({
   const balanceLabel = side === 'customer' ? 'Receivable' : 'Payable';
   const cr = balance < 0;
   return (
-    <div style={{
+    <div className="stmt-rel-header" style={{
       display: 'grid', gridTemplateColumns: '1fr auto', gap: '40px',
       alignItems: 'start',
     }}>
@@ -158,7 +164,7 @@ export function RelationshipHeader({
       </div>
 
       {/* RIGHT — AnchorTotal balance */}
-      <div style={{
+      <div className="stmt-anchor" style={{
         minWidth: '230px',
         padding: '18px 22px',
         border: `2px solid ${stmt.brand}`,
@@ -497,7 +503,7 @@ export function TransactionSpine({
   const periodCredits = lines.reduce((s, l) => s + l.credit, 0);
 
   return (
-    <div style={{
+    <div className="stmt-spine-wrap" style={{
       marginTop: '20px',
       border: `1px solid ${stmt.hairline}`,
       borderRadius: '12px',

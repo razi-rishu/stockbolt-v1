@@ -15,23 +15,14 @@
  */
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useTranslation } from 'react-i18next';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
-import { Button } from '@/ui/button';
-import { BackButton } from '@/ui/back-button';
-import { CustomerOverviewOcean } from './customer-overview-ocean';
+import { CustomerOverviewOcean, CustomerHeroOcean, CustomerTabsOcean } from './customer-overview-ocean';
 import { CustomerDocumentsOcean } from './customer-documents-ocean';
-import { Tabs } from '@/ui/tabs';
-// Phase 14.07 — Signature Statement experience.
-import {
-  StatementShell, RelationshipHeader, HealthRow, BalanceStrip,
-  PeriodFilter, TransactionSpine, ActionShelf, ShelfButton, InsightStrip,
-  stmt as stmtTokens,
-  type PeriodPreset, type SpineLine,
-} from './statement/components';
+import { StatementOcean } from './statement/statement-ocean';
+import type { PeriodPreset, SpineLine } from './statement/components';
 import type {
   ContactRow, InvoiceRow, OpenInvoice, PaymentRow,
   SalesQuoteRow, CreditNoteRow, SalesReturnRow,
@@ -52,11 +43,9 @@ function daysBetween(from: string, to: string): number {
 
 // ── Main component ──────────────────────────────────────────────────────────
 export default function CustomerDetailPage() {
-  const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const { id } = useParams<{ id: string }>();
   const companyCurrency = useCompanyCurrency();   // Issue 1 — localize money to tenant currency
-  const navigate = useNavigate();
 
   const [stmtFrom, setStmtFrom] = useState(monthsAgoIso(3));
   const [stmtTo, setStmtTo]     = useState(todayIso);
@@ -265,44 +254,19 @@ export default function CustomerDetailPage() {
     );
   }
 
+  // Statement: the existing statement document, inside the Ocean Teal header
+  // and tabs. Its colours follow the Ocean tokens through --stmt-brand (set
+  // under .sb-ocean); figures, filters, search, print and PDF are unchanged.
   return (
-    <div className="space-y-6 pb-16">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-3">
-        <BackButton to="/contacts/customers" label={t('nav.customers')} />
-        <span className="text-ink-tertiary">/</span>
-        <h1 className="text-xl font-semibold text-ink-primary">{contact?.name ?? '…'}</h1>
-        {contact?.name_ar && <span dir="rtl" className="text-sm text-ink-secondary">({contact.name_ar})</span>}
-        <div className="ms-auto flex flex-wrap gap-2">
-          <Button variant="ghost" size="sm" onClick={() => navigate(`/contacts/customers?edit=${id}`)}>
-            ✎ Edit
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => navigate(`/sales/quotes/new?contact=${id}`)}>
-            + Quote
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => navigate(`/sales/payments/new?contact=${id}`)}>
-            + Record Receipt
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => navigate(`/sales/credit-notes/new?contact=${id}`)}>
-            + Credit Note
-          </Button>
-          <Button size="sm" onClick={() => navigate(`/sales/invoices/new?contact=${id}`)}>
-            + Invoice
-          </Button>
-        </div>
+    <div className="pb-16">
+    <div className="sb-ocean sb-page" data-testid="customer-statement-ocean">
+      <div data-print-hide><CustomerHeroOcean id={id!} contact={contact} /></div>
+      <div className="sb-body">
+      <div data-print-hide>
+        <CustomerTabsOcean active="stmt" openCount={openInvoices.length}
+          docsCount={invoicesForCustomer.length + quotesForCustomer.length + paymentsForCustomer.length + allCreditNotes.length + salesReturnsForCustomer.length}
+          onTab={setTab} />
       </div>
-
-
-      {/* ── Tabs ──────────────────────────────────────────────────────── */}
-      <Tabs
-        value={tab}
-        onChange={(v) => setTab(v as typeof tab)}
-        items={[
-          { value: 'overview', label: 'Overview', badge: openInvoices.length || undefined },
-          { value: 'docs',     label: 'Documents', badge: (invoicesForCustomer.length + quotesForCustomer.length + paymentsForCustomer.length + allCreditNotes.length + salesReturnsForCustomer.length) || undefined },
-          { value: 'stmt',     label: 'Statement' },
-        ]}
-      />
 
       {tab === 'stmt' && (() => {
         // Phase 12.52 / 12.54 — friendly doc label derived from source_type
@@ -322,13 +286,17 @@ export default function CustomerDetailPage() {
             case 'sales_invoice_void':  return 'Invoice (void)';
             case 'sales_invoice_edit':  return 'Invoice (edit)';
             case 'sales_payment':       return 'Payment';
+            case 'customer_receipt':    return 'Payment';
             case 'customer_advance':    return 'Customer advance';
             case 'pos_sale':            return 'POS sale';
             case 'credit_note':         return 'Credit note';
             case 'manual':              return 'Manual JE';
             case 'reversal':            return 'Reversal';
             case 'opening_balance':     return 'Opening balance';
-            default:                    return (fallback ?? src ?? 'JE').replace(/_/g, ' ');
+            default: {
+              const s0 = (fallback ?? src ?? 'JE').replace(/_/g, ' ');
+              return s0.charAt(0).toUpperCase() + s0.slice(1);
+            }
           }
         };
 
@@ -358,25 +326,24 @@ export default function CustomerDetailPage() {
         if (stmtHideReversed) {
           visibleLines = visibleLines.filter(l => l.source_type !== 'advance_application');
         }
-        // Phase 14.07 — search filter (voucher # or reference token match).
-        if (stmtSearch.trim()) {
-          const q = stmtSearch.trim().toLowerCase();
-          visibleLines = visibleLines.filter(l =>
-            (l.doc_number ?? '').toLowerCase().includes(q) ||
-            (l.doc_type   ?? '').toLowerCase().includes(q)
-          );
-        }
+        // Search is applied by StatementOcean to the displayed rows only.
         const openingBalance = statement?.opening_balance ?? 0;
         let runBal = openingBalance;
+        // Show the document's own number (INV-…, REC-…, CN-…) from the lists
+        // this page already loads; the journal number stays as the reference.
+        const docNumberById: Record<string, string> = {};
+        for (const x of allInvoices) docNumberById[x.id] = x.invoice_number;
+        for (const x of allPayments) docNumberById[x.id] = x.payment_number;
+        for (const x of allCreditNotes) docNumberById[x.id] = x.credit_note_number;
         const spineLines: SpineLine[] = visibleLines.map(l => {
           runBal += l.debit - l.credit;
           return {
             date:       l.date,
             doc_type:   sourceLabel(l.source_type, l.doc_type, l.account_code),
-            doc_number: l.doc_number,
+            doc_number: (l.doc_id && docNumberById[l.doc_id]) || l.doc_number,
             ref_type:   l.doc_type,
             doc_id:     l.doc_id ?? null,
-            reference:  null,
+            reference:  l.doc_id && docNumberById[l.doc_id] ? l.doc_number : null,
             debit:      l.debit,
             credit:     l.credit,
             balance:    runBal,
@@ -385,189 +352,39 @@ export default function CustomerDetailPage() {
         });
         const closing = stmtHideReversed ? runBal : (statement?.closing_balance ?? runBal);
 
-        // Effective receivable balance — Phase 12.54 logic: AR (1200)
-        // outstanding minus customer advances. Surfaces overpayments as a
-        // negative ("credit") balance the operator can offset next sale.
-        const netBalance = outstandingTotal - Number(advanceCredit ?? 0);
-
-        // 12-month average payment days — approximate, computed off the
-        // statement lines: difference between invoice and matching payment.
-        const avgPayDays = (() => {
-          const invs = allInvoices.filter(i => i.contact_id === id && i.status === 'confirmed');
-          if (invs.length === 0) return null;
-          const pays = paymentsForCustomer.filter(p => p.status === 'confirmed');
-          if (pays.length === 0) return null;
-          const days = pays.map(p => {
-            // Match each payment to the oldest open invoice that preceded it.
-            const candidate = invs.find(i => (i.date as unknown as string) <= (p.date as unknown as string));
-            if (!candidate) return null;
-            return daysBetween(candidate.date as unknown as string, p.date as unknown as string);
-          }).filter((d): d is number => d !== null && d >= 0);
-          if (days.length === 0) return null;
-          return Math.round(days.reduce((s, x) => s + x, 0) / days.length);
-        })();
-
-        const riskScore = (() => {
-          if (overdueTotal === 0) return { dots: 1, label: 'Low' };
-          const pct = outstandingTotal > 0 ? overdueTotal / outstandingTotal : 0;
-          if (pct < 0.15) return { dots: 2, label: 'Moderate' };
-          return { dots: 3, label: 'High' };
-        })();
-
         return (
-          <StatementShell>
-            {/* Header row — title + action shelf */}
-            <div style={{
-              display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-              gap: '16px', marginBottom: '20px',
-            }}>
-              <div>
-                <div style={{
-                  fontSize: '10.5px', fontWeight: 600, color: stmtTokens.inkMuted,
-                  textTransform: 'uppercase', letterSpacing: '0.08em',
-                }}>Account Statement</div>
-                <div style={{ marginTop: '4px', fontSize: '12.5px', color: stmtTokens.inkSoft }}>
-                  Period {stmtFrom} — {stmtTo}
-                </div>
-              </div>
-              <ActionShelf>
-                <ShelfButton
-                  onClick={() => window.print()}
-                  title="Print or save as PDF using the browser dialog"
-                >🖨 Print</ShelfButton>
-                <ShelfButton
-                  variant="primary"
-                  onClick={() => window.open(`/print/statement/${id}?from=${stmtFrom}&to=${stmtTo}`, '_blank')}
-                  disabled={!id}
-                  title="Open the printable statement in a new tab"
-                >Download PDF</ShelfButton>
-              </ActionShelf>
-            </div>
-
-            <RelationshipHeader
-              party={{
-                name:    contact?.name ?? '—',
-                code:    null,
-                trn:     contact?.tax_id ?? null,
-                address: contact?.address_street ?? null,
-                phone:   contact?.phone ?? contact?.mobile ?? null,
-                email:   contact?.email ?? null,
-                terms:   contact?.payment_terms_days ? `Net ${contact.payment_terms_days}` : null,
-                credit_limit: contact?.credit_limit ?? null,
-                since:   null,
-              }}
-              balance={netBalance}
-              currency={contact?.currency ?? companyCurrency}
-              side="customer"
-              statusLabel={contact?.is_active === false ? 'Inactive' : 'Active'}
-            />
-
-            <HealthRow tiles={[
-              {
-                label: 'Available credit',
-                value: contact?.credit_limit
-                  ? `${contact?.currency ?? companyCurrency} ${fmt(Math.max(0, Number(contact.credit_limit) - outstandingTotal))}`
-                  : '—',
-                sublabel: contact?.credit_limit ? `of ${fmt(Number(contact.credit_limit))} limit` : 'no limit set',
-                tone: 'brand',
-              },
-              {
-                label: 'Overdue',
-                value: `${contact?.currency ?? companyCurrency} ${fmt(overdueTotal)}`,
-                sublabel: overdueTotal > 0 ? 'past due date' : 'all current',
-                tone: overdueTotal > 0 ? 'danger' : 'good',
-              },
-              {
-                label: '12-mo sales',
-                value: `${contact?.currency ?? companyCurrency} ${fmt(sales12mo)}`,
-                sublabel: `${confirmedInvoiceCount} invoices`,
-              },
-              {
-                label: 'Last payment',
-                value: paymentsForCustomer[0]
-                  ? `${daysBetween(paymentsForCustomer[0].date as unknown as string, today)}d ago`
-                  : '—',
-                sublabel: paymentsForCustomer[0]
-                  ? `${contact?.currency ?? companyCurrency} ${fmt(Number(paymentsForCustomer[0].amount))}`
-                  : 'no payments yet',
-              },
-              {
-                label: 'Risk',
-                value: '●'.repeat(riskScore.dots) + '○'.repeat(3 - riskScore.dots) + ' ' + riskScore.label,
-                tone: riskScore.dots >= 3 ? 'danger' : riskScore.dots === 2 ? 'warn' : 'good',
-              },
-            ]} />
-
-            <BalanceStrip
-              currency={contact?.currency ?? companyCurrency}
-              total={outstandingTotal}
-              buckets={[
-                { label: 'Current', value: aging.current,  color: stmtTokens.band.current },
-                { label: '31–60',   value: aging.d31_60,   color: stmtTokens.band.d60 },
-                { label: '61–90',   value: aging.d61_90,   color: stmtTokens.band.d90 },
-                { label: '90+',     value: aging.d90_plus, color: stmtTokens.band.over },
-              ]}
-            />
-
-            <PeriodFilter
-              preset={stmtPreset}
-              onPresetChange={setPresetRange}
-              from={stmtFrom}
-              to={stmtTo}
-              onFromChange={setStmtFrom}
-              onToChange={setStmtTo}
-              hideReversed={stmtHideReversed}
-              onHideReversedChange={setStmtHideReversed}
-              search={stmtSearch}
-              onSearchChange={setStmtSearch}
-            />
-
-            {stmtLoading ? (
-              <div style={{
-                marginTop: '20px',
-                padding: '24px',
-                border: `1px solid ${stmtTokens.hairline}`,
-                borderRadius: '12px',
-                textAlign: 'center',
-                color: stmtTokens.inkMuted,
-                fontSize: '13px',
-              }}>{t('common.loading')}</div>
-            ) : (
-              <TransactionSpine
-                openingBalance={openingBalance}
-                lines={spineLines}
-                closingBalance={closing}
-                currency={contact?.currency ?? companyCurrency}
-              />
-            )}
-
-            <InsightStrip items={[
-              {
-                label: 'Avg payment',
-                value: avgPayDays !== null ? `${avgPayDays} days` : '—',
-                hint: avgPayDays !== null && contact?.payment_terms_days
-                  ? (avgPayDays <= Number(contact.payment_terms_days)
-                      ? 'within terms'
-                      : `${avgPayDays - Number(contact.payment_terms_days)}d over terms`)
-                  : undefined,
-              },
-              {
-                label: 'Invoices in period',
-                value: String(spineLines.filter(l => l.doc_type === 'Invoice').length),
-              },
-              {
-                label: 'Payments in period',
-                value: String(spineLines.filter(l => l.doc_type === 'Payment').length),
-              },
-              {
-                label: 'Net activity',
-                value: `${closing >= openingBalance ? '+' : ''}${companyCurrency} ${fmt(closing - openingBalance)}`,
-                hint: closing > openingBalance ? 'balance grew' : closing < openingBalance ? 'balance reduced' : 'unchanged',
-              },
-            ]} />
-          </StatementShell>
+          <StatementOcean
+            side="customer"
+            currency={contact?.currency ?? companyCurrency}
+            loading={stmtLoading}
+            preset={stmtPreset}
+            onPreset={setPresetRange}
+            from={stmtFrom}
+            to={stmtTo}
+            onFrom={(v) => { setStmtPreset('custom'); setStmtFrom(v); }}
+            onTo={(v) => { setStmtPreset('custom'); setStmtTo(v); }}
+            hideReversed={stmtHideReversed}
+            onHideReversed={setStmtHideReversed}
+            search={stmtSearch}
+            onSearch={setStmtSearch}
+            openingBalance={openingBalance}
+            lines={spineLines}
+            closingBalance={closing}
+            outstanding={openInvoices.map(inv => ({
+              id: inv.id, number: inv.invoice_number, date: inv.date as unknown as string,
+              due_date: (inv.due_date as unknown as string | null) ?? null,
+              total: Number(inv.total_amount), outstanding: inv.outstanding, to: `/sales/invoices/${inv.id}`,
+            }))}
+            overdue={overdueTotal}
+            creditOnFile={Number(advanceCredit ?? 0)}
+            onPrint={() => window.print()}
+            pdfUrl={`/print/statement/${id}?from=${stmtFrom}&to=${stmtTo}`}
+            fmt={fmt}
+          />
         );
       })()}
+      </div>
+    </div>
     </div>
   );
 }

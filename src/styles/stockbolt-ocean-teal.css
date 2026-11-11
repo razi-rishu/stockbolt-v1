@@ -603,3 +603,111 @@
 /* ── Additions for Customer Details → Documents (customer-documents-ocean.tsx) */
 .sb-ocean .sb-doc-title { display: inline-flex; align-items: center; gap: 10px; }
 .sb-ocean .sb-row-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+
+/* ── Customer Details → Statement: the shared statement components read these
+   (statement/components.tsx falls back to violet everywhere else). */
+.sb-ocean {
+  --stmt-brand: var(--sb-primary);
+  --stmt-brand-soft: var(--sb-primary-soft);
+}
+/* Phone layout for the customer statement (Ocean scope only; supplier
+   statements are untouched). */
+@media (max-width: 640px) {
+  .sb-ocean .stmt-shell-body { padding: 18px 14px 20px 18px !important; }
+  .sb-ocean .stmt-rel-header { grid-template-columns: minmax(0, 1fr) !important; gap: 16px !important; }
+  .sb-ocean .stmt-anchor { min-width: 0 !important; }
+  .sb-ocean .stmt-spine-wrap { overflow-x: auto !important; }
+}
+
+/* ── Account statement (statement/statement-ocean.tsx) ──────────────────── */
+.sb-ocean .sb-stmt { display: flex; flex-direction: column; gap: 12px; }
+.sb-ocean .sb-stmt-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.sb-ocean .sb-stmt-bar .sb-chips { margin-top: 0; }
+.sb-ocean .sb-chip { gap: 6px; }
+.sb-ocean .sb-stmt-actions { display: flex; gap: 8px; }
+.sb-ocean .sb-stmt-actions .sb-primary-btn,
+.sb-ocean .sb-stmt-actions .sb-secondary-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; padding: 8px 16px; }
+.sb-ocean .sb-stmt-dates { display: flex; flex-wrap: wrap; gap: 12px; }
+.sb-ocean .sb-stmt-dates label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--sb-text-secondary); }
+.sb-ocean .sb-stmt-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.sb-ocean .sb-seg { display: inline-flex; padding: 3px; border: 1px solid var(--sb-border); border-radius: 999px; background: var(--sb-surface); }
+.sb-ocean .sb-seg button {
+  min-height: 40px; padding: 0 16px; border: none; border-radius: 999px; background: none;
+  font: inherit; font-size: 14px; font-weight: 600; color: var(--sb-text-secondary); cursor: pointer;
+}
+.sb-ocean .sb-seg button.active { background: var(--sb-primary-light); color: var(--sb-primary-dark); }
+.sb-ocean .sb-menu-wrap { position: relative; }
+.sb-ocean .sb-menu-btn { border: 1px solid var(--sb-border); background: var(--sb-surface); }
+.sb-ocean .sb-menu {
+  position: absolute; inset-inline-end: 0; top: calc(100% + 6px); z-index: 20;
+  min-width: 220px; padding: 6px; background: var(--sb-surface);
+  border: 1px solid var(--sb-border); border-radius: var(--sb-radius-sm); box-shadow: var(--sb-shadow);
+}
+.sb-ocean .sb-menu-item { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 10px; font-size: 14px; cursor: pointer; border-radius: 8px; }
+.sb-ocean .sb-menu-item:hover { background: var(--sb-primary-soft); }
+
+.sb-ocean .sb-stmt-summary { padding: 16px 18px; }
+.sb-ocean .sb-stmt-period { font-size: 13px; color: var(--sb-text-secondary); margin-bottom: 12px; }
+.sb-ocean .sb-stmt-figs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
+.sb-ocean .sb-fig-label { font-size: 13px; color: var(--sb-text-secondary); }
+.sb-ocean .sb-fig { margin-top: 2px; font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--sb-text); overflow-wrap: anywhere; }
+.sb-ocean .sb-fig-due { background: var(--sb-primary-soft); border: 1px solid var(--sb-primary-light); border-radius: 12px; padding: 8px 12px; margin: -8px 0; }
+.sb-ocean .sb-fig-due .sb-fig-label { color: var(--sb-primary-dark); font-weight: 600; }
+.sb-ocean .sb-fig-due .sb-fig { color: var(--sb-primary-dark); font-size: 21px; }
+.sb-ocean .sb-stmt-split {
+  display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid var(--sb-border); font-size: 13px; color: var(--sb-text-secondary);
+}
+.sb-ocean .sb-stmt-split span { display: inline-flex; align-items: center; gap: 4px; }
+
+.sb-ocean .sb-ledger { padding: 0; overflow-x: auto; }
+.sb-ocean .sb-ledger-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.sb-ocean .sb-ledger-table th {
+  padding: 11px 14px; text-align: start; white-space: nowrap;
+  font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--sb-text-secondary); background: var(--sb-primary-soft); border-bottom: 1px solid var(--sb-border);
+}
+.sb-ocean .sb-ledger-table td { padding: 10px 14px; border-bottom: 1px solid var(--sb-border); vertical-align: top; }
+.sb-ocean .sb-ledger-table .sb-num { text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sb-ocean .sb-ledger-date { color: var(--sb-text-secondary); white-space: nowrap; }
+.sb-ocean .sb-ledger-type { color: var(--sb-text-secondary); }
+.sb-ocean .sb-ledger-doc a, .sb-ocean .sb-ledger-doc span { color: var(--sb-primary-dark) !important; font-weight: 600; }
+.sb-ocean .sb-ledger-ref { color: var(--sb-text-secondary); font-size: 13px; }
+.sb-ocean .sb-ledger-bal { font-weight: 700; }
+.sb-ocean .sb-dash { color: var(--sb-border); }
+.sb-ocean .sb-ledger-open td { color: var(--sb-text-secondary); background: var(--sb-background); }
+.sb-ocean .sb-ledger-close td {
+  border-top: 2px solid var(--sb-primary); border-bottom: none; background: var(--sb-primary-soft);
+  font-weight: 700; color: var(--sb-primary-dark);
+}
+.sb-ocean .sb-ledger-dim td { opacity: .55; }
+
+@media (max-width: 640px) {
+  .sb-ocean .sb-stmt-figs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sb-ocean .sb-fig-due { margin: 0; }
+  .sb-ocean .sb-stmt-actions { width: 100%; }
+  .sb-ocean .sb-stmt-actions button { flex: 1; justify-content: center; }
+  /* Phone ledger: each entry becomes a compact two-line row. */
+  .sb-ocean .sb-ledger-table thead { display: none; }
+  .sb-ocean .sb-ledger-table, .sb-ocean .sb-ledger-table tbody { display: block; }
+  .sb-ocean .sb-ledger-table tr {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px;
+    padding: 10px 14px; border-bottom: 1px solid var(--sb-border);
+  }
+  .sb-ocean .sb-ledger-table td { padding: 0; border: none; }
+  .sb-ocean .sb-ledger-table tr > td:nth-child(1) { grid-column: 1; grid-row: 2; font-size: 13px; }
+  .sb-ocean .sb-ledger-table tr > td:nth-child(2) { grid-column: 1; grid-row: 1; }
+  .sb-ocean .sb-ledger-table tr > td:nth-child(3),
+  .sb-ocean .sb-ledger-table tr > td:nth-child(4) { grid-column: 2; grid-row: 1; }
+  .sb-ocean .sb-ledger-table tr > td:nth-child(3):has(.sb-dash),
+  .sb-ocean .sb-ledger-table tr > td:nth-child(4):has(.sb-dash) { display: none; }
+  .sb-ocean .sb-ledger-table tr > td:nth-child(5) { grid-column: 2; grid-row: 2; font-size: 13px; }
+  .sb-ocean .sb-ledger-open, .sb-ocean .sb-ledger-close { display: flex !important; justify-content: space-between; gap: 12px; }
+  .sb-ocean .sb-ledger-open td, .sb-ocean .sb-ledger-close td { display: none; }
+  .sb-ocean .sb-ledger-open td:first-child, .sb-ocean .sb-ledger-open td:last-child,
+  .sb-ocean .sb-ledger-close td:first-child, .sb-ocean .sb-ledger-close td:last-child { display: block; }
+  .sb-ocean .sb-ledger-close { border-top: 2px solid var(--sb-primary); background: var(--sb-primary-soft); }
+  .sb-ocean .sb-ledger-close td { background: none; border: none; }
+}
+/* Bigger tap target on ledger document links without moving the layout. */
+.sb-ocean .sb-ledger-doc a { display: inline-block; padding: 10px 2px; margin: -10px 0; }

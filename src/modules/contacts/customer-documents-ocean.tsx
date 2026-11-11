@@ -28,7 +28,7 @@ export interface CustomerDocumentsOceanProps {
   fmt: (n: number) => string;
 }
 
-interface Row {
+export interface DocRow {
   key: string;
   to: string;
   number: string;
@@ -40,7 +40,7 @@ interface Row {
   extra?: string | null;
 }
 
-function DocSection({ icon, title, rows, empty }: { icon: React.ReactNode; title: string; rows: Row[]; empty: string }) {
+export function DocSection({ icon, title, rows, empty }: { icon: React.ReactNode; title: string; rows: DocRow[]; empty: string }) {
   const navigate = useNavigate();
   return (
     <section className="sb-card sb-list" aria-label={title}>
@@ -75,26 +75,26 @@ export function CustomerDocumentsOcean(p: CustomerDocumentsOceanProps) {
 
   const docsCount = p.invoices.length + p.quotes.length + p.receipts.length + p.creditNotes.length + p.salesReturns.length;
 
-  const invoices: Row[] = p.invoices.map(inv => ({
+  const invoices: DocRow[] = p.invoices.map(inv => ({
     key: inv.id, to: `/sales/invoices/${inv.id}`, number: inv.invoice_number, date: d(inv.date),
     status: inv.status, amount: money(inv.currency, Number(inv.total_amount)),
   }));
-  const quotes: Row[] = p.quotes.map(q => ({
+  const quotes: DocRow[] = p.quotes.map(q => ({
     key: q.id, to: `/sales/quotes/${q.id}`, number: q.quote_number, date: d(q.date),
     status: q.status, amount: money(q.currency, Number(q.total_amount)),
   }));
-  const receipts: Row[] = p.receipts.map(r => ({
+  const receipts: DocRow[] = p.receipts.map(r => ({
     key: r.id, to: `/sales/payments/${r.id}`, number: r.payment_number, date: d(r.date),
     status: r.status, amount: money(r.currency, Number(r.amount)),
   }));
   // Same 20-row cap the old table applied to credit notes.
-  const creditNotes: Row[] = p.creditNotes.slice(0, 20).map(cn => ({
+  const creditNotes: DocRow[] = p.creditNotes.slice(0, 20).map(cn => ({
     key: cn.id, to: `/sales/credit-notes/${cn.id}`, number: cn.credit_note_number, date: d(cn.date),
     status: cn.status, amount: money(cn.currency, Number(cn.total_amount)),
   }));
   // Returns are tracking documents (the money is on the linked credit note):
   // no amount, but the linked invoice and the reason, as before.
-  const returns: Row[] = p.salesReturns.map(sr => {
+  const returns: DocRow[] = p.salesReturns.map(sr => {
     const inv = p.invoiceById[sr.invoice_id];
     const reason = (sr.reason ?? '').replace(/_/g, ' ');
     return {
