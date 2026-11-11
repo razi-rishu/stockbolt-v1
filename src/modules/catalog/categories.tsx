@@ -14,6 +14,8 @@ import ImportExportButton from '@/modules/settings/import-export/ImportExportBut
 import type { CategoryRow } from '@/data/adapter';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
 import { FormErrorBanner } from '@/ui/form-error-banner';
+import { OceanPage } from '@/components/ocean-list';
+import { Plus, ChevronDown, ChevronRight, ArrowUp, ArrowDown, Pencil, Trash2, FolderPlus } from 'lucide-react';
 
 const schema = z.object({
   name:           z.string().min(1, 'Required'),
@@ -164,49 +166,53 @@ export default function CategoriesPage() {
     return ids;
   }, [editing, categories]);
 
+  // Ocean Teal (UI v1.1): look only — same tree, collapse, reorder, add
+  // sub-category, edit and delete as before. Row actions are always visible
+  // (they were hover-only, which a phone cannot reach).
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-ink-primary">{t('catalog.categories.title')}</h1>
-        <div className="flex gap-2">
-          <ImportExportButton moduleKey="categories" />
-          <Button size="sm" onClick={() => openAdd(null)}>{t('common.add')} {t('catalog.categories.singular')}</Button>
-        </div>
-      </div>
-
+    <OceanPage
+      testid="categories-ocean"
+      title={t('settingsNav.items.categories.title')}
+      subtitle={t('settingsPages.categories.count', { count: categories.length })}
+      actions={<>
+        <span className="sb-clist-io"><ImportExportButton moduleKey="categories" /></span>
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => openAdd(null)}><Plus size={18} aria-hidden="true" />{t('catalog.categories.add')}</button>
+      </>}
+    >
       {isLoading ? (
-        <div className="py-12 text-center text-ink-tertiary">{t('common.loading')}</div>
+        <div className="sb-card sb-empty">{t('common.loading')}</div>
       ) : flat.length === 0 ? (
-        <p className="py-12 text-center text-ink-tertiary">{t('catalog.categories.empty')}</p>
+        <div className="sb-card sb-empty">{t('catalog.categories.empty')}</div>
       ) : (
-        <div className="overflow-hidden rounded-card border border-border-subtle bg-white">
-          <ul className="divide-y divide-slate-100">
+        <div className="sb-card sb-tree" style={{ padding: 0 }}>
+          <ul>
             {flat.map((fn) => {
               const r = fn.node as any;
+              const inactive = fn.node.is_active === false;
               return (
-                <li
-                  key={fn.node.id}
-                  className="group flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-slate-50"
-                  style={{ paddingInlineStart: 12 + fn.depth * 22 }}
-                >
-                  {fn.hasChildren ? (
-                    <button onClick={() => toggle(fn.node.id)} className="flex h-5 w-5 items-center justify-center text-ink-tertiary hover:text-ink-primary">
-                      {collapsed.has(fn.node.id) ? '▸' : '▾'}
-                    </button>
-                  ) : (
-                    <span className="inline-block h-5 w-5" />
-                  )}
-                  {r.icon && <span className="text-base leading-none">{r.icon}</span>}
-                  <span className={`font-medium ${fn.node.is_active === false ? 'text-ink-tertiary line-through' : 'text-ink-primary'}`}>{fn.node.name}</span>
-                  {fn.node.name_ar && <span className="text-xs text-ink-tertiary" dir="rtl">{fn.node.name_ar}</span>}
-                  {fn.node.is_active === false && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] uppercase text-slate-500">{t('catalog.categories.inactive')}</span>}
+                <li key={fn.node.id} className={`sb-tree-row ${inactive ? 'is-muted' : ''}`} style={{ paddingInlineStart: 8 + fn.depth * 24 }}>
+                  <span className="sb-tree-main">
+                    {fn.hasChildren ? (
+                      <button type="button" onClick={() => toggle(fn.node.id)} className="sb-tree-toggle" aria-expanded={!collapsed.has(fn.node.id)} aria-label={fn.node.name}>
+                        {collapsed.has(fn.node.id) ? <ChevronRight size={18} className="sb-flip" aria-hidden="true" /> : <ChevronDown size={18} aria-hidden="true" />}
+                      </button>
+                    ) : (
+                      <span className="sb-tree-toggle" aria-hidden="true" />
+                    )}
+                    {r.icon && <span className="sb-tree-emoji">{r.icon}</span>}
+                    <span style={{ minWidth: 0 }}>
+                      <span className="sb-tree-name">{fn.node.name}</span>
+                      {fn.node.name_ar && <span className="sb-tree-ar"><bdi>{fn.node.name_ar}</bdi></span>}
+                    </span>
+                    {inactive && <span className="sb-pill sb-pill-muted">{t('catalog.categories.inactive')}</span>}
+                  </span>
 
-                  <span className="ms-auto flex items-center gap-2 opacity-0 group-hover:opacity-100">
-                    <button onClick={() => move(fn, -1)} disabled={fn.index === 0} className="text-xs text-ink-secondary hover:text-ink-primary disabled:opacity-30" title={t('catalog.categories.move_up')}>↑</button>
-                    <button onClick={() => move(fn, 1)} disabled={fn.index === fn.siblings.length - 1} className="text-xs text-ink-secondary hover:text-ink-primary disabled:opacity-30" title={t('catalog.categories.move_down')}>↓</button>
-                    <button onClick={() => openAdd(fn.node.id)} className="text-xs text-brand-600 hover:underline">{t('catalog.categories.add_child')}</button>
-                    <button onClick={() => openEdit(fn.node)} className="text-xs text-brand-600 hover:underline">{t('common.edit')}</button>
-                    <button onClick={() => { if (confirm(t('common.confirm_delete'))) deleteMutation.mutate(fn.node.id); }} className="text-xs text-danger-500 hover:underline">{t('common.delete')}</button>
+                  <span className="sb-tree-actions">
+                    <button type="button" onClick={() => move(fn, -1)} disabled={fn.index === 0} className="sb-icon-btn" title={t('catalog.categories.move_up')} aria-label={`${t('catalog.categories.move_up')} ${fn.node.name}`}><ArrowUp size={16} aria-hidden="true" /></button>
+                    <button type="button" onClick={() => move(fn, 1)} disabled={fn.index === fn.siblings.length - 1} className="sb-icon-btn" title={t('catalog.categories.move_down')} aria-label={`${t('catalog.categories.move_down')} ${fn.node.name}`}><ArrowDown size={16} aria-hidden="true" /></button>
+                    <button type="button" onClick={() => openAdd(fn.node.id)} className="sb-icon-btn" aria-label={`${t('catalog.categories.add_child')} ${fn.node.name}`}><FolderPlus size={16} aria-hidden="true" /><span>{t('catalog.categories.add_child')}</span></button>
+                    <button type="button" onClick={() => openEdit(fn.node)} className="sb-icon-btn" aria-label={`${t('common.edit')} ${fn.node.name}`}><Pencil size={16} aria-hidden="true" /><span>{t('common.edit')}</span></button>
+                    <button type="button" onClick={() => { if (confirm(t('common.confirm_delete'))) deleteMutation.mutate(fn.node.id); }} className="sb-icon-btn sb-danger" aria-label={`${t('common.delete')} ${fn.node.name}`}><Trash2 size={16} aria-hidden="true" /><span>{t('common.delete')}</span></button>
                   </span>
                 </li>
               );
@@ -216,13 +222,13 @@ export default function CategoriesPage() {
       )}
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? t('catalog.categories.edit') : t('catalog.categories.add')}>
-        <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v); }, onInvalid)} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v); }, onInvalid)} className="sb-ocean sb-form sb-modal-form">
           <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           <Input label={t('catalog.categories.name')} required error={errors.name?.message} {...register('name')} />
           <Input label={t('catalog.categories.name_ar')} dir="rtl" {...register('name_ar')} />
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-ink-primary">{t('catalog.categories.parent')}</label>
-            <select className="h-10 rounded-input border border-border-strong bg-surface-subtle px-4 text-sm focus:border-brand-500 focus:outline-none" {...register('parent_id')}>
+            <label className="sb-select-label" htmlFor="category-parent">{t('catalog.categories.parent')}</label>
+            <select id="category-parent" className="sb-field" {...register('parent_id')}>
               <option value="">{t('catalog.categories.no_parent')}</option>
               {categories.filter((c) => !blockedIds.has(c.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
@@ -233,9 +239,9 @@ export default function CategoriesPage() {
           </div>
           <Textarea label={t('catalog.categories.description')} rows={2} {...register('description')} />
           <Textarea label={t('catalog.categories.description_ar')} rows={2} dir="rtl" {...register('description_ar')} />
-          <label className="flex items-center gap-2 text-sm text-ink-primary">
-            <input type="checkbox" {...register('is_active')} className="h-4 w-4 rounded border-border-strong" />
-            {t('catalog.categories.active')}
+          <label className="sb-check-row">
+            <input type="checkbox" {...register('is_active')} />
+            <span className="sb-check-text">{t('catalog.categories.active')}</span>
           </label>
           {saveMutation.error && <p className="text-xs text-danger-500">{String(saveMutation.error)}</p>}
           <div className="flex justify-end gap-3 pt-2">
@@ -244,6 +250,6 @@ export default function CategoriesPage() {
           </div>
         </form>
       </Modal>
-    </div>
+    </OceanPage>
   );
 }

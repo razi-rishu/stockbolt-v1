@@ -11,7 +11,9 @@ import { Input } from '@/ui/input';
 import { Textarea } from '@/ui/textarea';
 import { Select } from '@/ui/select';
 import { Modal } from '@/ui/modal';
-import { Table, type Column } from '@/ui/table';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Plus, Search, Merge } from 'lucide-react';
 import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { BrandRow } from '@/data/adapter';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
@@ -168,18 +170,26 @@ export default function BrandsPage() {
 
   const brandOptions = [{ value: '', label: t('common.select') }, ...brands.map((b) => ({ value: b.id, label: b.name }))];
 
+  // Ocean Teal (UI v1.1): look only — same search, logo upload, add / edit,
+  // delete and merge as before.
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-ink-primary">{t('catalog.brands.title')}</h1>
-        <div className="flex gap-2">
-          <Button size="sm" variant="secondary" onClick={() => { setKeepId(''); setDupId(''); setMergeOpen(true); }}>{t('catalog.brands.merge')}</Button>
-          <ImportExportButton moduleKey="brands" />
-          <Button size="sm" onClick={openAdd}>{t('common.add')} {t('catalog.brands.singular')}</Button>
-        </div>
-      </div>
-
-      <Input placeholder={t('catalog.brands.search')} value={search} onChange={(e) => setSearch(e.target.value)} className="w-72" />
+    <OceanPage
+      testid="brands-ocean"
+      title={t('settingsNav.items.brands.title')}
+      subtitle={t('settingsPages.brands.count', { count: brands.length })}
+      actions={<>
+        <button type="button" className="sb-secondary-btn sb-btn-inline" onClick={() => { setKeepId(''); setDupId(''); setMergeOpen(true); }}><Merge size={18} aria-hidden="true" />{t('catalog.brands.merge')}</button>
+        <span className="sb-clist-io"><ImportExportButton moduleKey="brands" /></span>
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={openAdd}><Plus size={18} aria-hidden="true" />{t('catalog.brands.add')}</button>
+      </>}
+      below={
+        <label className="sb-search">
+          <Search size={18} className="sb-icon" aria-hidden="true" />
+          <span className="sr-only">{t('catalog.brands.search')}</span>
+          <input type="search" placeholder={t('catalog.brands.search')} value={search} onChange={(e) => setSearch(e.target.value)} />
+        </label>
+      }
+    >
 
       <input
         ref={fileRef}
@@ -195,13 +205,13 @@ export default function BrandsPage() {
       />
 
       {isLoading
-        ? <div className="py-12 text-center text-ink-tertiary">{t('common.loading')}</div>
-        : <Table columns={columns} rows={filtered} keyFn={(r) => r.id} emptyMessage={t('catalog.brands.empty')} />
+        ? <div className="sb-card sb-empty">{t('common.loading')}</div>
+        : <OceanTable columns={columns} rows={filtered} keyFn={(r) => r.id} emptyMessage={t('catalog.brands.empty')} />
       }
 
       {/* Add / Edit modal */}
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? t('catalog.brands.edit') : t('catalog.brands.add')}>
-        <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v); }, onInvalid)} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v); }, onInvalid)} className="sb-ocean sb-form sb-modal-form">
           <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           <Input label={t('catalog.brands.name')} required error={errors.name?.message} {...register('name')} />
           <Input label={t('catalog.brands.name_ar')} dir="rtl" {...register('name_ar')} />
@@ -221,7 +231,7 @@ export default function BrandsPage() {
 
       {/* Merge duplicates modal */}
       <Modal open={mergeOpen} onClose={() => setMergeOpen(false)} title={t('catalog.brands.merge_title')}>
-        <div className="flex flex-col gap-4">
+        <div className="sb-ocean sb-form sb-modal-form">
           <Select label={t('catalog.brands.merge_keep')} options={brandOptions} value={keepId} onChange={(e) => setKeepId(e.target.value)} />
           <Select label={t('catalog.brands.merge_dup')} options={brandOptions} value={dupId} onChange={(e) => setDupId(e.target.value)} />
           <p className="rounded-card border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">{t('catalog.brands.merge_warn')}</p>
@@ -233,6 +243,6 @@ export default function BrandsPage() {
           </div>
         </div>
       </Modal>
-    </div>
+    </OceanPage>
   );
 }

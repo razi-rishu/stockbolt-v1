@@ -10,11 +10,11 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
+import { useTranslation } from 'react-i18next';
 import { Input } from '@/ui/input';
-import { Badge } from '@/ui/badge';
-import { PageHeader, Panel } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Plus, Zap, Percent, BookOpen, Loader2 } from 'lucide-react';
 import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { TaxRateRow } from '@/data/adapter';
 
@@ -41,6 +41,10 @@ interface DraftRate {
 export default function TaxRatesSettingsPage() {
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
+  const { t } = useTranslation();
+  // English constants above stay as the fallback text.
+  const catLabel = (c: string) => t(`settingsPages.tax.cat.${c}`, { defaultValue: CATEGORY_LABEL[c] ?? c });
+  const catHint = (c: string) => t(`settingsPages.tax.hint.${c}`, { defaultValue: CATEGORY_HINT[c] ?? '' });
 
   // Fetch ALL rates (active + inactive) for management view
   const { data: rates = [], isLoading } = useQuery<TaxRateRow[]>({
@@ -93,143 +97,112 @@ export default function TaxRatesSettingsPage() {
 
   const activeRates = rates.filter(r => r.is_active);
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        title="Tax Rates"
-        subtitle={`${activeRates.length} active rate${activeRates.length === 1 ? '' : 's'} — applied to invoice / quote / bill lines and reported on the VAT return.`}
-        crumb="Settings · Sales"
-        actions={
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => seedMut.mutate()}
-              disabled={seedMut.isPending}
-            >
-              {seedMut.isPending ? 'Seeding…' : '⚡ Seed UAE defaults'}
-            </Button>
-            <Button size="sm" onClick={() => setShowAdd(true)}>+ Add rate</Button>
-            <ImportExportButton moduleKey="taxRates" />
-          </div>
-        }
-      />
+  const columns: Column<TaxRateRow>[] = [
+    { key: 'name', header: t('settingsPages.tax.name'), render: (r) => <span style={{ fontWeight: 700 }}>{r.name}</span> },
+    { key: 'cat', header: t('settingsPages.tax.category'), render: (r) => catLabel(r.tax_type) },
+    { key: 'rate', header: t('settingsPages.tax.rate'), align: 'end', render: (r) => <bdi dir="ltr" className="sb-mono">{Number(r.rate).toFixed(2)}%</bdi> },
+    { key: 'status', header: '', render: (r) => <span className={`sb-pill ${r.is_active ? 'sb-pill-good' : 'sb-pill-muted'}`}>{r.is_active ? t('common.active') : t('common.inactive')}</span> },
+    {
+      key: 'toggle', header: '', align: 'end',
+      render: (r) => (
+        <button type="button" className="sb-row-link text-brand-600" onClick={() => toggleMut.mutate({ id: r.id, is_active: !r.is_active })} disabled={toggleMut.isPending}>
+          {r.is_active ? t('settingsPages.tax.deactivate') : t('settingsPages.tax.activate')}
+        </button>
+      ),
+    },
+  ];
 
-      {seedError && (
-        <div style={{ background: theme.dangerSoft, border: `1px solid ${theme.dangerBorder}`, borderRadius: '8px', padding: '10px 16px', fontSize: '13px', color: theme.danger }}>
-          {seedError}
-        </div>
-      )}
+  // Ocean Teal (UI v1.1): look only — same queries, seed, create and
+  // activate / deactivate as before.
+  return (
+    <OceanPage
+      testid="tax-rates-ocean"
+      title={t('settingsNav.items.tax_rates.title')}
+      subtitle={t('settingsPages.tax.subtitle', { count: activeRates.length })}
+      actions={<>
+        <button type="button" className="sb-secondary-btn sb-btn-inline" onClick={() => seedMut.mutate()} disabled={seedMut.isPending}>
+          {seedMut.isPending ? <Loader2 size={18} className="sb-spin" aria-hidden="true" /> : <Zap size={18} aria-hidden="true" />}
+          {seedMut.isPending ? t('settingsPages.tax.seeding') : t('settingsPages.tax.seed')}
+        </button>
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => setShowAdd(true)}><Plus size={18} aria-hidden="true" />{t('settingsPages.tax.add')}</button>
+        <span className="sb-clist-io"><ImportExportButton moduleKey="taxRates" /></span>
+      </>}
+    >
+      {seedError && <p className="sb-alert sb-alert-danger" role="alert">{seedError}</p>}
 
       {/* Add new rate form */}
       {showAdd && (
-        <Panel icon="➕" title="New tax rate">
-          <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_120px_auto]">
+        <section className="sb-card sb-form">
+          <div className="sb-form-head">
+            <span className="sb-form-icon" aria-hidden="true"><Plus size={20} /></span>
+            <h2 className="sb-form-title">{t('settingsPages.tax.new_title')}</h2>
+          </div>
+          <div className="sb-tax-add">
             <Input
-              label="Name"
+              id="tax-new-name"
+              label={t('settingsPages.tax.name')}
               value={draft.name}
               onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
-              placeholder="e.g. VAT 5%"
+              placeholder={t('settingsPages.tax.name_ph')}
             />
-            <div>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: theme.inkMuted, display: 'block', marginBottom: '4px' }}>Category</label>
-              <select
-                value={draft.tax_type}
-                onChange={e => setDraft(d => ({ ...d, tax_type: e.target.value }))}
-                style={{ width: '100%', padding: '8px 10px', border: `1px solid ${theme.border}`, borderRadius: '6px', fontSize: '13px', background: '#fff' }}
-              >
-                {TAX_TYPES.map(t => (
-                  <option key={t} value={t}>{CATEGORY_LABEL[t]}</option>
-                ))}
+            <label className="sb-select-field" style={{ maxWidth: 'none' }}>
+              <span className="sb-select-label">{t('settingsPages.tax.category')}</span>
+              <select className="sb-field" value={draft.tax_type} onChange={e => setDraft(d => ({ ...d, tax_type: e.target.value }))}>
+                {TAX_TYPES.map(c => <option key={c} value={c}>{catLabel(c)}</option>)}
               </select>
-            </div>
+            </label>
             <Input
-              label="Rate %"
+              id="tax-new-rate"
+              label={t('settingsPages.tax.rate_pct')}
               type="number"
+              dir="ltr"
               value={draft.rate}
               onChange={e => setDraft(d => ({ ...d, rate: e.target.value }))}
               placeholder="5"
             />
-            <div style={{ display: 'flex', gap: '8px', paddingBottom: '2px' }}>
-              <Button
-                size="sm"
-                onClick={() => createMut.mutate()}
-                disabled={createMut.isPending || !draft.name.trim()}
-              >
-                {createMut.isPending ? 'Saving…' : 'Save'}
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setShowAdd(false)}>Cancel</Button>
-            </div>
           </div>
-          {createMut.isError && (
-            <div style={{ marginTop: '8px', fontSize: '12px', color: theme.danger }}>
-              {(createMut.error as Error).message}
-            </div>
-          )}
-        </Panel>
-      )}
-
-      <Panel icon="📊" title="Configured rates">
-        {isLoading ? (
-          <div style={{ padding: '24px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>Loading…</div>
-        ) : rates.length === 0 ? (
-          <div style={{ padding: '32px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>
-            No tax rates yet.{' '}
-            <button
-              onClick={() => seedMut.mutate()}
-              style={{ color: theme.brand, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontSize: '13px' }}
-            >
-              Seed UAE defaults (VAT 5%, Zero-rated, Exempt)
+          {createMut.isError && <p className="sb-alert sb-alert-danger" role="alert" style={{ marginTop: 12 }}>{(createMut.error as Error).message}</p>}
+          <div className="sb-form-actions" style={{ marginTop: 14 }}>
+            <button type="button" className="sb-secondary-btn" onClick={() => setShowAdd(false)}>{t('common.cancel')}</button>
+            <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => createMut.mutate()} disabled={createMut.isPending || !draft.name.trim()}>
+              {createMut.isPending && <Loader2 size={18} className="sb-spin" aria-hidden="true" />}
+              {createMut.isPending ? t('common.saving') : t('common.save')}
             </button>
           </div>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-            <thead>
-              <tr style={{ borderBottom: `1px solid ${theme.border}` }}>
-                {['Name', 'Category', 'Rate', 'Status', ''].map(h => (
-                  <th key={h} style={{ padding: '8px 12px', textAlign: h === 'Rate' ? 'right' : 'left', fontSize: '11px', fontWeight: 700, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rates.map(r => (
-                <tr key={r.id} style={{ borderBottom: `1px solid ${theme.border}`, opacity: r.is_active ? 1 : 0.5 }}>
-                  <td style={{ padding: '10px 12px', fontWeight: 600, color: theme.ink }}>{r.name}</td>
-                  <td style={{ padding: '10px 12px', color: theme.inkMuted }}>{CATEGORY_LABEL[r.tax_type] ?? r.tax_type}</td>
-                  <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600, color: theme.ink }}>{Number(r.rate).toFixed(2)}%</td>
-                  <td style={{ padding: '10px 12px' }}>
-                    <Badge variant={r.is_active ? 'success' : 'muted'}>{r.is_active ? 'Active' : 'Inactive'}</Badge>
-                  </td>
-                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                    <button
-                      onClick={() => toggleMut.mutate({ id: r.id, is_active: !r.is_active })}
-                      disabled={toggleMut.isPending}
-                      style={{ fontSize: '12px', color: theme.inkMuted, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
-                    >
-                      {r.is_active ? 'Deactivate' : 'Activate'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Panel>
+        </section>
+      )}
 
-      <Panel icon="📚" title="What each category means">
-        <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <section className="sb-section-card">
+        <div className="sb-form-head" style={{ marginBottom: 0 }}>
+          <span className="sb-form-icon" aria-hidden="true"><Percent size={20} /></span>
+          <h2 className="sb-form-title">{t('settingsPages.tax.configured')}</h2>
+        </div>
+        {isLoading ? (
+          <div className="sb-card sb-empty">{t('common.loading')}</div>
+        ) : rates.length === 0 ? (
+          <div className="sb-card sb-empty">
+            {t('settingsPages.tax.empty')}{' '}
+            <button type="button" className="sb-row-link text-brand-600" onClick={() => seedMut.mutate()}>{t('settingsPages.tax.seed_link')}</button>
+          </div>
+        ) : (
+          <OceanTable columns={columns} rows={rates} keyFn={(r) => r.id} rowMuted={(r) => !r.is_active} />
+        )}
+      </section>
+
+      <section className="sb-card">
+        <div className="sb-form-head">
+          <span className="sb-form-icon" aria-hidden="true"><BookOpen size={20} /></span>
+          <h2 className="sb-form-title">{t('settingsPages.tax.meanings')}</h2>
+        </div>
+        <ul className="sb-tax-meanings">
           {TAX_TYPES.map(cat => (
-            <li key={cat} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-              <span style={{
-                fontSize: '11px', fontWeight: 700, color: theme.brandSoftText,
-                background: theme.brandSoft, padding: '2px 8px', borderRadius: '999px',
-                whiteSpace: 'nowrap', flexShrink: 0,
-              }}>{CATEGORY_LABEL[cat]}</span>
-              <span style={{ fontSize: '13px', color: theme.ink }}>{CATEGORY_HINT[cat]}</span>
+            <li key={cat}>
+              <span className="sb-pill">{catLabel(cat)}</span>
+              <span>{catHint(cat)}</span>
             </li>
           ))}
         </ul>
-      </Panel>
-    </div>
+      </section>
+    </OceanPage>
   );
 }

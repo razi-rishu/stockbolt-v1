@@ -14,9 +14,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
-import { Button } from '@/ui/button';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
+import { useTranslation } from 'react-i18next';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Save, Loader2 } from 'lucide-react';
 // Shared currency master list — also feeds the document currency dropdowns.
 import { ALL_CURRENCIES } from '@/lib/currencies';
 
@@ -25,6 +26,7 @@ export default function ExchangeRatesPage() {
   const base = useCompanyCurrency();
   const adapter = getAdapter();
   const qc = useQueryClient();
+  const { t } = useTranslation();
 
   const today = new Date().toISOString().slice(0, 10);
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -75,71 +77,66 @@ export default function ExchangeRatesPage() {
     onError: (e: Error) => setError(e.message),
   });
 
-  const card = 'rounded-card border border-border-subtle bg-surface-card p-5';
+  type Cur = (typeof ALL_CURRENCIES)[number];
+  const columns: Column<Cur>[] = [
+    {
+      key: 'cur', header: t('settingsPages.fx.currency'),
+      render: (c) => (
+        <span className="sb-fx-cur">
+          <bdi dir="ltr" className="sb-mono">{c.code}</bdi>
+          <span className="sb-fx-name">{c.name}</span>
+          {c.code === base && <span className="sb-pill">{t('settingsPages.fx.base')}</span>}
+        </span>
+      ),
+    },
+    {
+      key: 'rate', header: t('settingsPages.fx.unit'),
+      render: (c) => c.code === base ? (
+        <bdi dir="ltr" className="sb-mono">1.00 {base}</bdi>
+      ) : (
+        <span className="sb-fx-input">
+          <input
+            type="number" min="0" step="0.00000001" dir="ltr"
+            className="sb-field sb-mono"
+            placeholder="0.00"
+            aria-label={`${c.code} → ${base}`}
+            value={draft[c.code] ?? ''}
+            onChange={e => setDraft(d => ({ ...d, [c.code]: e.target.value }))}
+          />
+          <bdi dir="ltr" className="sb-fx-name">{base}</bdi>
+        </span>
+      ),
+    },
+    {
+      key: 'date', header: t('settingsPages.fx.updated'),
+      render: (c) => c.code === base ? '—' : (latest[c.code]?.date
+        ? <bdi dir="ltr">{latest[c.code].date}</bdi>
+        : <span className="sb-fx-name">{t('settingsPages.fx.not_set')}</span>),
+    },
+  ];
 
+  // Ocean Teal (UI v1.1): look only — same rates, inputs and save rule as before.
   return (
-    <div style={{ maxWidth: '760px', margin: '0 auto', padding: '8px 0', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        title="Exchange Rates"
-        subtitle={`How many ${base} one unit of each currency is worth. Used to convert foreign-currency documents to your base currency (${base}).`}
-        actions={<Button onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>{saveMutation.isPending ? 'Saving…' : 'Save rates'}</Button>}
-      />
+    <OceanPage
+      narrow
+      testid="exchange-rates-ocean"
+      title={t('settingsNav.items.exchange_rates.title')}
+      subtitle={t('settingsPages.fx.subtitle', { base })}
+      actions={
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
+          {saveMutation.isPending ? <Loader2 size={18} className="sb-spin" aria-hidden="true" /> : <Save size={18} aria-hidden="true" />}
+          {saveMutation.isPending ? t('common.saving') : t('settingsPages.fx.save')}
+        </button>
+      }
+    >
+      {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+      {saved && <p className="sb-alert sb-alert-good" role="status">{t('settingsPages.fx.saved')}</p>}
 
-      {error && <div style={{ background: theme.dangerSoft, border: `1px solid ${theme.dangerBorder}`, borderRadius: 8, padding: '10px 16px', fontSize: 13, color: theme.danger }}>{error}</div>}
-      {saved && <div style={{ background: theme.successSoft, border: `1px solid ${theme.successBorder}`, borderRadius: 8, padding: '10px 16px', fontSize: 13, color: theme.success }}>Rates saved.</div>}
+      <p className="sb-info-note">{t('settingsPages.fx.note', { base })}</p>
 
-      <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: '10px 16px', fontSize: 13, color: '#1E40AF' }}>
-        Manual entry for now — set the rate for any currency you trade in. Live online rates will be added later. Base currency ({base}) is fixed to your company's country and always 1.0.
-      </div>
-
-      <div className={card}>
-        {isLoading ? (
-          <div className="py-6 text-center text-sm text-ink-tertiary">Loading…</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle text-left text-xs uppercase tracking-wider text-ink-tertiary">
-                <th className="py-2">Currency</th>
-                <th className="py-2">1 unit =</th>
-                <th className="py-2">Last updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ALL_CURRENCIES.map(c => {
-                const isBase = c.code === base;
-                return (
-                  <tr key={c.code} className="border-b border-border-subtle/60">
-                    <td className="py-2.5">
-                      <span className="font-medium text-ink-primary">{c.code}</span>
-                      <span className="ml-2 text-xs text-ink-tertiary">{c.name}</span>
-                      {isBase && <span className="ml-2 rounded-pill bg-brand-50 px-2 py-0.5 text-[10px] font-semibold text-brand-700">Base</span>}
-                    </td>
-                    <td className="py-2.5">
-                      {isBase ? (
-                        <span className="font-mono text-ink-secondary">1.00 {base}</span>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number" min="0" step="0.00000001"
-                            className="h-9 w-36 rounded-input border border-border-subtle bg-surface-input px-2 text-sm font-mono text-ink-primary focus:outline-none focus:ring-1 focus:ring-brand-500"
-                            placeholder="0.00"
-                            value={draft[c.code] ?? ''}
-                            onChange={e => setDraft(d => ({ ...d, [c.code]: e.target.value }))}
-                          />
-                          <span className="text-xs text-ink-tertiary">{base}</span>
-                        </div>
-                      )}
-                    </td>
-                    <td className="py-2.5 text-xs text-ink-tertiary">
-                      {isBase ? '—' : (latest[c.code]?.date ?? 'Not set')}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
+      {isLoading
+        ? <div className="sb-card sb-empty">{t('common.loading')}</div>
+        : <OceanTable columns={columns} rows={ALL_CURRENCIES} keyFn={(c) => c.code} rowActive={(c) => c.code === base} />}
+    </OceanPage>
   );
 }

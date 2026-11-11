@@ -9,9 +9,9 @@ import { z } from 'zod';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Modal } from '@/ui/modal';
-import { Table, type Column } from '@/ui/table';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Plus } from 'lucide-react';
 import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { UnitRow } from '@/data/adapter';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
@@ -61,7 +61,7 @@ export default function UnitsOfMeasurePage() {
   });
 
   const columns: Column<UnitRow>[] = [
-    { key: 'code', header: t('settings.units.code'), width: '80px', render: (r) => <span className="font-mono font-medium">{r.code}</span> },
+    { key: 'code', header: t('settings.units.code'), width: '80px', render: (r) => <bdi dir="ltr" className="sb-wh-code">{r.code}</bdi> },
     { key: 'name', header: t('settings.units.name'), render: (r) => r.name },
     { key: 'name_ar', header: t('settings.units.name_ar'), render: (r) => <span dir="rtl">{r.name_ar ?? '—'}</span> },
     {
@@ -75,26 +75,24 @@ export default function UnitsOfMeasurePage() {
     },
   ];
 
+  // Ocean Teal (UI v1.1): look only — same query, form, save and delete.
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        title={t('settings.units.title')}
-        subtitle={`${units.length} ${units.length === 1 ? 'unit' : 'units'}`}
-        actions={
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <ImportExportButton moduleKey="units" />
-            <Button size="sm" onClick={openAdd}>+ {t('common.add')} {t('settings.units.singular')}</Button>
-          </div>
-        }
-      />
-
+    <OceanPage
+      testid="units-ocean"
+      title={t('settingsNav.items.units.title')}
+      subtitle={t('settingsPages.units.count', { count: units.length })}
+      actions={<>
+        <span className="sb-clist-io"><ImportExportButton moduleKey="units" /></span>
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={openAdd}><Plus size={18} aria-hidden="true" />{t('settings.units.add')}</button>
+      </>}
+    >
       {isLoading
-        ? <div style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>{t('common.loading')}</div>
-        : <Table columns={columns} rows={units} keyFn={(r) => r.id} emptyMessage={t('settings.units.empty')} />
+        ? <div className="sb-card sb-empty">{t('common.loading')}</div>
+        : <OceanTable columns={columns} rows={units} keyFn={(r) => r.id} cardTitleKey="name" emptyMessage={t('settings.units.empty')} />
       }
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? t('settings.units.edit') : t('settings.units.add')}>
-        <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v); }, onInvalid)} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v); }, onInvalid)} className="sb-ocean sb-form sb-modal-form">
           <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           <Input label={t('settings.units.code')} required error={errors.code?.message} {...register('code')} />
           <Input label={t('settings.units.name')} required error={errors.name?.message} {...register('name')} />
@@ -106,6 +104,6 @@ export default function UnitsOfMeasurePage() {
           </div>
         </form>
       </Modal>
-    </div>
+    </OceanPage>
   );
 }

@@ -2359,6 +2359,76 @@
     },
     "warehouses": {
       "count": "Warehouses: {{count}}"
+    },
+    "units": {
+      "count": "Units: {{count}}"
+    },
+    "categories": {
+      "count": "Categories: {{count}}"
+    },
+    "brands": {
+      "count": "Brands: {{count}}"
+    },
+    "vehicles": {
+      "count": "Makes: {{count}}"
+    },
+    "tax": {
+      "subtitle": "Active rates: {{count}} — applied to invoice, quote and bill lines and reported on the VAT return.",
+      "seed": "Seed UAE defaults",
+      "seeding": "Seeding…",
+      "add": "Add rate",
+      "new_title": "New tax rate",
+      "name": "Name",
+      "name_ph": "e.g. VAT 5%",
+      "category": "Category",
+      "rate": "Rate",
+      "rate_pct": "Rate %",
+      "configured": "Configured rates",
+      "empty": "No tax rates yet.",
+      "seed_link": "Seed UAE defaults (VAT 5%, Zero-rated, Exempt)",
+      "activate": "Activate",
+      "deactivate": "Deactivate",
+      "meanings": "What each category means",
+      "cat": {
+        "standard": "Standard",
+        "zero_rated": "Zero-rated",
+        "exempt": "Exempt"
+      },
+      "hint": {
+        "standard": "Default VAT rate (e.g. UAE 5%) — most goods and services.",
+        "zero_rated": "Taxable at 0% — exports, certain education / healthcare. Reported on VAT return.",
+        "exempt": "Outside the VAT system — financial services, residential rent. Not on VAT return."
+      }
+    },
+    "fx": {
+      "subtitle": "How many {{base}} one unit of each currency is worth. Used to convert foreign-currency documents to your base currency ({{base}}).",
+      "save": "Save rates",
+      "saved": "Rates saved.",
+      "note": "Manual entry for now — set the rate for any currency you trade in. Live online rates will be added later. Base currency ({{base}}) is fixed to your company's country and always 1.0.",
+      "currency": "Currency",
+      "unit": "1 unit =",
+      "updated": "Last updated",
+      "not_set": "Not set",
+      "base": "Base"
+    },
+    "sales": {
+      "subtitle": "Master list of sales staff. Tagged on invoices and quotes for performance reports.",
+      "add": "Add salesperson",
+      "new_title": "New salesperson",
+      "edit_title": "Edit salesperson",
+      "name": "Name",
+      "name_ar": "Name (Arabic)",
+      "email": "Email",
+      "phone": "Phone",
+      "commission": "Commission %",
+      "notes": "Notes",
+      "show_inactive": "Show inactive",
+      "empty": "No salespeople yet. Use Add salesperson to create your first one.",
+      "deactivate": "Deactivate",
+      "reactivate": "Reactivate",
+      "confirm_deactivate": "Deactivate “{{name}}”? They will be hidden from new invoice and quote pickers but stay on historical sales.",
+      "err_name": "Name is required",
+      "err_pct": "Commission % must be between 0 and 100"
     }
   }
 }

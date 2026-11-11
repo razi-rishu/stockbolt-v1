@@ -9,10 +9,9 @@ import { z } from 'zod';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Modal } from '@/ui/modal';
-import { Table, type Column } from '@/ui/table';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
-import { Badge } from '@/ui/badge';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Plus } from 'lucide-react';
 import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { PriceLevelRow } from '@/data/adapter';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
@@ -71,8 +70,8 @@ export default function PriceLevelsPage() {
   const columns: Column<PriceLevelRow>[] = [
     { key: 'name', header: t('settings.price_levels.name'), render: (r) => <span className="font-medium">{r.name}</span> },
     { key: 'name_ar', header: t('settings.price_levels.name_ar'), render: (r) => <span dir="rtl">{r.name_ar ?? '—'}</span> },
-    { key: 'markup', header: t('settings.price_levels.markup'), render: (r) => r.markup_percent != null ? `${r.markup_percent}%` : '—' },
-    { key: 'default', header: '', width: '80px', render: (r) => r.is_default ? <Badge variant="brand">{t('common.default')}</Badge> : null },
+    { key: 'markup', header: t('settings.price_levels.markup'), render: (r) => r.markup_percent != null ? <bdi dir="ltr" className="sb-mono">{r.markup_percent}%</bdi> : '—' },
+    { key: 'default', header: '', width: '80px', render: (r) => r.is_default ? <span className="sb-pill">{t('common.default')}</span> : null },
     {
       key: 'actions', header: '', width: '100px',
       render: (r) => (
@@ -84,26 +83,24 @@ export default function PriceLevelsPage() {
     },
   ];
 
+  // Ocean Teal (UI v1.1): look only — same query, form, default rule, save and delete.
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        title={t('settings.price_levels.title')}
-        subtitle={t('settings.price_levels.description')}
-        actions={
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <ImportExportButton moduleKey="priceLevels" />
-            <Button size="sm" onClick={openAdd}>+ {t('common.add')} {t('settings.price_levels.singular')}</Button>
-          </div>
-        }
-      />
-
+    <OceanPage
+      testid="price-levels-ocean"
+      title={t('settingsNav.items.price_levels.title')}
+      subtitle={t('settings.price_levels.description')}
+      actions={<>
+        <span className="sb-clist-io"><ImportExportButton moduleKey="priceLevels" /></span>
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={openAdd}><Plus size={18} aria-hidden="true" />{t('settings.price_levels.add')}</button>
+      </>}
+    >
       {isLoading
-        ? <div style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>{t('common.loading')}</div>
-        : <Table columns={columns} rows={levels} keyFn={(r) => r.id} emptyMessage={t('settings.price_levels.empty')} />
+        ? <div className="sb-card sb-empty">{t('common.loading')}</div>
+        : <OceanTable columns={columns} rows={levels} keyFn={(r) => r.id} emptyMessage={t('settings.price_levels.empty')} />
       }
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? t('settings.price_levels.edit') : t('settings.price_levels.add')}>
-        <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v as FormValues); }, onInvalid)} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v as FormValues); }, onInvalid)} className="sb-ocean sb-form sb-modal-form">
           <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           <Input label={t('settings.price_levels.name')} required error={errors.name?.message} {...register('name')} />
           <Input label={t('settings.price_levels.name_ar')} dir="rtl" {...register('name_ar')} />
@@ -120,6 +117,6 @@ export default function PriceLevelsPage() {
           </div>
         </form>
       </Modal>
-    </div>
+    </OceanPage>
   );
 }

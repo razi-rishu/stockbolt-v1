@@ -924,3 +924,159 @@
   .sb-ocean .sb-wh-table .sb-icon-btn span { display: none; }
   .sb-ocean .sb-wh-table .sb-icon-btn { min-width: 40px; justify-content: center; }
 }
+
+/* ── Ocean list kit (src/components/ocean-list.tsx) — settings step 3 ──────
+   OceanTable switches table ↔ cards by the space it actually has. */
+.sb-ocean .sb-olist-actions { align-items: center; }
+.sb-ocean.sb-olist-narrow .sb-hero,
+.sb-ocean.sb-olist-narrow .sb-body { max-width: 860px; width: 100%; margin-inline: auto; }
+
+.sb-ocean .sb-otable-host { container-type: inline-size; }
+.sb-ocean .sb-ocards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.sb-ocean .sb-otable-wrap { display: none; padding: 0; overflow-x: auto; }
+@container (min-width: 600px) {
+  .sb-ocean .sb-ocards { display: none; }
+  .sb-ocean .sb-otable-wrap { display: block; }
+}
+.sb-ocean .sb-ocard { padding: 0; overflow: hidden; }
+.sb-ocean .sb-ocard.is-muted { opacity: .6; }
+.sb-ocean .sb-ocard.is-active { border-color: var(--sb-primary); }
+.sb-ocean .sb-ocard-main { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; min-height: 56px; }
+.sb-ocean .sb-ocard.is-link .sb-ocard-main { cursor: pointer; }
+.sb-ocean .sb-ocard-main:focus-visible { outline: 2px solid var(--sb-primary); outline-offset: -2px; }
+.sb-ocean .sb-ocard-lead { flex: none; }
+.sb-ocean .sb-ocard-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.sb-ocean .sb-ocard-title { font-size: 16px; font-weight: 700; color: var(--sb-text); overflow-wrap: anywhere; }
+.sb-ocean .sb-ocard-kv { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; }
+.sb-ocean .sb-ocard-kv > span { display: flex; flex-direction: column; min-width: 0; }
+.sb-ocean .sb-ocard-k { font-size: 12px; color: var(--sb-text-secondary); }
+.sb-ocean .sb-ocard-v { font-size: 14px; font-weight: 600; color: var(--sb-text); overflow-wrap: anywhere; }
+.sb-ocean .sb-ocard-foot {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 12px; border-top: 1px solid var(--sb-border); background: var(--sb-background);
+}
+.sb-ocean .sb-ocard-slot:empty { display: none; }
+
+.sb-ocean .sb-otable tbody tr.is-muted td { opacity: .6; }
+.sb-ocean .sb-otable tbody tr.is-link { cursor: pointer; }
+.sb-ocean .sb-otable tbody tr.is-link:hover,
+.sb-ocean .sb-otable tbody tr.is-active { background: var(--sb-primary-soft); }
+.sb-ocean .sb-otable tbody tr:focus-visible { outline: 2px solid var(--sb-primary); outline-offset: -2px; }
+
+/* Row actions that pages render as small text buttons: Ocean pill links
+   with a comfortable tap area. */
+.sb-ocean .sb-otable td button:not(.sb-primary-btn):not(.sb-secondary-btn),
+.sb-ocean .sb-ocard-foot button:not(.sb-primary-btn):not(.sb-secondary-btn),
+.sb-ocean .sb-row-link {
+  min-height: 36px; padding: 0 12px; border-radius: 999px; font-size: 13px !important; font-weight: 600;
+  text-decoration: none !important; display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 0; cursor: pointer;
+}
+.sb-ocean .sb-ocard-foot button:not(.sb-primary-btn):not(.sb-secondary-btn) { min-height: 40px; }
+.sb-ocean .sb-otable td button:hover:not(:disabled),
+.sb-ocean .sb-ocard-foot button:hover:not(:disabled),
+.sb-ocean .sb-row-link:hover:not(:disabled) { background: var(--sb-primary-soft); }
+.sb-ocean .sb-otable td button.text-danger-500:hover,
+.sb-ocean .sb-ocard-foot button.text-danger-500:hover { background: var(--sb-danger-bg); }
+
+/* Existing brand (purple) utilities, re-pointed to Ocean Teal — only inside
+   .sb-ocean, so nothing changes on screens that have not opted in. */
+.sb-ocean .text-brand-500, .sb-ocean .text-brand-600, .sb-ocean .text-brand-700 { color: var(--sb-primary-dark); }
+.sb-ocean .bg-brand-50 { background-color: var(--sb-primary-light); }
+.sb-ocean .bg-brand-500, .sb-ocean .bg-brand-600 { background-color: var(--sb-primary); }
+.sb-ocean .hover\:bg-brand-700:hover, .sb-ocean .active\:bg-brand-800:active { background-color: var(--sb-primary-hover); }
+.sb-ocean .hover\:text-brand-600:hover { color: var(--sb-primary); }
+.sb-ocean .border-brand-500, .sb-ocean .border-brand-600 { border-color: var(--sb-primary); }
+.sb-ocean .focus\:border-brand-500:focus { border-color: var(--sb-primary); }
+.sb-ocean .focus\:ring-brand-500:focus { --tw-ring-color: var(--sb-primary); }
+.sb-ocean .text-danger-500 { color: var(--sb-danger); }
+.sb-ocean .rounded-pill.h-8, .sb-ocean .rounded-pill.h-10 { min-height: 40px; }
+.sb-ocean input[type=checkbox] { accent-color: var(--sb-primary); }
+.sb-ocean.sb-form select, .sb-ocean .sb-form select { min-height: 44px; border-radius: var(--sb-radius-sm) !important; }
+.sb-ocean.sb-form textarea, .sb-ocean .sb-form textarea { border-radius: var(--sb-radius-sm) !important; }
+.sb-ocean.sb-form select:focus, .sb-ocean .sb-form select:focus,
+.sb-ocean.sb-form textarea:focus, .sb-ocean .sb-form textarea:focus {
+  border-color: var(--sb-primary) !important; box-shadow: 0 0 0 3px rgba(0, 143, 135, .15) !important; outline: none;
+}
+
+/* Inline search above a list. */
+.sb-ocean .sb-olist .sb-search, .sb-ocean.sb-olist .sb-search { max-width: 520px; }
+
+/* Codes, rates and other monospace values. */
+.sb-ocean .sb-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
+.sb-ocean .sb-section-card { display: flex; flex-direction: column; gap: 14px; }
+.sb-ocean .sb-info-note {
+  margin: 0; padding: 12px 14px; border-radius: var(--sb-radius-sm); font-size: 14px; line-height: 1.5;
+  background: var(--sb-primary-soft); color: var(--sb-primary-dark); border: 1px solid var(--sb-primary-light);
+}
+
+/* Categories tree */
+.sb-ocean .sb-tree ul { list-style: none; margin: 0; padding: 0; }
+.sb-ocean .sb-tree-row {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px;
+  padding-block: 8px; padding-inline-end: 10px; border-top: 1px solid var(--sb-border); min-height: 56px;
+}
+.sb-ocean .sb-tree-row:first-child { border-top: 0; }
+.sb-ocean .sb-tree-row:hover { background: var(--sb-primary-soft); }
+.sb-ocean .sb-tree-row.is-muted .sb-tree-name { color: var(--sb-text-secondary); text-decoration: line-through; }
+.sb-ocean .sb-tree-main { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1 1 220px; }
+.sb-ocean .sb-tree-toggle {
+  width: 36px; height: 36px; flex: none; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; background: transparent; border-radius: 999px; color: var(--sb-text-secondary); cursor: pointer;
+}
+.sb-ocean button.sb-tree-toggle:hover { background: var(--sb-primary-light); color: var(--sb-primary-dark); }
+.sb-ocean .sb-tree-emoji { font-size: 18px; line-height: 1; }
+.sb-ocean .sb-tree-name { display: block; font-size: 15px; font-weight: 700; color: var(--sb-text); overflow-wrap: anywhere; }
+.sb-ocean .sb-tree-ar { display: block; font-size: 13px; color: var(--sb-text-secondary); }
+.sb-ocean .sb-tree-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-inline-start: auto; }
+.sb-ocean .sb-tree-actions .sb-icon-btn:disabled { opacity: .3; cursor: default; background: transparent; }
+@media (max-width: 640px) {
+  .sb-ocean .sb-tree-actions { width: 100%; justify-content: flex-end; }
+  .sb-ocean .sb-tree-actions .sb-icon-btn span { display: none; }
+  .sb-ocean .sb-tree-actions .sb-icon-btn { min-width: 40px; justify-content: center; }
+}
+
+/* Tax rates */
+.sb-ocean .sb-tax-add { display: grid; grid-template-columns: 2fr 2fr 1fr; gap: 14px; align-items: end; }
+@media (max-width: 640px) { .sb-ocean .sb-tax-add { grid-template-columns: minmax(0, 1fr); } }
+.sb-ocean .sb-tax-meanings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.sb-ocean .sb-tax-meanings li { display: flex; align-items: flex-start; gap: 12px; font-size: 14px; color: var(--sb-text); line-height: 1.5; }
+.sb-ocean .sb-tax-meanings .sb-pill { flex: none; margin-top: 0; }
+
+/* Exchange rates */
+.sb-ocean .sb-fx-cur { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.sb-ocean .sb-fx-name { font-size: 13px; font-weight: 400; color: var(--sb-text-secondary); }
+.sb-ocean .sb-fx-input { display: inline-flex; align-items: center; gap: 8px; }
+.sb-ocean .sb-fx-input .sb-field { width: 160px; min-height: 40px; padding: 0 12px; border-radius: var(--sb-radius-sm); font-size: 14px; }
+.sb-ocean .sb-fx-input .sb-field:focus { outline: none; border-color: var(--sb-primary); box-shadow: 0 0 0 3px rgba(0, 143, 135, .15); }
+.sb-ocean .sb-ocard-title .font-medium { font-weight: 700; }
+
+/* Vehicle makes */
+.sb-ocean .sb-vm-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+@media (min-width: 1180px) { .sb-ocean .sb-vm-grid { grid-template-columns: 300px minmax(0, 1fr); } }
+.sb-ocean .sb-vm-grid > div { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.sb-ocean .sb-vm-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sb-ocean .sb-vm-title { margin: 0; font-size: 16px; font-weight: 700; color: var(--sb-text); }
+.sb-ocean .sb-vm-makes { list-style: none; margin: 0; padding: 0; max-height: 60vh; overflow-y: auto; }
+.sb-ocean .sb-vm-makes li + li { border-top: 1px solid var(--sb-border); }
+.sb-ocean .sb-vm-make {
+  display: flex; align-items: center; gap: 8px; min-height: 52px; padding-block: 6px; padding-inline: 14px 10px; cursor: pointer; color: var(--sb-text);
+}
+.sb-ocean .sb-vm-make:hover { background: var(--sb-primary-soft); }
+.sb-ocean .sb-vm-make.active { background: var(--sb-primary-light); color: var(--sb-primary-dark); box-shadow: inset 3px 0 0 var(--sb-primary); }
+[dir="rtl"] .sb-ocean .sb-vm-make.active { box-shadow: inset -3px 0 0 var(--sb-primary); }
+.sb-ocean .sb-vm-make:focus-visible { outline: 2px solid var(--sb-primary); outline-offset: -2px; }
+.sb-ocean .sb-vm-make-name { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+.sb-ocean .sb-vm-make-name .sb-pill { margin-top: 0; font-size: 11px; }
+.sb-ocean .sb-vm-make-actions { display: inline-flex; gap: 2px; }
+.sb-ocean .sb-vm-make-actions .sb-icon-btn { min-width: 36px; justify-content: center; }
+.sb-ocean .sb-vm-crumb { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; color: var(--sb-text-secondary); }
+.sb-ocean .sb-row-link.is-strong { color: var(--sb-text); font-size: 15px !important; font-weight: 700; }
+.sb-ocean .sb-vm-crumb .sb-pill { margin-top: 0; margin-inline-start: 8px; }
+.sb-ocean .sb-vm-tabs { overflow-x: auto; }
+.sb-ocean .sb-vm-tabs .sb-tab { background: transparent; border-top: 0; border-inline: 0; font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; min-height: 44px; }
+.sb-ocean .sb-otable td button:not(.sb-primary-btn):not(.sb-secondary-btn) { padding-inline: 8px; white-space: nowrap; }
+/* Cards: an editable rate gets the full card width. */
+.sb-ocean .sb-ocard-kv > span:has(.sb-fx-input) { grid-column: 1 / -1; }
+.sb-ocean .sb-ocard .sb-fx-input { display: flex; width: 100%; }
+.sb-ocean .sb-ocard .sb-fx-input .sb-field { flex: 1; width: auto; min-width: 0; min-height: 44px; }
+.sb-ocean .sb-ocard-v { white-space: normal; }

@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
+import { useTranslation } from 'react-i18next';
 import { Input } from '@/ui/input';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Plus, UserRound, Loader2 } from 'lucide-react';
 import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { SalespersonRow } from '@/data/adapter';
 
@@ -36,6 +37,7 @@ const empty: FormState = { name: '', name_ar: '', email: '', phone: '', commissi
 export default function SalespeoplePage() {
   const qc = useQueryClient();
   const { company_id } = useAuthStore();
+  const { t } = useTranslation();
 
   const [showInactive, setShowInactive] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -77,9 +79,9 @@ export default function SalespeoplePage() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!form.name.trim()) throw new Error('Name is required');
+      if (!form.name.trim()) throw new Error(t('settingsPages.sales.err_name'));
       const pct = parseFloat(form.commission_pct) || 0;
-      if (pct < 0 || pct > 100) throw new Error('Commission % must be between 0 and 100');
+      if (pct < 0 || pct > 100) throw new Error(t('settingsPages.sales.err_pct'));
 
       const payload = {
         name:           form.name.trim(),
@@ -118,122 +120,96 @@ export default function SalespeoplePage() {
     onError: (e: Error) => setError(e.message),
   });
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        title="Salespeople"
-        subtitle="Master list of sales staff. Tagged on invoices and quotes for performance reports."
-        actions={
-          !showForm ? (
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <ImportExportButton moduleKey="salespeople" />
-              <Button onClick={startNew}>+ Add salesperson</Button>
-            </div>
-          ) : undefined
-        }
-      />
+  const columns: Column<SalespersonRow>[] = [
+    {
+      key: 'name', header: t('settingsPages.sales.name'),
+      render: (r) => (
+        <span>
+          <span style={{ fontWeight: 700 }}>{r.name}</span>
+          {r.name_ar && <span className="sb-fx-name" style={{ display: 'block' }}><bdi>{r.name_ar}</bdi></span>}
+        </span>
+      ),
+    },
+    { key: 'email', header: t('settingsPages.sales.email'), render: (r) => r.email ?? '—' },
+    { key: 'phone', header: t('settingsPages.sales.phone'), render: (r) => r.phone ? <bdi dir="ltr">{r.phone}</bdi> : '—' },
+    { key: 'pct', header: t('settingsPages.sales.commission'), align: 'end', render: (r) => <bdi dir="ltr" className="sb-mono">{fmt(Number(r.commission_pct))}</bdi> },
+    { key: 'status', header: '', render: (r) => <span className={`sb-pill ${r.is_active ? 'sb-pill-good' : 'sb-pill-muted'}`}>{r.is_active ? t('common.active') : t('common.inactive')}</span> },
+    {
+      key: 'actions', header: '', align: 'end',
+      render: (r) => (
+        <span style={{ display: 'inline-flex', gap: 2, whiteSpace: 'nowrap' }}>
+          <button type="button" className="sb-row-link text-brand-600" onClick={() => startEdit(r)}>{t('common.edit')}</button>
+          {r.is_active ? (
+            <button type="button" className="sb-row-link text-danger-500"
+              onClick={() => { if (window.confirm(t('settingsPages.sales.confirm_deactivate', { name: r.name }))) deactivateMutation.mutate(r.id); }}>
+              {t('settingsPages.sales.deactivate')}
+            </button>
+          ) : (
+            <button type="button" className="sb-row-link text-brand-600" onClick={() => activateMutation.mutate(r.id)}>
+              {t('settingsPages.sales.reactivate')}
+            </button>
+          )}
+        </span>
+      ),
+    },
+  ];
 
-      {error && (
-        <div style={{
-          background: theme.dangerSoft, border: `1px solid ${theme.dangerBorder}`,
-          borderRadius: '8px', padding: '10px 16px', fontSize: '13px', color: theme.danger,
-        }}>
-          {error}
-        </div>
-      )}
+  // Ocean Teal (UI v1.1): look only — same list, inline add / edit form,
+  // show-inactive filter and activate / deactivate as before.
+  return (
+    <OceanPage
+      testid="salespeople-ocean"
+      title={t('settingsNav.items.salespeople.title')}
+      subtitle={t('settingsPages.sales.subtitle')}
+      actions={!showForm ? <>
+        <span className="sb-clist-io"><ImportExportButton moduleKey="salespeople" /></span>
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={startNew}><Plus size={18} aria-hidden="true" />{t('settingsPages.sales.add')}</button>
+      </> : undefined}
+    >
+      {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
 
       {/* Form (add / edit) */}
       {showForm && (
-        <div className="rounded-card border border-border-subtle bg-surface-card p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-ink-primary">
-            {editingId ? 'Edit salesperson' : 'New salesperson'}
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input label="Name *" required value={form.name}
+        <section className="sb-card sb-form">
+          <div className="sb-form-head">
+            <span className="sb-form-icon" aria-hidden="true"><UserRound size={20} /></span>
+            <h2 className="sb-form-title">{editingId ? t('settingsPages.sales.edit_title') : t('settingsPages.sales.new_title')}</h2>
+          </div>
+          <div className="sb-form-grid">
+            <Input id="sp-name" label={t('settingsPages.sales.name')} required value={form.name}
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
-            <Input label="Name (Arabic)" value={form.name_ar}
+            <Input id="sp-name-ar" label={t('settingsPages.sales.name_ar')} dir="rtl" value={form.name_ar}
               onChange={e => setForm(f => ({ ...f, name_ar: e.target.value }))} />
-            <Input label="Email" type="email" value={form.email}
+            <Input id="sp-email" label={t('settingsPages.sales.email')} type="email" dir="ltr" value={form.email}
               onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
-            <Input label="Phone" value={form.phone}
+            <Input id="sp-phone" label={t('settingsPages.sales.phone')} type="tel" dir="ltr" value={form.phone}
               onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
-            <Input label="Commission %" type="number" min="0" max="100" step="0.01"
+            <Input id="sp-pct" label={t('settingsPages.sales.commission')} type="number" min="0" max="100" step="0.01" dir="ltr"
               value={form.commission_pct}
               onChange={e => setForm(f => ({ ...f, commission_pct: e.target.value }))} />
-            <Input label="Notes" value={form.notes}
+            <Input id="sp-notes" label={t('settingsPages.sales.notes')} value={form.notes}
               onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
           </div>
-          <div className="flex gap-2 pt-2">
-            <Button variant="ghost" onClick={cancel}>Cancel</Button>
-            <Button onClick={() => { setError(null); saveMutation.mutate(); }}
-              disabled={saveMutation.isPending}>
-              {saveMutation.isPending ? 'Saving…' : 'Save'}
-            </Button>
+          <div className="sb-form-actions" style={{ marginTop: 16 }}>
+            <button type="button" className="sb-secondary-btn" onClick={cancel}>{t('common.cancel')}</button>
+            <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
+              {saveMutation.isPending && <Loader2 size={18} className="sb-spin" aria-hidden="true" />}
+              {saveMutation.isPending ? t('common.saving') : t('common.save')}
+            </button>
           </div>
-        </div>
+        </section>
       )}
 
       {/* Show-inactive toggle */}
-      <label className="flex items-center gap-2 text-sm text-ink-secondary">
-        <input type="checkbox" checked={showInactive}
-          onChange={e => setShowInactive(e.target.checked)} />
-        Show inactive
+      <label className="sb-check-row" style={{ alignSelf: 'flex-start' }}>
+        <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
+        <span className="sb-check-text">{t('settingsPages.sales.show_inactive')}</span>
       </label>
 
       {/* List */}
-      <div className="rounded-card border border-border-subtle bg-surface-card overflow-hidden">
-        {isLoading ? (
-          <p className="p-8 text-center text-sm text-ink-tertiary">Loading…</p>
-        ) : rows.length === 0 ? (
-          <p className="p-8 text-center text-sm text-ink-tertiary">
-            No salespeople yet. Click <strong>Add salesperson</strong> above to create your first one.
-          </p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-surface-muted">
-              <tr>
-                <th className="px-4 py-2 text-left text-xs font-medium text-ink-secondary">Name</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-ink-secondary">Email</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-ink-secondary">Phone</th>
-                <th className="px-4 py-2 text-right text-xs font-medium text-ink-secondary">Commission %</th>
-                <th className="px-4 py-2 text-center text-xs font-medium text-ink-secondary">Status</th>
-                <th className="px-4 py-2"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-subtle">
-              {rows.map(r => (
-                <tr key={r.id} className={r.is_active ? '' : 'opacity-50'}>
-                  <td className="px-4 py-2 text-ink-primary">
-                    {r.name}
-                    {r.name_ar && <span className="ms-2 text-xs text-ink-tertiary">({r.name_ar})</span>}
-                  </td>
-                  <td className="px-4 py-2 text-ink-secondary">{r.email ?? '—'}</td>
-                  <td className="px-4 py-2 text-ink-secondary">{r.phone ?? '—'}</td>
-                  <td className="px-4 py-2 text-right font-mono">{fmt(Number(r.commission_pct))}</td>
-                  <td className="px-4 py-2 text-center">
-                    <span className={`rounded-pill px-2 py-0.5 text-xs font-medium ${
-                      r.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'
-                    }`}>{r.is_active ? 'Active' : 'Inactive'}</span>
-                  </td>
-                  <td className="px-4 py-2 text-right whitespace-nowrap">
-                    <Button variant="ghost" size="sm" onClick={() => startEdit(r)}>Edit</Button>
-                    {r.is_active ? (
-                      <Button variant="ghost" size="sm" className="text-red-600"
-                        onClick={() => { if (window.confirm(`Deactivate "${r.name}"? They will be hidden from new invoice/quote pickers but stay on historical sales.`)) deactivateMutation.mutate(r.id); }}>
-                        Deactivate
-                      </Button>
-                    ) : (
-                      <Button variant="ghost" size="sm" onClick={() => activateMutation.mutate(r.id)}>
-                        Reactivate
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
+      {isLoading
+        ? <div className="sb-card sb-empty">{t('common.loading')}</div>
+        : <OceanTable columns={columns} rows={rows} keyFn={(r) => r.id} rowMuted={(r) => !r.is_active} emptyMessage={t('settingsPages.sales.empty')} />}
+    </OceanPage>
   );
 }

@@ -7,7 +7,9 @@ import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Modal } from '@/ui/modal';
-import { Table, type Column } from '@/ui/table';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Upload, Search, Pencil, Trash2, ChevronRight } from 'lucide-react';
 import Papa from 'papaparse';
 import { downloadBlob } from '@/lib/io-export';
 import type {
@@ -355,47 +357,60 @@ export default function VehicleMakesPage() {
     { key: 'engines', label: t('catalog.vehicles.tab_engines') },
   ];
 
+  // Ocean Teal (UI v1.1): look only — same makes → models → generations →
+  // variants drill-down, engines, shared (read-only) rows, import and forms.
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-ink-primary">{t('catalog.vehicles.title')}</h1>
-        <Button size="sm" variant="secondary" onClick={openImport}>{t('catalog.vehicles.import')}</Button>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
+    <OceanPage
+      testid="vehicle-makes-ocean"
+      title={t('settingsNav.items.vehicles.title')}
+      subtitle={t('settingsPages.vehicles.count', { count: makes.length })}
+      actions={
+        <button type="button" className="sb-secondary-btn sb-btn-inline" onClick={openImport}><Upload size={18} aria-hidden="true" />{t('catalog.vehicles.import')}</button>
+      }
+    >
+      <div className="sb-vm-grid">
         {/* ── LEFT: makes ── */}
         <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-ink-secondary">{t('catalog.vehicles.makes')}</h2>
+          <div className="sb-vm-head">
+            <h2 className="sb-set-section" style={{ margin: 0 }}>{t('catalog.vehicles.makes')}</h2>
             <Button size="sm" onClick={openAddMake}>{t('common.add')}</Button>
           </div>
-          <Input placeholder={t('catalog.vehicles.search_makes')} value={search} onChange={(e) => setSearch(e.target.value)} />
-          <div className="overflow-hidden rounded-card border border-border-subtle bg-white">
+          <label className="sb-search" style={{ marginTop: 0 }}>
+            <Search size={18} className="sb-icon" aria-hidden="true" />
+            <span className="sr-only">{t('catalog.vehicles.search_makes')}</span>
+            <input type="search" placeholder={t('catalog.vehicles.search_makes')} value={search} onChange={(e) => setSearch(e.target.value)} />
+          </label>
+          <div className="sb-card" style={{ padding: 0, overflow: 'hidden' }}>
             {makesLoading ? (
-              <div className="py-8 text-center text-sm text-ink-tertiary">{t('common.loading')}</div>
+              <div className="sb-empty">{t('common.loading')}</div>
             ) : filteredMakes.length === 0 ? (
-              <div className="py-8 text-center text-sm text-ink-tertiary">{t('catalog.vehicles.empty_makes')}</div>
+              <div className="sb-empty">{t('catalog.vehicles.empty_makes')}</div>
             ) : (
-              <ul className="max-h-[60vh] divide-y divide-slate-100 overflow-y-auto">
+              <ul className="sb-vm-makes">
                 {filteredMakes.map((m) => {
                   const active = selectedMake?.id === m.id;
                   const sys = m.company_id === null;
                   return (
                     <li key={m.id}>
                       <div
+                        role="button"
+                        tabIndex={0}
+                        aria-current={active ? 'true' : undefined}
                         onClick={() => selectMake(m)}
-                        className={`group flex cursor-pointer items-center justify-between px-3 py-2.5 text-sm ${active ? 'bg-brand-50 text-brand-700' : 'text-ink-primary hover:bg-slate-50'}`}
+                        onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); selectMake(m); } }}
+                        className={`sb-vm-make ${active ? 'active' : ''}`}
                       >
-                        <span className="flex items-center gap-2 font-medium">
+                        <span className="sb-vm-make-name">
                           {m.name}
-                          {sys && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-500">{t('catalog.vehicles.shared')}</span>}
+                          {sys && <span className="sb-pill sb-pill-muted">{t('catalog.vehicles.shared')}</span>}
                         </span>
                         {!sys && (
-                          <span className="flex gap-2 opacity-0 group-hover:opacity-100">
-                            <button onClick={(e) => { e.stopPropagation(); openEditMake(m); }} className="text-xs text-brand-600 hover:underline">{t('common.edit')}</button>
-                            <button onClick={(e) => { e.stopPropagation(); if (confirm(t('common.confirm_delete'))) deleteMake.mutate(m.id); }} className="text-xs text-danger-500 hover:underline">{t('common.delete')}</button>
+                          <span className="sb-vm-make-actions">
+                            <button type="button" onClick={(e) => { e.stopPropagation(); openEditMake(m); }} className="sb-icon-btn" aria-label={`${t('common.edit')} ${m.name}`}><Pencil size={16} aria-hidden="true" /></button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); if (confirm(t('common.confirm_delete'))) deleteMake.mutate(m.id); }} className="sb-icon-btn sb-danger" aria-label={`${t('common.delete')} ${m.name}`}><Trash2 size={16} aria-hidden="true" /></button>
                           </span>
                         )}
+                        <ChevronRight size={18} className="sb-icon sb-flip" aria-hidden="true" />
                       </div>
                     </li>
                   );
@@ -408,26 +423,29 @@ export default function VehicleMakesPage() {
         {/* ── RIGHT: detail ── */}
         <div className="flex flex-col gap-4">
           {!selectedMake ? (
-            <div className="rounded-card border border-border-subtle p-12 text-center text-sm text-ink-tertiary">
+            <div className="sb-card sb-empty" style={{ padding: 40, textAlign: 'center' }}>
               {t('catalog.vehicles.select_make_hint')}
             </div>
           ) : (
             <>
               {/* breadcrumb */}
-              <div className="flex flex-wrap items-center gap-1.5 text-sm">
-                <button onClick={() => setTab('models')} className="font-semibold text-ink-primary hover:text-brand-600">{selectedMake.name}</button>
-                {selectedModel && (<><span className="text-ink-tertiary">▸</span><button onClick={() => setTab('generations')} className="text-ink-secondary hover:text-brand-600">{selectedModel.name}</button></>)}
-                {selectedGen && (<><span className="text-ink-tertiary">▸</span><button onClick={() => setTab('variants')} className="text-ink-secondary hover:text-brand-600">{selectedGen.name}</button></>)}
-                {makeIsSystem && <span className="ml-2 rounded bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">{t('catalog.vehicles.system_readonly')}</span>}
-              </div>
+              <nav className="sb-vm-crumb" aria-label={selectedMake.name}>
+                <button type="button" onClick={() => setTab('models')} className="sb-row-link is-strong">{selectedMake.name}</button>
+                {selectedModel && (<><ChevronRight size={16} className="sb-flip" aria-hidden="true" /><button type="button" onClick={() => setTab('generations')} className="sb-row-link">{selectedModel.name}</button></>)}
+                {selectedGen && (<><ChevronRight size={16} className="sb-flip" aria-hidden="true" /><button type="button" onClick={() => setTab('variants')} className="sb-row-link">{selectedGen.name}</button></>)}
+                {makeIsSystem && <span className="sb-pill sb-pill-muted">{t('catalog.vehicles.system_readonly')}</span>}
+              </nav>
 
               {/* tabs */}
-              <div className="flex gap-1 border-b border-border-subtle">
+              <div className="sb-tabs sb-vm-tabs" role="tablist">
                 {tabs.map((tb) => (
                   <button
                     key={tb.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === tb.key}
                     onClick={() => setTab(tb.key)}
-                    className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${tab === tb.key ? 'border-brand-600 text-brand-600' : 'border-transparent text-ink-secondary hover:text-ink-primary'}`}
+                    className={`sb-tab ${tab === tb.key ? 'active' : ''}`}
                   >
                     {tb.label}
                   </button>
@@ -437,12 +455,12 @@ export default function VehicleMakesPage() {
               {/* MODELS */}
               {tab === 'models' && (
                 <div className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-ink-secondary">{t('catalog.vehicles.tab_models')}</h3>
+                  <div className="sb-vm-head">
+                    <h3 className="sb-vm-title">{t('catalog.vehicles.tab_models')}</h3>
                     {canEdit && <Button size="sm" onClick={openAddModel}>{t('common.add')}</Button>}
                   </div>
-                  <p className="text-xs text-ink-tertiary">{t('catalog.vehicles.click_model_hint')}</p>
-                  <Table columns={modelColumns} rows={models} keyFn={(r) => r.id} onRowClick={drillToGenerations} emptyMessage={t('catalog.vehicles.empty_models')} />
+                  <p className="sb-form-hint">{t('catalog.vehicles.click_model_hint')}</p>
+                  <OceanTable columns={modelColumns} rows={models} keyFn={(r) => r.id} onRowClick={drillToGenerations} emptyMessage={t('catalog.vehicles.empty_models')} />
                 </div>
               )}
 
@@ -450,15 +468,15 @@ export default function VehicleMakesPage() {
               {tab === 'generations' && (
                 <div className="flex flex-col gap-3">
                   {!selectedModel ? (
-                    <div className="rounded-card border border-border-subtle p-8 text-center text-sm text-ink-tertiary">{t('catalog.vehicles.select_model_hint')}</div>
+                    <div className="sb-card sb-empty" style={{ textAlign: 'center' }}>{t('catalog.vehicles.select_model_hint')}</div>
                   ) : (
                     <>
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-ink-secondary">{t('catalog.vehicles.generations_of')} {selectedModel.name}</h3>
+                      <div className="sb-vm-head">
+                        <h3 className="sb-vm-title">{t('catalog.vehicles.generations_of')} {selectedModel.name}</h3>
                         {canEdit && <Button size="sm" onClick={openAddGen}>{t('common.add')}</Button>}
                       </div>
-                      <p className="text-xs text-ink-tertiary">{t('catalog.vehicles.click_gen_hint')}</p>
-                      <Table columns={genColumns} rows={generations} keyFn={(r) => r.id} onRowClick={drillToVariants} emptyMessage={t('catalog.vehicles.empty_generations')} />
+                      <p className="sb-form-hint">{t('catalog.vehicles.click_gen_hint')}</p>
+                      <OceanTable columns={genColumns} rows={generations} keyFn={(r) => r.id} onRowClick={drillToVariants} emptyMessage={t('catalog.vehicles.empty_generations')} />
                     </>
                   )}
                 </div>
@@ -468,14 +486,14 @@ export default function VehicleMakesPage() {
               {tab === 'variants' && (
                 <div className="flex flex-col gap-3">
                   {!selectedGen ? (
-                    <div className="rounded-card border border-border-subtle p-8 text-center text-sm text-ink-tertiary">{t('catalog.vehicles.select_gen_hint')}</div>
+                    <div className="sb-card sb-empty" style={{ textAlign: 'center' }}>{t('catalog.vehicles.select_gen_hint')}</div>
                   ) : (
                     <>
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-ink-secondary">{t('catalog.vehicles.variants_of')} {selectedGen.name}</h3>
+                      <div className="sb-vm-head">
+                        <h3 className="sb-vm-title">{t('catalog.vehicles.variants_of')} {selectedGen.name}</h3>
                         {canEdit && <Button size="sm" onClick={openAddVar}>{t('common.add')}</Button>}
                       </div>
-                      <Table columns={varColumns} rows={variants} keyFn={(r) => r.id} emptyMessage={t('catalog.vehicles.empty_variants')} />
+                      <OceanTable columns={varColumns} rows={variants} keyFn={(r) => r.id} emptyMessage={t('catalog.vehicles.empty_variants')} />
                     </>
                   )}
                 </div>
@@ -484,12 +502,12 @@ export default function VehicleMakesPage() {
               {/* ENGINES */}
               {tab === 'engines' && (
                 <div className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-ink-secondary">{t('catalog.vehicles.tab_engines')}</h3>
+                  <div className="sb-vm-head">
+                    <h3 className="sb-vm-title">{t('catalog.vehicles.tab_engines')}</h3>
                     <Button size="sm" onClick={openAddEng}>{t('common.add')}</Button>
                   </div>
-                  <p className="text-xs text-ink-tertiary">{t('catalog.vehicles.engines_hint')}</p>
-                  <Table columns={engColumns} rows={engines} keyFn={(r) => r.id} emptyMessage={t('catalog.vehicles.empty_engines')} />
+                  <p className="sb-form-hint">{t('catalog.vehicles.engines_hint')}</p>
+                  <OceanTable columns={engColumns} rows={engines} keyFn={(r) => r.id} emptyMessage={t('catalog.vehicles.empty_engines')} />
                 </div>
               )}
             </>
@@ -500,7 +518,7 @@ export default function VehicleMakesPage() {
       {/* ── modals ── */}
       {/* make */}
       <Modal open={makeModal} onClose={() => setMakeModal(false)} title={editingMake ? t('catalog.vehicles.edit_make') : t('catalog.vehicles.add_make')}>
-        <div className="flex flex-col gap-4">
+        <div className="sb-ocean sb-form sb-modal-form">
           <Input label={t('catalog.vehicles.make_name')} required value={makeName} onChange={(e) => setMakeName(e.target.value)} error={makeErr} />
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="secondary" onClick={() => setMakeModal(false)}>{t('common.cancel')}</Button>
@@ -511,7 +529,7 @@ export default function VehicleMakesPage() {
 
       {/* model */}
       <Modal open={modelModal} onClose={() => setModelModal(false)} title={editingModel ? t('catalog.vehicles.edit_model') : t('catalog.vehicles.add_model')}>
-        <div className="flex flex-col gap-4">
+        <div className="sb-ocean sb-form sb-modal-form">
           <Input label={t('catalog.vehicles.model_name')} required value={modelForm.name} onChange={(e) => setModelForm({ ...modelForm, name: e.target.value })} />
           <Select label={t('catalog.vehicles.body_type')} options={selOpts(BODY_OPTS, t('catalog.vehicles.any'))} value={modelForm.body_type} onChange={(e) => setModelForm({ ...modelForm, body_type: e.target.value })} />
           <Input label={t('catalog.vehicles.chassis')} value={modelForm.chassis_code} onChange={(e) => setModelForm({ ...modelForm, chassis_code: e.target.value })} />
@@ -524,7 +542,7 @@ export default function VehicleMakesPage() {
 
       {/* generation */}
       <Modal open={genModal} onClose={() => setGenModal(false)} title={editingGen ? t('catalog.vehicles.edit_generation') : t('catalog.vehicles.add_generation')}>
-        <div className="flex flex-col gap-4">
+        <div className="sb-ocean sb-form sb-modal-form">
           <Input label={t('catalog.vehicles.gen_name')} required value={genForm.name} onChange={(e) => setGenForm({ ...genForm, name: e.target.value })} placeholder="E170" />
           <Input label={t('catalog.vehicles.code')} value={genForm.code} onChange={(e) => setGenForm({ ...genForm, code: e.target.value })} />
           <div className="grid grid-cols-2 gap-3">
@@ -540,7 +558,7 @@ export default function VehicleMakesPage() {
 
       {/* variant */}
       <Modal open={varModal} onClose={() => setVarModal(false)} title={editingVar ? t('catalog.vehicles.edit_variant') : t('catalog.vehicles.add_variant')}>
-        <div className="flex flex-col gap-4">
+        <div className="sb-ocean sb-form sb-modal-form">
           <Input label={t('catalog.vehicles.variant_label')} value={varForm.label} onChange={(e) => setVarForm({ ...varForm, label: e.target.value })} placeholder={t('catalog.vehicles.variant_label_ph')} />
           <Select
             label={t('catalog.vehicles.engine')}
@@ -567,7 +585,7 @@ export default function VehicleMakesPage() {
 
       {/* engine */}
       <Modal open={engModal} onClose={() => setEngModal(false)} title={editingEng ? t('catalog.vehicles.edit_engine') : t('catalog.vehicles.add_engine')}>
-        <div className="flex flex-col gap-4">
+        <div className="sb-ocean sb-form sb-modal-form">
           <Input label={t('catalog.vehicles.engine_code')} required value={engForm.engine_code} onChange={(e) => setEngForm({ ...engForm, engine_code: e.target.value })} error={engErr} placeholder="1ZZ-FE" />
           <div className="grid grid-cols-2 gap-3">
             <Input label={t('catalog.vehicles.displacement')} type="number" value={engForm.displacement_cc} onChange={(e) => setEngForm({ ...engForm, displacement_cc: e.target.value })} />
@@ -584,8 +602,8 @@ export default function VehicleMakesPage() {
 
       {/* import */}
       <Modal open={importOpen} onClose={() => setImportOpen(false)} title={t('catalog.vehicles.import_title')}>
-        <div className="flex flex-col gap-4">
-          <p className="text-xs text-ink-tertiary">{t('catalog.vehicles.import_hint')}</p>
+        <div className="sb-ocean sb-form sb-modal-form">
+          <p className="sb-form-hint">{t('catalog.vehicles.import_hint')}</p>
           <div className="flex items-center gap-3">
             <input
               type="file"
@@ -615,6 +633,6 @@ export default function VehicleMakesPage() {
           </div>
         </div>
       </Modal>
-    </div>
+    </OceanPage>
   );
 }
