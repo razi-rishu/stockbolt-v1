@@ -6,12 +6,24 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
-import { Card } from '@/ui/card';
-import { PageHeader } from '@/ui/primitives';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
 import { FormErrorBanner } from '@/ui/form-error-banner';
+import { ImageIcon, Building2, Percent, Package, Coins, Landmark, Upload, Loader2 } from 'lucide-react';
+import '@/styles/stockbolt-ocean-teal.css';
+
+/** Ocean Teal card heading: icon square + title. */
+function SectionHead({ icon, title, hint }: { icon: React.ReactNode; title: string; hint?: string }) {
+  return (
+    <div className="sb-form-head">
+      <span className="sb-form-icon" aria-hidden="true">{icon}</span>
+      <span style={{ minWidth: 0 }}>
+        <h2 className="sb-form-title">{title}</h2>
+        {hint && <p className="sb-form-hint">{hint}</p>}
+      </span>
+    </div>
+  );
+}
 
 // Defaults live in useForm defaultValues; schema only validates.
 const schema = z.object({
@@ -135,250 +147,168 @@ export default function CompanySettingsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+      <div className="sb-ocean sb-page" style={{ display: 'flex', justifyContent: 'center', padding: 48 }}>
+        <Loader2 size={24} className="sb-icon sb-spin" aria-label={t('common.loading')} />
       </div>
     );
   }
 
+  const inv = (k: keyof FormValues) => ({ 'aria-invalid': errors[k] ? true : undefined });
+
+  // Ocean Teal (UI v1.1): look only. Same form, fields, validation, save,
+  // logo upload and read-only finance block as before.
   return (
-    <div style={{ maxWidth: '720px', margin: '0 auto', padding: '8px 0' }}>
-      <div style={{ marginBottom: '20px' }}>
-        <PageHeader title={t('settings.company.title')} subtitle="Company profile, branding and tax configuration" />
+    <div className="sb-ocean sb-page sb-form sb-company" data-testid="company-settings-ocean" style={{ paddingBottom: 48 }}>
+      <div className="sb-hero">
+        <h1 className="sb-title" style={{ marginTop: 0 }}>{t('settingsNav.items.company.title')}</h1>
+        <div className="sb-clist-count">{t('settingsPages.company.subtitle')}</div>
       </div>
 
-      {/* Logo upload */}
-      <Card className="mb-6">
-        <h2 className="mb-4 text-base font-semibold text-ink-primary">{t('settings.company.logo')}</h2>
-        <div className="flex items-center gap-4">
-          <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-card border border-border-subtle bg-surface-muted">
-            {logoUrl ? (
-              <img src={logoUrl} alt="Company logo" className="h-full w-full object-contain" />
-            ) : (
-              <svg viewBox="0 0 24 24" fill="none" className="h-8 w-8 text-ink-tertiary" stroke="currentColor" strokeWidth="1.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M13.5 12h.008v.008H13.5V12zm4.5 9H6a2.25 2.25 0 01-2.25-2.25V7.5A2.25 2.25 0 016 5.25h12A2.25 2.25 0 0120.25 7.5v11.25A2.25 2.25 0 0118 21z" />
-              </svg>
-            )}
-          </div>
-          <div>
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={logoUploading}
-              onClick={() => fileRef.current?.click()}
-            >
-              {t('settings.company.upload_logo')}
-            </Button>
-            <p className="mt-1 text-xs text-ink-tertiary">{t('settings.company.logo_hint')}</p>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/svg+xml"
-              className="hidden"
-              onChange={handleLogoUpload}
-            />
-          </div>
-        </div>
-      </Card>
-
-      {/* Company details form */}
-      <form onSubmit={handleSubmit((v) => { clearBanner(); return onSubmit(v); }, onInvalid)} className="flex flex-col gap-6">
-        <Card>
-          <div className="flex flex-col gap-4">
-            <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
-            <h2 className="text-base font-semibold text-ink-primary">{t('settings.company.details')}</h2>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Input
-                label={t('settings.company.name')}
-                required
-                error={errors.name?.message}
-                {...register('name')}
-              />
-              <Input
-                label={t('settings.company.name_ar')}
-                dir="rtl"
-                error={errors.name_ar?.message}
-                {...register('name_ar')}
-              />
+      <div className="sb-body sb-form-body">
+        {/* Logo upload */}
+        <section className="sb-card">
+          <SectionHead icon={<ImageIcon size={20} />} title={t('settings.company.logo')} />
+          <div className="sb-logo-row">
+            <div className="sb-logo-box">
+              {logoUrl ? (
+                <img src={logoUrl} alt={t('settingsPages.company.logo_alt')} />
+              ) : (
+                <ImageIcon size={30} aria-hidden="true" />
+              )}
             </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Input
-                label={t('settings.company.address')}
-                error={errors.address?.message}
-                {...register('address')}
-              />
-              <Input
-                label={t('settings.company.address_ar')}
-                dir="rtl"
-                error={errors.address_ar?.message}
-                {...register('address_ar')}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Input
-                label={t('settings.company.city')}
-                error={errors.city?.message}
-                {...register('city')}
-              />
-              <Input
-                label={t('settings.company.state')}
-                error={errors.state?.message}
-                {...register('state')}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Input
-                label={t('settings.company.phone')}
-                type="tel"
-                placeholder="+971 …"
-                error={errors.phone?.message}
-                {...register('phone')}
-              />
-              <Input
-                label={t('settings.company.email')}
-                type="email"
-                placeholder="info@company.com"
-                error={errors.email?.message}
-                {...register('email')}
-              />
-            </div>
-          </div>
-        </Card>
-
-        {/* Tax & VAT */}
-        <Card>
-          <div className="flex flex-col gap-4">
-            <h2 className="text-base font-semibold text-ink-primary">{t('settings.company.tax_section')}</h2>
-
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-border-strong text-brand-500"
-                {...register('is_tax_registered')}
-              />
-              <span className="text-sm text-ink-primary">{t('wizard.step2.tax_registered')}</span>
-            </label>
-
-            {is_tax_registered && (
-              <Input
-                label={t('wizard.step2.tax_id')}
-                placeholder="TRN / GSTIN"
-                error={errors.tax_id?.message}
-                {...register('tax_id')}
-              />
-            )}
-
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                className="mt-0.5 h-4 w-4 rounded border-border-strong text-brand-500"
-                {...register('prices_inclusive_of_tax')}
-              />
-              <span className="text-sm">
-                <span className="block text-ink-primary">{t('settings.company.prices_inclusive')}</span>
-                <span className="block text-xs text-ink-tertiary">{t('settings.company.prices_inclusive_hint')}</span>
-              </span>
-            </label>
-          </div>
-        </Card>
-
-        {/* Inventory — Phase 30 backorder policy */}
-        <Card>
-          <div className="flex flex-col gap-4">
-            <h2 className="text-base font-semibold text-ink-primary">{t('settings.company.inventory_section')}</h2>
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                className="mt-0.5 h-4 w-4 rounded border-border-strong text-brand-500"
-                {...register('allow_negative_stock')}
-              />
-              <span className="text-sm">
-                <span className="block text-ink-primary">{t('settings.company.allow_backorders')}</span>
-                <span className="block text-xs text-ink-tertiary">{t('settings.company.allow_backorders_hint')}</span>
-              </span>
-            </label>
-          </div>
-        </Card>
-
-        {/* Phase 46 — cash rounding for document grand totals */}
-        <Card>
-          <div className="flex flex-col gap-4">
-            <h2 className="text-base font-semibold text-ink-primary">{t('settings.company.rounding_section')}</h2>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-ink-primary">{t('settings.company.rounding_step')}</span>
-              <span className="text-xs text-ink-tertiary">{t('settings.company.rounding_step_hint')}</span>
-              <select
-                {...register('rounding_step')}
-                className="mt-1 h-9 w-56 rounded-lg border border-border-subtle bg-white px-2 text-sm text-ink-primary"
+            <div style={{ minWidth: 0 }}>
+              <button
+                type="button"
+                className="sb-secondary-btn sb-btn-inline"
+                disabled={logoUploading}
+                onClick={() => fileRef.current?.click()}
               >
+                {logoUploading ? <Loader2 size={18} className="sb-spin" aria-hidden="true" /> : <Upload size={18} aria-hidden="true" />}
+                {t('settings.company.upload_logo')}
+              </button>
+              <p className="sb-form-hint" style={{ marginTop: 6 }}>{t('settings.company.logo_hint')}</p>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/svg+xml"
+                className="hidden"
+                onChange={handleLogoUpload}
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Company details form */}
+        <form onSubmit={handleSubmit((v) => { clearBanner(); return onSubmit(v); }, onInvalid)} className="sb-form-body">
+          <section className="sb-card">
+            <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
+            <SectionHead icon={<Building2 size={20} />} title={t('settings.company.details')} />
+            <div className="sb-form-grid">
+              <Input label={t('settings.company.name')} required error={errors.name?.message} {...inv('name')} {...register('name')} />
+              <Input label={t('settings.company.name_ar')} dir="rtl" error={errors.name_ar?.message} {...register('name_ar')} />
+              <Input label={t('settings.company.address')} error={errors.address?.message} {...register('address')} />
+              <Input label={t('settings.company.address_ar')} dir="rtl" error={errors.address_ar?.message} {...register('address_ar')} />
+              <Input label={t('settings.company.city')} error={errors.city?.message} {...register('city')} />
+              <Input label={t('settings.company.state')} error={errors.state?.message} {...register('state')} />
+              <Input label={t('settings.company.phone')} type="tel" dir="ltr" placeholder="+971 …" error={errors.phone?.message} {...register('phone')} />
+              <Input label={t('settings.company.email')} type="email" dir="ltr" placeholder="info@company.com" error={errors.email?.message} {...inv('email')} {...register('email')} />
+            </div>
+          </section>
+
+          {/* Tax & VAT */}
+          <section className="sb-card">
+            <SectionHead icon={<Percent size={20} />} title={t('settings.company.tax_section')} />
+            <div className="sb-form-stack">
+              <label className="sb-check-row">
+                <input type="checkbox" {...register('is_tax_registered')} />
+                <span className="sb-check-text">{t('wizard.step2.tax_registered')}</span>
+              </label>
+              {is_tax_registered && (
+                <Input label={t('wizard.step2.tax_id')} placeholder="TRN / GSTIN" dir="ltr" error={errors.tax_id?.message} {...register('tax_id')} />
+              )}
+              <label className="sb-check-row">
+                <input type="checkbox" {...register('prices_inclusive_of_tax')} />
+                <span className="sb-check-text">
+                  {t('settings.company.prices_inclusive')}
+                  <span className="sb-form-hint">{t('settings.company.prices_inclusive_hint')}</span>
+                </span>
+              </label>
+            </div>
+          </section>
+
+          {/* Inventory — Phase 30 backorder policy */}
+          <section className="sb-card">
+            <SectionHead icon={<Package size={20} />} title={t('settings.company.inventory_section')} />
+            <label className="sb-check-row">
+              <input type="checkbox" {...register('allow_negative_stock')} />
+              <span className="sb-check-text">
+                {t('settings.company.allow_backorders')}
+                <span className="sb-form-hint">{t('settings.company.allow_backorders_hint')}</span>
+              </span>
+            </label>
+          </section>
+
+          {/* Phase 46 — cash rounding for document grand totals */}
+          <section className="sb-card">
+            <SectionHead icon={<Coins size={20} />} title={t('settings.company.rounding_section')} hint={t('settings.company.rounding_step_hint')} />
+            <label className="sb-select-field">
+              <span className="sb-select-label">{t('settings.company.rounding_step')}</span>
+              <select {...register('rounding_step')} className="sb-field">
                 <option value="0">{t('settings.company.rounding_off')}</option>
                 <option value="0.25">0.25</option>
                 <option value="0.5">0.50</option>
                 <option value="1">1.00</option>
               </select>
             </label>
-          </div>
-        </Card>
+          </section>
 
-        {saveSuccess && (
-          <p className="rounded-lg bg-success-50 px-3 py-2 text-sm text-success-600">
-            {t('common.saved')}
-          </p>
-        )}
+          {saveSuccess && <p className="sb-alert sb-alert-good" role="status">{t('common.saved')}</p>}
 
-        {saveMutation.error && (
-          <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-600">
-            {saveMutation.error instanceof Error
-              ? saveMutation.error.message
-              : t('common.error')}
-          </p>
-        )}
+          {saveMutation.error && (
+            <p className="sb-alert sb-alert-danger" role="alert">
+              {saveMutation.error instanceof Error
+                ? saveMutation.error.message
+                : t('common.error')}
+            </p>
+          )}
 
-        <div className="flex justify-end gap-3">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => reset()}
-            disabled={!isDirty}
-          >
-            {t('common.cancel')}
-          </Button>
-          <Button type="submit" loading={isSubmitting} disabled={!isDirty}>
-            {t('common.save')}
-          </Button>
-        </div>
-      </form>
+          <div className="sb-form-actions">
+            <button type="button" className="sb-secondary-btn" onClick={() => reset()} disabled={!isDirty}>
+              {t('common.cancel')}
+            </button>
+            <button type="submit" className="sb-primary-btn sb-btn-inline" disabled={!isDirty || isSubmitting}>
+              {isSubmitting && <Loader2 size={18} className="sb-spin" aria-hidden="true" />}
+              {t('common.save')}
+            </button>
+          </div>
+        </form>
 
-      {/* Finance — read-only. Set during onboarding; changing currency,
-          fiscal year or costing method after transactions exist would
-          corrupt the books, so these are display-only here. */}
-      <Card className="mt-6">
-        <h2 className="text-base font-semibold text-ink-primary">{t('settings.company.finance_section')}</h2>
-        <p className="mt-1 text-xs text-ink-tertiary">{t('settings.company.finance_hint')}</p>
-        <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
-          <div>
-            <p className="text-xs text-ink-tertiary">Base Currency</p>
-            <p className="mt-0.5 font-medium text-ink-primary">{(company as { base_currency?: string } | null)?.base_currency ?? company?.currency ?? '—'}</p>
-            <p className="mt-0.5 text-[11px] text-ink-tertiary">All accounting reports are stated in this currency.</p>
+        {/* Finance — read-only. Set during onboarding; changing currency,
+            fiscal year or costing method after transactions exist would
+            corrupt the books, so these are display-only here. */}
+        <section className="sb-card">
+          <SectionHead icon={<Landmark size={20} />} title={t('settings.company.finance_section')} hint={t('settings.company.finance_hint')} />
+          <div className="sb-info-grid sb-finance-grid">
+            <div>
+              <div className="sb-info-label">{t('settings.company.currency')}</div>
+              <div className="sb-info-value"><bdi dir="ltr">{(company as { base_currency?: string } | null)?.base_currency ?? company?.currency ?? '—'}</bdi></div>
+              <div className="sb-form-hint">{t('settingsPages.company.base_currency_hint')}</div>
+            </div>
+            <div>
+              <div className="sb-info-label">{t('settings.company.country')}</div>
+              <div className="sb-info-value"><bdi dir="ltr">{company?.country_code ?? '—'}</bdi></div>
+            </div>
+            <div>
+              <div className="sb-info-label">{t('settings.company.fiscal_year_start')}</div>
+              <div className="sb-info-value"><bdi dir="ltr">{company?.fiscal_year_start ?? '—'}</bdi></div>
+            </div>
+            <div>
+              <div className="sb-info-label">{t('settings.company.costing_method')}</div>
+              <div className="sb-info-value" style={{ textTransform: 'uppercase' }}><bdi dir="ltr">{company?.costing_method ?? 'MAC'}</bdi></div>
+            </div>
           </div>
-          <div>
-            <p className="text-xs text-ink-tertiary">{t('settings.company.country')}</p>
-            <p className="mt-0.5 font-medium text-ink-primary">{company?.country_code ?? '—'}</p>
-          </div>
-          <div>
-            <p className="text-xs text-ink-tertiary">{t('settings.company.fiscal_year_start')}</p>
-            <p className="mt-0.5 font-medium text-ink-primary">{company?.fiscal_year_start ?? '—'}</p>
-          </div>
-          <div>
-            <p className="text-xs text-ink-tertiary">{t('settings.company.costing_method')}</p>
-            <p className="mt-0.5 font-medium text-ink-primary uppercase">{company?.costing_method ?? 'MAC'}</p>
-          </div>
-        </div>
-      </Card>
+        </section>
+      </div>
     </div>
   );
 }

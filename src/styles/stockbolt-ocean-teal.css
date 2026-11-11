@@ -832,3 +832,95 @@
 .sb-srail .sb-srail-item.is-disabled { opacity: .5; cursor: not-allowed; }
 .sb-srail .sb-srail-icon { display: inline-flex; color: var(--sb-primary); }
 .sb-srail .sb-srail-item:focus-visible { outline: 2px solid var(--sb-primary); outline-offset: 2px; }
+
+/* ── Settings forms: Company profile, Warehouses (settings step 2) ─────────
+   The shared <Input> keeps its own markup and inline styles; only its label
+   and focus ring follow Ocean Teal inside .sb-form. */
+.sb-ocean.sb-form .sb-form-body,
+.sb-ocean .sb-form-body { display: flex; flex-direction: column; gap: 14px; }
+.sb-ocean.sb-company .sb-form-body,
+.sb-ocean.sb-company .sb-hero { max-width: 860px; width: 100%; margin-inline: auto; }
+.sb-ocean .sb-form-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.sb-ocean .sb-form-icon {
+  width: 40px; height: 40px; flex: none; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--sb-primary-light); color: var(--sb-primary-dark);
+}
+.sb-ocean .sb-form-title { margin: 0; font-size: 17px; font-weight: 700; color: var(--sb-text); line-height: 40px; }
+.sb-ocean .sb-form-head .sb-form-hint { margin-top: -6px; }
+.sb-ocean .sb-form-hint { display: block; margin: 2px 0 0; font-size: 13px; font-weight: 400; color: var(--sb-text-secondary); line-height: 1.45; }
+.sb-ocean .sb-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; }
+.sb-ocean .sb-form-stack { display: flex; flex-direction: column; gap: 12px; }
+@media (max-width: 640px) { .sb-ocean .sb-form-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.sb-ocean.sb-form label[for],
+.sb-ocean .sb-form label[for] {
+  font-size: 13px !important; text-transform: none !important; letter-spacing: 0 !important;
+  color: var(--sb-text-secondary) !important; font-weight: 600 !important;
+}
+.sb-ocean.sb-form input:not([type=checkbox]):not([type=file]),
+.sb-ocean .sb-form input:not([type=checkbox]):not([type=file]) {
+  min-height: 44px; font-size: 15px !important; border-radius: var(--sb-radius-sm) !important; color: var(--sb-text) !important;
+}
+.sb-ocean.sb-form input:not([type=checkbox]):focus:not([aria-invalid=true]),
+.sb-ocean .sb-form input:not([type=checkbox]):focus:not([aria-invalid=true]) {
+  border-color: var(--sb-primary) !important; box-shadow: 0 0 0 3px rgba(0, 143, 135, .15) !important;
+}
+.sb-ocean.sb-form input[aria-invalid=true] { border-color: var(--sb-danger) !important; }
+
+.sb-ocean .sb-check-row {
+  display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; min-height: 48px; cursor: pointer;
+  border: 1px solid var(--sb-border); border-radius: var(--sb-radius-md); background: #fff;
+}
+.sb-ocean .sb-check-row:hover { border-color: var(--sb-primary-light); background: var(--sb-primary-soft); }
+.sb-ocean .sb-check-row input { width: 20px; height: 20px; margin-top: 1px; flex: none; accent-color: var(--sb-primary); cursor: pointer; }
+.sb-ocean .sb-check-text { font-size: 15px; font-weight: 600; color: var(--sb-text); min-width: 0; }
+
+.sb-ocean .sb-select-field { display: flex; flex-direction: column; gap: 6px; max-width: 320px; }
+.sb-ocean .sb-select-label { font-size: 13px; font-weight: 600; color: var(--sb-text-secondary); }
+.sb-ocean select.sb-field { border-radius: var(--sb-radius-sm); padding: 0 12px; font: inherit; font-size: 15px; }
+
+.sb-ocean .sb-logo-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.sb-ocean .sb-logo-box {
+  width: 88px; height: 88px; flex: none; overflow: hidden; border-radius: var(--sb-radius-md);
+  border: 1px dashed var(--sb-primary-light); background: var(--sb-primary-soft); color: var(--sb-primary);
+  display: flex; align-items: center; justify-content: center;
+}
+.sb-ocean .sb-logo-box img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+
+.sb-ocean .sb-btn-inline { display: inline-flex; align-items: center; gap: 8px; }
+.sb-ocean .sb-primary-btn:disabled,
+.sb-ocean .sb-secondary-btn:disabled { opacity: .5; cursor: not-allowed; }
+.sb-ocean .sb-primary-btn:disabled:hover { background: var(--sb-primary); }
+.sb-ocean .sb-secondary-btn:disabled:hover { background: var(--sb-primary-soft); }
+.sb-ocean .sb-form-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
+@media (max-width: 480px) { .sb-ocean .sb-form-actions > button { flex: 1; } }
+
+.sb-ocean .sb-alert { margin: 0; padding: 12px 14px; border-radius: var(--sb-radius-sm); font-size: 14px; font-weight: 600; }
+.sb-ocean .sb-alert-good { background: var(--sb-success-bg); color: var(--sb-success); }
+.sb-ocean .sb-alert-danger { background: var(--sb-danger-bg); color: var(--sb-danger); }
+
+.sb-ocean .sb-finance-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 760px) { .sb-ocean .sb-finance-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.sb-ocean .sb-spin { animation: sb-spin 1s linear infinite; }
+@keyframes sb-spin { to { transform: rotate(360deg); } }
+
+/* Warehouses */
+.sb-ocean .sb-wh-code {
+  display: inline-block; padding: 1px 8px; border-radius: 6px; background: var(--sb-background);
+  border: 1px solid var(--sb-border); font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--sb-text-secondary);
+  vertical-align: middle;
+}
+.sb-ocean .sb-pill-good { background: var(--sb-success-bg); color: var(--sb-success); }
+.sb-ocean .sb-wh-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.sb-ocean .sb-ccard-foot .sb-pill { margin-top: 0; }
+
+/* The add / edit form lives in the shared Modal (portal); keep the modal's
+   white surface rather than the page background. */
+.sb-ocean.sb-modal-form { background: transparent; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
+/* Next to the app sidebar and the settings rail the table is narrow: icon-only
+   row actions (each keeps its aria-label) so nothing scrolls sideways. */
+@media (max-width: 1440px) {
+  .sb-ocean .sb-wh-table .sb-icon-btn span { display: none; }
+  .sb-ocean .sb-wh-table .sb-icon-btn { min-width: 40px; justify-content: center; }
+}

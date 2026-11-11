@@ -2350,5 +2350,15 @@
         "desc": "Destructive admin operation that wipes transactions."
       }
     }
+  },
+  "settingsPages": {
+    "company": {
+      "subtitle": "Name, logo, address, tax and invoice rounding for your company.",
+      "logo_alt": "Company logo",
+      "base_currency_hint": "All accounting reports are stated in this currency."
+    },
+    "warehouses": {
+      "count": "Warehouses: {{count}}"
+    }
   }
 }
