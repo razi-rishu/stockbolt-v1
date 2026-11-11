@@ -1,5 +1,6 @@
 /**
- * Customers listing, Ocean Teal design (UI Design System v1.1).
+ * Customers / Suppliers listing, Ocean Teal design (UI Design System v1.1).
+ * `side` picks the title, labels and detail route; everything else is shared.
  *
  * Presentation only. contact-list.tsx still owns the data (same query), the
  * search rule (contactMatches), pagination size, the add / edit form, delete
@@ -22,6 +23,8 @@ import '@/styles/stockbolt-ocean-teal.css';
 type TermsFilter = 'all' | 'cod' | 'credit';
 
 export interface CustomerListOceanProps {
+  /** Which list this is. Default customer. */
+  side?: 'customer' | 'supplier';
   /** Rows already matched against the search box (contactMatches). */
   rows: ContactRow[];
   isLoading: boolean;
@@ -44,7 +47,11 @@ export function CustomerListOcean(p: CustomerListOceanProps) {
 
   const shown = p.rows.filter(r => filter === 'all' || (filter === 'cod' ? r.payment_terms_days <= 0 : r.payment_terms_days > 0));
   const paged = paginate(shown, p.page, p.pageSize);
-  const open = (r: ContactRow) => navigate(`/contacts/customers/${r.id}`);
+  const supplier = p.side === 'supplier';
+  const L = supplier
+    ? { title: 'contacts.suppliers_title', one: 'contacts.supplier', count: 'customerList.count_suppliers', empty: 'customerList.empty_filter_suppliers', base: '/contacts/suppliers' }
+    : { title: 'contacts.customers_title', one: 'contacts.customer', count: 'customerList.count', empty: 'customerList.empty_filter', base: '/contacts/customers' };
+  const open = (r: ContactRow) => navigate(`${L.base}/${r.id}`);
   const del = (r: ContactRow) => { if (confirm(t('common.confirm_delete'))) p.onDelete(r); };
   const cod = t('contacts.cod');
 
@@ -55,18 +62,18 @@ export function CustomerListOcean(p: CustomerListOceanProps) {
   ];
 
   return (
-    <div className="sb-ocean sb-page sb-clist" data-testid="customer-list-ocean">
+    <div className="sb-ocean sb-page sb-clist" data-testid={supplier ? 'supplier-list-ocean' : 'customer-list-ocean'}>
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="sb-hero">
         <div className="sb-clist-head">
           <div style={{ minWidth: 0 }}>
-            <h1 className="sb-title" style={{ marginTop: 0 }}>{t('contacts.customers_title')}</h1>
-            <div className="sb-clist-count">{t('customerList.count', { count: shown.length })}</div>
+            <h1 className="sb-title" style={{ marginTop: 0 }}>{t(L.title)}</h1>
+            <div className="sb-clist-count">{t(L.count, { count: shown.length })}</div>
           </div>
           <div className="sb-actions" style={{ marginTop: 0 }}>
             <span className="sb-clist-io"><ImportExportButton moduleKey="contacts" /></span>
             <button type="button" className="sb-primary-btn" onClick={p.onAdd}>
-              <Plus size={18} aria-hidden="true" />{t('common.add')} {t('contacts.customer')}
+              <Plus size={18} aria-hidden="true" />{t('common.add')} {t(L.one)}
             </button>
           </div>
         </div>
@@ -99,11 +106,11 @@ export function CustomerListOcean(p: CustomerListOceanProps) {
         {p.isLoading ? (
           <div className="sb-card sb-empty">{t('common.loading')}</div>
         ) : shown.length === 0 ? (
-          <div className="sb-card sb-empty">{p.rows.length === 0 ? t('contacts.empty') : t('customerList.empty_filter')}</div>
+          <div className="sb-card sb-empty">{p.rows.length === 0 ? t('contacts.empty') : t(L.empty)}</div>
         ) : (
           <>
             {/* Phone: one card per customer. */}
-            <ul className="sb-clist-cards" aria-label={t('contacts.customers_title')}>
+            <ul className="sb-clist-cards" aria-label={t(L.title)}>
               {paged.map(r => (
                 <li key={r.id} className="sb-card sb-ccard">
                   <button type="button" className="sb-ccard-main" onClick={() => open(r)}>

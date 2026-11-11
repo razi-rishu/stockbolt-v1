@@ -2141,7 +2141,9 @@
     "filter_cod": "نقدًا عند الاستلام",
     "filter_credit": "بشروط ائتمان",
     "count": "العملاء: {{count}}",
-    "empty_filter": "لا يوجد عملاء يطابقون هذه التصفية."
+    "empty_filter": "لا يوجد عملاء يطابقون هذه التصفية.",
+    "count_suppliers": "الموردون: {{count}}",
+    "empty_filter_suppliers": "لا يوجد موردون يطابقون هذه التصفية."
   },
   "statementView": {
     "period": "الفترة",

@@ -2141,7 +2141,9 @@
     "filter_cod": "COD",
     "filter_credit": "Credit terms",
     "count": "Customers: {{count}}",
-    "empty_filter": "No customers match this filter."
+    "empty_filter": "No customers match this filter.",
+    "count_suppliers": "Suppliers: {{count}}",
+    "empty_filter_suppliers": "No suppliers match this filter."
   },
   "statementView": {
     "period": "Period",

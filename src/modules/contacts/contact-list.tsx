@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { getRegionLabel } from '@/lib/locale';
 import { useAuthStore } from '@/store/auth';
@@ -12,15 +12,9 @@ import { z } from 'zod';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Modal } from '@/ui/modal';
-import { Table, type Column } from '@/ui/table';
 import { contactMatches } from '@/lib/contact-search';
-import { Badge } from '@/ui/badge';
-import { Pagination, paginate } from '@/ui/pagination';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
 import { ALL_CURRENCIES } from '@/lib/currencies';
 import { BUYER_TYPES, GST_STATE_CODES } from '@/lib/einvoice-metadata';
-import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { ContactRow } from '@/data/adapter';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
 import { FormErrorBanner } from '@/ui/form-error-banner';
@@ -76,19 +70,15 @@ interface ContactListPageProps {
   singularKey: string;
 }
 
-export function ContactListPage({ defaultType, titleKey, singularKey }: ContactListPageProps) {
+export function ContactListPage({ defaultType, singularKey }: ContactListPageProps) {
   const { t } = useTranslation();
   const { company_id } = useAuthStore();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ContactRow | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-
-  // Path used by the Name link in the table — supports both customer and supplier flavours
-  const detailBase = defaultType === 'supplier' ? '/contacts/suppliers' : '/contacts/customers';
 
   const { data: company } = useCompanyQuery({
     queryKey: ['company', company_id],
@@ -230,51 +220,13 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
   // The matching rule lives in src/lib/contact-search.ts so it can be
   // tested without a database — this bug was invisible on screen.
   const filtered = contacts.filter((c) => contactMatches(c, search));
-  const pagedContacts = paginate(filtered, page, PAGE_SIZE);
 
-  const typeBadge = (type: string) => {
-    if (type === 'both') return <Badge variant="brand">{t('contacts.type_both')}</Badge>;
-    return null;
-  };
 
-  const columns: Column<ContactRow>[] = [
-    {
-      key: 'name',
-      header: t('contacts.name'),
-      render: (r) => (
-        <div>
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); navigate(`${detailBase}/${r.id}`); }}
-            className="font-medium text-brand-600 hover:text-brand-700 hover:underline"
-          >
-            {r.name}
-          </button>
-          {typeBadge(r.type) && <span className="ms-2">{typeBadge(r.type)}</span>}
-        </div>
-      ),
-    },
-    { key: 'name_ar', header: t('contacts.name_ar'), render: (r) => <span dir="rtl">{r.name_ar ?? '—'}</span> },
-    { key: 'phone', header: t('contacts.phone'), render: (r) => r.phone ?? r.mobile ?? '—' },
-    { key: 'email', header: t('contacts.email'), render: (r) => r.email ?? '—' },
-    { key: 'terms', header: t('contacts.payment_terms'), render: (r) => r.payment_terms_days > 0 ? `Net ${r.payment_terms_days}` : t('contacts.cod') },
-    { key: 'city', header: t('contacts.city'), render: (r) => r.address_city ?? '—' },
-    {
-      key: 'actions', header: '', width: '100px',
-      render: (r) => (
-        <div className="flex gap-2">
-          <button onClick={(e) => { e.stopPropagation(); openEdit(r); }} className="text-xs text-brand-600 hover:underline">{t('common.edit')}</button>
-          <button onClick={(e) => { e.stopPropagation(); if (confirm(t('common.confirm_delete'))) deleteMutation.mutate(r.id); }} className="text-xs text-danger-500 hover:underline">{t('common.delete')}</button>
-        </div>
-      ),
-    },
-  ];
-
-  // Ocean Teal (UI v1.1) — customers only. Same rows, search, pagination,
-  // add / edit / delete and Import / Export; the Suppliers list below is
-  // unchanged.
-  const oceanList = defaultType === 'customer' ? (
+  // Ocean Teal (UI v1.1) — customers and suppliers. Same rows, search,
+  // pagination, add / edit / delete and Import / Export.
+  const oceanList = (
     <CustomerListOcean
+      side={defaultType}
       rows={filtered}
       isLoading={isLoading}
       search={search}
@@ -286,68 +238,11 @@ export function ContactListPage({ defaultType, titleKey, singularKey }: ContactL
       onEdit={openEdit}
       onDelete={(r) => deleteMutation.mutate(r.id)}
     />
-  ) : null;
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      {oceanList ?? (<>
-      <PageHeader
-        title={t(titleKey)}
-        subtitle={`${filtered.length} ${filtered.length === 1 ? 'contact' : 'contacts'}`}
-        actions={
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <ImportExportButton moduleKey="contacts" />
-            <Button size="sm" onClick={openAdd}>+ {t('common.add')} {t(singularKey)}</Button>
-          </div>
-        }
-      />
-
-      <div style={{ position: 'relative', maxWidth: '420px' }}>
-        <input
-          type="search"
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          placeholder={t('contacts.search_placeholder')}
-          style={{
-            width: '100%',
-            height: '38px',
-            padding: '0 14px 0 36px',
-            fontSize: '13px',
-            border: `1px solid ${theme.border}`,
-            borderRadius: '999px',
-            background: '#fff',
-            color: theme.ink,
-            outline: 'none',
-            boxShadow: '0 1px 2px rgba(15,23,42,.04)',
-          }}
-          onFocus={(e) => {
-            e.currentTarget.style.borderColor = theme.brand;
-            e.currentTarget.style.boxShadow = `0 0 0 3px ${theme.brandRing}`;
-          }}
-          onBlur={(e) => {
-            e.currentTarget.style.borderColor = theme.border;
-            e.currentTarget.style.boxShadow = '0 1px 2px rgba(15,23,42,.04)';
-          }}
-        />
-        <svg
-          viewBox="0 0 24 24" width="14" height="14"
-          style={{ position: 'absolute', insetInlineStart: '14px', top: '50%', transform: 'translateY(-50%)', color: theme.inkFaint }}
-          fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-        >
-          <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
-        </svg>
-      </div>
-
-      {isLoading
-        ? <div style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>{t('common.loading')}</div>
-        : (
-          <>
-            <Table columns={columns} rows={pagedContacts} keyFn={(r) => r.id} emptyMessage={t('contacts.empty')} />
-            <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onChange={setPage} />
-          </>
-        )
-      }
-      </>)}
+      {oceanList}
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? t('contacts.edit') : `${t('common.add')} ${t(singularKey)}`} width="xl">
         <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v as FormValues); }, onInvalid)} className="flex flex-col gap-4">
