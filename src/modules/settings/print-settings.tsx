@@ -14,8 +14,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
-import { PageHeader } from '@/ui/primitives';
+import { useTranslation } from 'react-i18next';
+import { OceanPage } from '@/components/ocean-list';
 import { theme } from '@/ui/theme';
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
 import { SAMPLE_TAX_INVOICE } from '@/modules/print/_signature/sample-data';
@@ -77,6 +77,7 @@ function newTemplateDraft(): Partial<PrintTemplate> & { name: string } {
 
 export default function PrintSettingsPage() {
   const navigate   = useNavigate();
+  const { t } = useTranslation();
   const company_id = useAuthStore(s => s.company_id);
   const adapter    = getAdapter();
 
@@ -220,7 +221,7 @@ export default function PrintSettingsPage() {
 
   const handleNew = () => withBusy(async () => {
     if (!company_id) return;
-    const name = window.prompt('New template name:', 'New Template');
+    const name = window.prompt(t('settingsPages.print.prompt_new'), t('settingsPages.print.new_default_name'));
     if (!name) return;
     const created = await adapter.printTemplates.create(company_id, { ...newTemplateDraft(), name });
     await reload(created.id);
@@ -234,8 +235,8 @@ export default function PrintSettingsPage() {
 
   const handleDelete = () => withBusy(async () => {
     if (!tpl?.id) return;
-    if (tpl.is_default) { setError('Cannot delete the default template. Set another template as default first.'); return; }
-    if (!window.confirm(`Delete template "${tpl.name}"? This cannot be undone.`)) return;
+    if (tpl.is_default) { setError(t('settingsPages.print.err_delete_default')); return; }
+    if (!window.confirm(t('settingsPages.print.confirm_delete', { name: tpl.name }))) return;
     await adapter.printTemplates.remove(tpl.id);
     await reload();
   });
@@ -257,32 +258,31 @@ export default function PrintSettingsPage() {
     return <div className="flex h-64 items-center justify-center"><div className="h-5 w-5 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" /></div>;
   }
 
-  const card = 'rounded-card border border-border-subtle bg-surface-card p-5';
-  const labelCls = 'mb-1 block text-xs font-medium text-ink-secondary';
-  const selCls = 'h-9 w-full rounded-input border border-border-subtle bg-surface-input px-2 text-sm';
+  // Ocean Teal (UI v1.1): look only — same templates, editor, uploads,
+  // per-document defaults, save and live preview as before.
+  const card = 'sb-card sb-print-card';
+  const labelCls = 'sb-print-label';
+  const selCls = 'sb-field sb-print-input';
 
   return (
-    <div style={{ maxWidth: '1240px', margin: '0 auto', padding: '8px 0', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        title="Print Templates"
-        subtitle="Create and customize templates, then assign a default for each document type. The preview updates as you change things."
-        actions={<Button onClick={handleSave} disabled={busy || !tpl?.id}>{busy ? 'Working…' : 'Save template'}</Button>}
-      />
+    <OceanPage
+      testid="print-templates-ocean"
+      title={t('settingsNav.items.print.title')}
+      subtitle={t('settingsPages.print.subtitle')}
+      actions={<button type="button" className="sb-primary-btn" onClick={handleSave} disabled={busy || !tpl?.id}>{busy ? t('settingsPages.print.working') : t('settingsPages.print.save')}</button>}
+    >
+      <div className="sb-print">
 
       {needsMigration && (
-        <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '10px 16px', fontSize: 13, color: '#92400E' }}>
-          Template customization needs the Phase 15 database migration
-          (<code>20260617000001_phase15_print_templates.sql</code>). Run it in Supabase to enable this page.
-        </div>
+        <p className="sb-alert sb-alert-warn">
+          {t('settingsPages.print.needs_migration')} (<code dir="ltr">20260617000001_phase15_print_templates.sql</code>)
+        </p>
       )}
       {noTemplates && (
-        <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: '10px 16px', fontSize: 13, color: '#334155' }}>
-          No print templates have been set up for this company yet, so documents print with the standard layout.
-          An administrator can create and customise templates here.
-        </div>
+        <p className="sb-info-note">{t('settingsPages.print.no_templates')}</p>
       )}
-      {error && <div style={{ background: theme.dangerSoft, border: `1px solid ${theme.dangerBorder}`, borderRadius: 8, padding: '10px 16px', fontSize: 13, color: theme.danger }}>{error}</div>}
-      {saved && <div style={{ background: theme.successSoft, border: `1px solid ${theme.successBorder}`, borderRadius: 8, padding: '10px 16px', fontSize: 13, color: theme.success }}>Saved.</div>}
+      {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+      {saved && <p className="sb-alert sb-alert-good" role="status">{t('settingsPages.print.saved')}</p>}
 
       {tpl && (
         <>
@@ -290,32 +290,32 @@ export default function PrintSettingsPage() {
           <div className={card}>
             <div className="flex flex-wrap items-end gap-3">
               <div style={{ minWidth: 220 }}>
-                <label className={labelCls}>Editing template</label>
-                <select className={selCls} value={tpl.id}
-                  onChange={e => { const sel = templates.find(t => t.id === e.target.value); if (sel) setTpl({ ...sel, settings: normalizeSettings(sel.settings) }); }}>
-                  {templates.map(t => <option key={t.id} value={t.id}>{t.name}{t.is_default ? '  ★ default' : ''}</option>)}
+                <label className={labelCls} htmlFor="print-tpl">{t('settingsPages.print.editing')}</label>
+                <select id="print-tpl" className={selCls} value={tpl.id}
+                  onChange={e => { const sel = templates.find(x => x.id === e.target.value); if (sel) setTpl({ ...sel, settings: normalizeSettings(sel.settings) }); }}>
+                  {templates.map(x => <option key={x.id} value={x.id}>{x.name}{x.is_default ? `  ★ ${t('settingsPages.print.default_lc')}` : ''}</option>)}
                 </select>
               </div>
-              <Button variant="secondary" size="sm" onClick={handleNew} disabled={busy}>+ New</Button>
-              <Button variant="secondary" size="sm" onClick={handleDuplicate} disabled={busy}>Duplicate</Button>
-              <Button variant="secondary" size="sm" onClick={handleSetDefault} disabled={busy || tpl.is_default}>
-                {tpl.is_default ? '★ Default' : 'Set as default'}
-              </Button>
-              <Button variant="secondary" size="sm" onClick={handleDelete} disabled={busy || tpl.is_default}>Delete</Button>
+              <button type="button" className="sb-secondary-btn" onClick={handleNew} disabled={busy}>+ {t('settingsPages.print.new')}</button>
+              <button type="button" className="sb-secondary-btn" onClick={handleDuplicate} disabled={busy}>{t('settingsPages.print.duplicate')}</button>
+              <button type="button" className="sb-secondary-btn" onClick={handleSetDefault} disabled={busy || tpl.is_default}>
+                {tpl.is_default ? `★ ${t('settingsPages.print.default')}` : t('settingsPages.print.set_default')}
+              </button>
+              <button type="button" className="sb-secondary-btn sb-btn-danger" onClick={handleDelete} disabled={busy || tpl.is_default}>{t('common.delete')}</button>
             </div>
           </div>
 
           {/* Per-document-type defaults matrix */}
           <div className={card}>
-            <h2 className="text-sm font-semibold text-ink-primary">Document defaults</h2>
-            <p className="mt-1 mb-3 text-xs text-ink-tertiary">Choose which template prints for each document type. Leave on “Company default” to use the ★ default.</p>
+            <h2 className="sb-print-h2">{t('settingsPages.print.doc_defaults')}</h2>
+            <p className="sb-print-hint">{t('settingsPages.print.doc_defaults_hint')}</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {DOC_TYPES.map(({ key, label }) => (
                 <div key={key}>
-                  <label className={labelCls}>{label}</label>
-                  <select className={selCls} value={docDefaults[key] ?? ''} onChange={e => handleDocDefault(key, e.target.value)} disabled={busy}>
-                    <option value="">Company default</option>
-                    {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  <label className={labelCls} htmlFor={`print-doc-${key}`}>{t(`settingsPages.print.docs.${key}`, { defaultValue: label })}</label>
+                  <select id={`print-doc-${key}`} className={selCls} value={docDefaults[key] ?? ''} onChange={e => handleDocDefault(key, e.target.value)} disabled={busy}>
+                    <option value="">{t('settingsPages.print.company_default')}</option>
+                    {templates.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
                   </select>
                 </div>
               ))}
@@ -326,20 +326,20 @@ export default function PrintSettingsPage() {
             {/* ── LEFT: controls ──────────────────────────────────────── */}
             <div className="flex flex-col gap-5">
               <div className={card}>
-                <label className={labelCls}>Template name</label>
-                <input className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-3 text-sm text-ink-primary focus:outline-none focus:ring-1 focus:ring-brand-500"
-                  value={tpl.name} onChange={e => setField('name', e.target.value)} placeholder="e.g. UAE Invoice" />
+                <label className={labelCls} htmlFor="print-name">{t('settingsPages.print.name')}</label>
+                <input id="print-name" className="sb-field sb-print-input"
+                  value={tpl.name} onChange={e => setField('name', e.target.value)} placeholder={t('settingsPages.print.name_ph')} />
               </div>
 
               <div className={card}>
-                <h2 className="text-sm font-semibold text-ink-primary">Style</h2>
-                <p className="mt-1 mb-3 text-xs text-ink-tertiary">Picking a style sets a matching palette — fine-tune below.</p>
+                <h2 className="sb-print-h2">{t('settingsPages.print.style')}</h2>
+                <p className="sb-print-hint">{t('settingsPages.print.style_hint')}</p>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {STYLE_ORDER.map(style => {
                     const preset = STYLE_PRESETS[style];
                     const active = tpl.settings.layout !== 'elegant' && tpl.template_style === style;
                     return (
-                      <button key={style} type="button" onClick={() => chooseStyle(style)} className="rounded-card border p-3 text-left transition"
+                      <button key={style} type="button" onClick={() => chooseStyle(style)} className="rounded-card border p-3 text-start transition"
                         style={{ borderColor: active ? preset.defaultColors.accent : '#e2e8f0', boxShadow: active ? `0 0 0 2px ${preset.defaultColors.accent}` : 'none', background: active ? '#fff' : 'transparent' }}>
                         <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
                           {[preset.defaultColors.primary, preset.defaultColors.accent, preset.defaultColors.secondary].map((c, i) => (
@@ -354,15 +354,15 @@ export default function PrintSettingsPage() {
                   {(() => {
                     const active = tpl.settings.layout === 'elegant';
                     return (
-                      <button type="button" onClick={chooseElegant} className="rounded-card border p-3 text-left transition"
+                      <button type="button" onClick={chooseElegant} className="rounded-card border p-3 text-start transition"
                         style={{ borderColor: active ? ELEGANT_COLORS.accent : '#e2e8f0', boxShadow: active ? `0 0 0 2px ${ELEGANT_COLORS.accent}` : 'none', background: active ? '#fff' : 'transparent' }}>
                         <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
                           {[ELEGANT_COLORS.primary, ELEGANT_COLORS.accent, ELEGANT_COLORS.secondary].map((c, i) => (
                             <span key={i} style={{ width: 14, height: 14, borderRadius: 3, background: c, border: '1px solid rgba(0,0,0,.08)' }} />
                           ))}
                         </div>
-                        <div className="text-sm font-medium text-ink-primary">Elegant</div>
-                        <div className="text-[11px] leading-snug text-ink-tertiary">Big title beside a header photo, rounded panels, contact footer bar.</div>
+                        <div className="text-sm font-medium text-ink-primary">{t('settingsPages.print.elegant')}</div>
+                        <div className="text-[11px] leading-snug text-ink-tertiary">{t('settingsPages.print.elegant_desc')}</div>
                       </button>
                     );
                   })()}
@@ -371,59 +371,56 @@ export default function PrintSettingsPage() {
 
               {tpl.settings.layout === 'elegant' && (
                 <div className={card}>
-                  <h2 className="text-sm font-semibold text-ink-primary">Elegant layout</h2>
-                  <p className="mt-1 mb-3 text-xs text-ink-tertiary">
-                    Wording and photo for the Elegant design. Tip: write extra details in a document’s Notes as
-                    “Label: value” separated by semicolons (e.g. “Event Date: 15 Nov 2026; Venue: City Hall”) and they print as rows under the client details.
-                  </p>
+                  <h2 className="sb-print-h2">{t('settingsPages.print.elegant_layout')}</h2>
+                  <p className="sb-print-hint">{t('settingsPages.print.elegant_hint')}</p>
                   <div className="flex flex-wrap items-center gap-4">
                     <div style={{ width: 120, height: 84, border: `1px dashed ${theme.border}`, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: '#fff' }}>
                       {tpl.settings.heroImageUrl
                         ? <img src={tpl.settings.heroImageUrl} alt="header" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        : <span className="px-1 text-center text-[11px] text-ink-tertiary">No header photo</span>}
+                        : <span className="px-1 text-center text-[11px] text-ink-tertiary">{t('settingsPages.print.no_hero')}</span>}
                     </div>
                     <div className="flex flex-col gap-2">
-                      <label className="cursor-pointer rounded-card border border-border-subtle bg-surface-card px-3 py-2 text-sm text-ink-primary hover:bg-surface-hover">
-                        {uploadingHero ? 'Uploading…' : (tpl.settings.heroImageUrl ? 'Replace header photo' : 'Upload header photo')}
+                      <label className="sb-secondary-btn sb-btn-inline sb-print-upload">
+                        {uploadingHero ? t('settingsPages.print.uploading') : (tpl.settings.heroImageUrl ? t('settingsPages.print.replace_hero') : t('settingsPages.print.upload_hero'))}
                         <input type="file" accept="image/png,image/jpeg" className="hidden" disabled={uploadingHero}
                           onChange={e => { handleHeroUpload(e.target.files?.[0] ?? null); e.target.value = ''; }} />
                       </label>
                       {tpl.settings.heroImageUrl && (
                         <button type="button" className="text-start text-sm text-danger-600 hover:underline" onClick={() => setSetting('heroImageUrl', '')}>
-                          Remove header photo
+                          {t('settingsPages.print.remove_hero')}
                         </button>
                       )}
                     </div>
                   </div>
                   <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div><label className={labelCls}>Tagline (under the logo)</label>
-                      <input className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-3 text-sm" value={tpl.settings.tagline} onChange={e => setSetting('tagline', e.target.value)} placeholder="PEOPLE | MOMENTS | EVENTS" /></div>
-                    <div><label className={labelCls}>Subtitle (under the title)</label>
-                      <input className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-3 text-sm" value={tpl.settings.subtitle} onChange={e => setSetting('subtitle', e.target.value)} placeholder="Events that bring people together" /></div>
-                    <div><label className={labelCls}>Words beside the photo (one per line)</label>
-                      <textarea className="w-full rounded-input border border-border-subtle bg-surface-input p-2 text-sm" rows={4} value={tpl.settings.heroWords} onChange={e => setSetting('heroWords', e.target.value)} placeholder={'Plan\nCreate\nCelebrate'} /></div>
-                    <div><label className={labelCls}>Intro text (beside the document details)</label>
-                      <textarea className="w-full rounded-input border border-border-subtle bg-surface-input p-2 text-sm" rows={4} value={tpl.settings.introText} onChange={e => setSetting('introText', e.target.value)} placeholder="Thank you for considering us. We are pleased to provide the following quotation." /></div>
-                    <div className="sm:col-span-2"><label className={labelCls}>Terms &amp; conditions (one per line — a document’s own terms replace these)</label>
-                      <textarea className="w-full rounded-input border border-border-subtle bg-surface-input p-2 text-sm" rows={4} value={tpl.settings.termsEn} onChange={e => setSetting('termsEn', e.target.value)} /></div>
+                    <div><label className={labelCls}>{t('settingsPages.print.tagline')}</label>
+                      <input className="sb-field sb-print-input" value={tpl.settings.tagline} onChange={e => setSetting('tagline', e.target.value)} placeholder="PEOPLE | MOMENTS | EVENTS" /></div>
+                    <div><label className={labelCls}>{t('settingsPages.print.subtitle_field')}</label>
+                      <input className="sb-field sb-print-input" value={tpl.settings.subtitle} onChange={e => setSetting('subtitle', e.target.value)} placeholder="Events that bring people together" /></div>
+                    <div><label className={labelCls}>{t('settingsPages.print.hero_words')}</label>
+                      <textarea className="sb-field sb-print-input sb-print-area" rows={4} value={tpl.settings.heroWords} onChange={e => setSetting('heroWords', e.target.value)} placeholder={'Plan\nCreate\nCelebrate'} /></div>
+                    <div><label className={labelCls}>{t('settingsPages.print.intro')}</label>
+                      <textarea className="sb-field sb-print-input sb-print-area" rows={4} value={tpl.settings.introText} onChange={e => setSetting('introText', e.target.value)} placeholder="Thank you for considering us. We are pleased to provide the following quotation." /></div>
+                    <div className="sm:col-span-2"><label className={labelCls}>{t('settingsPages.print.terms')}</label>
+                      <textarea className="sb-field sb-print-input sb-print-area" rows={4} value={tpl.settings.termsEn} onChange={e => setSetting('termsEn', e.target.value)} /></div>
                     <label className="flex cursor-pointer items-center gap-2 sm:col-span-2">
                       <input type="checkbox" className="h-4 w-4 rounded border-border-subtle accent-brand-600"
                         checked={tpl.settings.showCustomerAcceptance} onChange={e => setSetting('showCustomerAcceptance', e.target.checked)} />
-                      <span className="text-sm text-ink-primary">Show a customer acceptance box (name, date, signature)</span>
+                      <span className="text-sm text-ink-primary">{t('settingsPages.print.acceptance')}</span>
                     </label>
                   </div>
                 </div>
               )}
 
               <div className={card}>
-                <h2 className="text-sm font-semibold text-ink-primary">Colours</h2>
+                <h2 className="sb-print-h2">{t('settingsPages.print.colours')}</h2>
                 <div className="mt-3 grid grid-cols-2 gap-4">
-                  {([['primary_color', 'Primary'], ['secondary_color', 'Secondary'], ['accent_color', 'Accent'], ['text_color', 'Text']] as [keyof PrintTemplate, string][]).map(([key, label]) => (
+                  {([['primary_color', t('settingsPages.print.c_primary')], ['secondary_color', t('settingsPages.print.c_secondary')], ['accent_color', t('settingsPages.print.c_accent')], ['text_color', t('settingsPages.print.c_text')]] as [keyof PrintTemplate, string][]).map(([key, label]) => (
                     <div key={key}>
                       <label className={labelCls}>{label}</label>
                       <div className="flex items-center gap-2">
                         <input type="color" value={String(tpl[key])} onChange={e => setField(key, e.target.value as PrintTemplate[typeof key])} style={{ width: 40, height: 34, border: 'none', background: 'none', cursor: 'pointer' }} />
-                        <input className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-2 text-xs text-ink-primary focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        <input dir="ltr" aria-label={label} className="sb-field sb-print-input sb-mono"
                           value={String(tpl[key])} onChange={e => setField(key, e.target.value as PrintTemplate[typeof key])} />
                       </div>
                     </div>
@@ -432,30 +429,30 @@ export default function PrintSettingsPage() {
               </div>
 
               <div className={card}>
-                <h2 className="text-sm font-semibold text-ink-primary">Typography &amp; logo</h2>
+                <h2 className="sb-print-h2">{t('settingsPages.print.typography')}</h2>
                 <div className="mt-3 grid grid-cols-2 gap-4">
-                  <div><label className={labelCls}>Font</label>
+                  <div><label className={labelCls}>{t('settingsPages.print.font')}</label>
                     <select className={selCls} value={tpl.font_family} onChange={e => setField('font_family', e.target.value as FontFamily)}>{FONTS.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
-                  <div><label className={labelCls}>Font size</label>
-                    <select className={selCls} value={tpl.font_size} onChange={e => setField('font_size', e.target.value as FontSize)}>{SIZES.map(s => <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>)}</select></div>
-                  <div><label className={labelCls}>Logo position</label>
-                    <select className={selCls} value={tpl.logo_position} onChange={e => setField('logo_position', e.target.value as LogoPosition)}>{LOGO_POS.map(p => <option key={p} value={p}>{p[0].toUpperCase() + p.slice(1)}</option>)}</select></div>
-                  <div><label className={labelCls}>Logo size</label>
-                    <select className={selCls} value={tpl.logo_size} onChange={e => setField('logo_size', e.target.value as LogoSize)}>{LOGO_SZ.map(s => <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>)}</select></div>
+                  <div><label className={labelCls}>{t('settingsPages.print.font_size')}</label>
+                    <select className={selCls} value={tpl.font_size} onChange={e => setField('font_size', e.target.value as FontSize)}>{SIZES.map(s => <option key={s} value={s}>{t(`settingsPages.print.opt_${s}`)}</option>)}</select></div>
+                  <div><label className={labelCls}>{t('settingsPages.print.logo_pos')}</label>
+                    <select className={selCls} value={tpl.logo_position} onChange={e => setField('logo_position', e.target.value as LogoPosition)}>{LOGO_POS.map(p => <option key={p} value={p}>{t(`settingsPages.print.opt_${p}`)}</option>)}</select></div>
+                  <div><label className={labelCls}>{t('settingsPages.print.logo_size')}</label>
+                    <select className={selCls} value={tpl.logo_size} onChange={e => setField('logo_size', e.target.value as LogoSize)}>{LOGO_SZ.map(s => <option key={s} value={s}>{t(`settingsPages.print.opt_${s}`)}</option>)}</select></div>
                 </div>
               </div>
 
               <div className={card}>
-                <h2 className="text-sm font-semibold text-ink-primary">Logo</h2>
-                <p className="mt-1 mb-3 text-xs text-ink-tertiary">Shown at the top of documents when “Company logo” is enabled. Shared with your <button className="text-brand-600 underline" onClick={() => navigate('/settings/company')}>Company Profile</button>.</p>
+                <h2 className="sb-print-h2">{t('settingsPages.print.logo')}</h2>
+                <p className="sb-print-hint">{t('settingsPages.print.logo_hint')} <button type="button" className="sb-row-link text-brand-600" style={{ minHeight: 0, padding: 0 }} onClick={() => navigate('/settings/company')}>{t('settingsNav.items.company.title')}</button></p>
                 <div className="flex items-center gap-4">
                   <div style={{ width: 96, height: 64, border: `1px dashed ${theme.border}`, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: '#fff' }}>
                     {company?.logo_url
                       ? <img src={company.logo_url} alt="logo" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-                      : <span className="text-[11px] text-ink-tertiary">No logo</span>}
+                      : <span className="text-[11px] text-ink-tertiary">{t('settingsPages.print.no_logo')}</span>}
                   </div>
-                  <label className="cursor-pointer rounded-card border border-border-subtle bg-surface-card px-3 py-2 text-sm text-ink-primary hover:bg-surface-hover">
-                    {uploading ? 'Uploading…' : (company?.logo_url ? 'Replace logo' : 'Upload logo')}
+                  <label className="sb-secondary-btn sb-btn-inline sb-print-upload">
+                    {uploading ? t('settingsPages.print.uploading') : (company?.logo_url ? t('settingsPages.print.replace_logo') : t('settingsPages.print.upload_logo'))}
                     <input type="file" accept="image/*" className="hidden" disabled={uploading}
                       onChange={e => handleLogoUpload(e.target.files?.[0] ?? null)} />
                   </label>
@@ -463,97 +460,94 @@ export default function PrintSettingsPage() {
               </div>
 
               {tpl.settings.layout !== 'elegant' && <div className={card}>
-                <h2 className="text-sm font-semibold text-ink-primary">Letterhead (your own design)</h2>
-                <p className="mt-1 mb-3 text-xs text-ink-tertiary">
-                  Already have a designed letterhead? Upload it as an A4 portrait image (PNG or JPG, ideally 2480 × 3508 px)
-                  and every document using this template prints on top of it. Exporting a PDF letterhead? Save its first page as an image.
-                </p>
+                <h2 className="sb-print-h2">{t('settingsPages.print.letterhead')}</h2>
+                <p className="sb-print-hint">{t('settingsPages.print.letterhead_hint')}</p>
                 <div className="flex flex-wrap items-center gap-4">
                   <div style={{ width: 84, height: 119, border: `1px dashed ${theme.border}`, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: '#fff' }}>
                     {tpl.settings.letterheadUrl
                       ? <img src={tpl.settings.letterheadUrl} alt="letterhead" style={{ width: '100%', height: '100%', objectFit: 'fill' }} />
-                      : <span className="px-1 text-center text-[11px] text-ink-tertiary">No letterhead</span>}
+                      : <span className="px-1 text-center text-[11px] text-ink-tertiary">{t('settingsPages.print.no_letterhead')}</span>}
                   </div>
                   <div className="flex flex-col gap-2">
-                    <label className="cursor-pointer rounded-card border border-border-subtle bg-surface-card px-3 py-2 text-sm text-ink-primary hover:bg-surface-hover">
-                      {uploadingLh ? 'Uploading…' : (tpl.settings.letterheadUrl ? 'Replace letterhead' : 'Upload letterhead')}
+                    <label className="sb-secondary-btn sb-btn-inline sb-print-upload">
+                      {uploadingLh ? t('settingsPages.print.uploading') : (tpl.settings.letterheadUrl ? t('settingsPages.print.replace_letterhead') : t('settingsPages.print.upload_letterhead'))}
                       <input type="file" accept="image/png,image/jpeg" className="hidden" disabled={uploadingLh}
                         onChange={e => { handleLetterheadUpload(e.target.files?.[0] ?? null); e.target.value = ''; }} />
                     </label>
                     {tpl.settings.letterheadUrl && (
                       <button type="button" className="text-start text-sm text-danger-600 hover:underline" onClick={() => setSetting('letterheadUrl', '')}>
-                        Remove letterhead
+                        {t('settingsPages.print.remove_letterhead')}
                       </button>
                     )}
                   </div>
                 </div>
                 {tpl.settings.letterheadUrl && (
                   <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div><label className={labelCls}>Space for letterhead header (mm)</label>
-                      <input type="number" min={0} max={150} className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-3 text-sm"
+                    <div><label className={labelCls}>{t('settingsPages.print.lh_top')}</label>
+                      <input type="number" min={0} max={150} className="sb-field sb-print-input"
                         value={tpl.settings.letterheadTopMm} onChange={e => setSetting('letterheadTopMm', Math.max(0, Math.min(150, Number(e.target.value) || 0)))} /></div>
-                    <div><label className={labelCls}>Space for letterhead footer (mm)</label>
-                      <input type="number" min={0} max={150} className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-3 text-sm"
+                    <div><label className={labelCls}>{t('settingsPages.print.lh_bottom')}</label>
+                      <input type="number" min={0} max={150} className="sb-field sb-print-input"
                         value={tpl.settings.letterheadBottomMm} onChange={e => setSetting('letterheadBottomMm', Math.max(0, Math.min(150, Number(e.target.value) || 0)))} /></div>
                     <label className="flex cursor-pointer items-center gap-2 sm:col-span-2">
                       <input type="checkbox" className="h-4 w-4 rounded border-border-subtle accent-brand-600"
                         checked={tpl.settings.letterheadHideCompany} onChange={e => setSetting('letterheadHideCompany', e.target.checked)} />
-                      <span className="text-sm text-ink-primary">Hide StockBolt’s logo and company details (my letterhead already shows them)</span>
+                      <span className="text-sm text-ink-primary">{t('settingsPages.print.lh_hide')}</span>
                     </label>
-                    <p className="text-xs text-ink-tertiary sm:col-span-2">Adjust the spaces until the preview’s text sits clear of your letterhead’s design. Remember to save the template.</p>
+                    <p className="sb-print-hint sm:col-span-2">{t('settingsPages.print.letterhead_spaces_hint')}</p>
                   </div>
                 )}
               </div>}
 
               <div className={card}>
-                <h2 className="text-sm font-semibold text-ink-primary">Footer line</h2>
+                <h2 className="sb-print-h2">{t('settingsPages.print.footer_line')}</h2>
                 <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div><label className={labelCls}>Footer (English)</label>
-                    <textarea className="w-full rounded-input border border-border-subtle bg-surface-input p-2 text-sm" rows={2} value={tpl.settings.footerEn} onChange={e => setFooter('footerEn', e.target.value)} placeholder="Bank: ENBD · IBAN: AE00… · Thank you" /></div>
-                  <div><label className={labelCls}>Footer (Arabic)</label>
-                    <textarea className="w-full rounded-input border border-border-subtle bg-surface-input p-2 text-sm" dir="rtl" rows={2} value={tpl.settings.footerAr} onChange={e => setFooter('footerAr', e.target.value)} /></div>
+                  <div><label className={labelCls}>{t('settingsPages.print.footer_en')}</label>
+                    <textarea className="sb-field sb-print-input sb-print-area" rows={2} value={tpl.settings.footerEn} onChange={e => setFooter('footerEn', e.target.value)} placeholder="Bank: ENBD · IBAN: AE00… · Thank you" /></div>
+                  <div><label className={labelCls}>{t('settingsPages.print.footer_ar')}</label>
+                    <textarea className="sb-field sb-print-input sb-print-area" dir="rtl" rows={2} value={tpl.settings.footerAr} onChange={e => setFooter('footerAr', e.target.value)} /></div>
                 </div>
               </div>
 
               <div className={card}>
-                <h2 className="text-sm font-semibold text-ink-primary">Payment terms</h2>
-                <p className="mt-1 mb-3 text-xs text-ink-tertiary">The text shown on documents when “Payment terms” is enabled below. In the Elegant layout each line becomes a bullet.</p>
+                <h2 className="sb-print-h2">{t('settingsPages.print.payment_terms')}</h2>
+                <p className="sb-print-hint">{t('settingsPages.print.payment_terms_hint')}</p>
                 <div className="mt-1 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div><label className={labelCls}>Terms (English)</label>
-                    <textarea className="w-full rounded-input border border-border-subtle bg-surface-input p-2 text-sm" rows={2} value={tpl.settings.paymentTermsEn} onChange={e => setFooter('paymentTermsEn', e.target.value)} placeholder="Payment due within 30 days of invoice date." /></div>
-                  <div><label className={labelCls}>Terms (Arabic)</label>
-                    <textarea className="w-full rounded-input border border-border-subtle bg-surface-input p-2 text-sm" dir="rtl" rows={2} value={tpl.settings.paymentTermsAr} onChange={e => setFooter('paymentTermsAr', e.target.value)} /></div>
+                  <div><label className={labelCls}>{t('settingsPages.print.terms_en')}</label>
+                    <textarea className="sb-field sb-print-input sb-print-area" rows={2} value={tpl.settings.paymentTermsEn} onChange={e => setFooter('paymentTermsEn', e.target.value)} placeholder="Payment due within 30 days of invoice date." /></div>
+                  <div><label className={labelCls}>{t('settingsPages.print.terms_ar')}</label>
+                    <textarea className="sb-field sb-print-input sb-print-area" dir="rtl" rows={2} value={tpl.settings.paymentTermsAr} onChange={e => setFooter('paymentTermsAr', e.target.value)} /></div>
                 </div>
               </div>
 
               <div className={card}>
-                <h2 className="text-sm font-semibold text-ink-primary">Bank / payment details</h2>
-                <p className="mt-1 mb-3 text-xs text-ink-tertiary">Shown in the “Payment Details” block when “Bank / payment details” is enabled below.</p>
+                <h2 className="sb-print-h2">{t('settingsPages.print.bank')}</h2>
+                <p className="sb-print-hint">{t('settingsPages.print.bank_hint')}</p>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div><label className={labelCls}>Account name</label>
-                    <input className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-3 text-sm" value={tpl.settings.bankAccountName} onChange={e => setFooter('bankAccountName', e.target.value)} placeholder="Your Company Trading LLC" /></div>
-                  <div><label className={labelCls}>Bank name</label>
-                    <input className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-3 text-sm" value={tpl.settings.bankName} onChange={e => setFooter('bankName', e.target.value)} placeholder="Emirates NBD" /></div>
-                  <div><label className={labelCls}>Account number</label>
-                    <input className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-3 text-sm" value={tpl.settings.bankAccountNumber} onChange={e => setFooter('bankAccountNumber', e.target.value)} placeholder="012-345-6789-001" /></div>
-                  <div><label className={labelCls}>IBAN</label>
-                    <input className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-3 text-sm" value={tpl.settings.bankIban} onChange={e => setFooter('bankIban', e.target.value)} placeholder="AE07 0331 2345 6789 0010 02" /></div>
+                  <div><label className={labelCls}>{t('settingsPages.print.acc_name')}</label>
+                    <input className="sb-field sb-print-input" value={tpl.settings.bankAccountName} onChange={e => setFooter('bankAccountName', e.target.value)} placeholder="Your Company Trading LLC" /></div>
+                  <div><label className={labelCls}>{t('settingsPages.print.bank_name')}</label>
+                    <input className="sb-field sb-print-input" value={tpl.settings.bankName} onChange={e => setFooter('bankName', e.target.value)} placeholder="Emirates NBD" /></div>
+                  <div><label className={labelCls}>{t('settingsPages.print.acc_no')}</label>
+                    <input className="sb-field sb-print-input" value={tpl.settings.bankAccountNumber} onChange={e => setFooter('bankAccountNumber', e.target.value)} placeholder="012-345-6789-001" /></div>
+                  <div><label className={labelCls}>{t('settingsPages.print.iban')}</label>
+                    <input className="sb-field sb-print-input" value={tpl.settings.bankIban} onChange={e => setFooter('bankIban', e.target.value)} placeholder="AE07 0331 2345 6789 0010 02" /></div>
                 </div>
               </div>
 
               <div className={card}>
-                <h2 className="text-sm font-semibold text-ink-primary">Signature</h2>
-                <p className="mt-1 mb-3 text-xs text-ink-tertiary">The label under the signing line when “Signature block” is enabled below.</p>
-                <input className="h-9 w-full rounded-input border border-border-subtle bg-surface-input px-3 text-sm sm:w-1/2" value={tpl.settings.signatureLabel} onChange={e => setFooter('signatureLabel', e.target.value)} placeholder="Authorised Signatory" />
+                <h2 className="sb-print-h2">{t('settingsPages.print.signature')}</h2>
+                <p className="sb-print-hint">{t('settingsPages.print.signature_hint')}</p>
+                <input className="sb-field sb-print-input sm:w-1/2" value={tpl.settings.signatureLabel} onChange={e => setFooter('signatureLabel', e.target.value)} placeholder="Authorised Signatory" />
               </div>
 
               <div className={card}>
-                <h2 className="text-sm font-semibold text-ink-primary">Show on documents</h2>
+                <h2 className="sb-print-h2">{t('settingsPages.print.show_on_docs')}</h2>
                 <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {TOGGLES.map(({ key, label }) => (
                     <label key={key} className="flex cursor-pointer items-center gap-2">
                       <input type="checkbox" className="h-4 w-4 rounded border-border-subtle accent-brand-600" checked={!!tpl.settings[key]} onChange={e => setToggle(key, e.target.checked)} />
-                      <span className="text-sm text-ink-primary">{label}</span>
+                      <span className="text-sm text-ink-primary">{t(`settingsPages.print.toggle.${String(key)}`, { defaultValue: label })}</span>
                     </label>
                   ))}
                 </div>
@@ -564,7 +558,7 @@ export default function PrintSettingsPage() {
             <div>
               <div className="sticky top-4">
                 <div className="mb-2 flex items-center gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-ink-tertiary">Live preview</span>
+                  <span className="sb-print-label" style={{ margin: 0 }}>{t('settingsPages.print.live_preview')}</span>
                   <span className="rounded-pill bg-brand-50 px-2 py-0.5 text-[10px] font-semibold text-brand-700">{tpl.name}</span>
                 </div>
                 <div style={{ border: `1px solid ${theme.border}`, borderRadius: 10, overflow: 'hidden', background: '#F8FAFC', height: 660 }}>
@@ -584,16 +578,17 @@ export default function PrintSettingsPage() {
                     }} template={tpl} />
                   </div>
                 </div>
-                <p className="mt-2 text-xs text-ink-tertiary">Sample data. Real documents use your own logo, company details and figures.</p>
+                <p className="sb-print-hint" style={{ marginTop: 8 }}>{t('settingsPages.print.sample_note')}</p>
               </div>
             </div>
           </div>
 
-          <div className="flex justify-end">
-            <Button onClick={handleSave} disabled={busy || !tpl?.id}>{busy ? 'Working…' : 'Save template'}</Button>
+          <div className="sb-form-actions">
+            <button type="button" className="sb-primary-btn" onClick={handleSave} disabled={busy || !tpl?.id}>{busy ? t('settingsPages.print.working') : t('settingsPages.print.save')}</button>
           </div>
         </>
       )}
-    </div>
+      </div>
+    </OceanPage>
   );
 }

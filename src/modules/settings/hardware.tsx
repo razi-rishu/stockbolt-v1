@@ -10,10 +10,9 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Card } from '@/ui/card';
-import { Button } from '@/ui/button';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
+import { useTranslation } from 'react-i18next';
+import { OceanPage } from '@/components/ocean-list';
+import { ScanBarcode, Printer, Save, RotateCcw, CheckCircle2, XCircle } from 'lucide-react';
 import {
   loadHardwareConfig, saveHardwareConfig, resolveScan, normalizeScan,
   DEFAULT_HARDWARE_CONFIG, type HardwareConfig, type ScanField,
@@ -30,6 +29,8 @@ const ALL_FIELDS: ScanField[] = ['barcode', 'sku', 'oe_number', 'replacement_num
 
 export default function HardwareSettingsPage() {
   const { company_id } = useAuthStore();
+  const { t } = useTranslation();
+  const fieldLabel = (f: ScanField) => t(`settingsPages.hardware.field_${f}`, { defaultValue: FIELD_LABEL[f] });
   const [cfg, setCfg] = useState<HardwareConfig>(() => loadHardwareConfig());
   const [saved, setSaved] = useState(false);
   const [testCode, setTestCode] = useState('');
@@ -68,151 +69,137 @@ export default function HardwareSettingsPage() {
     setTestCode('');
   }
 
-  const label: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: theme.inkMuted, display: 'block', marginBottom: 4 };
-  const inputCls = 'h-9 rounded-input border border-border-subtle bg-surface-input px-3 text-sm';
+  const PAPERS = [
+    ['a4', t('settingsPages.hardware.paper_a4')],
+    ['thermal80', t('settingsPages.hardware.paper_80')],
+    ['thermal58', t('settingsPages.hardware.paper_58')],
+  ] as const;
 
+  // Ocean Teal (UI v1.1): look only — same per-device config, save / restore,
+  // scan matching and test box as before.
   return (
-    <div style={{ maxWidth: 760, margin: '0 auto', padding: '8px 0' }}>
-      <div style={{ marginBottom: 20 }}>
-        <PageHeader
-          title="Barcode & Printer Setup"
-          subtitle="Settings for the scanner and receipt printer attached to THIS device (each till keeps its own)."
-        />
-      </div>
-
+    <OceanPage narrow testid="hardware-ocean" title={t('settingsNav.items.hardware.title')} subtitle={t('settingsPages.hardware.subtitle')}>
       {/* ── Barcode scanner ── */}
-      <Card className="mb-6">
-        <h2 style={{ fontSize: 15, fontWeight: 600, color: theme.ink, margin: '0 0 4px' }}>Barcode scanner</h2>
-        <p style={{ fontSize: 12, color: theme.inkMuted, margin: '0 0 14px' }}>
-          Works with any USB/Bluetooth scanner that types like a keyboard (that's almost all of them).
-          On the POS screen, a scan finds the product and adds it to the cart automatically.
-        </p>
-
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            className="h-4 w-4 rounded border-border-subtle accent-brand-600"
-            checked={cfg.scanner.enabled}
-            onChange={e => setCfg(c => ({ ...c, scanner: { ...c.scanner, enabled: e.target.checked } }))}
-          />
-          <span style={{ fontSize: 13, color: theme.ink }}>Enable scanning on the POS screen</span>
-        </label>
-
-        <div style={{ marginBottom: 14 }}>
-          <span style={label}>Match a scanned code against (checked fields, in this order)</span>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {ALL_FIELDS.map((f, i) => (
-              <label key={f} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-border-subtle accent-brand-600"
-                  checked={cfg.scanner.matchFields.includes(f)}
-                  onChange={e => toggleField(f, e.target.checked)}
-                />
-                <span style={{ fontSize: 13, color: theme.ink }}>
-                  <span style={{ color: theme.inkFaint, fontFamily: 'monospace', fontSize: 11, marginRight: 6 }}>{i + 1}.</span>
-                  {FIELD_LABEL[f]}
-                </span>
-              </label>
-            ))}
-          </div>
-          <p style={{ fontSize: 11, color: theme.inkFaint, margin: '6px 0 0' }}>
-            Matches are exact (never partial), so a scan can't add the wrong part.
-          </p>
+      <section className="sb-card sb-form">
+        <div className="sb-form-head">
+          <span className="sb-form-icon" aria-hidden="true"><ScanBarcode size={20} /></span>
+          <span style={{ minWidth: 0 }}>
+            <h2 className="sb-form-title">{t('settingsPages.hardware.scanner')}</h2>
+            <p className="sb-form-hint">{t('settingsPages.hardware.scanner_hint')}</p>
+          </span>
         </div>
+        <div className="sb-form-stack">
+          <label className="sb-check-row">
+            <input type="checkbox" checked={cfg.scanner.enabled}
+              onChange={e => setCfg(c => ({ ...c, scanner: { ...c.scanner, enabled: e.target.checked } }))} />
+            <span className="sb-check-text">{t('settingsPages.hardware.enable_scan')}</span>
+          </label>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 16 }}>
-          <div>
-            <span style={label}>Minimum code length</span>
-            <input type="number" min={1} max={30} className={inputCls} style={{ width: '100%' }}
-              value={cfg.scanner.minLength}
-              onChange={e => setCfg(c => ({ ...c, scanner: { ...c.scanner, minLength: Math.max(1, Number(e.target.value) || 1) } }))} />
+          <fieldset className="sb-hw-fieldset">
+            <legend className="sb-select-label">{t('settingsPages.hardware.match_fields')}</legend>
+            <div className="sb-form-grid">
+              {ALL_FIELDS.map((f, i) => (
+                <label key={f} className="sb-check-row">
+                  <input type="checkbox" checked={cfg.scanner.matchFields.includes(f)} onChange={e => toggleField(f, e.target.checked)} />
+                  <span className="sb-check-text"><bdi dir="ltr" className="sb-hw-num">{i + 1}.</bdi> {fieldLabel(f)}</span>
+                </label>
+              ))}
+            </div>
+            <p className="sb-form-hint" style={{ marginTop: 8 }}>{t('settingsPages.hardware.exact')}</p>
+          </fieldset>
+
+          <div className="sb-hw-grid">
+            <label className="sb-select-field" style={{ maxWidth: 'none' }}>
+              <span className="sb-select-label">{t('settingsPages.hardware.min_length')}</span>
+              <input type="number" min={1} max={30} dir="ltr" className="sb-field"
+                value={cfg.scanner.minLength}
+                onChange={e => setCfg(c => ({ ...c, scanner: { ...c.scanner, minLength: Math.max(1, Number(e.target.value) || 1) } }))} />
+            </label>
+            <label className="sb-select-field" style={{ maxWidth: 'none' }}>
+              <span className="sb-select-label">{t('settingsPages.hardware.prefix')}</span>
+              <input type="text" dir="ltr" className="sb-field" placeholder={t('settingsPages.hardware.usually_empty')}
+                value={cfg.scanner.prefix}
+                onChange={e => setCfg(c => ({ ...c, scanner: { ...c.scanner, prefix: e.target.value } }))} />
+            </label>
+            <label className="sb-select-field" style={{ maxWidth: 'none' }}>
+              <span className="sb-select-label">{t('settingsPages.hardware.suffix')}</span>
+              <input type="text" dir="ltr" className="sb-field" placeholder={t('settingsPages.hardware.usually_empty')}
+                value={cfg.scanner.suffix}
+                onChange={e => setCfg(c => ({ ...c, scanner: { ...c.scanner, suffix: e.target.value } }))} />
+            </label>
           </div>
-          <div>
-            <span style={label}>Strip prefix (if your scanner adds one)</span>
-            <input type="text" className={inputCls} style={{ width: '100%' }} placeholder="usually empty"
-              value={cfg.scanner.prefix}
-              onChange={e => setCfg(c => ({ ...c, scanner: { ...c.scanner, prefix: e.target.value } }))} />
-          </div>
-          <div>
-            <span style={label}>Strip suffix</span>
-            <input type="text" className={inputCls} style={{ width: '100%' }} placeholder="usually empty"
-              value={cfg.scanner.suffix}
-              onChange={e => setCfg(c => ({ ...c, scanner: { ...c.scanner, suffix: e.target.value } }))} />
+
+          {/* Test the mapping end-to-end */}
+          <div className="sb-hw-test">
+            <label className="sb-select-label" htmlFor="hw-test">{t('settingsPages.hardware.test_title')}</label>
+            <div className="sb-hw-test-row">
+              <input
+                id="hw-test"
+                type="text"
+                className="sb-field"
+                placeholder={t('settingsPages.hardware.test_ph')}
+                value={testCode}
+                onChange={e => setTestCode(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); runTest(); } }}
+              />
+              <button type="button" className="sb-secondary-btn" onClick={runTest}>{t('settingsPages.hardware.test')}</button>
+            </div>
+            {testResult && (
+              <p className={`sb-hw-result ${testResult.product ? 'is-good' : 'is-bad'}`} role="status">
+                {testResult.product
+                  ? <><CheckCircle2 size={18} aria-hidden="true" /><span><bdi dir="ltr"><b>{testResult.code}</b> → {testResult.product.sku}</bdi> · {testResult.product.name}</span></>
+                  : <><XCircle size={18} aria-hidden="true" /><span>{t('settingsPages.hardware.no_match', { code: testResult.code })}</span></>}
+              </p>
+            )}
           </div>
         </div>
-
-        {/* Test the mapping end-to-end */}
-        <div style={{ border: `1px dashed ${theme.border}`, borderRadius: 10, padding: '12px 14px', background: '#fafafa' }}>
-          <span style={label}>Test your scanner + mapping</span>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              type="text"
-              className={inputCls}
-              style={{ flex: 1 }}
-              placeholder="Click here, then scan a product (or type a code and press Enter)"
-              value={testCode}
-              onChange={e => setTestCode(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); runTest(); } }}
-            />
-            <Button size="sm" variant="secondary" onClick={runTest}>Test</Button>
-          </div>
-          {testResult && (
-            <p style={{ fontSize: 13, margin: '10px 0 0', color: testResult.product ? '#047857' : '#b91c1c' }}>
-              {testResult.product
-                ? <>✓ <b>{testResult.code}</b> → {testResult.product.sku} · {testResult.product.name}</>
-                : <>✗ No product matches "<b>{testResult.code}</b>" — check the product's barcode/SKU or the mapping above.</>}
-            </p>
-          )}
-        </div>
-      </Card>
+      </section>
 
       {/* ── Receipt printer ── */}
-      <Card className="mb-6">
-        <h2 style={{ fontSize: 15, fontWeight: 600, color: theme.ink, margin: '0 0 4px' }}>Receipt printer</h2>
-        <p style={{ fontSize: 12, color: theme.inkMuted, margin: '0 0 14px' }}>
-          Printing uses the browser's print dialog — pick your receipt printer there once and the
-          browser remembers it for this site.
-        </p>
-
-        <div style={{ marginBottom: 14 }}>
-          <span style={label}>Paper size</span>
-          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-            {([['a4', 'A4 (regular printer)'], ['thermal80', '80mm thermal roll'], ['thermal58', '58mm thermal roll']] as const).map(([v, l]) => (
-              <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                <input type="radio" name="paper" className="accent-brand-600"
-                  checked={cfg.printer.paper === v}
-                  onChange={() => setCfg(c => ({ ...c, printer: { ...c.printer, paper: v } }))} />
-                <span style={{ fontSize: 13, color: theme.ink }}>{l}</span>
-              </label>
-            ))}
-          </div>
+      <section className="sb-card sb-form">
+        <div className="sb-form-head">
+          <span className="sb-form-icon" aria-hidden="true"><Printer size={20} /></span>
+          <span style={{ minWidth: 0 }}>
+            <h2 className="sb-form-title">{t('settingsPages.hardware.printer')}</h2>
+            <p className="sb-form-hint">{t('settingsPages.hardware.printer_hint')}</p>
+          </span>
         </div>
+        <div className="sb-form-stack">
+          <fieldset className="sb-hw-fieldset">
+            <legend className="sb-select-label">{t('settingsPages.hardware.paper')}</legend>
+            <div className="sb-hw-papers">
+              {PAPERS.map(([v, l]) => (
+                <label key={v} className={`sb-check-row ${cfg.printer.paper === v ? 'is-on' : ''}`}>
+                  <input type="radio" name="paper"
+                    checked={cfg.printer.paper === v}
+                    onChange={() => setCfg(c => ({ ...c, printer: { ...c.printer, paper: v } }))} />
+                  <span className="sb-check-text">{l}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            className="h-4 w-4 rounded border-border-subtle accent-brand-600"
-            checked={cfg.printer.autoPrintAfterSale}
-            onChange={e => setCfg(c => ({ ...c, printer: { ...c.printer, autoPrintAfterSale: e.target.checked } }))}
-          />
-          <span style={{ fontSize: 13, color: theme.ink }}>Open the print dialog automatically after each POS sale</span>
-        </label>
+          <label className="sb-check-row">
+            <input type="checkbox" checked={cfg.printer.autoPrintAfterSale}
+              onChange={e => setCfg(c => ({ ...c, printer: { ...c.printer, autoPrintAfterSale: e.target.checked } }))} />
+            <span className="sb-check-text">{t('settingsPages.hardware.auto_print')}</span>
+          </label>
 
-        <div style={{ width: 160 }}>
-          <span style={label}>Copies</span>
-          <input type="number" min={1} max={5} className={inputCls} style={{ width: '100%' }}
-            value={cfg.printer.copies}
-            onChange={e => setCfg(c => ({ ...c, printer: { ...c.printer, copies: Math.min(5, Math.max(1, Number(e.target.value) || 1)) } }))} />
-          <p style={{ fontSize: 11, color: theme.inkFaint, margin: '4px 0 0' }}>Set in the print dialog too if your driver ignores this.</p>
+          <label className="sb-select-field">
+            <span className="sb-select-label">{t('settingsPages.hardware.copies')}</span>
+            <input type="number" min={1} max={5} dir="ltr" className="sb-field" style={{ maxWidth: 160 }}
+              value={cfg.printer.copies}
+              onChange={e => setCfg(c => ({ ...c, printer: { ...c.printer, copies: Math.min(5, Math.max(1, Number(e.target.value) || 1)) } }))} />
+            <span className="sb-form-hint">{t('settingsPages.hardware.copies_hint')}</span>
+          </label>
         </div>
-      </Card>
+      </section>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <Button onClick={save}>Save settings</Button>
-        <Button variant="secondary" onClick={restoreDefaults}>Restore defaults</Button>
-        {saved && <span style={{ fontSize: 13, color: '#047857' }}>Saved on this device ✓</span>}
+      <div className="sb-form-actions" style={{ justifyContent: 'flex-start', alignItems: 'center' }}>
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={save}><Save size={18} aria-hidden="true" />{t('settingsPages.hardware.save')}</button>
+        <button type="button" className="sb-secondary-btn sb-btn-inline" onClick={restoreDefaults}><RotateCcw size={18} aria-hidden="true" />{t('settingsPages.hardware.restore')}</button>
+        {saved && <span className="sb-pill sb-pill-good" role="status">{t('settingsPages.hardware.saved')}</span>}
       </div>
-    </div>
+    </OceanPage>
   );
 }

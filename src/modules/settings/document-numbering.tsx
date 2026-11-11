@@ -13,9 +13,11 @@ import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
+import { useTranslation } from 'react-i18next';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Check, Info, AlertTriangle } from 'lucide-react';
 import { BackButton } from '@/ui/back-button';
-import { theme } from '@/ui/theme';
 import type { DocumentSequenceRow } from '@/data/adapter';
 
 // Every prefix the app issues, with a human label. Sequences are
@@ -70,11 +72,13 @@ function preview(d: RowDraft): string {
     .replace('{NUMBER}', num);
 }
 
-const inputCls = 'h-8 rounded-card border border-border-subtle bg-surface-card px-2.5 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500';
 
 export default function DocumentNumberingPage() {
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
+  const { t } = useTranslation();
+  // English labels in KNOWN_DOCS stay as the fallback.
+  const docLabel = (d: { prefix: string; label: string }) => t(`settingsPages.numbering.docs.${d.prefix}`, { defaultValue: d.label });
   const [drafts, setDrafts] = useState<Record<string, RowDraft>>({});
   const [savedPrefix, setSavedPrefix] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -102,8 +106,8 @@ export default function DocumentNumberingPage() {
     mutationFn: async (prefix: string) => {
       const d = drafts[prefix];
       const next = parseInt(d.next_number);
-      if (!d.format.includes('{NUMBER}')) throw new Error(`${prefix}: format must contain {NUMBER}`);
-      if (!next || next < 1) throw new Error(`${prefix}: next number must be at least 1`);
+      if (!d.format.includes('{NUMBER}')) throw new Error(t('settingsPages.numbering.err_format', { prefix }));
+      if (!next || next < 1) throw new Error(t('settingsPages.numbering.err_next', { prefix }));
       await getAdapter().documentSequences.save(company_id!, prefix, {
         format: d.format.trim(),
         pad_zeros: Math.max(0, parseInt(d.pad_zeros) || 0),
@@ -124,103 +128,108 @@ export default function DocumentNumberingPage() {
   const set = (prefix: string, patch: Partial<RowDraft>) =>
     setDrafts(ds => ({ ...ds, [prefix]: { ...ds[prefix], ...patch } }));
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '980px' }}>
-      <div className="flex flex-wrap items-center gap-3">
-        <BackButton to="/settings" label="Settings" />
-        <span className="text-ink-tertiary">/</span>
-        <h1 className="text-xl font-semibold text-ink-primary">Document Numbering</h1>
-      </div>
-
-      <div className="rounded-card border border-border-subtle bg-surface-card p-4 text-xs text-ink-secondary">
-        <p>
-          Format tokens: <code className="rounded bg-surface-muted px-1 font-mono">{'{NUMBER}'}</code> sequence
-          {' · '}<code className="rounded bg-surface-muted px-1 font-mono">{'{YYYY}'}</code> year
-          {' · '}<code className="rounded bg-surface-muted px-1 font-mono">{'{YY}'}</code> 2-digit year.
-          {' '}Example: <span className="font-mono">INV-{'{YYYY}'}-{'{NUMBER}'}</span> with padding 5 → <span className="font-mono">INV-2026-01001</span>.
-        </p>
-        <p className="mt-1 text-amber-700">
-          Lowering "Next number" below numbers already issued will cause duplicate-number errors on save — only do it after a data reset.
-        </p>
-      </div>
-
-      {error && <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
-
-      {isLoading ? (
-        <p style={{ fontSize: '13px', color: theme.inkFaint, padding: '32px 0', textAlign: 'center' }}>Loading…</p>
+  type Doc = (typeof KNOWN_DOCS)[number];
+  const lastIssued = (doc: Doc) => { const db = dbByPrefix[doc.prefix]; return db ? Number(db.current_value) : null; };
+  const columns: Column<Doc>[] = [
+    {
+      key: 'doc', header: t('settingsPages.numbering.document'),
+      render: (doc) => (
+        <span className="sb-num-doc">
+          <span style={{ fontWeight: 700 }}>{docLabel(doc)}</span>
+          <bdi dir="ltr" className="sb-wh-code">{doc.prefix}</bdi>
+        </span>
+      ),
+    },
+    {
+      key: 'format', header: t('settingsPages.numbering.format'),
+      render: (doc) => (
+        <input className="sb-field sb-mono sb-num-input sb-num-format" dir="ltr" value={drafts[doc.prefix].format}
+          aria-label={`${t('settingsPages.numbering.format')} — ${docLabel(doc)}`}
+          onChange={e => set(doc.prefix, { format: e.target.value })} />
+      ),
+    },
+    {
+      key: 'pad', header: t('settingsPages.numbering.padding'),
+      render: (doc) => (
+        <input className="sb-field sb-num-input sb-num-small" dir="ltr" type="number" min="0" max="10" value={drafts[doc.prefix].pad_zeros}
+          aria-label={`${t('settingsPages.numbering.padding')} — ${docLabel(doc)}`}
+          onChange={e => set(doc.prefix, { pad_zeros: e.target.value })} />
+      ),
+    },
+    {
+      key: 'next', header: t('settingsPages.numbering.next'),
+      render: (doc) => {
+        const d = drafts[doc.prefix];
+        const last = lastIssued(doc);
+        const lowered = last !== null && (parseInt(d.next_number) || 0) <= last;
+        return (
+          <input className={`sb-field sb-mono sb-num-input sb-num-small ${lowered ? 'is-warn' : ''}`} dir="ltr"
+            type="number" min="1" value={d.next_number}
+            aria-label={`${t('settingsPages.numbering.next')} — ${docLabel(doc)}`}
+            title={lowered ? t('settingsPages.numbering.lowered', { n: last }) : ''}
+            onChange={e => set(doc.prefix, { next_number: e.target.value })} />
+        );
+      },
+    },
+    {
+      key: 'reset', header: t('settingsPages.numbering.yearly'),
+      render: (doc) => (
+        <input type="checkbox" className="sb-num-check" checked={drafts[doc.prefix].reset_yearly}
+          aria-label={`${t('settingsPages.numbering.yearly')} — ${docLabel(doc)}`}
+          onChange={e => set(doc.prefix, { reset_yearly: e.target.checked })} />
+      ),
+    },
+    {
+      key: 'preview', header: t('settingsPages.numbering.preview'),
+      render: (doc) => <bdi dir="ltr" className="sb-mono sb-num-preview">{preview(drafts[doc.prefix])}</bdi>,
+    },
+    {
+      key: 'save', header: '', align: 'end',
+      render: (doc) => savedPrefix === doc.prefix ? (
+        <span className="sb-pill sb-pill-good" role="status"><Check size={14} aria-hidden="true" style={{ display: 'inline', verticalAlign: '-2px' }} /> {t('settingsPages.numbering.saved')}</span>
       ) : (
-        <div className="overflow-x-auto bg-white" style={{ border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm }}>
-          <table className="w-full text-sm" style={{ minWidth: '860px' }}>
-            <thead>
-              <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
-                {['Document', 'Format', 'Padding', 'Next Number', 'Yearly Reset', 'Preview', ''].map((l, i) => (
-                  <th key={i} className="px-4 py-3" style={{
-                    fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
-                    textTransform: 'uppercase', letterSpacing: '.06em',
-                    textAlign: 'start', whiteSpace: 'nowrap',
-                  }}>{l}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {KNOWN_DOCS.map((doc, idx) => {
-                const d = drafts[doc.prefix];
-                if (!d) return null;
-                const db = dbByPrefix[doc.prefix];
-                const lastIssued = db ? Number(db.current_value) : null;
-                const lowered = lastIssued !== null && (parseInt(d.next_number) || 0) <= lastIssued;
-                return (
-                  <tr key={doc.prefix} style={{ borderTop: idx === 0 ? 'none' : '1px solid #f1f5f9' }}>
-                    <td className="px-4 py-2.5" style={{ whiteSpace: 'nowrap' }}>
-                      <span style={{ fontWeight: 500, color: theme.ink }}>{doc.label}</span>
-                      <span className="font-mono" style={{ marginInlineStart: '8px', fontSize: '10px', color: theme.inkFaint }}>{doc.prefix}</span>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <input className={`${inputCls} w-44 font-mono`} value={d.format}
-                        onChange={e => set(doc.prefix, { format: e.target.value })} />
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <input className={`${inputCls} w-16 text-end`} type="number" min="0" max="10" value={d.pad_zeros}
-                        onChange={e => set(doc.prefix, { pad_zeros: e.target.value })} />
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <input className={`${inputCls} w-24 text-end font-mono ${lowered ? 'border-amber-400 bg-amber-50' : ''}`}
-                        type="number" min="1" value={d.next_number}
-                        title={lowered ? `Already issued up to ${lastIssued} — duplicates likely` : ''}
-                        onChange={e => set(doc.prefix, { next_number: e.target.value })} />
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <input type="checkbox" className="h-4 w-4 rounded accent-brand-600"
-                        checked={d.reset_yearly}
-                        onChange={e => set(doc.prefix, { reset_yearly: e.target.checked })} />
-                    </td>
-                    <td className="px-4 py-2.5 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, whiteSpace: 'nowrap' }}>
-                      {preview(d)}
-                    </td>
-                    <td className="px-4 py-2.5" style={{ textAlign: 'end' }}>
-                      {savedPrefix === doc.prefix ? (
-                        <span style={{ fontSize: '11px', fontWeight: 600, color: '#047857' }}>✓ Saved</span>
-                      ) : (
-                        <Button variant="ghost" size="sm"
-                          onClick={() => saveMutation.mutate(doc.prefix)}
-                          disabled={saveMutation.isPending}>
-                          Save
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+        <button type="button" className="sb-row-link text-brand-600"
+          onClick={() => saveMutation.mutate(doc.prefix)}
+          disabled={saveMutation.isPending}
+          aria-label={`${t('common.save')} — ${docLabel(doc)}`}>
+          {t('common.save')}
+        </button>
+      ),
+    },
+  ];
+  const ready = KNOWN_DOCS.every(doc => !!drafts[doc.prefix]);
 
-      <p className="text-xs text-ink-tertiary">
-        Sequences are created automatically the first time a document type is used, so rows here may
-        show defaults until then. Yearly reset restarts at 1 each January — pair it with {'{YYYY}'} in
-        the format so numbers stay unique across years.
-      </p>
-    </div>
+  // Ocean Teal (UI v1.1): look only — same sequences, drafts, per-row save,
+  // validation and lowered-number warning as before.
+  return (
+    <OceanPage
+      testid="numbering-ocean"
+      back={<BackButton to="/settings" label={t('settingsNav.title')} />}
+      title={t('settingsNav.items.numbering.title')}
+      subtitle={t('settingsNav.items.numbering.desc')}
+    >
+      <div className="sb-info-note sb-num-help">
+        <p style={{ margin: 0 }}>
+          <Info size={16} aria-hidden="true" className="sb-num-ico" />
+          {t('settingsPages.numbering.tokens_intro')}{' '}
+          <code dir="ltr">{'{NUMBER}'}</code> {t('settingsPages.numbering.token_number')}
+          {' · '}<code dir="ltr">{'{YYYY}'}</code> {t('settingsPages.numbering.token_year')}
+          {' · '}<code dir="ltr">{'{YY}'}</code> {t('settingsPages.numbering.token_yy')}.{' '}
+          {t('settingsPages.numbering.example')} <bdi dir="ltr" className="sb-mono">INV-{'{YYYY}'}-{'{NUMBER}'}</bdi> → <bdi dir="ltr" className="sb-mono">INV-2026-01001</bdi>
+        </p>
+        <p className="sb-num-warn">
+          <AlertTriangle size={16} aria-hidden="true" className="sb-num-ico" />
+          {t('settingsPages.numbering.warning')}
+        </p>
+      </div>
+
+      {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+
+      {isLoading || !ready
+        ? <div className="sb-card sb-empty">{t('common.loading')}</div>
+        : <OceanTable wide columns={columns} rows={KNOWN_DOCS} keyFn={(d) => d.prefix} />}
+
+      <p className="sb-form-hint">{t('settingsPages.numbering.footer')}</p>
+    </OceanPage>
   );
 }

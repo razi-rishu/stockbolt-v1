@@ -27,12 +27,15 @@ export interface OceanPageProps {
   testid?: string;
   /** Centre the page at a reading width (forms). */
   narrow?: boolean;
+  /** Back control shown above the title (pages that already had one). */
+  back?: ReactNode;
 }
 
-export function OceanPage({ title, subtitle, actions, below, children, testid, narrow }: OceanPageProps) {
+export function OceanPage({ title, subtitle, actions, below, children, testid, narrow, back }: OceanPageProps) {
   return (
     <div className={`sb-ocean sb-page sb-olist ${narrow ? 'sb-olist-narrow' : ''}`} data-testid={testid} style={{ paddingBottom: 48 }}>
       <div className="sb-hero">
+        {back && <div style={{ marginBottom: 10 }}>{back}</div>}
         <div className="sb-clist-head">
           <div style={{ minWidth: 0 }}>
             <h1 className="sb-title" style={{ marginTop: 0 }}>{title}</h1>
@@ -59,6 +62,8 @@ export interface OceanTableProps<T> {
   rowActive?: (row: T) => boolean;
   /** Column key to use as the card title (default: the first titled column). */
   cardTitleKey?: string;
+  /** Many or input-heavy columns: keep cards until there is more room. */
+  wide?: boolean;
 }
 
 /**
@@ -68,7 +73,7 @@ export interface OceanTableProps<T> {
  * other titled columns become label/value lines; remaining header-less
  * columns (badges, actions) form the foot.
  */
-export function OceanTable<T>({ columns, rows, keyFn, onRowClick, emptyMessage, rowMuted, rowActive, cardTitleKey }: OceanTableProps<T>) {
+export function OceanTable<T>({ columns, rows, keyFn, onRowClick, emptyMessage, rowMuted, rowActive, cardTitleKey, wide }: OceanTableProps<T>) {
   if (rows.length === 0) {
     return <div className="sb-card sb-empty">{emptyMessage}</div>;
   }
@@ -85,7 +90,7 @@ export function OceanTable<T>({ columns, rows, keyFn, onRowClick, emptyMessage, 
   const align = (c: Column<T>) => (c.align === 'end' ? 'end' : c.align === 'center' ? 'center' : 'start');
 
   return (
-    <div className="sb-otable-host">
+    <div className={`sb-otable-host ${wide ? 'is-wide' : ''}`}>
       {/* Narrow: one card per row. */}
       <ul className="sb-ocards">
         {rows.map((r) => (
