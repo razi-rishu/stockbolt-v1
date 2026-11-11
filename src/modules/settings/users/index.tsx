@@ -14,10 +14,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { formatDate } from '@/lib/locale';
-import { PageHeader } from '@/ui/primitives';
-import { Button } from '@/ui/button';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Modal } from '@/ui/modal';
-import { theme } from '@/ui/theme';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { UserPlus, Users, MailOpen, ShieldCheck, Plus, Loader2 } from 'lucide-react';
 import { type AppRole } from '@/lib/permissions';
 import type { Profile, CompanyInviteRow, RoleRow } from '@/data/adapter';
 
@@ -32,23 +34,14 @@ const PERM_GROUPS: { module: string; read: string; write: string | null }[] = [
   { module: 'Settings',            read: 'settings.read',   write: 'settings.write' },
 ];
 
-const card: React.CSSProperties = {
-  background: '#fff', border: `1px solid ${theme.border}`, borderRadius: theme.radiusLg,
-  boxShadow: theme.shadowSm, overflow: 'hidden',
-};
-const th: React.CSSProperties = {
-  fontSize: '11px', fontWeight: 600, color: theme.inkMuted, textTransform: 'uppercase',
-  letterSpacing: '.06em', textAlign: 'start', padding: '10px 16px', whiteSpace: 'nowrap',
-};
-const td: React.CSSProperties = { padding: '10px 16px', fontSize: '13px', color: theme.ink };
-const roleSelect: React.CSSProperties = {
-  fontSize: '12px', padding: '5px 8px', borderRadius: theme.radius,
-  border: `1px solid ${theme.border}`, background: '#fff', color: theme.ink, cursor: 'pointer',
-};
+/** Module name for a permission group, translated (English module as fallback). */
+const moduleLabel = (t: TFunction, g: { module: string; read: string }) =>
+  t(`settingsPages.users.mod.${g.read.split('.')[0]}`, { defaultValue: g.module });
 
 export default function UsersRolesPage() {
   const { company_id, user_id } = useAuthStore();
   const qc = useQueryClient();
+  const { t } = useTranslation();
 
   const [email, setEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<string>('sales');
@@ -72,7 +65,7 @@ export default function UsersRolesPage() {
 
   const invite = useMutation({
     mutationFn: () => getAdapter().users.inviteUser(email.trim(), inviteRole as AppRole),
-    onSuccess: () => { setNotice(`Invitation created for ${email.trim()}. Ask them to sign up with this email.`); setError(null); setEmail(''); refresh(); }, onError: fail,
+    onSuccess: () => { setNotice(t('settingsPages.users.invited', { email: email.trim() })); setError(null); setEmail(''); refresh(); }, onError: fail,
   });
   const revoke = useMutation({ mutationFn: (id: string) => getAdapter().users.revokeInvite(id), onSuccess: () => { setError(null); refresh(); }, onError: fail });
   const setRole = useMutation({ mutationFn: (v: { id: string; role: string }) => getAdapter().users.setRole(v.id, v.role as AppRole), onSuccess: () => { setError(null); refresh(); }, onError: fail });
@@ -83,8 +76,11 @@ export default function UsersRolesPage() {
   const invites = invitesQ.data ?? [];
   const roles = rolesQ.data ?? [];
   const activeAdmins = users.filter(u => u.role === 'admin' && u.is_active).length;
-  const roleName = (key: string) => roles.find(r => r.key === key)?.name ?? key;
-  const roleOptions = roles.map(r => ({ value: r.key, label: r.name }));
+  // System roles are shared rows with English names: show them translated by
+  // key. Custom role names are the admin's own text and stay as typed.
+  const displayName = (r: RoleRow) => (r.is_system ? t(`settingsPages.users.sys.${r.key}`, { defaultValue: r.name }) : r.name);
+  const roleName = (key: string) => { const r = roles.find(x => x.key === key); return r ? displayName(r) : key; };
+  const roleOptions = roles.map(r => ({ value: r.key, label: displayName(r) }));
   const permsByRole = (() => {
     const m = new Map<string, Set<string>>();
     for (const rp of (rolePermsQ.data ?? [])) {
@@ -94,150 +90,175 @@ export default function UsersRolesPage() {
     return m;
   })();
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader title="Users & Roles" subtitle="Invite teammates, assign roles, and define what each role can access." />
-
-      {error && <div style={{ background: theme.dangerSoft, border: `1px solid ${theme.dangerBorder}`, color: theme.danger, borderRadius: theme.radiusLg, padding: '10px 14px', fontSize: '13px' }}>{error}</div>}
-      {notice && <div style={{ background: theme.successSoft, border: `1px solid ${theme.successBorder}`, color: theme.success, borderRadius: theme.radiusLg, padding: '10px 14px', fontSize: '13px' }}>{notice}</div>}
-
-      {/* Invite */}
-      <div style={{ ...card, padding: '16px' }}>
-        <div style={{ fontSize: '13px', fontWeight: 700, color: theme.ink, marginBottom: '10px' }}>Invite a teammate</div>
-        <form onSubmit={(e) => { e.preventDefault(); if (email.trim()) invite.mutate(); }} style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <input type="email" required placeholder="name@company.com" value={email} onChange={(e) => setEmail(e.target.value)}
-            style={{ flex: '1 1 240px', minWidth: '200px', padding: '8px 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: theme.radius, color: theme.ink }} />
-          <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value)} style={{ ...roleSelect, padding: '8px 10px', fontSize: '13px' }}>
+  const memberCols: Column<Profile>[] = [
+    {
+      key: 'name', header: t('settingsPages.users.name'),
+      render: (u) => <span style={{ fontWeight: 700 }}>{u.full_name}{u.id === user_id && <span className="sb-fx-name"> ({t('settingsPages.users.you')})</span>}</span>,
+    },
+    { key: 'email', header: t('settingsPages.users.email'), render: (u) => <bdi dir="ltr" className="sb-fx-name">{u.email}</bdi> },
+    {
+      key: 'role', header: t('settingsPages.users.role'),
+      render: (u) => {
+        const isLastAdmin = u.role === 'admin' && u.is_active && activeAdmins <= 1;
+        return (
+          <select className="sb-field sb-users-select" value={u.role} disabled={isLastAdmin || setRole.isPending}
+            aria-label={`${t('settingsPages.users.role')} — ${u.full_name}`}
+            title={isLastAdmin ? t('settingsPages.users.last_admin_role') : undefined}
+            onChange={(e) => setRole.mutate({ id: u.id, role: e.target.value })}>
+            {/* ensure the member's current role is selectable even if it's an unknown key */}
+            {!roleOptions.some(o => o.value === u.role) && <option value={u.role}>{roleName(u.role)}</option>}
             {roleOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          <Button type="submit" disabled={invite.isPending || !email.trim()}>{invite.isPending ? 'Inviting…' : 'Send invite'}</Button>
+        );
+      },
+    },
+    { key: 'status', header: '', render: (u) => <span className={`sb-pill ${u.is_active ? 'sb-pill-good' : 'sb-pill-muted'}`}>{u.is_active ? t('common.active') : t('settingsPages.users.disabled')}</span> },
+    {
+      key: 'actions', header: '', align: 'end',
+      render: (u) => {
+        const isSelf = u.id === user_id;
+        const isLastAdmin = u.role === 'admin' && u.is_active && activeAdmins <= 1;
+        const blocked = isSelf || (isLastAdmin && u.is_active);
+        return (
+          <span className="sb-users-actions">
+            {u.role !== 'admin' ? (
+              <button type="button" className="sb-row-link text-brand-600" onClick={() => setOverrideUser(u)} title={t('settingsPages.users.customize_title')}>
+                {t('settingsPages.users.customize')}
+              </button>
+            ) : (
+              <span className="sb-fx-name" title={t('settingsPages.users.full_access_title')}>{t('settingsPages.users.full_access')}</span>
+            )}
+            <button type="button" className={`sb-row-link ${blocked ? '' : (u.is_active ? 'text-danger-500' : 'text-brand-600')}`}
+              onClick={() => setActive.mutate({ id: u.id, active: !u.is_active })} disabled={(isLastAdmin && u.is_active) || isSelf || setActive.isPending}
+              title={isSelf ? t('settingsPages.users.cannot_disable_self') : isLastAdmin ? t('settingsPages.users.cannot_disable_last') : undefined}>
+              {u.is_active ? t('settingsPages.users.disable') : t('settingsPages.users.enable')}
+            </button>
+          </span>
+        );
+      },
+    },
+  ];
+
+  const inviteCols: Column<CompanyInviteRow>[] = [
+    { key: 'email', header: t('settingsPages.users.email'), render: (inv) => <bdi dir="ltr" style={{ fontWeight: 700 }}>{inv.email}</bdi> },
+    { key: 'role', header: t('settingsPages.users.role'), render: (inv) => roleName(inv.role) },
+    { key: 'date', header: t('settingsPages.users.invited_on'), render: (inv) => <bdi dir="ltr">{formatDate(inv.created_at)}</bdi> },
+    {
+      key: 'revoke', header: '', align: 'end',
+      render: (inv) => <button type="button" className="sb-row-link text-danger-500" onClick={() => revoke.mutate(inv.id)} disabled={revoke.isPending}>{t('settingsPages.users.revoke')}</button>,
+    },
+  ];
+
+  const roleCols: Column<RoleRow>[] = [
+    {
+      key: 'name', header: t('settingsPages.users.role'),
+      render: (r) => (
+        <button type="button" className="sb-row-link text-brand-600 is-strong" style={{ paddingInline: 0 }} onClick={() => openRole(r)}
+          title={r.is_system ? t('settingsPages.users.view_role_title') : t('settingsPages.users.edit_role_title')}>
+          {displayName(r)}
+        </button>
+      ),
+    },
+    { key: 'type', header: t('settingsPages.users.type'), render: (r) => <span className={`sb-pill ${r.is_system ? 'sb-pill-muted' : ''}`}>{r.is_system ? t('settingsPages.users.system') : t('settingsPages.users.custom')}</span> },
+    { key: 'members', header: t('settingsPages.users.members_col'), render: (r) => <bdi dir="ltr">{users.filter(u => u.role === r.key).length}</bdi> },
+    {
+      key: 'perms', header: t('settingsPages.users.permissions'),
+      render: (r) => {
+        const n = r.key === 'admin' ? 1 : (permsByRole.get(r.key)?.size ?? 0);
+        return n === 0 ? '—' : t('settingsPages.users.perm_count', { count: n });
+      },
+    },
+    {
+      key: 'actions', header: '', align: 'end',
+      render: (r) => {
+        const count = users.filter(u => u.role === r.key).length;
+        const rolePerms = [...(permsByRole.get(r.key) ?? [])];
+        return r.is_system ? (
+          r.key !== 'admin' && (
+            <button type="button" className="sb-row-link text-brand-600"
+              onClick={() => setRoleModal({ open: true, mode: 'create', role: null, presetName: `${r.name} (${t('settingsPages.users.custom')})`, presetPerms: rolePerms })}
+              title={t('settingsPages.users.duplicate_title')}>
+              {t('settingsPages.users.duplicate')}
+            </button>
+          )
+        ) : (
+          <span className="sb-users-actions">
+            <button type="button" className="sb-row-link text-brand-600" onClick={() => openRole(r)}>{t('common.edit')}</button>
+            <button type="button" className="sb-row-link text-danger-500"
+              onClick={() => { if (count > 0) { setError(t('settingsPages.users.role_in_use', { name: r.name, count })); return; } delRole.mutate(r.key); }}>
+              {t('common.delete')}
+            </button>
+          </span>
+        );
+      },
+    },
+  ];
+
+  function openRole(r: RoleRow) {
+    const rolePerms = [...(permsByRole.get(r.key) ?? [])];
+    setRoleModal(r.is_system
+      ? { open: true, mode: 'view', role: r, presetPerms: rolePerms }
+      : { open: true, mode: 'edit', role: r, presetPerms: rolePerms });
+  }
+
+  const sectionHead = (icon: React.ReactNode, title: string, count: number, action?: React.ReactNode) => (
+    <div className="sb-users-head">
+      <span className="sb-form-icon" aria-hidden="true">{icon}</span>
+      <h2 className="sb-form-title" style={{ flex: 1 }}>{title} <span className="sb-tab-count">{count}</span></h2>
+      {action}
+    </div>
+  );
+
+  // Ocean Teal (UI v1.1): look only — same members, invites, roles, last-admin
+  // and self guards, overrides and role editor as before.
+  return (
+    <OceanPage testid="users-ocean" title={t('settingsNav.items.users.title')} subtitle={t('settingsPages.users.subtitle')}>
+      {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+      {notice && <p className="sb-alert sb-alert-good" role="status">{notice}</p>}
+
+      {/* Invite */}
+      <section className="sb-card sb-form">
+        <div className="sb-form-head">
+          <span className="sb-form-icon" aria-hidden="true"><UserPlus size={20} /></span>
+          <h2 className="sb-form-title">{t('settingsPages.users.invite_title')}</h2>
+        </div>
+        <form onSubmit={(e) => { e.preventDefault(); if (email.trim()) invite.mutate(); }} className="sb-users-invite">
+          <input type="email" required dir="ltr" className="sb-field" placeholder="name@company.com" value={email}
+            aria-label={t('settingsPages.users.email')} onChange={(e) => setEmail(e.target.value)} />
+          <select className="sb-field" value={inviteRole} aria-label={t('settingsPages.users.role')} onChange={(e) => setInviteRole(e.target.value)}>
+            {roleOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <button type="submit" className="sb-primary-btn sb-btn-inline" disabled={invite.isPending || !email.trim()}>
+            {invite.isPending ? <Loader2 size={18} className="sb-spin" aria-hidden="true" /> : <UserPlus size={18} aria-hidden="true" />}
+            {invite.isPending ? t('settingsPages.users.inviting') : t('settingsPages.users.send_invite')}
+          </button>
         </form>
-      </div>
+      </section>
 
       {/* Members */}
-      <div style={card}>
-        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.border}`, fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: theme.inkMuted }}>Members ({users.length})</div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr style={{ background: theme.panelHead }}><th style={th}>Name</th><th style={th}>Email</th><th style={th}>Role</th><th style={th}>Status</th><th style={th}></th></tr></thead>
-          <tbody>
-            {users.map((u, i) => {
-              const isSelf = u.id === user_id;
-              const isLastAdmin = u.role === 'admin' && u.is_active && activeAdmins <= 1;
-              return (
-                <tr key={u.id} style={{ borderTop: i === 0 ? 'none' : `1px solid ${theme.muted}` }}>
-                  <td style={{ ...td, fontWeight: 600 }}>{u.full_name}{isSelf && <span style={{ color: theme.inkFaint, fontWeight: 400 }}> (you)</span>}</td>
-                  <td style={{ ...td, color: theme.inkMuted }}>{u.email}</td>
-                  <td style={td}>
-                    <select value={u.role} disabled={isLastAdmin || setRole.isPending} title={isLastAdmin ? 'Cannot change the last admin' : undefined}
-                      onChange={(e) => setRole.mutate({ id: u.id, role: e.target.value })} style={roleSelect}>
-                      {/* ensure the member's current role is selectable even if it's an unknown key */}
-                      {!roleOptions.some(o => o.value === u.role) && <option value={u.role}>{roleName(u.role)}</option>}
-                      {roleOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                  </td>
-                  <td style={td}><span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '999px', background: u.is_active ? theme.successSoft : theme.muted, color: u.is_active ? theme.success : theme.inkMuted, border: `1px solid ${u.is_active ? theme.successBorder : theme.border}` }}>{u.is_active ? 'Active' : 'Disabled'}</span></td>
-                  <td style={{ ...td, textAlign: 'end', whiteSpace: 'nowrap' }}>
-                    {u.role !== 'admin' ? (
-                      <button onClick={() => setOverrideUser(u)}
-                        title="Allow or deny specific options for this person on top of their role"
-                        style={{ fontSize: '12px', fontWeight: 600, padding: '4px 12px', borderRadius: '999px', background: '#fff', border: `1px solid ${theme.border}`, color: theme.brand, cursor: 'pointer', marginInlineEnd: '10px' }}>
-                        Customize
-                      </button>
-                    ) : (
-                      <span title="Admins always have full access — assign a different role to limit what this person can do"
-                        style={{ fontSize: '12px', color: theme.inkFaint, marginInlineEnd: '10px' }}>
-                        Full access
-                      </span>
-                    )}
-                    <button onClick={() => setActive.mutate({ id: u.id, active: !u.is_active })} disabled={(isLastAdmin && u.is_active) || isSelf || setActive.isPending}
-                      title={isSelf ? 'You cannot disable yourself' : isLastAdmin ? 'Cannot disable the last admin' : undefined}
-                      style={{ fontSize: '12px', fontWeight: 600, background: 'none', border: 'none', color: (isSelf || (isLastAdmin && u.is_active)) ? theme.inkFaint : (u.is_active ? theme.danger : theme.success), cursor: (isSelf || (isLastAdmin && u.is_active)) ? 'not-allowed' : 'pointer' }}>
-                      {u.is_active ? 'Disable' : 'Enable'}</button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <section className="sb-section-card">
+        {sectionHead(<Users size={20} />, t('settingsPages.users.members'), users.length)}
+        <OceanTable wide columns={memberCols} rows={users} keyFn={(u) => u.id} rowMuted={(u) => !u.is_active} emptyMessage={t('common.loading')} />
+      </section>
 
       {/* Pending invites */}
       {invites.length > 0 && (
-        <div style={card}>
-          <div style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.border}`, fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: theme.inkMuted }}>Pending invites ({invites.length})</div>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr style={{ background: theme.panelHead }}><th style={th}>Email</th><th style={th}>Role</th><th style={th}>Invited</th><th style={th}></th></tr></thead>
-            <tbody>
-              {invites.map((inv, i) => (
-                <tr key={inv.id} style={{ borderTop: i === 0 ? 'none' : `1px solid ${theme.muted}` }}>
-                  <td style={td}>{inv.email}</td><td style={td}>{roleName(inv.role)}</td>
-                  <td style={{ ...td, color: theme.inkMuted }}>{formatDate(inv.created_at)}</td>
-                  <td style={{ ...td, textAlign: 'end' }}><button onClick={() => revoke.mutate(inv.id)} disabled={revoke.isPending} style={{ fontSize: '12px', fontWeight: 600, background: 'none', border: 'none', color: theme.danger, cursor: 'pointer' }}>Revoke</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <section className="sb-section-card">
+          {sectionHead(<MailOpen size={20} />, t('settingsPages.users.pending'), invites.length)}
+          <OceanTable columns={inviteCols} rows={invites} keyFn={(inv) => inv.id} />
+        </section>
       )}
 
       {/* Roles */}
-      <div style={card}>
-        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: theme.inkMuted }}>Roles ({roles.length})</span>
-          <button onClick={() => setRoleModal({ open: true, mode: 'create', role: null, presetPerms: [] })} style={{ fontSize: '12px', fontWeight: 700, color: theme.brand, background: 'none', border: 'none', cursor: 'pointer' }}>+ New role</button>
-        </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr style={{ background: theme.panelHead }}><th style={th}>Role</th><th style={th}>Type</th><th style={th}>Members</th><th style={th}>Permissions</th><th style={th}></th></tr></thead>
-          <tbody>
-            {roles.map((r, i) => {
-              const count = users.filter(u => u.role === r.key).length;
-              const perms = r.key === 'admin' ? ['everything'] : [...(permsByRole.get(r.key) ?? [])];
-              const rolePerms = [...(permsByRole.get(r.key) ?? [])];
-              const openRole = () => setRoleModal(
-                r.is_system
-                  ? { open: true, mode: 'view', role: r, presetPerms: rolePerms }
-                  : { open: true, mode: 'edit', role: r, presetPerms: rolePerms },
-              );
-              return (
-                <tr key={r.id} style={{ borderTop: i === 0 ? 'none' : `1px solid ${theme.muted}` }}>
-                  <td style={{ ...td, fontWeight: 600 }}>
-                    <button onClick={openRole} title={r.is_system ? 'View this role\'s permissions' : 'Edit this role'}
-                      style={{ background: 'none', border: 'none', padding: 0, fontSize: '13px', fontWeight: 600, color: theme.brand, cursor: 'pointer' }}>
-                      {r.name}
-                    </button>
-                  </td>
-                  <td style={td}><span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '999px', background: r.is_system ? theme.muted : theme.brandSoft, color: r.is_system ? theme.inkMuted : theme.brandSoftText, border: `1px solid ${r.is_system ? theme.border : theme.purpleBorder}` }}>{r.is_system ? 'System' : 'Custom'}</span></td>
-                  <td style={{ ...td, color: theme.inkMuted }}>{count}</td>
-                  <td style={{ ...td, color: theme.inkMuted, fontSize: '12px' }}>{perms.length === 0 ? '—' : `${perms.length} permission${perms.length === 1 ? '' : 's'}`}</td>
-                  <td style={{ ...td, textAlign: 'end', whiteSpace: 'nowrap' }}>
-                    {r.is_system ? (
-                      r.key !== 'admin' && (
-                        <button onClick={() => setRoleModal({ open: true, mode: 'create', role: null, presetName: `${r.name} (Custom)`, presetPerms: rolePerms })}
-                          title="Copy this role into an editable custom role"
-                          style={{ fontSize: '12px', fontWeight: 600, color: theme.brand, background: 'none', border: 'none', cursor: 'pointer' }}>
-                          Duplicate &amp; customize
-                        </button>
-                      )
-                    ) : (
-                      <>
-                        <button onClick={openRole} style={{ fontSize: '12px', fontWeight: 600, color: theme.brand, background: 'none', border: 'none', cursor: 'pointer', marginInlineEnd: '10px' }}>Edit</button>
-                        <button onClick={() => { if (count > 0) { setError(`"${r.name}" is assigned to ${count} member(s) — reassign them first.`); return; } delRole.mutate(r.key); }} style={{ fontSize: '12px', fontWeight: 600, color: theme.danger, background: 'none', border: 'none', cursor: 'pointer' }}>Delete</button>
-                      </>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <section className="sb-section-card">
+        {sectionHead(<ShieldCheck size={20} />, t('settingsPages.users.roles'), roles.length,
+          <button type="button" className="sb-secondary-btn sb-btn-inline" onClick={() => setRoleModal({ open: true, mode: 'create', role: null, presetPerms: [] })}>
+            <Plus size={18} aria-hidden="true" />{t('settingsPages.users.new_role')}
+          </button>)}
+        <OceanTable columns={roleCols} rows={roles} keyFn={(r) => r.id} />
+      </section>
 
-      <p style={{ fontSize: '12px', color: theme.inkFaint }}>
-        Invited teammates sign up with the same email and are auto-added to your company with the role you chose.
-        Click a role to see or change what it can access — system roles are shared templates, so use
-        “Duplicate &amp; customize” to make your own editable copy. Use “Customize” on a member to grant or
-        deny specific modules for just that person. Members only ever see what their role + overrides allow.
-      </p>
+      <p className="sb-form-hint">{t('settingsPages.users.footer')}</p>
 
       {roleModal.open && (
         <RoleEditorModal
@@ -262,7 +283,7 @@ export default function UsersRolesPage() {
           onError={fail}
         />
       )}
-    </div>
+    </OceanPage>
   );
 }
 
@@ -277,8 +298,12 @@ function UserOverridesModal({ user, roleName, baseline, onClose, onSaved, onErro
 }) {
   // Effective = (role baseline ∪ allow) − deny. Start from baseline, then apply
   // the user's existing overrides once they load.
+  const { t } = useTranslation();
   const [effective, setEffective] = useState<Set<string>>(new Set(baseline));
-  const ovQ = useQuery({ queryKey: ['user_overrides', user.id], queryFn: () => getAdapter().users.getUserOverrides(user.id) });
+  // gcTime 0: the overrides are applied once (below), so they must be the
+  // fresh ones — a cached copy from an earlier open would hide a save made
+  // since, and saving again would overwrite it with the stale set.
+  const ovQ = useQuery({ queryKey: ['user_overrides', user.id], queryFn: () => getAdapter().users.getUserOverrides(user.id), gcTime: 0 });
 
   // Apply loaded overrides to the baseline exactly once.
   const applied = useRef(false);
@@ -318,37 +343,61 @@ function UserOverridesModal({ user, roleName, baseline, onClose, onSaved, onErro
   })();
 
   return (
-    <Modal open onClose={onClose} title={`Customize access — ${user.full_name}`}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        <p style={{ fontSize: '12.5px', color: theme.inkMuted, margin: 0 }}>
-          Base role: <strong style={{ color: theme.ink }}>{roleName}</strong>. Tick to grant, untick to remove —
-          anything different from the role becomes a personal override for {user.full_name.split(' ')[0]}.
+    <Modal open onClose={onClose} title={t('settingsPages.users.customize_modal', { name: user.full_name })}>
+      <div className="sb-ocean sb-form sb-modal-form">
+        <p className="sb-form-hint" style={{ margin: 0 }}>
+          {t('settingsPages.users.base_role')} <strong style={{ color: 'var(--sb-text)' }}>{roleName}</strong>. {t('settingsPages.users.override_hint', { name: user.full_name.split(' ')[0] })}
         </p>
-        <div style={{ border: `1px solid ${theme.border}`, borderRadius: theme.radiusLg, overflow: 'hidden' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 70px', background: theme.panelHead, padding: '8px 12px', fontSize: '11px', fontWeight: 700, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.05em' }}>
-            <span>Module</span><span style={{ textAlign: 'center' }}>View</span><span style={{ textAlign: 'center' }}>Edit</span>
-          </div>
-          {PERM_GROUPS.map((g, i) => (
-            <div key={g.module} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 70px', alignItems: 'center', padding: '8px 12px', borderTop: i === 0 ? 'none' : `1px solid ${theme.muted}`, fontSize: '13px' }}>
-              <span style={{ color: theme.ink }}>
-                {g.module}
-                {(effective.has(g.read) !== baseline.has(g.read) || (g.write != null && effective.has(g.write) !== baseline.has(g.write))) &&
-                  <span style={{ marginInlineStart: '6px', fontSize: '10px', fontWeight: 700, color: theme.brandSoftText }}>● override</span>}
-              </span>
-              <span style={{ textAlign: 'center' }}><input type="checkbox" checked={effective.has(g.read)} onChange={(e) => setPerm(g.read, e.target.checked)} /></span>
-              <span style={{ textAlign: 'center' }}>
-                {g.write ? <input type="checkbox" checked={effective.has(g.write)} onChange={(e) => setWrite(g.read, g.write!, e.target.checked)} /> : <span style={{ color: theme.inkFaint }}>—</span>}
-              </span>
-            </div>
-          ))}
-        </div>
-        <p style={{ fontSize: '11.5px', color: theme.inkFaint, margin: 0 }}>{diffCount === 0 ? 'No overrides — matches the role exactly.' : `${diffCount} override${diffCount === 1 ? '' : 's'} vs the role.`} User management stays Admin-only.</p>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => save.mutate()} disabled={save.isPending || ovQ.isLoading}>{save.isPending ? 'Saving…' : 'Save overrides'}</Button>
+        <PermMatrix
+          t={t}
+          has={(p) => effective.has(p)}
+          onRead={(g, on) => setPerm(g.read, on)}
+          onWrite={(g, on) => setWrite(g.read, g.write!, on)}
+          marker={(g) => (effective.has(g.read) !== baseline.has(g.read) || (g.write != null && effective.has(g.write) !== baseline.has(g.write)))}
+        />
+        <p className="sb-form-hint" style={{ margin: 0 }}>
+          {diffCount === 0 ? t('settingsPages.users.no_overrides') : t('settingsPages.users.override_count', { count: diffCount })} {t('settingsPages.users.admin_only')}
+        </p>
+        <div className="sb-form-actions">
+          <button type="button" className="sb-secondary-btn" onClick={onClose}>{t('common.cancel')}</button>
+          <button type="button" className="sb-primary-btn" onClick={() => save.mutate()} disabled={save.isPending || ovQ.isLoading}>
+            {save.isPending ? t('common.saving') : t('settingsPages.users.save_overrides')}
+          </button>
         </div>
       </div>
     </Modal>
+  );
+}
+
+/** View / Edit checkbox matrix shared by the role editor and member overrides. */
+function PermMatrix({ t, has, onRead, onWrite, marker, readOnly }: {
+  t: TFunction;
+  has: (p: string) => boolean;
+  onRead: (g: typeof PERM_GROUPS[number], on: boolean) => void;
+  onWrite: (g: typeof PERM_GROUPS[number], on: boolean) => void;
+  marker?: (g: typeof PERM_GROUPS[number]) => boolean;
+  readOnly?: boolean;
+}) {
+  return (
+    <div className="sb-perm">
+      <div className="sb-perm-row sb-perm-head">
+        <span>{t('settingsPages.users.module')}</span><span>{t('settingsPages.users.view')}</span><span>{t('settingsPages.users.edit')}</span>
+      </div>
+      {PERM_GROUPS.map((g) => (
+        <div key={g.module} className="sb-perm-row">
+          <span>
+            {moduleLabel(t, g)}
+            {marker?.(g) && <span className="sb-pill" style={{ marginInlineStart: 8, fontSize: 11 }}>{t('settingsPages.users.override')}</span>}
+          </span>
+          <span><input type="checkbox" checked={has(g.read)} disabled={readOnly} aria-label={`${moduleLabel(t, g)} — ${t('settingsPages.users.view')}`} onChange={(e) => onRead(g, e.target.checked)} /></span>
+          <span>
+            {g.write
+              ? <input type="checkbox" checked={has(g.write)} disabled={readOnly} aria-label={`${moduleLabel(t, g)} — ${t('settingsPages.users.edit')}`} onChange={(e) => onWrite(g, e.target.checked)} />
+              : <span className="sb-fx-name">—</span>}
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -365,6 +414,7 @@ function RoleEditorModal({ mode, role, presetName, initialPerms, onDuplicate, on
   onSaved: () => void;
   onError: (e: unknown) => void;
 }) {
+  const { t } = useTranslation();
   const editing = mode === 'edit' ? role : null;
   const readOnly = mode === 'view';
   const [name, setName] = useState(editing?.name ?? presetName ?? (readOnly ? role?.name ?? '' : ''));
@@ -399,56 +449,41 @@ function RoleEditorModal({ mode, role, presetName, initialPerms, onDuplicate, on
 
   return (
     <Modal open onClose={onClose} title={
-      readOnly ? `Role permissions — ${role?.name ?? ''}`
-      : editing ? `Edit role — ${editing.name}`
-      : 'New custom role'
+      readOnly ? t('settingsPages.users.role_view_title', { name: role?.name ?? '' })
+      : editing ? t('settingsPages.users.role_edit_title', { name: editing.name })
+      : t('settingsPages.users.role_new_title')
     }>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        {readOnly && (
-          <p style={{ fontSize: '12.5px', color: theme.inkMuted, margin: 0 }}>
-            This is a built-in system role shared by all companies, so it can't be changed directly.
-            Duplicate it to get your own editable copy.
-          </p>
-        )}
-        <div>
-          <label style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: theme.inkMuted }}>Role name</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Warehouse Manager" disabled={readOnly}
-            style={{ width: '100%', marginTop: '4px', padding: '8px 10px', fontSize: '13px', border: `1px solid ${theme.border}`, borderRadius: theme.radius, color: theme.ink, background: readOnly ? theme.muted : '#fff' }} />
-        </div>
+      <div className="sb-ocean sb-form sb-modal-form">
+        {readOnly && <p className="sb-info-note">{t('settingsPages.users.system_note')}</p>}
+        <label className="sb-select-field" style={{ maxWidth: 'none' }}>
+          <span className="sb-select-label">{t('settingsPages.users.role_name')}</span>
+          <input className="sb-field" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('settingsPages.users.role_name_ph')} disabled={readOnly} />
+        </label>
 
         <div>
-          <div style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: theme.inkMuted, marginBottom: '6px' }}>Permissions</div>
-          <div style={{ border: `1px solid ${theme.border}`, borderRadius: theme.radiusLg, overflow: 'hidden' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 70px', background: theme.panelHead, padding: '8px 12px', fontSize: '11px', fontWeight: 700, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.05em' }}>
-              <span>Module</span><span style={{ textAlign: 'center' }}>View</span><span style={{ textAlign: 'center' }}>Edit</span>
-            </div>
-            {PERM_GROUPS.map((g, i) => (
-              <div key={g.module} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 70px', alignItems: 'center', padding: '8px 12px', borderTop: i === 0 ? 'none' : `1px solid ${theme.muted}`, fontSize: '13px' }}>
-                <span style={{ color: theme.ink }}>{g.module}</span>
-                <span style={{ textAlign: 'center' }}>
-                  <input type="checkbox" checked={perms.has(g.read)} disabled={readOnly} onChange={(e) => toggle(g.read, e.target.checked)} />
-                </span>
-                <span style={{ textAlign: 'center' }}>
-                  {g.write
-                    ? <input type="checkbox" checked={perms.has(g.write)} disabled={readOnly} onChange={(e) => toggleWrite(g.read, g.write!, e.target.checked)} />
-                    : <span style={{ color: theme.inkFaint }}>—</span>}
-                </span>
-              </div>
-            ))}
-          </div>
-          <p style={{ fontSize: '11.5px', color: theme.inkFaint, marginTop: '6px' }}>User management stays Admin-only and can't be granted to a custom role.</p>
+          <div className="sb-select-label" style={{ marginBottom: 6 }}>{t('settingsPages.users.permissions')}</div>
+          <PermMatrix
+            t={t}
+            readOnly={readOnly}
+            has={(p) => perms.has(p)}
+            onRead={(g, on) => toggle(g.read, on)}
+            onWrite={(g, on) => toggleWrite(g.read, g.write!, on)}
+          />
+          <p className="sb-form-hint" style={{ marginTop: 6 }}>{t('settingsPages.users.admin_only_role')}</p>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-          <Button variant="ghost" onClick={onClose}>{readOnly ? 'Close' : 'Cancel'}</Button>
+        <div className="sb-form-actions">
+          <button type="button" className="sb-secondary-btn" onClick={onClose}>{readOnly ? t('common.close') : t('common.cancel')}</button>
           {readOnly ? (
             role?.key !== 'admin' && (
-              <Button onClick={() => onDuplicate(`${role?.name ?? 'Role'} (Custom)`, [...perms])}>
-                Duplicate &amp; customize
-              </Button>
+              <button type="button" className="sb-primary-btn" onClick={() => onDuplicate(`${role?.name ?? 'Role'} (${t('settingsPages.users.custom')})`, [...perms])}>
+                {t('settingsPages.users.duplicate')}
+              </button>
             )
           ) : (
-            <Button onClick={() => save.mutate()} disabled={save.isPending || !name.trim()}>{save.isPending ? 'Saving…' : (editing ? 'Save changes' : 'Create role')}</Button>
+            <button type="button" className="sb-primary-btn" onClick={() => save.mutate()} disabled={save.isPending || !name.trim()}>
+              {save.isPending ? t('common.saving') : (editing ? t('settingsPages.users.save_changes') : t('settingsPages.users.create_role'))}
+            </button>
           )}
         </div>
       </div>

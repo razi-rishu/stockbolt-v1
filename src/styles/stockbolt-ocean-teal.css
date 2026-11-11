@@ -1135,3 +1135,23 @@
   .sb-ocean .sb-otable-host.is-wide > .sb-ocards { display: flex; }
   .sb-ocean .sb-otable-host.is-wide > .sb-otable-wrap { display: none; }
 }
+
+/* ── Settings step 5: Users & roles, Developer & API ─────────────────────── */
+.sb-ocean .sb-users-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sb-ocean .sb-users-head .sb-form-title { line-height: 1.3; }
+.sb-ocean .sb-users-invite { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+@media (max-width: 640px) { .sb-ocean .sb-users-invite { grid-template-columns: minmax(0, 1fr); } }
+.sb-ocean .sb-users-invite .sb-field, .sb-ocean .sb-users-select { border-radius: var(--sb-radius-sm); padding: 0 12px; font: inherit; font-size: 15px; min-height: 44px; }
+.sb-ocean .sb-users-select { min-height: 40px; font-size: 14px; max-width: 220px; }
+.sb-ocean .sb-ocard .sb-users-select { max-width: none; width: 100%; }
+.sb-ocean .sb-ocard-kv > span:has(.sb-users-select) { grid-column: 1 / -1; }
+.sb-ocean .sb-users-actions { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.sb-ocean .sb-perm { border: 1px solid var(--sb-border); border-radius: var(--sb-radius-md); overflow: hidden; background: #fff; }
+.sb-ocean .sb-perm-row { display: grid; grid-template-columns: minmax(0, 1fr) 72px 72px; align-items: center; min-height: 48px; padding: 4px 14px; border-top: 1px solid var(--sb-border); font-size: 15px; color: var(--sb-text); }
+.sb-ocean .sb-perm-row > span:not(:first-child) { text-align: center; }
+.sb-ocean .sb-perm-row input[type=checkbox] { width: 20px; height: 20px; cursor: pointer; }
+.sb-ocean .sb-perm-head { border-top: 0; min-height: 40px; background: var(--sb-background); font-size: 13px; font-weight: 700; color: var(--sb-text-secondary); }
+.sb-ocean .sb-pill-bad { background: var(--sb-danger-bg); color: var(--sb-danger); }
+.sb-ocean .sb-dev-gate { display: flex; align-items: flex-start; gap: 12px; background: var(--sb-primary-soft); border-color: var(--sb-primary-light); }
+.sb-ocean .sb-dev-secret { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px; border-radius: var(--sb-radius-sm); background: var(--sb-background); border: 1px solid var(--sb-border); }
+.sb-ocean .sb-dev-secret code { flex: 1 1 220px; min-width: 0; font-size: 13px; word-break: break-all; color: var(--sb-text); }

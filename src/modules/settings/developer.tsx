@@ -10,18 +10,21 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
-import { Button } from '@/ui/button';
+import { useTranslation } from 'react-i18next';
 import { Modal } from '@/ui/modal';
 import { Input } from '@/ui/input';
 import { BackButton } from '@/ui/back-button';
-import { theme } from '@/ui/theme';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { KeyRound, Lock, Copy, Check, AlertTriangle, Loader2 } from 'lucide-react';
 import { isAppShell } from '@/lib/platform';
 import type { ApiScope, ApiKeyRow } from '@/data/adapter';
 
-const SCOPES: { key: ApiScope; label: string; desc: string }[] = [
-  { key: 'read',           label: 'Read',            desc: 'Pull products, contacts, invoices.' },
-  { key: 'write:contacts', label: 'Write contacts',  desc: 'Create & update customers/suppliers.' },
-  { key: 'write:orders',   label: 'Write orders',    desc: 'Create orders (post as draft invoices).' },
+// English text stays as the fallback; `id` is the translation key.
+const SCOPES: { key: ApiScope; id: string; label: string; desc: string }[] = [
+  { key: 'read',           id: 'read',           label: 'Read',            desc: 'Pull products, contacts, invoices.' },
+  { key: 'write:contacts', id: 'write_contacts', label: 'Write contacts',  desc: 'Create & update customers/suppliers.' },
+  { key: 'write:orders',   id: 'write_orders',   label: 'Write orders',    desc: 'Create orders (post as draft invoices).' },
 ];
 
 function fmtDate(s: string | null) {
@@ -30,6 +33,7 @@ function fmtDate(s: string | null) {
 
 export default function DeveloperSettingsPage() {
   const qc = useQueryClient();
+  const { t } = useTranslation();
 
   const { data: hasAccess, isLoading: accessLoading } = useQuery({
     queryKey: ['api_has_access'],
@@ -82,153 +86,109 @@ export default function DeveloperSettingsPage() {
     try { await navigator.clipboard.writeText(createdKey); setCopied(true); } catch { /* clipboard blocked */ }
   };
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px', maxWidth: '860px' }}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-col gap-2">
-          <BackButton to="/settings" label="Settings" />
-          <h1 className="text-xl font-semibold text-ink-primary">Developer &amp; API</h1>
-          <p className="text-sm text-ink-secondary" style={{ maxWidth: '620px' }}>
-            Create API keys so your online store or other software can connect to StockBolt and read your data or push orders.
-            Treat keys like passwords — anyone with a key can act on your company's data within its scopes.
-          </p>
-        </div>
-        {hasAccess && (
-          <Button size="sm" onClick={() => { setError(null); setCreatedKey(null); setOpen(true); }}>
-            + Create API key
-          </Button>
-        )}
-      </div>
+  const keyCols: Column<ApiKeyRow>[] = [
+    { key: 'name', header: t('settingsPages.dev.name'), render: (k) => <span style={{ fontWeight: 700 }}>{k.name}</span> },
+    { key: 'key', header: t('settingsPages.dev.key'), render: (k) => <bdi dir="ltr" className="sb-mono sb-fx-name">{k.key_prefix}…</bdi> },
+    { key: 'scopes', header: t('settingsPages.dev.scopes'), render: (k) => <bdi dir="ltr" className="sb-fx-name">{k.scopes.join(', ')}</bdi> },
+    { key: 'created', header: t('settingsPages.dev.created'), render: (k) => <bdi dir="ltr">{fmtDate(k.created_at)}</bdi> },
+    { key: 'used', header: t('settingsPages.dev.last_used'), render: (k) => <bdi dir="ltr">{fmtDate(k.last_used_at)}</bdi> },
+    {
+      key: 'status', header: '',
+      render: (k) => <span className={`sb-pill ${k.revoked_at ? 'sb-pill-bad' : 'sb-pill-good'}`}>{k.revoked_at ? t('settingsPages.dev.revoked') : t('common.active')}</span>,
+    },
+    {
+      key: 'revoke', header: '', align: 'end',
+      render: (k) => !k.revoked_at && (
+        <button type="button" className="sb-row-link text-danger-500"
+          onClick={() => { if (window.confirm(t('settingsPages.dev.confirm_revoke', { name: k.name }))) revokeMutation.mutate(k.id); }}
+          disabled={revokeMutation.isPending}>
+          {t('settingsPages.dev.revoke')}
+        </button>
+      ),
+    },
+  ];
 
+  // Ocean Teal (UI v1.1): look only — same plan gate, keys list, create (secret
+  // shown once), copy and revoke as before.
+  return (
+    <OceanPage
+      narrow
+      testid="developer-ocean"
+      back={<BackButton to="/settings" label={t('settingsNav.title')} />}
+      title={t('settingsNav.items.developer.title')}
+      subtitle={t('settingsPages.dev.subtitle')}
+      actions={hasAccess ? (
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => { setError(null); setCreatedKey(null); setOpen(true); }}>
+          <KeyRound size={18} aria-hidden="true" />{t('settingsPages.dev.create')}
+        </button>
+      ) : undefined}
+    >
       {/* Plan gate */}
       {!accessLoading && hasAccess === false && (
-        <div style={{
-          background: theme.brandSoft, border: `1px solid ${theme.purpleBorder}`,
-          borderRadius: '12px', padding: '20px',
-        }}>
-          <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: theme.brandSoftText }}>
-            🔒 API access is part of the Professional plan
-          </p>
-          <p style={{ margin: '6px 0 12px', fontSize: '13px', color: theme.brand }}>
-            Upgrade your subscription to generate API keys and connect external apps.
-          </p>
-          {/* Android app: no link into billing — plans are bought on the website (Google Play payments policy). */}
-          {!isAppShell() && <Link to="/settings/billing"><Button size="sm">View plans</Button></Link>}
-        </div>
+        <section className="sb-card sb-dev-gate">
+          <span className="sb-form-icon" aria-hidden="true"><Lock size={20} /></span>
+          <span style={{ minWidth: 0 }}>
+            <h2 className="sb-form-title" style={{ lineHeight: 1.3 }}>{t('settingsPages.dev.gate_title')}</h2>
+            <p className="sb-form-hint" style={{ margin: '4px 0 12px' }}>{t('settingsPages.dev.gate_body')}</p>
+            {/* Android app: no link into billing — plans are bought on the website (Google Play payments policy). */}
+            {!isAppShell() && <Link to="/settings/billing" className="sb-primary-btn sb-btn-inline" style={{ textDecoration: 'none' }}>{t('settingsPages.dev.view_plans')}</Link>}
+          </span>
+        </section>
       )}
 
       {/* Keys list */}
-      {hasAccess && (
-        <div className="overflow-x-auto bg-white" style={{ border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm }}>
-          {keysLoading ? (
-            <p style={{ padding: '32px', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>Loading…</p>
-          ) : keys.length === 0 ? (
-            <p style={{ padding: '40px 16px', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>
-              No API keys yet. Create one to start connecting.
-            </p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
-                  {['Name', 'Key', 'Scopes', 'Created', 'Last used', 'Status', ''].map((h, i) => (
-                    <th key={h || i} className="px-4 py-3" style={{
-                      fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
-                      textTransform: 'uppercase', letterSpacing: '.06em',
-                      textAlign: i === 6 ? 'end' : 'start', whiteSpace: 'nowrap',
-                    }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(keys as ApiKeyRow[]).map((k, idx) => {
-                  const revoked = !!k.revoked_at;
-                  return (
-                    <tr key={k.id} style={{ borderTop: idx === 0 ? 'none' : '1px solid #f1f5f9', opacity: revoked ? 0.55 : 1 }}>
-                      <td className="px-4 py-3" style={{ color: theme.ink, fontWeight: 500 }}>{k.name}</td>
-                      <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.inkMuted }}>{k.key_prefix}…</td>
-                      <td className="px-4 py-3" style={{ fontSize: '11px', color: theme.inkMuted }}>{k.scopes.join(', ')}</td>
-                      <td className="px-4 py-3" style={{ fontSize: '12px', color: theme.inkMuted }}>{fmtDate(k.created_at)}</td>
-                      <td className="px-4 py-3" style={{ fontSize: '12px', color: theme.inkMuted }}>{fmtDate(k.last_used_at)}</td>
-                      <td className="px-4 py-3">
-                        <span style={{
-                          fontSize: '11px', fontWeight: 600, padding: '2px 9px', borderRadius: '999px',
-                          background: revoked ? theme.dangerSoft : theme.successSoft,
-                          color: revoked ? theme.danger : theme.success,
-                          border: `1px solid ${revoked ? theme.dangerBorder : theme.successBorder}`,
-                        }}>{revoked ? 'Revoked' : 'Active'}</span>
-                      </td>
-                      <td className="px-4 py-3" style={{ textAlign: 'end' }}>
-                        {!revoked && (
-                          <button
-                            type="button"
-                            onClick={() => { if (window.confirm(`Revoke "${k.name}"? Apps using it will stop working immediately.`)) revokeMutation.mutate(k.id); }}
-                            disabled={revokeMutation.isPending}
-                            style={{ fontSize: '12px', fontWeight: 600, color: theme.danger, background: 'transparent', border: 'none', cursor: 'pointer' }}
-                          >
-                            Revoke
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
+      {hasAccess && (keysLoading
+        ? <div className="sb-card sb-empty">{t('common.loading')}</div>
+        : <OceanTable columns={keyCols} rows={keys as ApiKeyRow[]} keyFn={(k) => k.id} rowMuted={(k) => !!k.revoked_at} emptyMessage={t('settingsPages.dev.empty')} />)}
 
       {/* Create-key modal */}
-      <Modal open={open} onClose={closeModal} title={createdKey ? 'API key created' : 'Create API key'}>
+      <Modal open={open} onClose={closeModal} title={createdKey ? t('settingsPages.dev.created_title') : t('settingsPages.dev.create')}>
         {createdKey ? (
-          <div className="space-y-4">
-            <div style={{ background: theme.warnSoft, border: `1px solid ${theme.warnBorder}`, borderRadius: '8px', padding: '12px' }}>
-              <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: theme.warn }}>
-                Copy this key now — you won't be able to see it again.
-              </p>
+          <div className="sb-ocean sb-form sb-modal-form">
+            <p className="sb-alert sb-alert-warn" style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <AlertTriangle size={18} aria-hidden="true" style={{ flex: 'none' }} />{t('settingsPages.dev.copy_now')}
+            </p>
+            <div className="sb-dev-secret">
+              <code dir="ltr">{createdKey}</code>
+              <button type="button" className="sb-secondary-btn sb-btn-inline" onClick={copyKey}>
+                {copied ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
+                {copied ? t('settingsPages.dev.copied') : t('settingsPages.dev.copy')}
+              </button>
             </div>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '8px',
-              background: theme.muted, border: `1px solid ${theme.border}`,
-              borderRadius: '8px', padding: '10px 12px',
-            }}>
-              <code style={{ flex: 1, fontSize: '12px', wordBreak: 'break-all', color: theme.ink }}>{createdKey}</code>
-              <Button size="sm" variant="ghost" onClick={copyKey}>{copied ? '✓ Copied' : 'Copy'}</Button>
-            </div>
-            <div className="flex justify-end">
-              <Button onClick={closeModal}>Done</Button>
+            <div className="sb-form-actions">
+              <button type="button" className="sb-primary-btn" onClick={closeModal}>{t('common.done')}</button>
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
-            {error && <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
-            <Input label="Key name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Shopify store" autoFocus />
-            <div>
-              <label className="mb-1 block text-xs font-medium text-ink-secondary">Scopes</label>
-              <div className="flex flex-col gap-2">
-                {SCOPES.map((s) => (
-                  <label key={s.key} className="flex items-start gap-2 cursor-pointer">
-                    <input type="checkbox" className="mt-0.5 h-4 w-4 accent-brand-600" checked={scopes.includes(s.key)} onChange={() => toggleScope(s.key)} />
-                    <span>
-                      <span className="text-sm font-medium text-ink-primary">{s.label}</span>
-                      <span className="ms-2 text-xs text-ink-tertiary">{s.desc}</span>
+          <div className="sb-ocean sb-form sb-modal-form">
+            {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+            <Input id="api-key-name" label={t('settingsPages.dev.key_name')} value={name} onChange={(e) => setName(e.target.value)} placeholder={t('settingsPages.dev.key_name_ph')} autoFocus />
+            <fieldset className="sb-hw-fieldset">
+              <legend className="sb-select-label">{t('settingsPages.dev.scopes')}</legend>
+              <div className="sb-form-stack">
+                {SCOPES.map((sc) => (
+                  <label key={sc.key} className="sb-check-row">
+                    <input type="checkbox" checked={scopes.includes(sc.key)} onChange={() => toggleScope(sc.key)} />
+                    <span className="sb-check-text">
+                      {t(`settingsPages.dev.scope_${sc.id}`, { defaultValue: sc.label })}
+                      <span className="sb-form-hint">{t(`settingsPages.dev.scope_${sc.id}_desc`, { defaultValue: sc.desc })}</span>
                     </span>
                   </label>
                 ))}
               </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-1">
-              <Button variant="ghost" onClick={closeModal} disabled={createMutation.isPending}>Cancel</Button>
-              <Button
+            </fieldset>
+            <div className="sb-form-actions">
+              <button type="button" className="sb-secondary-btn" onClick={closeModal} disabled={createMutation.isPending}>{t('common.cancel')}</button>
+              <button type="button" className="sb-primary-btn sb-btn-inline"
                 onClick={() => { setError(null); createMutation.mutate(); }}
-                disabled={createMutation.isPending || name.trim() === '' || scopes.length === 0}
-              >
-                {createMutation.isPending ? 'Creating…' : 'Create key'}
-              </Button>
+                disabled={createMutation.isPending || name.trim() === '' || scopes.length === 0}>
+                {createMutation.isPending && <Loader2 size={18} className="sb-spin" aria-hidden="true" />}
+                {createMutation.isPending ? t('settingsPages.dev.creating') : t('settingsPages.dev.create_key')}
+              </button>
             </div>
           </div>
         )}
       </Modal>
-    </div>
+    </OceanPage>
   );
 }
