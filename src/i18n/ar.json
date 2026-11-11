@@ -2123,7 +2123,18 @@
     "action_invoice": "فاتورة",
     "action_quote": "عرض سعر",
     "action_receipt": "تسجيل سند قبض",
-    "action_credit_note": "إشعار دائن"
+    "action_credit_note": "إشعار دائن",
+    "docs_invoices": "الفواتير",
+    "docs_quotes": "عروض الأسعار",
+    "docs_receipts": "سندات القبض",
+    "docs_credit_notes": "الإشعارات الدائنة",
+    "docs_sales_returns": "مرتجعات المبيعات",
+    "docs_none_invoices": "لا توجد فواتير بعد.",
+    "docs_none_quotes": "لا توجد عروض أسعار بعد.",
+    "docs_none_receipts": "لا توجد سندات قبض بعد.",
+    "docs_none_credit_notes": "لا توجد إشعارات دائنة بعد.",
+    "docs_none_sales_returns": "لا توجد مرتجعات مبيعات بعد.",
+    "linked_invoice": "الفاتورة"
   },
   "customerList": {
     "filter_all": "الكل",

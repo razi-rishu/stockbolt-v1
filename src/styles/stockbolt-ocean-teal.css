@@ -599,3 +599,7 @@
 .sb-ocean .sb-ctable th { padding: 12px 12px; }
 .sb-ocean .sb-ctable td { padding: 6px 12px; }
 .sb-ocean .sb-ctable .sb-icon-btn { padding: 0 8px; }
+
+/* ── Additions for Customer Details → Documents (customer-documents-ocean.tsx) */
+.sb-ocean .sb-doc-title { display: inline-flex; align-items: center; gap: 10px; }
+.sb-ocean .sb-row-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }

@@ -2123,7 +2123,18 @@
     "action_invoice": "Invoice",
     "action_quote": "Quote",
     "action_receipt": "Record receipt",
-    "action_credit_note": "Credit note"
+    "action_credit_note": "Credit note",
+    "docs_invoices": "Invoices",
+    "docs_quotes": "Quotations",
+    "docs_receipts": "Receipts",
+    "docs_credit_notes": "Credit notes",
+    "docs_sales_returns": "Sales returns",
+    "docs_none_invoices": "No invoices yet.",
+    "docs_none_quotes": "No quotations yet.",
+    "docs_none_receipts": "No receipts yet.",
+    "docs_none_credit_notes": "No credit notes yet.",
+    "docs_none_sales_returns": "No sales returns yet.",
+    "linked_invoice": "Invoice"
   },
   "customerList": {
     "filter_all": "All",

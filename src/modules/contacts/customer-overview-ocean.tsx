@@ -26,7 +26,7 @@ import { RefundDueBanner } from '@/components/refund-due-banner';
 import type { ContactRow, OpenInvoice, PaymentRow, PriceLevelRow } from '@/data/adapter';
 import '@/styles/stockbolt-ocean-teal.css';
 
-type Tab = 'overview' | 'docs' | 'stmt';
+export type Tab = 'overview' | 'docs' | 'stmt';
 type Aging = { current: number; d31_60: number; d61_90: number; d90_plus: number };
 
 export interface CustomerOverviewOceanProps {
@@ -74,6 +74,78 @@ function InfoRow({ icon, label, children, wide }: { icon: React.ReactNode; label
   );
 }
 
+/** Customer header (back pill, name, since / credit terms, actions) shared by
+ *  the Ocean Overview and Documents tabs. Same routes as before. */
+export function CustomerHeroOcean({ id, contact }: { id: string; contact: ContactRow | null | undefined }) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const p = { id };
+  const terms = contact ? (contact.payment_terms_days > 0 ? `Net ${contact.payment_terms_days}` : t('contacts.cod')) : '—';
+  return (
+  <div className="sb-hero">
+    <button type="button" className="sb-back-pill" onClick={() => navigate('/contacts/customers')}>
+      <ChevronLeft size={18} className="sb-flip" aria-hidden="true" />{t('nav.customers')}
+    </button>
+    <h1 className="sb-title">{contact?.name ?? '…'}</h1>
+    {/* <bdi> keeps the Arabic name's own direction while it lines up with the page. */}
+    {contact?.name_ar && <div className="sb-title-ar"><bdi>{contact.name_ar}</bdi></div>}
+
+    <div className="sb-meta">
+      {contact?.created_at && (
+        <span className="sb-meta-item">
+          <CalendarDays size={ICON} className="sb-icon" aria-hidden="true" />
+          {t('customer360.since')}: <strong><bdi dir="ltr">{formatDate(contact.created_at)}</bdi></strong>
+        </span>
+      )}
+      <span className="sb-meta-item">
+        <Link2 size={ICON} className="sb-icon" aria-hidden="true" />
+        {t('customer360.credit_terms')}: <strong>{terms}</strong>
+      </span>
+    </div>
+
+    <div className="sb-actions">
+      <button type="button" className="sb-primary-btn" onClick={() => navigate(`/contacts/customers?edit=${p.id}`)}>
+        <Pencil size={18} aria-hidden="true" />{t('common.edit')}
+      </button>
+      <button type="button" className="sb-secondary-btn" onClick={() => navigate(`/sales/invoices/new?contact=${p.id}`)}>
+        <Plus size={18} aria-hidden="true" />{t('customer360.action_invoice')}
+      </button>
+      <button type="button" className="sb-secondary-btn" onClick={() => navigate(`/sales/quotes/new?contact=${p.id}`)}>
+        <FileText size={18} aria-hidden="true" />{t('customer360.action_quote')}
+      </button>
+      <button type="button" className="sb-secondary-btn" onClick={() => navigate(`/sales/payments/new?contact=${p.id}`)}>
+        <Receipt size={18} aria-hidden="true" />{t('customer360.action_receipt')}
+      </button>
+      <button type="button" className="sb-secondary-btn" onClick={() => navigate(`/sales/credit-notes/new?contact=${p.id}`)}>
+        <FileMinus size={18} aria-hidden="true" />{t('customer360.action_credit_note')}
+      </button>
+    </div>
+  </div>
+  );
+}
+
+/** The Overview / Documents / Statement tab bar. Same onTab as before. */
+export function CustomerTabsOcean({ active, openCount, docsCount, onTab }: {
+  active: Tab; openCount: number; docsCount: number; onTab: (tab: Tab) => void;
+}) {
+  const { t } = useTranslation();
+  const tabs: { value: Tab; label: string; count?: number }[] = [
+    { value: 'overview', label: t('customer360.tab_overview'), count: openCount || undefined },
+    { value: 'docs',     label: t('customer360.tab_documents'), count: docsCount || undefined },
+    { value: 'stmt',     label: t('customer360.tab_statement') },
+  ];
+  return (
+  <div className="sb-tabs" role="tablist">
+    {tabs.map(tb => (
+      <button key={tb.value} type="button" role="tab" aria-selected={tb.value === active}
+        className={`sb-tab ${tb.value === active ? 'active' : ''}`} onClick={() => onTab(tb.value)}>
+        {tb.label}{tb.count !== undefined && <span className="sb-tab-count">{tb.count}</span>}
+      </button>
+    ))}
+  </div>
+  );
+}
+
 export function CustomerOverviewOcean(p: CustomerOverviewOceanProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -114,54 +186,9 @@ export function CustomerOverviewOcean(p: CustomerOverviewOceanProps) {
     { key: '90+',     label: '90+',                           value: p.aging.d90_plus, color: '#DC2626' },
   ];
 
-  const tabs: { value: Tab; label: string; count?: number }[] = [
-    { value: 'overview', label: t('customer360.tab_overview'), count: p.openInvoices.length || undefined },
-    { value: 'docs',     label: t('customer360.tab_documents'), count: p.docsCount || undefined },
-    { value: 'stmt',     label: t('customer360.tab_statement') },
-  ];
-
   return (
     <div className="sb-ocean sb-page" data-testid="customer-overview-ocean">
-      {/* ── Header ───────────────────────────────────────────────────────── */}
-      <div className="sb-hero">
-        <button type="button" className="sb-back-pill" onClick={() => navigate('/contacts/customers')}>
-          <ChevronLeft size={18} className="sb-flip" aria-hidden="true" />{t('nav.customers')}
-        </button>
-        <h1 className="sb-title">{contact?.name ?? '…'}</h1>
-        {/* <bdi> keeps the Arabic name's own direction while it lines up with the page. */}
-        {contact?.name_ar && <div className="sb-title-ar"><bdi>{contact.name_ar}</bdi></div>}
-
-        <div className="sb-meta">
-          {contact?.created_at && (
-            <span className="sb-meta-item">
-              <CalendarDays size={ICON} className="sb-icon" aria-hidden="true" />
-              {t('customer360.since')}: <strong><bdi dir="ltr">{formatDate(contact.created_at)}</bdi></strong>
-            </span>
-          )}
-          <span className="sb-meta-item">
-            <Link2 size={ICON} className="sb-icon" aria-hidden="true" />
-            {t('customer360.credit_terms')}: <strong>{terms}</strong>
-          </span>
-        </div>
-
-        <div className="sb-actions">
-          <button type="button" className="sb-primary-btn" onClick={() => navigate(`/contacts/customers?edit=${p.id}`)}>
-            <Pencil size={18} aria-hidden="true" />{t('common.edit')}
-          </button>
-          <button type="button" className="sb-secondary-btn" onClick={() => navigate(`/sales/invoices/new?contact=${p.id}`)}>
-            <Plus size={18} aria-hidden="true" />{t('customer360.action_invoice')}
-          </button>
-          <button type="button" className="sb-secondary-btn" onClick={() => navigate(`/sales/quotes/new?contact=${p.id}`)}>
-            <FileText size={18} aria-hidden="true" />{t('customer360.action_quote')}
-          </button>
-          <button type="button" className="sb-secondary-btn" onClick={() => navigate(`/sales/payments/new?contact=${p.id}`)}>
-            <Receipt size={18} aria-hidden="true" />{t('customer360.action_receipt')}
-          </button>
-          <button type="button" className="sb-secondary-btn" onClick={() => navigate(`/sales/credit-notes/new?contact=${p.id}`)}>
-            <FileMinus size={18} aria-hidden="true" />{t('customer360.action_credit_note')}
-          </button>
-        </div>
-      </div>
+      <CustomerHeroOcean id={p.id} contact={contact} />
 
       <div className="sb-body">
         {/* ── Contact information ────────────────────────────────────────── */}
@@ -323,15 +350,7 @@ export function CustomerOverviewOcean(p: CustomerOverviewOceanProps) {
             : <div className="sb-note-empty">{t('customer360.notes_empty')}</div>}
         </section>
 
-        {/* ── Tabs ───────────────────────────────────────────────────────── */}
-        <div className="sb-tabs" role="tablist">
-          {tabs.map(tb => (
-            <button key={tb.value} type="button" role="tab" aria-selected={tb.value === 'overview'}
-              className={`sb-tab ${tb.value === 'overview' ? 'active' : ''}`} onClick={() => p.onTab(tb.value)}>
-              {tb.label}{tb.count !== undefined && <span className="sb-tab-count">{tb.count}</span>}
-            </button>
-          ))}
-        </div>
+        <CustomerTabsOcean active="overview" openCount={p.openInvoices.length} docsCount={p.docsCount} onTab={p.onTab} />
 
         {/* ── Open invoices ──────────────────────────────────────────────── */}
         <section className="sb-card sb-list" aria-label={t('customer360.open_invoices')}>

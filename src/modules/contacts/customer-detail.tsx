@@ -14,7 +14,6 @@
  *  10. Account Statement (date range, debit/credit/running balance)
  */
 import { useState, useMemo } from 'react';
-import { formatDate } from '@/lib/locale';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -23,12 +22,9 @@ import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
-import { RefundAdvanceModal } from './refund-advance-modal';
-import { RefundDueBanner } from '@/components/refund-due-banner';
 import { CustomerOverviewOcean } from './customer-overview-ocean';
+import { CustomerDocumentsOcean } from './customer-documents-ocean';
 import { Tabs } from '@/ui/tabs';
-import { theme } from '@/ui/theme';
-import { StatusBadge } from '@/ui/status-badge';
 // Phase 14.07 — Signature Statement experience.
 import {
   StatementShell, RelationshipHeader, HealthRow, BalanceStrip,
@@ -52,120 +48,6 @@ function monthsAgoIso(n: number) {
 }
 function daysBetween(from: string, to: string): number {
   return Math.floor((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000);
-}
-
-// ── KPI tile ─────────────────────────────────────────────────────────────────
-function KpiTile({ label, value, sublabel, accent = 'default' }: {
-  label: string;
-  value: string;
-  sublabel?: string;
-  accent?: 'default' | 'warn' | 'danger' | 'good';
-}) {
-  const valueColor = {
-    default: theme.ink,
-    warn:    '#b45309',
-    danger:  '#dc2626',
-    good:    '#15803d',
-  }[accent];
-  return (
-    <div style={{
-      background: theme.card,
-      border: `1px solid ${theme.border}`,
-      borderRadius: '12px',
-      boxShadow: theme.shadowSm,
-      padding: '14px 18px',
-    }}>
-      <div style={{ fontSize: '11px', fontWeight: 700, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</div>
-      <div className="font-mono" style={{ marginTop: '4px', fontSize: '20px', fontWeight: 700, color: valueColor }}>{value}</div>
-      {sublabel && <div style={{ marginTop: '2px', fontSize: '11px', color: theme.inkFaint }}>{sublabel}</div>}
-    </div>
-  );
-}
-
-// ── Aging breakdown bar ──────────────────────────────────────────────────────
-function AgingBar({ buckets, total }: {
-  buckets: { current: number; d31_60: number; d61_90: number; d90_plus: number };
-  total: number;
-}) {
-  if (total <= 0.005) {
-    return (
-      <div style={{
-        background: theme.card,
-        border: `1px solid ${theme.border}`,
-        borderRadius: '12px',
-        boxShadow: theme.shadowSm,
-        padding: '14px 18px',
-        fontSize: '13px', color: theme.inkFaint,
-      }}>
-        No outstanding balance.
-      </div>
-    );
-  }
-  const segs = [
-    { label: 'Current', value: buckets.current,  color: '#22c55e' },
-    { label: '31-60',   value: buckets.d31_60,   color: '#eab308' },
-    { label: '61-90',   value: buckets.d61_90,   color: '#f97316' },
-    { label: '90+',     value: buckets.d90_plus, color: '#ef4444' },
-  ];
-  return (
-    <div style={{
-      background: theme.card,
-      border: `1px solid ${theme.border}`,
-      borderRadius: '12px',
-      boxShadow: theme.shadowSm,
-      padding: '14px 18px',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '11px' }}>
-        <span style={{ fontWeight: 700, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.06em' }}>Aging</span>
-        <span className="font-mono" style={{ color: theme.inkMuted }}>Total {fmt(total)}</span>
-      </div>
-      <div style={{
-        marginTop: '8px', display: 'flex', height: '8px',
-        overflow: 'hidden', borderRadius: '999px', background: theme.muted,
-      }}>
-        {segs.map((s) => {
-          const pct = (s.value / total) * 100;
-          return pct > 0 ? <div key={s.label} style={{ background: s.color, width: `${pct}%` }} title={`${s.label}: ${fmt(s.value)}`} /> : null;
-        })}
-      </div>
-      <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 110px), 1fr))', gap: '8px' }}>
-        {segs.map((s) => (
-          <div key={s.label} style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: '11px', color: theme.inkFaint }}>{s.label}</span>
-            <span className="font-mono" style={{ fontSize: '12px', color: theme.ink, fontWeight: 500 }}>{fmt(s.value)}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Generic data section with optional "See all" link ────────────────────────
-function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <div style={{
-      background: theme.card,
-      border: `1px solid ${theme.border}`,
-      borderRadius: '12px',
-      boxShadow: theme.shadowSm,
-      overflow: 'hidden',
-    }}>
-      <div style={{
-        background: theme.panelHead,
-        borderBottom: `1px solid ${theme.border}`,
-        padding: '10px 18px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <h2 style={{
-          margin: 0,
-          fontSize: '11px', fontWeight: 700, color: theme.inkMuted,
-          textTransform: 'uppercase', letterSpacing: '.06em',
-        }}>{title}</h2>
-        {action}
-      </div>
-      {children}
-    </div>
-  );
 }
 
 // ── Main component ──────────────────────────────────────────────────────────
@@ -362,6 +244,27 @@ export default function CustomerDetailPage() {
     );
   }
 
+  // Documents: Ocean Teal too — same lists, same routes; only the look changes.
+  if (tab === 'docs') {
+    return (
+      <div className="pb-16">
+        <CustomerDocumentsOcean
+          id={id!}
+          contact={contact}
+          openCount={openInvoices.length}
+          invoices={invoicesForCustomer}
+          quotes={quotesForCustomer}
+          receipts={paymentsForCustomer}
+          creditNotes={allCreditNotes}
+          salesReturns={salesReturnsForCustomer}
+          invoiceById={invoiceById}
+          onTab={setTab}
+          fmt={fmt}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pb-16">
       {/* Header */}
@@ -389,159 +292,6 @@ export default function CustomerDetailPage() {
         </div>
       </div>
 
-      {/* Page-level summary blocks. Hidden on the Statement tab — the
-          statement document carries its own header, receivable, health
-          row and aging composition, so showing these too duplicates
-          every number on screen. */}
-      {tab !== 'stmt' && (<>
-      {/* Contact info */}
-      {contact && (
-        <div className="rounded-card border border-border-subtle bg-surface-card p-5">
-          <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-3 lg:grid-cols-4">
-            <div><p className="text-xs text-ink-tertiary">{t('contacts.phone')}</p><p className="text-ink-primary">{contact.phone ?? contact.mobile ?? '—'}</p></div>
-            <div><p className="text-xs text-ink-tertiary">{t('contacts.email')}</p><p className="text-ink-primary">{contact.email ?? '—'}</p></div>
-            <div><p className="text-xs text-ink-tertiary">{t('contacts.tax_id')}</p><p className="text-ink-primary">{contact.tax_id ?? '—'}</p></div>
-            <div><p className="text-xs text-ink-tertiary">{t('contacts.currency')}</p><p className="text-ink-primary">{contact.currency}</p></div>
-            <div><p className="text-xs text-ink-tertiary">{t('contacts.payment_terms')}</p><p className="text-ink-primary">{contact.payment_terms_days > 0 ? `Net ${contact.payment_terms_days}` : 'COD'}</p></div>
-            <div><p className="text-xs text-ink-tertiary">Credit limit</p><p className="font-mono text-ink-primary">{contact.credit_limit > 0 ? fmt(contact.credit_limit) : '—'}</p></div>
-            <div className="col-span-2"><p className="text-xs text-ink-tertiary">{t('contacts.address')}</p><p className="text-ink-primary">{[contact.address_street, contact.address_city, contact.address_country].filter(Boolean).join(', ') || '—'}</p></div>
-          </div>
-        </div>
-      )}
-
-      {/* Phase 12.24 — surface the customer's NET position. If they have
-           credit on file (advanceCredit > 0), it sits invisibly in
-           2400 GL otherwise. Standard ERP practice is to net it against
-           outstanding for the customer-facing view, even though the GL
-           keeps them separate. */}
-      {advanceCredit > 0.005 && (() => {
-        // Phase 14.08 — find the most-recent unallocated/partial confirmed
-        // payment for this customer. That payment is the source of the
-        // advance, so the "Apply credit" CTA navigates straight to it with
-        // the apply-advance modal auto-opened.
-        type AllocStatus = 'unallocated' | 'partial' | 'full' | null | undefined;
-        const candidates = paymentsForCustomer
-          .filter(p => p.status === 'confirmed')
-          .filter(p => {
-            const alloc = (p as PaymentRow & { allocation_status?: AllocStatus }).allocation_status;
-            return alloc === 'unallocated' || alloc === 'partial';
-          })
-          .sort((a, b) => (b.date as unknown as string).localeCompare(a.date as unknown as string));
-        const applyTarget = candidates[0];
-        const hasOpenInvoice = openInvoices.length > 0;
-
-        return (
-          <div className="rounded-card border border-emerald-200 bg-emerald-50 px-5 py-3 flex flex-wrap items-center gap-4">
-            <span className="rounded-pill bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
-              CREDIT ON FILE
-            </span>
-            <p className="flex-1 min-w-[260px] text-sm text-emerald-900">
-              This customer has{' '}
-              <span className="font-mono font-semibold">{contact?.currency ?? companyCurrency} {fmt(advanceCredit)}</span>{' '}
-              available to apply to {hasOpenInvoice ? 'an open invoice' : 'a future invoice'}.{' '}
-              <span className="text-emerald-700/80">Hits 2400 Customer Advances on the GL.</span>
-            </p>
-            {applyTarget && hasOpenInvoice && (
-              <Button
-                size="sm"
-                onClick={() => navigate(`/sales/payments/${applyTarget.id}?apply=1`)}
-                title={`Apply credit from ${applyTarget.payment_number} against an open invoice`}
-              >
-                Apply credit →
-              </Button>
-            )}
-            {/* S4 — the other thing you can do with credit on file: give it
-                back. Always offered, because a cancellation before any invoice
-                exists has no sales return to hang a refund off. */}
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => setRefundOpen(true)}
-              title={t('refund.title_customer')}
-            >
-              {t('refund.refund_cta')}
-            </Button>
-            <RefundAdvanceModal
-              open={refundOpen}
-              onClose={() => setRefundOpen(false)}
-              onDone={() => {
-                void qc.invalidateQueries({ queryKey: ['advance_balance'] });
-                void qc.invalidateQueries({ queryKey: ['payments'] });
-              }}
-              side="customer"
-              contactId={id!}
-              contactName={contact?.name ?? ''}
-              available={advanceCredit}
-              currency={contact?.currency ?? companyCurrency}
-            />
-            {applyTarget && !hasOpenInvoice && (
-              <span className="text-xs text-emerald-700/80">
-                No open invoices — credit will apply to the next one raised.
-              </span>
-            )}
-          </div>
-        );
-      })()}
-
-      {/* R5a — the OTHER place we can be holding a customer's money. A credit
-           note leaves it on 1200 AR, not 2400, so the advance banner above
-           never sees it. Shared now, because the same offer has to appear on
-           the documents that CREATE the credit — nobody looking for their
-           money back starts on a contact page. */}
-      <RefundDueBanner
-        side="customer"
-        contactId={id}
-        contactName={contact?.name ?? ''}
-        currency={contact?.currency ?? companyCurrency}
-      />
-
-      {/* KPI tiles */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiTile
-          label="Outstanding"
-          value={fmt(outstandingTotal)}
-          accent={outstandingTotal > 0 ? 'warn' : 'default'}
-          sublabel={`${openInvoices.length} open invoice${openInvoices.length === 1 ? '' : 's'}`}
-        />
-        {/* Phase 12.24 — Credit Available replaces the "Overdue" tile when
-             the customer is in credit (no overdue invoices possible in
-             that case) so the user always sees the most material number. */}
-        {advanceCredit > 0.005 ? (
-          <KpiTile
-            label="Credit Available"
-            value={fmt(advanceCredit)}
-            accent="good"
-            sublabel="advance / overpayment"
-          />
-        ) : (
-          <KpiTile
-            label="Overdue"
-            value={fmt(overdueTotal)}
-            accent={overdueTotal > 0 ? 'danger' : 'good'}
-            sublabel="past due date"
-          />
-        )}
-        <KpiTile label="Sales (12 mo)"  value={fmt(sales12mo)}        sublabel={`${confirmedInvoiceCount} confirmed invoice${confirmedInvoiceCount === 1 ? '' : 's'}`} />
-        <KpiTile
-          label="Net Position"
-          value={fmt(Math.abs(outstandingTotal - advanceCredit))}
-          // Negative net position = customer has more credit than they owe.
-          accent={
-            outstandingTotal - advanceCredit > 0.005 ? 'warn'
-            : outstandingTotal - advanceCredit < -0.005 ? 'good'
-            : 'default'
-          }
-          sublabel={
-            outstandingTotal - advanceCredit > 0.005 ? 'customer owes us'
-            : outstandingTotal - advanceCredit < -0.005 ? 'we owe customer'
-            : 'settled'
-          }
-        />
-      </div>
-
-      {/* Aging breakdown */}
-      <AgingBar buckets={aging} total={outstandingTotal} />
-      </>)}
 
       {/* ── Tabs ──────────────────────────────────────────────────────── */}
       <Tabs
@@ -553,170 +303,6 @@ export default function CustomerDetailPage() {
           { value: 'stmt',     label: 'Statement' },
         ]}
       />
-
-      {tab === 'docs' && (
-      <>
-
-      {/* ── All Invoices ───────────────────────────────────────────────── */}
-      <Section title={`All Invoices (last ${invoicesForCustomer.length})`}>
-        {invoicesForCustomer.length === 0 ? (
-          <div className="px-5 py-6 text-sm text-ink-tertiary">No invoices yet.</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
-                <th className="px-4 py-2 text-start font-medium">Invoice #</th>
-                <th className="px-4 py-2 text-start font-medium">Date</th>
-                <th className="px-4 py-2 text-start font-medium">Status</th>
-                <th className="px-4 py-2 text-end font-medium">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invoicesForCustomer.map(inv => (
-                <tr key={inv.id}
-                  onClick={() => navigate(`/sales/invoices/${inv.id}`)}
-                  className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
-                  <td className="px-4 py-2 font-mono text-xs text-brand-600">{inv.invoice_number}</td>
-                  <td className="px-4 py-2 text-ink-secondary">{formatDate(inv.date as unknown as string)}</td>
-                  <td className="px-4 py-2"><StatusBadge status={inv.status} /></td>
-                  <td className="px-4 py-2 text-end font-mono text-ink-primary">{inv.currency} {fmt(Number(inv.total_amount))}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Section>
-
-      {/* ── Quotes ─────────────────────────────────────────────────────── */}
-      <Section title={`Quotes (${quotesForCustomer.length})`}>
-        {quotesForCustomer.length === 0 ? (
-          <div className="px-5 py-6 text-sm text-ink-tertiary">No quotes yet.</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
-                <th className="px-4 py-2 text-start font-medium">Quote #</th>
-                <th className="px-4 py-2 text-start font-medium">Date</th>
-                <th className="px-4 py-2 text-start font-medium">Status</th>
-                <th className="px-4 py-2 text-end font-medium">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {quotesForCustomer.map(q => (
-                <tr key={q.id}
-                  onClick={() => navigate(`/sales/quotes/${q.id}`)}
-                  className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
-                  <td className="px-4 py-2 font-mono text-xs text-brand-600">{q.quote_number}</td>
-                  <td className="px-4 py-2 text-ink-secondary">{formatDate(q.date as unknown as string)}</td>
-                  <td className="px-4 py-2"><StatusBadge status={q.status} /></td>
-                  <td className="px-4 py-2 text-end font-mono text-ink-primary">{q.currency} {fmt(Number(q.total_amount))}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Section>
-
-      {/* ── Receipts ──────────────────────────────────────────────────── */}
-      <Section title={`Receipts (${paymentsForCustomer.length})`}>
-        {paymentsForCustomer.length === 0 ? (
-          <div className="px-5 py-6 text-sm text-ink-tertiary">No payments yet.</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
-                <th className="px-4 py-2 text-start font-medium">Payment #</th>
-                <th className="px-4 py-2 text-start font-medium">Date</th>
-                <th className="px-4 py-2 text-start font-medium">Status</th>
-                <th className="px-4 py-2 text-end font-medium">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paymentsForCustomer.map(p => (
-                <tr key={p.id}
-                  onClick={() => navigate(`/sales/payments/${p.id}`)}
-                  className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
-                  <td className="px-4 py-2 font-mono text-xs text-brand-600">{p.payment_number}</td>
-                  <td className="px-4 py-2 text-ink-secondary">{formatDate(p.date as unknown as string)}</td>
-                  <td className="px-4 py-2"><StatusBadge status={p.status} /></td>
-                  <td className="px-4 py-2 text-end font-mono text-ink-primary">{p.currency} {fmt(Number(p.amount))}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Section>
-
-      {/* ── Credit Notes ──────────────────────────────────────────────── */}
-      <Section title={`Credit Notes (${allCreditNotes.length})`}>
-        {allCreditNotes.length === 0 ? (
-          <div className="px-5 py-6 text-sm text-ink-tertiary">No credit notes yet.</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
-                <th className="px-4 py-2 text-start font-medium">Note #</th>
-                <th className="px-4 py-2 text-start font-medium">Date</th>
-                <th className="px-4 py-2 text-start font-medium">Status</th>
-                <th className="px-4 py-2 text-end font-medium">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {allCreditNotes.slice(0, 20).map(cn => (
-                <tr key={cn.id}
-                  onClick={() => navigate(`/sales/credit-notes/${cn.id}`)}
-                  className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
-                  <td className="px-4 py-2 font-mono text-xs text-brand-600">{cn.credit_note_number}</td>
-                  <td className="px-4 py-2 text-ink-secondary">{formatDate(cn.date as unknown as string)}</td>
-                  <td className="px-4 py-2"><StatusBadge status={cn.status} /></td>
-                  <td className="px-4 py-2 text-end font-mono text-ink-primary">{cn.currency} {fmt(Number(cn.total_amount))}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Section>
-
-      {/* ── Sales Returns ────────────────────────────────────────────────
-          Sales returns are tracking documents (the financial impact is on the
-          linked Credit Note). Shown here so the user can see the physical-return
-          history alongside the financial documents. */}
-      <Section title={`Sales Returns (${salesReturnsForCustomer.length})`}>
-        {salesReturnsForCustomer.length === 0 ? (
-          <div className="px-5 py-6 text-sm text-ink-tertiary">No sales returns yet.</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
-                <th className="px-4 py-2 text-start font-medium">Return #</th>
-                <th className="px-4 py-2 text-start font-medium">Date</th>
-                <th className="px-4 py-2 text-start font-medium">Status</th>
-                <th className="px-4 py-2 text-start font-medium">Linked invoice</th>
-                <th className="px-4 py-2 text-start font-medium">Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {salesReturnsForCustomer.map((sr) => {
-                const inv = invoiceById[sr.invoice_id];
-                return (
-                  <tr key={sr.id}
-                    onClick={() => navigate(`/sales/returns/${sr.id}`)}
-                    className="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
-                    <td className="px-4 py-2 font-mono text-xs text-brand-600">{sr.return_number}</td>
-                    <td className="px-4 py-2 text-ink-secondary">{formatDate(sr.date as unknown as string)}</td>
-                    <td className="px-4 py-2"><StatusBadge status={sr.status} /></td>
-                    <td className="px-4 py-2 font-mono text-xs text-ink-secondary">{inv?.invoice_number ?? '—'}</td>
-                    <td className="px-4 py-2 text-ink-secondary capitalize">{(sr.reason ?? '').replace(/_/g, ' ') || '—'}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </Section>
-
-      </>
-      )}
 
       {tab === 'stmt' && (() => {
         // Phase 12.52 / 12.54 — friendly doc label derived from source_type
