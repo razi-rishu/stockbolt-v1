@@ -3516,6 +3516,9 @@
   "stockOcean": {
     "route": "From → to",
     "transfers_count": "Transfers: {{count}}",
-    "adjustments_count": "Adjustments: {{count}}"
+    "adjustments_count": "Adjustments: {{count}}",
+    "movements_count": "Movements: {{count}}",
+    "run_hint": "Set the filters and press Run to see stock movements",
+    "filters": "Filters"
   }
 }

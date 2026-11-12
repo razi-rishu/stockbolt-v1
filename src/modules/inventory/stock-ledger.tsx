@@ -7,8 +7,8 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Select } from '@/ui/select';
 import { Button } from '@/ui/button';
-import { PageHeader, Panel } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
+import { OceanPage } from '@/components/ocean-list';
+import { Play, SlidersHorizontal } from 'lucide-react';
 import { DocLink } from '@/ui/doc-link';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
@@ -76,135 +76,134 @@ export default function StockLedgerPage() {
     ...warehouses.map(w => ({ value: w.id, label: w.name })),
   ];
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        title={t('inventory.stock_ledger_title')}
-        subtitle={submitted ? `${rows.length} ${rows.length === 1 ? 'movement' : 'movements'}` : 'Filter and run to see stock movements'}
-      />
+  const cols = [
+    { l: t('inventory.date'),          a: 'start' as const },
+    { l: t('inventory.product'),       a: 'start' as const },
+    { l: t('inventory.warehouse'),     a: 'start' as const },
+    { l: t('inventory.type'),          a: 'start' as const },
+    { l: t('inventory.document'),      a: 'start' as const },
+    { l: t('inventory.qty_in'),        a: 'end'   as const },
+    { l: t('inventory.qty_out'),       a: 'end'   as const },
+    { l: t('inventory.running_qty'),   a: 'end'   as const },
+    { l: t('inventory.unit_cost'),     a: 'end'   as const },
+    { l: t('inventory.running_value'), a: 'end'   as const },
+  ];
 
-      {/* Filters */}
-      <Panel icon="🔍" title="Filters">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
-          <Select label={t('inventory.product')} options={productOpts} value={productId}
-            onChange={e => { setProductId(e.target.value); setSubmitted(false); }} />
-          <Select label={t('inventory.warehouse')} options={warehouseOpts} value={warehouseId}
-            onChange={e => { setWarehouseId(e.target.value); setSubmitted(false); }} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '12px', fontWeight: 500, color: theme.inkMuted }}>{t('reports.period') || 'Period'}</label>
-            <PeriodPicker
-              mode="range" preset={preset} from={dateFrom} to={dateTo}
-              onPresetChange={(p) => { setPreset(p); setSubmitted(false); }}
-              onCustomRange={(f, tt) => { setCustomRange(f, tt); setSubmitted(false); }}
-            />
+  // Ocean Teal (UI v1.1): look only — same filters, Run gate, deep-link
+  // auto-run, reversed-entry toggle and movement rows as before.
+  return (
+    <OceanPage
+      testid="stock-ledger-ocean"
+      title={t('inventory.stock_ledger_title')}
+      subtitle={submitted ? t('stockOcean.movements_count', { count: rows.length }) : t('stockOcean.run_hint')}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* Filters */}
+        <div className="sb-card sb-form sb-doc-card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <h2 className="sb-doc-card-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <SlidersHorizontal size={17} aria-hidden="true" style={{ color: 'var(--sb-primary)' }} /> {t('stockOcean.filters')}
+          </h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '12px' }}>
+            <Select label={t('inventory.product')} options={productOpts} value={productId}
+              onChange={e => { setProductId(e.target.value); setSubmitted(false); }} />
+            <Select label={t('inventory.warehouse')} options={warehouseOpts} value={warehouseId}
+              onChange={e => { setWarehouseId(e.target.value); setSubmitted(false); }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label className="text-xs font-medium text-ink-secondary">{t('reports.period') || 'Period'}</label>
+              <PeriodPicker
+                mode="range" preset={preset} from={dateFrom} to={dateTo}
+                onPresetChange={(p) => { setPreset(p); setSubmitted(false); }}
+                onCustomRange={(f, tt) => { setCustomRange(f, tt); setSubmitted(false); }}
+              />
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none', fontSize: '14px', flexWrap: 'wrap' }}>
+              <input
+                type="checkbox"
+                style={{ width: '16px', height: '16px', accentColor: 'var(--sb-primary)', cursor: 'pointer' }}
+                checked={hideReversed}
+                onChange={(e) => { setHideReversed(e.target.checked); setSubmitted(false); }}
+              />
+              <span style={{ color: 'var(--sb-text)', fontWeight: 600 }}>{t('prodOcean.hide_reversed')}</span>
+              <span className="sb-form-hint" style={{ margin: 0 }}>
+                {hideReversed ? t('prodOcean.hide_reversed_on') : t('prodOcean.hide_reversed_off')}
+              </span>
+            </label>
+            <Button size="sm" onClick={() => setSubmitted(true)} disabled={isFetching}>
+              <Play size={15} aria-hidden="true" /> {isFetching ? t('common.loading') : t('common.run')}
+            </Button>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none', fontSize: '13px', color: theme.inkMuted }}>
-            <input
-              type="checkbox"
-              style={{ width: '16px', height: '16px', accentColor: theme.brand, cursor: 'pointer' }}
-              checked={hideReversed}
-              onChange={(e) => { setHideReversed(e.target.checked); setSubmitted(false); }}
-            />
-            <span style={{ color: theme.ink, fontWeight: 500 }}>Hide reversed entries (voids &amp; edits)</span>
-            <span style={{ fontSize: '11px', color: theme.inkFaint }}>
-              {hideReversed ? '— affecting current stock only' : '— full audit trail'}
-            </span>
-          </label>
-          <Button size="sm" onClick={() => setSubmitted(true)} disabled={isFetching}>
-            {isFetching ? t('common.loading') : t('common.run')}
-          </Button>
-        </div>
-      </Panel>
 
-      {/* Results */}
-      {submitted && (
-        <div
-          className="overflow-x-auto bg-white"
-          style={{ border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm }}
-        >
-          {rows.length === 0 && !isFetching ? (
-            <p style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>{t('inventory.no_movements')}</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
-                  {[
-                    { l: t('inventory.date'),         a: 'start' as const, w: undefined },
-                    { l: t('inventory.product'),      a: 'start' as const, w: undefined },
-                    { l: t('inventory.warehouse'),    a: 'start' as const, w: undefined },
-                    { l: t('inventory.type'),         a: 'start' as const, w: undefined },
-                    { l: t('inventory.document'),     a: 'start' as const, w: undefined },
-                    { l: t('inventory.qty_in'),       a: 'end'   as const, w: '96px' },
-                    { l: t('inventory.qty_out'),      a: 'end'   as const, w: '96px' },
-                    { l: t('inventory.running_qty'),  a: 'end'   as const, w: '110px' },
-                    { l: t('inventory.unit_cost'),    a: 'end'   as const, w: '110px' },
-                    { l: t('inventory.running_value'),a: 'end'   as const, w: '110px' },
-                  ].map(c => (
-                    <th
-                      key={c.l}
-                      className="px-4 py-3 font-semibold"
-                      style={{
-                        fontSize: '11px', color: theme.inkMuted,
-                        textTransform: 'uppercase', letterSpacing: '.06em',
-                        textAlign: c.a, width: c.w, whiteSpace: 'nowrap',
-                      }}
-                    >{c.l}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, i) => {
-                  const isIn = row.direction === 1;
-                  const isOut = row.direction === -1;
-                  return (
-                    <tr key={i} style={{ borderTop: i === 0 ? 'none' : '1px solid #f1f5f9' }}>
-                      <td className="px-4 py-2" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(row.date as string)}</td>
-                      <td className="px-4 py-2" style={{ color: theme.ink, fontSize: '13px' }}>
-                        <DocLink type="product" id={row.product_id} label={row.product_name} className="font-semibold text-brand-600 hover:underline" />
-                        {row.sku && <span style={{ marginInlineStart: '6px', fontSize: '11px', color: theme.inkMuted }}>({row.sku})</span>}
-                      </td>
-                      <td className="px-4 py-2" style={{ color: theme.inkMuted, fontSize: '13px' }}>{row.warehouse_name}</td>
-                      {/* Translated and toned, from the one shared map. */}
-                      <td className="px-4 py-2">
-                        <span className={`inline-block rounded-pill px-2 py-0.5 text-xs font-semibold ${stockMovementTone(row.movement_type)}`}>
-                          {t(stockMovementKey(row.movement_type), { defaultValue: row.movement_type })}
-                        </span>
-                      </td>
-                      {/* The document that caused the movement. DocLink
-                          resolves the route from related_doc_type and checks
-                          the permission for it, so an unauthorised reader
-                          gets plain text rather than a dead link. */}
-                      <td className="px-4 py-2" style={{ fontSize: '13px' }}>
-                        {row.related_doc_id
-                          ? <DocLink type={row.related_doc_type} id={row.related_doc_id}
-                              className="text-brand-600 hover:underline" />
-                          : <span style={{ color: theme.inkFaint }}>{'\u2014'}</span>}
-                      </td>
-                      <td className="px-4 py-2 font-mono" style={{ textAlign: 'end', color: '#059669' }}>
-                        {isIn ? fmt(row.quantity) : '—'}
-                      </td>
-                      <td className="px-4 py-2 font-mono" style={{ textAlign: 'end', color: '#dc2626' }}>
-                        {isOut ? fmt(row.quantity) : '—'}
-                      </td>
-                      <td className="px-4 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontWeight: 600 }}>
-                        {fmt(row.running_qty)}
-                      </td>
-                      <td className="px-4 py-2 font-mono" style={{ textAlign: 'end', color: theme.inkMuted }}>
-                        {row.unit_cost != null ? fmt(row.unit_cost) : '—'}
-                      </td>
-                      <td className="px-4 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink }}>
-                        {row.running_value != null ? fmt(row.running_value) : '—'}
-                      </td>
+        {/* Results */}
+        {submitted && (
+          <div className="sb-card sb-doc-lines">
+            {rows.length === 0 && !isFetching ? (
+              <p className="sb-empty" style={{ textAlign: 'center', margin: 0 }}>{t('inventory.no_movements')}</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm" style={{ minWidth: 980 }}>
+                  <thead>
+                    <tr>
+                      {cols.map(c => (
+                        <th key={c.l} className="px-4 py-3" style={{ textAlign: c.a, whiteSpace: 'nowrap' }}>{c.l}</th>
+                      ))}
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-    </div>
+                  </thead>
+                  <tbody>
+                    {rows.map((row, i) => {
+                      const isIn = row.direction === 1;
+                      const isOut = row.direction === -1;
+                      return (
+                        <tr key={i} style={{ borderTop: i === 0 ? 'none' : '1px solid var(--sb-border)' }}>
+                          <td className="px-4 py-2" style={{ color: 'var(--sb-text-secondary)', fontSize: '13px', whiteSpace: 'nowrap' }}><bdi dir="ltr">{formatDate(row.date as string)}</bdi></td>
+                          <td className="px-4 py-2" style={{ fontSize: '13px' }}>
+                            <DocLink type="product" id={row.product_id} label={row.product_name} className="font-semibold text-brand-600 hover:underline" />
+                            {row.sku && <bdi dir="ltr" style={{ marginInlineStart: '6px', fontSize: '11px', color: 'var(--sb-text-secondary)' }}>({row.sku})</bdi>}
+                          </td>
+                          <td className="px-4 py-2" style={{ color: 'var(--sb-text-secondary)', fontSize: '13px' }}>{row.warehouse_name}</td>
+                          {/* Translated and toned, from the one shared map. */}
+                          <td className="px-4 py-2">
+                            <span className={`inline-block rounded-pill px-2 py-0.5 text-xs font-semibold ${stockMovementTone(row.movement_type)}`}>
+                              {t(stockMovementKey(row.movement_type), { defaultValue: row.movement_type })}
+                            </span>
+                          </td>
+                          {/* The document that caused the movement. DocLink
+                              resolves the route from related_doc_type and checks
+                              the permission for it, so an unauthorised reader
+                              gets plain text rather than a dead link. */}
+                          <td className="px-4 py-2" style={{ fontSize: '13px' }}>
+                            {row.related_doc_id
+                              ? <DocLink type={row.related_doc_type} id={row.related_doc_id}
+                                  className="text-brand-600 hover:underline" />
+                              : <span style={{ color: 'var(--sb-text-secondary)' }}>{'—'}</span>}
+                          </td>
+                          <td className="px-4 py-2 font-mono" dir="ltr" style={{ textAlign: 'end', color: '#067647' }}>
+                            {isIn ? fmt(row.quantity) : '—'}
+                          </td>
+                          <td className="px-4 py-2 font-mono" dir="ltr" style={{ textAlign: 'end', color: 'var(--sb-danger)' }}>
+                            {isOut ? fmt(row.quantity) : '—'}
+                          </td>
+                          <td className="px-4 py-2 font-mono" dir="ltr" style={{ textAlign: 'end', color: 'var(--sb-text)', fontWeight: 700 }}>
+                            {fmt(row.running_qty)}
+                          </td>
+                          <td className="px-4 py-2 font-mono" dir="ltr" style={{ textAlign: 'end', color: 'var(--sb-text-secondary)' }}>
+                            {row.unit_cost != null ? fmt(row.unit_cost) : '—'}
+                          </td>
+                          <td className="px-4 py-2 font-mono" dir="ltr" style={{ textAlign: 'end', color: 'var(--sb-text)' }}>
+                            {row.running_value != null ? fmt(row.running_value) : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </OceanPage>
   );
 }

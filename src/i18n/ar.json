@@ -3516,6 +3516,9 @@
   "stockOcean": {
     "route": "من ← إلى",
     "transfers_count": "التحويلات: {{count}}",
-    "adjustments_count": "التسويات: {{count}}"
+    "adjustments_count": "التسويات: {{count}}",
+    "movements_count": "الحركات: {{count}}",
+    "run_hint": "اضبط عوامل التصفية واضغط تشغيل لعرض حركات المخزون",
+    "filters": "عوامل التصفية"
   }
 }
