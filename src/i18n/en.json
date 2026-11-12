@@ -3512,5 +3512,10 @@
     "opening_stock": "Opening stock",
     "review_je": "Saving will post a journal entry for the opening stock: Dr 1300 Inventory {{amount}} / Cr 3200 Owner's Equity {{amount}}.",
     "save_item": "Save item"
+  },
+  "stockOcean": {
+    "route": "From → to",
+    "transfers_count": "Transfers: {{count}}",
+    "adjustments_count": "Adjustments: {{count}}"
   }
 }

@@ -3512,5 +3512,10 @@
     "opening_stock": "المخزون الافتتاحي",
     "review_je": "الحفظ سيرحّل قيد يومية للمخزون الافتتاحي: مدين 1300 المخزون {{amount}} / دائن 3200 حقوق الملكية {{amount}}.",
     "save_item": "حفظ الصنف"
+  },
+  "stockOcean": {
+    "route": "من ← إلى",
+    "transfers_count": "التحويلات: {{count}}",
+    "adjustments_count": "التسويات: {{count}}"
   }
 }

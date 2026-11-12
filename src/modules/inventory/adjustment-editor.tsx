@@ -11,6 +11,9 @@ import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
 import { Modal } from '@/ui/modal';
 import { SearchableSelect } from '@/ui/searchable-select';
+import { StatusBadge } from '@/ui/status-badge';
+import { Plus, X, CircleCheck } from 'lucide-react';
+import '@/styles/stockbolt-ocean-teal.css';
 import { calcAdjustmentLine } from '@/core/inventory/inventory-calc';
 import type { ProductRow, WarehouseRow, AdjustmentItemInsert } from '@/data/adapter';
 
@@ -180,13 +183,17 @@ export default function AdjustmentEditorPage() {
   }, { gain: 0, loss: 0, net: 0 });
 
   return (
-    <div className="space-y-6 pb-16">
-      <BackButton to="/inventory/adjustments" label={t('inventory.adjustments_title')} />
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-ink-primary">
-          {isNew ? t('inventory.new_adjustment') : (existing?.adjustment_number ?? t('inventory.adjustment_details'))}
-        </h1>
-        <div className="flex gap-2">
+    // Ocean Teal (UI v1.1): look only — same fields, lines, save and confirm.
+    <div className="sb-ocean sb-docx sb-docx-edit" data-testid="adjustment-edit-ocean">
+      <div className="sb-card sb-doc-bar">
+        <div className="sb-doc-bar-id">
+          <BackButton to="/inventory/adjustments" label={t('inventory.adjustments_title')} />
+          {isNew
+            ? <h1 className="sb-doc-bar-no">{t('inventory.new_adjustment')}</h1>
+            : <bdi dir="ltr" className="sb-doc-bar-no">{existing?.adjustment_number ?? t('inventory.adjustment_details')}</bdi>}
+          {!isNew && existing && <StatusBadge status={existing.status} />}
+        </div>
+        <div className="sb-doc-bar-actions">
           {canEdit && (
             <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
               {t('common.save')}
@@ -194,36 +201,42 @@ export default function AdjustmentEditorPage() {
           )}
           {!isNew && existing?.status === 'draft' && (
             <Button size="sm" variant="primary" onClick={() => setConfirmOpen(true)}>
-              {t('inventory.confirm_adjustment')}
+              <CircleCheck size={15} aria-hidden="true" /> {t('inventory.confirm_adjustment')}
             </Button>
           )}
         </div>
       </div>
 
-      {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3">{error}</p>}
+      {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
 
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="rounded-card border border-border-subtle bg-surface-card p-4">
-          <p className="text-xs text-ink-tertiary">{t('inventory.total_gain')}</p>
-          <p className="text-lg font-semibold text-green-600 mt-1">{fmt(totals.gain)}</p>
+      <div className="sb-adj-kpis">
+        <div className="sb-exp-kpi">
+          <div className="sb-exp-kpi-txt">
+            <span className="sb-exp-kpi-label">{t('inventory.total_gain')}</span>
+            <bdi dir="ltr" className="sb-exp-kpi-val" style={{ color: '#067647' }}>{fmt(totals.gain)}</bdi>
+          </div>
         </div>
-        <div className="rounded-card border border-border-subtle bg-surface-card p-4">
-          <p className="text-xs text-ink-tertiary">{t('inventory.total_loss')}</p>
-          <p className="text-lg font-semibold text-red-600 mt-1">{fmt(totals.loss)}</p>
+        <div className="sb-exp-kpi">
+          <div className="sb-exp-kpi-txt">
+            <span className="sb-exp-kpi-label">{t('inventory.total_loss')}</span>
+            <bdi dir="ltr" className="sb-exp-kpi-val" style={{ color: 'var(--sb-danger)' }}>{fmt(totals.loss)}</bdi>
+          </div>
         </div>
-        <div className="rounded-card border border-border-subtle bg-surface-card p-4">
-          <p className="text-xs text-ink-tertiary">{t('inventory.net_change')}</p>
-          <p className={`text-lg font-semibold mt-1 ${totals.net >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-            {totals.net > 0 ? '+' : ''}{totals.net}
-          </p>
+        <div className="sb-exp-kpi">
+          <div className="sb-exp-kpi-txt">
+            <span className="sb-exp-kpi-label">{t('inventory.net_change')}</span>
+            <bdi dir="ltr" className="sb-exp-kpi-val" style={{ color: totals.net >= 0 ? '#067647' : 'var(--sb-danger)' }}>
+              {totals.net > 0 ? '+' : ''}{totals.net}
+            </bdi>
+          </div>
         </div>
       </div>
 
       {/* Header */}
-      <div className="rounded-card border border-border-subtle bg-surface-card p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-ink-primary">{t('inventory.adjustment_details')}</h2>
-        <div className="grid grid-cols-3 gap-4">
+      <div className="sb-card sb-form sb-doc-card space-y-4">
+        <h2 className="sb-doc-card-title">{t('inventory.adjustment_details')}</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Input label={t('inventory.date')} type="date" value={date} onChange={e => setDate(e.target.value)} disabled={!canEdit} />
           <Select label={t('inventory.warehouse')} options={warehouseOpts} value={warehouseId}
             onChange={e => setWarehouseId(e.target.value)} disabled={!canEdit} />
@@ -234,19 +247,19 @@ export default function AdjustmentEditorPage() {
       </div>
 
       {/* Line Items */}
-      <div className="rounded-card border border-border-subtle bg-surface-card overflow-x-auto">
-        <div className="px-5 py-3 border-b border-border-subtle flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-ink-primary">{t('inventory.count_lines')}</h2>
+      <div className="sb-card sb-doc-card sb-doc-lines">
+        <div className="sb-doc-lines-head">
+          <h2 className="sb-doc-card-title" style={{ margin: 0 }}>{t('inventory.count_lines')}</h2>
           {canEdit && (
-            <button onClick={() => setLines(p => [...p, newLine()])}
-              className="text-xs text-brand-600 hover:text-brand-700 font-medium">
-              + {t('inventory.add_item')}
+            <button type="button" onClick={() => setLines(p => [...p, newLine()])} className="sb-row-link text-brand-600">
+              <Plus size={15} aria-hidden="true" /> {t('inventory.add_item')}
             </button>
           )}
         </div>
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm" style={{ minWidth: 760 }}>
           <thead>
-            <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary text-xs">
+            <tr>
               <th className="px-4 py-2 text-start font-medium">{t('inventory.product')}</th>
               <th className="px-4 py-2 text-end font-medium w-28">{t('inventory.system_qty')}</th>
               <th className="px-4 py-2 text-end font-medium w-28">{t('inventory.actual_qty')}</th>
@@ -296,8 +309,8 @@ export default function AdjustmentEditorPage() {
                   <td className={`px-4 py-2 text-end font-mono ${diffColor}`}>{fmt(total_value)}</td>
                   {canEdit && (
                     <td className="px-2 py-2">
-                      <button onClick={() => setLines(p => p.filter(l => l._key !== line._key))}
-                        className="text-ink-tertiary hover:text-red-500 text-lg leading-none">×</button>
+                      <button type="button" onClick={() => setLines(p => p.filter(l => l._key !== line._key))}
+                        className="sb-doc-line-del" aria-label={t('invOcean.remove_line')} title={t('invOcean.remove_line')}><X size={15} aria-hidden="true" /></button>
                     </td>
                   )}
                 </tr>
@@ -305,19 +318,21 @@ export default function AdjustmentEditorPage() {
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Confirm Modal */}
       <Modal open={confirmOpen} onClose={() => setConfirmOpen(false)} title={t('inventory.confirm_adjustment')}>
-        <p className="text-sm text-ink-secondary mb-4">{t('inventory.confirm_adjustment_desc')}</p>
-        <div className="grid grid-cols-2 gap-3 mb-6 text-sm">
-          <div className="bg-green-50 rounded p-3">
-            <p className="text-xs text-ink-tertiary">{t('inventory.total_gain')}</p>
-            <p className="font-semibold text-green-700">{fmt(totals.gain)}</p>
+        <div className="sb-ocean sb-form sb-modal-form">
+        <p className="text-sm text-ink-secondary">{t('inventory.confirm_adjustment_desc')}</p>
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="sb-alert sb-alert-good" style={{ margin: 0, display: 'block' }}>
+            <p className="text-xs" style={{ margin: 0 }}>{t('inventory.total_gain')}</p>
+            <bdi dir="ltr" className="font-semibold">{fmt(totals.gain)}</bdi>
           </div>
-          <div className="bg-red-50 rounded p-3">
-            <p className="text-xs text-ink-tertiary">{t('inventory.total_loss')}</p>
-            <p className="font-semibold text-red-700">{fmt(totals.loss)}</p>
+          <div className="sb-alert sb-alert-danger" style={{ margin: 0, display: 'block' }}>
+            <p className="text-xs" style={{ margin: 0 }}>{t('inventory.total_loss')}</p>
+            <bdi dir="ltr" className="font-semibold">{fmt(totals.loss)}</bdi>
           </div>
         </div>
         <div className="flex justify-end gap-3">
@@ -325,6 +340,7 @@ export default function AdjustmentEditorPage() {
           <Button size="sm" variant="primary" onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}>
             {t('inventory.confirm_adjustment')}
           </Button>
+        </div>
         </div>
       </Modal>
     </div>

@@ -4,17 +4,15 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
-import { Badge } from '@/ui/badge';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Plus } from 'lucide-react';
+import { StatusBadge } from '@/ui/status-badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { VoidedToggle } from '@/ui/voided-toggle';
 import { useHideVoided, showsInList } from '@/hooks/use-hide-voided';
 import type { InventoryAdjustmentRow, WarehouseRow } from '@/data/adapter';
-
-const statusColor: Record<string, string> = {
-  draft: 'muted', confirmed: 'success', void: 'danger',
-};
 
 export default function InventoryAdjustmentsPage() {
   const { t } = useTranslation();
@@ -46,50 +44,30 @@ export default function InventoryAdjustmentsPage() {
   });
   const warehouseMap = Object.fromEntries(warehouses.map(w => [w.id, w.name]));
 
+  const columns: Column<InventoryAdjustmentRow>[] = [
+    { key: 'no', header: t('inventory.adjustment_number'), render: (a) => <bdi dir="ltr" className="sb-inv-no">{a.adjustment_number}</bdi> },
+    { key: 'wh', header: t('inventory.warehouse'), render: (a) => <span style={{ fontWeight: 600 }}>{warehouseMap[a.warehouse_id] ?? a.warehouse_id}</span> },
+    { key: 'reason', header: t('inventory.reason'), render: (a) => a.reason ? t(`inventory.reason_${a.reason}`, { defaultValue: a.reason }) : '—' },
+    { key: 'date', header: t('inventory.date'), render: (a) => <bdi dir="ltr">{formatDate(a.date as string)}</bdi> },
+    { key: 'status', header: '', render: (a) => <StatusBadge status={a.status} /> },
+  ];
+
+  // Ocean Teal (UI v1.1): look only — same adjustments, period and voided toggle.
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">{t('inventory.adjustments_title')}</h1>
-        <div className="flex flex-wrap items-center gap-2">
-          <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-          <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided}
-            count={adjustmentsVoidedCount} />
-          <Button size="sm" onClick={() => navigate('/inventory/adjustments/new')}>{t('inventory.new_adjustment')}</Button>
-        </div>
-      </div>
-      {isLoading ? (
-        <div className="py-12 text-center text-sm text-ink-tertiary">{t('common.loading')}</div>
-      ) : adjustments.length === 0 ? (
-        <div className="py-12 text-center text-sm text-ink-tertiary">{t('inventory.no_adjustments')}</div>
-      ) : (
-        <div className="rounded-card border border-border-subtle bg-surface-card">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary text-xs">
-                <th className="px-4 py-3 text-start font-medium">{t('inventory.adjustment_number')}</th>
-                <th className="px-4 py-3 text-start font-medium">{t('inventory.warehouse')}</th>
-                <th className="px-4 py-3 text-start font-medium">{t('inventory.reason')}</th>
-                <th className="px-4 py-3 text-start font-medium">{t('inventory.date')}</th>
-                <th className="px-4 py-3 text-center font-medium">{t('inventory.status')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {adjustments.map(adj => (
-                <tr key={adj.id} className="border-b border-border-subtle last:border-0 hover:bg-surface-muted cursor-pointer"
-                  onClick={() => navigate(`/inventory/adjustments/${adj.id}`)}>
-                  <td className="px-4 py-3 font-mono text-xs text-brand-700">{adj.adjustment_number}</td>
-                  <td className="px-4 py-3 text-ink-secondary text-sm">{warehouseMap[adj.warehouse_id] ?? adj.warehouse_id}</td>
-                  <td className="px-4 py-3 text-ink-secondary capitalize">{adj.reason}</td>
-                  <td className="px-4 py-3 text-ink-secondary">{formatDate(adj.date as string)}</td>
-                  <td className="px-4 py-3 text-center">
-                    <Badge variant={statusColor[adj.status] as 'muted' | 'success' | 'danger'}>{adj.status}</Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+    <OceanPage
+      testid="inventory-adjustments-ocean"
+      title={t('inventory.adjustments_title')}
+      subtitle={t('stockOcean.adjustments_count', { count: adjustments.length })}
+      actions={<>
+        <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided} count={adjustmentsVoidedCount} />
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => navigate('/inventory/adjustments/new')}><Plus size={18} aria-hidden="true" />{t('inventory.new_adjustment')}</button>
+      </>}
+    >
+      {isLoading
+        ? <div className="sb-card sb-empty">{t('common.loading')}</div>
+        : <OceanTable columns={columns} rows={adjustments} keyFn={(a) => a.id} cardTitleKey="wh"
+            onRowClick={(a) => navigate(`/inventory/adjustments/${a.id}`)} rowMuted={(a) => a.status === 'void'} emptyMessage={t('inventory.no_adjustments')} />}
+    </OceanPage>
   );
 }

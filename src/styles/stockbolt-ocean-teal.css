@@ -1600,3 +1600,7 @@
 .sb-ocean .sb-pw-review-row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--sb-border); font-size: 14px; }
 .sb-ocean .sb-pw-review-row span:first-child { color: var(--sb-text-secondary); }
 .sb-ocean .sb-pw-review-row span:last-child { font-weight: 600; color: var(--sb-text); text-align: end; overflow-wrap: anywhere; }
+
+/* ── Inventory adjustment editor: summary chips ──────────────────────────── */
+.sb-ocean .sb-adj-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 520px) { .sb-ocean .sb-adj-kpis .sb-exp-kpi { padding: 8px 10px; min-height: 0; } .sb-ocean .sb-adj-kpis .sb-exp-kpi-val { font-size: 15px; } }

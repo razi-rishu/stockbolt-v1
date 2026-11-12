@@ -4,17 +4,15 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
-import { Badge } from '@/ui/badge';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Plus, ArrowRight } from 'lucide-react';
+import { StatusBadge } from '@/ui/status-badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { VoidedToggle } from '@/ui/voided-toggle';
 import { useHideVoided, showsInList } from '@/hooks/use-hide-voided';
 import type { StockTransferRow, WarehouseRow } from '@/data/adapter';
-
-const statusColor: Record<string, string> = {
-  draft: 'muted', confirmed: 'success', void: 'danger',
-};
 
 export default function StockTransfersPage() {
   const { t } = useTranslation();
@@ -46,50 +44,38 @@ export default function StockTransfersPage() {
   });
   const warehouseMap = Object.fromEntries(warehouses.map(w => [w.id, w.name]));
 
+  const columns: Column<StockTransferRow>[] = [
+    { key: 'no', header: t('inventory.transfer_number'), render: (tr) => <bdi dir="ltr" className="sb-inv-no">{tr.transfer_number}</bdi> },
+    {
+      key: 'route', header: t('stockOcean.route'),
+      render: (tr) => (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600, flexWrap: 'wrap' }}>
+          {warehouseMap[tr.from_warehouse_id] ?? tr.from_warehouse_id}
+          <ArrowRight size={14} className="sb-pw-flip" aria-hidden="true" style={{ color: 'var(--sb-primary)' }} />
+          {warehouseMap[tr.to_warehouse_id] ?? tr.to_warehouse_id}
+        </span>
+      ),
+    },
+    { key: 'date', header: t('inventory.date'), render: (tr) => <bdi dir="ltr">{formatDate(tr.date as string)}</bdi> },
+    { key: 'status', header: '', render: (tr) => <StatusBadge status={tr.status} /> },
+  ];
+
+  // Ocean Teal (UI v1.1): look only — same transfers, period and voided toggle.
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">{t('inventory.transfers_title')}</h1>
-        <div className="flex flex-wrap items-center gap-2">
-          <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-          <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided}
-            count={transfersVoidedCount} />
-          <Button size="sm" onClick={() => navigate('/inventory/transfers/new')}>{t('inventory.new_transfer')}</Button>
-        </div>
-      </div>
-      {isLoading ? (
-        <div className="py-12 text-center text-sm text-ink-tertiary">{t('common.loading')}</div>
-      ) : transfers.length === 0 ? (
-        <div className="py-12 text-center text-sm text-ink-tertiary">{t('inventory.no_transfers')}</div>
-      ) : (
-        <div className="rounded-card border border-border-subtle bg-surface-card">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary text-xs">
-                <th className="px-4 py-3 text-start font-medium">{t('inventory.transfer_number')}</th>
-                <th className="px-4 py-3 text-start font-medium">{t('inventory.from_warehouse')}</th>
-                <th className="px-4 py-3 text-start font-medium">{t('inventory.to_warehouse')}</th>
-                <th className="px-4 py-3 text-start font-medium">{t('inventory.date')}</th>
-                <th className="px-4 py-3 text-center font-medium">{t('inventory.status')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {transfers.map(tr => (
-                <tr key={tr.id} className="border-b border-border-subtle last:border-0 hover:bg-surface-muted cursor-pointer"
-                  onClick={() => navigate(`/inventory/transfers/${tr.id}`)}>
-                  <td className="px-4 py-3 font-mono text-xs text-brand-700">{tr.transfer_number}</td>
-                  <td className="px-4 py-3 text-ink-secondary text-sm">{warehouseMap[tr.from_warehouse_id] ?? tr.from_warehouse_id}</td>
-                  <td className="px-4 py-3 text-ink-secondary text-sm">{warehouseMap[tr.to_warehouse_id] ?? tr.to_warehouse_id}</td>
-                  <td className="px-4 py-3 text-ink-secondary">{formatDate(tr.date as string)}</td>
-                  <td className="px-4 py-3 text-center">
-                    <Badge variant={statusColor[tr.status] as 'muted' | 'success' | 'danger'}>{tr.status}</Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+    <OceanPage
+      testid="stock-transfers-ocean"
+      title={t('inventory.transfers_title')}
+      subtitle={t('stockOcean.transfers_count', { count: transfers.length })}
+      actions={<>
+        <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided} count={transfersVoidedCount} />
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => navigate('/inventory/transfers/new')}><Plus size={18} aria-hidden="true" />{t('inventory.new_transfer')}</button>
+      </>}
+    >
+      {isLoading
+        ? <div className="sb-card sb-empty">{t('common.loading')}</div>
+        : <OceanTable columns={columns} rows={transfers} keyFn={(tr) => tr.id} cardTitleKey="route"
+            onRowClick={(tr) => navigate(`/inventory/transfers/${tr.id}`)} rowMuted={(tr) => tr.status === 'void'} emptyMessage={t('inventory.no_transfers')} />}
+    </OceanPage>
   );
 }

@@ -11,6 +11,9 @@ import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
 import { Modal } from '@/ui/modal';
 import { SearchableSelect } from '@/ui/searchable-select';
+import { StatusBadge } from '@/ui/status-badge';
+import { Plus, X, CircleCheck } from 'lucide-react';
+import '@/styles/stockbolt-ocean-teal.css';
 import type { ProductRow, WarehouseRow, StockTransferItemInsert } from '@/data/adapter';
 
 interface LineRow {
@@ -154,13 +157,17 @@ export default function TransferEditorPage() {
   });
 
   return (
-    <div className="space-y-6 pb-16">
-      <BackButton to="/inventory/transfers" label={t('inventory.transfers_title')} />
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-ink-primary">
-          {isNew ? t('inventory.new_transfer') : (existing?.transfer_number ?? t('inventory.transfer_details'))}
-        </h1>
-        <div className="flex gap-2">
+    // Ocean Teal (UI v1.1): look only — same fields, lines, save and confirm.
+    <div className="sb-ocean sb-docx sb-docx-edit" data-testid="transfer-edit-ocean">
+      <div className="sb-card sb-doc-bar">
+        <div className="sb-doc-bar-id">
+          <BackButton to="/inventory/transfers" label={t('inventory.transfers_title')} />
+          {isNew
+            ? <h1 className="sb-doc-bar-no">{t('inventory.new_transfer')}</h1>
+            : <bdi dir="ltr" className="sb-doc-bar-no">{existing?.transfer_number ?? t('inventory.transfer_details')}</bdi>}
+          {!isNew && existing && <StatusBadge status={existing.status} />}
+        </div>
+        <div className="sb-doc-bar-actions">
           {canEdit && (
             <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
               {t('common.save')}
@@ -168,20 +175,20 @@ export default function TransferEditorPage() {
           )}
           {!isNew && existing?.status === 'draft' && (
             <Button size="sm" variant="primary" onClick={() => setConfirmOpen(true)}>
-              {t('inventory.confirm_transfer')}
+              <CircleCheck size={15} aria-hidden="true" /> {t('inventory.confirm_transfer')}
             </Button>
           )}
         </div>
       </div>
 
-      {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3">{error}</p>}
+      {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
 
-      <div className="rounded-card border border-border-subtle bg-surface-card p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-ink-primary">{t('inventory.transfer_details')}</h2>
-        <div className="grid grid-cols-2 gap-4">
+      <div className="sb-card sb-form sb-doc-card space-y-4">
+        <h2 className="sb-doc-card-title">{t('inventory.transfer_details')}</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Input label={t('inventory.date')} type="date" value={date} onChange={e => setDate(e.target.value)} disabled={!canEdit} />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Select label={t('inventory.from_warehouse')} options={warehouseOpts} value={fromWarehouseId}
             onChange={e => setFromWarehouseId(e.target.value)} disabled={!canEdit} />
           <Select label={t('inventory.to_warehouse')} options={warehouseOpts} value={toWarehouseId}
@@ -191,19 +198,19 @@ export default function TransferEditorPage() {
       </div>
 
       {/* Line Items */}
-      <div className="rounded-card border border-border-subtle bg-surface-card overflow-x-auto">
-        <div className="px-5 py-3 border-b border-border-subtle flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-ink-primary">{t('inventory.items')}</h2>
+      <div className="sb-card sb-doc-card sb-doc-lines">
+        <div className="sb-doc-lines-head">
+          <h2 className="sb-doc-card-title" style={{ margin: 0 }}>{t('inventory.items')}</h2>
           {canEdit && (
-            <button onClick={() => setLines(p => [...p, newLine()])}
-              className="text-xs text-brand-600 hover:text-brand-700 font-medium">
-              + {t('inventory.add_item')}
+            <button type="button" onClick={() => setLines(p => [...p, newLine()])} className="sb-row-link text-brand-600">
+              <Plus size={15} aria-hidden="true" /> {t('inventory.add_item')}
             </button>
           )}
         </div>
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm" style={{ minWidth: 520 }}>
           <thead>
-            <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary text-xs">
+            <tr>
               <th className="px-4 py-2 text-start font-medium">{t('inventory.product')}</th>
               <th className="px-4 py-2 text-end font-medium w-28">{t('inventory.quantity')}</th>
               <th className="px-4 py-2 text-end font-medium w-28">{t('inventory.unit_cost')}</th>
@@ -233,24 +240,27 @@ export default function TransferEditorPage() {
                 </td>
                 {canEdit && (
                   <td className="px-2 py-2">
-                    <button onClick={() => setLines(p => p.filter(l => l._key !== line._key))}
-                      className="text-ink-tertiary hover:text-red-500 text-lg leading-none">×</button>
+                    <button type="button" onClick={() => setLines(p => p.filter(l => l._key !== line._key))}
+                      className="sb-doc-line-del" aria-label={t('invOcean.remove_line')} title={t('invOcean.remove_line')}><X size={15} aria-hidden="true" /></button>
                   </td>
                 )}
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Confirm Modal */}
       <Modal open={confirmOpen} onClose={() => setConfirmOpen(false)} title={t('inventory.confirm_transfer')}>
-        <p className="text-sm text-ink-secondary mb-6">{t('inventory.confirm_transfer_desc')}</p>
+        <div className="sb-ocean sb-form sb-modal-form">
+        <p className="text-sm text-ink-secondary">{t('inventory.confirm_transfer_desc')}</p>
         <div className="flex justify-end gap-3">
           <Button variant="ghost" size="sm" onClick={() => setConfirmOpen(false)}>{t('common.cancel')}</Button>
           <Button size="sm" variant="primary" onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}>
             {t('inventory.confirm_transfer')}
           </Button>
+        </div>
         </div>
       </Modal>
     </div>
