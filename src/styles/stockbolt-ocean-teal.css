@@ -1406,6 +1406,8 @@
 .sb-ocean .sb-doc-line-del { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 999px; background: transparent; color: var(--sb-danger); cursor: pointer; }
 .sb-ocean .sb-doc-line-del:hover:not(:disabled) { background: var(--sb-danger-bg); }
 .sb-ocean .sb-doc-line-del:disabled { opacity: .3; cursor: default; }
+/* The remove button is 30px; a px-3 cell around it overflowed its 36px column. */
+.sb-ocean .sb-doc-lines td:has(> .sb-doc-line-del) { padding-inline: 3px; text-align: center; }
 .sb-ocean .sb-doc-add-line { padding: 6px 14px 10px; border-top: 1px solid var(--sb-border); }
 .sb-ocean .sb-doc-summary { padding: 16px; }
 .sb-ocean .sb-doc-summary-rows { display: flex; flex-direction: column; gap: 8px; font-size: 14px; }

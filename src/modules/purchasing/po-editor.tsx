@@ -9,6 +9,9 @@ import { defaultTaxRate } from '@/lib/locale';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
+import { StatusBadge } from '@/ui/status-badge';
+import { Pencil, Printer, Eye, Plus, X, ArrowRightLeft } from 'lucide-react';
+import '@/styles/stockbolt-ocean-teal.css';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { SearchableSelect } from '@/ui/searchable-select';
@@ -306,24 +309,18 @@ export default function POEditorPage() {
       products,
     });
     return (
-      <div className="signature-print-scope" style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
-        <div
-          data-print-hide
-          style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
-        >
-          <BackButton to="/purchasing/orders" label={t('purchasing.po_title')} confirm={confirmLeave} />
-          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
-            {existing.po_number}
-          </h1>
-          <span style={{
-            display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
-            fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
-            background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
-          }}>{existing.status}</span>
-          <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+      // Ocean Teal (UI v1.1): look only — same actions and printed document.
+      <div className="signature-print-scope sb-ocean sb-docx" data-testid="po-view-ocean">
+        <div data-print-hide className="sb-card sb-doc-bar">
+          <div className="sb-doc-bar-id">
+            <BackButton to="/purchasing/orders" label={t('purchasing.po_title')} confirm={confirmLeave} />
+            <bdi dir="ltr" className="sb-doc-bar-no">{existing.po_number}</bdi>
+            <StatusBadge status={existing.status} />
+          </div>
+          <div className="sb-doc-bar-actions">
             {canEdit && (
               <Button size="sm" onClick={() => setViewMode(false)}>
-                ✎ {t('common.edit') || 'Edit'}
+                <Pencil size={15} aria-hidden="true" /> {t('common.edit') || 'Edit'}
               </Button>
             )}
             {canConvertToBill && (
@@ -332,17 +329,17 @@ export default function POEditorPage() {
                 onClick={() => { setError(null); convertToBillMutation.mutate(); }}
                 disabled={convertToBillMutation.isPending}
               >
-                {convertToBillMutation.isPending ? 'Converting…' : 'Convert to Bill'}
+                <ArrowRightLeft size={15} aria-hidden="true" /> {convertToBillMutation.isPending ? t('purchOcean.converting') : t('purchOcean.convert_to_bill')}
               </Button>
             )}
             {existing?.id && (
               <Button variant="ghost" size="sm" onClick={() => window.print()}>
-                🖨 {t('print.print') || 'Print'}
+                <Printer size={15} aria-hidden="true" /> {t('print.print') || 'Print'}
               </Button>
             )}
           </div>
         </div>
-        <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
+        <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
       </div>
@@ -350,20 +347,25 @@ export default function POEditorPage() {
   }
 
   return (
-    <div className="space-y-6 pb-16">
-      <div className="flex items-center gap-3">
-        <BackButton to="/purchasing/orders" label={t('purchasing.po_title')} confirm={confirmLeave} />
-        <h1 className="text-xl font-semibold text-ink-primary">{isNew ? t('purchasing.new_po') : existing?.po_number ?? '…'}</h1>
-        {!isNew && <span className="rounded-pill bg-gray-100 px-2.5 py-0.5 text-xs capitalize text-gray-600">{existing?.status}</span>}
-        <div className="ms-auto flex gap-2">
+    // Ocean Teal (UI v1.1): look only — same fields, lines, totals and actions.
+    <div className="sb-ocean sb-docx sb-docx-edit" data-testid="po-edit-ocean">
+      <div className="sb-card sb-doc-bar">
+        <div className="sb-doc-bar-id">
+          <BackButton to="/purchasing/orders" label={t('purchasing.po_title')} confirm={confirmLeave} />
+          {isNew
+            ? <h1 className="sb-doc-bar-no">{t('purchasing.new_po')}</h1>
+            : <bdi dir="ltr" className="sb-doc-bar-no">{existing?.po_number ?? '…'}</bdi>}
+          {!isNew && existing && <StatusBadge status={existing.status} />}
+        </div>
+        <div className="sb-doc-bar-actions">
           {!isNew && existing && (
             <Button variant="ghost" size="sm" onClick={() => setViewMode(true)}>
-              {t('common.view') || 'View'}
+              <Eye size={15} aria-hidden="true" /> {t('common.view') || 'View'}
             </Button>
           )}
           {!isNew && existing?.id && (
             <Button variant="ghost" size="sm" onClick={() => window.open(`/print/po/${existing.id}`, '_blank')}>
-              🖨 {t('print.print')}
+              <Printer size={15} aria-hidden="true" /> {t('print.print')}
             </Button>
           )}
           <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/purchasing/orders'); }}>{t('common.cancel')}</Button>
@@ -385,16 +387,16 @@ export default function POEditorPage() {
               onClick={() => { setError(null); convertToBillMutation.mutate(); }}
               disabled={convertToBillMutation.isPending}
             >
-              {convertToBillMutation.isPending ? 'Converting…' : 'Convert to Bill'}
+              <ArrowRightLeft size={15} aria-hidden="true" /> {convertToBillMutation.isPending ? t('purchOcean.converting') : t('purchOcean.convert_to_bill')}
             </Button>
           )}
         </div>
       </div>
 
-      {error && <div className="rounded-input bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
+      {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
 
-      <div className="glass-card p-5">
-        <h2 className="mb-4 text-sm font-semibold text-ink-primary">{t('purchasing.po_details')}</h2>
+      <div className="sb-card sb-form sb-doc-card">
+        <h2 className="sb-doc-card-title">{t('purchasing.po_details')}</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="col-span-2 md:col-span-1">
             <label className="mb-1 block text-sm font-medium text-ink-primary">
@@ -427,14 +429,14 @@ export default function POEditorPage() {
         </div>
       </div>
 
-      <div className="glass-card">
-        <div className="border-b border-border-subtle px-5 py-3">
-          <h2 className="text-sm font-semibold text-ink-primary">{t('purchasing.line_items')}</h2>
+      <div className="sb-card sb-doc-card sb-doc-lines">
+        <div className="sb-doc-lines-head">
+          <h2 className="sb-doc-card-title" style={{ margin: 0 }}>{t('purchasing.line_items')}</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full table-fixed text-xs" style={{ minWidth: '760px' }}>
             <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary">
+              <tr>
                 <th className="px-3 py-2 text-start font-medium" style={{ minWidth: '220px' }}>{t('purchasing.product')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '72px' }}>{t('purchasing.qty')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('purchasing.unit_cost')}</th>
@@ -467,7 +469,7 @@ export default function POEditorPage() {
                     <input
                       className="mt-1 w-full rounded border border-transparent bg-transparent px-2 py-0.5 text-[11px] text-ink-tertiary placeholder:text-ink-tertiary hover:border-border-subtle focus:border-border-strong focus:bg-surface-subtle focus:text-ink-secondary disabled:opacity-60"
                       value={line.description} disabled={!canEdit}
-                      placeholder={t('purchasing.description') + ' (optional)'}
+                      placeholder={t('invOcean.description_optional', { label: t('purchasing.description') })}
                       onChange={e => updateLine(line._key, { description: e.target.value })} />
                   </td>
                   <td className="px-3 py-1.5 align-top">
@@ -500,9 +502,9 @@ export default function POEditorPage() {
                   <td className="px-3 py-1.5 align-top text-end font-mono text-ink-primary">{fmt(line.line_total)}</td>
                   {canEdit && (
                     <td className="px-3 py-1.5 align-top">
-                      <button className="text-red-400 hover:text-red-600 disabled:opacity-30"
+                      <button type="button" className="sb-doc-line-del" aria-label={t('invOcean.remove_line')} title={t('invOcean.remove_line')}
                         disabled={lines.length === 1}
-                        onClick={() => { setLines(prev => prev.filter(l => l._key !== line._key)); setDirty(true); }}>×</button>
+                        onClick={() => { setLines(prev => prev.filter(l => l._key !== line._key)); setDirty(true); }}><X size={16} aria-hidden="true" /></button>
                     </td>
                   )}
                 </tr>
@@ -511,22 +513,19 @@ export default function POEditorPage() {
           </table>
         </div>
         {canEdit && (
-          <div className="border-t border-border-subtle px-5 py-2">
-            <button className="text-xs text-brand-600 hover:text-brand-700"
+          <div className="sb-doc-add-line">
+            <button type="button" className="sb-row-link text-brand-600"
               onClick={() => { const b = { ...emptyLine(), tax_rate: stdTaxRate }; setLines(prev => [...prev, { ...b, ...calcLine(b) }]); setDirty(true); }}>
-              + {t('purchasing.add_line')}
+              <Plus size={16} aria-hidden="true" /> {t('purchasing.add_line')}
             </button>
           </div>
         )}
-        <div className="border-t border-border-subtle px-5 py-4">
-          <div className="ms-auto w-60 space-y-1.5 text-sm">
+        <div className="sb-doc-quote-total">
+          <div className="sb-doc-summary-rows" style={{ marginInlineStart: 'auto', width: 'min(100%, 300px)' }}>
             <div className="flex justify-between text-ink-secondary"><span>{t('purchasing.subtotal')}</span><span className="font-mono">{fmt(subtotal)}</span></div>
             {discountTotal > 0 && <div className="flex justify-between text-ink-secondary"><span>{t('purchasing.discount')}</span><span className="font-mono text-red-600">−{fmt(discountTotal)}</span></div>}
             {taxTotal > 0 && <div className="flex justify-between text-ink-secondary"><span>{taxName}</span><span className="font-mono">{fmt(taxTotal)}</span></div>}
-            <div className="flex justify-between border-t border-border-subtle pt-1.5 font-semibold text-ink-primary">
-              <span>{t('purchasing.total_amount')}</span>
-              <span className="font-mono">{header.currency} {fmt(grandTotal)}</span>
-            </div>
+            <div className="sb-doc-grand"><span>{t('purchasing.total_amount')}</span><bdi dir="ltr">{header.currency} {fmt(grandTotal)}</bdi></div>
           </div>
         </div>
       </div>

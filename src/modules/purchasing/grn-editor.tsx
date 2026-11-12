@@ -8,6 +8,9 @@ import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
+import { StatusBadge } from '@/ui/status-badge';
+import { Pencil, Printer, Eye, Plus, X, PackageCheck } from 'lucide-react';
+import '@/styles/stockbolt-ocean-teal.css';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { SearchableSelect } from '@/ui/searchable-select';
@@ -243,34 +246,28 @@ export default function GRNEditorPage() {
       linkedPoNumber: null,                   // linked PO lookup deferred
     });
     return (
-      <div className="signature-print-scope" style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
-        <div
-          data-print-hide
-          style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
-        >
-          <BackButton to="/purchasing/grns" label={t('purchasing.grn_title')} confirm={confirmLeave} />
-          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
-            {existing.grn_number}
-          </h1>
-          <span style={{
-            display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
-            fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
-            background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
-          }}>{existing.status}</span>
-          <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+      // Ocean Teal (UI v1.1): look only — same actions and printed document.
+      <div className="signature-print-scope sb-ocean sb-docx" data-testid="grn-view-ocean">
+        <div data-print-hide className="sb-card sb-doc-bar">
+          <div className="sb-doc-bar-id">
+            <BackButton to="/purchasing/grns" label={t('purchasing.grn_title')} confirm={confirmLeave} />
+            <bdi dir="ltr" className="sb-doc-bar-no">{existing.grn_number}</bdi>
+            <StatusBadge status={existing.status} />
+          </div>
+          <div className="sb-doc-bar-actions">
             {canEdit && (
               <Button size="sm" onClick={() => setViewMode(false)}>
-                ✎ {t('common.edit') || 'Edit'}
+                <Pencil size={15} aria-hidden="true" /> {t('common.edit') || 'Edit'}
               </Button>
             )}
             {existing?.id && (
               <Button variant="ghost" size="sm" onClick={() => window.print()}>
-                🖨 {t('print.print') || 'Print'}
+                <Printer size={15} aria-hidden="true" /> {t('print.print') || 'Print'}
               </Button>
             )}
           </div>
         </div>
-        <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
+        <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
       </div>
@@ -278,15 +275,20 @@ export default function GRNEditorPage() {
   }
 
   return (
-    <div className="space-y-6 pb-16">
-      <div className="flex items-center gap-3">
-        <BackButton to="/purchasing/grns" label={t('purchasing.grn_title')} confirm={confirmLeave} />
-        <h1 className="text-xl font-semibold text-ink-primary">{isNew ? t('purchasing.new_grn') : existing?.grn_number ?? '…'}</h1>
-        {!isNew && <span className="rounded-pill bg-gray-100 px-2.5 py-0.5 text-xs capitalize text-gray-600">{existing?.status}</span>}
-        <div className="ms-auto flex gap-2">
+    // Ocean Teal (UI v1.1): look only — same fields, lines, totals and actions.
+    <div className="sb-ocean sb-docx sb-docx-edit" data-testid="grn-edit-ocean">
+      <div className="sb-card sb-doc-bar">
+        <div className="sb-doc-bar-id">
+          <BackButton to="/purchasing/grns" label={t('purchasing.grn_title')} confirm={confirmLeave} />
+          {isNew
+            ? <h1 className="sb-doc-bar-no">{t('purchasing.new_grn')}</h1>
+            : <bdi dir="ltr" className="sb-doc-bar-no">{existing?.grn_number ?? '…'}</bdi>}
+          {!isNew && existing && <StatusBadge status={existing.status} />}
+        </div>
+        <div className="sb-doc-bar-actions">
           {!isNew && existing && existing.status !== 'draft' && (
             <Button variant="ghost" size="sm" onClick={() => setViewMode(true)}>
-              {t('common.view') || 'View'}
+              <Eye size={15} aria-hidden="true" /> {t('common.view') || 'View'}
             </Button>
           )}
           <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/purchasing/grns'); }}>{t('common.cancel')}</Button>
@@ -299,17 +301,17 @@ export default function GRNEditorPage() {
           )}
           {!isNew && existing?.status === 'received' && (
             <Button size="sm" variant="ghost" onClick={() => navigate(`/purchasing/bills/new?grn_id=${existing.id}`)}>
-              {t('purchasing.create_bill')}
+              <PackageCheck size={15} aria-hidden="true" /> {t('purchasing.create_bill')}
             </Button>
           )}
         </div>
       </div>
 
-      {error && <div className="rounded-input bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
+      {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
 
 
-      <div className="glass-card p-5">
-        <h2 className="mb-4 text-sm font-semibold text-ink-primary">{t('purchasing.grn_details')}</h2>
+      <div className="sb-card sb-form sb-doc-card">
+        <h2 className="sb-doc-card-title">{t('purchasing.grn_details')}</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="col-span-2 md:col-span-1">
             <label className="mb-1 block text-sm font-medium text-ink-primary">
@@ -333,14 +335,14 @@ export default function GRNEditorPage() {
         </div>
       </div>
 
-      <div className="glass-card">
-        <div className="border-b border-border-subtle px-5 py-3">
-          <h2 className="text-sm font-semibold text-ink-primary">{t('purchasing.items_received')}</h2>
+      <div className="sb-card sb-doc-card sb-doc-lines">
+        <div className="sb-doc-lines-head">
+          <h2 className="sb-doc-card-title" style={{ margin: 0 }}>{t('purchasing.items_received')}</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary">
+              <tr>
                 <th className="px-3 py-2 text-start font-medium w-56">{t('purchasing.product')}</th>
                 <th className="px-3 py-2 text-end font-medium w-28">{t('purchasing.qty_received')}</th>
                 <th className="px-3 py-2 text-end font-medium w-28">{t('purchasing.unit_cost')}</th>
@@ -384,9 +386,9 @@ export default function GRNEditorPage() {
                   <td className="px-3 py-1.5 text-end font-mono text-ink-primary">{fmt(line.total_cost)}</td>
                   {canEdit && (
                     <td className="px-3 py-1.5">
-                      <button className="text-red-400 hover:text-red-600 disabled:opacity-30"
+                      <button type="button" className="sb-doc-line-del" aria-label={t('invOcean.remove_line')} title={t('invOcean.remove_line')}
                         disabled={lines.length === 1}
-                        onClick={() => { setLines(prev => prev.filter(l => l._key !== line._key)); setDirty(true); }}>×</button>
+                        onClick={() => { setLines(prev => prev.filter(l => l._key !== line._key)); setDirty(true); }}><X size={16} aria-hidden="true" /></button>
                     </td>
                   )}
                 </tr>
@@ -395,19 +397,16 @@ export default function GRNEditorPage() {
           </table>
         </div>
         {canEdit && (
-          <div className="border-t border-border-subtle px-5 py-2">
-            <button className="text-xs text-brand-600 hover:text-brand-700"
+          <div className="sb-doc-add-line">
+            <button type="button" className="sb-row-link text-brand-600"
               onClick={() => { setLines(prev => [...prev, emptyLine()]); setDirty(true); }}>
-              + {t('purchasing.add_line')}
+              <Plus size={16} aria-hidden="true" /> {t('purchasing.add_line')}
             </button>
           </div>
         )}
-        <div className="border-t border-border-subtle px-5 py-4">
-          <div className="ms-auto w-48 text-sm">
-            <div className="flex justify-between font-semibold text-ink-primary">
-              <span>{t('purchasing.total_cost')}</span>
-              <span className="font-mono">{fmt(grandTotal)}</span>
-            </div>
+        <div className="sb-doc-quote-total">
+          <div className="sb-doc-summary-rows" style={{ marginInlineStart: 'auto', width: 'min(100%, 300px)' }}>
+            <div className="sb-doc-grand"><span>{t('purchasing.total_cost')}</span><bdi dir="ltr">{fmt(grandTotal)}</bdi></div>
           </div>
         </div>
       </div>
