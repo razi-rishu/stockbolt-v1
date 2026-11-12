@@ -28,11 +28,12 @@ interface EInvoicePanelProps {
   products: ProductRow[];
 }
 
+// Ocean Teal (UI v1.1) — status pills use the shared Ocean tones.
 const STATUS_STYLE: Record<EInvoiceStatus, string> = {
-  generated: 'bg-brand-50 text-brand-600',
-  submitted: 'bg-success-50 text-success-600',
-  cancelled: 'bg-danger-50 text-danger-600',
-  superseded: 'bg-surface-subtle text-ink-tertiary',
+  generated: 'sb-pill',
+  submitted: 'sb-pill sb-pill-good',
+  cancelled: 'sb-pill sb-pill-bad',
+  superseded: 'sb-pill sb-pill-muted',
 };
 
 export function EInvoicePanel({ invoice, customer, products }: EInvoicePanelProps) {
@@ -132,7 +133,7 @@ export function EInvoicePanel({ invoice, customer, products }: EInvoicePanelProp
 
   if (!jf.supported) {
     return (
-      <div className="glass-card p-4 text-sm text-ink-tertiary">
+      <div className="sb-ocean sb-card sb-doc-card text-sm text-ink-tertiary" style={{ background: 'var(--sb-surface)' }}>
         {t('einvoice.title')} — {t('einvoice.unsupported')}
       </div>
     );
@@ -142,17 +143,17 @@ export function EInvoicePanel({ invoice, customer, products }: EInvoicePanelProp
   const status = doc?.status;
 
   return (
-    <div className="glass-card p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-ink-primary">{t('einvoice.title')}</h3>
-        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${status ? STATUS_STYLE[status] : 'bg-surface-subtle text-ink-tertiary'}`}>
+    <div className="sb-ocean sb-card sb-doc-card" style={{ background: 'var(--sb-surface)' }} data-testid="einvoice-panel-ocean">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="sb-doc-card-title" style={{ margin: 0 }}>{t('einvoice.title')}</h3>
+        <span className={status ? STATUS_STYLE[status] : 'sb-pill sb-pill-muted'} style={{ marginTop: 0 }}>
           {t(`einvoice.status_${status ?? 'none'}`)}
         </span>
       </div>
 
       {/* Readiness — non-blocking hint (warn but allow). */}
       {readiness && !readiness.ready && readiness.missing.length > 0 && (
-        <div className="mb-3 rounded-card border border-warning-500/40 bg-warning-50 px-3 py-2 text-xs text-warning-600">
+        <div className="sb-alert sb-alert-warn mb-3 text-xs" role="status">
           <p className="mb-1 font-medium">{t('einvoice.readiness_incomplete')}</p>
           <ul className="list-inside list-disc">
             {readiness.missing.map((m, i) => <li key={i}>{m}</li>)}
@@ -161,13 +162,13 @@ export function EInvoicePanel({ invoice, customer, products }: EInvoicePanelProp
       )}
 
       {(genMutation.error || submitMutation.error || cancelMutation.error) && (
-        <p className="mb-2 text-xs text-danger-600">
+        <p className="sb-alert sb-alert-danger mb-2 text-xs" role="alert">
           {String((genMutation.error || submitMutation.error || cancelMutation.error as Error)?.message ?? '')}
         </p>
       )}
 
       {doc?.irn && <p className="mb-2 text-xs text-ink-secondary">IRN: <span className="font-mono">{doc.irn}</span></p>}
-      {doc?.ack_no && <p className="mb-2 text-xs text-ink-secondary">Ack: <span className="font-mono">{doc.ack_no}</span>{doc.ack_date ? ` · ${doc.ack_date}` : ''}</p>}
+      {doc?.ack_no && <p className="mb-2 text-xs text-ink-secondary">{t('einvoice.ack_no')}: <span className="font-mono">{doc.ack_no}</span>{doc.ack_date ? ` · ${doc.ack_date}` : ''}</p>}
 
       <div className="flex flex-wrap gap-2">
         {(!doc || status === 'cancelled') && canWrite && (
@@ -202,7 +203,7 @@ export function EInvoicePanel({ invoice, customer, products }: EInvoicePanelProp
 
       {/* Mark submitted — record the manual government reference */}
       <Modal open={submitOpen} onClose={() => setSubmitOpen(false)} title={t('einvoice.mark_submitted')} width="md">
-        <div className="space-y-3">
+        <div className="sb-ocean sb-form sb-modal-form">
           <p className="text-xs text-ink-tertiary">{t('einvoice.submit_help')}</p>
           <Input label="IRN" value={ref.irn} onChange={(e) => setRef({ ...ref, irn: e.target.value })} />
           <Input label={t('einvoice.ack_no')} value={ref.ack_no} onChange={(e) => setRef({ ...ref, ack_no: e.target.value })} />
@@ -217,7 +218,9 @@ export function EInvoicePanel({ invoice, customer, products }: EInvoicePanelProp
 
       {/* Cancel */}
       <Modal open={cancelOpen} onClose={() => setCancelOpen(false)} title={t('einvoice.cancel_title')} width="md">
-        <Input label={t('einvoice.cancel_reason')} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} />
+        <div className="sb-ocean sb-form sb-modal-form">
+          <Input label={t('einvoice.cancel_reason')} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} />
+        </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button size="sm" variant="secondary" onClick={() => setCancelOpen(false)}>{t('common.back')}</Button>
           <Button size="sm" variant="danger" onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}>{t('einvoice.confirm_cancel')}</Button>
@@ -231,8 +234,8 @@ export function EInvoicePanel({ invoice, customer, products }: EInvoicePanelProp
         ) : (
           <div className="space-y-2">
             {history.map((h) => (
-              <div key={h.id} className="flex items-center justify-between rounded-card border border-border-subtle px-3 py-2 text-xs">
-                <span className={`rounded-full px-2 py-0.5 font-medium ${STATUS_STYLE[h.status]}`}>{t(`einvoice.status_${h.status}`)}</span>
+              <div key={h.id} className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-border-subtle px-3 py-2 text-xs">
+                <span className={STATUS_STYLE[h.status]} style={{ marginTop: 0 }}>{t(`einvoice.status_${h.status}`)}</span>
                 <span className="text-ink-tertiary">{h.format === 'india_gst_json' ? 'India GST' : 'PINT-AE'} · {new Date(h.generated_at).toLocaleString()}</span>
                 {h.irn && <span className="font-mono text-ink-secondary">{h.irn}</span>}
               </div>
