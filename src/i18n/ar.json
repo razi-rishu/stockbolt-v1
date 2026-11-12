@@ -3348,5 +3348,8 @@
     "incl_tax_short": "شامل الضريبة",
     "save_expense": "حفظ المصروف",
     "split_total_hint": "أسطر التقسيم: {{count}}"
+  },
+  "dnOcean": {
+    "returnable_title": "المتبقي القابل للإرجاع على سطر الفاتورة هذا: {{qty}}"
   }
 }

@@ -11,6 +11,10 @@ import { defaultTaxRate } from '@/lib/locale';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
 import { SearchableSelect } from '@/ui/searchable-select';
+import { StatusBadge } from '@/ui/status-badge';
+import { Modal } from '@/ui/modal';
+import { Pencil, Printer, Eye, X } from 'lucide-react';
+import '@/styles/stockbolt-ocean-teal.css';
 // Phase 14.04 — Signature template view mode for saved debit notes.
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
@@ -323,33 +327,27 @@ export default function DebitNoteEditorPage() {
     });
     const doc = withPaymentDetails(docBase, 'debit_note', docPayments);
     return (
-      <div className="signature-print-scope" style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
-        <div
-          data-print-hide
-          style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
-        >
+      // Ocean Teal (UI v1.1): look only — same actions and printed note.
+      <div className="signature-print-scope sb-ocean sb-docx" data-testid="debit-note-view-ocean">
+        <div data-print-hide className="sb-card sb-doc-bar">
+          <div className="sb-doc-bar-id">
           <BackButton to="/purchasing/debit-notes" label={t('returns.debit_notes_title') || 'Debit Notes'} />
-          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
-            {existing.debit_note_number}
-          </h1>
-          <span style={{
-            display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
-            fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
-            background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
-          }}>{existing.status}</span>
+          <bdi dir="ltr" className="sb-doc-bar-no">{existing.debit_note_number}</bdi>
+          <StatusBadge status={existing.status} />
           {/* Z5b — confirmed AND refunded are two different facts. The green
               bar below gives the amount and the payment number; this is the
               at-a-glance version, next to the status it qualifies. */}
           <RefundedPill docType="debit_note" docId={existing.id} />
-          <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+          </div>
+          <div className="sb-doc-bar-actions">
             {isConfirmed && (
               <Button variant="primary" loading={reopenMutation.isPending} onClick={() => { if (window.confirm(t('common.reopen_warn') || 'Edit this confirmed document? It reverses its posted entries and reopens it as a draft so you can change it and confirm again.')) reopenMutation.mutate(); }}>
-                ✎ {t('common.edit') || 'Edit'}
+                <Pencil size={15} aria-hidden="true" /> {t('common.edit') || 'Edit'}
               </Button>
             )}
             {existing?.id && (
               <Button variant="ghost" onClick={() => window.print()}>
-                🖨 {t('print.print') || 'Print'}
+                <Printer size={15} aria-hidden="true" /> {t('print.print') || 'Print'}
               </Button>
             )}
           </div>
@@ -367,7 +365,7 @@ export default function DebitNoteEditorPage() {
         </div>
         <RefundedBadge docType="debit_note" docId={existing.id}
           currency={existing.currency ?? companyCurrency} />
-        <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
+        <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
       </div>
@@ -375,20 +373,26 @@ export default function DebitNoteEditorPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-5xl">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink-primary">
-          {isNew ? t('returns.new_debit_note') : `${t('returns.dn_number')}: ${existing?.debit_note_number}`}
-        </h1>
-        <div className="flex gap-2">
+    // Ocean Teal (UI v1.1): look only — same fields, returnable caps,
+    // rounding, single-step save+confirm, void and print as before.
+    <div className="sb-ocean sb-docx sb-docx-edit max-w-6xl" data-testid="debit-note-edit-ocean">
+      <div className="sb-card sb-doc-bar">
+        <div className="sb-doc-bar-id">
+          <BackButton to="/purchasing/debit-notes" label={t('returns.debit_notes_title') || 'Debit Notes'} />
+          {isNew
+            ? <h1 className="sb-doc-bar-no">{t('returns.new_debit_note')}</h1>
+            : <bdi dir="ltr" className="sb-doc-bar-no">{existing?.debit_note_number ?? '…'}</bdi>}
+          {!isNew && existing && <StatusBadge status={existing.status} />}
+        </div>
+        <div className="sb-doc-bar-actions">
           {!isNew && existing && existing.status !== 'draft' && (
             <Button variant="ghost" onClick={() => setViewMode(true)}>
-              {t('common.view') || 'View'}
+              <Eye size={15} aria-hidden="true" /> {t('common.view') || 'View'}
             </Button>
           )}
           {!isNew && existing?.id && (
             <Button variant="ghost" onClick={() => window.open(`/print/debit-note/${existing.id}`, '_blank')}>
-              🖨 {t('print.print')}
+              <Printer size={15} aria-hidden="true" /> {t('print.print')}
             </Button>
           )}
           {!isNew && isConfirmed && (
@@ -402,9 +406,9 @@ export default function DebitNoteEditorPage() {
         </div>
       </div>
 
-      <div className="glass-card p-6 grid grid-cols-2 gap-4">
+      <div className="sb-card sb-form sb-doc-card grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label className="block text-sm font-medium text-ink-secondary mb-1">{t('common.supplier')} *</label>
+          <label className="block text-sm font-medium text-ink-secondary mb-1">{t('common.supplier')} <span className="text-danger-500">*</span></label>
           <SearchableSelect
             options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
             value={supplierId}
@@ -417,16 +421,16 @@ export default function DebitNoteEditorPage() {
 
         <div>
           <label className="block text-sm font-medium text-ink-secondary mb-1">{t('returns.linked_bill')}</label>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <select
               value={linkedBillId}
               onChange={e => setLinkedBillId(e.target.value)}
               disabled={!isDraft}
-              className="flex-1 border border-border-strong rounded px-3 py-2 text-sm"
+              className="min-w-0 flex-1 border border-border-strong rounded px-3 py-2 text-sm"
             >
               <option value="">— {t('returns.no_linked_bill')} —</option>
               {bills.filter(b => !supplierId || b.supplier_id === supplierId).map(b => (
-                <option key={b.id} value={b.id}>{b.bill_number} ({b.date})</option>
+                <option key={b.id} value={b.id}>{`${b.bill_number} (${b.date})`}</option>
               ))}
             </select>
             {isDraft && linkedBillId && billItems.length > 0 && (
@@ -436,7 +440,7 @@ export default function DebitNoteEditorPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-ink-secondary mb-1">{t('common.date')} *</label>
+          <label className="block text-sm font-medium text-ink-secondary mb-1">{t('common.date')} <span className="text-danger-500">*</span></label>
           <input type="date" value={date} onChange={e => setDate(e.target.value)} disabled={!isDraft}
             className="w-full border border-border-strong rounded px-3 py-2 text-sm" />
         </div>
@@ -452,7 +456,7 @@ export default function DebitNoteEditorPage() {
           </select>
         </div>
 
-        <div className="col-span-2">
+        <div className="sm:col-span-2">
           <label className="block text-sm font-medium text-ink-secondary mb-1">{t('common.notes')}</label>
           <input type="text" value={notes} onChange={e => setNotes(e.target.value)} disabled={!isDraft}
             className="w-full border border-border-strong rounded px-3 py-2 text-sm" />
@@ -460,22 +464,22 @@ export default function DebitNoteEditorPage() {
       </div>
 
       {/* Line items */}
-      <div className="glass-card overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
-          <h2 className="text-sm font-semibold text-ink-primary">{t('returns.line_items')}</h2>
+      <div className="sb-card sb-doc-card sb-doc-lines">
+        <div className="sb-doc-lines-head">
+          <h2 className="sb-doc-card-title" style={{ margin: 0 }}>{t('returns.line_items')}</h2>
           {isDraft && <Button variant="secondary" onClick={addLine}>{t('returns.add_line')}</Button>}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-surface-muted">
+            <thead>
               <tr>
-                <th className="px-3 py-2 text-left text-xs font-medium text-ink-tertiary">{t('common.description')}</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.qty')}</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.unit_cost')}</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.discount')} %</th>
-                {showTax && <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.tax')} %</th>}
-                <th className="px-3 py-2 text-left text-xs font-medium text-ink-tertiary">{t('returns.ship_from')}</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-ink-tertiary">{t('common.total')}</th>
+                <th className="px-3 py-2 text-start text-xs font-medium text-ink-tertiary">{t('common.description')}</th>
+                <th className="px-3 py-2 text-end text-xs font-medium text-ink-tertiary">{t('common.qty')}</th>
+                <th className="px-3 py-2 text-end text-xs font-medium text-ink-tertiary">{t('common.unit_cost')}</th>
+                <th className="px-3 py-2 text-end text-xs font-medium text-ink-tertiary">{t('common.discount')} %</th>
+                {showTax && <th className="px-3 py-2 text-end text-xs font-medium text-ink-tertiary">{t('common.tax')} %</th>}
+                <th className="px-3 py-2 text-start text-xs font-medium text-ink-tertiary">{t('returns.ship_from')}</th>
+                <th className="px-3 py-2 text-end text-xs font-medium text-ink-tertiary">{t('common.total')}</th>
                 {isDraft && <th className="px-3 py-2" />}
               </tr>
             </thead>
@@ -495,9 +499,10 @@ export default function DebitNoteEditorPage() {
                         onChange={e => updateLine(i, 'quantity', Number(e.target.value))}
                         disabled={!isDraft}
                         title={l.qty_returnable !== null
-                          ? `${l.qty_returnable} still returnable on this bill line`
+                          ? t('dnOcean.returnable_title', { qty: l.qty_returnable })
                           : undefined}
-                        className={`w-24 border rounded px-2 py-1 text-sm text-right ${
+                        dir="ltr"
+                        className={`w-24 border rounded px-2 py-1 text-sm text-end ${
                           l.qty_returnable !== null && l.quantity > l.qty_returnable
                             ? 'border-danger-500 text-danger-600'
                             : 'border-border-strong'}`} />
@@ -505,18 +510,18 @@ export default function DebitNoteEditorPage() {
                     <td className="px-3 py-2">
                       <input type="number" min="0" step="0.01" value={l.unit_cost}
                         onChange={e => updateLine(i, 'unit_cost', Number(e.target.value))}
-                        disabled={!isDraft} className="w-28 border border-border-strong rounded px-2 py-1 text-sm text-right" />
+                        disabled={!isDraft} className="w-28 border border-border-strong rounded px-2 py-1 text-sm text-end" dir="ltr" />
                     </td>
                     <td className="px-3 py-2">
                       <input type="number" min="0" max="100" step="0.1" value={l.discount_percent}
                         onChange={e => updateLine(i, 'discount_percent', Number(e.target.value))}
-                        disabled={!isDraft} className="w-20 border border-border-strong rounded px-2 py-1 text-sm text-right" />
+                        disabled={!isDraft} className="w-20 border border-border-strong rounded px-2 py-1 text-sm text-end" dir="ltr" />
                     </td>
                     {showTax && (
                     <td className="px-3 py-2">
                       <input type="number" min="0" max="100" step="0.1" value={l.tax_rate}
                         onChange={e => updateLine(i, 'tax_rate', Number(e.target.value))}
-                        disabled={!isDraft} className="w-20 border border-border-strong rounded px-2 py-1 text-sm text-right" />
+                        disabled={!isDraft} className="w-20 border border-border-strong rounded px-2 py-1 text-sm text-end" dir="ltr" />
                     </td>
                     )}
                     <td className="px-3 py-2">
@@ -530,10 +535,10 @@ export default function DebitNoteEditorPage() {
                         ))}
                       </select>
                     </td>
-                    <td className="px-3 py-2 text-right font-semibold text-ink-secondary">{fmt(c.line_total)}</td>
+                    <td className="px-3 py-2 text-end font-semibold text-ink-secondary" dir="ltr">{fmt(c.line_total)}</td>
                     {isDraft && (
                       <td className="px-3 py-2">
-                        <button onClick={() => removeLine(i)} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                        <button type="button" onClick={() => removeLine(i)} className="sb-doc-line-del" aria-label={t('invOcean.remove_line')} title={t('invOcean.remove_line')}><X size={15} aria-hidden="true" /></button>
                       </td>
                     )}
                   </tr>
@@ -545,7 +550,7 @@ export default function DebitNoteEditorPage() {
             <p className="text-center text-ink-tertiary py-6 text-sm">{t('returns.no_lines_yet')}</p>
           )}
         </div>
-        <div className="flex justify-end px-4 py-3 border-t border-border-subtle gap-6 text-sm">
+        <div className="sb-doc-quote-total flex-wrap items-center justify-end gap-x-6 gap-y-2 text-sm">
           <span className="text-ink-tertiary">{t('common.subtotal')}: <strong>{fmt(totals.subtotal - totals.discount)}</strong></span>
           <span className="text-ink-tertiary">{t('common.tax')}: <strong>{fmt(totals.tax)}</strong></span>
           <span className="flex items-center gap-2 text-ink-secondary">
@@ -555,22 +560,20 @@ export default function DebitNoteEditorPage() {
               value={roundOffInput}
               disabled={!isDraft}
               onChange={e => setRoundOffInput(e.target.value)}
-              className="h-7 w-24 rounded border border-border-subtle px-2 text-end font-mono text-sm"
+              dir="ltr" className="h-7 w-24 rounded border border-border-subtle px-2 text-end font-mono text-sm"
             />
           </span>
-          <span className="text-ink-primary font-bold">{t('common.total')}: {fmt(roundedTotal)}</span>
+          <span className="sb-doc-grand" style={{ marginTop: 0, padding: '8px 12px', fontSize: 15 }}>{t('common.total')}: <span dir="ltr">{fmt(roundedTotal)}</span></span>
         </div>
       </div>
 
       {saveMutation.isError && (
-        <p className="text-red-600 text-sm">{String((saveMutation.error as Error).message)}</p>
+        <p className="sb-alert sb-alert-danger" role="alert">{String((saveMutation.error as Error).message)}</p>
       )}
 
       {/* Void dialog */}
-      {showVoidDlg && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 shadow-xl w-96 space-y-4">
-            <h3 className="font-semibold text-ink-primary">{t('common.void_confirm')}</h3>
+      <Modal open={showVoidDlg} onClose={() => setShowVoidDlg(false)} title={t('common.void_confirm')} width="sm">
+          <div className="sb-ocean sb-form sb-modal-form">
             <input
               value={voidReason}
               onChange={e => setVoidReason(e.target.value)}
@@ -584,8 +587,7 @@ export default function DebitNoteEditorPage() {
               </Button>
             </div>
           </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 }

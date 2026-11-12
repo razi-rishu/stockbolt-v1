@@ -9,6 +9,8 @@ import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { StatusBadge } from '@/ui/status-badge';
+import { X } from 'lucide-react';
+import '@/styles/stockbolt-ocean-teal.css';
 import { RefundDueBanner } from '@/components/refund-due-banner';
 import type {
   PurchaseReturnRow, PurchaseReturnItemRow, PurchaseReturnItemInsert,
@@ -235,15 +237,18 @@ export default function PurchaseReturnEditorPage() {
   const overReturned = lines.some(l => l.qty_returned > l.qty_returnable);
 
   return (
-    <div className="space-y-4">
-      <BackButton to="/purchasing/returns" />
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">
-          {isNew ? t('returns.new_purchase_return') : existing?.return_number ?? ''}
-        </h1>
-        <div className="flex items-center gap-2">
+    // Ocean Teal (UI v1.1): look only — same legacy return, confirm, void
+    // and delete as before.
+    <div className="sb-ocean sb-docx sb-docx-edit" data-testid="purchase-return-ocean">
+      <div className="sb-card sb-doc-bar">
+        <div className="sb-doc-bar-id">
+          <BackButton to="/purchasing/returns" label={t('returns.purchase_returns_title')} />
+          {isNew
+            ? <h1 className="sb-doc-bar-no">{t('returns.new_purchase_return')}</h1>
+            : <bdi dir="ltr" className="sb-doc-bar-no">{existing?.return_number ?? ''}</bdi>}
           {existing && <StatusBadge status={existing.status} />}
+        </div>
+        <div className="sb-doc-bar-actions">
           {isNew && (
             <Button onClick={() => saveMutation.mutate()} disabled={!canSave || overReturned}
               loading={saveMutation.isPending}>
@@ -276,7 +281,7 @@ export default function PurchaseReturnEditorPage() {
         </div>
       </div>
 
-      {error && <p className="rounded-card border border-danger-500 bg-danger-50 px-4 py-2 text-sm text-danger-600">{error}</p>}
+      {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
 
       {/* Mirror of the sales return: confirming this posts a debit note, and
           if the bill was already paid the supplier is left holding our money
@@ -289,11 +294,11 @@ export default function PurchaseReturnEditorPage() {
         currency={bills.find(b => b.id === billId)?.currency ?? undefined}
       />
 
-      <div className="glass-card grid gap-4 p-4 md:grid-cols-2">
+      <div className="sb-card sb-form sb-doc-card grid gap-4 md:grid-cols-2">
         <div>
-          <label className="mb-1 block text-sm font-medium text-ink-secondary">{t('returns.linked_bill')} *</label>
-          <div className="flex gap-2">
-            <div className="flex-1">
+          <label className="mb-1 block text-sm font-medium text-ink-secondary">{t('returns.linked_bill')} <span className="text-danger-500">*</span></label>
+          <div className="flex flex-wrap gap-2">
+            <div className="min-w-0 flex-1">
               <SearchableSelect
                 options={bills.map(b => ({ value: b.id, label: `${b.bill_number} (${b.date})` }))}
                 value={billId}
@@ -310,7 +315,7 @@ export default function PurchaseReturnEditorPage() {
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-ink-secondary">{t('common.date')} *</label>
+          <label className="mb-1 block text-sm font-medium text-ink-secondary">{t('common.date')} <span className="text-danger-500">*</span></label>
           <input type="date" value={date} onChange={e => setDate(e.target.value)} disabled={!isDraft}
             className="w-full rounded border border-border-strong px-3 py-2 text-sm" />
         </div>
@@ -336,16 +341,16 @@ export default function PurchaseReturnEditorPage() {
         </div>
       </div>
 
-      <div className="glass-card overflow-hidden">
-        <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-          <h2 className="text-sm font-semibold text-ink-primary">{t('returns.returned_items')}</h2>
+      <div className="sb-card sb-doc-card sb-doc-lines">
+        <div className="sb-doc-lines-head">
+          <h2 className="sb-doc-card-title" style={{ margin: 0 }}>{t('returns.returned_items')}</h2>
           {isNew && billId && lines.length === 0 && billItems.length > 0 && (
             <span className="text-xs text-ink-tertiary">{t('returns.use_import')}</span>
           )}
         </div>
         <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-surface-muted">
+          <thead>
             <tr>
               {/* First, not last — same reason as the sales side. */}
               {isNew && <th className="w-10 px-2 py-2" />}
@@ -373,8 +378,8 @@ export default function PurchaseReturnEditorPage() {
                       onClick={() => removeLine(i)}
                       title={t('returns.remove_line')}
                       aria-label={t('returns.remove_line')}
-                      className="flex h-7 w-7 items-center justify-center rounded-full text-ink-tertiary transition-colors hover:bg-danger-50 hover:text-danger-600"
-                    >✕</button>
+                      className="sb-doc-line-del"
+                    ><X size={15} aria-hidden="true" /></button>
                   </td>
                 )}
                 <td className="px-3 py-2 text-ink-secondary">
@@ -418,7 +423,7 @@ export default function PurchaseReturnEditorPage() {
             <tfoot>
               {/* P1 — the debit note this return will raise, computed exactly as
                   confirm_purchase_return computes it. */}
-              <tr className="border-t-2 border-border-strong bg-surface-muted">
+              <tr className="border-t-2 border-border-strong" style={{ background: 'var(--sb-primary-soft)' }}>
                 {isNew && <td className="w-10" />}
                 <td className="px-3 py-2 text-xs font-semibold text-ink-primary" colSpan={4}>
                   {t('returns.debit_total')}
@@ -439,7 +444,7 @@ export default function PurchaseReturnEditorPage() {
         </div>
       </div>
 
-      <p className="text-xs text-ink-tertiary">{t('returns.purchase_post_hint')}</p>
+      <p className="sb-form-hint" style={{ margin: 0 }}>{t('returns.purchase_post_hint')}</p>
     </div>
   );
 }

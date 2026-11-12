@@ -3348,5 +3348,8 @@
     "incl_tax_short": "Incl. tax",
     "save_expense": "Save expense",
     "split_total_hint": "Split lines: {{count}}"
+  },
+  "dnOcean": {
+    "returnable_title": "{{qty}} still returnable on this bill line"
   }
 }
