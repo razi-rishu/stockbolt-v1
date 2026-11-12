@@ -1,38 +1,50 @@
 /**
- * Dashboard — owner 360 view.
+ * Dashboard — owner 360 view, Ocean Teal (UI v1.1).
  *
  * Layout (top-down):
- *  1. Welcome header with the owner's first name + today's full date
- *  2. 6 KPI tiles (Today Sales / Today Purchases / Inventory Value / SKU Count
- *     / Receivables / Payables) each with a period-over-period delta
- *  3. Two cards side-by-side: Sales Trend (Recharts smooth-line chart) and
- *     Recent Inventory (latest products added with current stock)
- *  4. Low Stock Alerts bar (red icon, dynamic state, link to reorder report)
- *  5. Floating Action Button (bottom-right) — opens a quick-action menu
+ *  1. Teal greeting band: logo (or initials), time-of-day greeting, company,
+ *     date · currency · fiscal year, and "Sales vs purchases" for the period
+ *     (sales minus purchases as shown on the two KPI cards — deliberately not
+ *     called profit: it ignores cost of goods and expenses)
+ *  2. Period pills (Today / This week / This month / This year) next to the
+ *     shared PeriodPicker for every other range, custom and All time
+ *  3. 6 KPI cards (Sales / Purchases / Inventory value / SKU count /
+ *     Receivables / Payables) with period-over-period deltas; Sales and
+ *     Purchases carry a sparkline from the same trend series as the chart
+ *  4. Sales trend (toggle Sales / Purchases) + Cash position
+ *  5. Quick actions (replaces the hero buttons, ⋯ menu and floating button)
+ *  6. Low stock (count + the worst lines from the reorder report) + Recent
+ *     inventory
+ *  7. Income vs expense, Top expenses, Watchlist
  *
- * Restyled in Phase 12.31 to match the inventory-wizard sample look:
- *  - cards: 1px slate-200 border, 12px radius, soft shadow
- *  - KPI tiles: gradient icon chips, uppercase slate-500 labels, big slate-900
- *    values, indigo/red delta pills with arrow glyphs
- *  - Sales Trend / Recent Inventory / Low Stock rendered in shared <Panel>
- *  - "Manage Stock" + FAB use the indigo→violet gradient
+ * Every figure comes from the same fetches as before (getOwnerDashboard,
+ * get_dashboard_cards); the low-stock lines reuse getReorderReport and are
+ * read only when the dashboard's own low-stock count is above zero.
  */
-import { useEffect, useState, useRef, type CSSProperties } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { PeriodPicker } from '@/ui/period-picker';
-import { usePeriodPicker, PERIOD_PRESETS } from '@/hooks/use-period-picker';
+import { usePeriodPicker, PERIOD_PRESETS, type PeriodPreset } from '@/hooks/use-period-picker';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
+import {
+  TrendingUp, ShoppingCart, Wallet, Barcode, ArrowDownLeft, ArrowUpRight, CalendarDays,
+  FileText, Banknote, Receipt, FileSignature, Truck, Package, ClipboardList, CreditCard,
+  AlertTriangle, Box, ChevronRight, Loader2,
+} from 'lucide-react';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency, useTaxName } from '@/hooks/use-company-currency';
 import { formatCurrency, fiscalYearLabel } from '@/lib/locale';
 import type { OwnerDashboard } from '@/data/adapter';
-import DashboardSummaryCards from './_summary-cards';
-import { theme } from '@/ui/theme';
+import {
+  IncomeExpenseCard, TopExpensesCard, CashPositionCard, WatchlistCard, SummaryCardsState,
+} from './_summary-cards';
+import { useDashboardCards } from './_use-dashboard-cards';
+import '@/styles/stockbolt-ocean-teal.css';
 
 // ── Formatters ───────────────────────────────────────────────────────────────
 function fmt(n: number, dp = 2) {
@@ -48,318 +60,97 @@ function deltaPct(current: number, prev: number): number | null {
   return ((current - prev) / Math.abs(prev)) * 100;
 }
 
-/** Format today as "Friday, April 25, 2026" — adjusts for the user's locale automatically. */
-function fmtToday() {
-  return new Date().toLocaleDateString(undefined, {
-    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
-  });
+const TEAL = '#008F87';
+const AMBER = '#E08A00';
+
+// ── Sparkline (tiny trend line inside a KPI card) ───────────────────────────
+function Sparkline({ values, color }: { values: number[]; color: string }) {
+  if (values.length < 2 || values.every(v => v === 0)) return null;
+  const mx = Math.max(...values), mn = Math.min(...values);
+  const span = mx - mn || 1;
+  const pts = values.map((v, i) => `${((i * 60) / (values.length - 1)).toFixed(1)},${(20 - ((v - mn) / span) * 16 - 2).toFixed(1)}`).join(' ');
+  return (
+    <svg viewBox="0 0 60 20" width="64" height="22" aria-hidden="true" className="sb-dash-spark">
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
-// ── Inline icons (Lucide-style, hand-rolled to avoid a dep) ─────────────────
-function TrendingUpIcon()  { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></svg>; }
-function CartIcon()        { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6" /></svg>; }
-function WalletIcon()      { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" /></svg>; }
-function StoreIcon()       { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7" /><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4" /><path d="M2 7h20" /></svg>; }
-function CoinIcon()        { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 6v12" /><path d="M16 10a2 2 0 0 0-2-2h-3a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4H9.5" /></svg>; }
-function HandCoinIcon()    { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="16" cy="9" r="2.5" /><path d="M11.5 9h-7M3 13l2 2.5L7 14M14 22l-3-3 1.5-2 4.5 1c2.2.5 4-1.4 4-3.6l-1-5" /></svg>; }
-function AlertTriangleIcon(){ return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>; }
-function PlusIcon()        { return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>; }
-function ArrowUpRightIcon(){ return <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17 17 7" /><path d="M7 7h10v10" /></svg>; }
-function ArrowUpIcon()     { return <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></svg>; }
-function ArrowDownIcon()   { return <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" /></svg>; }
-function CalendarIcon()    { return <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>; }
-function BoxThumbIcon()    { return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5V8z" /><path d="M3 8l9 5 9-5M12 13v8" /></svg>; }
-
-// ── Card primitive (light slate-200 border, soft shadow) ────────────────────
-const cardStyle: CSSProperties = {
-  background: theme.card,
-  border: `1px solid ${theme.border}`,
-  borderRadius: theme.radiusLg,
-  boxShadow: theme.shadowSm,
-};
-
-// ── KPI tile ─────────────────────────────────────────────────────────────────
-type Tone = 'emerald' | 'violet' | 'slate' | 'orange' | 'sky';
-
-const tonePalette: Record<Tone, { bg: string; fg: string }> = {
-  emerald: { bg: 'linear-gradient(135deg, #ecfdf5, #d1fae5)', fg: '#059669' },
-  violet:  { bg: 'linear-gradient(135deg, #f5f3ff, #ede9fe)', fg: '#7c3aed' },
-  slate:   { bg: 'linear-gradient(135deg, #f8fafc, #f1f5f9)', fg: '#475569' },
-  orange:  { bg: 'linear-gradient(135deg, #fff7ed, #ffedd5)', fg: '#ea580c' },
-  sky:     { bg: 'linear-gradient(135deg, #eff6ff, #dbeafe)', fg: '#2563eb' },
-};
-
-function KpiTile({
-  label, value, sub, delta, icon, tone, href,
-}: {
-  label: string;
-  value: string;
-  sub: string;
-  delta: number | null;
-  icon: React.ReactNode;
-  tone: Tone;
-  href?: string;
+// ── KPI card ─────────────────────────────────────────────────────────────────
+function KpiCard({ label, value, sub, delta, icon, href, spark }: {
+  label: string; value: string; sub: string; delta: number | null;
+  icon: React.ReactNode; href: string; spark?: React.ReactNode;
 }) {
-  const hasDelta = delta !== null;
   const positive = (delta ?? 0) >= 0;
-  const pal = tonePalette[tone];
-  const inner = (
-    <div
-      className="p-3 sm:p-4"
-      style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: '10px', height: '100%' }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = theme.shadowMd; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = theme.shadowSm; }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <div
-          className="h-8 w-8 sm:h-10 sm:w-10"
-          style={{
-            flexShrink: 0,
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            borderRadius: '12px', background: pal.bg, color: pal.fg,
-          }}>
-          {icon}
-        </div>
-        <div style={{ fontSize: '12px', fontWeight: 600, color: theme.inkMuted, lineHeight: 1.3 }}>{label}</div>
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <div
-          className="text-[17px] sm:text-[19px]"
-          style={{ fontWeight: 800, color: theme.ink, letterSpacing: '-.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
-        <div style={{ marginTop: '2px', fontSize: '12px', color: theme.inkFaint, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>
-      </div>
-      <div>
-        {hasDelta ? (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: '4px',
-            padding: '2px 8px', borderRadius: '999px',
-            fontSize: '11px', fontWeight: 700,
-            background: positive ? '#ecfdf5' : '#fef2f2',
-            color: positive ? '#059669' : '#dc2626',
-          }}>
-            {positive ? <ArrowUpIcon /> : <ArrowDownIcon />}
-            {Math.abs(delta!).toFixed(1)}%
-          </span>
-        ) : (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: '4px',
-            padding: '2px 10px', borderRadius: '999px',
-            fontSize: '11px', fontWeight: 700,
-            background: theme.muted, color: theme.inkFaint,
-          }}>
-            —
-          </span>
-        )}
-      </div>
-    </div>
-  );
-  return href ? <Link to={href} style={{ textDecoration: 'none', color: 'inherit' }}>{inner}</Link> : inner;
-}
-
-// ── Floating Action Button with quick-action popover ────────────────────────
-function FloatingActionButton() {
-  const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDocClick = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, [open]);
-
-  const actions = [
-    { label: 'New Invoice',         href: '/sales/invoices/new' },
-    { label: 'New Quote',           href: '/sales/quotes/new' },
-    { label: 'Receive Payment',     href: '/sales/payments/new' },
-    { label: 'New Vendor Bill',     href: '/purchasing/bills/new' },
-    { label: 'New Goods Receipt',   href: '/purchasing/grns/new' },
-    { label: 'New Product',         href: '/products/new' },
-  ];
-
   return (
-    <div ref={containerRef} className="app-fab" style={{ position: 'fixed', bottom: '24px', insetInlineEnd: '24px', zIndex: 40 }}>
-      {open && (
-        <div style={{
-          marginBottom: '12px',
-          width: '224px',
-          background: theme.card,
-          border: `1px solid ${theme.border}`,
-          borderRadius: theme.radiusLg,
-          boxShadow: theme.shadowLg,
-          overflow: 'hidden',
-        }}>
-          <div style={{
-            background: theme.panelHead,
-            borderBottom: `1px solid ${theme.border}`,
-            padding: '8px 16px',
-            fontSize: theme.fontXs, fontWeight: 700, color: theme.inkMuted,
-            textTransform: 'uppercase', letterSpacing: '.06em',
-          }}>Quick actions</div>
-          <ul style={{ listStyle: 'none', margin: 0, padding: '4px 0' }}>
-            {actions.map((a) => (
-              <li key={a.href}>
-                <button
-                  type="button"
-                  onClick={() => { setOpen(false); navigate(a.href); }}
-                  style={{
-                    display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '8px 16px', background: 'transparent', border: 'none',
-                    fontSize: theme.fontBase, color: theme.ink, cursor: 'pointer',
-                    textAlign: 'start',
-                  }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = theme.muted; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                >
-                  <span>{a.label}</span>
-                  <span style={{ color: theme.inkFaint }}><ArrowUpRightIcon /></span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-label="Quick actions"
-        style={{
-          height: '56px', width: '56px', border: 'none',
-          borderRadius: '999px',
-          background: theme.brandGradient,
-          color: '#fff', cursor: 'pointer',
-          boxShadow: '0 10px 25px rgba(124,58,237,.35)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          transition: 'transform .15s, box-shadow .15s',
-        }}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLElement).style.boxShadow = '0 12px 30px rgba(124,58,237,.45)';
-          (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)';
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLElement).style.boxShadow = '0 10px 25px rgba(124,58,237,.35)';
-          (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
-        }}
-      >
-        <PlusIcon />
-      </button>
-    </div>
+    <Link to={href} className="sb-card sb-dash-kpi">
+      <span className="sb-dash-kpi-top">
+        <span className="sb-dash-ico" aria-hidden="true">{icon}</span>
+        {spark}
+      </span>
+      <span className="sb-dash-kpi-label">{label}</span>
+      <bdi dir="ltr" className="sb-dash-kpi-value">{value}</bdi>
+      <span className="sb-dash-kpi-foot">
+        {delta === null
+          ? <span className="sb-pill sb-pill-muted sb-dash-delta">—</span>
+          : <span className={`sb-pill ${positive ? 'sb-pill-good' : 'sb-pill-bad'} sb-dash-delta`}><bdi dir="ltr">{positive ? '↑' : '↓'} {Math.abs(delta).toFixed(1)}%</bdi></span>}
+        <span className="sb-dash-kpi-sub">{sub}</span>
+      </span>
+    </Link>
   );
 }
 
-// ── Hero "more actions" (⋯) menu ────────────────────────────────────────────
-function HeroMoreMenu() {
-  const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDocClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, [open]);
-
-  const actions = [
-    { label: 'New Quote',          href: '/sales/quotes/new' },
-    { label: 'New Purchase Order', href: '/purchasing/orders/new' },
-    { label: 'New Expense',        href: '/purchasing/expenses/new' },
-    { label: 'New Product',        href: '/products/new' },
-  ];
-
-  return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button
-        type="button"
-        aria-label="More actions"
-        onClick={() => setOpen((o) => !o)}
-        style={{
-          height: '37px', width: '37px', borderRadius: '999px',
-          background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.3)',
-          color: '#fff', cursor: 'pointer', fontSize: '17px', lineHeight: 1, fontWeight: 700,
-        }}
-      >⋯</button>
-      {open && (
-        <div style={{
-          position: 'absolute', insetInlineEnd: 0, top: 'calc(100% + 8px)', width: '196px',
-          background: '#fff', borderRadius: '12px', border: `1px solid ${theme.border}`,
-          boxShadow: theme.shadowLg, padding: '4px 0', zIndex: 30,
-        }}>
-          {actions.map((a) => (
-            <button
-              key={a.href}
-              type="button"
-              onClick={() => { setOpen(false); navigate(a.href); }}
-              style={{
-                display: 'block', width: '100%', textAlign: 'start',
-                padding: '8px 14px', fontSize: '13px', color: theme.ink,
-                background: 'transparent', border: 'none', cursor: 'pointer',
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = theme.muted; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-            >
-              {a.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Sales Trend chart ───────────────────────────────────────────────────────
+// ── Sales trend chart ───────────────────────────────────────────────────────
 type TrendMode = 'week' | 'month' | 'year' | 'range';
 
-function SalesTrendChart({ data, mode = 'week' }: { data: { date: string; sales: number; purchases: number }[]; mode?: TrendMode }) {
-  const dayLabels   = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function SalesTrendChart({ data, mode = 'week', show }: {
+  data: { date: string; sales: number; purchases: number }[]; mode?: TrendMode;
+  show: { sales: boolean; purchases: boolean };
+}) {
+  const { t, i18n } = useTranslation();
+  const loc = i18n.language === 'ar' ? 'ar' : 'en-US';
+  const day = (d: string) => new Date(d).toLocaleDateString(loc, { weekday: 'short' });
+  const mon = (d: string) => new Date(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, 1).toLocaleDateString(loc, { month: 'short' });
   const chartData = data.map((d) => ({
     ...d,
-    label: mode === 'week'  ? dayLabels[new Date(d.date).getDay()]
+    label: mode === 'week'  ? day(d.date)
          : mode === 'month' ? String(Number(d.date.slice(8, 10)))          // day of month
-         : mode === 'year'  ? monthLabels[Number(d.date.slice(5, 7)) - 1]  // month of year
+         : mode === 'year'  ? mon(d.date)                                   // month of year
          // A range spanning more than a year repeats every month label, so
          // the year has to be on the axis or Jan 2025 and Jan 2026 look like
          // the same bar.
-         :                    `${monthLabels[Number(d.date.slice(5, 7)) - 1]} ${d.date.slice(2, 4)}`,
+         :                    `${mon(d.date)} ${d.date.slice(2, 4)}`,
   }));
   const hasData = data.some((d) => d.sales > 0 || d.purchases > 0);
-
-  if (!hasData) {
-    const emptyMsg = 'No transactions in this period.';
-    return <p style={{ padding: '40px 0', textAlign: 'center', fontSize: theme.fontBase, color: theme.inkFaint }}>{emptyMsg}</p>;
-  }
+  if (!hasData) return <div className="sb-dash-empty">{t('dashboardOcean.no_txns')}</div>;
 
   return (
-    <div style={{ width: '100%' }}>
-      <ResponsiveContainer width="100%" height={256} minWidth={0}>
+    <div dir="ltr" style={{ width: '100%' }}>
+      <ResponsiveContainer width="100%" height={240} minWidth={0}>
         <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
           <defs>
-            <linearGradient id="gradSales" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#7c3aed" stopOpacity={0.25} />
-              <stop offset="100%" stopColor="#7c3aed" stopOpacity={0} />
+            <linearGradient id="sbGradSales" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={TEAL} stopOpacity={0.28} />
+              <stop offset="100%" stopColor={TEAL} stopOpacity={0} />
             </linearGradient>
-            <linearGradient id="gradPurchases" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#10b981" stopOpacity={0.25} />
-              <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+            <linearGradient id="sbGradPurch" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={AMBER} stopOpacity={0.22} />
+              <stop offset="100%" stopColor={AMBER} stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke={theme.border} vertical={false} />
-          <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: theme.inkMuted }}
+          <CartesianGrid strokeDasharray="3 4" stroke="#E1E9ED" vertical={false} />
+          <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#607185' }}
             interval={mode === 'week' ? 0 : 'preserveStartEnd'} />
           <YAxis hide />
           <Tooltip
-            contentStyle={{ borderRadius: 8, border: `1px solid ${theme.border}`, fontSize: 12 }}
-            formatter={(v, name) => [fmt(Number(v ?? 0)), name === 'sales' ? 'Sales' : 'Purchases']}
-            labelFormatter={(l) => (mode === 'week' ? `Day: ${l}` : mode === 'month' ? `Day ${l}` : String(l))}
+            cursor={{ stroke: TEAL, strokeWidth: 1, strokeDasharray: '3 3' }}
+            contentStyle={{ borderRadius: 12, border: 'none', background: '#0D1935', color: '#fff', fontSize: 12, boxShadow: '0 8px 20px rgba(13,25,53,.25)' }}
+            itemStyle={{ color: '#fff' }}
+            labelStyle={{ color: '#D7F4F1', fontWeight: 600 }}
+            formatter={(v, name) => [fmt(Number(v ?? 0)), name === 'sales' ? t('dashboardOcean.sales') : t('dashboardOcean.purchases')]}
           />
-          <Area type="monotone" dataKey="sales"     stroke="#7c3aed" strokeWidth={2.5} fill="url(#gradSales)" />
-          <Area type="monotone" dataKey="purchases" stroke="#10b981" strokeWidth={2.5} fill="url(#gradPurchases)" />
+          {show.purchases && <Area type="monotone" dataKey="purchases" stroke={AMBER} strokeWidth={2.5} fill="url(#sbGradPurch)" activeDot={{ r: 5, fill: '#fff', stroke: AMBER, strokeWidth: 2.5 }} />}
+          {show.sales && <Area type="monotone" dataKey="sales" stroke={TEAL} strokeWidth={2.5} fill="url(#sbGradSales)" activeDot={{ r: 5, fill: '#fff', stroke: TEAL, strokeWidth: 2.5 }} />}
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -398,17 +189,16 @@ function migrateLegacyPeriod(): void {
 }
 migrateLegacyPeriod();
 
+const QUICK_PRESETS: PeriodPreset[] = ['today', 'this_week', 'this_month', 'this_year'];
+
 // ── Main component ──────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const taxName = useTaxName();   // GST for India, VAT for the GCC
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const adapter = getAdapter();
   const company_id = useAuthStore(s => s.company_id);
   const currency = useCompanyCurrency();   // Issue 1 — localize all money to the tenant's currency
 
-  // Greet with the company name (e.g. "Good afternoon, Al Noor") — reads
-  // better than an email prefix and matches what the operator thinks of
-  // as "their" StockBolt.
   const { data: company } = useQuery({
     queryKey: ['company', company_id],
     queryFn: () => adapter.companies.getById(company_id!),
@@ -418,14 +208,14 @@ export default function DashboardPage() {
 
   const [data, setData] = useState<OwnerDashboard | null>(null);
   const [loading, setLoading] = useState(true);
+  const [show, setShow] = useState({ sales: true, purchases: true });
 
   // Phase 97 — the shared period picker, remembered per device by the hook.
   const { preset, from, to, setPreset, setCustomRange } =
     usePeriodPicker(KPI_PERIOD_KEY, 'today');
 
   // Refetch whenever the window moves: the totals are summed from rows the
-  // adapter fetches, so a wider range needs a wider fetch - it cannot be
-  // narrowed down from what is already in memory.
+  // adapter fetches, so a wider range needs a wider fetch.
   useEffect(() => {
     if (!company_id) return;
     setLoading(true);
@@ -436,42 +226,42 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [company_id, from, to]);
 
+  const cardsQ = useDashboardCards(from, to);
+
+  // Low-stock lines: the reorder report, read only when there is something
+  // to show. Same rule as the dashboard count (a minimum is set and stock is
+  // at or below it), worst shortage first.
+  const lowCount = data?.low_stock_count ?? 0;
+  const reorderQ = useQuery({
+    queryKey: ['reorder_report', company_id],
+    queryFn: () => adapter.reports.getReorderReport(company_id!),
+    enabled: !!company_id && lowCount > 0,
+    staleTime: 5 * 60 * 1000,
+  });
+  const lowLines = (reorderQ.data ?? []).filter(l => l.min_stock_level > 0).slice(0, 4);
+
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '96px 0' }}>
-      <div style={{
-        height: '24px', width: '24px',
-        borderRadius: '999px',
-        border: `2px solid ${theme.brand}`,
-        borderTopColor: 'transparent',
-        animation: 'spin 1s linear infinite',
-      }} />
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    <div className="sb-ocean sb-page sb-dash" style={{ display: 'flex', justifyContent: 'center', padding: '96px 0' }}>
+      <Loader2 size={26} className="sb-spin sb-icon" aria-label={t('common.loading')} />
     </div>
   );
 
   if (!data) return (
-    <div style={{ padding: '96px 0', textAlign: 'center', color: theme.inkMuted }}>{t('common.no_data')}</div>
+    <div className="sb-ocean sb-page sb-dash"><div className="sb-card sb-empty" style={{ margin: 16 }}>{t('common.no_data')}</div></div>
   );
 
-  // Phase 40 — flow KPIs follow the selected period (fall back to the legacy
-  // today fields if period_stats is missing, e.g. a stale cached payload).
-  // Falls back to the legacy today fields only if a cached payload predates
-  // Phase 97 and has no `selected` block.
+  // Phase 40/97 — flow KPIs follow the selected period (legacy today fields
+  // only if a cached payload predates Phase 97).
   const ps = data.period_stats?.selected ?? data.period_stats?.today ?? {
     sales: data.today_sales_amount, sales_prev: data.today_sales_amount_prev,
     purchases: data.today_purchases_amount, purchases_prev: data.today_purchases_amount_prev,
   };
-  const periodWord   = PERIOD_LABELS[preset] ?? 'Selected';
-  const trendTitle   = `Sales Trend — ${periodWord}`;
+  const periodWord   = t(`dashboardOcean.period.${preset}`, { defaultValue: PERIOD_LABELS[preset] ?? 'Selected' });
   const trendData    = data.trend_selected ?? data.trend_7d;
   const trendMode    = data.trend_selected_mode ?? 'week';
   // All time has no earlier period, so there is no honest delta to draw.
   const showDelta    = data.selected_meta?.has_prev ?? true;
 
-  // Pre-compute deltas
-  // All time has no earlier period to compare against. Passing a delta
-  // there would render "-100%" off a prev of 0, which is not a fall in
-  // sales - it is the absence of a question.
   const dSales      = showDelta ? deltaPct(ps.sales,     ps.sales_prev)     : null;
   const dPurchases  = showDelta ? deltaPct(ps.purchases, ps.purchases_prev) : null;
   const dInventory  = deltaPct(data.inventory_value,        data.inventory_value_prev);
@@ -479,239 +269,198 @@ export default function DashboardPage() {
   const dAR         = deltaPct(data.outstanding_ar,         data.outstanding_ar_prev);
   const dAP         = deltaPct(data.outstanding_ap,         data.outstanding_ap_prev);
 
+  // Sales vs purchases for the period: exactly the two KPI figures, subtracted.
+  const salesVsPurchases = ps.sales - ps.purchases;
+
+  const hour = new Date().getHours();
+  const greet = hour < 12 ? t('dashboardOcean.greet_morning') : hour < 17 ? t('dashboardOcean.greet_afternoon') : t('dashboardOcean.greet_evening');
+  const today = new Date().toLocaleDateString(i18n.language === 'ar' ? 'ar' : undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  // Fiscal-year span in the UI language (same months as fiscalYearLabel).
+  const fyStart = (() => { const m = /^\d{4}-(\d{2})/.exec(company?.fiscal_year_start ?? ''); const i = m ? parseInt(m[1], 10) - 1 : 0; return i >= 0 && i < 12 ? i : 0; })();
+  const monthName = (i: number) => new Date(2000, i, 1).toLocaleDateString(i18n.language === 'ar' ? 'ar' : 'en-US', { month: 'short' });
+  const fyText = i18n.language === 'ar' ? `${monthName(fyStart)}–${monthName((fyStart + 11) % 12)}` : fiscalYearLabel(company?.fiscal_year_start);
+  const initials = (greetName || 'StockBolt').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+
+  const toggle = (k: 'sales' | 'purchases') => setShow(s => {
+    const next = { ...s, [k]: !s[k] };
+    return next.sales || next.purchases ? next : s;   // keep at least one series on
+  });
+
+  const QUICK = [
+    { to: '/sales/invoices/new',      icon: <FileText size={20} />,      label: t('dashboardOcean.qa_invoice') },
+    { to: '/sales/payments/new',      icon: <Banknote size={20} />,      label: t('dashboardOcean.qa_receipt') },
+    { to: '/purchasing/bills/new',    icon: <Receipt size={20} />,       label: t('dashboardOcean.qa_bill') },
+    { to: '/sales/quotes/new',        icon: <FileSignature size={20} />, label: t('dashboardOcean.qa_quote') },
+    { to: '/purchasing/grns/new',     icon: <Truck size={20} />,         label: t('dashboardOcean.qa_grn') },
+    { to: '/purchasing/orders/new',   icon: <ClipboardList size={20} />, label: t('dashboardOcean.qa_po') },
+    { to: '/purchasing/expenses/new', icon: <CreditCard size={20} />,    label: t('dashboardOcean.qa_expense') },
+    { to: '/products/new',            icon: <Package size={20} />,       label: t('dashboardOcean.qa_product') },
+  ];
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '96px' }}>
-      {/* ── Hero band — greeting + quick actions ───────────────────────── */}
-      <div
-        className="px-4 py-5 sm:px-7 sm:py-[26px]"
-        style={{
-        background: 'linear-gradient(135deg, #2e1065 0%, #5b21b6 55%, #7c3aed 100%)',
-        borderRadius: '16px',
-        color: '#fff',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        gap: '16px', flexWrap: 'wrap',
-        boxShadow: '0 8px 24px rgba(124,58,237,.22)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', minWidth: 0 }}>
-          {/* Phase 28 — company logo (if uploaded); no initials fallback in the hero. */}
-          {company?.logo_url && (
-            <div style={{
-              width: '56px', height: '56px', borderRadius: '12px', background: '#fff',
-              flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              overflow: 'hidden', boxShadow: '0 2px 10px rgba(0,0,0,.20)',
-            }}>
-              <img src={company.logo_url} alt={greetName || 'Company logo'}
-                style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-            </div>
-          )}
-          <div style={{ minWidth: 0 }}>
-            <h1 className="text-[19px] sm:text-[22px]" style={{ margin: 0, fontWeight: 800, letterSpacing: '-.01em' }}>
-              {greetName || 'StockBolt'}
-            </h1>
-            <p style={{ margin: '5px 0 0', fontSize: '12.5px', color: 'rgba(255,255,255,.78)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <CalendarIcon /> {fmtToday()}
-            </p>
-            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '8px', fontSize: '12px', color: 'rgba(255,255,255,.9)' }}>
-              <span><span style={{ opacity: .7 }}>Currency:</span> <strong>{currency}</strong></span>
-              <span><span style={{ opacity: .7 }}>Fiscal Year:</span> <strong>{fiscalYearLabel(company?.fiscal_year_start)}</strong></span>
-            </div>
+    <div className="sb-ocean sb-page sb-dash" data-testid="dashboard-ocean">
+      {/* ── 1. Greeting band ─────────────────────────────────────────────── */}
+      <section className="sb-dash-hero">
+        <div className="sb-dash-hero-id">
+          <span className="sb-dash-logo">
+            {company?.logo_url
+              ? <img src={company.logo_url} alt={greetName || t('dashboardOcean.logo_alt')} />
+              : <span aria-hidden="true">{initials}</span>}
+          </span>
+          <span style={{ minWidth: 0 }}>
+            <span className="sb-dash-greet">{greet}</span>
+            <h1 className="sb-dash-company">{greetName || 'StockBolt'}</h1>
+            <span className="sb-dash-meta">
+              <CalendarDays size={14} aria-hidden="true" /> {today}
+              <span aria-hidden="true">·</span> <bdi dir="ltr">{currency}</bdi>
+              <span aria-hidden="true">·</span> {t('dashboardOcean.fy')} <bdi>{fyText}</bdi>
+            </span>
+          </span>
+        </div>
+        <div className="sb-dash-hero-fig">
+          <span className="sb-dash-greet">{t('dashboardOcean.sales_vs_purchases')}</span>
+          <bdi dir="ltr" className="sb-dash-hero-num">{formatCurrency(salesVsPurchases, currency)}</bdi>
+          <span className="sb-dash-greet">{periodWord}</span>
+        </div>
+      </section>
+
+      <div className="sb-body sb-dash-body">
+        {/* ── 2. Period ──────────────────────────────────────────────────── */}
+        <div className="sb-dash-periodbar">
+          <div className="sb-dash-seg" role="group" aria-label={t('dashboardOcean.period_label')}>
+            {QUICK_PRESETS.map(p => (
+              <button key={p} type="button" aria-pressed={preset === p} className={preset === p ? 'on' : ''} onClick={() => setPreset(p)}>
+                {t(`dashboardOcean.period.${p}`, { defaultValue: PERIOD_LABELS[p] })}
+              </button>
+            ))}
+          </div>
+          <div className="sb-dash-picker">
+            <PeriodPicker preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} allowAllTime />
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <Link to="/sales/invoices/new" style={{
-            padding: '9px 18px', borderRadius: '999px',
-            background: '#fff', color: '#5b21b6',
-            fontSize: '13px', fontWeight: 700, textDecoration: 'none',
-            boxShadow: '0 2px 8px rgba(0,0,0,.15)',
-            whiteSpace: 'nowrap',
-          }}>+ New Invoice</Link>
-          <Link to="/sales/payments/new" style={{
-            padding: '9px 18px', borderRadius: '999px',
-            background: 'rgba(255,255,255,.12)', color: '#fff',
-            border: '1px solid rgba(255,255,255,.3)',
-            fontSize: '13px', fontWeight: 600, textDecoration: 'none',
-            whiteSpace: 'nowrap',
-          }}>+ Record Receipt</Link>
-          <Link to="/purchasing/bills/new" style={{
-            padding: '9px 18px', borderRadius: '999px',
-            background: 'rgba(255,255,255,.12)', color: '#fff',
-            border: '1px solid rgba(255,255,255,.3)',
-            fontSize: '13px', fontWeight: 600, textDecoration: 'none',
-            whiteSpace: 'nowrap',
-          }}>+ New Bill</Link>
-          <HeroMoreMenu />
+
+        {/* ── 3. KPI cards (2 up on a phone, 3 on a tablet, 6 on wide) ───── */}
+        <div className="sb-dash-kpis">
+          <KpiCard label={t('dashboardOcean.kpi_sales', { period: periodWord })} value={formatCurrency(ps.sales, currency)} sub={t('dashboard.revenue_excl_tax', { tax: taxName })} delta={dSales} icon={<TrendingUp size={18} />} href="/sales/invoices"
+            spark={<Sparkline values={trendData.map(d => d.sales)} color={TEAL} />} />
+          <KpiCard label={t('dashboardOcean.kpi_purchases', { period: periodWord })} value={formatCurrency(ps.purchases, currency)} sub={t('dashboard.bills_excl_tax', { tax: taxName })} delta={dPurchases} icon={<ShoppingCart size={18} />} href="/purchasing/bills"
+            spark={<Sparkline values={trendData.map(d => d.purchases)} color={AMBER} />} />
+          <KpiCard label={t('dashboardOcean.inventory_value')} value={formatCurrency(data.inventory_value, currency)} sub={t('dashboardOcean.asset_value')} delta={dInventory} icon={<Wallet size={18} />} href="/reports/stock-valuation" />
+          <KpiCard label={t('dashboardOcean.sku_count')} value={fmtInt(data.sku_count)} sub={t('dashboardOcean.unique_parts')} delta={dSku} icon={<Barcode size={18} />} href="/products" />
+          <KpiCard label={t('dashboardOcean.receivables')} value={formatCurrency(data.outstanding_ar, currency)} sub={t('dashboardOcean.outstanding')} delta={dAR} icon={<ArrowDownLeft size={18} />} href="/reports/ar-aging" />
+          <KpiCard label={t('dashboardOcean.payables')} value={formatCurrency(data.outstanding_ap, currency)} sub={t('dashboardOcean.outstanding')} delta={dAP} icon={<ArrowUpRight size={18} />} href="/reports/ap-aging" />
         </div>
-      </div>
 
-      {/* ── Phase 40 — KPI period toggle (drives Sales/Purchases + trend) ── */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '-12px' }}>
-        <PeriodPicker
-          preset={preset}
-          from={from}
-          to={to}
-          onPresetChange={setPreset}
-          onCustomRange={setCustomRange}
-          allowAllTime
-        />
-      </div>
-
-      {/* ── 6 KPI tiles ───────────────────────────────────────────────────
-           auto-fit with a 230px floor meant one card per row on a phone:
-           six full-width tiles, and the trend chart pushed off the bottom of
-           the screen. Explicit breakpoints instead - 2 up on a phone, 3 on a
-           tablet, all 6 across on a wide screen. */}
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3.5 xl:grid-cols-6">
-        <KpiTile label={`${periodWord} Sales`}     value={formatCurrency(ps.sales, currency)}     sub={t('dashboard.revenue_excl_tax', { tax: taxName })} delta={dSales}     icon={<TrendingUpIcon />} tone="emerald" href="/sales/invoices" />
-        <KpiTile label={`${periodWord} Purchases`} value={formatCurrency(ps.purchases, currency)} sub={t('dashboard.bills_excl_tax', { tax: taxName })}   delta={dPurchases} icon={<CartIcon />}       tone="violet"  href="/purchasing/bills" />
-        <KpiTile label="Inventory Value"  value={formatCurrency(data.inventory_value, currency)}         sub="Asset Value"         delta={dInventory} icon={<WalletIcon />}     tone="slate"   href="/reports/stock-valuation" />
-        <KpiTile label="SKU Count"        value={fmtInt(data.sku_count)}                     sub="Unique Parts"        delta={dSku}       icon={<StoreIcon />}      tone="sky"     href="/products" />
-        <KpiTile label="Receivables"      value={formatCurrency(data.outstanding_ar, currency)}          sub="Outstanding"         delta={dAR}        icon={<CoinIcon />}       tone="orange"  href="/reports/ar-aging" />
-        <KpiTile label="Payables"         value={formatCurrency(data.outstanding_ap, currency)}          sub="Outstanding"         delta={dAP}        icon={<HandCoinIcon />}   tone="violet"  href="/reports/ap-aging" />
-      </div>
-
-      {/* ── Sales Trend + Recent Inventory — stack below lg ───────────── */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
-        {/* Sales Trend (2/3) */}
-        <div style={{ ...cardStyle, padding: '20px 22px', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-              <div style={{
-                height: '34px', width: '34px', flexShrink: 0, borderRadius: '10px',
-                background: '#f5f3ff', color: '#7c3aed',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <TrendingUpIcon />
+        {/* ── 4. Sales trend + Cash position ─────────────────────────────── */}
+        <div className="sb-dash-row sb-dash-row-trend">
+          <section className="sb-card sb-dash-card">
+            <div className="sb-dash-card-head">
+              <span className="sb-dash-ico" aria-hidden="true"><TrendingUp size={18} /></span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h3 className="sb-dash-card-title">{t('dashboardOcean.sales_trend')}</h3>
+                <p className="sb-dash-card-hint">{periodWord} · <bdi dir="ltr">{currency}</bdi></p>
               </div>
-              <h3 style={{ margin: 0, fontSize: '15.5px', fontWeight: 700, color: theme.ink }}>{trendTitle}</h3>
+              <div className="sb-dash-toggles" role="group" aria-label={t('dashboardOcean.sales_trend')}>
+                <button type="button" aria-pressed={show.sales} className={show.sales ? 'on' : ''} onClick={() => toggle('sales')}><i style={{ background: TEAL }} />{t('dashboardOcean.sales')}</button>
+                <button type="button" aria-pressed={show.purchases} className={show.purchases ? 'on' : ''} onClick={() => toggle('purchases')}><i style={{ background: AMBER }} />{t('dashboardOcean.purchases')}</button>
+              </div>
             </div>
-            <Link to="/reports/profit-loss" style={{
-              display: 'inline-flex', alignItems: 'center', gap: '5px',
-              padding: '6px 14px', borderRadius: '999px',
-              border: `1px solid ${theme.border}`, background: '#fff',
-              color: theme.ink, fontSize: '12.5px', fontWeight: 600, textDecoration: 'none',
-              whiteSpace: 'nowrap',
-            }}>P&amp;L <ArrowUpRightIcon /></Link>
-          </div>
-
-          {/* Legend */}
-          <div style={{ display: 'flex', gap: '18px', margin: '12px 0 2px', fontSize: '12px', color: theme.inkMuted }}>
-            <span><span style={{ color: '#7c3aed' }}>◆</span> Sales ({currency})</span>
-            <span><span style={{ color: '#10b981' }}>◆</span> Purchases ({currency})</span>
-          </div>
-
-          <SalesTrendChart data={trendData} mode={trendMode} />
+            <div className="sb-dash-card-body">
+              <SalesTrendChart data={trendData} mode={trendMode} show={show} />
+              <Link to="/reports/profit-loss" className="sb-row-link text-brand-600" style={{ paddingInline: 0 }}>{t('dashboardOcean.view_pl')} <ChevronRight size={16} className="sb-flip" aria-hidden="true" /></Link>
+            </div>
+          </section>
+          {cardsQ.data ? <CashPositionCard data={cardsQ.data} currency={currency} /> : <SummaryCardsState q={cardsQ} />}
         </div>
 
-        {/* Recent Inventory (1/3) */}
-        <div style={{ ...cardStyle, padding: '20px 22px', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-            <h3 style={{ margin: 0, fontSize: '15.5px', fontWeight: 700, color: theme.ink }}>Recent Inventory</h3>
-            <Link to="/inventory/stock-ledger" style={{
-              display: 'inline-flex', alignItems: 'center', gap: '5px',
-              padding: '6px 14px', borderRadius: '999px',
-              border: `1px solid ${theme.border}`, background: '#fff',
-              color: theme.ink, fontSize: '12.5px', fontWeight: 600, textDecoration: 'none',
-              whiteSpace: 'nowrap',
-            }}>Stock <ArrowUpRightIcon /></Link>
+        {/* ── 5. Quick actions ───────────────────────────────────────────── */}
+        <section className="sb-card sb-dash-card">
+          <div className="sb-dash-card-head"><h3 className="sb-dash-card-title" style={{ flex: 1 }}>{t('dashboardOcean.quick_actions')}</h3></div>
+          <div className="sb-dash-quick">
+            {QUICK.map(q => (
+              <Link key={q.to} to={q.to} className="sb-dash-qa">
+                <span className="sb-dash-qa-ico" aria-hidden="true">{q.icon}</span>
+                <span>{q.label}</span>
+              </Link>
+            ))}
           </div>
+        </section>
 
-          {data.recent_inventory.length === 0 ? (
-            <p style={{ padding: '24px 0', textAlign: 'center', fontSize: theme.fontBase, color: theme.inkFaint }}>No items yet.</p>
-          ) : (
-            <ul style={{ listStyle: 'none', margin: '8px 0 0', padding: 0, flex: 1 }}>
-              {data.recent_inventory.map((it, idx) => (
-                <li
-                  key={it.product_id}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '12px',
-                    padding: '11px 0',
-                    borderTop: idx === 0 ? 'none' : `1px solid ${theme.border}`,
-                  }}
-                >
-                  <div style={{
-                    height: '40px', width: '40px', flexShrink: 0, borderRadius: '10px',
-                    background: '#f1f5f9', color: '#64748b',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    <BoxThumbIcon />
-                  </div>
-                  <Link
-                    to={`/products/${it.product_id}`}
-                    style={{ flex: 1, minWidth: 0, textDecoration: 'none', color: 'inherit' }}
-                  >
-                    <div style={{
-                      fontSize: '13px', fontWeight: 600, color: theme.ink,
-                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                    }}>{it.name}</div>
-                    {it.oe_number && (
-                      <div style={{ marginTop: '2px', fontSize: theme.fontXs, color: theme.inkFaint }}>OE: {it.oe_number}</div>
-                    )}
-                  </Link>
-                  <span style={{
-                    flexShrink: 0,
-                    fontSize: '13px', fontWeight: 700, color: theme.ink, fontVariantNumeric: 'tabular-nums',
-                  }}>
-                    {fmtInt(it.quantity)} {(it.unit_code || 'PCS').toUpperCase()}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
+        {/* ── 6. Low stock + Recent inventory ────────────────────────────── */}
+        <div className="sb-dash-row">
+          <section className="sb-card sb-dash-card">
+            <div className="sb-dash-card-head">
+              <span className={`sb-dash-ico ${lowCount > 0 ? 'is-bad' : ''}`} aria-hidden="true"><AlertTriangle size={18} /></span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h3 className="sb-dash-card-title">{t('dashboardOcean.low_stock')}</h3>
+                <p className="sb-dash-card-hint">{lowCount === 0 ? t('dashboardOcean.low_none') : t('dashboardOcean.low_count', { count: lowCount })}</p>
+              </div>
+              {lowCount > 0 && <span className="sb-pill sb-pill-bad" style={{ marginTop: 0 }}><bdi dir="ltr">{lowCount}</bdi></span>}
+            </div>
+            <div className="sb-dash-card-body">
+              {lowCount > 0 && reorderQ.isLoading && <div className="sb-dash-empty">{t('common.loading')}</div>}
+              {lowLines.length > 0 && (
+                <ul className="sb-dash-low">
+                  {lowLines.map(l => {
+                    const pct = Math.max(0, Math.min(100, (l.qty_on_hand / l.min_stock_level) * 100));
+                    const critical = pct < 50;
+                    return (
+                      <li key={`${l.product_id}-${l.warehouse_id}`}>
+                        <span className="sb-dash-low-row">
+                          <Link to={`/products/${l.product_id}`} className="sb-dash-ellipsis" style={{ flex: 1, fontWeight: 600, color: 'var(--sb-text)', textDecoration: 'none' }}>{l.product_name}</Link>
+                          <bdi dir="ltr" className="sb-fx-name">{fmtInt(l.qty_on_hand)} / {fmtInt(l.min_stock_level)}</bdi>
+                        </span>
+                        {l.warehouse_name && <span className="sb-fx-name" style={{ fontSize: 12 }}>{l.warehouse_name}</span>}
+                        <span className={`sb-dash-bar ${critical ? 'is-bad' : 'is-warn'}`}><i style={{ width: `${pct}%` }} /></span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {lowCount === 0 && <div className="sb-dash-allclear"><Box size={26} aria-hidden="true" /><span className="sb-fx-name">{t('dashboardOcean.low_all_good')}</span></div>}
+              <Link to="/reports/reorder" className={lowCount > 0 ? 'sb-primary-btn sb-btn-inline sb-dash-cta' : 'sb-row-link text-brand-600'} style={lowCount > 0 ? undefined : { paddingInline: 0 }}>
+                {t('dashboardOcean.manage_stock')} <ChevronRight size={16} className="sb-flip" aria-hidden="true" />
+              </Link>
+            </div>
+          </section>
 
-          <Link to="/products" style={{
-            marginTop: 'auto', paddingTop: '12px',
-            fontSize: '13px', fontWeight: 600, color: '#6d28d9', textDecoration: 'none',
-          }}>
-            View all inventory
-          </Link>
+          <section className="sb-card sb-dash-card">
+            <div className="sb-dash-card-head">
+              <span className="sb-dash-ico" aria-hidden="true"><Package size={18} /></span>
+              <h3 className="sb-dash-card-title" style={{ flex: 1 }}>{t('dashboardOcean.recent_inventory')}</h3>
+              <Link to="/inventory/stock-ledger" className="sb-row-link text-brand-600">{t('dashboardOcean.stock')}</Link>
+            </div>
+            <div className="sb-dash-card-body">
+              {data.recent_inventory.length === 0 ? (
+                <div className="sb-dash-empty">{t('dashboardOcean.no_items')}</div>
+              ) : (
+                <ul className="sb-dash-recent">
+                  {data.recent_inventory.map((it) => (
+                    <li key={it.product_id}>
+                      <span className="sb-dash-thumb" aria-hidden="true"><Box size={18} /></span>
+                      <Link to={`/products/${it.product_id}`} style={{ flex: 1, minWidth: 0, textDecoration: 'none', color: 'inherit' }}>
+                        <span className="sb-dash-ellipsis" style={{ display: 'block', fontWeight: 600 }}>{it.name}</span>
+                        {it.oe_number && <span className="sb-fx-name" style={{ fontSize: 12 }}>OE <bdi dir="ltr">{it.oe_number}</bdi></span>}
+                      </Link>
+                      <bdi dir="ltr" className="sb-dash-num">{fmtInt(it.quantity)} {(it.unit_code || 'PCS').toUpperCase()}</bdi>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <Link to="/products" className="sb-row-link text-brand-600" style={{ paddingInline: 0 }}>{t('dashboardOcean.view_all_inventory')} <ChevronRight size={16} className="sb-flip" aria-hidden="true" /></Link>
+            </div>
+          </section>
         </div>
+
+        {/* ── 7. Income vs expense, Top expenses, Watchlist ──────────────── */}
+        {cardsQ.data ? (
+          <div className="sb-dash-row3">
+            <IncomeExpenseCard data={cardsQ.data} periodLabel={periodWord} />
+            <TopExpensesCard data={cardsQ.data} periodLabel={periodWord} />
+            <WatchlistCard data={cardsQ.data} />
+          </div>
+        ) : null}
       </div>
-
-      {/* ── Phase 13.03 — Summary cards row (Income/Expense, Top Expenses,
-            Bank balances, Watchlist). Single RPC fetch via the cards
-            component. */}
-      <DashboardSummaryCards from={from} to={to} periodLabel={periodWord} />
-
-      {/* ── Low Stock Alerts bar ───────────────────────────────────────── */}
-      <div style={{ ...cardStyle, padding: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{
-            height: '48px', width: '48px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            borderRadius: '999px',
-            background: theme.dangerSoft, color: theme.danger,
-            border: `1px solid ${theme.dangerBorder}`,
-          }}>
-            <AlertTriangleIcon />
-          </div>
-          <div style={{ flex: 1 }}>
-            <h3 style={{ margin: 0, fontSize: theme.fontMd, fontWeight: 700, color: theme.ink }}>Low Stock Alerts</h3>
-            <p style={{ margin: '2px 0 0', fontSize: theme.fontBase, color: theme.inkMuted }}>
-              {data.low_stock_count === 0
-                ? 'Excellent! All items are well stocked.'
-                : `${data.low_stock_count} item${data.low_stock_count === 1 ? '' : 's'} below the minimum stock level.`}
-            </p>
-          </div>
-          <Link
-            to="/reports/reorder"
-            style={{
-              padding: '10px 20px',
-              borderRadius: '999px',
-              background: theme.brandGradient,
-              color: '#fff',
-              fontSize: theme.fontBase, fontWeight: 600,
-              textDecoration: 'none',
-              boxShadow: '0 4px 12px rgba(124,58,237,.25)',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Manage Stock
-          </Link>
-        </div>
-      </div>
-
-      {/* ── Floating quick-action button ───────────────────────────────── */}
-      <FloatingActionButton />
     </div>
   );
 }

@@ -1,35 +1,31 @@
 /**
- * Dashboard summary cards — Phase 13.03.
+ * Dashboard summary cards — Phase 13.03, Ocean Teal (UI v1.1).
  *
- * Four cards rendered below the KPI tiles on the owner dashboard:
+ * The cards below the trend chart on the owner dashboard. All figures come
+ * from the single get_dashboard_cards fetch (useDashboardCards), unchanged:
  *
- *   1. Income vs Expense (12-mo diverging bar chart)
- *   2. Top Expenses (donut + legend, fiscal year)
- *   3. Bank & Cash Accounts (account list with type stripe + balance)
+ *   1. Income vs Expense (diverging bars — income above zero, expense below)
+ *   2. Top Expenses (donut + legend)
+ *   3. Cash position (bank and cash balances today, with a ring of the
+ *      base-currency accounts) — replaces the old Bank & Cash list
  *   4. Watchlist (auto-populated: overdrawn accounts)
  *
- * Design choices that differ from the Zoho reference:
- *   - Diverging bars (income above zero, expense below) instead of
- *     paired side-by-side bars — easier to read net profit visually.
- *   - Indigo / violet brand gradient for the donut largest slice
- *     instead of green; remaining slices use a warm palette so the
- *     "you're spending here" energy comes through.
- *   - Each bank row gets a coloured left stripe (indigo for bank,
- *     amber for cash) — turns the list into a scannable identity
- *     strip instead of plain text.
- *   - Watchlist is data-driven (overdrawn accounts only) instead of
- *     a manually-starred list. Fewer clicks, more useful by default.
+ * Bank balances are positions, not flows: they are deliberately NOT windowed
+ * by the period filter, and the card says "balance today".
+ *
+ * The Cash position total adds only accounts in the company's base currency.
+ * Accounts in other currencies are listed with their own currency and never
+ * summed into it — adding AED to USD would be a meaningless number.
  */
-import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   XAxis, YAxis, ResponsiveContainer, CartesianGrid,
   PieChart, Pie, Cell, Tooltip, ReferenceLine, BarChart, Bar,
 } from 'recharts';
-import { getAdapter } from '@/data/index';
-import { useAuthStore } from '@/store/auth';
-import { theme } from '@/ui/theme';
+import { BarChart3, PieChart as PieIcon, Landmark, ShieldAlert, ShieldCheck, ChevronRight } from 'lucide-react';
 import type { DashboardCards } from '@/data/adapter';
+import type { useDashboardCards } from './_use-dashboard-cards';
 
 // ── Formatters ───────────────────────────────────────────────────────────
 function fmt(n: number) {
@@ -45,208 +41,156 @@ function fmtCompact(n: number) {
   if (abs >= 1_000)     return `${Math.round(n / 1_000)}K`;
   return String(Math.round(n));
 }
-function monthLabel(yyyymm: string) {
-  // YYYY-MM → "Jan" / "Dec '25"
+function monthLabel(yyyymm: string, locale: string) {
   const [y, m] = yyyymm.split('-');
   const d = new Date(Number(y), Number(m) - 1, 1);
-  return d.toLocaleString('en-US', { month: 'short' });
+  return d.toLocaleString(locale === 'ar' ? 'ar' : 'en-US', { month: 'short' });
 }
 
+const TEAL = '#008F87';
+const SLATE = '#94A3B8';
+const TOOLTIP = { borderRadius: 12, border: '1px solid #E1E9ED', fontSize: 12, boxShadow: '0 6px 18px rgba(13,25,53,.08)' };
+
 // ── Card shell ───────────────────────────────────────────────────────────
-function Card({ title, hint, children, right }: {
-  title: string; hint?: string; children: React.ReactNode; right?: React.ReactNode;
+function Card({ icon, title, hint, children, right }: {
+  icon: React.ReactNode; title: string; hint?: string; children: React.ReactNode; right?: React.ReactNode;
 }) {
   return (
-    <div style={{
-      background: theme.card,
-      border: `1px solid ${theme.border}`,
-      borderRadius: '12px',
-      boxShadow: theme.shadowSm,
-      overflow: 'hidden',
-      display: 'flex', flexDirection: 'column',
-    }}>
-      <div style={{
-        padding: '14px 18px',
-        borderBottom: `1px solid ${theme.border}`,
-        display: 'flex', alignItems: 'center', gap: '8px',
-      }}>
+    <section className="sb-card sb-dash-card">
+      <div className="sb-dash-card-head">
+        <span className="sb-dash-ico" aria-hidden="true">{icon}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <h3 style={{
-            margin: 0,
-            fontSize: '11px', fontWeight: 700,
-            color: theme.inkMuted,
-            textTransform: 'uppercase', letterSpacing: '.06em',
-          }}>{title}</h3>
-          {hint && (
-            <p style={{ margin: '4px 0 0', fontSize: '11px', color: theme.inkFaint }}>{hint}</p>
-          )}
+          <h3 className="sb-dash-card-title">{title}</h3>
+          {hint && <p className="sb-dash-card-hint">{hint}</p>}
         </div>
         {right}
       </div>
-      <div style={{ padding: '16px 18px', flex: 1 }}>{children}</div>
-    </div>
+      <div className="sb-dash-card-body">{children}</div>
+    </section>
   );
 }
 
-// ── 1. Income vs Expense (12-mo diverging bars) ─────────────────────────
-function IncomeExpenseCard({ data, periodLabel }: { data: DashboardCards; periodLabel?: string }) {
+// ── 1. Income vs Expense (diverging bars) ───────────────────────────────
+export function IncomeExpenseCard({ data, periodLabel }: { data: DashboardCards; periodLabel?: string }) {
+  const { t, i18n } = useTranslation();
   const totalIncome  = data.monthly_pl.reduce((s, r) => s + r.income,  0);
   const totalExpense = data.monthly_pl.reduce((s, r) => s + r.expense, 0);
   const net = totalIncome - totalExpense;
 
-  // Recharts data — expense is plotted as a NEGATIVE value so the bar
-  // hangs below the zero baseline. Visually you see income above and
-  // expense below; the gap between them at zero is the profit/loss.
+  // Expense is plotted as a NEGATIVE value so the bar hangs below zero.
   const chartData = data.monthly_pl.map(r => ({
-    month: monthLabel(r.month),
+    month: monthLabel(r.month, i18n.language),
     income: r.income,
     expense: -r.expense,
   }));
 
   return (
     <Card
-      title="Income vs Expense"
-      hint={`${data.period_explicit && periodLabel ? periodLabel : 'Last 12 months'} · diverging bars · accrual basis`}
+      icon={<BarChart3 size={18} />}
+      title={t('dashboardOcean.income_expense')}
+      hint={`${data.period_explicit && periodLabel ? periodLabel : t('dashboardOcean.last_12')} · ${t('dashboardOcean.accrual')}`}
       right={
         <div style={{ textAlign: 'end' }}>
-          <div style={{ fontSize: '10px', color: theme.inkFaint, textTransform: 'uppercase', letterSpacing: '.05em' }}>Net</div>
-          <div style={{
-            fontFamily: theme.fontMono, fontSize: '14px', fontWeight: 700,
-            color: net >= 0 ? theme.success : theme.danger,
-          }}>
+          <div className="sb-dash-mini-label">{t('dashboardOcean.net')}</div>
+          <bdi dir="ltr" className={`sb-dash-mini-val ${net >= 0 ? 'is-good' : 'is-bad'}`}>
             {net >= 0 ? '+' : ''}{fmtCompact(net)}
-          </div>
+          </bdi>
         </div>
       }
     >
-      {/* Inline totals chip */}
-      <div style={{ display: 'flex', gap: '20px', marginBottom: '8px', fontSize: '12px' }}>
-        <span>
-          <span style={{ display: 'inline-block', width: '10px', height: '10px', background: theme.brand, borderRadius: '2px', marginInlineEnd: '6px', verticalAlign: 'middle' }} />
-          <span style={{ color: theme.inkMuted }}>Income </span>
-          <span className="font-mono" style={{ color: theme.ink, fontWeight: 600 }}>{fmt(totalIncome)}</span>
-        </span>
-        <span>
-          <span style={{ display: 'inline-block', width: '10px', height: '10px', background: '#94a3b8', borderRadius: '2px', marginInlineEnd: '6px', verticalAlign: 'middle' }} />
-          <span style={{ color: theme.inkMuted }}>Expense </span>
-          <span className="font-mono" style={{ color: theme.ink, fontWeight: 600 }}>{fmt(totalExpense)}</span>
-        </span>
+      <div className="sb-dash-legend">
+        <span><i style={{ background: TEAL }} />{t('dashboardOcean.income')} <bdi dir="ltr">{fmt(totalIncome)}</bdi></span>
+        <span><i style={{ background: SLATE }} />{t('dashboardOcean.expense')} <bdi dir="ltr">{fmt(totalExpense)}</bdi></span>
       </div>
-      <ResponsiveContainer width="100%" height={196} minWidth={0}>
-        <BarChart data={chartData} margin={{ top: 4, right: 6, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-          <XAxis
-            dataKey="month" axisLine={false} tickLine={false}
-            tick={{ fontSize: 10, fill: theme.inkFaint }}
-          />
-          <YAxis
-            tickFormatter={(v) => fmtCompact(Math.abs(Number(v)))}
-            tick={{ fontSize: 10, fill: theme.inkFaint }}
-            axisLine={false} tickLine={false} width={36}
-          />
-          <ReferenceLine y={0} stroke="#1e293b" strokeWidth={1} />
-          <Tooltip
-            contentStyle={{ borderRadius: 8, border: `1px solid ${theme.border}`, fontSize: 12 }}
-            formatter={(v, name) => [fmt2(Math.abs(Number(v ?? 0))), name === 'income' ? 'Income' : 'Expense']}
-            labelFormatter={(l) => `${l}`}
-          />
-          <Bar dataKey="income"  fill={theme.brand}  radius={[3, 3, 0, 0]} />
-          <Bar dataKey="expense" fill="#94a3b8" radius={[0, 0, 3, 3]} />
-        </BarChart>
-      </ResponsiveContainer>
+      <div dir="ltr">
+        <ResponsiveContainer width="100%" height={196} minWidth={0}>
+          <BarChart data={chartData} margin={{ top: 4, right: 6, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 4" stroke="#E1E9ED" vertical={false} />
+            <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#607185' }} />
+            <YAxis
+              tickFormatter={(v) => fmtCompact(Math.abs(Number(v)))}
+              tick={{ fontSize: 10, fill: '#607185' }}
+              axisLine={false} tickLine={false} width={36}
+            />
+            <ReferenceLine y={0} stroke="#0D1935" strokeWidth={1} />
+            <Tooltip
+              cursor={{ fill: 'rgba(0,143,135,.06)' }}
+              contentStyle={TOOLTIP}
+              formatter={(v, name) => [fmt2(Math.abs(Number(v ?? 0))), name === 'income' ? t('dashboardOcean.income') : t('dashboardOcean.expense')]}
+              labelFormatter={(l) => `${l}`}
+            />
+            <Bar dataKey="income"  fill={TEAL}  radius={[4, 4, 0, 0]} />
+            <Bar dataKey="expense" fill={SLATE} radius={[0, 0, 4, 4]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </Card>
   );
 }
 
 // ── 2. Top Expenses (donut) ─────────────────────────────────────────────
-// Distinct hues so each expense category is easy to tell apart at a glance
-// (violet · sky · amber · emerald · red · pink · teal · purple). "Others"
-// always gets a muted slate so it reads as the catch-all.
-const DONUT_PALETTE = ['#7c3aed', '#0ea5e9', '#f59e0b', '#10b981', '#ef4444', '#ec4899', '#14b8a6', '#a855f7'];
-const OTHERS_COLOR = '#94a3b8';
+// Teal first, then distinct hues so categories are easy to tell apart.
+// "Others" always gets muted slate so it reads as the catch-all.
+const DONUT_PALETTE = ['#008F87', '#E08A00', '#3B82F6', '#DC2626', '#8B5CF6', '#EC4899', '#14B8A6', '#B45309'];
+const OTHERS_COLOR = SLATE;
 
-function TopExpensesCard({ data, periodLabel }: { data: DashboardCards; periodLabel?: string }) {
+export function TopExpensesCard({ data, periodLabel }: { data: DashboardCards; periodLabel?: string }) {
+  const { t } = useTranslation();
   const slices = [
     ...data.top_expenses.map((e, i) => ({
       name: e.account_name, code: e.account_code, value: e.amount, color: DONUT_PALETTE[i % DONUT_PALETTE.length],
     })),
     ...(data.top_expenses_others > 0.005 ? [{
-      name: 'Others', code: '', value: data.top_expenses_others, color: OTHERS_COLOR,
+      name: t('dashboardOcean.others'), code: '', value: data.top_expenses_others, color: OTHERS_COLOR,
     }] : []),
   ];
   const total = data.top_expenses_total;
+  const hint = data.period_explicit && periodLabel ? periodLabel : t('dashboardOcean.fy_to_date');
 
   if (slices.length === 0) {
     return (
-      <Card title="Top Expenses" hint="This fiscal year">
-        <div style={{ padding: '40px 0', textAlign: 'center', fontSize: '12px', color: theme.inkFaint }}>
-          No expense activity yet this fiscal year.
-        </div>
+      <Card icon={<PieIcon size={18} />} title={t('dashboardOcean.top_expenses')} hint={hint}>
+        <div className="sb-dash-empty">{t('dashboardOcean.no_expenses')}</div>
       </Card>
     );
   }
 
   return (
     <Card
-      title="Top Expenses"
-      hint={data.period_explicit && periodLabel ? periodLabel : 'Fiscal year to date'}
+      icon={<PieIcon size={18} />}
+      title={t('dashboardOcean.top_expenses')}
+      hint={hint}
       right={
         <div style={{ textAlign: 'end' }}>
-          <div style={{ fontSize: '10px', color: theme.inkFaint, textTransform: 'uppercase', letterSpacing: '.05em' }}>Total</div>
-          <div style={{ fontFamily: theme.fontMono, fontSize: '14px', fontWeight: 700, color: theme.ink }}>
-            {fmtCompact(total)}
-          </div>
+          <div className="sb-dash-mini-label">{t('dashboardOcean.total')}</div>
+          <bdi dir="ltr" className="sb-dash-mini-val">{fmtCompact(total)}</bdi>
         </div>
       }
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-        {/* Donut on the left */}
-        <div style={{ position: 'relative', width: '156px', height: '156px', flexShrink: 0 }}>
+      <div className="sb-dash-donut-row">
+        <div style={{ position: 'relative', width: '148px', height: '148px', flexShrink: 0 }} dir="ltr">
           <ResponsiveContainer>
             <PieChart>
-              <Pie
-                data={slices}
-                dataKey="value"
-                innerRadius={48}
-                outerRadius={72}
-                paddingAngle={2}
-                stroke="none"
-              >
+              <Pie data={slices} dataKey="value" innerRadius={46} outerRadius={70} paddingAngle={2} stroke="none" cornerRadius={4}>
                 {slices.map((s, i) => <Cell key={i} fill={s.color} />)}
               </Pie>
-              <Tooltip
-                contentStyle={{ borderRadius: 8, border: `1px solid ${theme.border}`, fontSize: 12 }}
-                formatter={(v) => fmt2(Number(v ?? 0))}
-              />
+              <Tooltip contentStyle={TOOLTIP} formatter={(v) => fmt2(Number(v ?? 0))} />
             </PieChart>
           </ResponsiveContainer>
-          {/* Center label */}
-          <div style={{
-            position: 'absolute', inset: 0,
-            display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center', pointerEvents: 'none',
-          }}>
-            <div style={{ fontSize: '10px', color: theme.inkFaint, textTransform: 'uppercase', letterSpacing: '.06em' }}>All</div>
-            <div className="font-mono" style={{ fontSize: '14px', fontWeight: 700, color: theme.ink }}>
-              {fmtCompact(total)}
-            </div>
+          <div className="sb-dash-donut-center">
+            <span className="sb-dash-mini-label">{t('dashboardOcean.all')}</span>
+            <bdi dir="ltr" className="sb-dash-mini-val">{fmtCompact(total)}</bdi>
           </div>
         </div>
-
-        {/* Legend */}
-        <ul style={{ flex: 1, margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <ul className="sb-dash-donut-legend">
           {slices.map((s, i) => {
             const pct = total > 0 ? (s.value / total) * 100 : 0;
             return (
-              <li key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
-                <span style={{ display: 'inline-block', width: '10px', height: '10px', background: s.color, borderRadius: '999px', flexShrink: 0 }} />
-                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: theme.ink }}>
-                  {s.name}
-                </span>
-                <span className="font-mono" style={{ color: theme.inkMuted, fontSize: '11px' }}>{pct.toFixed(0)}%</span>
-                <span className="font-mono" style={{ color: theme.ink, fontWeight: 500, minWidth: '60px', textAlign: 'end' }}>
-                  {fmtCompact(s.value)}
-                </span>
+              <li key={i}>
+                <i style={{ background: s.color }} />
+                <span className="sb-dash-ellipsis" style={{ flex: 1 }}>{s.name}</span>
+                <bdi dir="ltr" className="sb-fx-name">{pct.toFixed(0)}%</bdi>
+                <bdi dir="ltr" className="sb-dash-num">{fmtCompact(s.value)}</bdi>
               </li>
             );
           })}
@@ -256,65 +200,67 @@ function TopExpensesCard({ data, periodLabel }: { data: DashboardCards; periodLa
   );
 }
 
-// ── 3. Bank & Cash Accounts ─────────────────────────────────────────────
-/**
- * Deliberately NOT windowed by the period filter. A balance is a position,
- * not a flow: "what is in the account" is a question about now, and the
- * Watchlist built on these numbers is an alert about now. The hint says
- * "balance today" out loud so the card does not read as one that is ignoring
- * the filter.
- */
-function BankAccountsCard({ data }: { data: DashboardCards }) {
-  if (data.bank_balances.length === 0) {
+// ── 3. Cash position ────────────────────────────────────────────────────
+const RING = ['#008F87', '#E08A00', '#3B82F6', '#8B5CF6', '#14B8A6', '#EC4899'];
+
+export function CashPositionCard({ data, currency }: { data: DashboardCards; currency: string }) {
+  const { t } = useTranslation();
+  const accounts = data.bank_balances;
+  if (accounts.length === 0) {
     return (
-      <Card title="Bank & Cash">
-        <div style={{ padding: '40px 0', textAlign: 'center', fontSize: '12px', color: theme.inkFaint }}>
-          No bank accounts configured.{' '}
-          <Link to="/banking/bank-accounts" style={{ color: theme.brand, fontWeight: 600 }}>Add one →</Link>
+      <Card icon={<Landmark size={18} />} title={t('dashboardOcean.cash_position')}>
+        <div className="sb-dash-empty">
+          {t('dashboardOcean.no_banks')}{' '}
+          <Link to="/banking/bank-accounts" className="sb-row-link text-brand-600" style={{ minHeight: 0, padding: 0 }}>{t('dashboardOcean.add_one')}</Link>
         </div>
       </Card>
     );
   }
+  const base = accounts.filter(b => (b.currency || currency) === currency);
+  const total = base.reduce((s, b) => s + Number(b.balance || 0), 0);
+  // Ring shows each base-currency account's share of the positive balances.
+  const positive = base.filter(b => b.balance > 0);
+  const posSum = positive.reduce((s, b) => s + b.balance, 0);
+  let offset = 25;
+  const arcs = positive.map((b, i) => {
+    const pct = posSum > 0 ? (b.balance / posSum) * 100 : 0;
+    const arc = { key: b.id, pct, offset, color: RING[i % RING.length] };
+    offset -= pct;
+    return arc;
+  });
+  const colorOf = (id: string) => arcs.find(a => a.key === id)?.color ?? SLATE;
+
   return (
     <Card
-      title="Bank & Cash Accounts"
-      hint={`${data.bank_balances.length} account${data.bank_balances.length === 1 ? '' : 's'} · balance today`}
-      right={
-        <Link to="/banking/bank-accounts" style={{ fontSize: '11px', color: theme.brand, fontWeight: 600, textDecoration: 'none' }}>
-          Manage →
-        </Link>
-      }
+      icon={<Landmark size={18} />}
+      title={t('dashboardOcean.cash_position')}
+      hint={t('dashboardOcean.balance_today', { count: accounts.length })}
+      right={<Link to="/banking/bank-accounts" className="sb-row-link text-brand-600">{t('dashboardOcean.manage')}</Link>}
     >
-      <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        {data.bank_balances.map((b) => {
-          const isBank = b.account_type === 'bank';
-          const stripeColor = isBank ? theme.brand : theme.warn;
+      <div className="sb-dash-cash-top">
+        <svg viewBox="0 0 42 42" width="84" height="84" aria-hidden="true" style={{ flex: 'none' }}>
+          <circle cx="21" cy="21" r="15.9" fill="none" stroke="#E1E9ED" strokeWidth="5" />
+          {arcs.map(a => (
+            <circle key={a.key} cx="21" cy="21" r="15.9" fill="none" stroke={a.color} strokeWidth="5"
+              strokeDasharray={`${a.pct} ${100 - a.pct}`} strokeDashoffset={a.offset} />
+          ))}
+        </svg>
+        <div style={{ minWidth: 0 }}>
+          <div className="sb-info-label">{t('dashboardOcean.bank_and_cash', { currency })}</div>
+          <bdi dir="ltr" className={`sb-dash-cash-total ${total < 0 ? 'is-bad' : ''}`}>{currency} {fmt2(total)}</bdi>
+        </div>
+      </div>
+      <ul className="sb-dash-cash-list">
+        {accounts.map(b => {
+          const other = (b.currency || currency) !== currency;
           return (
-            <li key={b.id} style={{
-              display: 'flex', alignItems: 'center', gap: '10px',
-              padding: '8px 10px',
-              background: theme.page,
-              border: `1px solid ${theme.border}`,
-              borderRadius: '8px',
-              borderInlineStartWidth: '4px',
-              borderInlineStartColor: stripeColor,
-              borderInlineStartStyle: 'solid',
-            }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: theme.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {b.name}
-                </div>
-                <div style={{ fontSize: '11px', color: theme.inkFaint, textTransform: 'capitalize' }}>
-                  {b.account_type} · {b.currency}
-                </div>
-              </div>
-              <div className="font-mono" style={{
-                fontSize: '13px', fontWeight: 700,
-                color: b.balance < 0 ? theme.danger : theme.ink,
-                whiteSpace: 'nowrap',
-              }}>
-                {b.currency} {fmt2(b.balance)}
-              </div>
+            <li key={b.id}>
+              <i style={{ background: other ? SLATE : colorOf(b.id) }} />
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span className="sb-dash-ellipsis" style={{ display: 'block', fontWeight: 600 }}>{b.name}</span>
+                <span className="sb-fx-name">{b.account_type === 'bank' ? t('dashboardOcean.bank') : t('dashboardOcean.cash')}{other ? ` · ${t('dashboardOcean.not_in_total')}` : ''}</span>
+              </span>
+              <bdi dir="ltr" className={`sb-dash-num ${b.balance < 0 ? 'is-bad' : ''}`}>{b.currency} {fmt2(b.balance)}</bdi>
             </li>
           );
         })}
@@ -324,48 +270,27 @@ function BankAccountsCard({ data }: { data: DashboardCards }) {
 }
 
 // ── 4. Watchlist ────────────────────────────────────────────────────────
-function WatchlistCard({ data }: { data: DashboardCards }) {
+export function WatchlistCard({ data }: { data: DashboardCards }) {
+  const { t } = useTranslation();
   if (data.watchlist.length === 0) {
     return (
-      <Card title="Watchlist" hint="Auto-populated · overdrawn accounts">
-        <div style={{ padding: '32px 0', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <div style={{ fontSize: '24px' }}>✅</div>
-          <div style={{ fontSize: '12px', color: theme.success, fontWeight: 600 }}>All clear</div>
-          <div style={{ fontSize: '11px', color: theme.inkFaint }}>No accounts are overdrawn.</div>
+      <Card icon={<ShieldCheck size={18} />} title={t('dashboardOcean.watchlist')} hint={t('dashboardOcean.watch_hint')}>
+        <div className="sb-dash-allclear">
+          <ShieldCheck size={28} aria-hidden="true" />
+          <strong>{t('dashboardOcean.all_clear')}</strong>
+          <span className="sb-fx-name">{t('dashboardOcean.none_overdrawn')}</span>
         </div>
       </Card>
     );
   }
   return (
-    <Card
-      title="Watchlist"
-      hint={`${data.watchlist.length} overdrawn account${data.watchlist.length === 1 ? '' : 's'}`}
-    >
-      <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+    <Card icon={<ShieldAlert size={18} />} title={t('dashboardOcean.watchlist')} hint={t('dashboardOcean.overdrawn_count', { count: data.watchlist.length })}>
+      <ul className="sb-dash-watch">
         {data.watchlist.map((w) => (
-          <li key={w.id} style={{
-            display: 'flex', alignItems: 'center', gap: '10px',
-            padding: '8px 10px',
-            background: theme.dangerSoft,
-            border: `1px solid ${theme.dangerBorder}`,
-            borderRadius: '8px',
-          }}>
-            <span style={{
-              fontSize: '11px', fontWeight: 700,
-              color: theme.danger, background: '#fff',
-              border: `1px solid ${theme.dangerBorder}`,
-              padding: '2px 7px', borderRadius: '999px',
-              textTransform: 'uppercase', letterSpacing: '.04em',
-              whiteSpace: 'nowrap',
-            }}>Overdrawn</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: '13px', fontWeight: 600, color: theme.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {w.name}
-              </div>
-            </div>
-            <div className="font-mono" style={{ fontSize: '13px', fontWeight: 700, color: theme.danger, whiteSpace: 'nowrap' }}>
-              {fmt2(w.balance)}
-            </div>
+          <li key={w.id}>
+            <span className="sb-pill sb-pill-bad" style={{ marginTop: 0 }}>{t('dashboardOcean.overdrawn')}</span>
+            <span className="sb-dash-ellipsis" style={{ flex: 1, fontWeight: 600 }}>{w.name}</span>
+            <bdi dir="ltr" className="sb-dash-num is-bad">{fmt2(w.balance)}</bdi>
           </li>
         ))}
       </ul>
@@ -373,76 +298,18 @@ function WatchlistCard({ data }: { data: DashboardCards }) {
   );
 }
 
-// ── Public block — 2x2 grid ─────────────────────────────────────────────
-export default function DashboardSummaryCards({
-  from, to, periodLabel,
-}: {
-  /** Phase 100 — the dashboard's period. Omitted = each card's own default. */
-  from?: string;
-  to?: string;
-  /** What the dropdown says, so the cards can repeat it back. */
-  periodLabel?: string;
-} = {}) {
-  const company_id = useAuthStore(s => s.company_id);
-  const ranged = from !== undefined && to !== undefined;
-  const { data, isLoading, isError, error, refetch } = useQuery<DashboardCards>({
-    // The window is part of the key, or switching period would show the
-    // previous period's cached cards.
-    queryKey: ['dashboard_cards', company_id, from ?? null, to ?? null],
-    queryFn:  () => getAdapter().reports.getDashboardCards(
-      company_id!, ranged ? { from: from!, to: to! } : undefined),
-    enabled:  !!company_id,
-  });
-
-  // Loading state — actually loading (no data + no error yet).
-  if (isLoading) {
-    return (
-      <div style={{ padding: '24px 0', fontSize: '13px', color: theme.inkFaint, textAlign: 'center' }}>
-        Loading dashboard cards…
-      </div>
-    );
-  }
-
-  // Error state — surface what went wrong so the user / I can debug.
-  // Previously this branch fell through to the loading message and the
-  // section appeared to hang forever.
-  if (isError || !data) {
-    const msg = error instanceof Error ? error.message : 'No data returned.';
-    return (
-      <div style={{
-        background: theme.dangerSoft, border: `1px solid ${theme.dangerBorder}`,
-        borderRadius: '12px', padding: '14px 18px',
-        display: 'flex', alignItems: 'center', gap: '12px',
-      }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '12px', fontWeight: 700, color: theme.danger, textTransform: 'uppercase', letterSpacing: '.05em' }}>
-            Dashboard cards failed to load
-          </div>
-          <div style={{ marginTop: '2px', fontSize: '12px', color: theme.danger, opacity: .85 }}>{msg}</div>
-        </div>
-        <button
-          onClick={() => refetch()}
-          style={{
-            background: '#fff', border: `1px solid ${theme.dangerBorder}`,
-            color: theme.danger, fontSize: '12px', fontWeight: 600,
-            padding: '6px 12px', borderRadius: '6px', cursor: 'pointer',
-          }}
-        >Retry</button>
-      </div>
-    );
-  }
-
+// ── Loading / error states for the whole block ───────────────────────────
+export function SummaryCardsState({ q }: { q: ReturnType<typeof useDashboardCards> }) {
+  const { t } = useTranslation();
+  if (q.isLoading) return <div className="sb-card sb-empty">{t('dashboardOcean.cards_loading')}</div>;
+  const msg = q.error instanceof Error ? q.error.message : t('dashboardOcean.no_data_returned');
   return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 330px), 1fr))',
-      gap: '16px',
-    }}>
-      <IncomeExpenseCard data={data} periodLabel={periodLabel} />
-      <TopExpensesCard data={data} periodLabel={periodLabel} />
-      <BankAccountsCard data={data} />
-      <WatchlistCard data={data} />
+    <div className="sb-alert sb-alert-danger" role="alert" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <span style={{ flex: 1 }}>
+        <strong style={{ display: 'block' }}>{t('dashboardOcean.cards_failed')}</strong>
+        <span style={{ fontWeight: 400 }}>{msg}</span>
+      </span>
+      <button type="button" className="sb-secondary-btn" onClick={() => q.refetch()}>{t('dashboardOcean.retry')} <ChevronRight size={16} className="sb-flip" aria-hidden="true" /></button>
     </div>
   );
 }
-
