@@ -1415,4 +1415,6 @@
 @media print { .sb-ocean.sb-docx { background: none !important; padding: 0 !important; gap: 0 !important; } }
 .sb-ocean .sb-doc-card label { text-transform: none !important; letter-spacing: 0 !important; font-size: 13px !important; font-weight: 600 !important; color: var(--sb-text-secondary) !important; }
 .sb-ocean .sb-doc-card input:not([type=checkbox]), .sb-ocean .sb-doc-card select { border-radius: var(--sb-radius-sm) !important; min-height: 40px; }
-.sb-ocean .sb-doc-lines { align-self: start; }
+.sb-ocean .grid > .sb-doc-lines { align-self: start; }
+.sb-ocean .sb-doc-lines { min-width: 0; max-width: 100%; }
+.sb-ocean .sb-doc-quote-total { padding: 14px 18px 18px; border-top: 1px solid var(--sb-border); display: flex; }

@@ -3189,5 +3189,13 @@
     "grand_total": "Grand total",
     "paid": "Paid",
     "balance_due": "Balance due"
+  },
+  "quoteOcean": {
+    "salesperson_required": "Salesperson is required",
+    "convert_title": "Create a draft invoice from this quote and open it",
+    "over_limit_body": "{{name}}'s credit limit is {{limit}}. Current outstanding: {{current}}. After this quote ({{total}}), outstanding would be {{projected}} — over by {{over}}.",
+    "over_limit_hint": "This quote doesn't post receivables, but converting it to an invoice will.",
+    "no_customers": "No customers yet.",
+    "add_one": "Add one"
   }
 }
