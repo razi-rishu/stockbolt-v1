@@ -15,6 +15,9 @@ import { EInvoicePanel } from './einvoice-panel';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
+import { StatusBadge } from '@/ui/status-badge';
+import { Pencil, Copy, Banknote, Printer, Eye, AlertTriangle, Plus, X } from 'lucide-react';
+import '@/styles/stockbolt-ocean-teal.css';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { Modal } from '@/ui/modal';
@@ -649,22 +652,8 @@ export default function InvoiceEditorPage() {
   ];
 
   // ── Render ───────────────────────────────────────────────────────────────
-  // Sample-style status pill
-  const statusPill = (s: string) => {
-    const map: Record<string, { bg: string; text: string; border: string }> = {
-      draft:     { bg: '#fffbeb', text: '#b45309', border: '#fde68a' },
-      confirmed: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' },
-      void:      { bg: '#fef2f2', text: '#dc2626', border: '#fecaca' },
-    };
-    const p = map[s] ?? { bg: '#f1f5f9', text: '#64748b', border: '#e2e8f0' };
-    return (
-      <span style={{
-        display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
-        fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
-        background: p.bg, color: p.text, border: `1px solid ${p.border}`,
-      }}>{s}</span>
-    );
-  };
+  // Status pill — the shared, translated badge.
+  const statusPill = (st: string) => <StatusBadge status={st} />;
 
   // Void + Delete confirmation modals — rendered in BOTH the view template
   // and the editor form, so the user can remove a wrong invoice from either
@@ -672,7 +661,7 @@ export default function InvoiceEditorPage() {
   const dangerModals = (
     <>
       <Modal open={voidModal} onClose={() => setVoidModal(false)} title={t('sales.void_invoice')}>
-        <div className="space-y-4">
+        <div className="sb-ocean sb-form sb-modal-form">
           <p className="text-sm text-ink-secondary">{t('sales.void_confirm_text')}</p>
           <Input label={t('sales.void_reason')} value={voidReason} onChange={e => setVoidReason(e.target.value)} />
           <div className="flex justify-end gap-2">
@@ -684,7 +673,7 @@ export default function InvoiceEditorPage() {
         </div>
       </Modal>
       <Modal open={deleteModal} onClose={() => setDeleteModal(false)} title={t('sales.delete_invoice')}>
-        <div className="space-y-4">
+        <div className="sb-ocean sb-form sb-modal-form">
           <p className="text-sm text-ink-secondary">{t('sales.delete_confirm_text')}</p>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setDeleteModal(false)}>{t('common.cancel')}</Button>
@@ -716,23 +705,22 @@ export default function InvoiceEditorPage() {
     });
     const doc = withPaymentDetails(docBase, 'invoice', docPayments);
     return (
-      <div className="signature-print-scope" style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
+      // Ocean Teal (UI v1.1): look only — same actions, e-invoice panel and
+      // printed template as before.
+      <div className="signature-print-scope sb-ocean sb-docx" data-testid="invoice-view-ocean">
         {/* Top action bar (hidden when printing) */}
-        <div
-          data-print-hide
-          style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
-        >
-          <BackButton to="/sales/invoices" label={t('sales.invoices_title')} confirm={confirmLeave} />
-          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
-            {existing.invoice_number}
-          </h1>
-          {statusPill(status)}
-          <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+        <div data-print-hide className="sb-card sb-doc-bar">
+          <div className="sb-doc-bar-id">
+            <BackButton to="/sales/invoices" label={t('sales.invoices_title')} confirm={confirmLeave} />
+            <bdi dir="ltr" className="sb-doc-bar-no">{existing.invoice_number}</bdi>
+            {statusPill(status)}
+          </div>
+          <div className="sb-doc-bar-actions">
             {/* Edit opens the full-page editor (/edit) — the read-only view
                 stays in the split workspace; save returns here. */}
             {canEdit && (
               <Button size="sm" onClick={() => navigate(`/sales/invoices/${existing.id}/edit`)}>
-                ✎ {t('common.edit') || 'Edit'}
+                <Pencil size={15} aria-hidden="true" /> {t('common.edit') || 'Edit'}
               </Button>
             )}
             {isConfirmed && !editMode && (
@@ -768,7 +756,7 @@ export default function InvoiceEditorPage() {
                   } },
                 });
               }}
-            >⧉ {t('common.duplicate')}</Button>
+            ><Copy size={15} aria-hidden="true" /> {t('common.duplicate')}</Button>
             {/* Money already on account is money you can settle this with.
                 It renders itself away when the customer has no advance or
                 this invoice is already paid. */}
@@ -781,12 +769,12 @@ export default function InvoiceEditorPage() {
             )}
             {isConfirmed && (
               <Button size="sm" onClick={() => navigate(`/sales/payments/new?contact=${existing.contact_id}`)}>
-                💰 {t('sales.receive_payment') || 'Record Receipt'}
+                <Banknote size={15} aria-hidden="true" /> {t('sales.receive_payment') || 'Record Receipt'}
               </Button>
             )}
             {existing?.id && (
               <Button variant="ghost" size="sm" onClick={() => window.print()}>
-                🖨 {t('print.print') || 'Print'}
+                <Printer size={15} aria-hidden="true" /> {t('print.print') || 'Print'}
               </Button>
             )}
             {/* Remove a wrong invoice straight from the view page:
@@ -815,8 +803,8 @@ export default function InvoiceEditorPage() {
           </div>
         )}
 
-        {/* The A4 document, floating on a slate canvas */}
-        <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
+        {/* The A4 document, floating on the canvas */}
+        <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
         {dangerModals}
@@ -825,20 +813,24 @@ export default function InvoiceEditorPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '64px' }}>
+    // Ocean Teal (UI v1.1): look only — same fields, lines, calculations,
+    // save / confirm / edit-repost / void / delete and previews as before.
+    <div className="sb-ocean sb-docx sb-docx-edit" data-testid="invoice-edit-ocean">
       {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-        <BackButton to="/sales/invoices" label={t('sales.invoices_title')} confirm={confirmLeave} />
-        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
-          {isNew ? t('sales.new_invoice') : existing?.invoice_number ?? '…'}
-        </h1>
-        {!isNew && statusPill(status)}
-        <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+      <div className="sb-card sb-doc-bar">
+        <div className="sb-doc-bar-id">
+          <BackButton to="/sales/invoices" label={t('sales.invoices_title')} confirm={confirmLeave} />
+          {isNew
+            ? <h1 className="sb-doc-bar-no">{t('sales.new_invoice')}</h1>
+            : <bdi dir="ltr" className="sb-doc-bar-no">{existing?.invoice_number ?? '…'}</bdi>}
+          {!isNew && statusPill(status)}
+        </div>
+        <div className="sb-doc-bar-actions">
           {/* Back to the read-only view (the split workspace) for saved
                invoices. Hidden on brand-new ones (nothing saved to view). */}
           {!isNew && existing && existing.status !== 'draft' && (
             <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate(`/sales/invoices/${existing.id}`); }}>
-              {t('common.view') || 'View'}
+              <Eye size={15} aria-hidden="true" /> {t('common.view') || 'View'}
             </Button>
           )}
           {/* ── New invoice (never saved yet) ── */}
@@ -871,7 +863,7 @@ export default function InvoiceEditorPage() {
           {/* Print (any non-new invoice) */}
           {!isNew && existing?.id && (
             <Button variant="ghost" size="sm" onClick={() => window.open(`/print/invoice/${existing.id}`, '_blank')}>
-              🖨 {t('print.print')}
+              <Printer size={15} aria-hidden="true" /> {t('print.print')}
             </Button>
           )}
           {/* Edit & Void (confirmed only) */}
@@ -902,51 +894,46 @@ export default function InvoiceEditorPage() {
         </div>
       </div>
 
-      {error && (
-        <div style={{
-          background: '#fef2f2', border: '1px solid #fecaca',
-          borderRadius: '8px', padding: '10px 16px', fontSize: '13px', color: '#dc2626',
-        }}>{error}</div>
-      )}
+      {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
 
       {/* Customer Insight Panel — appears once a customer is picked.
            Shows outstanding, overdue, credit limit, last payment in a
            compact horizontal card so the salesperson has full context
            while writing the invoice. */}
       {selectedCustomer && (
-        <div className="glass-card" style={{ padding: '16px' }}>
+        <div className="sb-card sb-doc-insight">
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <div>
-              <p className="text-xs uppercase tracking-wide text-ink-tertiary">Outstanding</p>
+              <p className="sb-info-label">{t('invOcean.outstanding')}</p>
               <p className={`mt-0.5 text-lg font-mono font-semibold ${currentOutstanding > 0 ? 'text-amber-700' : 'text-ink-primary'}`}>
                 {header.currency} {fmt(currentOutstanding)}
               </p>
               <p className="text-xs text-ink-tertiary mt-0.5">
-                {openCustomerInvoices.filter(inv => inv.id !== id).length} open invoice{openCustomerInvoices.length === 1 ? '' : 's'}
+                {t('invOcean.open_invoices', { count: openCustomerInvoices.filter(inv => inv.id !== id).length })}
               </p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-ink-tertiary">Overdue</p>
+              <p className="sb-info-label">{t('invOcean.overdue')}</p>
               <p className={`mt-0.5 text-lg font-mono font-semibold ${overdueInvoices.length > 0 ? 'text-red-600' : 'text-ink-primary'}`}>
                 {overdueInvoices.length}
               </p>
               <p className="text-xs text-ink-tertiary mt-0.5">
                 {overdueInvoices.length > 0
-                  ? `${fmt(overdueInvoices.reduce((s, inv) => s + Number(inv.outstanding ?? 0), 0))} past due`
-                  : 'No overdue'}
+                  ? t('invOcean.past_due', { amount: fmt(overdueInvoices.reduce((s, inv) => s + Number(inv.outstanding ?? 0), 0)) })
+                  : t('invOcean.no_overdue')}
               </p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-ink-tertiary">Credit limit</p>
+              <p className="sb-info-label">{t('invOcean.credit_limit')}</p>
               <p className="mt-0.5 text-lg font-mono font-semibold text-ink-primary">
                 {creditLimit > 0 ? `${header.currency} ${fmt(creditLimit)}` : '—'}
               </p>
               <p className="text-xs text-ink-tertiary mt-0.5">
-                {creditLimit > 0 ? `${fmt(Math.max(0, creditLimit - currentOutstanding))} available` : 'No limit set'}
+                {creditLimit > 0 ? t('invOcean.available', { amount: fmt(Math.max(0, creditLimit - currentOutstanding)) }) : t('invOcean.no_limit')}
               </p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-ink-tertiary">Last payment</p>
+              <p className="sb-info-label">{t('invOcean.last_payment')}</p>
               {lastPayment ? (
                 <>
                   <p className="mt-0.5 text-lg font-mono font-semibold text-ink-primary">
@@ -957,7 +944,7 @@ export default function InvoiceEditorPage() {
               ) : (
                 <>
                   <p className="mt-0.5 text-lg font-mono font-semibold text-ink-tertiary">—</p>
-                  <p className="text-xs text-ink-tertiary mt-0.5">No payments yet</p>
+                  <p className="text-xs text-ink-tertiary mt-0.5">{t('invOcean.no_payments')}</p>
                 </>
               )}
             </div>
@@ -970,28 +957,27 @@ export default function InvoiceEditorPage() {
            exceeds the customer's credit_limit. credit_limit = 0 means
            "no limit set" and is intentionally not enforced. */}
       {overCreditLimit && selectedCustomer && (
-        <div className="rounded-input border border-amber-300 bg-amber-50 px-4 py-3 text-sm">
-          <p className="font-semibold text-amber-900">
-            ⚠ Over credit limit
+        <div className="sb-alert sb-alert-warn" style={{ fontWeight: 400 }} role="status">
+          <p style={{ margin: 0, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <AlertTriangle size={16} aria-hidden="true" /> {t('invOcean.over_limit')}
           </p>
-          <p className="mt-1 text-amber-800">
-            <strong>{selectedCustomer.name}</strong>'s credit limit is{' '}
-            <span className="font-mono">{header.currency} {fmt(creditLimit)}</span>.
-            Current outstanding: <span className="font-mono">{fmt(currentOutstanding)}</span>.
-            After this invoice ({fmt(roundedTotal)}), outstanding will be{' '}
-            <span className="font-mono font-semibold">{fmt(projectedOutstanding)}</span>{' '}
-            — over by <span className="font-mono font-semibold">{fmt(creditOverage)}</span>.
+          <p style={{ margin: '4px 0 0' }}>
+            {t('invOcean.over_limit_body', {
+              name: selectedCustomer.name,
+              limit: `${header.currency} ${fmt(creditLimit)}`,
+              current: fmt(currentOutstanding),
+              total: fmt(roundedTotal),
+              projected: fmt(projectedOutstanding),
+              over: fmt(creditOverage),
+            })}
           </p>
-          <p className="mt-1 text-xs text-amber-700">
-            Save is still allowed — this is a warning, not a block. Raise the customer's
-            credit limit on their detail page to clear this.
-          </p>
+          <p style={{ margin: '4px 0 0', fontSize: 13 }}>{t('invOcean.over_limit_hint')}</p>
         </div>
       )}
 
       {/* Invoice Header */}
-      <div className="glass-card" style={{ padding: '20px' }}>
-        <h2 className="mb-4 text-sm font-semibold text-ink-primary">{t('sales.invoice_details')}</h2>
+      <div className="sb-card sb-form sb-doc-card">
+        <h2 className="sb-doc-card-title">{t('sales.invoice_details')}</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="col-span-2 md:col-span-1">
             <label className="mb-1 block text-sm font-medium text-ink-primary">
@@ -1008,14 +994,14 @@ export default function InvoiceEditorPage() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-ink-primary">
-              Salesperson <span className="text-danger-500">*</span>
+              {t('invOcean.salesperson')} <span className="text-danger-500">*</span>
             </label>
             <SearchableSelect
               options={salespeople.map(p => ({ value: p.id, label: p.name }))}
               value={header.salesperson_id}
               disabled={!canEdit || isVoid}
               onChange={(v) => setHeader(h => ({ ...h, salesperson_id: v }))}
-              placeholder={salespeople.length === 0 ? 'No salespeople — add in Settings' : 'Select salesperson'}
+              placeholder={salespeople.length === 0 ? t('invOcean.no_salespeople') : t('invOcean.select_salesperson')}
               panelWidth={280}
             />
           </div>
@@ -1046,7 +1032,7 @@ export default function InvoiceEditorPage() {
             value={header.warehouse_id}
             disabled={!canEdit || isVoid}
             onChange={e => setHeader(h => ({ ...h, warehouse_id: e.target.value }))}
-            error={canEdit && lines.some(l => l.product_id) && !header.warehouse_id ? 'Required for stock items' : undefined}
+            error={canEdit && lines.some(l => l.product_id) && !header.warehouse_id ? t('invOcean.wh_required') : undefined}
           />
           <Input
             label={t('sales.reference')}
@@ -1096,19 +1082,19 @@ export default function InvoiceEditorPage() {
 
       {/* Line Items + Sticky Sidebar */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
-      <div className="glass-card">
-        <div className="border-b border-border-subtle px-5 py-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-ink-primary">{t('sales.line_items')}</h2>
+      <div className="sb-card sb-doc-card sb-doc-lines">
+        <div className="sb-doc-lines-head">
+          <h2 className="sb-doc-card-title" style={{ margin: 0 }}>{t('sales.line_items')}</h2>
           {canEdit && showTax && (
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
-              <span style={{ fontSize: '12px', color: pricesInclusive ? '#7c3aed' : '#64748b', fontWeight: 500 }}>
-                {pricesInclusive ? 'Tax-inclusive prices' : 'Tax-exclusive prices'}
+              <span style={{ fontSize: '13px', color: pricesInclusive ? 'var(--sb-primary-dark)' : 'var(--sb-text-secondary)', fontWeight: 600 }}>
+                {pricesInclusive ? t('invOcean.tax_inclusive') : t('invOcean.tax_exclusive')}
               </span>
               <div
                 onClick={() => { setPricesInclusive(v => !v); setDirty(true); }}
                 style={{
                   width: '36px', height: '20px', borderRadius: '999px', cursor: 'pointer',
-                  background: pricesInclusive ? '#7c3aed' : '#cbd5e1',
+                  background: pricesInclusive ? 'var(--sb-primary)' : '#cbd5e1',
                   position: 'relative', transition: 'background 0.2s',
                 }}
               >
@@ -1132,8 +1118,8 @@ export default function InvoiceEditorPage() {
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('sales.unit_price')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '84px' }}>{t('sales.disc_pct')}</th>
                 {showTax && <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('sales.tax')}</th>}
-                <th className="px-3 py-2 text-end font-medium" style={{ width: '76px' }} title="Available stock (sum across warehouses)">Stock</th>
-                <th className="px-3 py-2 text-end font-medium" style={{ width: '76px' }} title="Margin % vs MAC. Negative = selling at a loss.">Margin</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '76px' }} title={t('invOcean.stock_title')}>{t('invOcean.stock')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '76px' }} title={t('invOcean.margin_title')}>{t('invOcean.margin')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('sales.line_total')}</th>
                 {canEdit && !isVoid && <th style={{ width: '36px' }} />}
               </tr>
@@ -1222,16 +1208,16 @@ export default function InvoiceEditorPage() {
                                 {highlightMatch(row.name, query)}
                               </div>
                               <div className={`mt-0.5 text-[11px] truncate ${subCls}`}>
-                                SKU: <span className="font-mono">{highlightMatch(row.sku, query)}</span>
+                                {t('invOcean.sku')} <span className="font-mono">{highlightMatch(row.sku, query)}</span>
                                 {row.brand_name && <> · {row.brand_name}</>}
                                 {row.oe_number && <> · OEM {highlightMatch(row.oe_number, query)}</>}
-                                {mac > 0 && <> · Rate {row.unit_code ? `${row.unit_code} ` : ''}{Number(row.selling_price ?? 0).toFixed(2)}</>}
+                                {mac > 0 && <> · {t('invOcean.rate')} {row.unit_code ? `${row.unit_code} ` : ''}{Number(row.selling_price ?? 0).toFixed(2)}</>}
                               </div>
                             </div>
                             {/* RIGHT: stock-on-hand label + value */}
                             <div className="flex-none text-end">
                               <div className={`text-[10px] uppercase tracking-wide ${stockLabelCls}`}>
-                                Stock on Hand
+                                {t('invOcean.stock_on_hand')}
                               </div>
                               <div className={`text-sm ${stockNumCls}`}>
                                 {qty.toFixed(2)} {row.unit_code ?? 'pcs'}
@@ -1245,7 +1231,7 @@ export default function InvoiceEditorPage() {
                       className="mt-1 w-full rounded border border-transparent bg-transparent px-2 py-0.5 text-[11px] text-ink-tertiary placeholder:text-ink-tertiary hover:border-border-subtle focus:border-border-strong focus:bg-surface-subtle focus:text-ink-secondary disabled:opacity-60"
                       value={line.description}
                       disabled={!canEdit || isVoid}
-                      placeholder={t('sales.description') + ' (optional)'}
+                      placeholder={t('invOcean.description_optional', { label: t('sales.description') })}
                       onChange={e => updateLine(line._key, { description: e.target.value })}
                     />
                   </td>
@@ -1316,10 +1302,10 @@ export default function InvoiceEditorPage() {
                           : 'text-emerald-700';
                     return (
                       <>
-                        <td className={`px-3 py-1.5 align-top text-end font-mono ${stockCls}`} title={pid ? `On-hand: ${fmt(stock)} · After this line: ${fmt(projectedStock)}` : ''}>
+                        <td className={`px-3 py-1.5 align-top text-end font-mono ${stockCls}`} title={pid ? t('invOcean.stock_tip', { onhand: fmt(stock), after: fmt(projectedStock) }) : ''}>
                           {!pid ? '—' : projectedStock < 0 ? `${fmt(projectedStock)} ⚠` : fmt(stock)}
                         </td>
-                        <td className={`px-3 py-1.5 align-top text-end font-mono ${marginCls}`} title={pid && mac > 0 ? `MAC: ${fmt(mac)} · Net price: ${fmt(netPrice)}` : 'No cost basis yet'}>
+                        <td className={`px-3 py-1.5 align-top text-end font-mono ${marginCls}`} title={pid && mac > 0 ? t('invOcean.margin_tip', { mac: fmt(mac), net: fmt(netPrice) }) : t('invOcean.no_cost')}>
                           {!pid || mac <= 0 ? '—' : `${margin.toFixed(1)}%`}
                         </td>
                       </>
@@ -1331,11 +1317,13 @@ export default function InvoiceEditorPage() {
                   {canEdit && !isVoid && (
                     <td className="px-3 py-1.5 align-top">
                       <button
-                        className="text-red-400 hover:text-red-600 disabled:opacity-30"
+                        type="button"
+                        className="sb-doc-line-del"
                         disabled={lines.length === 1}
                         onClick={() => removeLine(line._key)}
+                        aria-label={t('invOcean.remove_line')}
                       >
-                        ×
+                        <X size={16} aria-hidden="true" />
                       </button>
                     </td>
                   )}
@@ -1346,12 +1334,9 @@ export default function InvoiceEditorPage() {
         </div>
 
         {canEdit && !isVoid && (
-          <div className="border-t border-border-subtle px-5 py-2">
-            <button
-              className="text-xs text-brand-600 hover:text-brand-700"
-              onClick={addLine}
-            >
-              + {t('sales.add_line')}
+          <div className="sb-doc-add-line">
+            <button type="button" className="sb-row-link text-brand-600" onClick={addLine}>
+              <Plus size={16} aria-hidden="true" /> {t('sales.add_line')}
             </button>
           </div>
         )}
@@ -1363,11 +1348,9 @@ export default function InvoiceEditorPage() {
            user scrolls long line lists. Highlights Grand Total and (for
            confirmed invoices) Balance Due. */}
       <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
-        <div className="glass-card" style={{ overflow: 'hidden' }}>
-          <div className="border-b border-border-subtle px-4 py-2.5 bg-surface-muted/40">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-tertiary">Summary</h3>
-          </div>
-          <div className="p-4 space-y-2 text-sm">
+        <div className="sb-card sb-doc-summary">
+          <h3 className="sb-doc-card-title">{t('invOcean.summary')}</h3>
+          <div className="sb-doc-summary-rows">
             <div className="flex justify-between text-ink-secondary">
               <span>{t('sales.subtotal')}</span>
               <span className="font-mono">{fmt(subtotal)}</span>
@@ -1391,7 +1374,7 @@ export default function InvoiceEditorPage() {
                   <button
                     type="button"
                     onClick={() => { setRoundOffOverride(null); setDirty(true); }}
-                    title="Return to automatic rounding from Settings → Company Settings"
+                    title={t('invOcean.round_auto_title')}
                     className="rounded-full border border-border-subtle px-2 py-0.5 text-[10px] font-semibold text-brand-600 hover:bg-brand-50"
                   >
                     {t('sales.round_off_auto')}
@@ -1402,13 +1385,13 @@ export default function InvoiceEditorPage() {
                 type="number" step="0.01" min="-1" max="1"
                 value={roundOffOverride !== null ? roundOffOverride : String(roundOff)}
                 onChange={e => { setRoundOffOverride(e.target.value); setDirty(true); }}
-                title="Automatic from Settings; type a value (±1.00) to round manually"
+                title={t('invOcean.round_manual_title')}
                 className="h-7 w-24 rounded border border-border-subtle px-2 text-end font-mono text-sm"
               />
             </div>
-            <div className="flex justify-between border-t border-border-subtle pt-2.5 mt-1 text-base font-semibold text-ink-primary">
-              <span>Grand Total</span>
-              <span className="font-mono">{header.currency} {fmt(roundedTotal)}</span>
+            <div className="sb-doc-grand">
+              <span>{t('invOcean.grand_total')}</span>
+              <bdi dir="ltr">{header.currency} {fmt(roundedTotal)}</bdi>
             </div>
             {(() => {
               // Paid amount + balance: only meaningful for an existing
@@ -1426,11 +1409,11 @@ export default function InvoiceEditorPage() {
               return (
                 <>
                   <div className="flex justify-between text-ink-secondary border-t border-border-subtle pt-2.5">
-                    <span>Paid</span>
+                    <span>{t('invOcean.paid')}</span>
                     <span className="font-mono text-emerald-700">{fmt(paid)}</span>
                   </div>
                   <div className={`flex justify-between font-semibold ${balanceDue > 0.005 ? 'text-amber-700' : 'text-emerald-700'}`}>
-                    <span>Balance Due</span>
+                    <span>{t('invOcean.balance_due')}</span>
                     <span className="font-mono">{header.currency} {fmt(balanceDue)}</span>
                   </div>
                 </>

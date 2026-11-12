@@ -1384,3 +1384,35 @@
 .sb-ocean .sb-inv-row-top, .sb-ocean .sb-inv-row-mid { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 .sb-ocean .sb-inv-amt { font-size: 14px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .sb-ocean .sb-chips .sb-chip { font: inherit; }
+
+/* ── Sales documents: invoice view + editor (shared with later editors) ──── */
+.sb-ocean.sb-docx { display: flex; flex-direction: column; gap: 14px; padding-bottom: 48px; background: transparent; }
+.sb-ocean .sb-doc-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; }
+.sb-ocean .sb-doc-bar-id { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; }
+.sb-ocean .sb-doc-bar-no { margin: 0; font-size: 20px; font-weight: 800; color: var(--sb-text); font-family: inherit; }
+.sb-ocean .sb-doc-bar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sb-ocean .sb-doc-bar-actions > button, .sb-ocean .sb-doc-bar-actions > a > button { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; }
+.sb-ocean .sb-doc-canvas { border-radius: var(--sb-radius-lg); overflow: auto; }
+.sb-ocean .sb-doc-card { padding: 18px; }
+.sb-ocean .sb-doc-card-title { margin: 0 0 14px; font-size: 16px; font-weight: 700; color: var(--sb-text); }
+.sb-ocean .sb-doc-insight { padding: 16px; }
+.sb-ocean .sb-doc-insight .text-lg { color: var(--sb-text); }
+.sb-ocean .sb-doc-lines { padding: 0; overflow: hidden; }
+.sb-ocean .sb-doc-lines-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--sb-border); }
+.sb-ocean .sb-doc-lines table thead tr { background: var(--sb-background) !important; color: var(--sb-text-secondary); }
+.sb-ocean .sb-doc-lines table th { font-size: 12px; font-weight: 700; }
+.sb-ocean .sb-doc-lines table input, .sb-ocean .sb-doc-lines table select { border-radius: 8px; border-color: var(--sb-border); min-height: 32px; font-size: 13px; }
+.sb-ocean .sb-doc-lines table input:focus, .sb-ocean .sb-doc-lines table select:focus { outline: none; border-color: var(--sb-primary); box-shadow: 0 0 0 3px rgba(0, 143, 135, .15); background: #fff; }
+.sb-ocean .sb-doc-line-del { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 999px; background: transparent; color: var(--sb-danger); cursor: pointer; }
+.sb-ocean .sb-doc-line-del:hover:not(:disabled) { background: var(--sb-danger-bg); }
+.sb-ocean .sb-doc-line-del:disabled { opacity: .3; cursor: default; }
+.sb-ocean .sb-doc-add-line { padding: 6px 14px 10px; border-top: 1px solid var(--sb-border); }
+.sb-ocean .sb-doc-summary { padding: 16px; }
+.sb-ocean .sb-doc-summary-rows { display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.sb-ocean .sb-doc-summary-rows .font-mono { font-variant-numeric: tabular-nums; }
+.sb-ocean .sb-doc-grand { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-top: 4px; padding: 12px; border-radius: var(--sb-radius-md); background: var(--sb-primary-soft); color: var(--sb-primary-dark); font-size: 17px; font-weight: 800; }
+.sb-ocean.sb-docx .glass-card { background: var(--sb-surface); border-color: var(--sb-border); border-radius: var(--sb-radius-lg); box-shadow: var(--sb-shadow); backdrop-filter: none; }
+@media print { .sb-ocean.sb-docx { background: none !important; padding: 0 !important; gap: 0 !important; } }
+.sb-ocean .sb-doc-card label { text-transform: none !important; letter-spacing: 0 !important; font-size: 13px !important; font-weight: 600 !important; color: var(--sb-text-secondary) !important; }
+.sb-ocean .sb-doc-card input:not([type=checkbox]), .sb-ocean .sb-doc-card select { border-radius: var(--sb-radius-sm) !important; min-height: 40px; }
+.sb-ocean .sb-doc-lines { align-self: start; }
