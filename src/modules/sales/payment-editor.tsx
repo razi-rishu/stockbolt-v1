@@ -9,6 +9,9 @@ import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
+import { StatusBadge } from '@/ui/status-badge';
+import { Pencil, Printer, Eye, AlertTriangle } from 'lucide-react';
+import '@/styles/stockbolt-ocean-teal.css';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { ContactPicker } from '@/components/contact-picker';
@@ -283,7 +286,7 @@ export default function PaymentEditorPage() {
   const persistDraft = async (): Promise<PaymentRow> => {
       if (!header.contact_id) throw new Error(t('payments.error_contact_required'));
       if (!header.amount || isNaN(parseFloat(header.amount))) throw new Error(t('payments.error_amount_required'));
-      if (parseFloat(header.amount) <= 0) throw new Error('Amount must be greater than zero');
+      if (parseFloat(header.amount) <= 0) throw new Error(t('rcptOcean.err_amount'));
       if (!header.bank_account_id) throw new Error('Bank / cash account is required — every receipt must hit a real GL account');
 
       // Build allocations from the panel inputs — for both new payments
@@ -411,8 +414,8 @@ export default function PaymentEditorPage() {
   // the linked cheque). One click from the editor.
   const pdcMutation = useMutation({
     mutationFn: async () => {
-      if (!chequeNumber.trim()) throw new Error('Cheque number is required for a PDC');
-      if (!chequeDueDate) throw new Error('Cheque due date is required for a PDC');
+      if (!chequeNumber.trim()) throw new Error(t('rcptOcean.err_cheque_no'));
+      if (!chequeDueDate) throw new Error(t('rcptOcean.err_cheque_due'));
       const saved = await persistDraft();
       const pid = isNew ? saved.id : id!;
       return getAdapter().payments.confirmAsPdc(pid, {
@@ -489,7 +492,7 @@ export default function PaymentEditorPage() {
   const dangerModalsEl = (
     <>
       <Modal open={deleteModal} onClose={() => setDeleteModal(false)} title={t('payments.delete_payment')}>
-        <div className="space-y-4">
+        <div className="sb-ocean sb-form sb-modal-form">
           <p className="text-sm text-ink-secondary">{t('payments.delete_confirm_text')}</p>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setDeleteModal(false)}>{t('common.cancel')}</Button>
@@ -500,7 +503,7 @@ export default function PaymentEditorPage() {
         </div>
       </Modal>
       <Modal open={voidModal} onClose={() => setVoidModal(false)} title={t('payments.void_payment')}>
-        <div className="space-y-4">
+        <div className="sb-ocean sb-form sb-modal-form">
           <p className="text-sm text-ink-secondary">{t('payments.void_confirm_text')}</p>
           <Input label={t('payments.void_reason')} value={voidReason} onChange={e => setVoidReason(e.target.value)} />
           <div className="flex justify-end gap-2">
@@ -513,7 +516,7 @@ export default function PaymentEditorPage() {
       </Modal>
       {/* Phase 18 — confirm before reversing a posted receipt for editing. */}
       <Modal open={reopenModal} onClose={() => setReopenModal(false)} title={t('payments.edit_payment') || 'Edit payment'}>
-        <div className="space-y-4">
+        <div className="sb-ocean sb-form sb-modal-form">
           <p className="text-sm text-ink-secondary">
             {t('payments.reopen_confirm_text') || 'Editing this payment reverses its posted journal entries and reopens it as a draft. Any invoices it paid will reopen. You can change it and confirm again.'}
           </p>
@@ -533,7 +536,7 @@ export default function PaymentEditorPage() {
     { value: '', label: t('payments.select_bank') },
     ...bankAccounts.map(b => ({
       value: b.id,
-      label: `${b.name} · ${b.account_type === 'cash' ? 'Cash' : 'Bank'}`,
+      label: `${b.name} · ${b.account_type === 'cash' ? t('rcptOcean.cash') : t('rcptOcean.bank')}`,
     })),
   ];
   const classOpts = [
@@ -551,7 +554,7 @@ export default function PaymentEditorPage() {
     { value: '', label: t('payments.select_invoice') },
     ...applyTargets.map(inv => ({
       value: inv.id,
-      label: `${inv.invoice_number} — ${inv.currency} ${fmt(inv.outstanding)} outstanding`,
+      label: t('rcptOcean.inv_option', { no: inv.invoice_number, amount: `${inv.currency} ${fmt(inv.outstanding)}` }),
     })),
   ];
 
@@ -569,13 +572,7 @@ export default function PaymentEditorPage() {
     : 0;
 
   // Sample-style status pill helper
-  const pill = (text: string, bg: string, color: string, border: string) => (
-    <span style={{
-      display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
-      fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
-      background: bg, color, border: `1px solid ${border}`,
-    }}>{text}</span>
-  );
+  const pill = (text: string, tone: string) => <span className={`sb-pill ${tone}`} style={{ marginTop: 0 }}>{text}</span>;
 
   // Phase 14.05 — view-mode renderer (Signature template).
   // Phase 14.08 — bypass when the user landed via ?apply=1 so the editor
@@ -593,31 +590,25 @@ export default function PaymentEditorPage() {
       invoices: allInvoices.map(i => ({ id: i.id, invoice_number: i.invoice_number, date: i.date as unknown as string, total_amount: i.total_amount })),
     });
     return (
-      <div className="signature-print-scope" style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
-        <div
-          data-print-hide
-          style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
-        >
-          <BackButton to="/sales/payments" label={t('payments.title')} confirm={confirmLeave} />
-          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>
-            {existing.payment_number}
-          </h1>
-          <span style={{
-            display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
-            fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
-            background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
-          }}>{status}</span>
-          <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+      // Ocean Teal (UI v1.1): look only — same actions and printed receipt.
+      <div className="signature-print-scope sb-ocean sb-docx" data-testid="receipt-view-ocean">
+        <div data-print-hide className="sb-card sb-doc-bar">
+          <div className="sb-doc-bar-id">
+            <BackButton to="/sales/payments" label={t('payments.title')} confirm={confirmLeave} />
+            <bdi dir="ltr" className="sb-doc-bar-no">{existing.payment_number}</bdi>
+            <StatusBadge status={status} />
+          </div>
+          <div className="sb-doc-bar-actions">
             {canEdit && (
               <Button variant="ghost" size="sm" onClick={() => setViewMode(false)}>
-                ✎ {t('common.edit') || 'Edit'}
+                <Pencil size={15} aria-hidden="true" /> {t('common.edit') || 'Edit'}
               </Button>
             )}
             {/* Phase 18 — a confirmed receipt can be edited by reversing its
                 posting and reopening it as a draft (un-reconcile first). */}
             {isConfirmed && !isReconciled && (
               <Button variant="ghost" size="sm" onClick={() => setReopenModal(true)}>
-                ✎ {t('common.edit') || 'Edit'}
+                <Pencil size={15} aria-hidden="true" /> {t('common.edit') || 'Edit'}
               </Button>
             )}
             {/* Only when there's unallocated credit left to apply. A fully
@@ -629,7 +620,7 @@ export default function PaymentEditorPage() {
             )}
             {existing?.id && (
               <Button variant="ghost" size="sm" onClick={() => window.print()}>
-                🖨 {t('print.print') || 'Print'}
+                <Printer size={15} aria-hidden="true" /> {t('print.print') || 'Print'}
               </Button>
             )}
             {isConfirmed && !isReconciled && (
@@ -644,13 +635,8 @@ export default function PaymentEditorPage() {
             )}
           </div>
         </div>
-        {error && (
-          <div style={{
-            background: theme.dangerSoft, border: `1px solid ${theme.dangerBorder}`,
-            borderRadius: '8px', padding: '10px 16px', fontSize: '13px', color: theme.danger,
-          }}>{error}</div>
-        )}
-        <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
+        {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+        <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
         {dangerModalsEl}
@@ -659,32 +645,35 @@ export default function PaymentEditorPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '64px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-        <BackButton to="/sales/payments" label={t('payments.title')} confirm={confirmLeave} />
-        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>
-          {isNew ? t('payments.new_payment') : existing?.payment_number ?? '…'}
-        </h1>
-        {!isNew && (
-          <>
-            {status === 'draft'     && pill(status, '#fffbeb', '#b45309', '#fde68a')}
-            {status === 'confirmed' && pill(status, '#f0fdf4', '#15803d', '#bbf7d0')}
-            {status === 'void'      && pill(status, '#fef2f2', '#dc2626', '#fecaca')}
-            {(() => {
-              const alloc = (existing as (PaymentRow & { allocation_status?: 'unallocated' | 'partial' | 'full' | null }) | null | undefined)?.allocation_status;
-              if (status !== 'confirmed' || !alloc) return null;
-              if (alloc === 'unallocated') return pill('Advance', theme.purpleSoft, theme.purple, theme.purpleBorder);
-              if (alloc === 'partial')     return pill('Partial', '#fffbeb', '#b45309', '#fde68a');
-              if (alloc === 'full')        return pill('Fully applied', '#eff6ff', '#1d4ed8', '#bfdbfe');
-              return null;
-            })()}
-            {isReconciled && status === 'confirmed' && pill('Reconciled', '#ecfdf5', '#059669', '#a7f3d0')}
-          </>
-        )}
-        <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+    // Ocean Teal (UI v1.1): look only — same fields, allocation (FIFO
+    // auto-fill), discounts, PDC, save / confirm / void / delete / apply
+    // advance and previews as before.
+    <div className="sb-ocean sb-docx sb-docx-edit" data-testid="receipt-edit-ocean">
+      <div className="sb-card sb-doc-bar">
+        <div className="sb-doc-bar-id">
+          <BackButton to="/sales/payments" label={t('payments.title')} confirm={confirmLeave} />
+          {isNew
+            ? <h1 className="sb-doc-bar-no">{t('payments.new_payment')}</h1>
+            : <bdi dir="ltr" className="sb-doc-bar-no">{existing?.payment_number ?? '…'}</bdi>}
+          {!isNew && (
+            <>
+              <StatusBadge status={status} />
+              {(() => {
+                const alloc = (existing as (PaymentRow & { allocation_status?: 'unallocated' | 'partial' | 'full' | null }) | null | undefined)?.allocation_status;
+                if (status !== 'confirmed' || !alloc) return null;
+                if (alloc === 'unallocated') return pill(t('salesOcean.alloc_advance'), '');
+                if (alloc === 'partial')     return pill(t('salesOcean.alloc_partial'), 'sb-pill-warn');
+                if (alloc === 'full')        return pill(t('salesOcean.alloc_full'), 'sb-pill-good');
+                return null;
+              })()}
+              {isReconciled && status === 'confirmed' && pill(t('salesOcean.reconciled'), 'sb-pill-good')}
+            </>
+          )}
+        </div>
+        <div className="sb-doc-bar-actions">
           {!isNew && existing && existing.status !== 'draft' && (
             <Button variant="ghost" size="sm" onClick={() => setViewMode(true)}>
-              {t('common.view') || 'View'}
+              <Eye size={15} aria-hidden="true" /> {t('common.view') || 'View'}
             </Button>
           )}
           {canEdit && (
@@ -721,29 +710,17 @@ export default function PaymentEditorPage() {
         </div>
       </div>
 
-      {error && (
-        <div style={{
-          background: theme.dangerSoft, border: `1px solid ${theme.dangerBorder}`,
-          borderRadius: '8px', padding: '10px 16px', fontSize: '13px', color: theme.danger,
-        }}>{error}</div>
-      )}
+      {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
 
       {staleAllocations.length > 0 && (
-        <div style={{
-          background: theme.warnSoft, border: `1px solid ${theme.warnBorder}`,
-          borderRadius: '8px', padding: '10px 16px', fontSize: '13px', color: theme.warn,
-        }}>
-          <strong>Stale allocation{staleAllocations.length === 1 ? '' : 's'} detected.</strong>{' '}
-          {staleAllocations.length} previously-allocated invoice{staleAllocations.length === 1 ? ' is' : 's are'} no
-          longer in the open list (likely voided or fully paid by another payment). They will be dropped on Save.
-        </div>
+        <p className="sb-alert sb-alert-warn" style={{ fontWeight: 400 }} role="status">
+          <AlertTriangle size={16} aria-hidden="true" style={{ display: 'inline', verticalAlign: '-3px', marginInlineEnd: 6 }} />
+          <strong>{t('rcptOcean.stale_title')}</strong>{' '}{t('rcptOcean.stale_body', { count: staleAllocations.length })}
+        </p>
       )}
 
-      <div style={{
-        background: theme.card, border: `1px solid ${theme.border}`,
-        borderRadius: '12px', boxShadow: theme.shadowSm, padding: '20px',
-      }}>
-        <h2 className="mb-4 text-sm font-semibold text-ink-primary">{t('payments.payment_details')}</h2>
+      <div className="sb-card sb-form sb-doc-card">
+        <h2 className="sb-doc-card-title">{t('payments.payment_details')}</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="col-span-2 md:col-span-1">
             <label className="mb-1 block text-sm font-medium text-ink-primary">
@@ -808,11 +785,11 @@ export default function PaymentEditorPage() {
                  operator exactly where to set one up. */}
             {canEdit && !isVoid && bankAccounts.length === 0 && (
               <p className="mt-1 text-xs text-ink-tertiary">
-                No bank or cash accounts yet. Add one in{' '}
+                {t('rcptOcean.no_banks')}{' '}
                 <a href="/banking/bank-accounts" className="text-brand-600 underline">
-                  Settings → Bank Accounts
+                  {t('rcptOcean.bank_accounts_link')}
                 </a>{' '}
-                — set <span className="font-medium">Type = Cash</span> for cash transactions.
+                {t('rcptOcean.no_banks_cash')}
               </p>
             )}
           </div>
@@ -856,7 +833,7 @@ export default function PaymentEditorPage() {
         {/* Phase 19 — Post-dated cheque (PDC). When ticked, the receipt routes
              to PDC Receivable (not bank) and a linked cheque is created. */}
         {canEdit && isNew && (
-          <div className="mt-4 rounded-card border border-border-subtle" style={{ padding: '12px 14px', background: theme.panelHead }}>
+          <div className="sb-hw-test" style={{ marginTop: 16 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
               <input type="checkbox" checked={isPdc} onChange={e => setIsPdc(e.target.checked)} />
               <span style={{ fontSize: '13px', fontWeight: 600, color: theme.ink }}>{t('payments.is_pdc') || 'Post-dated cheque (PDC)'}</span>
@@ -896,37 +873,24 @@ export default function PaymentEditorPage() {
         const payAmt    = parseFloat(header.amount) || 0;
         const difference = +(payAmt - totalToApply).toFixed(2);
         return (
-          <div style={{
-            background: theme.card, border: `1px solid ${theme.border}`,
-            borderRadius: '12px', boxShadow: theme.shadowSm, overflow: 'hidden',
-          }}>
-            <div style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}`, padding: '10px 20px' }}>
-              <h2 style={{
-                margin: 0,
-                fontSize: '11px', fontWeight: 700, color: theme.inkMuted,
-                textTransform: 'uppercase', letterSpacing: '.06em',
-              }}>Apply to Invoices</h2>
-              <p style={{ margin: '4px 0 0', fontSize: '11px', color: theme.inkFaint }}>
-                Distribute the payment across {openInvoices.length} open invoice{openInvoices.length === 1 ? '' : 's'}. Oldest first by default — edit any row to override.
-              </p>
+          <div className="sb-card sb-doc-card sb-doc-lines">
+            <div className="sb-doc-lines-head" style={{ display: 'block' }}>
+              <h2 className="sb-doc-card-title" style={{ margin: 0 }}>{t('rcptOcean.apply_title')}</h2>
+              <p className="sb-form-hint" style={{ margin: '4px 0 0' }}>{t('rcptOcean.apply_hint', { count: openInvoices.length })}</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
+                  <tr>
                     {[
-                      { l: 'Invoice #',   a: 'start' as const, w: undefined as string | undefined },
-                      { l: 'Date',        a: 'start' as const, w: undefined },
-                      { l: 'Total',       a: 'end'   as const, w: undefined },
-                      { l: 'Outstanding', a: 'end'   as const, w: undefined },
-                      { l: 'Apply',       a: 'end'   as const, w: '112px' },
-                      { l: 'Discount',    a: 'end'   as const, w: '112px' },
+                      { l: t('rcptOcean.c_invoice'),     a: 'start' as const, w: undefined as string | undefined },
+                      { l: t('rcptOcean.c_date'),        a: 'start' as const, w: undefined },
+                      { l: t('rcptOcean.c_total'),       a: 'end'   as const, w: undefined },
+                      { l: t('rcptOcean.c_outstanding'), a: 'end'   as const, w: undefined },
+                      { l: t('rcptOcean.c_apply'),       a: 'end'   as const, w: '112px' },
+                      { l: t('rcptOcean.c_discount'),    a: 'end'   as const, w: '112px' },
                     ].map(c => (
-                      <th key={c.l} className="px-4 py-3" style={{
-                        fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
-                        textTransform: 'uppercase', letterSpacing: '.06em',
-                        textAlign: c.a, width: c.w, whiteSpace: 'nowrap',
-                      }}>{c.l}</th>
+                      <th key={c.l} className="px-4 py-3" style={{ textAlign: c.a, width: c.w, whiteSpace: 'nowrap' }}>{c.l}</th>
                     ))}
                   </tr>
                 </thead>
@@ -964,7 +928,7 @@ export default function PaymentEditorPage() {
                             step="0.01"
                             value={discountVal}
                             placeholder="0.00"
-                            title="Cash discount given on this invoice. Hits 6850 Discount Allowed."
+                            title={t('rcptOcean.discount_title')}
                             className={`w-full rounded border bg-surface-subtle px-2 py-1 text-end text-xs ${overSettled ? 'border-red-400 text-red-700' : 'border-border-strong text-ink-primary'}`}
                             onChange={(e) => setDiscountAmounts(prev => ({ ...prev, [inv.id]: e.target.value }))}
                           />
@@ -975,20 +939,20 @@ export default function PaymentEditorPage() {
                 </tbody>
               </table>
             </div>
-            <div className="border-t border-border-subtle px-5 py-3">
-              <div className="ms-auto w-72 space-y-1 text-sm">
+            <div className="sb-doc-quote-total">
+              <div className="sb-doc-summary-rows" style={{ marginInlineStart: 'auto', width: 'min(100%, 320px)' }}>
                 <div className="flex justify-between text-ink-secondary">
-                  <span>Payment amount</span>
+                  <span>{t('rcptOcean.payment_amount')}</span>
                   <span className="font-mono">{fmt(payAmt)}</span>
                 </div>
                 <div className="flex justify-between text-ink-secondary">
-                  <span>Total to apply</span>
+                  <span>{t('rcptOcean.total_to_apply')}</span>
                   <span className="font-mono">{fmt(totalToApply)}</span>
                 </div>
                 {totalDiscount > 0 && (
                   <div className="flex justify-between text-ink-secondary">
-                    <span title="Hits 6850 Discount Allowed (Indirect Expense)">
-                      Total discount given
+                    <span title={t('rcptOcean.discount_total_title')}>
+                      {t('rcptOcean.total_discount')}
                     </span>
                     <span className="font-mono">{fmt(totalDiscount)}</span>
                   </div>
@@ -996,17 +960,17 @@ export default function PaymentEditorPage() {
                 <div className={`flex justify-between font-semibold ${
                   difference < 0 ? 'text-red-600' : difference > 0 ? 'text-amber-600' : 'text-green-700'
                 }`}>
-                  <span>{difference < 0 ? 'Over-applied' : difference > 0 ? 'Unallocated (advance)' : 'Fully allocated'}</span>
+                  <span>{difference < 0 ? t('rcptOcean.over_applied') : difference > 0 ? t('rcptOcean.unallocated') : t('rcptOcean.fully_allocated')}</span>
                   <span className="font-mono">{fmt(Math.abs(difference))}</span>
                 </div>
                 {difference > 0 && (
                   <p className="pt-1 text-xs text-ink-tertiary">
-                    The unallocated portion will sit as a customer advance and can be applied to future invoices.
+                    {t('rcptOcean.unallocated_hint')}
                   </p>
                 )}
                 {totalDiscount > 0 && (
                   <p className="pt-1 text-xs text-ink-tertiary">
-                    The discount portion will hit Indirect Expenses (6850 Discount Allowed) on confirm.
+                    {t('rcptOcean.discount_hint')}
                   </p>
                 )}
               </div>
@@ -1037,31 +1001,31 @@ export default function PaymentEditorPage() {
            the amount field with min(available, outstanding) so the operator
            almost never has to type. */}
       <Modal open={applyModal} onClose={() => setApplyModal(false)} title={t('payments.apply_advance')}>
-        <div className="space-y-4">
+        <div className="sb-ocean sb-form sb-modal-form">
           {/* Available credit panel — the missing context the user needed. */}
           <div style={{
             display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '12px',
             padding: '12px 14px',
-            background: '#ecfdf5',
-            border: '1px solid #a7f3d0',
-            borderRadius: '10px',
+            background: 'var(--sb-primary-soft)',
+            border: '1px solid var(--sb-primary-light)',
+            borderRadius: 'var(--sb-radius-md)',
           }}>
             <div>
               <div style={{ fontSize: '10.5px', fontWeight: 600, color: '#047857', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Available credit
+                {t('rcptOcean.available_credit')}
               </div>
               <div style={{ marginTop: '2px', fontSize: '17px', fontWeight: 700, color: '#065f46', fontVariantNumeric: 'tabular-nums' }}>
                 {header.currency || 'AED'} {fmt(availableCredit)}
               </div>
               <div style={{ fontSize: '10.5px', color: '#059669' }}>
                 {alreadyApplied > 0.005
-                  ? `payment ${fmt(Number(existing?.amount ?? 0))} · already applied ${fmt(alreadyApplied)}`
-                  : 'unallocated portion of this payment'}
+                  ? t('rcptOcean.credit_split', { payment: fmt(Number(existing?.amount ?? 0)), applied: fmt(alreadyApplied) })
+                  : t('rcptOcean.credit_unallocated')}
               </div>
             </div>
             <div>
               <div style={{ fontSize: '10.5px', fontWeight: 600, color: '#047857', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Invoice outstanding
+                {t('rcptOcean.invoice_outstanding')}
               </div>
               <div style={{ marginTop: '2px', fontSize: '17px', fontWeight: 700, color: selectedInvoice ? '#065f46' : '#94a3b8', fontVariantNumeric: 'tabular-nums' }}>
                 {selectedInvoice
@@ -1069,7 +1033,7 @@ export default function PaymentEditorPage() {
                   : '—'}
               </div>
               <div style={{ fontSize: '10.5px', color: '#059669' }}>
-                {selectedInvoice ? selectedInvoice.invoice_number : 'pick an invoice below'}
+                {selectedInvoice ? selectedInvoice.invoice_number : t('rcptOcean.pick_invoice')}
               </div>
             </div>
           </div>
@@ -1110,14 +1074,14 @@ export default function PaymentEditorPage() {
               if (overCredit) {
                 return (
                   <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#b91c1c', fontWeight: 500 }}>
-                    Cannot apply more than the available credit ({header.currency || 'AED'} {fmt(availableCredit)}).
+                    {t('rcptOcean.over_credit', { amount: `${header.currency || 'AED'} ${fmt(availableCredit)}` })}
                   </p>
                 );
               }
               if (overInvoice) {
                 return (
                   <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#b91c1c', fontWeight: 500 }}>
-                    Cannot apply more than the invoice outstanding ({selectedInvoice.currency} {fmt(selectedInvoice.outstanding)}).
+                    {t('rcptOcean.over_invoice', { amount: `${selectedInvoice.currency} ${fmt(selectedInvoice.outstanding)}` })}
                   </p>
                 );
               }
@@ -1125,13 +1089,13 @@ export default function PaymentEditorPage() {
               if (remaining > 0.005) {
                 return (
                   <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#475569' }}>
-                    {header.currency || 'AED'} {fmt(remaining)} will remain as credit on this payment.
+                    {t('rcptOcean.remaining', { amount: `${header.currency || 'AED'} ${fmt(remaining)}` })}
                   </p>
                 );
               }
               return (
                 <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#047857', fontWeight: 500 }}>
-                  Applying the full available credit. Payment will be fully allocated.
+                  {t('rcptOcean.applying_full')}
                 </p>
               );
             })()}
@@ -1143,7 +1107,7 @@ export default function PaymentEditorPage() {
                 marginTop: '6px',
                 fontSize: '11.5px',
                 fontWeight: 600,
-                color: !selectedInvoice || suggestedApply <= 0 ? '#94a3b8' : '#7c3aed',
+                color: !selectedInvoice || suggestedApply <= 0 ? '#94a3b8' : 'var(--sb-primary-dark)',
                 background: 'transparent',
                 border: 'none',
                 cursor: !selectedInvoice || suggestedApply <= 0 ? 'not-allowed' : 'pointer',
@@ -1151,8 +1115,8 @@ export default function PaymentEditorPage() {
               }}
             >
               {selectedInvoice
-                ? `Use ${header.currency || 'AED'} ${fmt(suggestedApply)} (apply the maximum)`
-                : 'Pick an invoice to enable the suggested amount'}
+                ? t('rcptOcean.use_max', { amount: `${header.currency || 'AED'} ${fmt(suggestedApply)}` })
+                : t('rcptOcean.pick_for_suggest')}
             </button>
           </div>
           <div className="flex justify-end gap-2">
