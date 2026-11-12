@@ -17,6 +17,7 @@
  *    (its onboarding draft points at this company and no configuration was
  *    saved) is offered here to finish, starting from what it had chosen.
  */
+import { OceanPage } from '@/components/ocean-list';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -184,20 +185,27 @@ export default function GlobalSetupWizardPage() {
   const fyEditable = canWrite && !locked;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 p-4">
-      <h1 className="text-xl font-semibold text-ink-primary">{t('global_config.wizard.title')}</h1>
-      {unfinished && <p className="rounded-card border border-warning-500 p-3 text-sm" data-testid="unfinished-activation">{t('global_config.draft.unfinished')}</p>}
-      <ol className="flex flex-wrap gap-2" aria-label={t('global_config.wizard.title')}>
-        {WIZARD_STEPS.map((s, i) => (
-          <li key={s.key}>
-            <button type="button" onClick={() => setStep(i)} aria-current={i === step ? 'step' : undefined}
-              className={`rounded-pill px-3 py-1 text-xs ${i === step ? 'bg-brand-500 text-white' : 'bg-surface-muted text-ink-secondary'}`}>
-              {s.step}. {t(STEP_LABEL[s.key])}
-            </button>
-          </li>
-        ))}
-      </ol>
-      <Card padding="md" data-testid={`step-${key}`}>
+    // Ocean Teal (UI v1.1): frame only — the same seven steps, choices,
+    // saves and activation; step contents follow the scoped teal palette.
+    <OceanPage
+      testid="business-config-ocean"
+      title={t('global_config.wizard.title')}
+      subtitle={t('settingsNav.items.business_configuration.desc')}
+      below={
+        <ol className="sb-chips sb-wiz-steps" aria-label={t('global_config.wizard.title')}>
+          {WIZARD_STEPS.map((s, i) => (
+            <li key={s.key}>
+              <button type="button" onClick={() => setStep(i)} aria-current={i === step ? 'step' : undefined}
+                className={`sb-chip ${i === step ? 'active' : ''}`}>
+                <bdi dir="ltr" className="sb-chip-count">{s.step}</bdi>{t(STEP_LABEL[s.key])}
+              </button>
+            </li>
+          ))}
+        </ol>
+      }
+    >
+      {unfinished && <p className="sb-alert sb-alert-warn" data-testid="unfinished-activation">{t('global_config.draft.unfinished')}</p>}
+      <Card padding="md" data-testid={`step-${key}`} className="sb-card sb-wiz-card">
         {key === 'organization_identity' && (
           <>
             <IdentityStep company_name={company.name} pack={pack} />
@@ -226,10 +234,10 @@ export default function GlobalSetupWizardPage() {
         {key === 'review_activation' && <ReviewStep config={config} dropped={droppedModules(current, config)} saving={save.isPending}
           saved={save.isSuccess} error={save.error instanceof Error ? save.error.message : ''} canWrite={canWrite} onSave={() => save.mutate()} />}
       </Card>
-      <div className="flex justify-between">
-        <button type="button" disabled={step === 0} onClick={() => setStep((s) => s - 1)} className="rounded-pill bg-surface-muted px-4 py-2 text-sm disabled:opacity-50">{t('global_config.wizard.back')}</button>
-        <button type="button" disabled={step === WIZARD_STEPS.length - 1} onClick={() => setStep((s) => s + 1)} className="rounded-pill bg-brand-500 px-4 py-2 text-sm text-white disabled:opacity-50">{t('global_config.wizard.next')}</button>
+      <div className="sb-form-actions" style={{ justifyContent: 'space-between' }}>
+        <button type="button" disabled={step === 0} onClick={() => setStep((s) => s - 1)} className="sb-secondary-btn">{t('global_config.wizard.back')}</button>
+        <button type="button" disabled={step === WIZARD_STEPS.length - 1} onClick={() => setStep((s) => s + 1)} className="sb-primary-btn">{t('global_config.wizard.next')}</button>
       </div>
-    </div>
+    </OceanPage>
   );
 }

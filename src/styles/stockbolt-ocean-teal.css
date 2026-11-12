@@ -1239,3 +1239,18 @@
 .sb-ocean .sb-reset-note { font-style: italic; font-size: 13px; }
 .sb-ocean .sb-reset-error pre { margin: 8px 0; white-space: pre-wrap; word-break: break-word; font-size: 12px; font-weight: 400; }
 .sb-ocean .sb-maint .sb-pill { white-space: normal; line-height: 1.4; border-radius: var(--sb-radius-sm); padding: 6px 12px; }
+
+/* ── Settings step 8: Billing, Business configuration ──────────────────── */
+.sb-ocean .sb-bill-rows { display: flex; flex-direction: column; }
+.sb-ocean .sb-bill-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--sb-border); }
+.sb-ocean .sb-bill-row:last-child { border-bottom: 0; }
+.sb-ocean .sb-bill-val { font-size: 15px; font-weight: 600; color: var(--sb-text); text-align: end; }
+.sb-ocean .sb-bill-banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sb-ocean .sb-bill-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 12px; }
+.sb-ocean .sb-bill-plan { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 16px; border: 1px solid var(--sb-border); border-radius: var(--sb-radius-md); background: #fff; }
+.sb-ocean .sb-bill-plan.is-on { border-color: var(--sb-primary); background: var(--sb-primary-soft); box-shadow: 0 0 0 1px var(--sb-primary); }
+.sb-ocean .sb-bill-price { margin: 0 0 6px; font-size: 24px; font-weight: 800; color: var(--sb-text); }
+
+.sb-ocean .sb-wiz-steps { list-style: none; margin: 14px 0 0; padding: 0; }
+.sb-ocean .sb-wiz-steps .sb-chip { font: inherit; }
+.sb-ocean .sb-wiz-card { padding: 18px; }

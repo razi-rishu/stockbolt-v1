@@ -16,42 +16,39 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { getSupabaseClient } from '@/data/supabase-client';
 import { useAuthStore } from '@/store/auth';
-import { Card } from '@/ui/card';
-import { Button } from '@/ui/button';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Input } from '@/ui/input';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
+import { OceanPage } from '@/components/ocean-list';
+import { CreditCard, Receipt, MapPin, CheckCircle2, Gift, X, Loader2 } from 'lucide-react';
 import type { BillingAddressRow } from '@/data/adapter';
 
-const STATUS_STYLE: Record<string, { label: string; bg: string; fg: string }> = {
-  trialing:        { label: 'Trial',          bg: '#eef2ff', fg: '#4338ca' },
-  active:          { label: 'Active',         bg: '#ecfdf5', fg: '#047857' },
-  past_due:        { label: 'Past due',       bg: '#fffbeb', fg: '#b45309' },
-  payment_failed:  { label: 'Payment failed', bg: '#fffbeb', fg: '#b45309' },
-  pending_payment: { label: 'Pending',        bg: '#fffbeb', fg: '#b45309' },
-  suspended:       { label: 'Suspended',      bg: '#fef2f2', fg: '#b91c1c' },
-  cancelled:       { label: 'Cancelled',      bg: '#fef2f2', fg: '#b91c1c' },
-  expired:         { label: 'Expired',        bg: '#fef2f2', fg: '#b91c1c' },
+// English labels stay as the fallback; translated in the page by key.
+const STATUS_STYLE: Record<string, { label: string; tone: string }> = {
+  trialing:        { label: 'Trial',          tone: '' },
+  active:          { label: 'Active',         tone: 'sb-pill-good' },
+  past_due:        { label: 'Past due',       tone: 'sb-pill-warn' },
+  payment_failed:  { label: 'Payment failed', tone: 'sb-pill-warn' },
+  pending_payment: { label: 'Pending',        tone: 'sb-pill-warn' },
+  suspended:       { label: 'Suspended',      tone: 'sb-pill-bad' },
+  cancelled:       { label: 'Cancelled',      tone: 'sb-pill-bad' },
+  expired:         { label: 'Expired',        tone: 'sb-pill-bad' },
 };
 
 const CYCLE_LABEL: Record<string, string> = {
   monthly: 'Monthly', half_yearly: '6 months', yearly: 'Yearly',
 };
 
-function StatusBadge({ status }: { status: string }) {
-  const s = STATUS_STYLE[status] ?? { label: status, bg: theme.muted, fg: theme.inkMuted };
-  return (
-    <span style={{ background: s.bg, color: s.fg, fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 999 }}>
-      {s.label}
-    </span>
-  );
+function StatusBadge({ status, t }: { status: string; t: TFunction }) {
+  const s = STATUS_STYLE[status] ?? { label: status, tone: 'sb-pill-muted' };
+  return <span className={`sb-pill ${s.tone}`} style={{ marginTop: 0 }}>{t(`settingsPages.billing.status.${status}`, { defaultValue: s.label })}</span>;
 }
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '7px 0', borderBottom: `1px solid ${theme.border}` }}>
-      <span style={{ fontSize: 13, color: theme.inkMuted }}>{label}</span>
-      <span style={{ fontSize: 13, color: theme.ink, fontWeight: 500, textAlign: 'right' }}>{value}</span>
+    <div className="sb-bill-row">
+      <span className="sb-info-label">{label}</span>
+      <span className="sb-bill-val">{value}</span>
     </div>
   );
 }
@@ -84,6 +81,7 @@ async function callBillingApi(path: string, body: Record<string, unknown>): Prom
 }
 
 export default function BillingPage() {
+  const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -128,7 +126,7 @@ export default function BillingPage() {
     mutationFn: async (cycle: 'monthly' | 'half_yearly' | 'yearly') => {
       setPayError(null);
       const { approvalUrl } = await callBillingApi('/api/paypal/create-subscription', { cycle });
-      if (!approvalUrl) throw new Error('No approval link returned');
+      if (!approvalUrl) throw new Error(t('settingsPages.billing.no_approval'));
       window.location.href = approvalUrl;   // → PayPal
     },
     onError: (e) => setPayError(e instanceof Error ? e.message : String(e)),
@@ -151,175 +149,185 @@ export default function BillingPage() {
     (!!sub && sub.status === 'active' && sub.provider !== 'paypal' && !sub.grandfathered);
   const showTrialFreeYear = !!sub && sub.status === 'trialing' && (sub.trial_days_left ?? 0) > 90;
 
-  return (
-    <div style={{ maxWidth: 760, margin: '0 auto', padding: '8px 0' }}>
-      <div style={{ marginBottom: 20 }}>
-        <PageHeader title="Billing & Subscription" subtitle="Your plan, trial, payments and billing details." />
-      </div>
+  const B = 'settingsPages.billing.';
+  const cycleLabel = (c: string) => t(`${B}cycle.${c}`, { defaultValue: CYCLE_LABEL[c] ?? c });
+  const providerLabel = (p: string) => (p === 'paypal' ? 'PayPal' : p === 'manual' ? t(`${B}manual`) : p);
 
+  // Ocean Teal (UI v1.1): look only — same subscription, PayPal checkout and
+  // cancel, return banners, billing address and payment history.
+  return (
+    <OceanPage narrow testid="billing-ocean" title={t('settingsNav.items.billing.title')} subtitle={t(`${B}subtitle`)}>
       {paypalReturn === 'approved' && sub?.status !== 'active' && (
-        <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', color: '#4338ca', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 14 }}>
-          ✓ Payment approved on PayPal — activating your subscription… this page updates automatically.
-        </div>
+        <p className="sb-info-note sb-btn-inline" role="status"><Loader2 size={18} className="sb-spin" aria-hidden="true" />{t(`${B}approved_wait`)}</p>
       )}
       {paypalReturn === 'approved' && sub?.status === 'active' && (
-        <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 14, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-          <span>✓ Subscription active — thank you!</span>
-          <button onClick={() => setSearchParams({}, { replace: true })} style={{ background: 'none', border: 'none', color: '#047857', cursor: 'pointer', fontSize: 13 }}>✕</button>
+        <div className="sb-alert sb-alert-good sb-bill-banner" role="status">
+          <span className="sb-btn-inline"><CheckCircle2 size={18} aria-hidden="true" />{t(`${B}active_thanks`)}</span>
+          <button type="button" className="sb-icon-btn" onClick={() => setSearchParams({}, { replace: true })} aria-label={t('common.close')}><X size={16} aria-hidden="true" /></button>
         </div>
       )}
       {paypalReturn === 'cancelled' && (
-        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', color: '#b45309', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 14, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-          <span>Checkout was cancelled — no payment was made.</span>
-          <button onClick={() => setSearchParams({}, { replace: true })} style={{ background: 'none', border: 'none', color: '#b45309', cursor: 'pointer', fontSize: 13 }}>✕</button>
+        <div className="sb-alert sb-alert-warn sb-bill-banner" role="status">
+          <span>{t(`${B}checkout_cancelled`)}</span>
+          <button type="button" className="sb-icon-btn" onClick={() => setSearchParams({}, { replace: true })} aria-label={t('common.close')}><X size={16} aria-hidden="true" /></button>
         </div>
       )}
-      {payError && (
-        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 14 }}>
-          {payError}
-        </div>
-      )}
+      {payError && <p className="sb-alert sb-alert-danger" role="alert">{payError}</p>}
 
-      {isLoading && <p style={{ fontSize: 13, color: theme.inkMuted }}>Loading…</p>}
+      {isLoading && <div className="sb-card sb-empty">{t('common.loading')}</div>}
 
       {!isLoading && !sub && (
-        <Card>
-          <p style={{ fontSize: 14, color: theme.ink, margin: 0 }}>Billing is not set up for this company yet.</p>
-          <p style={{ fontSize: 12, color: theme.inkMuted, marginTop: 6 }}>
-            Once the subscription module is enabled, your plan and payment history appear here.
-          </p>
-        </Card>
+        <section className="sb-card">
+          <p className="sb-form-title" style={{ lineHeight: 1.4, fontSize: 15 }}>{t(`${B}not_setup`)}</p>
+          <p className="sb-form-hint" style={{ marginTop: 6 }}>{t(`${B}not_setup_hint`)}</p>
+        </section>
       )}
 
       {sub && (
         <>
           {/* Current subscription */}
-          <Card className="mb-6">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <h2 style={{ fontSize: 16, fontWeight: 600, color: theme.ink, margin: 0 }}>
-                {sub.plan?.name ?? 'Subscription'}
-              </h2>
-              <StatusBadge status={sub.status} />
+          <section className="sb-card">
+            <div className="sb-users-head" style={{ marginBottom: 12 }}>
+              <span className="sb-form-icon" aria-hidden="true"><CreditCard size={20} /></span>
+              <h2 className="sb-form-title" style={{ flex: 1, lineHeight: 1.3 }}>{sub.plan?.name ?? t(`${B}subscription`)}</h2>
+              <StatusBadge status={sub.status} t={t} />
             </div>
             {sub.grandfathered && sub.status === 'active' && (
-              <p style={{ fontSize: 12, color: '#047857', background: '#ecfdf5', padding: '8px 12px', borderRadius: 8, margin: '0 0 12px' }}>
-                ✓ Complimentary plan — you're an existing customer and won't be charged.
-              </p>
+              <p className="sb-alert sb-alert-good sb-btn-inline" style={{ fontWeight: 600 }}><CheckCircle2 size={18} aria-hidden="true" />{t(`${B}complimentary`)}</p>
             )}
             {showTrialFreeYear && (
-              <p style={{ fontSize: 13, color: '#047857', background: '#ecfdf5', padding: '8px 12px', borderRadius: 8, margin: '0 0 12px' }}>
-                🎁 Your first year is FREE — {sub.trial_days_left} days remaining (until {fmtDate(sub.trial_end)}). Subscribe any time; billing starts when your free year ends.
+              <p className="sb-alert sb-alert-good sb-btn-inline" style={{ fontWeight: 600 }}>
+                <Gift size={18} aria-hidden="true" />{t(`${B}free_year`, { days: sub.trial_days_left, date: fmtDate(sub.trial_end) })}
               </p>
             )}
             {sub.status === 'trialing' && !showTrialFreeYear && (
-              <p style={{ fontSize: 13, color: '#4338ca', background: '#eef2ff', padding: '8px 12px', borderRadius: 8, margin: '0 0 12px' }}>
-                Trial — {sub.trial_days_left ?? 0} day{(sub.trial_days_left ?? 0) === 1 ? '' : 's'} remaining (ends {fmtDate(sub.trial_end)}).
-              </p>
+              <p className="sb-info-note">{t(`${B}trial_left`, { days: sub.trial_days_left ?? 0, date: fmtDate(sub.trial_end) })}</p>
             )}
-            <Row label="Billing cycle" value={sub.billing_cycle ? (CYCLE_LABEL[sub.billing_cycle] ?? sub.billing_cycle) : '—'} />
-            <Row label="Amount" value={money(sub.amount, sub.currency)} />
-            <Row label="Payment method" value={sub.provider === 'paypal' ? 'PayPal' : sub.provider === 'manual' ? 'Manual / none' : sub.provider} />
-            <Row label="Next billing" value={fmtDate(sub.next_billing_date)} />
-            <Row label="Renews / period end" value={fmtDate(sub.current_period_end)} />
+            <div className="sb-bill-rows">
+              <Row label={t(`${B}cycle_label`)} value={sub.billing_cycle ? cycleLabel(sub.billing_cycle) : '—'} />
+              <Row label={t(`${B}amount`)} value={<bdi dir="ltr">{money(sub.amount, sub.currency)}</bdi>} />
+              <Row label={t(`${B}method`)} value={providerLabel(sub.provider)} />
+              <Row label={t(`${B}next_billing`)} value={<bdi dir="ltr">{fmtDate(sub.next_billing_date)}</bdi>} />
+              <Row label={t(`${B}period_end`)} value={<bdi dir="ltr">{fmtDate(sub.current_period_end)}</bdi>} />
+            </div>
             {sub.provider === 'paypal' && (sub.status === 'active' || sub.status === 'past_due' || sub.status === 'payment_failed') && (
-              <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-                <Button
-                  variant="secondary"
-                  loading={cancelSub.isPending}
-                  onClick={() => { if (window.confirm('Cancel your subscription? You keep access until the end of the paid period.')) cancelSub.mutate(); }}
+              <div className="sb-form-actions" style={{ justifyContent: 'flex-start', marginTop: 14 }}>
+                <button
+                  type="button"
+                  className="sb-secondary-btn sb-btn-inline"
+                  disabled={cancelSub.isPending}
+                  onClick={() => { if (window.confirm(t(`${B}confirm_cancel`))) cancelSub.mutate(); }}
                 >
-                  Cancel subscription
-                </Button>
+                  {cancelSub.isPending && <Loader2 size={18} className="sb-spin" aria-hidden="true" />}
+                  {t(`${B}cancel_sub`)}
+                </button>
               </div>
             )}
-          </Card>
+          </section>
 
           {/* Plans — live PayPal checkout */}
           {sub.plan && (
-            <Card className="mb-6">
-              <h2 style={{ fontSize: 14, fontWeight: 600, color: theme.ink, margin: '0 0 4px' }}>Choose a plan</h2>
-              <p style={{ fontSize: 12, color: theme.inkMuted, margin: '0 0 12px' }}>
-                Pay securely with PayPal. You can cancel any time.
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+            <section className="sb-card">
+              <h2 className="sb-form-title" style={{ lineHeight: 1.3 }}>{t(`${B}choose_plan`)}</h2>
+              <p className="sb-form-hint" style={{ margin: '4px 0 12px' }}>{t(`${B}choose_hint`)}</p>
+              <div className="sb-bill-plans">
                 {([
-                  { cycle: 'monthly' as const,     label: 'Monthly',  price: sub.plan.monthly_price,            note: null },
-                  { cycle: 'half_yearly' as const, label: '6 months', price: sub.plan.half_yearly_price ?? 0,   note: 'Save 17%' },
-                  { cycle: 'yearly' as const,      label: 'Yearly',   price: sub.plan.yearly_price,             note: 'Save 21%' },
-                ]).filter(p => p.price > 0).map((p) => (
-                  <div key={p.cycle} style={{ border: `1px solid ${p.cycle === 'yearly' ? theme.brand : theme.border}`, borderRadius: 10, padding: '14px' }}>
-                    <p style={{ fontSize: 12, color: theme.inkMuted, margin: 0 }}>
-                      {p.label} {p.note && <span style={{ color: '#047857' }}>· {p.note}</span>}
-                    </p>
-                    <p style={{ fontSize: 22, fontWeight: 700, color: theme.ink, margin: '2px 0 10px' }}>
-                      {money(p.price, sub.plan!.price_currency)}
-                    </p>
-                    <Button
-                      size="sm"
-                      variant={p.cycle === 'yearly' ? 'primary' : 'secondary'}
-                      loading={subscribe.isPending && subscribe.variables === p.cycle}
-                      disabled={subscribe.isPending || (sub.provider === 'paypal' && sub.status === 'active' && sub.billing_cycle === p.cycle)}
-                      onClick={() => subscribe.mutate(p.cycle)}
-                    >
-                      {sub.provider === 'paypal' && sub.status === 'active' && sub.billing_cycle === p.cycle ? 'Current plan' : 'Subscribe'}
-                    </Button>
-                  </div>
-                ))}
+                  { cycle: 'monthly' as const,     price: sub.plan.monthly_price,            note: null },
+                  { cycle: 'half_yearly' as const, price: sub.plan.half_yearly_price ?? 0,   note: t(`${B}save_17`) },
+                  { cycle: 'yearly' as const,      price: sub.plan.yearly_price,             note: t(`${B}save_21`) },
+                ]).filter(p => p.price > 0).map((p) => {
+                  const current = sub.provider === 'paypal' && sub.status === 'active' && sub.billing_cycle === p.cycle;
+                  const busy = subscribe.isPending && subscribe.variables === p.cycle;
+                  return (
+                    <div key={p.cycle} className={`sb-bill-plan ${p.cycle === 'yearly' ? 'is-on' : ''}`}>
+                      <p className="sb-info-label" style={{ margin: 0 }}>
+                        {cycleLabel(p.cycle)} {p.note && <span className="sb-pill sb-pill-good" style={{ marginInlineStart: 6 }}>{p.note}</span>}
+                      </p>
+                      <p className="sb-bill-price"><bdi dir="ltr">{money(p.price, sub.plan!.price_currency)}</bdi></p>
+                      <button
+                        type="button"
+                        className={`${p.cycle === 'yearly' ? 'sb-primary-btn' : 'sb-secondary-btn'} sb-btn-inline`}
+                        disabled={subscribe.isPending || current}
+                        onClick={() => subscribe.mutate(p.cycle)}
+                      >
+                        {busy && <Loader2 size={18} className="sb-spin" aria-hidden="true" />}
+                        {current ? t(`${B}current_plan`) : t(`${B}subscribe`)}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
               {canSubscribe === false && null}
-            </Card>
+            </section>
           )}
 
           {/* Billing address */}
-          <Card className="mb-6">
-            <h2 style={{ fontSize: 14, fontWeight: 600, color: theme.ink, margin: '0 0 12px' }}>Billing address</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 12 }}>
+          <section className="sb-card sb-form">
+            <div className="sb-form-head">
+              <span className="sb-form-icon" aria-hidden="true"><MapPin size={20} /></span>
+              <h2 className="sb-form-title">{t(`${B}address`)}</h2>
+            </div>
+            <div className="sb-form-grid">
               {ADDR_FIELDS.map((f) => (
                 <Input
                   key={f.key}
-                  label={f.label}
+                  id={`billing-${f.key}`}
+                  label={t(`${B}f_${f.key}`, { defaultValue: f.label })}
+                  dir={f.key === 'phone' || f.key === 'email' || f.key === 'tax_number' || f.key === 'postal_code' ? 'ltr' : undefined}
                   value={(addr[f.key] as string) ?? ''}
                   onChange={(e) => setAddr((a) => ({ ...a, [f.key]: e.target.value }))}
                 />
               ))}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14 }}>
-              <Button onClick={() => saveAddr.mutate()} loading={saveAddr.isPending}>Save address</Button>
-              {saved && <span style={{ fontSize: 13, color: '#047857' }}>Saved ✓</span>}
-              {saveAddr.error && <span style={{ fontSize: 13, color: '#b91c1c' }}>{String(saveAddr.error)}</span>}
+            <div className="sb-form-actions" style={{ justifyContent: 'flex-start', alignItems: 'center', marginTop: 14 }}>
+              <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => saveAddr.mutate()} disabled={saveAddr.isPending}>
+                {saveAddr.isPending && <Loader2 size={18} className="sb-spin" aria-hidden="true" />}
+                {t(`${B}save_address`)}
+              </button>
+              {saved && <span className="sb-pill sb-pill-good" role="status">{t('common.saved')}</span>}
+              {saveAddr.error && <span className="sb-alert sb-alert-danger" role="alert">{String(saveAddr.error)}</span>}
             </div>
-          </Card>
+          </section>
 
           {/* Payment history */}
-          <Card>
-            <h2 style={{ fontSize: 14, fontWeight: 600, color: theme.ink, margin: '0 0 8px' }}>Payment history</h2>
+          <section className="sb-section-card">
+            <div className="sb-users-head">
+              <span className="sb-form-icon" aria-hidden="true"><Receipt size={20} /></span>
+              <h2 className="sb-form-title" style={{ lineHeight: 1.3 }}>{t(`${B}history`)}</h2>
+            </div>
             {payments.length === 0 ? (
-              <p style={{ fontSize: 13, color: theme.inkMuted, margin: 0 }}>No payments yet.</p>
+              <div className="sb-card sb-empty">{t(`${B}no_payments`)}</div>
             ) : (
-              <table style={{ width: '100%', fontSize: 13 }}>
-                <thead>
-                  <tr style={{ borderBottom: `1px solid ${theme.border}`, textAlign: 'left' }}>
-                    <th style={{ padding: '6px 0', fontSize: 11, color: theme.inkMuted, textTransform: 'uppercase' }}>Date</th>
-                    <th style={{ padding: '6px 0', fontSize: 11, color: theme.inkMuted, textTransform: 'uppercase' }}>Reference</th>
-                    <th style={{ padding: '6px 0', fontSize: 11, color: theme.inkMuted, textTransform: 'uppercase' }}>Status</th>
-                    <th style={{ padding: '6px 0', fontSize: 11, color: theme.inkMuted, textTransform: 'uppercase', textAlign: 'right' }}>Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {payments.map((p) => (
-                    <tr key={p.id} style={{ borderBottom: `1px solid #f1f5f9` }}>
-                      <td style={{ padding: '7px 0', color: theme.ink }}>{fmtDate(p.paid_at ?? p.created_at)}</td>
-                      <td style={{ padding: '7px 0', color: theme.inkMuted, fontFamily: 'monospace', fontSize: 12 }}>{p.provider_payment_id ?? '—'}</td>
-                      <td style={{ padding: '7px 0', color: p.status === 'succeeded' ? '#047857' : p.status === 'refunded' ? '#b45309' : '#b91c1c', textTransform: 'capitalize' }}>{p.status}</td>
-                      <td style={{ padding: '7px 0', color: theme.ink, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(p.amount, p.currency)}</td>
+              <div className="sb-card sb-dtable-wrap">
+                <table className="sb-dtable">
+                  <thead>
+                    <tr>
+                      <th>{t(`${B}c_date`)}</th>
+                      <th>{t(`${B}c_ref`)}</th>
+                      <th>{t(`${B}c_status`)}</th>
+                      <th className="sb-num">{t(`${B}amount`)}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {payments.map((p) => (
+                      <tr key={p.id}>
+                        <td><bdi dir="ltr">{fmtDate(p.paid_at ?? p.created_at)}</bdi></td>
+                        <td><bdi dir="ltr" className="sb-mono sb-fx-name">{p.provider_payment_id ?? '—'}</bdi></td>
+                        <td>
+                          <span className={`sb-pill ${p.status === 'succeeded' ? 'sb-pill-good' : p.status === 'refunded' ? 'sb-pill-warn' : 'sb-pill-bad'}`} style={{ marginTop: 0 }}>
+                            {t(`${B}pay.${p.status}`, { defaultValue: p.status })}
+                          </span>
+                        </td>
+                        <td className="sb-num"><bdi dir="ltr">{money(p.amount, p.currency)}</bdi></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
-          </Card>
+          </section>
         </>
       )}
-    </div>
+    </OceanPage>
   );
 }
