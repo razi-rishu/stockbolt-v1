@@ -69,11 +69,13 @@ import { useHasPermission } from '@/hooks/use-permissions';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
+import { StatusBadge } from '@/ui/status-badge';
+import { Pencil, Printer, Eye, Plus, Minus, X, Tag, ReceiptText, UserRoundCheck } from 'lucide-react';
+import '@/styles/stockbolt-ocean-teal.css';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { ContactPicker } from '@/components/contact-picker';
 import { ProjectPicker } from '@/components/project-picker';
 import { CoaQuickCreate } from '@/components/quick-create/coa-quick-create';
-import { theme } from '@/ui/theme';
 // Phase 14.06 — Signature template view mode for saved expenses.
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
@@ -127,40 +129,22 @@ function calcLine(l: LineRow, inclusive = false) {
   return { line_subtotal: amount, tax_amount: tax, line_total: round2(amount + tax) };
 }
 
-// ── Section divider that matches the editor's vibe ─────────────────────────
-function SectionLabel({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) {
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: '12px',
-      margin: '20px 0 10px',
-    }}>
-      <span style={{
-        fontSize: '11px', fontWeight: 700, color: theme.inkMuted,
-        textTransform: 'uppercase', letterSpacing: '.08em',
-        whiteSpace: 'nowrap',
-      }}>{children}</span>
-      <span style={{ flex: 1, height: '1px', background: theme.border }} />
-      {action}
-    </div>
-  );
-}
-
 // ── Uniform field styling (Phase 28b — tidy the "messy containers") ──────────
 // One height, one border, one radius for every control in the form.
 function fld(editable: boolean): React.CSSProperties {
   return {
     // ~30px tall to line up with the SearchableSelect / ContactPicker triggers
     // (which render compact at py-1 text-xs) so each Details row aligns.
-    width: '100%', height: '30px', padding: '0 10px', fontSize: '13px',
-    border: `1px solid ${theme.border}`, borderRadius: '8px', outline: 'none',
-    background: editable ? '#fff' : theme.muted, color: theme.ink,
+    width: '100%', height: '38px', padding: '0 12px', fontSize: '14px',
+    border: '1px solid var(--sb-border)', borderRadius: '10px', outline: 'none',
+    background: editable ? '#fff' : 'var(--sb-background)', color: 'var(--sb-text)',
   };
 }
 // Labelled field cell for the details grid.
 function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', minWidth: 0 }}>
-      <label style={{ fontSize: '11px', fontWeight: 600, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.05em' }}>{label}</label>
+      <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--sb-text-secondary)' }}>{label}</label>
       {children}
     </div>
   );
@@ -334,7 +318,7 @@ export default function ExpenseEditorPage() {
   const isConfirmed = expense?.status === 'confirmed';
   const isVoid  = expense?.status === 'void';
 
-  const bankOpts = bankAccounts.map(b => ({ value: b.id, label: `${b.name} · ${b.account_type === 'cash' ? 'Cash' : 'Bank'}` }));
+  const bankOpts = bankAccounts.map(b => ({ value: b.id, label: `${b.name} · ${b.account_type === 'cash' ? t('rcptOcean.cash') : t('rcptOcean.bank')}` }));
   // Group-sorted by sub_type then code (Phase 13.02c). Direct accounts first
   // so the eye sees COGS-style entries before operating expenses.
   const subOrder = (st: string | null) =>
@@ -354,11 +338,11 @@ export default function ExpenseEditorPage() {
   // ── Mutations ────────────────────────────────────────────────────────────
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!paidFromId) throw new Error('Paid From is required');
-      if (lines.length === 0) throw new Error('At least one line is required');
+      if (!paidFromId) throw new Error(t('expOcean.err_paid_from'));
+      if (lines.length === 0) throw new Error(t('expOcean.err_line'));
       for (const l of lines) {
-        if (!l.expense_account_id) throw new Error('Pick an expense category');
-        if (l.is_billable && !l.customer_id) throw new Error('Billable lines need a customer');
+        if (!l.expense_account_id) throw new Error(t('expOcean.err_category'));
+        if (l.is_billable && !l.customer_id) throw new Error(t('expOcean.err_customer'));
       }
 
       const itemInserts: ExpenseItemInsert[] = lines.map((l, idx) => {
@@ -468,23 +452,8 @@ export default function ExpenseEditorPage() {
   const primary = lines[0];
   const primaryCalc = calcLine(primary, taxInclusive);
 
-  // Status pill
-  const statusPill = (s?: string) => {
-    if (!s) return null;
-    const map: Record<string, { bg: string; text: string; border: string }> = {
-      draft:     { bg: '#fffbeb', text: '#b45309', border: '#fde68a' },
-      confirmed: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' },
-      void:      { bg: '#fef2f2', text: '#dc2626', border: '#fecaca' },
-    };
-    const p = map[s] ?? { bg: theme.muted, text: theme.inkMuted, border: theme.border };
-    return (
-      <span style={{
-        display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
-        fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
-        background: p.bg, color: p.text, border: `1px solid ${p.border}`,
-      }}>{s}</span>
-    );
-  };
+  // Ocean Teal — status uses the shared translated badge.
+  const statusPill = (st?: string) => st ? <StatusBadge status={st} /> : null;
 
   // Phase 14.06 — view-mode renderer (Signature template).
   // Drafts open in the editable form (single Save posts them); only posted
@@ -502,37 +471,35 @@ export default function ExpenseEditorPage() {
     });
     const doc = withPaymentDetails(docBase, 'expense', docPayments);
     return (
-      <div className="signature-print-scope" style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
-        <div
-          data-print-hide
-          style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
-        >
-          <BackButton to="/purchasing/expenses" label="Expenses" confirm={confirmLeave} />
-          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>
-            {expense.expense_number}
-          </h1>
-          {statusPill(expense.status)}
-          <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+      // Ocean Teal (UI v1.1): look only — same actions and printed expense.
+      <div className="signature-print-scope sb-ocean sb-docx" data-testid="expense-view-ocean">
+        <div data-print-hide className="sb-card sb-doc-bar">
+          <div className="sb-doc-bar-id">
+            <BackButton to="/purchasing/expenses" label={t('banking.expenses_title')} confirm={confirmLeave} />
+            <bdi dir="ltr" className="sb-doc-bar-no">{expense.expense_number}</bdi>
+            {statusPill(expense.status)}
+          </div>
+          <div className="sb-doc-bar-actions">
             {isDraft && (
               <Button size="sm" onClick={() => setViewMode(false)}>
-                ✎ {t('common.edit') || 'Edit'}
+                <Pencil size={15} aria-hidden="true" /> {t('common.edit') || 'Edit'}
               </Button>
             )}
             {isConfirmed && canEditExpenses && (
               <Button size="sm" disabled={reopenMutation.isPending} onClick={() => {
-                if (window.confirm('Editing reverses this expense’s journal entry and reopens it as a draft. You’ll re-confirm after your changes. Continue?')) reopenMutation.mutate();
+                if (window.confirm(t('expOcean.reopen_confirm'))) reopenMutation.mutate();
               }}>
-                ✎ {reopenMutation.isPending ? 'Reopening…' : (t('common.edit') || 'Edit')}
+                <Pencil size={15} aria-hidden="true" /> {reopenMutation.isPending ? t('billOcean.reopening') : (t('common.edit') || 'Edit')}
               </Button>
             )}
             {expense?.id && (
               <Button variant="ghost" size="sm" onClick={() => window.print()}>
-                🖨 {t('print.print') || 'Print'}
+                <Printer size={15} aria-hidden="true" /> {t('print.print') || 'Print'}
               </Button>
             )}
           </div>
         </div>
-        <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
+        <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
       </div>
@@ -540,22 +507,22 @@ export default function ExpenseEditorPage() {
   }
 
   return (
-    <div style={{
-      maxWidth: '720px', margin: '0 auto',
-      display: 'flex', flexDirection: 'column', gap: '14px',
-      paddingBottom: '64px',
-    }}>
-      {/* Top crumb + actions */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-        <BackButton to="/purchasing/expenses" label="Expenses" confirm={confirmLeave} />
-        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>
-          {isNew ? 'New expense' : (expense?.expense_number ?? '…')}
-        </h1>
-        {!isNew && statusPill(expense?.status)}
-        <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+    // Ocean Teal (UI v1.1), layout E: form cards + a live summary panel.
+    // Same amount, tax, split lines, details, billable customer, totals and
+    // save / void / reopen as before — only the arrangement changed.
+    <div className="sb-ocean sb-docx sb-docx-edit sb-exp-editor" data-testid="expense-edit-ocean">
+      <div className="sb-card sb-doc-bar">
+        <div className="sb-doc-bar-id">
+          <BackButton to="/purchasing/expenses" label={t('banking.expenses_title')} confirm={confirmLeave} />
+          {isNew
+            ? <h1 className="sb-doc-bar-no">{t('purchOcean.new_expense')}</h1>
+            : <bdi dir="ltr" className="sb-doc-bar-no">{expense?.expense_number ?? '…'}</bdi>}
+          {!isNew && statusPill(expense?.status)}
+        </div>
+        <div className="sb-doc-bar-actions">
           {!isNew && expense && expense.status !== 'draft' && (
             <Button variant="ghost" size="sm" onClick={() => setViewMode(true)}>
-              {t('common.view') || 'View'}
+              <Eye size={15} aria-hidden="true" /> {t('common.view') || 'View'}
             </Button>
           )}
           <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/purchasing/expenses'); }}>
@@ -568,124 +535,22 @@ export default function ExpenseEditorPage() {
           )}
           {isConfirmed && (
             <Button variant="danger" size="sm" onClick={() => {
-              const r = prompt('Void reason (optional):');
+              const r = prompt(t('expOcean.void_prompt'));
               setVoidReason(r ?? '');
               if (r !== null) voidMutation.mutate();
-            }}>Void</Button>
+            }}>{t('common.void')}</Button>
           )}
         </div>
       </div>
 
-      {error && (
-        <div style={{
-          background: theme.dangerSoft, border: `1px solid ${theme.dangerBorder}`,
-          borderRadius: '8px', padding: '10px 16px', fontSize: '13px', color: theme.danger,
-        }}>{error}</div>
-      )}
+      {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
 
-      {/* ── Main receipt card ── */}
-      <div style={{
-        background: theme.card,
-        border: `1px solid ${theme.border}`,
-        borderRadius: '16px',
-        boxShadow: '0 1px 3px rgba(9,9,11,.05), 0 10px 30px -12px rgba(124,58,237,.18)',
-        overflow: 'hidden',
-      }}>
-        {/* ── Hero: deep-violet amount band ── */}
-        <div style={{
-          background: 'linear-gradient(135deg, #2e1065 0%, #5b21b6 55%, #7c3aed 100%)',
-          padding: '24px 28px 22px',
-          color: '#fff',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 0 }}>
-              <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,.6)' }}>
-                Expense Amount
-              </span>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
-                <span style={{ fontSize: '18px', fontWeight: 700, color: 'rgba(255,255,255,.7)' }}>{companyCurrency}</span>
-                <input
-                  type="number" min="0" step="0.01"
-                  value={primary.unit_amount}
-                  disabled={!isDraft}
-                  onChange={e => setLine(primary._key, { unit_amount: e.target.value })}
-                  style={{
-                    fontFamily: theme.fontMono,
-                    fontSize: '40px', fontWeight: 800, letterSpacing: '-.02em',
-                    color: '#fff',
-                    border: 'none', outline: 'none', background: 'transparent',
-                    padding: 0, width: '260px', maxWidth: '52vw',
-                  }}
-                  placeholder="0.00"
-                />
-              </div>
-            </div>
-            {/* Tax-rate pill */}
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px',
-              padding: '7px 12px', borderRadius: '999px',
-              background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.22)',
-            }}>
-              <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'rgba(255,255,255,.7)' }}>Tax</span>
-              <input
-                type="number" min="0" max="100" step="0.01"
-                value={primary.tax_rate}
-                disabled={!isDraft}
-                onChange={e => setLine(primary._key, { tax_rate: e.target.value })}
-                style={{
-                  fontFamily: theme.fontMono, fontSize: '15px', fontWeight: 700,
-                  color: '#fff', border: 'none', outline: 'none', background: 'transparent',
-                  width: '44px', textAlign: 'end',
-                }}
-                placeholder="0"
-              />
-              <span style={{ fontSize: '13px', color: 'rgba(255,255,255,.7)' }}>%</span>
-            </div>
-          </div>
-
-          {/* Tax inclusive / exclusive toggle */}
-          <div style={{ marginTop: '14px', display: 'flex', gap: '8px' }}>
-            {([
-              { v: false, label: 'Amount excludes tax' },
-              { v: true,  label: 'Amount includes tax' },
-            ] as const).map(opt => (
-              <button
-                key={String(opt.v)}
-                type="button"
-                disabled={!isDraft}
-                onClick={() => { setTaxInclusive(opt.v); setDirty(true); }}
-                style={{
-                  fontSize: '11.5px', fontWeight: 600, padding: '5px 12px', borderRadius: '999px',
-                  cursor: isDraft ? 'pointer' : 'default',
-                  border: `1px solid ${taxInclusive === opt.v ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.25)'}`,
-                  background: taxInclusive === opt.v ? 'rgba(255,255,255,.92)' : 'transparent',
-                  color: taxInclusive === opt.v ? '#5b21b6' : 'rgba(255,255,255,.8)',
-                }}
-              >{opt.label}</button>
-            ))}
-          </div>
-
-          {/* computed summary chips */}
-          <div style={{
-            marginTop: '16px', paddingTop: '14px',
-            borderTop: '1px solid rgba(255,255,255,.15)',
-            display: 'flex', alignItems: 'baseline', gap: '24px', flexWrap: 'wrap',
-            fontSize: '12px', color: 'rgba(255,255,255,.7)',
-          }}>
-            <span>Subtotal <span className="font-mono" style={{ color: '#fff', fontWeight: 600, marginInlineStart: '4px' }}>{fmt(splitOpen ? totals.subtotal : primaryCalc.line_subtotal)}</span></span>
-            <span>Tax <span className="font-mono" style={{ color: '#fff', fontWeight: 600, marginInlineStart: '4px' }}>{fmt(splitOpen ? totals.tax : primaryCalc.tax_amount)}</span></span>
-            <span style={{ marginInlineStart: 'auto', fontSize: '15px', fontWeight: 800, color: '#fff' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,.7)', marginInlineEnd: '6px' }}>Total</span>
-              {companyCurrency} <span className="font-mono">{fmt(splitOpen ? totals.total : primaryCalc.line_total)}</span>
-            </span>
-          </div>
-        </div>
-
-        {/* ── Body ── */}
-        <div style={{ padding: '22px 28px 26px' }}>
-
-        {/* ── Where the money went ── */}
-        <SectionLabel>Where the money went</SectionLabel>
+      {/* ── Option E: form cards on the start side, live summary on the end side ── */}
+      <div className="sb-exp-layout">
+        <div className="sb-exp-main">
+          <div className="sb-card sb-form sb-doc-card">
+        {/* ── What was it for ── */}
+        <h2 className="sb-doc-card-title sb-exp-card-title"><Tag size={17} aria-hidden="true" /> {t('expOcean.what_for')}</h2>
 
         {!splitOpen && (
           <>
@@ -694,7 +559,7 @@ export default function ExpenseEditorPage() {
               value={primary.expense_account_id}
               onChange={(v) => setLine(primary._key, { expense_account_id: v })}
               disabled={!isDraft}
-              placeholder="Pick an expense category…"
+              placeholder={t('expOcean.pick_category')}
               panelWidth={420}
               addNew={isDraft ? {
                 noun: 'expense account',
@@ -708,7 +573,7 @@ export default function ExpenseEditorPage() {
             <div style={{ marginTop: '10px' }}>
               <input
                 type="text"
-                placeholder="Memo for this expense (optional)"
+                placeholder={t('expOcean.memo_optional')}
                 value={primary.description}
                 disabled={!isDraft}
                 onChange={e => setLine(primary._key, { description: e.target.value })}
@@ -724,9 +589,9 @@ export default function ExpenseEditorPage() {
               const c = calcLine(line, taxInclusive);
               return (
                 <div key={line._key} style={{
-                  background: theme.page,
-                  border: `1px solid ${theme.border}`,
-                  borderRadius: '10px',
+                  background: 'var(--sb-background)',
+                  border: '1px solid var(--sb-border)',
+                  borderRadius: '12px',
                   padding: '10px 12px',
                   display: 'flex', flexDirection: 'column', gap: '8px',
                 }}>
@@ -735,7 +600,7 @@ export default function ExpenseEditorPage() {
                     value={line.expense_account_id}
                     onChange={(v) => setLine(line._key, { expense_account_id: v })}
                     disabled={!isDraft}
-                    placeholder="Pick an expense category…"
+                    placeholder={t('expOcean.pick_category')}
                     panelWidth={380}
                     addNew={isDraft ? {
                       noun: 'expense account',
@@ -748,54 +613,55 @@ export default function ExpenseEditorPage() {
                   />
                   <div className="grid grid-cols-2 items-center gap-1.5 md:grid-cols-[1.4fr_70px_110px_70px_90px_28px]">
                     <input
-                      type="text" placeholder="Memo" value={line.description}
+                      type="text" placeholder={t('expOcean.memo')} value={line.description}
                       disabled={!isDraft}
                       onChange={e => setLine(line._key, { description: e.target.value })}
-                      style={{ height: '34px', padding: '0 10px', fontSize: '12px', border: `1px solid ${theme.border}`, borderRadius: '8px', outline: 'none', background: !isDraft ? theme.muted : '#fff' }}
+                      style={{ height: '34px', padding: '0 10px', fontSize: '12px', border: '1px solid var(--sb-border)', borderRadius: '8px', outline: 'none', background: !isDraft ? 'var(--sb-background)' : '#fff' }}
                     />
                     <input
-                      type="number" min="0" step="0.01" placeholder="Qty" value={line.quantity}
+                      type="number" min="0" step="0.01" placeholder={t('expOcean.qty')} value={line.quantity}
                       disabled={!isDraft}
                       onChange={e => setLine(line._key, { quantity: e.target.value })}
-                      style={{ height: '34px', padding: '0 10px', fontSize: '12px', border: `1px solid ${theme.border}`, borderRadius: '8px', outline: 'none', textAlign: 'end', background: !isDraft ? theme.muted : '#fff' }}
+                      style={{ height: '34px', padding: '0 10px', fontSize: '12px', border: '1px solid var(--sb-border)', borderRadius: '8px', outline: 'none', textAlign: 'end', background: !isDraft ? 'var(--sb-background)' : '#fff' }} dir="ltr"
                     />
                     <input
-                      type="number" min="0" step="0.01" placeholder="Unit" value={line.unit_amount}
+                      type="number" min="0" step="0.01" placeholder={t('expOcean.unit')} value={line.unit_amount}
                       disabled={!isDraft}
                       onChange={e => setLine(line._key, { unit_amount: e.target.value })}
-                      style={{ height: '34px', padding: '0 10px', fontSize: '12px', border: `1px solid ${theme.border}`, borderRadius: '8px', outline: 'none', textAlign: 'end', background: !isDraft ? theme.muted : '#fff' }}
+                      style={{ height: '34px', padding: '0 10px', fontSize: '12px', border: '1px solid var(--sb-border)', borderRadius: '8px', outline: 'none', textAlign: 'end', background: !isDraft ? 'var(--sb-background)' : '#fff' }} dir="ltr"
                     />
                     <input
-                      type="number" min="0" max="100" step="0.01" placeholder="Tax %" value={line.tax_rate}
+                      type="number" min="0" max="100" step="0.01" placeholder={t('expOcean.tax_pct')} value={line.tax_rate}
                       disabled={!isDraft}
                       onChange={e => setLine(line._key, { tax_rate: e.target.value })}
-                      style={{ height: '34px', padding: '0 10px', fontSize: '12px', border: `1px solid ${theme.border}`, borderRadius: '8px', outline: 'none', textAlign: 'end', background: !isDraft ? theme.muted : '#fff' }}
+                      style={{ height: '34px', padding: '0 10px', fontSize: '12px', border: '1px solid var(--sb-border)', borderRadius: '8px', outline: 'none', textAlign: 'end', background: !isDraft ? 'var(--sb-background)' : '#fff' }} dir="ltr"
                     />
-                    <div className="font-mono" style={{ textAlign: 'end', fontSize: '13px', fontWeight: 600, color: theme.ink }}>
+                    <div className="font-mono" dir="ltr" style={{ textAlign: 'end', fontSize: '13px', fontWeight: 700, color: 'var(--sb-text)' }}>
                       {fmt(c.line_total)}
                     </div>
                     {isDraft && lines.length > 1 ? (
                       <button
+                        type="button"
                         onClick={() => removeLine(line._key)}
-                        style={{ background: 'transparent', border: 'none', color: theme.inkFaint, cursor: 'pointer', fontSize: '16px' }}
-                        title="Remove split"
-                      >×</button>
+                        className="sb-doc-line-del"
+                        title={t('expOcean.remove_split')} aria-label={t('expOcean.remove_split')}
+                      ><X size={15} aria-hidden="true" /></button>
                     ) : <span />}
                   </div>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: theme.inkMuted }}>
+                  <label style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--sb-text-secondary)' }}>
                     <input
                       type="checkbox" checked={line.is_billable} disabled={!isDraft}
                       onChange={e => setLine(line._key, { is_billable: e.target.checked, customer_id: e.target.checked ? line.customer_id : '' })}
                     />
-                    <span>Bill back to customer</span>
+                    <span>{t('expOcean.bill_back')}</span>
                     {line.is_billable && (
-                      <span style={{ marginInlineStart: '8px', minWidth: '200px' }}>
+                      <span style={{ marginInlineStart: '8px', minWidth: 'min(200px, 100%)' }}>
                         <SearchableSelect
                           options={customerOpts}
                           value={line.customer_id}
                           onChange={(v) => setLine(line._key, { customer_id: v })}
                           disabled={!isDraft}
-                          placeholder="Customer…"
+                          placeholder={t('expOcean.customer')}
                           panelWidth={220}
                         />
                       </span>
@@ -805,10 +671,9 @@ export default function ExpenseEditorPage() {
               );
             })}
             {isDraft && (
-              <button
-                onClick={addLine}
-                style={{ alignSelf: 'flex-start', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: theme.brand, padding: '4px 8px' }}
-              >+ Add another split</button>
+              <button type="button" onClick={addLine} className="sb-row-link text-brand-600" style={{ alignSelf: 'flex-start' }}>
+                <Plus size={15} aria-hidden="true" /> {t('expOcean.add_split')}
+              </button>
             )}
           </div>
         )}
@@ -816,54 +681,43 @@ export default function ExpenseEditorPage() {
         {/* Split toggle */}
         {isDraft && (
           <div style={{ marginTop: '12px' }}>
-            <button
-              onClick={() => setSplitOpen((o) => !o)}
-              style={{
-                background: 'transparent',
-                border: `1px dashed ${theme.border}`,
-                borderRadius: '8px',
-                padding: '8px 14px',
-                fontSize: '12px',
-                color: theme.inkMuted,
-                cursor: 'pointer',
-                width: '100%',
-                textAlign: 'center',
-                fontWeight: 500,
-              }}
-            >
-              {splitOpen ? '— Hide split (combine back into one line)' : '+ Split across multiple categories'}
+            <button type="button" onClick={() => setSplitOpen((o) => !o)} className="sb-exp-split-btn">
+              {splitOpen ? <Minus size={15} aria-hidden="true" /> : <Plus size={15} aria-hidden="true" />}
+              {splitOpen ? t('expOcean.hide_split') : t('expOcean.show_split')}
             </button>
           </div>
         )}
 
-        {/* ── Details (uniform 2-column field grid) ── */}
-        <SectionLabel>Details</SectionLabel>
+          </div>
+          <div className="sb-card sb-form sb-doc-card">
+        {/* ── Payment details (uniform 2-column field grid) ── */}
+        <h2 className="sb-doc-card-title sb-exp-card-title"><ReceiptText size={17} aria-hidden="true" /> {t('expOcean.payment_details')}</h2>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px' }}>
-          <Field label="Date">
+        <div className="sb-exp-grid">
+          <Field label={t('common.date')}>
             <input
               type="date" value={date} disabled={!isDraft}
               onChange={e => setDate(e.target.value)}
               style={fld(isDraft)}
             />
           </Field>
-          <Field label={<>Paid from <span style={{ color: theme.danger }}>*</span></>}>
+          <Field label={<>{t('expOcean.paid_from')} <span style={{ color: 'var(--sb-danger)' }}>*</span></>}>
             <SearchableSelect
               options={bankOpts}
               value={paidFromId}
               onChange={setPaidFromId}
               disabled={!isDraft}
-              placeholder="Bank / cash"
+              placeholder={t('expOcean.bank_cash')}
               panelWidth={240}
             />
           </Field>
-          <Field label="Vendor">
+          <Field label={t('expOcean.vendor')}>
             <ContactPicker
               type="supplier"
               value={supplierId}
               onChange={(v) => setSupplierId(v ?? '')}
               disabled={!isDraft}
-              placeholder="Optional"
+              placeholder={t('expOcean.optional')}
             />
           </Field>
           {/* ProjectPicker renders nothing when the module is off, which would
@@ -879,19 +733,19 @@ export default function ExpenseEditorPage() {
               />
             </Field>
           )}
-          <Field label="Reference / invoice #">
+          <Field label={t('expOcean.reference')}>
             <input
               type="text" value={reference} disabled={!isDraft}
-              placeholder="e.g. INV-2231"
+              placeholder={t('expOcean.reference_ph')}
               onChange={e => setReference(e.target.value)}
               style={fld(isDraft)}
             />
           </Field>
           <div style={{ gridColumn: '1 / -1' }}>
-            <Field label="Description">
+            <Field label={t('common.description')}>
               <input
                 type="text" value={description} disabled={!isDraft}
-                placeholder="e.g. June office rent"
+                placeholder={t('expOcean.description_ph')}
                 onChange={e => setDescription(e.target.value)}
                 style={fld(isDraft)}
               />
@@ -899,19 +753,21 @@ export default function ExpenseEditorPage() {
           </div>
         </div>
 
+          </div>
         {/* Billable section — only shown in single-line mode. In split mode
             each line carries its own billable + customer picker inline. */}
         {!splitOpen && (
-          <>
-            <SectionLabel>Bill back to a customer?</SectionLabel>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: isDraft ? 'pointer' : 'not-allowed', userSelect: 'none' }}>
+          <div className="sb-card sb-doc-card">
+            <label className="sb-exp-switch-row" style={{ cursor: isDraft ? 'pointer' : 'not-allowed' }}>
+              <span className="sb-exp-switch-txt">
+                <span className="sb-exp-card-title" style={{ margin: 0 }}><UserRoundCheck size={17} aria-hidden="true" /> {t('expOcean.bill_back_q')}</span>
+                <span className="sb-form-hint" style={{ margin: 0 }}>{t('expOcean.reimbursable')}</span>
+              </span>
               <input
-                type="checkbox" checked={primary.is_billable} disabled={!isDraft}
+                type="checkbox" role="switch" className="sb-exp-switch"
+                checked={primary.is_billable} disabled={!isDraft}
                 onChange={e => setLine(primary._key, { is_billable: e.target.checked, customer_id: e.target.checked ? primary.customer_id : '' })}
               />
-              <span style={{ fontSize: '13px', color: theme.ink, fontWeight: 500 }}>
-                This is reimbursable from a customer
-              </span>
             </label>
             {primary.is_billable && (
               <div style={{ marginTop: '8px' }}>
@@ -920,42 +776,98 @@ export default function ExpenseEditorPage() {
                   value={primary.customer_id}
                   onChange={(v) => setLine(primary._key, { customer_id: v })}
                   disabled={!isDraft}
-                  placeholder="Pick the customer…"
+                  placeholder={t('expOcean.pick_customer')}
                   panelWidth={420}
                 />
               </div>
             )}
-          </>
+          </div>
         )}
 
-        {/* Final total ribbon */}
-        <div style={{
-          marginTop: '24px',
-          padding: '16px 20px',
-          background: theme.brandSoft,
-          borderRadius: '12px',
-          border: '1px solid #ddd6fe',
-          display: 'flex', alignItems: 'center', gap: '12px',
-        }}>
-          <span style={{
-            fontSize: '11px', fontWeight: 700,
-            color: theme.brandSoftText,
-            textTransform: 'uppercase', letterSpacing: '.08em',
-          }}>Total to pay</span>
-          <span style={{ marginInlineStart: 'auto', fontFamily: theme.fontMono, fontSize: '24px', fontWeight: 800, color: theme.brand, letterSpacing: '-.01em' }}>
-            {companyCurrency} {fmt(totals.total)}
-          </span>
         </div>
-        </div>
+        {/* ── Live summary (sticky on desktop, first on phones) ── */}
+        <aside className="sb-exp-aside">
+          <div className="sb-card sb-doc-card sb-exp-summary" data-testid="expense-summary">
+            <span className="sb-info-label">{t('expOcean.amount')}</span>
+            {splitOpen ? (
+              <bdi dir="ltr" className="sb-exp-amount-static">{companyCurrency} {fmt(totals.total)}</bdi>
+            ) : (
+              <div dir="ltr" className="sb-exp-amount">
+                <span className="sb-exp-amount-cur">{companyCurrency}</span>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={primary.unit_amount}
+                  disabled={!isDraft}
+                  onChange={e => setLine(primary._key, { unit_amount: e.target.value })}
+                  aria-label={t('expOcean.amount')}
+                  placeholder="0.00"
+                />
+              </div>
+            )}
+            {splitOpen && <span className="sb-form-hint" style={{ margin: 0 }}>{t('expOcean.split_total_hint', { count: lines.length })}</span>}
+
+            {/* Tax inclusive / exclusive — a segmented switch */}
+            <div className="sb-exp-seg" role="group" aria-label={t('common.tax')}>
+              {([
+                { v: false, label: t('expOcean.excl_tax_short') },
+                { v: true,  label: t('expOcean.incl_tax_short') },
+              ] as const).map(opt => (
+                <button
+                  key={String(opt.v)}
+                  type="button"
+                  disabled={!isDraft}
+                  aria-pressed={taxInclusive === opt.v}
+                  title={opt.v ? t('expOcean.incl_tax') : t('expOcean.excl_tax')}
+                  className={taxInclusive === opt.v ? 'active' : ''}
+                  onClick={() => { setTaxInclusive(opt.v); setDirty(true); }}
+                >{opt.label}</button>
+              ))}
+            </div>
+
+            <div className="sb-doc-summary-rows">
+              {!splitOpen && (
+                <div className="flex items-center justify-between text-ink-secondary">
+                  <span>{t('expOcean.tax_rate')}</span>
+                  <span dir="ltr" className="sb-exp-rate">
+                    <input
+                      type="number" min="0" max="100" step="0.01"
+                      value={primary.tax_rate}
+                      disabled={!isDraft}
+                      onChange={e => setLine(primary._key, { tax_rate: e.target.value })}
+                      aria-label={t('expOcean.tax_rate')}
+                      placeholder="0"
+                    />
+                    <span>%</span>
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-between text-ink-secondary">
+                <span>{t('purchasing.subtotal')}</span>
+                <span className="font-mono" dir="ltr">{fmt(splitOpen ? totals.subtotal : primaryCalc.line_subtotal)}</span>
+              </div>
+              <div className="flex justify-between text-ink-secondary">
+                <span>{t('common.tax')}</span>
+                <span className="font-mono" dir="ltr">{fmt(splitOpen ? totals.tax : primaryCalc.tax_amount)}</span>
+              </div>
+              <div className="sb-doc-grand">
+                <span>{t('expOcean.total_to_pay')}</span>
+                <bdi dir="ltr">{companyCurrency} {fmt(totals.total)}</bdi>
+              </div>
+            </div>
+            {isDraft && (
+              <button type="button" className="sb-primary-btn" style={{ width: '100%', marginTop: 4 }}
+                onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
+                {saveMutation.isPending ? t('common.saving') : t('expOcean.save_expense')}
+              </button>
+            )}
+          </div>
+        </aside>
       </div>
 
       {isVoid && expense?.void_reason && (
-        <div style={{
-          background: theme.dangerSoft, border: `1px solid ${theme.dangerBorder}`,
-          borderRadius: '8px', padding: '10px 16px', fontSize: '13px', color: theme.danger,
-        }}>
-          <strong>Void reason:</strong> {expense.void_reason}
-        </div>
+        <p className="sb-alert sb-alert-danger" style={{ fontWeight: 400 }}>
+          <strong>{t('expOcean.void_reason')}</strong> {expense.void_reason}
+        </p>
       )}
 
       {/* Phase 13.02b — quick-create CoA modal */}
