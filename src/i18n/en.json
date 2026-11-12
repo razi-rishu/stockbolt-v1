@@ -3268,5 +3268,27 @@
   },
   "shortcutsOcean": {
     "record_receipt": "Record Receipt"
+  },
+  "billOcean": {
+    "err_landed_grn": "Landed cost isn't allowed on bills linked to a goods receipt. Post freight separately.",
+    "err_landed_negative": "Landed cost can't be negative.",
+    "err_landed_account": "Pick a \"paid from / owed to\" account for landed cost \"{{label}}\".",
+    "unnamed": "unnamed",
+    "err_landed_name": "Give each landed-cost line a name (for example Freight or Customs).",
+    "err_warehouse": "Pick a warehouse for every product line. Lines missing one: {{count}}.",
+    "reopen_title": "Reverses the posted entries and reopens the bill as a draft for correction",
+    "reopening": "Reopening…",
+    "edit_bill": "Edit bill",
+    "payable": "Payable",
+    "pending_bills": "Pending bills: {{count}}",
+    "warehouse": "Warehouse",
+    "wh_title": "Destination warehouse for this line",
+    "stock_title": "On-hand stock",
+    "mac": "MAC →",
+    "mac_title": "Projected moving average cost after this purchase",
+    "mac_tip": "Current MAC: {{cur}} → after: {{after}}",
+    "mac_new": "New MAC will be {{after}}",
+    "pick": "— pick —",
+    "round_title": "Adjust so the total matches the supplier's printed bill exactly (±1.00). Posts to 5900 Round Off."
   }
 }

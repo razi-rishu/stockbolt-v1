@@ -137,12 +137,13 @@ export function TdsPanel({ bill, supplier }: TdsPanelProps) {
   if (sections.length === 0) return null;
 
   return (
-    <div className="glass-card p-4">
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-ink-primary">{t('tds.panel_title')}</h3>
+    // Ocean Teal (UI v1.1): look only — same prompt, deductions, deduct and reverse.
+    <div className="sb-ocean sb-card sb-doc-card" style={{ background: 'var(--sb-surface)' }} data-testid="tds-panel-ocean">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="sb-doc-card-title" style={{ margin: 0 }}>{t('tds.panel_title')}</h3>
         {alreadyDeducted > 0 && (
-          <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-600">
-            {t('tds.withheld')} {MONEY(alreadyDeducted)}
+          <span className="sb-pill" style={{ marginTop: 0 }}>
+            {t('tds.withheld')} <bdi dir="ltr">{MONEY(alreadyDeducted)}</bdi>
           </span>
         )}
       </div>
@@ -167,7 +168,7 @@ export function TdsPanel({ bill, supplier }: TdsPanelProps) {
       )}
 
       {deductions.length > 0 && (
-        <table className="mb-2 w-full text-xs">
+        <div className="mb-2 overflow-x-auto"><table className="w-full text-xs" style={{ minWidth: 420 }}>
           <thead className="text-ink-tertiary">
             <tr>
               <th className="py-1 text-start">{t('tds.col_date')}</th>
@@ -200,7 +201,7 @@ export function TdsPanel({ bill, supplier }: TdsPanelProps) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
 
       {canWrite && roomLeft > 0.005 && (
@@ -211,7 +212,7 @@ export function TdsPanel({ bill, supplier }: TdsPanelProps) {
 
       {/* Deduct modal */}
       <Modal open={open} onClose={() => setOpen(false)} title={t('tds.deduct')} width="md">
-        <div className="space-y-3">
+        <div className="sb-ocean sb-form sb-modal-form">
           <Select
             label={t('tds.f_section')}
             options={sections.map((s) => ({ value: s.code, label: `${s.code} — ${s.description}` }))}
@@ -245,7 +246,7 @@ export function TdsPanel({ bill, supplier }: TdsPanelProps) {
 
       {/* Reverse confirm */}
       <Modal open={!!reverseId} onClose={() => setReverseId(null)} title={t('tds.reverse')} width="md">
-        <p className="text-sm text-ink-secondary">{t('tds.reverse_confirm')}</p>
+        <div className="sb-ocean sb-form sb-modal-form"><p className="text-sm text-ink-secondary">{t('tds.reverse_confirm')}</p></div>
         {reverseMutation.error && <p className="mt-2 text-xs text-danger-600">{(reverseMutation.error as Error).message}</p>}
         <div className="mt-4 flex justify-end gap-2">
           <Button size="sm" variant="secondary" onClick={() => setReverseId(null)}>{t('common.cancel')}</Button>

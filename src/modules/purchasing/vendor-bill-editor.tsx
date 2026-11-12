@@ -13,6 +13,10 @@ import { TdsPanel } from './tds-panel';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
+import { StatusBadge } from '@/ui/status-badge';
+import { Modal } from '@/ui/modal';
+import { Pencil, Printer, Eye, Plus, X, Copy, Wallet } from 'lucide-react';
+import '@/styles/stockbolt-ocean-teal.css';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
@@ -464,17 +468,17 @@ export default function VendorBillEditorPage() {
     if (!header.supplier_id) throw new Error(t('purchasing.error_supplier_required'));
     // Phase 47 — validate landed-cost lines.
     if (landedCost > 0 && header.linked_grn_id) {
-      throw new Error('Landed cost is not allowed on GRN-linked bills. Post freight separately.');
+      throw new Error(t('billOcean.err_landed_grn'));
     }
     for (const l of landedCosts) {
       const amt = parseFloat(l.amount) || 0;
-      if (amt < 0) throw new Error('Landed cost cannot be negative');
-      if (amt > 0 && !l.credit_account_id) throw new Error(`Pick a "paid from / owed to" account for landed cost "${l.label || 'unnamed'}"`);
-      if (amt > 0 && !l.label.trim()) throw new Error('Give each landed-cost line a name (e.g. Freight, Customs)');
+      if (amt < 0) throw new Error(t('billOcean.err_landed_negative'));
+      if (amt > 0 && !l.credit_account_id) throw new Error(t('billOcean.err_landed_account', { label: l.label || t('billOcean.unnamed') }));
+      if (amt > 0 && !l.label.trim()) throw new Error(t('billOcean.err_landed_name'));
     }
     const productLinesWithoutWh = lines.filter(l => l.product_id && !l.warehouse_id);
     if (!header.linked_grn_id && productLinesWithoutWh.length > 0) {
-      throw new Error(`Pick a warehouse for ${productLinesWithoutWh.length} product line${productLinesWithoutWh.length === 1 ? '' : 's'}`);
+      throw new Error(t('billOcean.err_warehouse', { count: productLinesWithoutWh.length }));
     }
 
     const billNum = isNew ? await getAdapter().vendorBills.getNextNumber(company_id!) : existing!.bill_number;
@@ -584,31 +588,15 @@ export default function VendorBillEditorPage() {
   // (it would otherwise appear as a clickable row in the dropdown list).
   const expenseOpts = accountOpts.map(a => ({ value: a.id, label: `${a.code} ${a.name}` }));
 
-  // Status pill helper (sample look)
-  const statusPill = (status?: string) => {
-    if (!status) return null;
-    const map: Record<string, { bg: string; text: string; border: string }> = {
-      draft:     { bg: '#fffbeb', text: '#b45309', border: '#fde68a' },
-      confirmed: { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0' },
-      void:      { bg: '#fef2f2', text: '#dc2626', border: '#fecaca' },
-    };
-    const p = map[status] ?? { bg: '#f1f5f9', text: '#64748b', border: '#e2e8f0' };
-    return (
-      <span style={{
-        display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
-        fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
-        background: p.bg, color: p.text, border: `1px solid ${p.border}`,
-      }}>{status}</span>
-    );
-  };
+  // Ocean Teal — status uses the shared translated badge.
+  const statusPill = (status?: string) => status ? <StatusBadge status={status} /> : null;
 
   // Delete-draft confirmation — rendered in BOTH the view template and the
   // editor form, so a wrong draft can be removed from either place.
-  const deleteModalEl = deleteModal && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-80 rounded-card bg-surface-card p-6 shadow-xl">
-        <h3 className="mb-3 text-base font-semibold text-ink-primary">{t('purchasing.delete_bill')}</h3>
-        <p className="mb-5 text-sm text-ink-secondary">{t('purchasing.delete_bill_desc')}</p>
+  const deleteModalEl = (
+    <Modal open={deleteModal} onClose={() => setDeleteModal(false)} title={t('purchasing.delete_bill')}>
+      <div className="sb-ocean sb-form sb-modal-form">
+        <p className="text-sm text-ink-secondary">{t('purchasing.delete_bill_desc')}</p>
         <div className="flex gap-2 justify-end">
           <Button variant="ghost" size="sm" onClick={() => setDeleteModal(false)}>{t('common.cancel')}</Button>
           <Button variant="danger" size="sm" onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending}>
@@ -616,7 +604,7 @@ export default function VendorBillEditorPage() {
           </Button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 
   // Phase 14.03 — view-mode renderer (Signature template). Active only
@@ -637,26 +625,24 @@ export default function VendorBillEditorPage() {
     });
     const doc = withPaymentDetails(docBase, 'vendor_bill', docPayments);
     return (
-      <div className="signature-print-scope" style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
-        <div
-          data-print-hide
-          style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
-        >
-          <BackButton to="/purchasing/bills" label={t('purchasing.bills_title')} confirm={confirmLeave} />
-          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
-            {existing.bill_number}
-          </h1>
-          {statusPill(existing.status)}
-          <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+      // Ocean Teal (UI v1.1): look only — same actions, TDS panel and printed bill.
+      <div className="signature-print-scope sb-ocean sb-docx" data-testid="bill-view-ocean">
+        <div data-print-hide className="sb-card sb-doc-bar">
+          <div className="sb-doc-bar-id">
+            <BackButton to="/purchasing/bills" label={t('purchasing.bills_title')} confirm={confirmLeave} />
+            <bdi dir="ltr" className="sb-doc-bar-no">{existing.bill_number}</bdi>
+            {statusPill(existing.status)}
+          </div>
+          <div className="sb-doc-bar-actions">
             {canEdit && (
               <Button size="sm" onClick={() => setViewMode(false)}>
-                ✎ {t('common.edit') || 'Edit'}
+                <Pencil size={15} aria-hidden="true" /> {t('common.edit') || 'Edit'}
               </Button>
             )}
             {existing.status === 'confirmed' && (
               <Button size="sm" onClick={() => reopenMutation.mutate()} disabled={reopenMutation.isPending}
-                title="Reverses the posted entries and re-opens the bill as a draft for correction">
-                ✎ {reopenMutation.isPending ? 'Re-opening…' : 'Edit bill'}
+                title={t('billOcean.reopen_title')}>
+                <Pencil size={15} aria-hidden="true" /> {reopenMutation.isPending ? t('billOcean.reopening') : t('billOcean.edit_bill')}
               </Button>
             )}
             <Button
@@ -686,7 +672,7 @@ export default function VendorBillEditorPage() {
                   } },
                 });
               }}
-            >⧉ {t('common.duplicate')}</Button>
+            ><Copy size={15} aria-hidden="true" /> {t('common.duplicate')}</Button>
             {/* Mirror of the sales side: an advance already paid to this
                 supplier can settle this bill. */}
             {existing.status === 'confirmed' && (
@@ -698,11 +684,11 @@ export default function VendorBillEditorPage() {
             )}
             {existing.status === 'confirmed' && (
               <Button size="sm" onClick={() => navigate(`/purchasing/payments/new?contact=${existing.supplier_id}`)}>
-                💰 {t('purchasing.make_payment') || 'Make Payment'}
+                <Wallet size={15} aria-hidden="true" /> {t('purchasing.make_payment') || 'Make Payment'}
               </Button>
             )}
             <Button variant="ghost" size="sm" onClick={() => window.print()}>
-              🖨 {t('print.print') || 'Print'}
+              <Printer size={15} aria-hidden="true" /> {t('print.print') || 'Print'}
             </Button>
             {/* Draft → Delete straight from the view page (confirmed bills use
                  'Edit bill' to reopen; full Void is a later migration). */}
@@ -721,7 +707,7 @@ export default function VendorBillEditorPage() {
           </div>
         )}
 
-        <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
+        <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
         {deleteModalEl}
@@ -730,30 +716,34 @@ export default function VendorBillEditorPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '64px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-        <BackButton to="/purchasing/bills" label={t('purchasing.bills_title')} confirm={confirmLeave} />
-        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
-          {isNew ? t('purchasing.new_bill') : existing?.bill_number ?? '…'}
-        </h1>
-        {!isNew && statusPill(existing?.status)}
-        <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+    // Ocean Teal (UI v1.1): look only — same fields, landed costs, lines,
+    // stock/MAC preview, totals, save / reopen / delete and previews.
+    <div className="sb-ocean sb-docx sb-docx-edit" data-testid="bill-edit-ocean">
+      <div className="sb-card sb-doc-bar">
+        <div className="sb-doc-bar-id">
+          <BackButton to="/purchasing/bills" label={t('purchasing.bills_title')} confirm={confirmLeave} />
+          {isNew
+            ? <h1 className="sb-doc-bar-no">{t('purchasing.new_bill')}</h1>
+            : <bdi dir="ltr" className="sb-doc-bar-no">{existing?.bill_number ?? '…'}</bdi>}
+          {!isNew && statusPill(existing?.status)}
+        </div>
+        <div className="sb-doc-bar-actions">
           {/* Phase 14.03 — flip back into template view for saved bills. */}
           {!isNew && existing && existing.status !== 'draft' && (
             <Button variant="ghost" size="sm" onClick={() => setViewMode(true)}>
-              {t('common.view') || 'View'}
+              <Eye size={15} aria-hidden="true" /> {t('common.view') || 'View'}
             </Button>
           )}
           {!isNew && existing?.id && (
             <Button variant="ghost" size="sm" onClick={() => window.open(`/print/bill/${existing.id}`, '_blank')}>
-              🖨 {t('print.print')}
+              <Printer size={15} aria-hidden="true" /> {t('print.print')}
             </Button>
           )}
           <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/purchasing/bills'); }}>{t('common.cancel')}</Button>
           {!isNew && existing?.status === 'confirmed' && (
             <Button size="sm" onClick={() => { setError(null); reopenMutation.mutate(); }} disabled={reopenMutation.isPending}
-              title="Reverses the posted entries and re-opens the bill as a draft for correction">
-              ✎ {reopenMutation.isPending ? 'Re-opening…' : 'Edit bill'}
+              title={t('billOcean.reopen_title')}>
+              <Pencil size={15} aria-hidden="true" /> {reopenMutation.isPending ? t('billOcean.reopening') : t('billOcean.edit_bill')}
             </Button>
           )}
           {canEdit && (
@@ -769,41 +759,36 @@ export default function VendorBillEditorPage() {
         </div>
       </div>
 
-      {error && (
-        <div style={{
-          background: '#fef2f2', border: '1px solid #fecaca',
-          borderRadius: '8px', padding: '10px 16px', fontSize: '13px', color: '#dc2626',
-        }}>{error}</div>
-      )}
+      {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
 
       {/* Supplier Insight Panel — appears once a supplier is picked.
            Shows payable, overdue, last payment so the buyer has full
            context while writing the bill. */}
       {selectedSupplier && (
-        <div className="glass-card" style={{ padding: '16px' }}>
+        <div className="sb-card sb-doc-insight">
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
             <div>
-              <p className="text-xs uppercase tracking-wide text-ink-tertiary">Payable</p>
+              <p className="sb-info-label">{t('billOcean.payable')}</p>
               <p className={`mt-0.5 text-lg font-mono font-semibold ${supplierOutstanding > 0 ? 'text-amber-700' : 'text-ink-primary'}`}>
                 {header.currency} {fmt(supplierOutstanding)}
               </p>
               <p className="text-xs text-ink-tertiary mt-0.5">
-                {openSupplierBills.filter(b => b.id !== id).length} pending bill{openSupplierBills.length === 1 ? '' : 's'}
+                {t('billOcean.pending_bills', { count: openSupplierBills.filter(b => b.id !== id).length })}
               </p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-ink-tertiary">Overdue</p>
+              <p className="sb-info-label">{t('invOcean.overdue')}</p>
               <p className={`mt-0.5 text-lg font-mono font-semibold ${overdueBills.length > 0 ? 'text-red-600' : 'text-ink-primary'}`}>
                 {overdueBills.length}
               </p>
               <p className="text-xs text-ink-tertiary mt-0.5">
                 {overdueBills.length > 0
-                  ? `${fmt(overdueBills.reduce((s, b) => s + Number(b.outstanding ?? 0), 0))} past due`
-                  : 'No overdue'}
+                  ? t('invOcean.past_due', { amount: fmt(overdueBills.reduce((s, b) => s + Number(b.outstanding ?? 0), 0)) })
+                  : t('invOcean.no_overdue')}
               </p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-ink-tertiary">Last payment</p>
+              <p className="sb-info-label">{t('invOcean.last_payment')}</p>
               {lastVendorPayment ? (
                 <>
                   <p className="mt-0.5 text-lg font-mono font-semibold text-ink-primary">
@@ -814,7 +799,7 @@ export default function VendorBillEditorPage() {
               ) : (
                 <>
                   <p className="mt-0.5 text-lg font-mono font-semibold text-ink-tertiary">—</p>
-                  <p className="text-xs text-ink-tertiary mt-0.5">No payments yet</p>
+                  <p className="text-xs text-ink-tertiary mt-0.5">{t('invOcean.no_payments')}</p>
                 </>
               )}
             </div>
@@ -824,8 +809,8 @@ export default function VendorBillEditorPage() {
 
       {deleteModalEl}
 
-      <div className="glass-card" style={{ padding: '20px' }}>
-        <h2 className="mb-4 text-sm font-semibold text-ink-primary">{t('purchasing.bill_details')}</h2>
+      <div className="sb-card sb-form sb-doc-card">
+        <h2 className="sb-doc-card-title">{t('purchasing.bill_details')}</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="col-span-2 md:col-span-1">
             <label className="mb-1 block text-sm font-medium text-ink-primary">
@@ -866,12 +851,12 @@ export default function VendorBillEditorPage() {
              Each adds to inventory (allocated across goods by value) and is
              credited to its own account. Standalone bills only. */}
         {!header.linked_grn_id && (
-          <div className="mt-4 rounded-lg border border-border-subtle bg-surface-subtle/40 p-3">
-            <div className="mb-1 flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wide text-ink-secondary">{t('purchasing.landed_costs')}</span>
+          <div className="sb-hw-test" style={{ marginTop: 16, gap: 4 }}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm font-semibold" style={{ color: 'var(--sb-text)' }}>{t('purchasing.landed_costs')}</span>
               {canEdit && (
-                <button type="button" onClick={addLanded} className="text-xs font-semibold text-brand-600 hover:underline">
-                  + {t('purchasing.add_landed_cost')}
+                <button type="button" onClick={addLanded} className="sb-row-link text-brand-600">
+                  <Plus size={15} aria-hidden="true" /> {t('purchasing.add_landed_cost')}
                 </button>
               )}
             </div>
@@ -881,7 +866,7 @@ export default function VendorBillEditorPage() {
             ) : (
               <div className="flex flex-col gap-2">
                 {landedCosts.map(l => (
-                  <div key={l._key} className="grid grid-cols-[1fr_110px_1.3fr_auto] items-center gap-2">
+                  <div key={l._key} className="grid grid-cols-[minmax(0,1fr)_110px] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_110px_minmax(0,1.3fr)_auto]">
                     <input
                       placeholder={t('purchasing.landed_label_ph')}
                       value={l.label} disabled={!canEdit}
@@ -892,7 +877,7 @@ export default function VendorBillEditorPage() {
                       type="number" min="0" step="0.01" placeholder="0.00"
                       value={l.amount} disabled={!canEdit}
                       onChange={e => updateLanded(l._key, { amount: e.target.value })}
-                      className="h-9 rounded border border-border-subtle px-2 text-end font-mono text-sm"
+                      dir="ltr" className="h-9 rounded border border-border-subtle px-2 text-end font-mono text-sm"
                     />
                     <SearchableSelect
                       value={l.credit_account_id}
@@ -903,7 +888,7 @@ export default function VendorBillEditorPage() {
                     />
                     {canEdit && (
                       <button type="button" onClick={() => removeLanded(l._key)}
-                        className="px-2 text-ink-tertiary hover:text-red-600" aria-label="Remove">✕</button>
+                        className="sb-doc-line-del" aria-label={t('invOcean.remove_line')} title={t('invOcean.remove_line')}><X size={15} aria-hidden="true" /></button>
                     )}
                   </div>
                 ))}
@@ -918,19 +903,19 @@ export default function VendorBillEditorPage() {
 
       {/* Line items + Sticky sidebar */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
-      <div className="glass-card">
-        <div className="border-b border-border-subtle px-5 py-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-ink-primary">{t('purchasing.line_items')}</h2>
+      <div className="sb-card sb-doc-card sb-doc-lines">
+        <div className="sb-doc-lines-head">
+          <h2 className="sb-doc-card-title" style={{ margin: 0 }}>{t('purchasing.line_items')}</h2>
           {canEdit && showTax && (
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
-              <span style={{ fontSize: '12px', color: pricesInclusive ? '#7c3aed' : '#64748b', fontWeight: 500 }}>
-                {pricesInclusive ? 'Tax-inclusive prices' : 'Tax-exclusive prices'}
+              <span style={{ fontSize: '13px', color: pricesInclusive ? 'var(--sb-primary-dark)' : 'var(--sb-text-secondary)', fontWeight: 600 }}>
+                {pricesInclusive ? t('invOcean.tax_inclusive') : t('invOcean.tax_exclusive')}
               </span>
               <div
                 onClick={() => { setPricesInclusive(v => !v); setDirty(true); }}
                 style={{
                   width: '36px', height: '20px', borderRadius: '999px', cursor: 'pointer',
-                  background: pricesInclusive ? '#7c3aed' : '#cbd5e1',
+                  background: pricesInclusive ? 'var(--sb-primary)' : '#cbd5e1',
                   position: 'relative', transition: 'background 0.2s',
                 }}
               >
@@ -948,16 +933,16 @@ export default function VendorBillEditorPage() {
         <div className="overflow-x-auto">
           <table className="w-full table-fixed text-xs" style={{ minWidth: '1180px' }}>
             <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary">
+              <tr>
                 <th className="px-3 py-2 text-start font-medium" style={{ minWidth: '200px' }}>{t('purchasing.product')}</th>
                 <th className="px-3 py-2 text-start font-medium" style={{ width: '168px' }}>{t('purchasing.account')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '72px' }}>{t('purchasing.qty')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('purchasing.unit_cost')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '84px' }}>{t('purchasing.disc_pct')}</th>
                 {showTax && <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('purchasing.tax')}</th>}
-                <th className="px-3 py-2 text-start font-medium" style={{ width: '128px' }} title="Destination warehouse for this line">Warehouse</th>
-                <th className="px-3 py-2 text-end font-medium" style={{ width: '76px' }} title="On-hand stock">Stock</th>
-                <th className="px-3 py-2 text-end font-medium" style={{ width: '96px' }} title="Projected MAC after this purchase">MAC →</th>
+                <th className="px-3 py-2 text-start font-medium" style={{ width: '128px' }} title={t('billOcean.wh_title')}>{t('billOcean.warehouse')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '76px' }} title={t('billOcean.stock_title')}>{t('invOcean.stock')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: '96px' }} title={t('billOcean.mac_title')}>{t('billOcean.mac')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('purchasing.line_total')}</th>
                 {canEdit && <th style={{ width: '36px' }} />}
               </tr>
@@ -985,7 +970,7 @@ export default function VendorBillEditorPage() {
                     <input
                       className="mt-1 w-full rounded border border-transparent bg-transparent px-2 py-0.5 text-[11px] text-ink-tertiary placeholder:text-ink-tertiary hover:border-border-subtle focus:border-border-strong focus:bg-surface-subtle focus:text-ink-secondary disabled:opacity-60"
                       value={line.description} disabled={!canEdit}
-                      placeholder={t('purchasing.description') + ' (optional)'}
+                      placeholder={t('invOcean.description_optional', { label: t('purchasing.description') })}
                       onChange={e => updateLine(line._key, { description: e.target.value })} />
                   </td>
                   <td className="px-3 py-1.5 align-top">
@@ -1048,7 +1033,7 @@ export default function VendorBillEditorPage() {
                         disabled={!canEdit}
                         onChange={e => updateLine(line._key, { warehouse_id: e.target.value || null })}
                       >
-                        <option value="">— pick —</option>
+                        <option value="">{t('billOcean.pick')}</option>
                         {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
                       </select>
                     ) : (
@@ -1084,10 +1069,10 @@ export default function VendorBillEditorPage() {
                       : 'text-ink-secondary';
                     return (
                       <>
-                        <td className="px-3 py-1.5 align-top text-end font-mono text-ink-secondary" title={`On-hand: ${fmt(curQty)}, after: ${fmt(totalQty)}`}>
+                        <td className="px-3 py-1.5 align-top text-end font-mono text-ink-secondary" title={t('invOcean.stock_tip', { onhand: fmt(curQty), after: fmt(totalQty) })}>
                           {fmt(curQty)}
                         </td>
-                        <td className={`px-3 py-1.5 align-top text-end font-mono ${macCls}`} title={curMac > 0 ? `Current MAC: ${fmt(curMac)} → after: ${fmt(newMac)}` : `New MAC will be ${fmt(newMac)}`}>
+                        <td className={`px-3 py-1.5 align-top text-end font-mono ${macCls}`} title={curMac > 0 ? t('billOcean.mac_tip', { cur: fmt(curMac), after: fmt(newMac) }) : t('billOcean.mac_new', { after: fmt(newMac) })}>
                           {addQty > 0 ? fmt(newMac) : (curMac > 0 ? fmt(curMac) : '—')}
                         </td>
                       </>
@@ -1096,9 +1081,9 @@ export default function VendorBillEditorPage() {
                   <td className="px-3 py-1.5 align-top text-end font-mono text-ink-primary">{fmt(line.line_total)}</td>
                   {canEdit && (
                     <td className="px-3 py-1.5 align-top">
-                      <button className="text-red-400 hover:text-red-600 disabled:opacity-30"
+                      <button type="button" className="sb-doc-line-del" aria-label={t('invOcean.remove_line')} title={t('invOcean.remove_line')}
                         disabled={lines.length === 1}
-                        onClick={() => { setLines(prev => prev.filter(l => l._key !== line._key)); setDirty(true); }}>×</button>
+                        onClick={() => { setLines(prev => prev.filter(l => l._key !== line._key)); setDirty(true); }}><X size={16} aria-hidden="true" /></button>
                     </td>
                   )}
                 </tr>
@@ -1107,10 +1092,10 @@ export default function VendorBillEditorPage() {
           </table>
         </div>
         {canEdit && (
-          <div className="border-t border-border-subtle px-5 py-2">
-            <button className="text-xs text-brand-600 hover:text-brand-700"
+          <div className="sb-doc-add-line">
+            <button type="button" className="sb-row-link text-brand-600"
               onClick={() => { const b = { ...emptyLine(), tax_rate: stdTaxRate }; setLines(prev => [...prev, { ...b, ...calcLine(b, pricesInclusive) }]); setDirty(true); }}>
-              + {t('purchasing.add_line')}
+              <Plus size={16} aria-hidden="true" /> {t('purchasing.add_line')}
             </button>
           </div>
         )}
@@ -1118,11 +1103,9 @@ export default function VendorBillEditorPage() {
 
       {/* Sticky financial summary sidebar + accounting preview */}
       <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
-        <div className="glass-card" style={{ overflow: 'hidden' }}>
-          <div className="border-b border-border-subtle px-4 py-2.5 bg-surface-muted/40">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-tertiary">Summary</h3>
-          </div>
-          <div className="p-4 space-y-2 text-sm">
+        <div className="sb-card sb-doc-summary">
+          <h3 className="sb-doc-card-title">{t('invOcean.summary')}</h3>
+          <div className="sb-doc-summary-rows">
             <div className="flex justify-between text-ink-secondary">
               <span>{t('purchasing.subtotal')}</span>
               <span className="font-mono">{fmt(subtotal)}</span>
@@ -1140,7 +1123,7 @@ export default function VendorBillEditorPage() {
               </div>
             )}
             <div className="flex items-center justify-between text-ink-secondary">
-              <span title="Adjust so the total matches the supplier's printed bill exactly (±1.00). Posts to 5900 Round Off.">
+              <span title={t('billOcean.round_title')}>
                 {t('sales.round_off')}
               </span>
               <input
@@ -1148,15 +1131,12 @@ export default function VendorBillEditorPage() {
                 value={roundOffInput}
                 disabled={!canEdit}
                 onChange={e => { setRoundOffInput(e.target.value); setDirty(true); }}
-                className="h-7 w-24 rounded border border-border-subtle px-2 text-end font-mono text-sm"
+                dir="ltr" className="h-7 w-24 rounded border border-border-subtle px-2 text-end font-mono text-sm"
               />
             </div>
             {/* Phase 47 — the supplier's bill total (what we owe THEM). Landed
                 costs are paid to other parties, so they sit below. */}
-            <div className="flex justify-between border-t border-border-subtle pt-2.5 mt-1 text-base font-semibold text-ink-primary">
-              <span>{t('purchasing.supplier_total')}</span>
-              <span className="font-mono">{header.currency} {fmt(grandTotal + roundOff)}</span>
-            </div>
+            <div className="sb-doc-grand"><span>{t('purchasing.supplier_total')}</span><bdi dir="ltr">{header.currency} {fmt(grandTotal + roundOff)}</bdi></div>
             {landedCost > 0 && (
               <>
                 <div className="flex justify-between text-ink-secondary">
@@ -1185,7 +1165,7 @@ export default function VendorBillEditorPage() {
               return (
                 <>
                   <div className="flex justify-between text-ink-secondary border-t border-border-subtle pt-2.5">
-                    <span>Paid</span>
+                    <span>{t('invOcean.paid')}</span>
                     <span className="font-mono text-emerald-700">{fmt(paid)}</span>
                   </div>
                   {tdsWithheld > 0.005 && (
@@ -1195,7 +1175,7 @@ export default function VendorBillEditorPage() {
                     </div>
                   )}
                   <div className={`flex justify-between font-semibold ${balanceDue > 0.005 ? 'text-amber-700' : 'text-emerald-700'}`}>
-                    <span>Balance Due</span>
+                    <span>{t('invOcean.balance_due')}</span>
                     <span className="font-mono">{header.currency} {fmt(balanceDue)}</span>
                   </div>
                 </>
