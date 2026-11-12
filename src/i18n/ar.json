@@ -3133,7 +3133,9 @@
     "refunded": "مسترد",
     "reopened": "أُعيد فتحه",
     "generated": "مُنشأ",
-    "in_progress": "قيد التنفيذ"
+    "in_progress": "قيد التنفيذ",
+    "partially_received": "مستلم جزئيًا",
+    "billed": "مفوتر"
   },
   "salesOcean": {
     "invoices_count": "الفواتير: {{count}}",
@@ -3239,5 +3241,32 @@
     "applying_full": "تطبيق كامل الرصيد المتاح. ستُخصص الدفعة بالكامل.",
     "use_max": "استخدم {{amount}} (الحد الأقصى)",
     "pick_for_suggest": "اختر فاتورة لرؤية المبلغ المقترح"
+  },
+  "purchOcean": {
+    "orders_count": "الطلبات: {{count}}",
+    "grns_count": "الاستلامات: {{count}}",
+    "bills_count": "الفواتير: {{count}}",
+    "payments_count": "الدفعات: {{count}}",
+    "expenses_count": "المصروفات: {{count}}",
+    "convert_to_bill": "تحويل إلى فاتورة مورد",
+    "converting": "جارٍ التحويل…",
+    "new_expense": "مصروف جديد",
+    "exp_number": "الرقم",
+    "spend_month": "إنفاق هذا الشهر",
+    "vs_last_month": "مقارنة بالشهر الماضي",
+    "total_expenses": "إجمالي المصروفات",
+    "lifetime": "{{amount}} منذ البداية",
+    "drafts": "المسودات",
+    "this_month": "هذا الشهر",
+    "this_month_chip": "هذا الشهر",
+    "top_categories": "أعلى الفئات",
+    "no_spend": "لا يوجد إنفاق مؤكد بعد.",
+    "recent": "أحدث المصروفات",
+    "exp_empty": "لا توجد مصروفات بعد. اضغط مصروف جديد لإنشاء واحد.",
+    "exp_empty_month": "لا توجد مصروفات هذا الشهر.",
+    "exp_empty_status": "لا توجد مصروفات بالحالة: {{status}}."
+  },
+  "shortcutsOcean": {
+    "record_receipt": "تسجيل قبض"
   }
 }

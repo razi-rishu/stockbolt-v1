@@ -4,17 +4,15 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
-import { Badge } from '@/ui/badge';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Plus } from 'lucide-react';
+import { StatusBadge } from '@/ui/status-badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { VoidedToggle } from '@/ui/voided-toggle';
 import { useHideVoided, showsInList } from '@/hooks/use-hide-voided';
 import type { GoodsReceiptRow, ContactRow } from '@/data/adapter';
-
-const statusColor: Record<string, string> = {
-  draft: 'muted', received: 'success', billed: 'brand', void: 'danger',
-};
 
 export default function GoodsReceiptsPage() {
   const { t } = useTranslation();
@@ -45,48 +43,29 @@ export default function GoodsReceiptsPage() {
   });
   const supplierName = (id: string) => suppliers.find(s => s.id === id)?.name ?? `${id.slice(0, 8)}…`;
 
+  const columns: Column<GoodsReceiptRow>[] = [
+    { key: 'no', header: t('purchasing.grn_number'), render: (g) => <bdi dir="ltr" className="sb-inv-no">{g.grn_number}</bdi> },
+    { key: 'sup', header: t('purchasing.supplier'), render: (g) => <span style={{ fontWeight: 600 }}>{supplierName(g.supplier_id)}</span> },
+    { key: 'date', header: t('purchasing.date'), render: (g) => <bdi dir="ltr">{formatDate(g.date as string)}</bdi> },
+    { key: 'status', header: '', render: (g) => <StatusBadge status={g.status} /> },
+  ];
+
+  // Ocean Teal (UI v1.1): look only — same receipts, period and voided toggle.
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">{t('purchasing.grn_title')}</h1>
-        <div className="flex flex-wrap items-center gap-2">
-          <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-          <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided}
-            count={grnsVoidedCount} />
-          <Button size="sm" onClick={() => navigate('/purchasing/grns/new')}>{t('purchasing.new_grn')}</Button>
-        </div>
-      </div>
-      {isLoading ? (
-        <div className="py-12 text-center text-sm text-ink-tertiary">{t('common.loading')}</div>
-      ) : grns.length === 0 ? (
-        <div className="py-12 text-center text-sm text-ink-tertiary">{t('purchasing.no_grns')}</div>
-      ) : (
-        <div className="rounded-card border border-border-subtle bg-surface-card">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary text-xs">
-                <th className="px-4 py-3 text-start font-medium">{t('purchasing.grn_number')}</th>
-                <th className="px-4 py-3 text-start font-medium">{t('purchasing.supplier')}</th>
-                <th className="px-4 py-3 text-start font-medium">{t('purchasing.date')}</th>
-                <th className="px-4 py-3 text-center font-medium">{t('purchasing.status')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {grns.map(grn => (
-                <tr key={grn.id} className="border-b border-border-subtle last:border-0 hover:bg-surface-muted cursor-pointer"
-                  onClick={() => navigate(`/purchasing/grns/${grn.id}`)}>
-                  <td className="px-4 py-3 font-mono text-xs text-brand-700">{grn.grn_number}</td>
-                  <td className="px-4 py-3 text-ink-primary">{supplierName(grn.supplier_id)}</td>
-                  <td className="px-4 py-3 text-ink-secondary">{formatDate(grn.date as string)}</td>
-                  <td className="px-4 py-3 text-center">
-                    <Badge variant={statusColor[grn.status] as 'muted' | 'success' | 'brand' | 'danger'}>{grn.status}</Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+    <OceanPage
+      testid="goods-receipts-ocean"
+      title={t('purchasing.grn_title')}
+      subtitle={t('purchOcean.grns_count', { count: grns.length })}
+      actions={<>
+        <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided} count={grnsVoidedCount} />
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => navigate('/purchasing/grns/new')}><Plus size={18} aria-hidden="true" />{t('purchasing.new_grn')}</button>
+      </>}
+    >
+      {isLoading
+        ? <div className="sb-card sb-empty">{t('common.loading')}</div>
+        : <OceanTable columns={columns} rows={grns} keyFn={(g) => g.id} cardTitleKey="sup"
+            onRowClick={(g) => navigate(`/purchasing/grns/${g.id}`)} rowMuted={(g) => g.status === 'void'} emptyMessage={t('purchasing.no_grns')} />}
+    </OceanPage>
   );
 }

@@ -161,7 +161,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
           { to: '/purchasing/grns', label: t('purchasing.grn_title') },
           { to: '/purchasing/bills', label: t('purchasing.bills_title') },
           { to: '/purchasing/payments', label: t('purchasing.vp_title') },
-          { to: '/purchasing/expenses', label: 'Expenses' },
+          { to: '/purchasing/expenses', label: t('banking.expenses_title') },
           // Z6 — mirror of Z3: the debit note is the document on this side
           // too. The ROUTES stay alive so every purchase return ever raised
           // is still readable, and the debit notes page links to the list
@@ -427,19 +427,19 @@ function SidebarSection({
 }
 
 /** Quick-create links — sidebar "Shortcuts" on the web, quick actions in the app menu. */
-function buildShortcuts(canSales: boolean, canPurchasing: boolean) {
+function buildShortcuts(canSales: boolean, canPurchasing: boolean, t: (k: string) => string) {
   return [
     ...(canSales ? [
-      { to: '/sales/invoices/new', label: 'New Invoice', icon: <InvoicePlusIcon /> },
+      { to: '/sales/invoices/new', label: t('sales.new_invoice'), icon: <InvoicePlusIcon /> },
     ] : []),
     ...(canPurchasing ? [
-      { to: '/purchasing/bills/new', label: 'New Bill', icon: <BillIcon /> },
+      { to: '/purchasing/bills/new', label: t('purchasing.new_bill'), icon: <BillIcon /> },
     ] : []),
     ...(canSales ? [
-      { to: '/sales/payments/new', label: 'Record Receipt', icon: <ReceiptIcon /> },
+      { to: '/sales/payments/new', label: t('shortcutsOcean.record_receipt'), icon: <ReceiptIcon /> },
     ] : []),
     ...(canPurchasing ? [
-      { to: '/purchasing/payments/new', label: 'New Payment', icon: <PaymentIcon /> },
+      { to: '/purchasing/payments/new', label: t('purchasing.new_vp'), icon: <PaymentIcon /> },
     ] : []),
   ];
 }
@@ -459,6 +459,7 @@ function SidebarContent({
   canSales: boolean;
   canPurchasing: boolean;
 }) {
+  const { t } = useTranslation();
   const location = useLocation();
   const [openSection, setOpenSection] = useState<string | null>(null);
 
@@ -471,7 +472,7 @@ function SidebarContent({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
-  const shortcuts = buildShortcuts(canSales, canPurchasing);
+  const shortcuts = buildShortcuts(canSales, canPurchasing, t);
 
   return (
     <div className="flex h-full flex-col">
@@ -684,7 +685,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     return (
       <AppShell
         sections={sections}
-        shortcuts={buildShortcuts(canSales, canPurchasing)}
+        shortcuts={buildShortcuts(canSales, canPurchasing, t)}
         companyName={companyName}
         companySub={companySub}
         email={email}

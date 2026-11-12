@@ -1418,3 +1418,40 @@
 .sb-ocean .grid > .sb-doc-lines { align-self: start; }
 .sb-ocean .sb-doc-lines { min-width: 0; max-width: 100%; }
 .sb-ocean .sb-doc-quote-total { padding: 14px 18px 18px; border-top: 1px solid var(--sb-border); display: flex; }
+
+/* ── Expenses: compact summary chips ───────────────────────────────────── */
+.sb-ocean .sb-exp-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 900px) { .sb-ocean .sb-exp-kpis { grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr)); gap: 10px; } }
+.sb-ocean .sb-exp-kpi {
+  display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 58px;
+  padding: 8px 12px; border-radius: 14px; background: var(--sb-surface); border: 1px solid var(--sb-border);
+  transition: transform .15s, box-shadow .15s, border-color .15s;
+}
+.sb-ocean .sb-exp-kpi:hover { transform: translateY(-1px); border-color: var(--sb-primary-light); box-shadow: 0 6px 16px rgba(0, 143, 135, .10); }
+.sb-ocean .sb-exp-kpi-ico { width: 34px; height: 34px; flex: none; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: var(--sb-primary-soft); color: var(--sb-primary-dark); }
+.sb-ocean .sb-exp-kpi-ico.is-warn { background: #FEF3C7; color: #92400E; }
+.sb-ocean .sb-exp-kpi-txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.sb-ocean .sb-exp-kpi-label { font-size: 12px; color: var(--sb-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-ocean .sb-exp-kpi-val { font-size: 16px; font-weight: 800; color: var(--sb-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; line-height: 1.3; text-align: start; }
+.sb-ocean .sb-exp-kpi-val.is-warn { color: #92400E; }
+.sb-ocean .sb-exp-kpi-sub { font-size: 11px; color: var(--sb-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Hero chip — this month's spend, teal with a tiny 6-month spark. */
+.sb-ocean .sb-exp-kpi.is-hero { background: linear-gradient(135deg, var(--sb-primary) 0%, #00756F 100%); border-color: transparent; color: #fff; }
+.sb-ocean .sb-exp-kpi.is-hero:hover { box-shadow: 0 8px 20px rgba(0, 143, 135, .28); }
+.sb-ocean .sb-exp-kpi.is-hero .sb-exp-kpi-ico { background: rgba(255, 255, 255, .18); color: #fff; }
+.sb-ocean .sb-exp-kpi.is-hero .sb-exp-kpi-label { color: #D7F4F1; }
+.sb-ocean .sb-exp-kpi.is-hero .sb-exp-kpi-val { color: #fff; }
+.sb-ocean .sb-exp-delta { display: inline-block; margin-inline-start: 6px; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 700; vertical-align: 2px; background: rgba(255, 255, 255, .2); color: #fff; }
+.sb-ocean .sb-exp-spark { display: flex; align-items: flex-end; gap: 3px; height: 26px; flex: none; }
+.sb-ocean .sb-exp-spark i { display: block; width: 5px; border-radius: 2px; background: rgba(255, 255, 255, .35); }
+.sb-ocean .sb-exp-spark i:last-child { background: #fff; }
+/* Phones and narrow panes: the hero spans the row, the other three sit in
+   one row of small stacked chips (no icon) so the strip stays short. */
+@media (max-width: 899px) {
+  .sb-ocean .sb-exp-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .sb-ocean .sb-exp-kpi.is-hero { grid-column: 1 / -1; }
+  .sb-ocean .sb-exp-kpi:not(.is-hero) { flex-direction: column; align-items: stretch; gap: 0; padding: 8px 10px; min-height: 0; }
+  .sb-ocean .sb-exp-kpi:not(.is-hero) .sb-exp-kpi-ico { display: none; }
+  .sb-ocean .sb-exp-kpi:not(.is-hero) .sb-exp-kpi-label { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; font-size: 11px; }
+  .sb-ocean .sb-exp-kpi:not(.is-hero) .sb-exp-kpi-val { font-size: 15px; }
+}

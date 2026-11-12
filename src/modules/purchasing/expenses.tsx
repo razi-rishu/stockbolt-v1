@@ -1,28 +1,28 @@
 /**
- * Expenses — Phase 21b: bento-grid overview + full list.
+ * Expenses — Phase 21b overview + full list.
  *
  * Lives under /purchasing/expenses (Zoho parity — expenses sit in the
  * purchasing module, not banking, since they're vendor-side transactions).
  *
  * Layout:
- *   - Bento grid of summary tiles (this-month spend with a 6-month spark,
- *     total/draft/input-VAT stats, top categories, recent expenses, and a
- *     New-expense action tile). All values are derived from the expense list
- *     plus a category breakdown — no new migration needed.
- *   - The existing filter pills + full table stay below, untouched, so nothing
- *     is lost.
+ *   - Summary tiles (this-month spend with a 6-month spark, total, drafts,
+ *     input tax), top categories and recent expenses. All values are derived
+ *     from the expense list plus a category breakdown — no new migration.
+ *   - Filter chips + the full list below.
+ *
+ * Ocean Teal (UI v1.1): look only — same figures, filters and rows as before.
  */
 import { useMemo, useState } from 'react';
 import { formatDate, formatCurrency } from '@/lib/locale';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency, useTaxName } from '@/hooks/use-company-currency';
-import { Button } from '@/ui/button';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Plus, Wallet, ReceiptText, Hourglass, Calculator } from 'lucide-react';
 import { StatusBadge } from '@/ui/status-badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
@@ -35,42 +35,6 @@ const fmt = (n: number) =>
 
 function monthKey(d: Date) { return d.toISOString().slice(0, 7); }
 function addMonths(d: Date, n: number) { const x = new Date(d); x.setMonth(x.getMonth() + n); return x; }
-
-function FilterPill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        padding: '6px 14px',
-        borderRadius: '999px',
-        fontSize: '12px', fontWeight: 600,
-        border: active ? `1px solid ${theme.brand}` : `1px solid ${theme.border}`,
-        background: active ? theme.brand : '#fff',
-        color: active ? '#fff' : theme.inkMuted,
-        cursor: 'pointer',
-        transition: 'background-color .12s, color .12s',
-      }}
-    >{label}</button>
-  );
-}
-
-/** Shared bento tile shell. */
-function Tile({ span = 1, rows = 1, style, children }: { span?: number; rows?: number; style?: React.CSSProperties; children: React.ReactNode }) {
-  return (
-    <div style={{
-      gridColumn: `span ${span}`, gridRow: `span ${rows}`,
-      background: '#fff', border: `1px solid ${theme.border}`,
-      borderRadius: theme.radiusLg, padding: '14px 16px',
-      boxShadow: theme.shadowSm, display: 'flex', flexDirection: 'column',
-      minWidth: 0, ...style,
-    }}>{children}</div>
-  );
-}
-
-function TileLabel({ children }: { children: React.ReactNode }) {
-  return <div style={{ fontSize: '12px', fontWeight: 600, color: theme.inkMuted, display: 'flex', alignItems: 'center', gap: '6px' }}>{children}</div>;
-}
 
 type Filter = 'all' | 'draft' | 'confirmed' | 'void' | 'this_month';
 
@@ -103,7 +67,7 @@ export default function ExpensesPage() {
 
   const money = (n: number) => formatCurrency(n, currency);
 
-  // ── Bento metrics, all derived from the loaded data ──────────────────────
+  // ── Overview metrics, all derived from the loaded data ───────────────────
   const m = useMemo(() => {
     const now = new Date();
     const thisM = monthKey(now);
@@ -161,220 +125,157 @@ export default function ExpensesPage() {
     } else if (filter !== 'all') {
       rows = rows.filter(e => e.status === filter);
     }
-    // Z4 — hidden on the All and This-month views. Picking the Void pill
+    // Z4 — hidden on the All and This-month views. Picking the Void chip
     // is already an explicit request to see them.
     if (hideVoided && filter !== 'void') rows = rows.filter(e => e.status !== 'void');
     return rows;
   }, [expenses, filter, from, to, hideVoided]);
   const voidedCount = expenses.filter(e => e.status === 'void').length;
 
-  const catShades = [theme.brand, '#8b5cf6', '#a78bfa', '#c4b5fd'];
+  const catShades = ['var(--sb-primary)', '#26A69A', '#4DB6AC', '#80CBC4'];
+
+  const columns: Column<ExpenseRow>[] = [
+    { key: 'no', header: t('purchOcean.exp_number'), render: (e) => <bdi dir="ltr" className="sb-inv-no">{e.expense_number}</bdi> },
+    { key: 'date', header: t('common.date'), render: (e) => <bdi dir="ltr">{formatDate(e.date)}</bdi> },
+    { key: 'desc', header: t('common.description'), render: (e) => <span className="sb-dash-ellipsis" style={{ fontWeight: 600, display: 'block', maxWidth: 320 }}>{e.description || '—'}</span> },
+    { key: 'amt', header: t('purchasing.amount'), align: 'end', render: (e) => <bdi dir="ltr">{fmt(Number(e.amount))}</bdi> },
+    { key: 'tax', header: t('common.tax'), align: 'end', render: (e) => <bdi dir="ltr">{fmt(Number(e.tax_amount))}</bdi> },
+    { key: 'total', header: t('common.total'), align: 'end', render: (e) => <bdi dir="ltr" className="sb-dash-num">{fmt(Number(e.total_amount))}</bdi> },
+    { key: 'status', header: '', render: (e) => <StatusBadge status={e.status} /> },
+  ];
+
+  const emptyMessage = filter === 'all'
+    ? t('purchOcean.exp_empty')
+    : filter === 'this_month'
+    ? t('purchOcean.exp_empty_month')
+    : t('purchOcean.exp_empty_status', { status: t(`docStatus.${filter}`) });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        title={t('banking.expenses_title')}
-        subtitle={`${expenses.length} ${expenses.length === 1 ? 'expense' : 'expenses'}`}
-        actions={
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-            <Link to="/purchasing/expenses/new">
-              <Button>+ New expense</Button>
-            </Link>
-          </div>
-        }
-      />
-
-      {/* ── Bento grid overview ─────────────────────────────────────────── */}
-      {!isLoading && expenses.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gridAutoRows: 'minmax(92px, auto)', gap: '12px' }}>
-
-          {/* Hero — spend this month + 6-month spark */}
-          <Tile span={2} rows={2} style={{ background: theme.brandSoft, border: `1px solid ${theme.purpleBorder}` }}>
-            <TileLabel><span>💸</span> <span style={{ color: theme.brandSoftText }}>Spend this month</span></TileLabel>
-            <div style={{ fontSize: '30px', fontWeight: 700, color: theme.purple, marginTop: '8px', letterSpacing: '-.01em' }}>{money(m.thisMonthSpend)}</div>
-            <div style={{ fontSize: '12px', color: theme.brandSoftText, marginTop: '2px' }}>
-              {m.thisMonthCount} {m.thisMonthCount === 1 ? 'expense' : 'expenses'}
-              {m.delta !== null && (
-                <span style={{ color: m.delta > 0 ? theme.danger : theme.success, fontWeight: 600 }}>
-                  {'  '}{m.delta > 0 ? '▲' : '▼'} {Math.abs(m.delta)}% vs last month
+    <OceanPage
+      testid="expenses-ocean"
+      title={t('banking.expenses_title')}
+      subtitle={t('purchOcean.expenses_count', { count: expenses.length })}
+      actions={<>
+        <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => navigate('/purchasing/expenses/new')}><Plus size={18} aria-hidden="true" />{t('purchOcean.new_expense')}</button>
+      </>}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* ── Overview ─────────────────────────────────────────────────── */}
+        {!isLoading && expenses.length > 0 && (
+          <>
+            {/* Compact summary chips — same four figures as before. */}
+            <div className="sb-exp-kpis" data-testid="expenses-kpis">
+              <div className="sb-exp-kpi is-hero">
+                <span className="sb-exp-kpi-ico" aria-hidden="true"><Wallet size={17} /></span>
+                <div className="sb-exp-kpi-txt">
+                  <span className="sb-exp-kpi-label">{t('purchOcean.spend_month')}</span>
+                  <span className="sb-exp-kpi-val">
+                    <bdi dir="ltr">{money(m.thisMonthSpend)}</bdi>
+                    {m.delta !== null && (
+                      <span className="sb-exp-delta" title={t('purchOcean.vs_last_month')}><bdi dir="ltr">{m.delta > 0 ? '▲' : '▼'} {Math.abs(m.delta)}%</bdi></span>
+                    )}
+                  </span>
+                  <span className="sb-exp-kpi-sub" style={{ color: '#D7F4F1' }}>{t('purchOcean.expenses_count', { count: m.thisMonthCount })}</span>
+                </div>
+                <span className="sb-exp-spark" dir="ltr" aria-hidden="true">
+                  {m.spark.map((v, i) => <i key={i} title={fmt(v)} style={{ height: `${Math.max(15, (v / m.sparkMax) * 100)}%` }} />)}
                 </span>
-              )}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '5px', marginTop: 'auto', height: '40px' }}>
-              {m.spark.map((v, i) => (
-                <div key={i} title={fmt(v)} style={{
-                  flex: 1, height: `${Math.max(6, (v / m.sparkMax) * 100)}%`,
-                  background: i === m.spark.length - 1 ? theme.brand : theme.purpleBorder,
-                  borderRadius: '3px', transition: 'height .2s',
-                }} />
-              ))}
-            </div>
-          </Tile>
-
-          {/* Total expenses */}
-          <Tile span={2} style={{ justifyContent: 'center' }}>
-            <TileLabel>🧾 Total expenses</TileLabel>
-            <div style={{ fontSize: '22px', fontWeight: 700, color: theme.ink, marginTop: '6px' }}>
-              {m.totalCount}
-              <span style={{ fontSize: '13px', fontWeight: 400, color: theme.inkFaint }}>{'  '}· {money(m.lifetimeSpend)} lifetime</span>
-            </div>
-          </Tile>
-
-          {/* Drafts pending */}
-          <Tile span={1} style={{ background: theme.warnSoft, border: `1px solid ${theme.warnBorder}`, justifyContent: 'center' }}>
-            <TileLabel><span style={{ color: theme.warn }}>⏳ Drafts</span></TileLabel>
-            <div style={{ fontSize: '22px', fontWeight: 700, color: theme.warn, marginTop: '4px' }}>{m.draftCount}</div>
-            <div style={{ fontSize: '11px', color: theme.warn }}>{money(m.draftValue)}</div>
-          </Tile>
-
-          {/* Input tax (VAT / GST) */}
-          <Tile span={1} style={{ justifyContent: 'center' }}>
-            <TileLabel>🧮 {t('common.input_tax', { tax: taxName })}</TileLabel>
-            <div style={{ fontSize: '20px', fontWeight: 700, color: theme.ink, marginTop: '4px' }}>{money(m.inputVat)}</div>
-            <div style={{ fontSize: '11px', color: theme.inkFaint }}>this month</div>
-          </Tile>
-
-          {/* Top categories */}
-          <Tile span={2} rows={2}>
-            <TileLabel>📊 Top categories</TileLabel>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', marginTop: '10px' }}>
-              {categories.top.length === 0 ? (
-                <div style={{ fontSize: '12px', color: theme.inkFaint }}>No confirmed spend yet.</div>
-              ) : categories.top.map((c, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
-                  <span style={{ width: '90px', color: theme.inkMuted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</span>
-                  <div style={{ flex: 1, height: '7px', background: theme.muted, borderRadius: '4px', overflow: 'hidden' }}>
-                    <div style={{ width: `${c.pct}%`, height: '7px', background: catShades[i] ?? theme.brand, borderRadius: '4px' }} />
-                  </div>
-                  <span style={{ width: '34px', textAlign: 'end', color: theme.inkFaint }}>{c.pct}%</span>
+              </div>
+              <div className="sb-exp-kpi">
+                <span className="sb-exp-kpi-ico" aria-hidden="true"><ReceiptText size={17} /></span>
+                <div className="sb-exp-kpi-txt">
+                  <span className="sb-exp-kpi-label">{t('purchOcean.total_expenses')}</span>
+                  <span className="sb-exp-kpi-val">{m.totalCount}</span>
+                  <span className="sb-exp-kpi-sub">{t('purchOcean.lifetime', { amount: money(m.lifetimeSpend) })}</span>
                 </div>
-              ))}
-            </div>
-          </Tile>
-
-          {/* Recent expenses */}
-          <Tile span={2} rows={2}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <TileLabel>🕘 Recent expenses</TileLabel>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {m.recent.map((e, i) => (
-                <div
-                  key={e.id}
-                  onClick={() => navigate(`/purchasing/expenses/${e.id}`)}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '8px 0', cursor: 'pointer',
-                    borderBottom: i < m.recent.length - 1 ? `1px solid ${theme.muted}` : 'none',
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: '12px', fontFamily: theme.fontMono, color: theme.brandSoftText, fontWeight: 600 }}>{e.expense_number}</div>
-                    <div style={{ fontSize: '12px', color: theme.inkMuted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '170px' }}>{e.description}</div>
-                  </div>
-                  <div style={{ textAlign: 'end', flexShrink: 0, marginInlineStart: '8px' }}>
-                    <div style={{ fontSize: '13px', fontWeight: 600, color: theme.ink }}>{fmt(Number(e.total_amount))}</div>
-                    <StatusBadge status={e.status} />
-                  </div>
+              </div>
+              <div className="sb-exp-kpi">
+                <span className={`sb-exp-kpi-ico ${m.draftCount > 0 ? 'is-warn' : ''}`} aria-hidden="true"><Hourglass size={17} /></span>
+                <div className="sb-exp-kpi-txt">
+                  <span className="sb-exp-kpi-label">{t('purchOcean.drafts')}</span>
+                  <span className={`sb-exp-kpi-val ${m.draftCount > 0 ? 'is-warn' : ''}`}>{m.draftCount}</span>
+                  <bdi dir="ltr" className="sb-exp-kpi-sub" style={{ textAlign: 'start' }}>{money(m.draftValue)}</bdi>
                 </div>
-              ))}
+              </div>
+              <div className="sb-exp-kpi">
+                <span className="sb-exp-kpi-ico" aria-hidden="true"><Calculator size={17} /></span>
+                <div className="sb-exp-kpi-txt">
+                  <span className="sb-exp-kpi-label">{t('common.input_tax', { tax: taxName })}</span>
+                  <bdi dir="ltr" className="sb-exp-kpi-val">{money(m.inputVat)}</bdi>
+                  <span className="sb-exp-kpi-sub">{t('purchOcean.this_month')}</span>
+                </div>
+              </div>
             </div>
-          </Tile>
 
-          {/* (Removed the duplicate "New expense" CTA tile — the header
-              "+ New expense" button is the single, standard affordance.) */}
+            <div className="sb-dash-row">
+              <div className="sb-card sb-dash-card">
+                <div className="sb-dash-card-head"><h2 className="sb-dash-card-title">{t('purchOcean.top_categories')}</h2></div>
+                <div className="sb-dash-card-body">
+                  {categories.top.length === 0 ? (
+                    <div className="sb-dash-empty">{t('purchOcean.no_spend')}</div>
+                  ) : (
+                    <ul className="sb-dash-low">
+                      {categories.top.map((c, i) => (
+                        <li key={i}>
+                          <div className="sb-dash-low-row" style={{ justifyContent: 'space-between' }}>
+                            <span className="sb-dash-ellipsis" style={{ fontSize: 13 }}>{c.name}</span>
+                            <bdi dir="ltr" className="sb-fx-name" style={{ fontSize: 12 }}>{c.pct}%</bdi>
+                          </div>
+                          <span className="sb-dash-bar" style={{ background: 'var(--sb-primary-soft)' }}>
+                            <i style={{ width: `${c.pct}%`, background: catShades[i] ?? 'var(--sb-primary)' }} />
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
 
-        </div>
-      )}
-
-      {/* ── Filter pills ─────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-        <FilterPill label="All"        active={filter === 'all'}        onClick={() => setFilter('all')} />
-        <FilterPill label="Draft"      active={filter === 'draft'}      onClick={() => setFilter('draft')} />
-        <FilterPill label="Confirmed"  active={filter === 'confirmed'}  onClick={() => setFilter('confirmed')} />
-        <FilterPill label="Void"       active={filter === 'void'}       onClick={() => setFilter('void')} />
-        <FilterPill label="This month" active={filter === 'this_month'} onClick={() => setFilter('this_month')} />
-        {filter !== 'void' && (
-          <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided} count={voidedCount} />
-        )}
-      </div>
-
-      {isLoading ? (
-        <p style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>
-          {t('common.loading')}
-        </p>
-      ) : filtered.length === 0 ? (
-        <p style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>
-          {filter === 'all'
-            ? 'No expenses yet. Click + New to create one.'
-            : `No ${filter === 'this_month' ? 'expenses this month' : `${filter} expenses`}.`}
-        </p>
-      ) : (
-        <div
-          className="overflow-x-auto bg-white"
-          style={{ border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm }}
-        >
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
-                {[
-                  { l: 'Number',   a: 'start' as const },
-                  { l: 'Date',     a: 'start' as const },
-                  { l: 'Description', a: 'start' as const },
-                  { l: 'Amount',   a: 'end'   as const },
-                  { l: 'Tax',      a: 'end'   as const },
-                  { l: 'Total',    a: 'end'   as const },
-                  { l: 'Status',   a: 'start' as const },
-                  { l: '',         a: 'end'   as const },
-                ].map((c, i) => (
-                  <th key={i} className="px-4 py-3" style={{
-                    fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
-                    textTransform: 'uppercase', letterSpacing: '.06em',
-                    textAlign: c.a, whiteSpace: 'nowrap',
-                  }}>{c.l}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((exp, idx) => (
-                <tr
-                  key={exp.id}
-                  onClick={() => navigate(`/purchasing/expenses/${exp.id}`)}
-                  className="cursor-pointer"
-                  style={{
-                    borderTop: idx === 0 ? 'none' : '1px solid #f1f5f9',
-                    transition: 'background-color .12s',
-                  }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = theme.panelHead; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
-                >
-                  <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>
-                    {exp.expense_number}
-                  </td>
-                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(exp.date)}</td>
-                  <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px', maxWidth: '320px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {exp.description}
-                  </td>
-                  <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>{fmt(Number(exp.amount))}</td>
-                  <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: theme.inkMuted, fontSize: '13px' }}>{fmt(Number(exp.tax_amount))}</td>
-                  <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px', fontWeight: 600 }}>{fmt(Number(exp.total_amount))}</td>
-                  <td className="px-4 py-3"><StatusBadge status={exp.status} /></td>
-                  <td className="px-4 py-3" style={{ textAlign: 'end' }}>
-                    <Link
-                      to={`/purchasing/expenses/${exp.id}`}
-                      style={{ fontSize: '11px', color: theme.brand, fontWeight: 600, textDecoration: 'none' }}
-                      onClick={(e) => e.stopPropagation()}
+              <div className="sb-card sb-dash-card">
+                <div className="sb-dash-card-head"><h2 className="sb-dash-card-title">{t('purchOcean.recent')}</h2></div>
+                <div className="sb-dash-card-body" style={{ gap: 0 }}>
+                  {m.recent.map((e, i) => (
+                    <button
+                      key={e.id}
+                      type="button"
+                      onClick={() => navigate(`/purchasing/expenses/${e.id}`)}
+                      className="sb-inv-row"
+                      style={{ borderBottom: i < m.recent.length - 1 ? '1px solid var(--sb-border)' : 'none', borderRadius: 0, paddingInline: 0 }}
                     >
-                      {t('common.view')} →
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                      <span className="sb-inv-row-top">
+                        <bdi dir="ltr" className="sb-inv-no">{e.expense_number}</bdi>
+                        <StatusBadge status={e.status} />
+                      </span>
+                      <span className="sb-inv-row-mid">
+                        <span className="sb-dash-ellipsis sb-fx-name">{e.description || '—'}</span>
+                        <bdi dir="ltr" className="sb-inv-amt">{fmt(Number(e.total_amount))}</bdi>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ── Filter chips ─────────────────────────────────────────────── */}
+        <div className="sb-chips" style={{ marginTop: 0 }} role="group" aria-label={t('common.status')}>
+          {(['all', 'draft', 'confirmed', 'void', 'this_month'] as Filter[]).map(f => (
+            <button key={f} type="button" aria-pressed={filter === f} className={`sb-chip ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>
+              {f === 'all' ? t('common.all') : f === 'this_month' ? t('purchOcean.this_month_chip') : t(`docStatus.${f}`)}
+            </button>
+          ))}
+          {filter !== 'void' && (
+            <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided} count={voidedCount} />
+          )}
         </div>
-      )}
-    </div>
+
+        {isLoading
+          ? <div className="sb-card sb-empty">{t('common.loading')}</div>
+          : <OceanTable columns={columns} rows={filtered} keyFn={(e) => e.id} cardTitleKey="desc"
+              onRowClick={(e) => navigate(`/purchasing/expenses/${e.id}`)} rowMuted={(e) => e.status === 'void'} emptyMessage={emptyMessage} />}
+      </div>
+    </OceanPage>
   );
 }

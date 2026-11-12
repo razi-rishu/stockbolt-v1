@@ -4,45 +4,29 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
-import { Badge } from '@/ui/badge';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Plus } from 'lucide-react';
+import { StatusBadge } from '@/ui/status-badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { VoidedToggle } from '@/ui/voided-toggle';
 import { useHideVoided, showsInList } from '@/hooks/use-hide-voided';
 import type { PaymentRow, ContactRow } from '@/data/adapter';
 
-const statusColor: Record<string, string> = { draft: 'muted', confirmed: 'success', void: 'danger' };
-
 // Type extension until Supabase types regenerate with the new
 // payments.allocation_status column (Phase 12.11).
 type AllocStatus = 'unallocated' | 'partial' | 'full' | null;
 type PaymentWithAlloc = PaymentRow & { allocation_status?: AllocStatus };
 
-function AllocationBadge({ status, alloc }: { status: string; alloc: AllocStatus }) {
-  if (status !== 'confirmed' || !alloc) return null;
-  const map: Record<string, { label: string; cls: string }> = {
-    unallocated: { label: 'Advance',       cls: 'bg-purple-50 text-purple-700' },
-    partial:     { label: 'Partial',       cls: 'bg-amber-50 text-amber-700'   },
-    full:        { label: 'Fully applied', cls: 'bg-sky-50 text-sky-700'       },
-  };
-  const cfg = map[alloc];
-  if (!cfg) return null;
-  return (
-    <span className={`ms-1 rounded-pill px-2 py-0.5 text-xs font-medium ${cfg.cls}`}>{cfg.label}</span>
-  );
-}
+const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2 });
 
-// Reconciled badge — Batch C. Shown when the vendor payment's bank GL
-// line is matched against a bank statement.
-function ReconciledBadge({ reconciled, status }: { reconciled: boolean; status: string }) {
-  if (!reconciled || status !== 'confirmed') return null;
-  return (
-    <span className="ms-1 rounded-pill bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
-      Reconciled
-    </span>
-  );
-}
+// Allocation pills — same meaning and labels as the Receipts list.
+const ALLOC: Record<string, { key: string; tone: string }> = {
+  unallocated: { key: 'alloc_advance', tone: '' },
+  partial:     { key: 'alloc_partial', tone: 'sb-pill-warn' },
+  full:        { key: 'alloc_full',    tone: 'sb-pill-good' },
+};
 
 export default function VendorPaymentsPage() {
   const { t } = useTranslation();
@@ -82,54 +66,44 @@ export default function VendorPaymentsPage() {
   });
   const reconciledSet = new Set(reconciledIds);
 
+  const columns: Column<PaymentWithAlloc>[] = [
+    { key: 'no', header: t('purchasing.vp_number'), render: (p) => <bdi dir="ltr" className="sb-inv-no">{p.payment_number}</bdi> },
+    { key: 'sup', header: t('purchasing.supplier'), render: (p) => <span style={{ fontWeight: 600 }}>{supplierName(p.contact_id)}</span> },
+    { key: 'date', header: t('purchasing.date'), render: (p) => <bdi dir="ltr">{formatDate(p.date as string)}</bdi> },
+    { key: 'amt', header: t('purchasing.amount'), align: 'end', render: (p) => <bdi dir="ltr" className="sb-dash-num">{fmt(Number(p.amount))}</bdi> },
+    { key: 'type', header: t('purchasing.type'), render: (p) => t(`purchasing.${p.classification}`, { defaultValue: p.classification.replace('_', ' ') }) },
+    {
+      key: 'status', header: '',
+      render: (p) => {
+        const alloc = p.status === 'confirmed' && p.allocation_status ? ALLOC[p.allocation_status] : null;
+        return (
+          <span className="sb-wh-badges">
+            <StatusBadge status={p.status} />
+            {alloc && <span className={`sb-pill ${alloc.tone}`} style={{ marginTop: 0 }}>{t(`salesOcean.${alloc.key}`)}</span>}
+            {p.status === 'confirmed' && reconciledSet.has(p.id) && <span className="sb-pill sb-pill-good" style={{ marginTop: 0 }}>{t('salesOcean.reconciled')}</span>}
+          </span>
+        );
+      },
+    },
+  ];
+
+  // Ocean Teal (UI v1.1): look only — same payments, period, voided toggle
+  // and pills as before.
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">{t('purchasing.vp_title')}</h1>
-        <div className="flex flex-wrap items-center gap-2">
-          <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-          <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided}
-            count={paymentsVoidedCount} />
-          <Button size="sm" onClick={() => navigate('/purchasing/payments/new')}>{t('purchasing.new_vp')}</Button>
-        </div>
-      </div>
-      {isLoading ? (
-        <div className="py-12 text-center text-sm text-ink-tertiary">{t('common.loading')}</div>
-      ) : payments.length === 0 ? (
-        <div className="py-12 text-center text-sm text-ink-tertiary">{t('purchasing.no_vps')}</div>
-      ) : (
-        <div className="rounded-card border border-border-subtle bg-surface-card">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary text-xs">
-                <th className="px-4 py-3 text-start font-medium">{t('purchasing.vp_number')}</th>
-                <th className="px-4 py-3 text-start font-medium">{t('purchasing.supplier')}</th>
-                <th className="px-4 py-3 text-start font-medium">{t('purchasing.date')}</th>
-                <th className="px-4 py-3 text-end font-medium">{t('purchasing.amount')}</th>
-                <th className="px-4 py-3 text-start font-medium">{t('purchasing.type')}</th>
-                <th className="px-4 py-3 text-center font-medium">{t('purchasing.status')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {payments.map(pmt => (
-                <tr key={pmt.id} className="border-b border-border-subtle last:border-0 hover:bg-surface-muted cursor-pointer"
-                  onClick={() => navigate(`/purchasing/payments/${pmt.id}`)}>
-                  <td className="px-4 py-3 font-mono text-xs text-brand-700">{pmt.payment_number}</td>
-                  <td className="px-4 py-3 text-ink-primary">{supplierName(pmt.contact_id)}</td>
-                  <td className="px-4 py-3 text-ink-secondary">{formatDate(pmt.date as string)}</td>
-                  <td className="px-4 py-3 text-end font-mono">{Number(pmt.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                  <td className="px-4 py-3 text-ink-secondary capitalize">{pmt.classification}</td>
-                  <td className="px-4 py-3 text-center">
-                    <Badge variant={statusColor[pmt.status] as 'muted' | 'success' | 'danger'}>{pmt.status}</Badge>
-                    <AllocationBadge status={pmt.status} alloc={pmt.allocation_status ?? null} />
-                    <ReconciledBadge status={pmt.status} reconciled={reconciledSet.has(pmt.id)} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+    <OceanPage
+      testid="vendor-payments-ocean"
+      title={t('purchasing.vp_title')}
+      subtitle={t('purchOcean.payments_count', { count: payments.length })}
+      actions={<>
+        <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided} count={paymentsVoidedCount} />
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => navigate('/purchasing/payments/new')}><Plus size={18} aria-hidden="true" />{t('purchasing.new_vp')}</button>
+      </>}
+    >
+      {isLoading
+        ? <div className="sb-card sb-empty">{t('common.loading')}</div>
+        : <OceanTable columns={columns} rows={payments} keyFn={(p) => p.id} cardTitleKey="sup"
+            onRowClick={(p) => navigate(`/purchasing/payments/${p.id}`)} rowMuted={(p) => p.status === 'void'} emptyMessage={t('purchasing.no_vps')} />}
+    </OceanPage>
   );
 }

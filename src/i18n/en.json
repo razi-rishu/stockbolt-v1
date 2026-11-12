@@ -3133,7 +3133,9 @@
     "refunded": "Refunded",
     "reopened": "Reopened",
     "generated": "Generated",
-    "in_progress": "In progress"
+    "in_progress": "In progress",
+    "partially_received": "Partially received",
+    "billed": "Billed"
   },
   "salesOcean": {
     "invoices_count": "Invoices: {{count}}",
@@ -3239,5 +3241,32 @@
     "applying_full": "Applying all the available credit. The payment will be fully allocated.",
     "use_max": "Use {{amount}} (the maximum)",
     "pick_for_suggest": "Pick an invoice to see the suggested amount"
+  },
+  "purchOcean": {
+    "orders_count": "Orders: {{count}}",
+    "grns_count": "Receipts: {{count}}",
+    "bills_count": "Bills: {{count}}",
+    "payments_count": "Payments: {{count}}",
+    "expenses_count": "Expenses: {{count}}",
+    "convert_to_bill": "Convert to bill",
+    "converting": "Converting…",
+    "new_expense": "New expense",
+    "exp_number": "Number",
+    "spend_month": "Spend this month",
+    "vs_last_month": "vs last month",
+    "total_expenses": "Total expenses",
+    "lifetime": "{{amount}} lifetime",
+    "drafts": "Drafts",
+    "this_month": "this month",
+    "this_month_chip": "This month",
+    "top_categories": "Top categories",
+    "no_spend": "No confirmed spend yet.",
+    "recent": "Recent expenses",
+    "exp_empty": "No expenses yet. Click New expense to create one.",
+    "exp_empty_month": "No expenses this month.",
+    "exp_empty_status": "No expenses with status: {{status}}."
+  },
+  "shortcutsOcean": {
+    "record_receipt": "Record Receipt"
   }
 }

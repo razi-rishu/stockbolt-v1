@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { formatDate } from '@/lib/locale';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
-import { PageHeader } from '@/ui/primitives';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Plus } from 'lucide-react';
 import { StatusBadge } from '@/ui/status-badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
@@ -56,67 +57,40 @@ export default function PurchaseReturnsPage() {
   const billMap     = Object.fromEntries(bills.map(b => [b.id, b]));
   const supplierMap = Object.fromEntries(suppliers.map(s => [s.id, s]));
 
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <PageHeader title={t('returns.purchase_returns_title')} subtitle={t('returns.purchase_returns_legacy_desc')} />
-        <div className="flex flex-wrap items-center gap-2">
-          <PeriodPicker mode="range" preset={preset} from={from} to={to}
-            onPresetChange={setPreset} onCustomRange={setCustomRange} />
-          <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided} count={returnsVoidedCount} />
-          {/* Z6 — no New Purchase Return: raising one here would create the
-              second document all over again. Everything already raised stays
-              readable, printable and voidable at its own URL. */}
-          <Button onClick={() => navigate('/purchasing/debit-notes/new')}>
-            {t('returns.new_debit_note')}
-          </Button>
-        </div>
-      </div>
+  const columns: Column<PurchaseReturnRow>[] = [
+    { key: 'no', header: t('returns.return_number'), render: (pr) => <bdi dir="ltr" className="sb-inv-no">{pr.return_number}</bdi> },
+    { key: 'date', header: t('common.date'), render: (pr) => <bdi dir="ltr">{formatDate(pr.date)}</bdi> },
+    {
+      key: 'sup', header: t('common.supplier'),
+      render: (pr) => {
+        const bill = billMap[pr.bill_id];
+        return <span style={{ fontWeight: 600 }}>{(bill ? supplierMap[bill.supplier_id]?.name : undefined) ?? '—'}</span>;
+      },
+    },
+    { key: 'bill', header: t('purchasing.bill'), render: (pr) => billMap[pr.bill_id]?.bill_number ? <bdi dir="ltr">{billMap[pr.bill_id].bill_number}</bdi> : '—' },
+    { key: 'reason', header: t('returns.reason'), render: (pr) => pr.reason ? t(`returns.${pr.reason}`) : '—' },
+    { key: 'status', header: '', render: (pr) => <StatusBadge status={pr.status} /> },
+  ];
 
-      <div className="glass-card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-muted text-xs uppercase tracking-wide text-ink-tertiary">
-              <tr>
-                <th className="px-4 py-2 text-start">{t('returns.return_number')}</th>
-                <th className="px-4 py-2 text-start">{t('common.date')}</th>
-                <th className="px-4 py-2 text-start">{t('common.supplier')}</th>
-                <th className="px-4 py-2 text-start">{t('purchasing.bill')}</th>
-                <th className="px-4 py-2 text-start">{t('returns.reason')}</th>
-                <th className="px-4 py-2 text-start">{t('common.status')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-subtle">
-              {isLoading && (
-                <tr><td colSpan={6} className="px-4 py-6 text-center text-ink-tertiary">{t('common.loading')}</td></tr>
-              )}
-              {!isLoading && returns.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-6 text-center text-ink-tertiary">{t('returns.no_purchase_returns')}</td></tr>
-              )}
-              {returns.map(pr => {
-                const bill = billMap[pr.bill_id];
-                const supplier = bill ? supplierMap[bill.supplier_id] : undefined;
-                return (
-                  <tr key={pr.id} className="hover:bg-surface-subtle">
-                    <td className="px-4 py-2">
-                      <Link to={`/purchasing/returns/${pr.id}`} className="font-medium text-brand-600 hover:underline">
-                        {pr.return_number}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-2 text-ink-secondary">{formatDate(pr.date)}</td>
-                    <td className="px-4 py-2 text-ink-secondary">{supplier?.name ?? '—'}</td>
-                    <td className="px-4 py-2 text-ink-secondary">{bill?.bill_number ?? '—'}</td>
-                    <td className="px-4 py-2 text-ink-secondary">
-                      {pr.reason ? t(`returns.${pr.reason}`) : '—'}
-                    </td>
-                    <td className="px-4 py-2"><StatusBadge status={pr.status} /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+  // Ocean Teal (UI v1.1): look only — same legacy returns, period and voided
+  // toggle. Z6 — no New Purchase Return: raising one here would create the
+  // second document all over again. Everything already raised stays
+  // readable, printable and voidable at its own URL.
+  return (
+    <OceanPage
+      testid="purchase-returns-ocean"
+      title={t('returns.purchase_returns_title')}
+      subtitle={t('returns.purchase_returns_legacy_desc')}
+      actions={<>
+        <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided} count={returnsVoidedCount} />
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => navigate('/purchasing/debit-notes/new')}><Plus size={18} aria-hidden="true" />{t('returns.new_debit_note')}</button>
+      </>}
+    >
+      {isLoading
+        ? <div className="sb-card sb-empty">{t('common.loading')}</div>
+        : <OceanTable columns={columns} rows={returns} keyFn={(pr) => pr.id} cardTitleKey="sup"
+            onRowClick={(pr) => navigate(`/purchasing/returns/${pr.id}`)} rowMuted={(pr) => pr.status === 'void'} emptyMessage={t('returns.no_purchase_returns')} />}
+    </OceanPage>
   );
 }

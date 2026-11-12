@@ -5,11 +5,11 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
-import { Badge } from '@/ui/badge';
 import { Pagination, paginate } from '@/ui/pagination';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Plus, ArrowRightLeft } from 'lucide-react';
+import { StatusBadge } from '@/ui/status-badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { VoidedToggle } from '@/ui/voided-toggle';
@@ -18,10 +18,7 @@ import type { PurchaseOrderRow, ContactRow } from '@/data/adapter';
 
 const PAGE_SIZE = 50;
 
-const statusColor: Record<string, string> = {
-  draft: 'muted', sent: 'brand', partially_received: 'warning',
-  received: 'success', closed: 'muted', void: 'danger',
-};
+const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2 });
 
 export default function PurchaseOrdersPage() {
   const { t } = useTranslation();
@@ -68,115 +65,55 @@ export default function PurchaseOrdersPage() {
 
   const paged = paginate(orders, page, PAGE_SIZE);
 
+  const columns: Column<PurchaseOrderRow>[] = [
+    { key: 'no', header: t('purchasing.po_number'), render: (po) => <bdi dir="ltr" className="sb-inv-no">{po.po_number}</bdi> },
+    { key: 'sup', header: t('purchasing.supplier'), render: (po) => <span style={{ fontWeight: 600 }}>{supplierName(po.supplier_id)}</span> },
+    { key: 'date', header: t('purchasing.date'), render: (po) => <bdi dir="ltr">{formatDate(po.date as string)}</bdi> },
+    { key: 'amt', header: t('purchasing.total_amount'), align: 'end', render: (po) => <bdi dir="ltr" className="sb-dash-num">{fmt(Number(po.total_amount))}</bdi> },
+    { key: 'status', header: '', render: (po) => <StatusBadge status={po.status} /> },
+    {
+      key: 'convert', header: '', align: 'end',
+      render: (po) => {
+        // Phase 12.48 — POs stay in 'draft' for the whole flow (no UI "Send"
+        // step) so converting from draft is fine. Only block terminal states.
+        if (['closed', 'void'].includes(po.status)) return null;
+        const busy = converting === po.id && convertMutation.isPending;
+        return (
+          <button type="button" className="sb-row-link text-brand-600" disabled={busy}
+            onClick={(e) => { e.stopPropagation(); setConverting(po.id); convertMutation.mutate(po.id); }}>
+            <ArrowRightLeft size={15} aria-hidden="true" />{busy ? t('purchOcean.converting') : t('purchOcean.convert_to_bill')}
+          </button>
+        );
+      },
+    },
+  ];
+
+  // Ocean Teal (UI v1.1): look only — same orders, period, voided toggle,
+  // convert-to-bill and pagination as before.
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        title={t('purchasing.po_title')}
-        subtitle={`${orders.length} ${orders.length === 1 ? 'order' : 'orders'}`}
-        actions={
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <PeriodPicker
-              mode="range" allowAllTime preset={preset} from={from} to={to}
-              onPresetChange={(p) => { setPreset(p); setPage(1); }}
-              onCustomRange={(f, tt) => { setCustomRange(f, tt); setPage(1); }}
-            />
-            <VoidedToggle hideVoided={hideVoided} onChange={(v) => { setHideVoided(v); setPage(1); }} count={ordersVoidedCount} />
-            <Button size="sm" onClick={() => navigate('/purchasing/orders/new')}>+ {t('purchasing.new_po')}</Button>
-          </div>
-        }
-      />
+    <OceanPage
+      testid="purchase-orders-ocean"
+      title={t('purchasing.po_title')}
+      subtitle={t('purchOcean.orders_count', { count: orders.length })}
+      actions={<>
+        <PeriodPicker
+          mode="range" allowAllTime preset={preset} from={from} to={to}
+          onPresetChange={(p) => { setPreset(p); setPage(1); }}
+          onCustomRange={(f, tt) => { setCustomRange(f, tt); setPage(1); }}
+        />
+        <VoidedToggle hideVoided={hideVoided} onChange={(v) => { setHideVoided(v); setPage(1); }} count={ordersVoidedCount} />
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => navigate('/purchasing/orders/new')}><Plus size={18} aria-hidden="true" />{t('purchasing.new_po')}</button>
+      </>}
+    >
       {isLoading ? (
-        <div style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>{t('common.loading')}</div>
-      ) : orders.length === 0 ? (
-        <div style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>{t('purchasing.no_pos')}</div>
+        <div className="sb-card sb-empty">{t('common.loading')}</div>
       ) : (
-        <div
-          className="overflow-x-auto bg-white"
-          style={{ border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm }}
-        >
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
-                {[
-                  { l: t('purchasing.po_number'),    a: 'start'  as const },
-                  { l: t('purchasing.supplier'),     a: 'start'  as const },
-                  { l: t('purchasing.date'),         a: 'start'  as const },
-                  { l: t('purchasing.total_amount'), a: 'end'    as const },
-                  { l: t('purchasing.status'),       a: 'center' as const },
-                  { l: '',                           a: 'end'    as const },
-                ].map((c, i) => (
-                  <th key={i} className="px-4 py-3"
-                    style={{
-                      fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
-                      textTransform: 'uppercase', letterSpacing: '.06em',
-                      textAlign: c.a, whiteSpace: 'nowrap',
-                    }}
-                  >{c.l}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {paged.map((po, idx) => {
-                // Phase 12.48 — POs stay in 'draft' for the whole flow
-                // (no UI "Send" step) so converting from draft is fine.
-                // Only block terminal states.
-                const canConvert = !['closed', 'void'].includes(po.status);
-                const isThisConverting = converting === po.id && convertMutation.isPending;
-                return (
-                  <tr
-                    key={po.id}
-                    onClick={() => navigate(`/purchasing/orders/${po.id}`)}
-                    className="cursor-pointer"
-                    style={{
-                      borderTop: idx === 0 ? 'none' : '1px solid #f1f5f9',
-                      transition: 'background-color .12s',
-                    }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = theme.panelHead; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
-                  >
-                    <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>{po.po_number}</td>
-                    <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px' }}>{supplierName(po.supplier_id)}</td>
-                    <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(po.date as string)}</td>
-                    <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>
-                      {Number(po.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="px-4 py-3" style={{ textAlign: 'center' }}>
-                      <Badge variant={statusColor[po.status] as 'muted' | 'brand' | 'warning' | 'success' | 'danger'}>{po.status}</Badge>
-                    </td>
-                    <td className="px-4 py-3" style={{ textAlign: 'end' }}>
-                      {canConvert && (
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setConverting(po.id); convertMutation.mutate(po.id); }}
-                          disabled={isThisConverting}
-                          style={{
-                            fontSize: '11px', fontWeight: 600,
-                            color: theme.brand, background: 'transparent',
-                            border: 'none', cursor: isThisConverting ? 'wait' : 'pointer',
-                            padding: '4px 8px', borderRadius: '6px',
-                            opacity: isThisConverting ? 0.6 : 1,
-                          }}
-                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = theme.brandSoft; }}
-                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                        >
-                          {isThisConverting ? 'Converting…' : 'Convert to Bill →'}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <Pagination
-            page={page}
-            pageSize={PAGE_SIZE}
-            total={orders.length}
-            onChange={setPage}
-            className="border-t"
-          />
-        </div>
+        <>
+          <OceanTable columns={columns} rows={paged} keyFn={(po) => po.id} cardTitleKey="sup"
+            onRowClick={(po) => navigate(`/purchasing/orders/${po.id}`)} rowMuted={(po) => po.status === 'void'} emptyMessage={t('purchasing.no_pos')} />
+          {orders.length > 0 && <Pagination page={page} pageSize={PAGE_SIZE} total={orders.length} onChange={setPage} />}
+        </>
       )}
-    </div>
+    </OceanPage>
   );
 }

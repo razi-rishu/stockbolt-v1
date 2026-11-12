@@ -5,60 +5,37 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
 import { VoidedToggle } from '@/ui/voided-toggle';
 import { useHideVoided } from '@/hooks/use-hide-voided';
-import { Badge } from '@/ui/badge';
 import { Pagination, paginate } from '@/ui/pagination';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Plus } from 'lucide-react';
+import { StatusBadge } from '@/ui/status-badge';
 import { ListFilters } from '@/ui/list-filters';
 import type { VendorBillRow, ContactRow } from '@/data/adapter';
 
 const PAGE_SIZE = 50;
 
-const statusColor: Record<string, string> = {
-  draft: 'muted', confirmed: 'success', void: 'danger',
-};
+const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2 });
 
 // ── Payment-status badge (same semantics as the Invoices list: "is it paid?") ──
 function PayBadge({ status, total, applied, dueDate, today }: {
   // applied = payments + cash discount + posted TDS (phase114): all settle the bill.
   status: string; total: number; applied: number; dueDate: string | null; today: string;
 }) {
-  if (status !== 'confirmed') return <Badge variant={statusColor[status] as 'muted' | 'success' | 'danger'}>{status}</Badge>;
+  const { t } = useTranslation();
+  if (status !== 'confirmed') return <StatusBadge status={status} />;
   const outstanding = total - applied;
   const cfg =
     outstanding <= 0.005
-      ? { label: 'Paid',           bg: '#ecfdf5', text: '#047857', border: '#a7f3d0' }
+      ? { key: 'paid',    tone: 'sb-pill-good' }
       : dueDate && dueDate < today
-      ? { label: 'Overdue',        bg: '#fef2f2', text: '#dc2626', border: '#fecaca' }
+      ? { key: 'overdue', tone: 'sb-pill-bad' }
       : applied > 0.005
-      ? { label: 'Partially paid', bg: '#fffbeb', text: '#b45309', border: '#fde68a' }
-      : { label: 'Unpaid',         bg: '#f5f3ff', text: '#6d28d9', border: '#ddd6fe' };
-  return (
-    <span style={{
-      display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
-      fontSize: '11px', fontWeight: 600,
-      background: cfg.bg, color: cfg.text, border: `1px solid ${cfg.border}`,
-    }}>{cfg.label}</span>
-  );
-}
-
-function FilterPill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        padding: '6px 14px', borderRadius: '999px', fontSize: '12px', fontWeight: 600,
-        border: active ? `1px solid ${theme.brand}` : `1px solid ${theme.border}`,
-        background: active ? theme.brand : '#fff',
-        color: active ? '#fff' : theme.inkMuted,
-        cursor: 'pointer', transition: 'background-color .12s, color .12s, border-color .12s',
-      }}
-    >{label}</button>
-  );
+      ? { key: 'partial', tone: 'sb-pill-warn' }
+      : { key: 'unpaid',  tone: '' };
+  return <span className={`sb-pill ${cfg.tone}`} style={{ marginTop: 0, fontSize: 12, padding: '2px 10px' }}>{t(`docStatus.${cfg.key}`)}</span>;
 }
 
 export default function VendorBillsPage() {
@@ -121,116 +98,71 @@ export default function VendorBillsPage() {
 
   const paged = paginate(filtered, page, PAGE_SIZE);
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        title={t('purchasing.bills_title')}
-        subtitle={`${filtered.length} ${filtered.length === 1 ? 'bill' : 'bills'}`}
-        actions={<Button size="sm" onClick={() => navigate('/purchasing/bills/new')}>+ {t('purchasing.new_bill')}</Button>}
-      />
+  const columns: Column<VendorBillRow>[] = [
+    { key: 'no', header: t('purchasing.bill_number'), render: (b) => <bdi dir="ltr" className="sb-inv-no">{b.bill_number}</bdi> },
+    { key: 'sup', header: t('purchasing.supplier'), render: (b) => <span style={{ fontWeight: 600 }}>{supplierName(b.supplier_id)}</span> },
+    { key: 'date', header: t('purchasing.date'), render: (b) => <bdi dir="ltr">{formatDate(b.date as string)}</bdi> },
+    { key: 'due', header: t('purchasing.due_date'), render: (b) => b.due_date ? <bdi dir="ltr">{formatDate(b.due_date as string)}</bdi> : '—' },
+    { key: 'amt', header: t('purchasing.total_amount'), align: 'end', render: (b) => <bdi dir="ltr" className="sb-dash-num">{fmt(Number(b.total_amount))}</bdi> },
+    {
+      key: 'status', header: '',
+      render: (b) => (
+        <PayBadge
+          status={b.status}
+          total={Number(b.total_amount ?? 0)}
+          applied={(appliedMap[b.id] ?? 0) + (tdsMap[b.id] ?? 0)}
+          dueDate={(b.due_date as string) ?? null}
+          today={today}
+        />
+      ),
+    },
+  ];
 
-      {!isLoading && bills.length > 0 && (
-        <>
-          <ListFilters
-            search={search}
-            onSearch={(v) => { setSearch(v); setPage(1); }}
-            searchPlaceholder={t('purchasing.search_bills') || 'Search bill # or supplier…'}
-            storageKey="stockbolt.list.vendor-bills.period"
-            onDateFrom={(v) => { setDateFrom(v); setPage(1); }}
-            onDateTo={(v) => { setDateTo(v); setPage(1); }}
-          />
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+  // Ocean Teal (UI v1.1): look only — same bills, search, period, status
+  // chips, voided toggle, paid badges and pagination as before.
+  return (
+    <OceanPage
+      testid="vendor-bills-ocean"
+      title={t('purchasing.bills_title')}
+      subtitle={t('purchOcean.bills_count', { count: filtered.length })}
+      actions={<button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => navigate('/purchasing/bills/new')}><Plus size={18} aria-hidden="true" />{t('purchasing.new_bill')}</button>}
+      below={!isLoading && bills.length > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
+          <div className="sb-inv-filters">
+            <ListFilters
+              search={search}
+              onSearch={(v) => { setSearch(v); setPage(1); }}
+              searchPlaceholder={t('purchasing.search_bills') || 'Search bill # or supplier…'}
+              storageKey="stockbolt.list.vendor-bills.period"
+              onDateFrom={(v) => { setDateFrom(v); setPage(1); }}
+              onDateTo={(v) => { setDateTo(v); setPage(1); }}
+            />
+          </div>
+          <div className="sb-chips" style={{ marginTop: 0 }} role="group" aria-label={t('purchasing.status')}>
             {['', 'draft', 'confirmed', 'void'].map(s => (
-              <FilterPill
-                key={s}
-                label={s === '' ? t('common.all') : s.charAt(0).toUpperCase() + s.slice(1)}
-                active={statusFilter === s}
-                onClick={() => { setStatusFilter(s); setPage(1); }}
-              />
+              <button key={s} type="button" aria-pressed={statusFilter === s} className={`sb-chip ${statusFilter === s ? 'active' : ''}`}
+                onClick={() => { setStatusFilter(s); setPage(1); }}>
+                {s === '' ? t('common.all') : t(`docStatus.${s}`)}
+              </button>
             ))}
-            {/* Z4 — only meaningful on the All view; picking the Void pill
+            {/* Z4 — only meaningful on the All view; picking the Void chip
                 is already an explicit request to see them. */}
             {!statusFilter && (
               <VoidedToggle hideVoided={hideVoided} onChange={(v) => { setHideVoided(v); setPage(1); }} count={voidedCount} />
             )}
           </div>
+        </div>
+      ) : undefined}
+    >
+      {isLoading ? (
+        <div className="sb-card sb-empty">{t('common.loading')}</div>
+      ) : (
+        <>
+          <OceanTable columns={columns} rows={paged} keyFn={(b) => b.id} cardTitleKey="sup"
+            onRowClick={(b) => navigate(`/purchasing/bills/${b.id}`)} rowMuted={(b) => b.status === 'void'} emptyMessage={t('purchasing.no_bills')} />
+          {filtered.length > 0 && <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onChange={setPage} />}
         </>
       )}
-
-      {isLoading ? (
-        <div style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>{t('common.loading')}</div>
-      ) : filtered.length === 0 ? (
-        <div style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>{t('purchasing.no_bills')}</div>
-      ) : (
-        <div
-          className="overflow-x-auto bg-white"
-          style={{ border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm }}
-        >
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
-                {[
-                  { l: t('purchasing.bill_number'),  a: 'start' as const },
-                  { l: t('purchasing.supplier'),     a: 'start' as const },
-                  { l: t('purchasing.date'),         a: 'start' as const },
-                  { l: t('purchasing.due_date'),     a: 'start' as const },
-                  { l: t('purchasing.total_amount'), a: 'end'   as const },
-                  { l: t('purchasing.status'),       a: 'center'as const },
-                ].map((c) => (
-                  <th
-                    key={c.l}
-                    className="px-4 py-3 font-semibold"
-                    style={{
-                      fontSize: '11px', color: theme.inkMuted,
-                      textTransform: 'uppercase', letterSpacing: '.06em',
-                      textAlign: c.a,
-                    }}
-                  >{c.l}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {paged.map((bill, idx) => (
-                <tr
-                  key={bill.id}
-                  onClick={() => navigate(`/purchasing/bills/${bill.id}`)}
-                  className="cursor-pointer"
-                  style={{
-                    borderTop: idx === 0 ? 'none' : `1px solid #f1f5f9`,
-                    transition: 'background-color .12s',
-                  }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = theme.panelHead; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
-                >
-                  <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>{bill.bill_number}</td>
-                  <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px' }}>{supplierName(bill.supplier_id)}</td>
-                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(bill.date as string)}</td>
-                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{bill.due_date ? formatDate(bill.due_date as string) : '—'}</td>
-                  <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>
-                    {Number(bill.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-4 py-3" style={{ textAlign: 'center' }}>
-                    <PayBadge
-                      status={bill.status}
-                      total={Number(bill.total_amount ?? 0)}
-                      applied={(appliedMap[bill.id] ?? 0) + (tdsMap[bill.id] ?? 0)}
-                      dueDate={(bill.due_date as string) ?? null}
-                      today={today}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <Pagination
-            page={page}
-            pageSize={PAGE_SIZE}
-            total={filtered.length}
-            onChange={setPage}
-            className="border-t"
-          />
-        </div>
-      )}
-    </div>
+    </OceanPage>
   );
 }
