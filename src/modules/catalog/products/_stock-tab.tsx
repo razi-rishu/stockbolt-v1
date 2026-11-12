@@ -91,51 +91,56 @@ export function ProductStockTab({
   }, [rows]);
 
   const warehouseOpts = [
-    { value: '', label: 'All warehouses' },
+    { value: '', label: t('prodOcean.all_warehouses') },
     ...warehouses.map(w => ({ value: w.id, label: w.name })),
   ];
 
   return (
-    <div className="flex flex-col gap-4">
+    // Ocean Teal (UI v1.1): look only — same figures, filters and movements.
+    <div className="flex flex-col gap-4" data-testid="product-stock-ocean">
       {/* ── Summary tiles ────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <div className="rounded-card border border-border-subtle bg-surface-card px-4 py-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">On hand</p>
-          <p className={`mt-1 font-mono text-lg font-semibold ${
-            onHand < 0 ? 'text-red-600' : onHand === 0 ? 'text-ink-tertiary' : 'text-ink-primary'
-          }`}>
-            {fmt(onHand)}
-          </p>
-          <p className="mt-0.5 text-xs text-ink-tertiary">across all warehouses</p>
+      <div className="sb-exp-kpis">
+        <div className="sb-exp-kpi">
+          <div className="sb-exp-kpi-txt">
+            <span className="sb-exp-kpi-label">{t('prodOcean.on_hand')}</span>
+            <bdi dir="ltr" className="sb-exp-kpi-val" style={{ color: onHand < 0 ? 'var(--sb-danger)' : onHand === 0 ? 'var(--sb-text-secondary)' : undefined }}>{fmt(onHand)}</bdi>
+            <span className="sb-exp-kpi-sub">{t('prodOcean.on_hand_sub')}</span>
+          </div>
         </div>
-        <div className="rounded-card border border-border-subtle bg-surface-card px-4 py-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">Moving Avg Cost</p>
-          <p className="mt-1 font-mono text-lg font-semibold text-ink-primary">{fmt(mac)}</p>
-          <p className="mt-0.5 text-xs text-ink-tertiary">per unit</p>
+        <div className="sb-exp-kpi">
+          <div className="sb-exp-kpi-txt">
+            <span className="sb-exp-kpi-label">{t('prodOcean.mac')}</span>
+            <bdi dir="ltr" className="sb-exp-kpi-val">{fmt(mac)}</bdi>
+            <span className="sb-exp-kpi-sub">{t('prodOcean.per_unit')}</span>
+          </div>
         </div>
-        <div className="rounded-card border border-border-subtle bg-surface-card px-4 py-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">Received (range)</p>
-          <p className="mt-1 font-mono text-lg font-semibold text-green-700">+{fmt(stats.totalIn)}</p>
-          <p className="mt-0.5 text-xs text-ink-tertiary">sum of inbound qty</p>
+        <div className="sb-exp-kpi">
+          <div className="sb-exp-kpi-txt">
+            <span className="sb-exp-kpi-label">{t('prodOcean.received')}</span>
+            <bdi dir="ltr" className="sb-exp-kpi-val" style={{ color: '#067647' }}>+{fmt(stats.totalIn)}</bdi>
+            <span className="sb-exp-kpi-sub">{t('prodOcean.received_sub')}</span>
+          </div>
         </div>
-        <div className="rounded-card border border-border-subtle bg-surface-card px-4 py-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">Issued (range)</p>
-          <p className="mt-1 font-mono text-lg font-semibold text-red-700">−{fmt(stats.totalOut)}</p>
-          <p className="mt-0.5 text-xs text-ink-tertiary">sum of outbound qty</p>
+        <div className="sb-exp-kpi">
+          <div className="sb-exp-kpi-txt">
+            <span className="sb-exp-kpi-label">{t('prodOcean.issued')}</span>
+            <bdi dir="ltr" className="sb-exp-kpi-val" style={{ color: 'var(--sb-danger)' }}>−{fmt(stats.totalOut)}</bdi>
+            <span className="sb-exp-kpi-sub">{t('prodOcean.issued_sub')}</span>
+          </div>
         </div>
       </div>
 
       {/* ── Filters ──────────────────────────────────────────────────── */}
-      <div className="rounded-card border border-border-subtle bg-surface-card p-4">
+      <div className="sb-card sb-form sb-doc-card">
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-ink-secondary">Period</label>
+            <label className="text-xs font-medium text-ink-secondary">{t('prodOcean.period')}</label>
             <PeriodPicker
               mode="range" preset={preset} from={dateFrom} to={dateTo}
               onPresetChange={setPreset} onCustomRange={setCustomRange}
             />
           </div>
-          <div className="min-w-[200px] flex-1"><Select label="Warehouse" options={warehouseOpts} value={warehouseId} onChange={e => setWarehouseId(e.target.value)} /></div>
+          <div className="min-w-[200px] flex-1"><Select label={t('billOcean.warehouse')} options={warehouseOpts} value={warehouseId} onChange={e => setWarehouseId(e.target.value)} /></div>
         </div>
         <label className="mt-3 flex cursor-pointer select-none items-center gap-2 text-sm text-ink-secondary">
           <input
@@ -144,37 +149,35 @@ export function ProductStockTab({
             checked={hideReversed}
             onChange={(e) => setHideReversed(e.target.checked)}
           />
-          <span>Hide reversed entries (voids &amp; edits)</span>
+          <span>{t('prodOcean.hide_reversed')}</span>
           <span className="text-xs text-ink-tertiary">
-            {hideReversed ? '— showing only entries that affect current stock' : '— showing full audit trail'}
+            {hideReversed ? t('prodOcean.hide_reversed_on') : t('prodOcean.hide_reversed_off')}
           </span>
         </label>
       </div>
 
       {/* ── Movement table ───────────────────────────────────────────── */}
-      <div className="rounded-card border border-border-subtle bg-surface-card overflow-x-auto">
+      <div className="sb-card sb-doc-lines overflow-x-auto">
         {isFetching ? (
-          <p className="py-8 text-center text-sm text-ink-tertiary">Loading…</p>
+          <p className="sb-empty" style={{ textAlign: 'center' }}>{t('common.loading')}</p>
         ) : rows.length === 0 ? (
-          <div className="py-12 text-center">
-            <p className="text-sm text-ink-secondary">No stock movements in this range.</p>
-            <p className="mt-1 text-xs text-ink-tertiary">
-              Try widening the date range or unchecking "Hide reversed entries".
-            </p>
+          <div className="sb-empty" style={{ textAlign: 'center' }}>
+            <p className="text-sm text-ink-secondary">{t('prodOcean.no_moves')}</p>
+            <p className="mt-1 text-xs text-ink-tertiary">{t('prodOcean.no_moves_hint')}</p>
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
-                <th className="px-4 py-2 text-start font-medium">Date</th>
-                <th className="px-4 py-2 text-start font-medium">Type</th>
-                <th className="px-4 py-2 text-start font-medium">Document</th>
-                <th className="px-4 py-2 text-start font-medium">Warehouse</th>
-                <th className="px-4 py-2 text-end font-medium w-24">Qty in</th>
-                <th className="px-4 py-2 text-end font-medium w-24">Qty out</th>
-                <th className="px-4 py-2 text-end font-medium w-28">Running</th>
-                <th className="px-4 py-2 text-end font-medium w-24">Unit cost</th>
-                <th className="px-4 py-2 text-end font-medium w-28">Running value</th>
+              <tr>
+                <th className="px-4 py-2 text-start font-medium">{t('common.date')}</th>
+                <th className="px-4 py-2 text-start font-medium">{t('prodOcean.c_type')}</th>
+                <th className="px-4 py-2 text-start font-medium">{t('prodOcean.c_document')}</th>
+                <th className="px-4 py-2 text-start font-medium">{t('billOcean.warehouse')}</th>
+                <th className="px-4 py-2 text-end font-medium w-24">{t('prodOcean.c_qty_in')}</th>
+                <th className="px-4 py-2 text-end font-medium w-24">{t('prodOcean.c_qty_out')}</th>
+                <th className="px-4 py-2 text-end font-medium w-28">{t('prodOcean.c_running')}</th>
+                <th className="px-4 py-2 text-end font-medium w-24">{t('prodOcean.c_unit_cost')}</th>
+                <th className="px-4 py-2 text-end font-medium w-28">{t('prodOcean.c_running_value')}</th>
               </tr>
             </thead>
             <tbody>
@@ -187,7 +190,7 @@ export function ProductStockTab({
                 const typeTone  = stockMovementTone(row.movement_type);
                 return (
                   <tr key={i} className="border-b border-border-subtle last:border-0 hover:bg-surface-muted/30">
-                    <td className="px-4 py-2 text-ink-secondary font-mono text-xs">{formatDate(row.date as string)}</td>
+                    <td className="px-4 py-2 text-ink-secondary font-mono text-xs"><bdi dir="ltr">{formatDate(row.date as string)}</bdi></td>
                     <td className="px-4 py-2">
                       <span className={`rounded-pill px-2 py-0.5 text-[10px] font-medium ${typeTone}`}>
                         {typeLabel}
@@ -229,10 +232,11 @@ export function ProductStockTab({
       <div className="text-end">
         <button
           onClick={() => navigate(`/inventory/stock-ledger?product=${productId}`)}
-          className="text-xs text-brand-600 hover:underline"
-          title="Open the full stock ledger filtered to this product"
+          type="button"
+          className="sb-row-link text-brand-600"
+          title={t('prodOcean.open_ledger_title')}
         >
-          Open in Stock Ledger →
+          {t('prodOcean.open_ledger')}
         </button>
       </div>
     </div>

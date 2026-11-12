@@ -21,6 +21,8 @@ import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
 import { DuplicateWarning } from '@/ui/duplicate-warning';
 import { findProductDuplicates } from '@/lib/duplicate-check';
 import { FormErrorBanner } from '@/ui/form-error-banner';
+import { Pencil, Trash2, Plus } from 'lucide-react';
+import '@/styles/stockbolt-ocean-teal.css';
 
 const schema = z.object({
   sku:                z.string().min(1, 'Required'),
@@ -51,23 +53,22 @@ const QUALITY_OPTIONS = ['', 'genuine', 'oem', 'premium', 'economy'];
 const TAX_OPTIONS = ['standard', 'zero_rated', 'exempt'];
 
 // ── Design tokens (inline) ──────────────────────────────────────────
+// Ocean Teal (UI v1.1) — section cards use the shared Ocean tokens.
 const S = {
   card: {
-    background: '#fff',
-    border: '1px solid #e4e4e7',
-    borderRadius: '12px',
+    background: 'var(--sb-surface)',
+    border: '1px solid var(--sb-border)',
+    borderRadius: 'var(--sb-radius-lg)',
     overflow: 'hidden',
-    boxShadow: '0 1px 3px rgba(9,9,11,.05)',
+    boxShadow: 'var(--sb-shadow)',
   } as React.CSSProperties,
   head: {
-    padding: '10px 18px',
-    background: '#f8fafc',
-    borderBottom: '1px solid #e4e4e7',
-    fontSize: '10px',
+    padding: '12px 18px',
+    background: 'var(--sb-background)',
+    borderBottom: '1px solid var(--sb-border)',
+    fontSize: '15px',
     fontWeight: 700,
-    color: '#64748b',
-    textTransform: 'uppercase' as const,
-    letterSpacing: '.07em',
+    color: 'var(--sb-text)',
   } as React.CSSProperties,
   body: {
     padding: '18px',
@@ -273,39 +274,26 @@ export default function ProductDetailPage() {
   const tabs = ['details', 'stock', 'compat', 'suppliers', 'images'] as const;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '1000px' }}>
+    // Ocean Teal (UI v1.1): look only — same tabs, form, save, delete,
+    // compatibility, supplier codes and images as before.
+    <div className="sb-ocean sb-docx sb-prod" data-testid="product-detail-ocean">
 
       {/* ── Page header ─────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <div className="sb-card sb-doc-bar">
+        <div className="sb-doc-bar-id">
           <BackButton to="/products" label={t('products.back')} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em', lineHeight: 1.2 }}>
-              {product?.name ?? t('common.loading')}
-            </h1>
-            {product && (
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', gap: '5px',
-                padding: '3px 9px', borderRadius: '999px', fontSize: '11px', fontWeight: 600,
-                background: product.is_active ? '#f0fdf4' : '#f4f4f5',
-                color: product.is_active ? '#15803d' : '#71717a',
-                border: `1px solid ${product.is_active ? '#bbf7d0' : '#d4d4d8'}`,
-              }}>
-                <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: product.is_active ? '#16a34a' : '#a1a1aa', flexShrink: 0 }} />
-                {product.is_active ? t('common.active') : t('common.inactive')}
-              </span>
-            )}
-            {product?.sku && (
-              <span style={{ fontSize: '12px', fontFamily: 'ui-monospace, monospace', color: '#64748b', background: '#f1f5f9', padding: '2px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                {product.sku}
-              </span>
-            )}
-          </div>
+          <h1 className="sb-doc-bar-no">{product?.name ?? t('common.loading')}</h1>
+          {product && (
+            <span className={`sb-pill ${product.is_active ? 'sb-pill-good' : 'sb-pill-muted'}`} style={{ marginTop: 0 }}>
+              {product.is_active ? t('common.active') : t('common.inactive')}
+            </span>
+          )}
+          {product?.sku && <bdi dir="ltr" className="sb-prod-sku">{product.sku}</bdi>}
         </div>
         {!editMode && (
-          <div style={{ display: 'flex', gap: '8px', flexShrink: 0, marginTop: '24px' }}>
+          <div className="sb-doc-bar-actions">
             <Button type="button" size="sm" onClick={() => setEditMode(true)}>
-              ✎ {t('common.edit')}
+              <Pencil size={15} aria-hidden="true" /> {t('common.edit')}
             </Button>
             {!isNew && product && (
               <Button
@@ -315,7 +303,7 @@ export default function ProductDetailPage() {
                 loading={deleteMutation.isPending}
                 onClick={() => { if (window.confirm(t('products.delete_confirm'))) deleteMutation.mutate(); }}
               >
-                {t('common.delete')}
+                <Trash2 size={15} aria-hidden="true" /> {t('common.delete')}
               </Button>
             )}
           </div>
@@ -323,27 +311,21 @@ export default function ProductDetailPage() {
       </div>
 
       {/* ── Tab nav ──────────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', gap: '2px', borderBottom: '1px solid #e4e4e7', marginBottom: '2px' }}>
-        {tabs.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            style={{
-              padding: '8px 16px',
-              fontSize: '13px',
-              fontWeight: 500,
-              background: 'none',
-              border: 'none',
-              borderBottom: activeTab === tab ? '2px solid #7c3aed' : '2px solid transparent',
-              marginBottom: '-1px',
-              color: activeTab === tab ? '#7c3aed' : '#64748b',
-              cursor: 'pointer',
-              transition: 'color .12s',
-            }}
-          >
-            {t(`products.tab_${tab}`)}
-          </button>
-        ))}
+      <div className="sb-card sb-prod-tabs-card">
+        <div className="sb-tabs sb-prod-tabs" role="tablist">
+          {tabs.map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab}
+              className={`sb-tab ${activeTab === tab ? 'active' : ''}`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {t(`products.tab_${tab}`)}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── Details tab ──────────────────────────────────────────────────── */}
@@ -365,10 +347,10 @@ export default function ProductDetailPage() {
 
           {/* ── Section 1: Item Information ─────────────────────────── */}
           <div style={S.card}>
-            <div style={S.head}>Item Information</div>
+            <div style={S.head}>{t('prodOcean.sec_item')}</div>
             <div style={S.body}>
               <div style={S.row2}>
-                <Input label={t('products.name')} required error={errors.name?.message} {...register('name')} />
+                <Input label={t('products.name')} required error={errors.name ? t('prodOcean.required') : undefined} {...register('name')} />
                 <Input label={t('products.name_ar')} dir="rtl" {...register('name_ar')} />
               </div>
               <div style={S.row2}>
@@ -382,12 +364,12 @@ export default function ProductDetailPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: '14px' }}>
 
             <div style={S.card}>
-              <div style={S.head}>Identifiers</div>
+              <div style={S.head}>{t('prodOcean.sec_identifiers')}</div>
               <div style={S.body}>
                 {/* Identifier collisions only - never the product NAME. Two
                     products really can both be called "Brake Pad Front". */}
                 <DuplicateWarning hits={duplicateHits} docType="product" />
-                <Input label={t('products.sku')} required error={errors.sku?.message} {...register('sku')} />
+                <Input label={t('products.sku')} required error={errors.sku ? t('prodOcean.required') : undefined} {...register('sku')} />
                 <Input label={t('products.barcode')} {...register('barcode')} />
                 <Input label={t('products.oe_number')} {...register('oe_number')} />
                 <Input label={t('products.replacement_numbers')} hint={t('products.replacement_hint')} {...register('replacement_numbers')} />
@@ -395,7 +377,7 @@ export default function ProductDetailPage() {
             </div>
 
             <div style={S.card}>
-              <div style={S.head}>Classification</div>
+              <div style={S.head}>{t('prodOcean.sec_classification')}</div>
               <div style={S.body}>
                 <Select label={t('products.brand')} options={[{ value: '', label: t('common.none') }, ...brands.map((b) => ({ value: b.id, label: b.name }))]} {...register('brand_id')} />
                 <Select label={t('products.category')} options={[{ value: '', label: t('common.none') }, ...categories.map((c) => ({ value: c.id, label: c.name }))]} {...register('category_id')} />
@@ -418,8 +400,8 @@ export default function ProductDetailPage() {
 
             {/* Sales */}
             <div style={S.card}>
-              <div style={{ ...S.head, background: '#faf5ff', borderBottom: '1px solid #ede9fe', color: '#5b21b6' }}>
-                Sales Information
+              <div style={{ ...S.head, background: 'var(--sb-primary-soft)', color: 'var(--sb-primary-dark)' }}>
+                {t('prodOcean.sec_sales')}
               </div>
               <div style={S.body}>
                 <Input
@@ -442,22 +424,22 @@ export default function ProductDetailPage() {
                 />
                 <Input
                   label={t('products.hsn_code')}
-                  placeholder="India GST classification"
+                  placeholder={t('prodOcean.hsn_ph')}
                   {...register('hsn_code')}
                 />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingTop: '2px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#1e293b', userSelect: 'none' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', color: 'var(--sb-text)', userSelect: 'none' }}>
                     <input
                       type="checkbox"
-                      style={{ width: '15px', height: '15px', accentColor: '#7c3aed', cursor: 'pointer' }}
+                      style={{ width: '15px', height: '15px', accentColor: 'var(--sb-primary)', cursor: 'pointer' }}
                       {...register('requires_serial')}
                     />
                     {t('products.requires_serial')}
                   </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#1e293b', userSelect: 'none' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', color: 'var(--sb-text)', userSelect: 'none' }}>
                     <input
                       type="checkbox"
-                      style={{ width: '15px', height: '15px', accentColor: '#7c3aed', cursor: 'pointer' }}
+                      style={{ width: '15px', height: '15px', accentColor: 'var(--sb-primary)', cursor: 'pointer' }}
                       {...register('is_active')}
                     />
                     {t('common.active')}
@@ -468,23 +450,23 @@ export default function ProductDetailPage() {
 
             {/* Purchase */}
             <div style={S.card}>
-              <div style={{ ...S.head, background: '#f0fdf4', borderBottom: '1px solid #bbf7d0', color: '#15803d' }}>
-                Purchase Information
+              <div style={{ ...S.head, background: '#ECFDF3', color: '#067647' }}>
+                {t('prodOcean.sec_purchase')}
               </div>
               <div style={S.body}>
                 <div>
                   <Select
-                    label="Purchase Account"
+                    label={t('prodOcean.purchase_account')}
                     options={[
-                      { value: '', label: '(default: 1300 Inventory)' },
+                      { value: '', label: t('prodOcean.purchase_account_default') },
                       ...coaAccounts
                         .filter((a) => a.is_active && (a.type === 'asset' || a.type === 'cogs' || a.type === 'expense'))
                         .map((a) => ({ value: a.id, label: `${a.code} — ${a.name}` })),
                     ]}
                     {...register('purchase_account_id')}
                   />
-                  <p style={{ marginTop: '4px', fontSize: '11px', color: '#94a3b8', lineHeight: '1.5' }}>
-                    Asset accounts (1xxx) also move stock; expense accounts (5xxx/6xxx) post as a pure cost.
+                  <p className="sb-form-hint" style={{ marginTop: '4px', lineHeight: '1.5' }}>
+                    {t('prodOcean.purchase_account_hint')}
                   </p>
                 </div>
                 <Input label={t('products.min_stock')} type="number" step="0.001" {...register('min_stock_level')} />
@@ -495,7 +477,7 @@ export default function ProductDetailPage() {
           </fieldset>
 
           {saveMutation.error && (
-            <p style={{ fontSize: '12px', color: '#dc2626', padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px' }}>
+            <p className="sb-alert sb-alert-danger" role="alert">
               {String(saveMutation.error)}
             </p>
           )}
@@ -524,25 +506,25 @@ export default function ProductDetailPage() {
       {activeTab === 'compat' && !isNew && (
         <div className="flex flex-col gap-4">
           <div className="flex justify-end">
-            <Button size="sm" onClick={() => { setCompatMakeId(''); setCompatModelId(''); setCompatGenId(''); setCompatVarId(''); setCompatYearFrom(''); setCompatYearTo(''); setCompatEngine(''); setCompatModal(true); }}>{t('common.add')} {t('products.compatibility')}</Button>
+            <Button size="sm" onClick={() => { setCompatMakeId(''); setCompatModelId(''); setCompatGenId(''); setCompatVarId(''); setCompatYearFrom(''); setCompatYearTo(''); setCompatEngine(''); setCompatModal(true); }}><Plus size={15} aria-hidden="true" /> {t('common.add')} {t('products.compatibility')}</Button>
           </div>
           {compat.length === 0
-            ? <p className="py-8 text-center text-sm text-ink-tertiary">{t('products.no_compat')}</p>
+            ? <div className="sb-card sb-empty" style={{ textAlign: 'center' }}>{t('products.no_compat')}</div>
             : <div className="flex flex-col gap-2">
                 {compat.map((c) => (
-                  <div key={c.id} className="flex items-center justify-between rounded-card border border-border-subtle px-4 py-3">
+                  <div key={c.id} className="sb-card sb-prod-row">
                     <div className="text-sm">
                       <span className="font-medium">{makeMap[c.make_id] ?? c.make_id}</span>
                       {c.model_id && <span className="ms-2 text-ink-secondary">{modelMap[c.model_id] ?? c.model_id}</span>}
                       {(c.year_from || c.year_to) && <span className="ms-2 text-ink-tertiary">{c.year_from}–{c.year_to}</span>}
                       {c.engine && <span className="ms-2 text-ink-tertiary">{c.engine}</span>}
                       {c.variant_id
-                        ? <span className="ms-2 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-brand-700">{t('products.fits_variant')}</span>
+                        ? <span className="sb-pill ms-2" style={{ marginTop: 0 }}>{t('products.fits_variant')}</span>
                         : c.generation_id
-                          ? <span className="ms-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-500">{t('products.fits_generation')}</span>
+                          ? <span className="sb-pill sb-pill-muted ms-2" style={{ marginTop: 0 }}>{t('products.fits_generation')}</span>
                           : null}
                     </div>
-                    <button onClick={() => removeCompatMutation.mutate(c.id)} className="text-xs text-danger-500 hover:underline">{t('common.delete')}</button>
+                    <button type="button" onClick={() => removeCompatMutation.mutate(c.id)} className="sb-doc-line-del" aria-label={t('common.delete')} title={t('common.delete')}><Trash2 size={15} aria-hidden="true" /></button>
                   </div>
                 ))}
               </div>
@@ -554,19 +536,19 @@ export default function ProductDetailPage() {
       {activeTab === 'suppliers' && !isNew && (
         <div className="flex flex-col gap-4">
           <div className="flex justify-end">
-            <Button size="sm" onClick={() => { setSupplierId(''); setSupplierSku(''); setSupplierModal(true); }}>{t('common.add')} {t('products.supplier_code')}</Button>
+            <Button size="sm" onClick={() => { setSupplierId(''); setSupplierSku(''); setSupplierModal(true); }}><Plus size={15} aria-hidden="true" /> {t('common.add')} {t('products.supplier_code')}</Button>
           </div>
           {supplierCodes.length === 0
-            ? <p className="py-8 text-center text-sm text-ink-tertiary">{t('products.no_supplier_codes')}</p>
+            ? <div className="sb-card sb-empty" style={{ textAlign: 'center' }}>{t('products.no_supplier_codes')}</div>
             : <div className="flex flex-col gap-2">
                 {supplierCodes.map((sc) => (
-                  <div key={sc.id} className="flex items-center justify-between rounded-card border border-border-subtle px-4 py-3">
+                  <div key={sc.id} className="sb-card sb-prod-row">
                     <div className="text-sm">
                       <span className="font-medium">{supplierMap[sc.supplier_id] ?? sc.supplier_id}</span>
-                      <span className="ms-3 font-mono text-xs text-ink-secondary">{sc.supplier_sku}</span>
+                      <bdi dir="ltr" className="ms-3 font-mono text-xs text-ink-secondary">{sc.supplier_sku}</bdi>
                       {sc.last_purchase_price && <span className="ms-3 text-ink-tertiary">{t('products.last_price')}: {Number(sc.last_purchase_price).toFixed(2)}</span>}
                     </div>
-                    <button onClick={() => removeSupplierMutation.mutate(sc.id)} className="text-xs text-danger-500 hover:underline">{t('common.delete')}</button>
+                    <button type="button" onClick={() => removeSupplierMutation.mutate(sc.id)} className="sb-doc-line-del" aria-label={t('common.delete')} title={t('common.delete')}><Trash2 size={15} aria-hidden="true" /></button>
                   </div>
                 ))}
               </div>
@@ -582,11 +564,11 @@ export default function ProductDetailPage() {
             <input ref={imgRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(f); e.target.value = ''; }} />
           </div>
           {(images ?? []).length === 0
-            ? <p className="py-8 text-center text-sm text-ink-tertiary">{t('products.no_images')}</p>
+            ? <div className="sb-card sb-empty" style={{ textAlign: 'center' }}>{t('products.no_images')}</div>
             : <div className="grid grid-cols-3 gap-4 sm:grid-cols-4">
                 {(images ?? []).map((url, i) => (
-                  <div key={i} className="aspect-square overflow-hidden rounded-card border border-border-subtle">
-                    <img src={url} alt={`Product image ${i + 1}`} className="h-full w-full object-cover" />
+                  <div key={i} className="sb-card aspect-square overflow-hidden" style={{ padding: 0 }}>
+                    <img src={url} alt={t('prodOcean.image_alt', { n: i + 1 })} className="h-full w-full object-cover" />
                   </div>
                 ))}
               </div>
@@ -600,7 +582,7 @@ export default function ProductDetailPage() {
 
       {/* ── Compatibility modal ─────────────────────────────────────────── */}
       <Modal open={compatModal} onClose={() => setCompatModal(false)} title={t('products.add_compat')}>
-        <div className="flex flex-col gap-4">
+        <div className="sb-ocean sb-form sb-modal-form">
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-ink-primary">{t('products.make')} <span className="text-danger-500">*</span></label>
             <select className="h-10 rounded-input border border-border-strong bg-surface-subtle px-4 text-sm focus:border-brand-500 focus:outline-none" value={compatMakeId} onChange={(e) => { setCompatMakeId(e.target.value); setCompatModelId(''); setCompatGenId(''); setCompatVarId(''); }}>
@@ -622,7 +604,7 @@ export default function ProductDetailPage() {
               <label className="text-sm font-medium text-ink-primary">{t('products.generation')}</label>
               <select className="h-10 rounded-input border border-border-strong bg-surface-subtle px-4 text-sm focus:border-brand-500 focus:outline-none" value={compatGenId} onChange={(e) => { setCompatGenId(e.target.value); setCompatVarId(''); }}>
                 <option value="">{t('products.all_generations')}</option>
-                {compatGenerations.map((g) => <option key={g.id} value={g.id}>{g.name}{(g.year_from || g.year_to) ? ` (${g.year_from ?? '…'}–${g.year_to ?? 'now'})` : ''}</option>)}
+                {compatGenerations.map((g) => <option key={g.id} value={g.id}>{g.name}{(g.year_from || g.year_to) ? ` (${g.year_from ?? '…'}–${g.year_to ?? t('prodOcean.now')})` : ''}</option>)}
               </select>
             </div>
           )}
@@ -670,7 +652,7 @@ export default function ProductDetailPage() {
 
       {/* ── Supplier code modal ─────────────────────────────────────────── */}
       <Modal open={supplierModal} onClose={() => setSupplierModal(false)} title={t('products.add_supplier_code')}>
-        <div className="flex flex-col gap-4">
+        <div className="sb-ocean sb-form sb-modal-form">
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-ink-primary">{t('products.supplier')} <span className="text-danger-500">*</span></label>
             <select className="h-10 rounded-input border border-border-strong bg-surface-subtle px-4 text-sm focus:border-brand-500 focus:outline-none" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
