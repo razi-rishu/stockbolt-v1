@@ -24,6 +24,13 @@
  */
 import { useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import {
+  Package, Wallet, Barcode, Truck, Warehouse as WarehouseIcon, Tag, ShoppingCart,
+  Landmark, ClipboardList, PackagePlus, CircleCheck, Plus, X, Check, Eye, AlertTriangle,
+  ArrowLeft, ArrowRight, Wrench,
+} from 'lucide-react';
+import '@/styles/stockbolt-ocean-teal.css';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
@@ -37,18 +44,29 @@ import type {
   ContactRow, WarehouseRow,
 } from '@/data/adapter';
 import {
-  Field, Input, Select, Textarea, PrefixInput, Badge, Panel, Grid,
+  Field, Input, Select, Textarea, PrefixInput, Grid,
 } from '@/ui/primitives';
 import { labelStyle } from '@/ui/theme';
+
+// Ocean Teal (UI v1.1) — a local section card in place of the shared grey
+// Panel, so the wizard reads like the rest of the Ocean screens.
+function Panel({ icon, title, children }: { icon?: ReactNode; title: string; children: ReactNode }) {
+  return (
+    <section className="sb-card sb-pw-panel">
+      <h3 className="sb-pw-panel-head">{icon && <span className="sb-pw-panel-ico" aria-hidden="true">{icon}</span>}{title}</h3>
+      <div className="sb-pw-panel-body">{children}</div>
+    </section>
+  );
+}
 import { ContactQuickCreate } from '@/components/quick-create/contact-quick-create';
 
 // ── Step metadata ───────────────────────────────────────────────────────
 const STEPS = [
-  { id: 1, label: 'Basic info',       icon: '📦' },
-  { id: 2, label: 'Pricing',          icon: '💰' },
-  { id: 3, label: 'Identifiers',      icon: '🔖' },
-  { id: 4, label: 'Supplier',         icon: '🚚' },
-  { id: 5, label: 'Stock & location', icon: '🏭' },
+  { id: 1, key: 'step_basic',      Icon: Package },
+  { id: 2, key: 'step_pricing',    Icon: Wallet },
+  { id: 3, key: 'step_identifiers', Icon: Barcode },
+  { id: 4, key: 'step_supplier',   Icon: Truck },
+  { id: 5, key: 'step_stock',      Icon: WarehouseIcon },
 ] as const;
 
 // ── Form state ──────────────────────────────────────────────────────────
@@ -114,6 +132,7 @@ const initialForm: WizardForm = {
 // (Form primitives moved to src/ui/primitives.tsx — Phase 12.30.)
 
 export function ProductWizard() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { company_id } = useAuthStore();
   const companyCurrency = useCompanyCurrency();   // Issue 1 — localize money to tenant currency
@@ -153,18 +172,18 @@ export function ProductWizard() {
 
   function validateStep(s: number): string | null {
     if (s === 1) {
-      if (!form.name.trim()) return 'Name (English) is required';
-      if (!form.sku.trim())  return 'SKU is required';
-      if (!form.brand_id)    return 'Brand is required';
+      if (!form.name.trim()) return t('pwOcean.err_name');
+      if (!form.sku.trim())  return t('pwOcean.err_sku');
+      if (!form.brand_id)    return t('pwOcean.err_brand');
     }
     if (s === 2) {
-      if (!form.selling_price) return 'Selling price is required';
-      if (parseFloat(form.selling_price) < 0) return 'Selling price must be ≥ 0';
+      if (!form.selling_price) return t('pwOcean.err_price');
+      if (parseFloat(form.selling_price) < 0) return t('pwOcean.err_price_neg');
     }
     if (s === 5 && form.type === 'goods') {
       const qty = parseFloat(form.opening_stock) || 0;
-      if (qty > 0 && !form.warehouse_id) return 'Warehouse is required to record opening stock';
-      if (qty > 0 && !form.opening_stock_rate) return 'Opening stock rate is required when opening stock > 0';
+      if (qty > 0 && !form.warehouse_id) return t('pwOcean.err_wh');
+      if (qty > 0 && !form.opening_stock_rate) return t('pwOcean.err_rate');
     }
     return null;
   }
@@ -263,7 +282,9 @@ export function ProductWizard() {
   const progress = (step / 5) * 100;
 
   return (
-    <div style={{ fontFamily: "'Inter', system-ui, sans-serif", background: '#f8fafc', minHeight: '100vh', margin: '-1.5rem' }}>
+    // Ocean Teal (UI v1.1): look only — same five steps, validation, quick
+    // adds, review and save (product + supplier code + opening stock).
+    <div className="sb-ocean sb-pw" data-testid="product-wizard-ocean">
       {/* ── Quick-create modals ── */}
       {openQcFor === 'brand' && (
         <BrandQC
@@ -317,108 +338,71 @@ export function ProductWizard() {
       )}
 
       {/* Top progress bar */}
-      <div style={{ height: '3px', background: '#e2e8f0' }}>
-        <div style={{
-          height: '3px',
-          background: 'linear-gradient(90deg, #7c3aed, #8b5cf6)',
-          width: `${progress}%`,
-          transition: 'width .4s ease',
-        }} />
-      </div>
+      <div className="sb-pw-progress" aria-hidden="true"><i style={{ width: `${progress}%` }} /></div>
 
-      <div className="grid grid-cols-1 md:grid-cols-[220px_1fr]" style={{ minHeight: 'calc(100vh - 3px)' }}>
-        {/* Left sidebar with step nav */}
-        <aside style={{ background: '#fff', borderRight: '1px solid #e2e8f0', padding: '24px 0', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '0 20px 20px', borderBottom: '1px solid #f1f5f9', marginBottom: '8px' }}>
-            <div style={{
-              fontSize: '11px', fontWeight: 700, color: '#94a3b8',
-              textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '4px',
-            }}>New item</div>
-            <div style={{ fontSize: '13px', color: '#475569' }}>{form.name || 'Untitled item'}</div>
+      <div className="sb-pw-layout">
+        {/* Step nav — a rail on desktop, a scrollable strip on phones */}
+        <aside className="sb-card sb-pw-rail">
+          <div className="sb-pw-rail-head">
+            <div className="sb-pw-rail-kicker">{t('pwOcean.new_item')}</div>
+            <div className="sb-pw-rail-name">{form.name || t('pwOcean.untitled')}</div>
           </div>
+          <div className="sb-pw-steps" role="list">
 
           {STEPS.map((s) => {
             const isActive = s.id === step;
             const isDone   = completed.has(s.id);
             const clickable = isDone || s.id <= step;
             return (
-              <div
+              <button
+                type="button"
                 key={s.id}
+                role="listitem"
                 onClick={() => clickable && setStep(s.id)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '10px',
-                  padding: '11px 20px',
-                  cursor: clickable ? 'pointer' : 'default',
-                  borderRight: isActive ? '2px solid #7c3aed' : '2px solid transparent',
-                  background: isActive ? '#f5f3ff' : 'transparent',
-                  transition: 'all .15s',
-                }}
+                disabled={!clickable}
+                aria-current={isActive ? 'step' : undefined}
+                className={`sb-pw-step ${isActive ? 'active' : ''} ${isDone ? 'done' : ''}`}
               >
-                <div style={{
-                  width: '24px', height: '24px', borderRadius: '50%',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '11px', fontWeight: 700, flexShrink: 0,
-                  background: isDone ? '#f0fdf4' : isActive ? '#f5f3ff' : '#f8fafc',
-                  color: isDone ? '#16a34a' : isActive ? '#5b21b6' : '#94a3b8',
-                  border: `1.5px solid ${isDone ? '#bbf7d0' : isActive ? '#ddd6fe' : '#e2e8f0'}`,
-                }}>{isDone ? '✓' : s.id}</div>
-                <span style={{
-                  fontSize: '13px',
-                  color: isDone ? '#16a34a' : isActive ? '#5b21b6' : '#64748b',
-                  fontWeight: isActive ? 600 : 400,
-                }}>{s.label}</span>
-              </div>
+                <span className="sb-pw-step-dot">{isDone ? <Check size={14} aria-hidden="true" /> : s.id}</span>
+                <span className="sb-pw-step-label">{t(`pwOcean.${s.key}`)}</span>
+              </button>
             );
           })}
+          </div>
 
-          <div style={{ marginTop: 'auto', padding: '20px', borderTop: '1px solid #f1f5f9' }}>
-            <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '8px' }}>Step {step} of 5</div>
-            <div style={{ height: '4px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
-              <div style={{ height: '4px', background: '#7c3aed', width: `${progress}%`, borderRadius: '4px', transition: 'width .4s' }} />
-            </div>
+          <div className="sb-pw-rail-foot">
+            <div className="sb-pw-rail-count">{t('pwOcean.step_of', { step, total: 5 })}</div>
+            <div className="sb-pw-minibar"><i style={{ width: `${progress}%` }} /></div>
           </div>
         </aside>
 
         {/* Main content */}
-        <div style={{ display: 'flex', flexDirection: 'column', background: '#f8fafc' }}>
+        <div className="sb-pw-main">
           {/* Header */}
-          <div style={{
-            background: '#fff', borderBottom: '1px solid #e2e8f0',
-            padding: '16px 28px',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          }}>
-            <div>
-              <div style={{
-                fontSize: '11px', color: '#94a3b8',
-                display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px',
-              }}>
-                <span style={{ cursor: 'pointer' }} onClick={() => navigate('/products')}>Inventory</span>
-                <span>›</span>
-                <span style={{ cursor: 'pointer' }} onClick={() => navigate('/products')}>Items</span>
-                <span>›</span>
-                <span>New item</span>
+          <div className="sb-card sb-pw-head">
+            <div style={{ minWidth: 0 }}>
+              <div className="sb-pw-crumb">
+                <button type="button" onClick={() => navigate('/products')}>{t('nav.inventory')}</button>
+                <span aria-hidden="true">›</span>
+                <button type="button" onClick={() => navigate('/products')}>{t('products.title')}</button>
+                <span aria-hidden="true">›</span>
+                <span>{t('pwOcean.new_item')}</span>
               </div>
-              <div style={{ fontSize: '17px', fontWeight: 700, color: '#1e293b' }}>
-                {STEPS[step - 1].icon} {STEPS[step - 1].label}
-              </div>
+              <h1 className="sb-pw-title">
+                {(() => { const I = STEPS[step - 1].Icon; return <I size={20} aria-hidden="true" />; })()}
+                {t(`pwOcean.${STEPS[step - 1].key}`)}
+              </h1>
             </div>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <Badge color="amber">⏱ Draft</Badge>
-              <button
-                onClick={() => setShowReview(true)}
-                style={{
-                  padding: '7px 14px',
-                  border: '1px solid #e2e8f0', borderRadius: '8px',
-                  background: '#fff', fontSize: '12px',
-                  cursor: 'pointer', color: '#475569',
-                  display: 'flex', alignItems: 'center', gap: '5px',
-                }}
-              >👁 Preview</button>
+            <div className="sb-pw-head-actions">
+              <span className="sb-pill sb-pill-warn" style={{ marginTop: 0 }}>{t('docStatus.draft')}</span>
+              <button type="button" className="sb-btn-ghost sb-pw-btn" onClick={() => setShowReview(true)}>
+                <Eye size={15} aria-hidden="true" /> {t('pwOcean.preview')}
+              </button>
             </div>
           </div>
 
           {/* Step body */}
-          <div style={{ flex: 1, padding: '24px 28px', overflowY: 'auto' }}>
+          <div className="sb-pw-body">
             {/* Shown on every step, not just the one with the SKU box: the
                 identifiers are entered on step 1 and 3, and a warning you
                 have already scrolled past is a warning you did not get. */}
@@ -445,59 +429,19 @@ export function ProductWizard() {
               openWarehouseQC={() => setOpenQcFor('warehouse')}
             />}
 
-            {error && (
-              <div style={{
-                marginTop: '14px',
-                background: '#fef2f2', border: '1px solid #fecaca',
-                borderRadius: '8px', padding: '10px 14px',
-                fontSize: '13px', color: '#dc2626',
-              }}>{error}</div>
-            )}
+            {error && <p className="sb-alert sb-alert-danger" role="alert" style={{ marginTop: 14 }}>{error}</p>}
           </div>
 
           {/* Footer */}
-          <div style={{
-            background: '#fff', borderTop: '1px solid #e2e8f0',
-            padding: '14px 28px',
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          }}>
-            <button
-              onClick={goPrev}
-              disabled={step === 1}
-              style={{
-                padding: '9px 18px',
-                border: '1px solid #e2e8f0', borderRadius: '8px',
-                background: '#fff', fontSize: '13px',
-                cursor: step === 1 ? 'not-allowed' : 'pointer',
-                color: step === 1 ? '#cbd5e1' : '#475569',
-                display: 'flex', alignItems: 'center', gap: '6px',
-              }}
-            >← Back</button>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                onClick={() => navigate('/products')}
-                style={{
-                  padding: '9px 18px',
-                  border: '1px solid #e2e8f0', borderRadius: '8px',
-                  background: '#fff', fontSize: '13px',
-                  cursor: 'pointer', color: '#475569',
-                }}
-              >Cancel</button>
-              <button
-                onClick={goNext}
-                disabled={!!validateStep(step)}
-                style={{
-                  padding: '9px 22px',
-                  border: 'none', borderRadius: '8px',
-                  background: validateStep(step) ? '#ddd6fe' : '#7c3aed',
-                  fontSize: '13px',
-                  cursor: validateStep(step) ? 'not-allowed' : 'pointer',
-                  color: '#fff', fontWeight: 600,
-                  display: 'flex', alignItems: 'center', gap: '6px',
-                  transition: 'background .15s',
-                }}
-              >
-                {step === 5 ? 'Review & save' : `Next: ${STEPS[step].label}`} →
+          <div className="sb-card sb-pw-foot">
+            <button type="button" className="sb-btn-ghost sb-pw-btn" onClick={goPrev} disabled={step === 1}>
+              <ArrowLeft size={15} className="sb-pw-flip" aria-hidden="true" /> {t('pwOcean.back')}
+            </button>
+            <div className="sb-pw-foot-actions">
+              <button type="button" className="sb-btn-ghost sb-pw-btn" onClick={() => navigate('/products')}>{t('common.cancel')}</button>
+              <button type="button" className="sb-primary-btn sb-btn-inline sb-pw-next" onClick={goNext} disabled={!!validateStep(step)}>
+                {step === 5 ? t('pwOcean.review_save') : t('pwOcean.next', { step: t(`pwOcean.${STEPS[step].key}`) })}
+                <ArrowRight size={16} className="sb-pw-flip" aria-hidden="true" />
               </button>
             </div>
           </div>
@@ -521,91 +465,85 @@ function Step1({
   openUnitQC: () => void;
   openCategoryQC: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <Panel icon="🏷️" title="Item identity">
+      <Panel icon={<Tag size={17} />} title={t('pwOcean.sec_identity')}>
         <div>
-          <label style={labelStyle}>Type</label>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            {(['goods', 'service'] as const).map((t) => (
+          <label style={labelStyle}>{t('pwOcean.type')}</label>
+          <div className="sb-pw-seg" role="group" aria-label={t('pwOcean.type')}>
+            {(['goods', 'service'] as const).map((ty) => (
               <button
-                key={t}
-                onClick={() => set('type', t)}
-                style={{
-                  padding: '7px 18px', borderRadius: '7px',
-                  border: `1.5px solid ${form.type === t ? '#7c3aed' : '#e2e8f0'}`,
-                  background: form.type === t ? '#f5f3ff' : '#fff',
-                  color: form.type === t ? '#5b21b6' : '#64748b',
-                  fontWeight: form.type === t ? 600 : 400,
-                  fontSize: '13px', cursor: 'pointer',
-                  transition: 'all .15s',
-                }}
+                key={ty}
+                type="button"
+                aria-pressed={form.type === ty}
+                className={form.type === ty ? 'active' : ''}
+                onClick={() => set('type', ty)}
               >
-                {t === 'goods' ? '📦 Goods' : '🛠 Service'}
+                {ty === 'goods' ? <Package size={15} aria-hidden="true" /> : <Wrench size={15} aria-hidden="true" />}
+                {ty === 'goods' ? t('products.type_goods') : t('products.type_service')}
               </button>
             ))}
           </div>
-          <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px' }}>
-            {form.type === 'service'
-              ? 'Services skip stock movement and COGS — useful for labour, freight, fees.'
-              : 'Goods are stock-tracked. Sales reduce inventory, purchases add to it.'}
+          <div className="sb-form-hint" style={{ marginTop: '6px' }}>
+            {form.type === 'service' ? t('pwOcean.service_hint') : t('pwOcean.goods_hint')}
           </div>
         </div>
 
         <Grid cols={2}>
-          <Field label="Name (English)" required>
-            <Input value={form.name}    onChange={(e) => set('name', e.target.value)}    placeholder="Item name in English" />
+          <Field label={t('pwOcean.name_en')} required>
+            <Input value={form.name}    onChange={(e) => set('name', e.target.value)}    placeholder={t('pwOcean.name_en_ph')} />
           </Field>
-          <Field label="Name (Arabic)">
+          <Field label={t('pwOcean.name_ar')}>
             <Input value={form.name_ar} onChange={(e) => set('name_ar', e.target.value)} placeholder="اسم الصنف" dir="rtl" />
           </Field>
         </Grid>
 
         <Grid cols={3}>
-          <Field label="SKU" required>
-            <Input value={form.sku} onChange={(e) => set('sku', e.target.value)} placeholder="e.g. ITEM-001" />
+          <Field label={t('products.sku')} required>
+            <Input value={form.sku} onChange={(e) => set('sku', e.target.value)} placeholder={t('pwOcean.sku_ph')} />
           </Field>
-          <Field label="Unit">
+          <Field label={t('products.unit')}>
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <Select value={form.unit_id} onChange={(e) => set('unit_id', e.target.value)}>
-                  <option value="">-- select --</option>
+                  <option value="">{t('pwOcean.select')}</option>
                   {units.map((u) => <option key={u.id} value={u.id}>{u.code} — {u.name}</option>)}
                 </Select>
               </div>
-              <QcBtn onClick={openUnitQC} label="Add new unit" />
+              <QcBtn onClick={openUnitQC} label={t('pwOcean.add_unit')} />
             </div>
           </Field>
-          <Field label="Brand" required>
+          <Field label={t('products.brand')} required>
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <Select value={form.brand_id} onChange={(e) => set('brand_id', e.target.value)}>
-                  <option value="">-- select --</option>
+                  <option value="">{t('pwOcean.select')}</option>
                   {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </Select>
               </div>
-              <QcBtn onClick={openBrandQC} label="Add new brand" />
+              <QcBtn onClick={openBrandQC} label={t('pwOcean.add_brand')} />
             </div>
           </Field>
         </Grid>
 
         <Grid cols={2}>
-          <Field label="Category">
+          <Field label={t('products.category')}>
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <Select value={form.category_id} onChange={(e) => set('category_id', e.target.value)}>
-                  <option value="">-- select --</option>
+                  <option value="">{t('pwOcean.select')}</option>
                   {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </Select>
               </div>
-              <QcBtn onClick={openCategoryQC} label="Add new category" />
+              <QcBtn onClick={openCategoryQC} label={t('pwOcean.add_category')} />
             </div>
           </Field>
-          <Field label="OE / OEM number">
-            <Input value={form.oe_number} onChange={(e) => set('oe_number', e.target.value)} placeholder="Original equipment number" />
+          <Field label={t('pwOcean.oe')}>
+            <Input value={form.oe_number} onChange={(e) => set('oe_number', e.target.value)} placeholder={t('pwOcean.oe_ph')} />
           </Field>
-          <Field label="Replacement / cross-reference numbers" hint="Separate multiple numbers with commas">
-            <Input value={form.replacement_numbers} onChange={(e) => set('replacement_numbers', e.target.value)} placeholder="e.g. 4567-AB, 9921-X, BOS-110" />
+          <Field label={t('pwOcean.replacements')} hint={t('pwOcean.replacements_hint')}>
+            <Input value={form.replacement_numbers} onChange={(e) => set('replacement_numbers', e.target.value)} placeholder={t('pwOcean.replacements_ph')} />
           </Field>
         </Grid>
 
@@ -617,9 +555,9 @@ function Step1({
             type="checkbox"
             checked={form.is_excise}
             onChange={(e) => set('is_excise', e.target.checked)}
-            style={{ accentColor: '#7c3aed', width: '14px', height: '14px' }}
+            style={{ accentColor: 'var(--sb-primary)', width: '14px', height: '14px' }}
           />
-          It is an excise product
+          {t('pwOcean.excise')}
         </label>
       </Panel>
     </div>
@@ -634,6 +572,7 @@ function Step2({
   set: <K extends keyof WizardForm>(k: K, v: WizardForm[K]) => void;
   coa: CoaRow[];
 }) {
+  const { t } = useTranslation();
   const companyCurrency = useCompanyCurrency();   // Issue 1 — localize money to tenant currency
   const stdRate = defaultTaxRate(useCompanyCountry());   // 5% GCC / 18% India
   const selling = parseFloat(form.selling_price) || 0;
@@ -651,24 +590,21 @@ function Step2({
       {margin !== null && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '10px' }}>
           {[
-            { label: 'Selling price', value: `${companyCurrency} ${selling.toFixed(2)}`, color: '#7c3aed' },
-            { label: 'Gross margin',  value: `${margin}%`, color: (margin as number) > 20 ? '#16a34a' : '#d97706' },
-            { label: 'Markup',        value: `${markup}%`, color: '#0ea5e9' },
+            { label: t('pwOcean.selling_price'), value: `${companyCurrency} ${selling.toFixed(2)}`, color: 'var(--sb-primary-dark)' },
+            { label: t('pwOcean.gross_margin'),  value: `${margin}%`, color: (margin as number) > 20 ? '#067647' : '#B45309' },
+            { label: t('pwOcean.markup'),        value: `${markup}%`, color: '#0369A1' },
           ].map((s) => (
-            <div key={s.label} style={{
-              background: '#f8fafc', border: '1px solid #e2e8f0',
-              borderRadius: '10px', padding: '12px 14px',
-            }}>
-              <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 500, marginBottom: '4px' }}>{s.label}</div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: s.color }}>{s.value}</div>
+            <div key={s.label} className="sb-card sb-pw-stat">
+              <div className="sb-pw-stat-label">{s.label}</div>
+              <bdi dir="ltr" className="sb-pw-stat-val" style={{ color: s.color }}>{s.value}</bdi>
             </div>
           ))}
         </div>
       )}
 
-      <Panel icon="🏷️" title="Sales information">
+      <Panel icon={<Tag size={17} />} title={t('pwOcean.sec_sales')}>
         <Grid cols={2}>
-          <Field label="Selling price" required>
+          <Field label={t('pwOcean.selling_price')} required>
             <PrefixInput
               prefix={companyCurrency} type="number" min="0" step="0.01"
               value={form.selling_price}
@@ -676,54 +612,51 @@ function Step2({
               placeholder="0.00"
             />
           </Field>
-          <Field label="Tax">
+          <Field label={t('common.tax')}>
             <Select value={form.tax_category} onChange={(e) => set('tax_category', e.target.value as WizardForm['tax_category'])}>
-              <option value="standard">Standard Rate [{stdRate}%]</option>
-              <option value="zero_rated">Zero Rated</option>
-              <option value="exempt">Exempt</option>
+              <option value="standard">{t('pwOcean.std_rate', { rate: stdRate })}</option>
+              <option value="zero_rated">{t('products.tax_zero_rated')}</option>
+              <option value="exempt">{t('products.tax_exempt')}</option>
             </Select>
           </Field>
-          <Field label="E-invoice supply treatment">
+          <Field label={t('products.default_tax_treatment')}>
             <Select value={form.default_tax_treatment} onChange={(e) => set('default_tax_treatment', e.target.value)}>
-              <option value="">Auto (standard)</option>
+              <option value="">{t('products.treatment_auto')}</option>
               {TAX_TREATMENTS.map((tr) => (
-                <option key={tr} value={tr}>{tr.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}</option>
+                <option key={tr} value={tr}>{t(`products.treatment_${tr}`)}</option>
               ))}
             </Select>
           </Field>
         </Grid>
-        <Field label="Quality tier">
+        <Field label={t('products.quality_tier')}>
           <Select value={form.quality_tier} onChange={(e) => set('quality_tier', e.target.value as WizardForm['quality_tier'])}>
-            <option value="">-- none --</option>
-            <option value="genuine">Genuine</option>
-            <option value="oem">OEM</option>
-            <option value="premium">Premium</option>
-            <option value="economy">Economy</option>
+            <option value="">{t('common.none')}</option>
+            <option value="genuine">{t('products.quality_genuine')}</option>
+            <option value="oem">{t('products.quality_oem')}</option>
+            <option value="premium">{t('products.quality_premium')}</option>
+            <option value="economy">{t('products.quality_economy')}</option>
           </Select>
         </Field>
-        <Field label="Description">
+        <Field label={t('common.description')}>
           <Textarea
             value={form.description}
             onChange={(e) => set('description', e.target.value)}
-            placeholder="Sales notes…"
+            placeholder={t('pwOcean.sales_notes_ph')}
             rows={2}
           />
         </Field>
       </Panel>
 
-      <Panel icon="🛒" title="Purchase information">
-        <Field label="Purchase account">
+      <Panel icon={<ShoppingCart size={17} />} title={t('pwOcean.sec_purchase')}>
+        <Field label={t('prodOcean.purchase_account')}>
           <Select value={form.purchase_account_id} onChange={(e) => set('purchase_account_id', e.target.value)}>
-            <option value="">(default: 1300 Inventory)</option>
+            <option value="">{t('prodOcean.purchase_account_default')}</option>
             {coa
               .filter((a) => a.is_active && (a.type === 'asset' || a.type === 'expense'))
               .map((a) => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
           </Select>
         </Field>
-        <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-          When this product appears on a vendor bill, it posts to this account.
-          Cost basis is tracked dynamically via Moving Average Cost (MAC) — no static cost field.
-        </div>
+        <div className="sb-form-hint">{t('pwOcean.purchase_hint')}</div>
       </Panel>
     </div>
   );
@@ -736,49 +669,43 @@ function Step3({
   form: WizardForm;
   set: <K extends keyof WizardForm>(k: K, v: WizardForm[K]) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <Panel icon="🔖" title="Barcode & tracking">
+      <Panel icon={<Barcode size={17} />} title={t('pwOcean.sec_barcode')}>
         <Grid cols={2}>
-          <Field label="Barcode (EAN / UPC)">
-            <Input value={form.barcode} onChange={(e) => set('barcode', e.target.value)} placeholder="Scan or enter barcode" />
+          <Field label={t('pwOcean.barcode')}>
+            <Input value={form.barcode} onChange={(e) => set('barcode', e.target.value)} placeholder={t('pwOcean.barcode_ph')} />
           </Field>
-          <Field label="Serial / batch tracking">
+          <Field label={t('pwOcean.serial')}>
             <Select
               value={form.requires_serial ? 'serial' : 'none'}
               onChange={(e) => set('requires_serial', e.target.value === 'serial')}
             >
-              <option value="none">None</option>
-              <option value="serial">Serial number</option>
+              <option value="none">{t('common.none')}</option>
+              <option value="serial">{t('pwOcean.serial_number')}</option>
             </Select>
           </Field>
         </Grid>
         {form.barcode && (
-          <div style={{
-            background: '#f8fafc', border: '1px solid #e2e8f0',
-            borderRadius: '10px', padding: '14px',
-            display: 'flex', alignItems: 'center', gap: '12px',
-          }}>
-            <span style={{ fontSize: '28px' }}>🔲</span>
-            <div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 500 }}>Barcode preview</div>
-              <div style={{
-                fontFamily: 'monospace', fontSize: '18px', fontWeight: 700,
-                letterSpacing: '3px', color: '#1e293b', marginTop: '2px',
-              }}>{form.barcode}</div>
+          <div className="sb-pw-barcode">
+            <Barcode size={30} aria-hidden="true" style={{ color: 'var(--sb-primary)', flex: 'none' }} />
+            <div style={{ minWidth: 0 }}>
+              <div className="sb-pw-stat-label">{t('pwOcean.barcode_preview')}</div>
+              <bdi dir="ltr" className="sb-pw-barcode-val">{form.barcode}</bdi>
             </div>
-            <Badge color="green">Valid</Badge>
+            <span className="sb-pill sb-pill-good" style={{ marginTop: 0, marginInlineStart: 'auto' }}>{t('pwOcean.valid')}</span>
           </div>
         )}
       </Panel>
 
-      <Panel icon="🏷️" title="Tax / customs identifiers">
+      <Panel icon={<Landmark size={17} />} title={t('pwOcean.sec_customs')}>
         <Grid cols={2}>
-          <Field label="HSN / SAC code">
-            <Input value={form.hsn_code} onChange={(e) => set('hsn_code', e.target.value)} placeholder="India GST classification" />
+          <Field label={t('products.hsn_code')}>
+            <Input value={form.hsn_code} onChange={(e) => set('hsn_code', e.target.value)} placeholder={t('prodOcean.hsn_ph')} />
           </Field>
-          <Field label="Country of origin">
-            <Input value={form.country_of_origin} onChange={(e) => set('country_of_origin', e.target.value)} placeholder="e.g. UAE, China, India" />
+          <Field label={t('pwOcean.origin')}>
+            <Input value={form.country_of_origin} onChange={(e) => set('country_of_origin', e.target.value)} placeholder={t('pwOcean.origin_ph')} />
           </Field>
         </Grid>
       </Panel>
@@ -795,61 +722,56 @@ function Step4({
   suppliers: ContactRow[];
   openSupplierQC: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <Panel icon="🚚" title="Primary supplier (optional)">
+      <Panel icon={<Truck size={17} />} title={t('pwOcean.sec_supplier')}>
         <Grid cols={2}>
-          <Field label="Supplier name">
+          <Field label={t('pwOcean.supplier_name')}>
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <Select value={form.supplier_id} onChange={(e) => set('supplier_id', e.target.value)}>
-                  <option value="">-- select supplier --</option>
+                  <option value="">{t('pwOcean.select_supplier')}</option>
                   {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </Select>
               </div>
-              <QcBtn onClick={openSupplierQC} label="Add new supplier" />
+              <QcBtn onClick={openSupplierQC} label={t('pwOcean.add_supplier')} />
             </div>
           </Field>
-          <Field label="Supplier item code">
-            <Input value={form.supplier_sku} onChange={(e) => set('supplier_sku', e.target.value)} placeholder="Supplier's own SKU" />
+          <Field label={t('pwOcean.supplier_code')}>
+            <Input value={form.supplier_sku} onChange={(e) => set('supplier_sku', e.target.value)} placeholder={t('pwOcean.supplier_code_ph')} />
           </Field>
         </Grid>
         <Grid cols={3}>
-          <Field label="Lead time (days)">
+          <Field label={t('pwOcean.lead_time')}>
             <Input
               type="number" min="0"
               value={form.lead_time_days}
               onChange={(e) => set('lead_time_days', e.target.value)}
-              placeholder="e.g. 7"
+              placeholder={t('pwOcean.eg', { v: 7 })}
             />
           </Field>
-          <Field label="Min order qty">
+          <Field label={t('pwOcean.moq')}>
             <Input
               type="number" min="0" step="0.001"
               value={form.min_order_qty}
               onChange={(e) => set('min_order_qty', e.target.value)}
-              placeholder="e.g. 10"
+              placeholder={t('pwOcean.eg', { v: 10 })}
             />
           </Field>
-          <Field label="Payment terms (days)">
+          <Field label={t('pwOcean.terms')}>
             <Input
               type="number" min="0"
               value={form.payment_terms_days}
               onChange={(e) => set('payment_terms_days', e.target.value)}
-              placeholder="e.g. 30"
+              placeholder={t('pwOcean.eg', { v: 30 })}
             />
           </Field>
         </Grid>
       </Panel>
 
-      <Panel icon="📋" title="More suppliers">
-        <div style={{
-          border: '1px dashed #e2e8f0', borderRadius: '10px',
-          padding: '20px', textAlign: 'center',
-          color: '#94a3b8', fontSize: '13px',
-        }}>
-          You can add more suppliers after saving — Product detail › Supplier Codes tab.
-        </div>
+      <Panel icon={<ClipboardList size={17} />} title={t('pwOcean.sec_more_suppliers')}>
+        <div className="sb-pw-dashed">{t('pwOcean.more_suppliers_hint')}</div>
       </Panel>
     </div>
   );
@@ -864,79 +786,72 @@ function Step5({
   warehouses: WarehouseRow[];
   openWarehouseQC: () => void;
 }) {
+  const { t } = useTranslation();
   const companyCurrency = useCompanyCurrency();   // Issue 1 — localize money to tenant currency
   const isService = form.type === 'service';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '10px',
-        padding: '12px 16px',
-        background: '#fffbeb', border: '1px solid #fde68a',
-        borderRadius: '10px', fontSize: '13px', color: '#92400e',
-      }}>
-        <span>⚠️</span>
-        <span>Inventory tracking cannot be changed once transactions have been created for this item.</span>
-      </div>
+      <p className="sb-alert sb-alert-warn" style={{ fontWeight: 400, display: 'flex', gap: 8, alignItems: 'center' }} role="note">
+        <AlertTriangle size={16} aria-hidden="true" style={{ flex: 'none' }} />
+        <span>{t('pwOcean.tracking_warn')}</span>
+      </p>
 
-      <Panel icon="📦" title="Inventory thresholds">
+      <Panel icon={<Package size={17} />} title={t('pwOcean.sec_thresholds')}>
         <Grid cols={2}>
-          <Field label="Reorder level (min stock)">
+          <Field label={t('pwOcean.reorder')}>
             <Input type="number" min="0" step="0.001" value={form.min_stock_level} onChange={(e) => set('min_stock_level', e.target.value)} placeholder="0" />
           </Field>
-          <Field label="Maximum stock (optional)">
+          <Field label={t('pwOcean.max_stock')}>
             <Input type="number" min="0" step="0.001" value={form.max_stock_level} onChange={(e) => set('max_stock_level', e.target.value)} placeholder="—" />
           </Field>
         </Grid>
       </Panel>
 
       {!isService && (
-        <Panel icon="📥" title="Opening stock (one-time)">
-          <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-            Lets you record stock already on hand without entering a fake purchase. Posts an{' '}
-            <code style={{ background: '#f1f5f9', padding: '1px 5px', borderRadius: '3px' }}>opening_balance</code>{' '}
-            row to the stock ledger and a JE:{' '}
-            <code style={{ background: '#f1f5f9', padding: '1px 5px', borderRadius: '3px' }}>Dr 1300 Inventory / Cr 3200 Owner&apos;s Equity</code>.
-            Leave blank if not needed.
+        <Panel icon={<PackagePlus size={17} />} title={t('pwOcean.sec_opening')}>
+          <div className="sb-form-hint">
+            {t('pwOcean.opening_hint')}{' '}
+            <bdi dir="ltr"><code className="sb-pw-code">Dr 1300 / Cr 3200</code></bdi>
           </div>
           <Grid cols={3}>
-            <Field label="Opening qty">
+            <Field label={t('pwOcean.opening_qty')}>
               <Input type="number" min="0" step="0.001" value={form.opening_stock}      onChange={(e) => set('opening_stock', e.target.value)} placeholder="0" />
             </Field>
-            <Field label={`Unit cost (${companyCurrency})`}>
+            <Field label={t('pwOcean.unit_cost', { cur: companyCurrency })}>
               <PrefixInput prefix={companyCurrency} type="number" min="0" step="0.01" value={form.opening_stock_rate} onChange={(e) => set('opening_stock_rate', e.target.value)} placeholder="0.00" />
             </Field>
-            <Field label="Warehouse">
+            <Field label={t('billOcean.warehouse')}>
               <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <Select value={form.warehouse_id} onChange={(e) => set('warehouse_id', e.target.value)}>
-                    <option value="">-- select --</option>
+                    <option value="">{t('pwOcean.select')}</option>
                     {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
                   </Select>
                 </div>
-                <QcBtn onClick={openWarehouseQC} label="Add new warehouse" />
+                <QcBtn onClick={openWarehouseQC} label={t('pwOcean.add_warehouse')} />
               </div>
             </Field>
           </Grid>
           <Grid cols={2}>
-            <Field label="Default aisle / rack">
-              <Input value={form.default_aisle} onChange={(e) => set('default_aisle', e.target.value)} placeholder="e.g. A3-R2" />
+            <Field label={t('pwOcean.aisle')}>
+              <Input value={form.default_aisle} onChange={(e) => set('default_aisle', e.target.value)} placeholder={t('pwOcean.eg', { v: 'A3-R2' })} />
             </Field>
-            <Field label="Default bin / shelf">
-              <Input value={form.default_bin} onChange={(e) => set('default_bin', e.target.value)} placeholder="e.g. Bin 12" />
+            <Field label={t('pwOcean.bin')}>
+              <Input value={form.default_bin} onChange={(e) => set('default_bin', e.target.value)} placeholder={t('pwOcean.bin_ph')} />
             </Field>
           </Grid>
         </Panel>
       )}
 
-      <Panel icon="✅" title="Status">
-        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#475569', cursor: 'pointer' }}>
+      <Panel icon={<CircleCheck size={17} />} title={t('common.status')}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: 'var(--sb-text)', cursor: 'pointer' }}>
           <input
             type="checkbox"
             checked={form.is_active}
             onChange={(e) => set('is_active', e.target.checked)}
-            style={{ accentColor: '#7c3aed', width: '14px', height: '14px' }}
+            style={{ accentColor: 'var(--sb-primary)', width: '14px', height: '14px' }}
           />
-          Active (un-tick to hide from pickers)
+          {t('pwOcean.active_hint')}
         </label>
       </Panel>
     </div>
@@ -946,24 +861,11 @@ function Step5({
 // ── Quick-create shared helpers ─────────────────────────────────────────
 
 /** Small indigo "+" button that sits flush next to a Select. */
-function QcBtn({ onClick, label = 'Quick add' }: { onClick: () => void; label?: string }) {
+function QcBtn({ onClick, label }: { onClick: () => void; label: string }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={label}
-      style={{
-        width: '34px', height: '34px', flexShrink: 0,
-        border: '1px solid #7c3aed', borderRadius: '7px',
-        background: '#f5f3ff', color: '#5b21b6',
-        fontSize: '18px', fontWeight: 600,
-        cursor: 'pointer',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        transition: 'background .15s',
-      }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#ddd6fe'; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#f5f3ff'; }}
-    >+</button>
+    <button type="button" onClick={onClick} title={label} aria-label={label} className="sb-pw-qc">
+      <Plus size={17} aria-hidden="true" />
+    </button>
   );
 }
 
@@ -971,29 +873,17 @@ function QcBtn({ onClick, label = 'Quick add' }: { onClick: () => void; label?: 
 function WizardQcModal({
   title, onClose, children,
 }: { title: string; onClose: () => void; children: ReactNode }) {
+  const { t } = useTranslation();
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 1200,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'rgba(15,23,42,.45)', padding: '16px',
-    }}>
-      <div style={{
-        background: '#fff', borderRadius: '12px',
-        boxShadow: '0 20px 60px rgba(0,0,0,.25)',
-        width: '100%', maxWidth: '420px',
-      }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '16px 20px', borderBottom: '1px solid #e2e8f0',
-        }}>
-          <span style={{ fontSize: '15px', fontWeight: 700, color: '#1e293b' }}>{title}</span>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '20px', color: '#94a3b8', lineHeight: 1 }}
-          >✕</button>
+    <div className="sb-ocean sb-pw-overlay" style={{ zIndex: 1200 }}>
+      <div className="sb-pw-dialog" role="dialog" aria-modal="true" aria-label={title} style={{ maxWidth: '420px' }}>
+        <div className="sb-pw-dialog-head">
+          <span className="sb-pw-dialog-title">{title}</span>
+          <button type="button" onClick={onClose} className="sb-doc-line-del" style={{ color: 'var(--sb-text-secondary)' }} aria-label={t('common.close')}>
+            <X size={18} aria-hidden="true" />
+          </button>
         </div>
-        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div className="sb-form" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {children}
         </div>
       </div>
@@ -1004,42 +894,20 @@ function WizardQcModal({
 /** Shared error banner inside QC modals. */
 function QcError({ msg }: { msg: string | null }) {
   if (!msg) return null;
-  return (
-    <div style={{
-      background: '#fef2f2', border: '1px solid #fecaca',
-      borderRadius: '7px', padding: '9px 12px',
-      fontSize: '12px', color: '#dc2626',
-    }}>{msg}</div>
-  );
+  return <p className="sb-alert sb-alert-danger" role="alert" style={{ margin: 0 }}>{msg}</p>;
 }
 
 /** Shared Save / Cancel row inside QC modals. */
 function QcActions({ onClose, onSave, saving, disabled }: {
   onClose: () => void; onSave: () => void; saving: boolean; disabled: boolean;
 }) {
+  const { t } = useTranslation();
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
-      <button
-        type="button"
-        onClick={onClose}
-        disabled={saving}
-        style={{
-          padding: '8px 16px', borderRadius: '7px',
-          border: '1px solid #e2e8f0', background: '#fff',
-          fontSize: '13px', cursor: saving ? 'not-allowed' : 'pointer', color: '#475569',
-        }}
-      >Cancel</button>
-      <button
-        type="button"
-        onClick={onSave}
-        disabled={saving || disabled}
-        style={{
-          padding: '8px 18px', borderRadius: '7px',
-          border: 'none', background: saving || disabled ? '#ddd6fe' : '#7c3aed',
-          fontSize: '13px', fontWeight: 600,
-          cursor: saving || disabled ? 'not-allowed' : 'pointer', color: '#fff',
-        }}
-      >{saving ? 'Saving…' : 'Create & select'}</button>
+    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
+      <button type="button" className="sb-btn-ghost sb-pw-btn" onClick={onClose} disabled={saving}>{t('common.cancel')}</button>
+      <button type="button" className="sb-primary-btn sb-btn-inline" onClick={onSave} disabled={saving || disabled}>
+        {saving ? t('common.saving') : t('pwOcean.create_select')}
+      </button>
     </div>
   );
 }
@@ -1048,22 +916,23 @@ function QcActions({ onClose, onSave, saving, disabled }: {
 function BrandQC({
   companyId, onClose, onCreated,
 }: { companyId: string; onClose: () => void; onCreated: (id: string) => void }) {
+  const { t } = useTranslation();
   const [name, setName]   = useState('');
   const [err, setErr]     = useState<string | null>(null);
   const qc                = useQueryClient();
   const mut = useMutation({
     mutationFn: async () => {
-      if (!name.trim()) throw new Error('Brand name is required');
+      if (!name.trim()) throw new Error(t('pwOcean.err_brand_name'));
       return getAdapter().brands.create({ company_id: companyId, name: name.trim(), is_active: true });
     },
     onSuccess: (row) => { qc.invalidateQueries({ queryKey: ['brands'] }); onCreated(row.id); },
     onError: (e: Error) => setErr(e.message),
   });
   return (
-    <WizardQcModal title="Quick add brand" onClose={onClose}>
+    <WizardQcModal title={t('pwOcean.qc_brand')} onClose={onClose}>
       <QcError msg={err} />
-      <Field label="Brand name" required>
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Toyota, Bosch" autoFocus />
+      <Field label={t('pwOcean.brand_name')} required>
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('pwOcean.brand_ph')} autoFocus />
       </Field>
       <QcActions onClose={onClose} onSave={() => { setErr(null); mut.mutate(); }} saving={mut.isPending} disabled={!name.trim()} />
     </WizardQcModal>
@@ -1074,14 +943,15 @@ function BrandQC({
 function UnitQC({
   companyId, onClose, onCreated,
 }: { companyId: string; onClose: () => void; onCreated: (id: string) => void }) {
+  const { t } = useTranslation();
   const [code, setCode]   = useState('');
   const [name, setName]   = useState('');
   const [err, setErr]     = useState<string | null>(null);
   const qc                = useQueryClient();
   const mut = useMutation({
     mutationFn: async () => {
-      if (!code.trim()) throw new Error('Code is required (e.g. PCS, BOX)');
-      if (!name.trim()) throw new Error('Name is required');
+      if (!code.trim()) throw new Error(t('pwOcean.err_unit_code'));
+      if (!name.trim()) throw new Error(t('pwOcean.err_unit_name'));
       return getAdapter().units.create({
         company_id: companyId,
         code: code.trim().toUpperCase(),
@@ -1092,14 +962,14 @@ function UnitQC({
     onError: (e: Error) => setErr(e.message),
   });
   return (
-    <WizardQcModal title="Quick add unit" onClose={onClose}>
+    <WizardQcModal title={t('pwOcean.qc_unit')} onClose={onClose}>
       <QcError msg={err} />
       <Grid cols={2}>
-        <Field label="Code" required>
-          <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. PCS" autoFocus />
+        <Field label={t('pwOcean.code')} required>
+          <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder={t('pwOcean.eg', { v: 'PCS' })} autoFocus />
         </Field>
-        <Field label="Name" required>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Pieces" />
+        <Field label={t('products.name')} required>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('pwOcean.unit_name_ph')} />
         </Field>
       </Grid>
       <QcActions onClose={onClose} onSave={() => { setErr(null); mut.mutate(); }} saving={mut.isPending} disabled={!code.trim() || !name.trim()} />
@@ -1116,13 +986,14 @@ function CategoryQC({
   onClose: () => void;
   onCreated: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const [name, setName]         = useState('');
   const [parentId, setParentId] = useState('');
   const [err, setErr]           = useState<string | null>(null);
   const qc                      = useQueryClient();
   const mut = useMutation({
     mutationFn: async () => {
-      if (!name.trim()) throw new Error('Category name is required');
+      if (!name.trim()) throw new Error(t('pwOcean.err_category_name'));
       return getAdapter().categories.create({
         company_id: companyId,
         name: name.trim(),
@@ -1135,14 +1006,14 @@ function CategoryQC({
     onError: (e: Error) => setErr(e.message),
   });
   return (
-    <WizardQcModal title="Quick add category" onClose={onClose}>
+    <WizardQcModal title={t('pwOcean.qc_category')} onClose={onClose}>
       <QcError msg={err} />
-      <Field label="Category name" required>
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Filters, Brakes" autoFocus />
+      <Field label={t('pwOcean.category_name')} required>
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('pwOcean.category_ph')} autoFocus />
       </Field>
-      <Field label="Parent category (optional)">
+      <Field label={t('pwOcean.parent_category')}>
         <Select value={parentId} onChange={(e) => setParentId(e.target.value)}>
-          <option value="">-- top level --</option>
+          <option value="">{t('pwOcean.top_level')}</option>
           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </Select>
       </Field>
@@ -1155,14 +1026,15 @@ function CategoryQC({
 function WarehouseQC({
   companyId, onClose, onCreated,
 }: { companyId: string; onClose: () => void; onCreated: (id: string) => void }) {
+  const { t } = useTranslation();
   const [name, setName]   = useState('');
   const [code, setCode]   = useState('');
   const [err, setErr]     = useState<string | null>(null);
   const qc                = useQueryClient();
   const mut = useMutation({
     mutationFn: async () => {
-      if (!name.trim()) throw new Error('Warehouse name is required');
-      if (!code.trim()) throw new Error('Code is required (e.g. WH-01)');
+      if (!name.trim()) throw new Error(t('pwOcean.err_wh_name'));
+      if (!code.trim()) throw new Error(t('pwOcean.err_wh_code'));
       return getAdapter().warehouses.create({
         company_id: companyId,
         name: name.trim(),
@@ -1175,13 +1047,13 @@ function WarehouseQC({
     onError: (e: Error) => setErr(e.message),
   });
   return (
-    <WizardQcModal title="Quick add warehouse" onClose={onClose}>
+    <WizardQcModal title={t('pwOcean.qc_warehouse')} onClose={onClose}>
       <QcError msg={err} />
-      <Field label="Warehouse name" required>
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Main Store" autoFocus />
+      <Field label={t('pwOcean.wh_name')} required>
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('pwOcean.wh_name_ph')} autoFocus />
       </Field>
-      <Field label="Code" required>
-        <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. WH-01" />
+      <Field label={t('pwOcean.code')} required>
+        <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder={t('pwOcean.eg', { v: 'WH-01' })} />
       </Field>
       <QcActions onClose={onClose} onSave={() => { setErr(null); mut.mutate(); }} saving={mut.isPending} disabled={!name.trim() || !code.trim()} />
     </WizardQcModal>
@@ -1202,6 +1074,7 @@ function ReviewModal({
   onConfirm: () => void;
   saving: boolean;
 }) {
+  const { t } = useTranslation();
   const brandName    = brands.find((b) => b.id === form.brand_id)?.name        ?? '—';
   const supplierName = suppliers.find((s) => s.id === form.supplier_id)?.name  ?? '—';
   const warehouseName = warehouses.find((w) => w.id === form.warehouse_id)?.name ?? '—';
@@ -1210,96 +1083,51 @@ function ReviewModal({
   const openingValue = openingQty * openingRate;
 
   const rows: [string, string][] = [
-    ['Type',          form.type === 'goods' ? 'Goods (stock-tracked)' : 'Service (no stock)'],
-    ['Name',          form.name],
-    ['SKU',           form.sku],
-    ['Brand',         brandName],
-    ['Selling price', `${currency} ${(parseFloat(form.selling_price) || 0).toFixed(2)}`],
-    ['Tax',           form.tax_category],
-    ['Barcode',       form.barcode || '—'],
-    ['HSN',           form.hsn_code || '—'],
-    ['Country',       form.country_of_origin || '—'],
-    ['Supplier',      supplierName],
-    ['Opening stock', openingQty > 0 ? `${openingQty} × ${currency} ${openingRate.toFixed(2)} = ${currency} ${openingValue.toFixed(2)}` : '—'],
-    ['Warehouse',     warehouseName],
-    ['Active',        form.is_active ? 'Yes' : 'No'],
+    [t('pwOcean.type'),          form.type === 'goods' ? t('pwOcean.goods_tracked') : t('pwOcean.service_no_stock')],
+    [t('products.name'),         form.name],
+    [t('products.sku'),          form.sku],
+    [t('products.brand'),        brandName],
+    [t('pwOcean.selling_price'), `${currency} ${(parseFloat(form.selling_price) || 0).toFixed(2)}`],
+    [t('common.tax'),            t(`products.tax_${form.tax_category}`)],
+    [t('products.barcode'),      form.barcode || '—'],
+    [t('pwOcean.hsn'),           form.hsn_code || '—'],
+    [t('pwOcean.country'),       form.country_of_origin || '—'],
+    [t('pwOcean.supplier'),      supplierName],
+    [t('pwOcean.opening_stock'), openingQty > 0 ? `${openingQty} × ${currency} ${openingRate.toFixed(2)} = ${currency} ${openingValue.toFixed(2)}` : '—'],
+    [t('billOcean.warehouse'),   warehouseName],
+    [t('common.active'),         form.is_active ? t('returns.yes') : t('returns.no')],
   ];
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(15,23,42,.45)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 1000,
-    }}>
-      <div style={{
-        background: '#fff', borderRadius: '16px',
-        width: '520px', maxHeight: '80vh', overflow: 'auto',
-        boxShadow: '0 20px 60px rgba(0,0,0,.2)',
-      }}>
-        <div style={{
-          padding: '20px 24px 16px',
-          borderBottom: '1px solid #e2e8f0',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        }}>
+    <div className="sb-ocean sb-pw-overlay" style={{ zIndex: 1000 }}>
+      <div className="sb-pw-dialog" role="dialog" aria-modal="true" aria-label={t('pwOcean.review_title')} style={{ maxWidth: '540px', maxHeight: '86vh', overflow: 'auto' }}>
+        <div className="sb-pw-dialog-head">
           <div>
-            <div style={{ fontSize: '17px', fontWeight: 700, color: '#1e293b' }}>Review item</div>
-            <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Confirm details before saving</div>
+            <div className="sb-pw-dialog-title" style={{ fontSize: 18 }}>{t('pwOcean.review_title')}</div>
+            <div className="sb-form-hint" style={{ margin: '2px 0 0' }}>{t('pwOcean.review_sub')}</div>
           </div>
-          <button
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#94a3b8' }}
-          >✕</button>
+          <button type="button" onClick={onClose} className="sb-doc-line-del" style={{ color: 'var(--sb-text-secondary)' }} aria-label={t('common.close')}>
+            <X size={18} aria-hidden="true" />
+          </button>
         </div>
         <div style={{ padding: '16px 24px' }}>
           {rows.map(([k, v]) => (
-            <div key={k} style={{
-              display: 'flex', justifyContent: 'space-between',
-              padding: '8px 0', borderBottom: '1px solid #f1f5f9',
-              fontSize: '13px',
-            }}>
-              <span style={{ color: '#64748b' }}>{k}</span>
-              <span style={{ fontWeight: 500, color: '#1e293b' }}>{v}</span>
+            <div key={k} className="sb-pw-review-row">
+              <span>{k}</span>
+              <span>{v}</span>
             </div>
           ))}
           {openingQty > 0 && form.type === 'goods' && (
-            <div style={{
-              marginTop: '12px',
-              background: '#fffbeb', border: '1px solid #fde68a',
-              borderRadius: '8px', padding: '10px 12px',
-              fontSize: '12px', color: '#92400e',
-            }}>
-              ⚠ Saving will post a JE for the opening stock:
-              Dr 1300 Inventory {currency} {openingValue.toFixed(2)} /
-              Cr 3200 Owner&apos;s Equity {currency} {openingValue.toFixed(2)}.
-            </div>
+            <p className="sb-alert sb-alert-warn" style={{ fontWeight: 400, marginTop: 12 }}>
+              {t('pwOcean.review_je', { amount: `${currency} ${openingValue.toFixed(2)}` })}
+            </p>
           )}
         </div>
-        <div style={{
-          padding: '16px 24px', borderTop: '1px solid #e2e8f0',
-          display: 'flex', gap: '10px', justifyContent: 'flex-end',
-        }}>
-          <button
-            onClick={onClose}
-            disabled={saving}
-            style={{
-              padding: '9px 18px',
-              border: '1px solid #e2e8f0', borderRadius: '8px',
-              background: '#fff', fontSize: '13px',
-              cursor: saving ? 'not-allowed' : 'pointer', color: '#64748b',
-            }}
-          >Edit</button>
-          <button
-            onClick={onConfirm}
-            disabled={saving}
-            style={{
-              padding: '9px 20px',
-              border: 'none', borderRadius: '8px',
-              background: saving ? '#ddd6fe' : '#7c3aed',
-              fontSize: '13px',
-              cursor: saving ? 'not-allowed' : 'pointer',
-              color: '#fff', fontWeight: 600,
-            }}
-          >{saving ? 'Saving…' : 'Save item ✓'}</button>
+        <div className="sb-pw-dialog-foot">
+          <button type="button" className="sb-btn-ghost sb-pw-btn" onClick={onClose} disabled={saving}>{t('common.edit')}</button>
+          <button type="button" className="sb-primary-btn sb-btn-inline" onClick={onConfirm} disabled={saving}>
+            <Check size={16} aria-hidden="true" /> {saving ? t('common.saving') : t('pwOcean.save_item')}
+          </button>
         </div>
       </div>
     </div>
