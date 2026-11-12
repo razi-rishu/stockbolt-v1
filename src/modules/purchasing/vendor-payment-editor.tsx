@@ -9,6 +9,10 @@ import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
+import { StatusBadge } from '@/ui/status-badge';
+import { Modal } from '@/ui/modal';
+import { Pencil, Printer, Eye, AlertTriangle } from 'lucide-react';
+import '@/styles/stockbolt-ocean-teal.css';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { ContactPicker } from '@/components/contact-picker';
@@ -224,8 +228,8 @@ export default function VendorPaymentEditorPage() {
   const persistDraft = async (): Promise<PaymentRow> => {
       if (!header.contact_id) throw new Error(t('purchasing.error_supplier_required'));
       if (!header.amount || isNaN(Number(header.amount))) throw new Error(t('purchasing.error_amount_required'));
-      if (Number(header.amount) <= 0) throw new Error('Amount must be greater than zero');
-      if (!header.bank_account_id) throw new Error('Bank / cash account is required — every payment must hit a real GL account');
+      if (Number(header.amount) <= 0) throw new Error(t('rcptOcean.err_amount'));
+      if (!header.bank_account_id) throw new Error(t('vpOcean.err_bank'));
 
       // Build allocations from the panel — for both new payments and
       // existing drafts that are still in against_invoice mode.
@@ -243,7 +247,7 @@ export default function VendorPaymentEditorPage() {
             if (!bill) continue;
             if (amt > bill.outstanding + 0.005) {
               throw new Error(
-                `Bill ${bill.bill_number}: applied ${amt.toFixed(2)} exceeds outstanding ${bill.outstanding.toFixed(2)}`,
+                t('vpOcean.err_over_bill', { no: bill.bill_number, applied: amt.toFixed(2), outstanding: bill.outstanding.toFixed(2) }),
               );
             }
             allocations.push({
@@ -258,7 +262,7 @@ export default function VendorPaymentEditorPage() {
         const totalAlloc = allocations.reduce((s, a) => s + a.amount_applied, 0);
         const payAmt = parseFloat(header.amount);
         if (totalAlloc > payAmt + 0.005) {
-          throw new Error(`Allocations (${totalAlloc.toFixed(2)}) exceed payment amount (${payAmt.toFixed(2)})`);
+          throw new Error(t('vpOcean.err_over_total', { alloc: totalAlloc.toFixed(2), amount: payAmt.toFixed(2) }));
         }
       }
 
@@ -331,8 +335,8 @@ export default function VendorPaymentEditorPage() {
   // creates the linked cheque). One click from the editor.
   const pdcMutation = useMutation({
     mutationFn: async () => {
-      if (!chequeNumber.trim()) throw new Error('Cheque number is required for a PDC');
-      if (!chequeDueDate) throw new Error('Cheque due date is required for a PDC');
+      if (!chequeNumber.trim()) throw new Error(t('rcptOcean.err_cheque_no'));
+      if (!chequeDueDate) throw new Error(t('rcptOcean.err_cheque_due'));
       const saved = await persistDraft();
       const pid = isNew ? saved.id : id!;
       return getAdapter().vendorPayments.confirmAsPdc(pid, {
@@ -391,10 +395,11 @@ export default function VendorPaymentEditorPage() {
     { value: '', label: t('purchasing.select_bank') },
     ...bankAccounts.map(b => ({
       value: b.id,
-      label: `${b.name} · ${b.account_type === 'cash' ? 'Cash' : 'Bank'}`,
+      label: `${b.name} · ${b.account_type === 'cash' ? t('rcptOcean.cash') : t('rcptOcean.bank')}`,
     })),
   ];
-  const bankLabel = `${t('purchasing.bank_account')} *`;
+  // The Select's `required` already adds the asterisk.
+  const bankLabel = t('purchasing.bank_account');
   const methodOpts = [{ value: '', label: '—' }, ...paymentMethods.map(m => ({ value: m.id, label: m.name }))];
   const classOpts = [
     { value: 'against_invoice', label: t('purchasing.against_invoice') },
@@ -407,7 +412,7 @@ export default function VendorPaymentEditorPage() {
     { value: '', label: t('purchasing.select_bill') },
     ...openBills.map(b => ({
       value: b.id,
-      label: `${b.bill_number} — ${fmt(b.outstanding)} outstanding`,
+      label: t('rcptOcean.inv_option', { no: b.bill_number, amount: fmt(b.outstanding) }),
     })),
   ];
   const selectedBill = openBills.find(b => b.id === applyBillId);
@@ -428,49 +433,41 @@ export default function VendorPaymentEditorPage() {
       invoices: allBills.map(b => ({ id: b.id, bill_number: b.bill_number, date: b.date as unknown as string, total_amount: b.total_amount })),
     });
     return (
-      <div className="signature-print-scope" style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '32px' }}>
-        <div
-          data-print-hide
-          style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
-        >
-          <BackButton to="/purchasing/payments" label={t('purchasing.vp_title')} confirm={confirmLeave} />
-          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1e293b', letterSpacing: '-.01em' }}>
-            {existing.payment_number}
-          </h1>
-          <span style={{
-            display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
-            fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
-            background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0',
-          }}>{existing.status}</span>
-          <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px' }}>
+      // Ocean Teal (UI v1.1): look only — same actions and printed voucher.
+      <div className="signature-print-scope sb-ocean sb-docx" data-testid="vendor-payment-view-ocean">
+        <div data-print-hide className="sb-card sb-doc-bar">
+          <div className="sb-doc-bar-id">
+            <BackButton to="/purchasing/payments" label={t('purchasing.vp_title')} confirm={confirmLeave} />
+            <bdi dir="ltr" className="sb-doc-bar-no">{existing.payment_number}</bdi>
+            <StatusBadge status={existing.status} />
+          </div>
+          <div className="sb-doc-bar-actions">
             {canEdit && (
               <Button variant="ghost" size="sm" onClick={() => setViewMode(false)}>
-                ✎ {t('common.edit') || 'Edit'}
+                <Pencil size={15} aria-hidden="true" /> {t('common.edit') || 'Edit'}
               </Button>
             )}
             {/* Phase 18 — a confirmed payment can be edited by reversing its
                 posting and reopening it as a draft (un-reconcile first). */}
             {existing?.status === 'confirmed' && !isReconciled && (
               <Button variant="ghost" size="sm" onClick={() => setReopenModal(true)}>
-                ✎ {t('common.edit') || 'Edit'}
+                <Pencil size={15} aria-hidden="true" /> {t('common.edit') || 'Edit'}
               </Button>
             )}
             {existing?.id && (
               <Button variant="ghost" size="sm" onClick={() => window.print()}>
-                🖨 {t('print.print') || 'Print'}
+                <Printer size={15} aria-hidden="true" /> {t('print.print') || 'Print'}
               </Button>
             )}
           </div>
         </div>
-        {error && <div className="rounded-input bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
-        <div className="signature-canvas" style={{ borderRadius: '12px', overflow: 'auto' }}>
+        {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+        <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
         {/* Phase 18 — confirm before reversing a posted payment for editing. */}
-        {reopenModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-            <div className="w-[26rem] rounded-card bg-surface-card p-6 shadow-xl space-y-4">
-              <h3 className="text-base font-semibold text-ink-primary">{t('purchasing.edit_payment') || 'Edit payment'}</h3>
+        <Modal open={reopenModal} onClose={() => setReopenModal(false)} title={t('purchasing.edit_payment') || 'Edit payment'}>
+            <div className="sb-ocean sb-form sb-modal-form">
               <p className="text-sm text-ink-secondary">
                 {t('purchasing.reopen_confirm_text') || 'Editing this payment reverses its posted journal entries and reopens it as a draft. Any bills it paid will reopen. You can change it and confirm again.'}
               </p>
@@ -481,39 +478,42 @@ export default function VendorPaymentEditorPage() {
                 </Button>
               </div>
             </div>
-          </div>
-        )}
+        </Modal>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 pb-16">
-      <div className="flex items-center gap-3">
-        <BackButton to="/purchasing/payments" label={t('purchasing.vp_title')} confirm={confirmLeave} />
-        <h1 className="text-xl font-semibold text-ink-primary">{isNew ? t('purchasing.new_vp') : existing?.payment_number ?? '…'}</h1>
-        {!isNew && <span className="rounded-pill bg-gray-100 px-2.5 py-0.5 text-xs capitalize text-gray-600">{existing?.status}</span>}
-        {!isNew && (() => {
-          const alloc = (existing as (PaymentRow & { allocation_status?: 'unallocated' | 'partial' | 'full' | null }) | null | undefined)?.allocation_status;
-          if (existing?.status !== 'confirmed' || !alloc) return null;
-          const map: Record<string, { label: string; cls: string }> = {
-            unallocated: { label: 'Advance',       cls: 'bg-purple-50 text-purple-700' },
-            partial:     { label: 'Partial',       cls: 'bg-amber-50 text-amber-700'   },
-            full:        { label: 'Fully applied', cls: 'bg-sky-50 text-sky-700'       },
-          };
-          const cfg = map[alloc];
-          if (!cfg) return null;
-          return <span className={`rounded-pill px-2.5 py-0.5 text-xs font-medium ${cfg.cls}`}>{cfg.label}</span>;
-        })()}
-        {!isNew && isReconciled && existing?.status === 'confirmed' && (
-          <span className="rounded-pill bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
-            Reconciled
-          </span>
-        )}
-        <div className="ms-auto flex gap-2">
+    // Ocean Teal (UI v1.1): look only — same fields, allocation (FIFO
+    // auto-fill), PDC, save / confirm / reopen / apply advance and previews.
+    <div className="sb-ocean sb-docx sb-docx-edit" data-testid="vendor-payment-edit-ocean">
+      <div className="sb-card sb-doc-bar">
+        <div className="sb-doc-bar-id">
+          <BackButton to="/purchasing/payments" label={t('purchasing.vp_title')} confirm={confirmLeave} />
+          {isNew
+            ? <h1 className="sb-doc-bar-no">{t('purchasing.new_vp')}</h1>
+            : <bdi dir="ltr" className="sb-doc-bar-no">{existing?.payment_number ?? '…'}</bdi>}
+          {!isNew && existing && <StatusBadge status={existing.status} />}
+          {!isNew && (() => {
+            const alloc = (existing as (PaymentRow & { allocation_status?: 'unallocated' | 'partial' | 'full' | null }) | null | undefined)?.allocation_status;
+            if (existing?.status !== 'confirmed' || !alloc) return null;
+            const map: Record<string, { key: string; tone: string }> = {
+              unallocated: { key: 'alloc_advance', tone: '' },
+              partial:     { key: 'alloc_partial', tone: 'sb-pill-warn' },
+              full:        { key: 'alloc_full',    tone: 'sb-pill-good' },
+            };
+            const cfg = map[alloc];
+            if (!cfg) return null;
+            return <span className={`sb-pill ${cfg.tone}`} style={{ marginTop: 0 }}>{t(`salesOcean.${cfg.key}`)}</span>;
+          })()}
+          {!isNew && isReconciled && existing?.status === 'confirmed' && (
+            <span className="sb-pill sb-pill-good" style={{ marginTop: 0 }}>{t('salesOcean.reconciled')}</span>
+          )}
+        </div>
+        <div className="sb-doc-bar-actions">
           {!isNew && existing && existing.status !== 'draft' && (
             <Button variant="ghost" size="sm" onClick={() => setViewMode(true)}>
-              {t('common.view') || 'View'}
+              <Eye size={15} aria-hidden="true" /> {t('common.view') || 'View'}
             </Button>
           )}
           <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/purchasing/payments'); }}>{t('common.cancel')}</Button>
@@ -536,20 +536,17 @@ export default function VendorPaymentEditorPage() {
         </div>
       </div>
 
-      {error && <div className="rounded-input bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
+      {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
 
       {staleAllocations.length > 0 && (
-        <div className="rounded-input bg-amber-50 px-4 py-2 text-sm text-amber-800">
-          <strong>Stale allocation{staleAllocations.length === 1 ? '' : 's'} detected.</strong>{' '}
-          {staleAllocations.length} previously-allocated bill{staleAllocations.length === 1 ? ' is' : 's are'} no
-          longer in the open list (likely voided or fully paid by another payment). They will be dropped on Save.
-        </div>
+        <p className="sb-alert sb-alert-warn" style={{ fontWeight: 400 }} role="status">
+          <AlertTriangle size={16} aria-hidden="true" style={{ display: 'inline', verticalAlign: '-3px', marginInlineEnd: 6 }} />
+          <strong>{t('rcptOcean.stale_title')}</strong>{' '}{t('vpOcean.stale_body', { count: staleAllocations.length })}
+        </p>
       )}
 
-      {applyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-[26rem] rounded-card bg-surface-card p-6 shadow-xl space-y-4">
-            <h3 className="text-base font-semibold text-ink-primary">{t('purchasing.apply_advance')}</h3>
+      <Modal open={applyModal} onClose={() => setApplyModal(false)} title={t('purchasing.apply_advance')}>
+          <div className="sb-ocean sb-form sb-modal-form">
 
             {/* Phase 14.08b — available credit + selected bill outstanding,
                  side by side so the operator can sanity-check the math
@@ -557,32 +554,32 @@ export default function VendorPaymentEditorPage() {
             <div style={{
               display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: '12px',
               padding: '12px 14px',
-              background: '#ecfdf5',
-              border: '1px solid #a7f3d0',
-              borderRadius: '10px',
+              background: 'var(--sb-primary-soft)',
+              border: '1px solid var(--sb-primary-light)',
+              borderRadius: 'var(--sb-radius-md)',
             }}>
               <div>
                 <div style={{ fontSize: '10.5px', fontWeight: 600, color: '#047857', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                  Available credit
+                  {t('rcptOcean.available_credit')}
                 </div>
                 <div style={{ marginTop: '2px', fontSize: '17px', fontWeight: 700, color: '#065f46', fontVariantNumeric: 'tabular-nums' }}>
                   {header.currency || 'AED'} {fmt(available)}
                 </div>
                 <div style={{ fontSize: '10.5px', color: '#059669' }}>
                   {usedAmount > 0.005
-                    ? `payment ${fmt(Number(existing?.amount ?? 0))} · already applied ${fmt(usedAmount)}`
-                    : 'unallocated portion of this payment'}
+                    ? t('rcptOcean.credit_split', { payment: fmt(Number(existing?.amount ?? 0)), applied: fmt(usedAmount) })
+                    : t('rcptOcean.credit_unallocated')}
                 </div>
               </div>
               <div>
                 <div style={{ fontSize: '10.5px', fontWeight: 600, color: '#047857', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                  Bill outstanding
+                  {t('vpOcean.bill_outstanding')}
                 </div>
                 <div style={{ marginTop: '2px', fontSize: '17px', fontWeight: 700, color: selectedBill ? '#065f46' : '#94a3b8', fontVariantNumeric: 'tabular-nums' }}>
                   {selectedBill ? `${header.currency || 'AED'} ${fmt(selectedBill.outstanding)}` : '—'}
                 </div>
                 <div style={{ fontSize: '10.5px', color: '#059669' }}>
-                  {selectedBill ? selectedBill.bill_number : 'pick a bill below'}
+                  {selectedBill ? selectedBill.bill_number : t('vpOcean.pick_bill')}
                 </div>
               </div>
             </div>
@@ -619,14 +616,14 @@ export default function VendorPaymentEditorPage() {
                 if (amt > available + 0.005) {
                   return (
                     <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#b91c1c', fontWeight: 500 }}>
-                      Cannot apply more than the available credit ({header.currency || 'AED'} {fmt(available)}).
+                      {t('rcptOcean.over_credit', { amount: `${header.currency || 'AED'} ${fmt(available)}` })}
                     </p>
                   );
                 }
                 if (amt > selectedBill.outstanding + 0.005) {
                   return (
                     <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#b91c1c', fontWeight: 500 }}>
-                      Cannot apply more than the bill outstanding ({header.currency || 'AED'} {fmt(selectedBill.outstanding)}).
+                      {t('vpOcean.over_bill', { amount: `${header.currency || 'AED'} ${fmt(selectedBill.outstanding)}` })}
                     </p>
                   );
                 }
@@ -634,13 +631,13 @@ export default function VendorPaymentEditorPage() {
                 if (remaining > 0.005) {
                   return (
                     <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#475569' }}>
-                      {header.currency || 'AED'} {fmt(remaining)} will remain as credit on this payment.
+                      {t('rcptOcean.remaining', { amount: `${header.currency || 'AED'} ${fmt(remaining)}` })}
                     </p>
                   );
                 }
                 return (
                   <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#047857', fontWeight: 500 }}>
-                    Applying the full available credit. Payment will be fully allocated.
+                    {t('rcptOcean.applying_full')}
                   </p>
                 );
               })()}
@@ -652,7 +649,7 @@ export default function VendorPaymentEditorPage() {
                   marginTop: '6px',
                   fontSize: '11.5px',
                   fontWeight: 600,
-                  color: !selectedBill || suggestedVendorApply <= 0 ? '#94a3b8' : '#7c3aed',
+                  color: !selectedBill || suggestedVendorApply <= 0 ? '#94a3b8' : 'var(--sb-primary-dark)',
                   background: 'transparent',
                   border: 'none',
                   cursor: !selectedBill || suggestedVendorApply <= 0 ? 'not-allowed' : 'pointer',
@@ -660,8 +657,8 @@ export default function VendorPaymentEditorPage() {
                 }}
               >
                 {selectedBill
-                  ? `Use ${header.currency || 'AED'} ${fmt(suggestedVendorApply)} (apply the maximum)`
-                  : 'Pick a bill to enable the suggested amount'}
+                  ? t('rcptOcean.use_max', { amount: `${header.currency || 'AED'} ${fmt(suggestedVendorApply)}` })
+                  : t('vpOcean.pick_bill_suggest')}
               </button>
             </div>
 
@@ -683,11 +680,10 @@ export default function VendorPaymentEditorPage() {
               </Button>
             </div>
           </div>
-        </div>
-      )}
+      </Modal>
 
-      <div className="rounded-card border border-border-subtle bg-surface-card p-5">
-        <h2 className="mb-4 text-sm font-semibold text-ink-primary">{t('purchasing.payment_details')}</h2>
+      <div className="sb-card sb-form sb-doc-card">
+        <h2 className="sb-doc-card-title">{t('purchasing.payment_details')}</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <div className="col-span-2 md:col-span-1">
             <label className="mb-1 block text-sm font-medium text-ink-primary">
@@ -735,8 +731,8 @@ export default function VendorPaymentEditorPage() {
         {/* Phase 19 — issue this payment as a post-dated cheque. Routes to
              2450 PDC Payable (not bank) and creates a linked cheque. */}
         {canEdit && isNew && (
-          <div className="mt-4 rounded-card border border-border-subtle bg-surface-muted" style={{ padding: '12px 14px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
+          <div className="sb-hw-test" style={{ marginTop: 16 }}>
+            <label style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
               <input type="checkbox" checked={isPdc} onChange={e => setIsPdc(e.target.checked)} />
               <span className="text-sm font-semibold text-ink-primary">{t('purchasing.is_pdc') || 'Post-dated cheque (PDC)'}</span>
               <span className="text-xs text-ink-tertiary">{t('purchasing.pdc_hint') || '— money goes to PDC Payable, not the bank, until the cheque clears'}</span>
@@ -763,22 +759,20 @@ export default function VendorPaymentEditorPage() {
         const payAmt = parseFloat(header.amount) || 0;
         const difference = +(payAmt - totalToApply).toFixed(2);
         return (
-          <div className="rounded-card border border-border-subtle bg-surface-card">
-            <div className="border-b border-border-subtle px-5 py-3">
-              <h2 className="text-sm font-semibold text-ink-primary">Apply to Bills</h2>
-              <p className="mt-0.5 text-xs text-ink-tertiary">
-                Distribute the payment across {openBillsForPanel.length} open bill{openBillsForPanel.length === 1 ? '' : 's'}. Oldest first by default — edit any row to override.
-              </p>
+          <div className="sb-card sb-doc-card sb-doc-lines">
+            <div className="sb-doc-lines-head" style={{ display: 'block' }}>
+              <h2 className="sb-doc-card-title" style={{ margin: 0 }}>{t('vpOcean.apply_title')}</h2>
+              <p className="sb-form-hint" style={{ margin: '4px 0 0' }}>{t('vpOcean.apply_hint', { count: openBillsForPanel.length })}</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
-                    <th className="px-4 py-2 text-start font-medium">Bill #</th>
-                    <th className="px-4 py-2 text-start font-medium">Date</th>
-                    <th className="px-4 py-2 text-end font-medium">Total</th>
-                    <th className="px-4 py-2 text-end font-medium">Outstanding</th>
-                    <th className="px-4 py-2 text-end font-medium w-32">Apply</th>
+                  <tr>
+                    <th className="px-4 py-2 text-start font-medium">{t('vpOcean.c_bill')}</th>
+                    <th className="px-4 py-2 text-start font-medium">{t('rcptOcean.c_date')}</th>
+                    <th className="px-4 py-2 text-end font-medium">{t('rcptOcean.c_total')}</th>
+                    <th className="px-4 py-2 text-end font-medium">{t('rcptOcean.c_outstanding')}</th>
+                    <th className="px-4 py-2 text-end font-medium w-32">{t('rcptOcean.c_apply')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -788,8 +782,8 @@ export default function VendorPaymentEditorPage() {
                     const overApplied = applyNum > bill.outstanding + 0.005;
                     return (
                       <tr key={bill.id} className="border-b border-border-subtle last:border-0">
-                        <td className="px-4 py-2 font-mono text-xs text-ink-primary">{bill.bill_number}</td>
-                        <td className="px-4 py-2 text-ink-secondary">{bill.date as unknown as string}</td>
+                        <td className="px-4 py-2 font-mono text-xs text-ink-primary"><bdi dir="ltr">{bill.bill_number}</bdi></td>
+                        <td className="px-4 py-2 text-ink-secondary"><bdi dir="ltr">{bill.date as unknown as string}</bdi></td>
                         <td className="px-4 py-2 text-end font-mono text-ink-secondary">{fmt(Number(bill.total_amount))}</td>
                         <td className="px-4 py-2 text-end font-mono text-ink-primary">{fmt(bill.outstanding)}</td>
                         <td className="px-4 py-2">
@@ -799,6 +793,7 @@ export default function VendorPaymentEditorPage() {
                             step="0.01"
                             value={applyVal}
                             placeholder="0.00"
+                            dir="ltr"
                             className={`w-full rounded border bg-surface-subtle px-2 py-1 text-end text-xs ${overApplied ? 'border-red-400 text-red-700' : 'border-border-strong text-ink-primary'}`}
                             onChange={(e) => setApplyAmounts(prev => ({ ...prev, [bill.id]: e.target.value }))}
                           />
@@ -809,25 +804,25 @@ export default function VendorPaymentEditorPage() {
                 </tbody>
               </table>
             </div>
-            <div className="border-t border-border-subtle px-5 py-3">
-              <div className="ms-auto w-72 space-y-1 text-sm">
+            <div className="sb-doc-quote-total">
+              <div className="sb-doc-summary-rows" style={{ marginInlineStart: 'auto', width: 'min(100%, 320px)' }}>
                 <div className="flex justify-between text-ink-secondary">
-                  <span>Payment amount</span>
+                  <span>{t('rcptOcean.payment_amount')}</span>
                   <span className="font-mono">{fmt(payAmt)}</span>
                 </div>
                 <div className="flex justify-between text-ink-secondary">
-                  <span>Total to apply</span>
+                  <span>{t('rcptOcean.total_to_apply')}</span>
                   <span className="font-mono">{fmt(totalToApply)}</span>
                 </div>
                 <div className={`flex justify-between font-semibold ${
                   difference < 0 ? 'text-red-600' : difference > 0 ? 'text-amber-600' : 'text-green-700'
                 }`}>
-                  <span>{difference < 0 ? 'Over-applied' : difference > 0 ? 'Unallocated (advance)' : 'Fully allocated'}</span>
+                  <span>{difference < 0 ? t('rcptOcean.over_applied') : difference > 0 ? t('rcptOcean.unallocated') : t('rcptOcean.fully_allocated')}</span>
                   <span className="font-mono">{fmt(Math.abs(difference))}</span>
                 </div>
                 {difference > 0 && (
                   <p className="pt-1 text-xs text-ink-tertiary">
-                    The unallocated portion will sit as a vendor advance and can be applied to future bills.
+                    {t('vpOcean.unallocated_hint')}
                   </p>
                 )}
               </div>
@@ -851,13 +846,13 @@ export default function VendorPaymentEditorPage() {
       })()}
 
       {!isNew && existing?.status !== 'draft' && existingAllocations.length > 0 && (
-        <div className="rounded-card border border-border-subtle bg-surface-card">
-          <div className="border-b border-border-subtle px-5 py-3">
-            <h2 className="text-sm font-semibold text-ink-primary">{t('purchasing.allocations')}</h2>
+        <div className="sb-card sb-doc-card sb-doc-lines">
+          <div className="sb-doc-lines-head">
+            <h2 className="sb-doc-card-title" style={{ margin: 0 }}>{t('purchasing.allocations')}</h2>
           </div>
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary text-xs">
+              <tr>
                 <th className="px-4 py-3 text-start font-medium">{t('purchasing.bill')}</th>
                 <th className="px-4 py-3 text-end font-medium">{t('purchasing.amount_applied')}</th>
               </tr>
@@ -871,7 +866,7 @@ export default function VendorPaymentEditorPage() {
               ))}
             </tbody>
           </table>
-          <div className="border-t border-border-subtle px-5 py-3 text-sm text-ink-secondary flex justify-between">
+          <div className="sb-doc-quote-total justify-between text-sm text-ink-secondary">
             <span>{t('purchasing.available_balance')}</span>
             <span className="font-mono font-semibold text-ink-primary">{fmt(available)}</span>
           </div>

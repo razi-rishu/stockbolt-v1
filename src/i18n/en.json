@@ -3290,5 +3290,19 @@
     "mac_new": "New MAC will be {{after}}",
     "pick": "— pick —",
     "round_title": "Adjust so the total matches the supplier's printed bill exactly (±1.00). Posts to 5900 Round Off."
+  },
+  "vpOcean": {
+    "err_bank": "Pick a bank or cash account. Every payment must post to a real account.",
+    "err_over_bill": "Bill {{no}}: applied {{applied}} is more than the outstanding {{outstanding}}.",
+    "err_over_total": "Allocations ({{alloc}}) are more than the payment amount ({{amount}}).",
+    "stale_body": "Previously allocated bills that are no longer open (likely voided or fully paid by another payment): {{count}}. They'll be dropped on save.",
+    "apply_title": "Apply to bills",
+    "apply_hint": "Spread the payment across open bills ({{count}}). Oldest first by default — edit any row to override.",
+    "c_bill": "Bill #",
+    "bill_outstanding": "Bill outstanding",
+    "pick_bill": "pick a bill below",
+    "over_bill": "You can't apply more than the bill outstanding ({{amount}}).",
+    "pick_bill_suggest": "Pick a bill to see the suggested amount",
+    "unallocated_hint": "The unallocated part stays as a supplier advance and can be applied to future bills."
   }
 }
