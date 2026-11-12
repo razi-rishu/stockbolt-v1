@@ -29,6 +29,7 @@ import { fiscalYearLabel } from '@/lib/locale';
 import { useBackHandler } from '@/navigation/use-back-handler';
 import { isAppShell } from '@/lib/platform';
 import { AppShell } from '@/app-shell/AppShell';
+import '@/styles/stockbolt-ocean-teal.css';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 interface NavItem {
@@ -243,14 +244,14 @@ function useNavSections(t: (k: string) => string): NavSection[] {
 
     // Payroll P1 (owner override 2026-06-13)
     {
-      label: 'Payroll',
+      label: t('navOcean.payroll'),
       icon: <PayrollIcon />,
       perm: 'payroll.read',
       groups: [{
         items: [
-          { to: '/payroll/runs', label: 'Payroll Runs' },
-          { to: '/payroll/employees', label: 'Employees' },
-          { to: '/payroll/leave-salary', label: 'Leave Salary' },
+          { to: '/payroll/runs', label: t('navOcean.payroll_runs') },
+          { to: '/payroll/employees', label: t('navOcean.employees') },
+          { to: '/payroll/leave-salary', label: t('navOcean.leave_salary') },
         ],
       }],
     },
@@ -261,7 +262,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
       perm: 'reports.read',
       groups: [
         {
-          label: 'Financial',
+          label: t('navOcean.rg_financial'),
           perm: 'accounting.read',
           items: [
             { to: '/reports/trial-balance', label: t('nav.trial_balance') },
@@ -280,7 +281,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
             }]
           : []),
         {
-          label: 'Sales',
+          label: t('navOcean.rg_sales'),
           items: [
             { to: '/reports/ar-aging', label: t('nav.ar_aging') },
             { to: '/reports/sales-by-customer', label: t('reports.sales_by_customer') },
@@ -294,7 +295,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
           ],
         },
         {
-          label: 'Purchases',
+          label: t('navOcean.rg_purchases'),
           items: [
             { to: '/reports/ap-aging', label: t('reports.ap_aging') },
             { to: '/reports/supplier-statement', label: t('reports.supplier_statement') },
@@ -305,7 +306,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
           ],
         },
         {
-          label: 'Inventory',
+          label: t('navOcean.rg_inventory'),
           items: [
             { to: '/reports/stock-valuation', label: t('nav.stock_valuation') },
             { to: '/reports/fixed-asset-register', label: t('reports.far_title') },
@@ -321,14 +322,14 @@ function useNavSections(t: (k: string) => string): NavSection[] {
           ],
         },
         {
-          label: 'Banking',
+          label: t('navOcean.rg_banking'),
           items: [
             { to: '/reports/daily-cash', label: t('reports.daily_cash_title') },
             { to: '/reports/bank-recon', label: t('reports.bank_recon_title') },
           ],
         },
         {
-          label: 'Audit',
+          label: t('navOcean.rg_audit'),
           items: [
             { to: '/reports/audit-log', label: t('reports.audit_log') },
             { to: '/reports/reversal-trail', label: t('reports.reversal_trail') },
@@ -349,10 +350,8 @@ function useNavSections(t: (k: string) => string): NavSection[] {
 }
 
 // ── Sidebar ─────────────────────────────────────────────────────────────────
-const rowBase = 'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors';
-const rowIdle = 'text-ink-secondary hover:bg-surface-subtle hover:text-ink-primary';
-const rowActive = 'bg-brand-50 text-brand-600';
-
+// Ocean Teal (UI v1.1): every row carries its icon in a soft tile; the active
+// section's tile turns teal. Same links, permissions and accordion as before.
 function SidebarSection({
   section,
   open,
@@ -366,16 +365,16 @@ function SidebarSection({
   onNavigate: () => void;
   pathname: string;
 }) {
-  // Direct link (Dashboard)
+  // Direct link (Dashboard, Projects)
   if (section.to) {
     return (
       <NavLink
         to={section.to}
         onClick={onNavigate}
-        className={({ isActive }) => `${rowBase} ${isActive ? rowActive : rowIdle}`}
+        className={({ isActive }) => `sb-side-row ${isActive ? 'active' : ''}`}
       >
-        {section.icon}
-        {section.label}
+        <span className="sb-side-ico">{section.icon}</span>
+        <span className="sb-side-label">{section.label}</span>
       </NavLink>
     );
   }
@@ -384,36 +383,28 @@ function SidebarSection({
   const sectionActive = groups.some((g) => g.items.some((it) => pathname.startsWith(it.to)));
 
   return (
-    <div>
+    <div className={`sb-side-section ${open ? 'open' : ''}`}>
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className={`${rowBase} ${sectionActive && !open ? rowActive : rowIdle}`}
+        className={`sb-side-row ${sectionActive ? 'active' : ''}`}
       >
-        {section.icon}
-        <span className="flex-1 text-start">{section.label}</span>
-        <ChevronDownIcon className={open ? 'rotate-180' : ''} />
+        <span className="sb-side-ico">{section.icon}</span>
+        <span className="sb-side-label">{section.label}</span>
+        <span className="sb-side-chev"><ChevronDownIcon className={open ? 'rotate-180' : ''} /></span>
       </button>
       {open && (
-        <div className="mb-1 mt-0.5 flex flex-col gap-0.5 border-s border-border-subtle ps-4 ms-[21px]">
+        <div className="sb-side-sub">
           {groups.map((g, gi) => (
-            <div key={gi} className="flex flex-col gap-0.5">
-              {g.label && (
-                <p className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
-                  {g.label}
-                </p>
-              )}
+            <div key={gi} className="sb-side-group">
+              {g.label && <p className="sb-side-group-label">{g.label}</p>}
               {g.items.map((it) => (
                 <NavLink
                   key={it.to}
                   to={it.to}
                   onClick={onNavigate}
-                  className={({ isActive }) =>
-                    `block rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
-                      isActive ? 'bg-brand-50 font-medium text-brand-600' : 'text-ink-secondary hover:bg-surface-subtle hover:text-ink-primary'
-                    }`
-                  }
+                  className={({ isActive }) => `sb-side-item ${isActive ? 'active' : ''}`}
                 >
                   {it.label}
                 </NavLink>
@@ -475,19 +466,19 @@ function SidebarContent({
   const shortcuts = buildShortcuts(canSales, canPurchasing, t);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="sb-side flex h-full flex-col">
       {/* Brand */}
-      <Link to="/dashboard" onClick={onNavigate} className="flex items-center gap-2.5 px-5 pb-4 pt-5">
+      <Link to="/dashboard" onClick={onNavigate} className="sb-side-brand">
         <BrandMark size={34} />
         <span className="flex flex-col">
-          <span className="text-[14px] font-extrabold leading-tight tracking-[0.08em] text-ink-primary">STOCKBOLT</span>
-          <span className="text-[11px] leading-tight text-ink-tertiary">Auto Parts ERP</span>
+          <span className="sb-side-brand-name">STOCKBOLT</span>
+          <span className="sb-side-brand-sub">{t('navOcean.tagline')}</span>
         </span>
       </Link>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-3 pb-4">
-        <div className="flex flex-col gap-0.5">
+      <nav className="sb-side-nav flex-1 overflow-y-auto" aria-label={t('navOcean.main_menu')}>
+        <div className="flex flex-col gap-1">
           {sections.map((section) => (
             <SidebarSection
               key={section.label}
@@ -501,20 +492,13 @@ function SidebarContent({
         </div>
 
         {shortcuts.length > 0 && (
-          <div className="mt-6">
-            <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-tertiary">
-              Shortcuts
-            </p>
-            <div className="flex flex-col gap-0.5">
+          <div className="sb-side-shortcuts">
+            <p className="sb-side-group-label" style={{ paddingInline: 6 }}>{t('navOcean.shortcuts')}</p>
+            <div className="sb-side-short-grid">
               {shortcuts.map((s) => (
-                <NavLink
-                  key={s.to}
-                  to={s.to}
-                  onClick={onNavigate}
-                  className={`${rowBase} !py-2 text-[13px] ${rowIdle}`}
-                >
-                  {s.icon}
-                  {s.label}
+                <NavLink key={s.to} to={s.to} onClick={onNavigate} className="sb-side-short">
+                  <span className="sb-side-short-ico">{s.icon}</span>
+                  <span className="sb-side-short-label">{s.label}</span>
                 </NavLink>
               ))}
             </div>
@@ -523,17 +507,13 @@ function SidebarContent({
       </nav>
 
       {/* Company chip */}
-      <Link
-        to="/settings/company"
-        onClick={onNavigate}
-        className="flex items-center gap-2.5 border-t border-border-subtle px-4 py-3.5 transition-colors hover:bg-surface-subtle"
-      >
-        <CompanyAvatar size={34} fallbackText={companyName || undefined} />
+      <Link to="/settings/company" onClick={onNavigate} className="sb-side-company">
+        <CompanyAvatar size={36} fallbackText={companyName || undefined} />
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-[13px] font-semibold text-ink-primary">{companyName || '—'}</span>
-          <span className="truncate text-[11px] text-ink-tertiary">{companySub}</span>
+          <span className="sb-side-company-name">{companyName || '—'}</span>
+          <span className="sb-side-company-sub">{companySub}</span>
         </span>
-        <span className="text-ink-tertiary"><UpDownIcon /></span>
+        <span className="sb-side-chev"><UpDownIcon /></span>
       </Link>
     </div>
   );
@@ -541,18 +521,19 @@ function SidebarContent({
 
 // ── Search bar (opens the command palette) ──────────────────────────────────
 function SearchBar() {
+  const { t } = useTranslation();
   const { openPalette } = useShortcutContext();
   return (
     <button
       type="button"
       onClick={openPalette}
-      aria-label="Open global search"
-      className="flex h-9 w-9 shrink-0 items-center justify-center gap-3 rounded-xl border border-border-subtle bg-white text-sm text-ink-tertiary transition-colors hover:border-border-strong sm:h-11 sm:w-full sm:max-w-[520px] sm:shrink sm:justify-start sm:px-4"
+      aria-label={t('navOcean.open_search')}
+      className="sb-top-search flex h-9 w-9 shrink-0 items-center justify-center gap-3 text-sm sm:h-11 sm:w-full sm:max-w-[520px] sm:shrink sm:justify-start sm:px-4"
     >
-      <span className="text-ink-tertiary"><SearchIcon /></span>
+      <span className="sb-top-search-ico"><SearchIcon /></span>
       {/* Phones get the icon only, so the top bar fits the screen width. */}
-      <span className="hidden flex-1 truncate text-start sm:block">Search anything...</span>
-      <kbd className="hidden rounded-md border border-border-subtle bg-surface-subtle px-1.5 py-0.5 text-[11px] font-medium text-ink-tertiary sm:inline">
+      <span className="hidden flex-1 truncate text-start sm:block">{t('navOcean.search_ph')}</span>
+      <kbd dir="ltr" className="sb-top-kbd hidden sm:inline">
         Ctrl + K
       </kbd>
     </button>
@@ -561,6 +542,7 @@ function SearchBar() {
 
 // ── User menu dropdown ──────────────────────────────────────────────────────
 function UserMenu({ email, companyName, onSignOut }: { email: string | null; companyName: string; onSignOut: () => void }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -577,8 +559,8 @@ function UserMenu({ email, companyName, onSignOut }: { email: string | null; com
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 rounded-full py-1 pe-2 ps-1 transition-colors hover:bg-surface-muted"
-        aria-label="User menu"
+        className="sb-top-user flex items-center gap-2 rounded-full py-1 pe-2 ps-1 transition-colors"
+        aria-label={t('navOcean.user_menu')}
       >
         {/* Phase 28 — company logo if uploaded, else initials avatar. */}
         <CompanyAvatar size={32} fallbackText={email ?? undefined} />
@@ -588,9 +570,9 @@ function UserMenu({ email, companyName, onSignOut }: { email: string | null; com
         <span className="hidden text-ink-tertiary md:block"><ChevronDownIcon /></span>
       </button>
       {open && (
-        <div className="absolute end-0 z-50 mt-2 w-56 overflow-hidden rounded-card border border-border-subtle bg-surface-card shadow-xl">
+        <div className="sb-top-pop absolute end-0 z-50 mt-2 w-60 overflow-hidden">
           <div className="border-b border-border-subtle px-4 py-3">
-            <p className="truncate text-xs text-ink-tertiary">Signed in as</p>
+            <p className="truncate text-xs text-ink-tertiary">{t('navOcean.signed_in_as')}</p>
             <p className="truncate text-sm font-medium text-ink-primary">{email ?? '—'}</p>
           </div>
           <ul className="py-1">
@@ -598,27 +580,27 @@ function UserMenu({ email, companyName, onSignOut }: { email: string | null; com
               <Link
                 to="/settings/company"
                 onClick={() => setOpen(false)}
-                className="block px-4 py-2 text-sm text-ink-primary hover:bg-surface-muted"
+                className="sb-top-pop-item"
               >
-                Company Settings
+                {t('navOcean.company_settings')}
               </Link>
             </li>
             <li>
               <Link
                 to="/settings/system-health"
                 onClick={() => setOpen(false)}
-                className="block px-4 py-2 text-sm text-ink-primary hover:bg-surface-muted"
+                className="sb-top-pop-item"
               >
-                System Health
+                {t('navOcean.system_health')}
               </Link>
             </li>
             <li className="border-t border-border-subtle">
               <button
                 type="button"
                 onClick={() => { setOpen(false); onSignOut(); }}
-                className="block w-full px-4 py-2 text-start text-sm text-red-600 hover:bg-red-50"
+                className="sb-top-pop-item is-danger"
               >
-                Sign out
+                {t('navOcean.sign_out')}
               </button>
             </li>
           </ul>
@@ -717,7 +699,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           window.print() call — including a report's own Print button —
           prints the sidebar/topbar chrome along with the content. */}
       {!sidebarHidden && (
-        <aside data-print-hide className="hidden w-[236px] shrink-0 border-e border-border-subtle bg-surface-card lg:block">
+        <aside data-print-hide className="sb-ocean sb-side-aside hidden w-[248px] shrink-0 lg:block">
           {sidebarContent}
         </aside>
       )}
@@ -726,12 +708,12 @@ export function AppLayout({ children }: AppLayoutProps) {
       {drawerOpen && (
         <div data-print-hide className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/40" onClick={() => setDrawerOpen(false)} />
-          <aside className="absolute start-0 top-0 h-full w-[280px] border-e border-border-subtle bg-surface-card shadow-xl">
+          <aside className="sb-ocean sb-side-aside absolute start-0 top-0 h-full w-[284px] shadow-xl">
             <button
               type="button"
               onClick={() => setDrawerOpen(false)}
-              className="absolute end-3 top-5 text-ink-secondary hover:text-ink-primary"
-              aria-label="Close menu"
+              className="sb-top-iconbtn absolute end-3 top-5"
+              aria-label={t('navOcean.close_menu')}
             >
               <XIcon />
             </button>
@@ -742,16 +724,16 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       {/* ── Main column ───────────────────────────────────────────────── */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header data-print-hide className="z-30 flex h-16 shrink-0 items-center gap-3 border-b border-border-subtle bg-surface-card px-4 lg:px-6">
+        <header data-print-hide className="sb-ocean sb-top-bar z-30 flex h-16 shrink-0 items-center gap-3 px-4 lg:px-6">
           {/* Hamburger — opens the drawer on mobile, collapses the sidebar on desktop */}
           <button
             type="button"
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-secondary hover:bg-surface-muted hover:text-ink-primary"
+            className="sb-top-iconbtn"
             onClick={() => {
               if (window.innerWidth >= 1024) setSidebarHidden((h) => !h);
               else setDrawerOpen(true);
             }}
-            aria-label="Toggle menu"
+            aria-label={t('navOcean.toggle_menu')}
           >
             <MenuIcon />
           </button>
@@ -764,8 +746,8 @@ export function AppLayout({ children }: AppLayoutProps) {
             {/* Hidden on phones to fit the bar — Settings stays in the menu drawer and user menu. */}
             <Link
               to="/settings"
-              className="hidden h-9 w-9 items-center justify-center rounded-full text-ink-secondary hover:bg-surface-muted hover:text-ink-primary sm:flex"
-              aria-label="Settings"
+              className="sb-top-iconbtn hidden sm:flex"
+              aria-label={t('nav.settings')}
             >
               <CogIcon />
             </Link>

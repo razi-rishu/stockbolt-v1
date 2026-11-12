@@ -50,6 +50,7 @@ export function CompanyAvatar({
   return (
     <div
       aria-hidden="true"
+      className="sb-avatar-initials"
       style={{
         ...common,
         background: theme.brand, color: '#fff',
