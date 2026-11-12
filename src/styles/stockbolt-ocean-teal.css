@@ -1360,3 +1360,27 @@
 .sb-ocean .sb-dash-donut-legend { flex: 1 1 160px; min-width: 0; display: flex; flex-direction: column; gap: 7px; font-size: 13px; }
 .sb-ocean .sb-dash-donut-legend li { display: flex; align-items: center; gap: 8px; }
 .sb-ocean .sb-dash-allclear { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 18px 0; color: var(--sb-success); text-align: center; }
+
+/* ── Sales lists (invoices master-detail; quotes/receipts/credit notes use the list kit) ── */
+.sb-ocean .sb-inv-no { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; font-weight: 700; color: var(--sb-primary-dark); }
+.sb-ocean .sb-inv-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.sb-ocean .sb-inv-stat { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; min-width: 0; }
+.sb-ocean .sb-inv-stat-val { font-size: 18px; font-weight: 800; color: var(--sb-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.sb-ocean .sb-inv-stat-val.is-bad { color: var(--sb-danger); }
+.sb-ocean .sb-inv-filters input, .sb-ocean .sb-inv-filters select, .sb-ocean .sb-inv-filters button { border-radius: 999px; }
+.sb-ocean .sb-inv-filters input:focus { outline: none; border-color: var(--sb-primary); box-shadow: 0 0 0 3px rgba(0, 143, 135, .15); }
+.sb-ocean .sb-inv-list { padding: 0; overflow: hidden; }
+.sb-ocean .sb-inv-list.is-narrow { max-height: 78vh; overflow-y: auto; overscroll-behavior: contain; }
+.sb-ocean .sb-inv-row {
+  display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: start; padding: 12px 14px; cursor: pointer;
+  background: transparent; border: 0; border-top: 1px solid var(--sb-border); font: inherit; color: var(--sb-text);
+  box-shadow: inset 3px 0 0 transparent; transition: background-color .12s;
+}
+.sb-ocean .sb-inv-row:first-child { border-top: 0; }
+.sb-ocean .sb-inv-row:hover { background: var(--sb-primary-soft); }
+.sb-ocean .sb-inv-row.active { background: var(--sb-primary-light); box-shadow: inset 3px 0 0 var(--sb-primary); }
+[dir="rtl"] .sb-ocean .sb-inv-row.active { box-shadow: inset -3px 0 0 var(--sb-primary); }
+.sb-ocean .sb-inv-row:focus-visible { outline: 2px solid var(--sb-primary); outline-offset: -2px; }
+.sb-ocean .sb-inv-row-top, .sb-ocean .sb-inv-row-mid { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.sb-ocean .sb-inv-amt { font-size: 14px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sb-ocean .sb-chips .sb-chip { font: inherit; }

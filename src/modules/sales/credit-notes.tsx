@@ -4,9 +4,9 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Plus } from 'lucide-react';
 import { StatusBadge } from '@/ui/status-badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
@@ -62,109 +62,49 @@ export default function CreditNotesPage() {
     enabled: !!company_id,
   });
 
+  const columns: Column<CreditNoteRow>[] = [
+    { key: 'no', header: t('returns.cn_number'), render: (cn) => <bdi dir="ltr" className="sb-inv-no">{cn.credit_note_number}</bdi> },
+    { key: 'cust', header: t('sales.customer'), render: (cn) => <span style={{ fontWeight: 600 }}>{customerMap[cn.contact_id] ?? '—'}</span> },
+    { key: 'date', header: t('common.date'), render: (cn) => <bdi dir="ltr">{formatDate(cn.date)}</bdi> },
+    { key: 'reason', header: t('returns.reason'), render: (cn) => cn.reason ? t(`returns.reason_${cn.reason}`, { defaultValue: cn.reason }) : '—' },
+    { key: 'restock', header: t('returns.restock'), render: (cn) => cn.restock ? <span className="sb-pill sb-pill-good" style={{ marginTop: 0 }}>{t('returns.yes')}</span> : <span className="sb-fx-name">{t('returns.no')}</span> },
+    { key: 'amt', header: t('returns.total_amount'), align: 'end', render: (cn) => <bdi dir="ltr" className="sb-dash-num">{fmt(cn.total_amount)}</bdi> },
+    {
+      key: 'status', header: '',
+      // Z5b — a credit note can be confirmed AND already refunded: two pills.
+      render: (cn) => (
+        <span className="sb-wh-badges">
+          <StatusBadge status={cn.status} />
+          {refundedIds.has(cn.id) && <span className="sb-pill sb-pill-good" style={{ marginTop: 0 }} title={t('refund.refunded_pill_hint')}>{t('refund.refunded_pill')}</span>}
+        </span>
+      ),
+    },
+  ];
+
+  // Ocean Teal (UI v1.1): look only — same notes, period, voided toggle,
+  // refunded pill and legacy-returns link as before.
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      {/* Z3 — the only way back to returns raised before the credit note
-          became the document. Hidden entirely for a company that never
-          raised one, so a new tenant never learns the word. */}
-      {legacyReturns.length > 0 && (
-        <div style={{ fontSize: '12px', color: theme.inkFaint }}>
-          <Link to="/sales/returns" style={{ color: theme.brand, textDecoration: 'none' }}>
-            {t('returns.legacy_returns_link', { count: legacyReturns.length })}
-          </Link>
-        </div>
-      )}
-
-      <PageHeader
-        title={t('returns.credit_notes_title')}
-        subtitle={t('returns.credit_notes_desc')}
-        actions={
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-            <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided}
-              count={notesVoidedCount} />
-            <Link to="/sales/credit-notes/new"><Button>+ {t('returns.new_credit_note')}</Button></Link>
-          </div>
-        }
-      />
-
-      {isLoading ? (
-        <p style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>{t('common.loading')}</p>
-      ) : notes.length === 0 ? (
-        <p style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>{t('returns.no_credit_notes')}</p>
-      ) : (
-        <div
-          className="overflow-x-auto bg-white"
-          style={{ border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm }}
-        >
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
-                {[
-                  { l: t('returns.cn_number'),     a: 'start' as const },
-                  { l: t('sales.customer'),        a: 'start' as const },
-                  { l: t('common.date'),           a: 'start' as const },
-                  { l: t('returns.reason'),        a: 'start' as const },
-                  { l: t('returns.restock'),       a: 'start' as const },
-                  { l: t('returns.total_amount'),  a: 'end'   as const },
-                  { l: t('common.status'),         a: 'start' as const },
-                  { l: '',                         a: 'end'   as const },
-                ].map((c, i) => (
-                  <th key={i} className="px-4 py-3" style={{
-                    fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
-                    textTransform: 'uppercase', letterSpacing: '.06em',
-                    textAlign: c.a, whiteSpace: 'nowrap',
-                  }}>{c.l}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {notes.map((cn, idx) => (
-                <tr
-                  key={cn.id}
-                  onClick={() => navigate(`/sales/credit-notes/${cn.id}`)}
-                  className="cursor-pointer"
-                  style={{
-                    borderTop: idx === 0 ? 'none' : '1px solid #f1f5f9',
-                    transition: 'background-color .12s',
-                  }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = theme.panelHead; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
-                >
-                  <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>{cn.credit_note_number}</td>
-                  <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px', fontWeight: 500 }}>{customerMap[cn.contact_id] ?? '—'}</td>
-                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(cn.date)}</td>
-                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px', textTransform: 'capitalize' }}>{cn.reason ?? '—'}</td>
-                  <td className="px-4 py-3">
-                    {cn.restock
-                      ? <span style={{ fontSize: '11px', fontWeight: 600, color: theme.success }}>{t('returns.yes')}</span>
-                      : <span style={{ fontSize: '11px', color: theme.inkFaint }}>{t('returns.no')}</span>}
-                  </td>
-                  <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', fontSize: '13px', fontWeight: 600, color: theme.ink }}>{fmt(cn.total_amount)}</td>
-                  {/* Z5b — a credit note can be confirmed AND already refunded;
-                      those are two different facts, so two pills. */}
-                  <td className="px-4 py-3">
-                    <StatusBadge status={cn.status} />
-                    {refundedIds.has(cn.id) && (
-                      <span title={t('refund.refunded_pill_hint')} style={{
-                        display: 'inline-block', marginInlineStart: '6px',
-                        padding: '2px 8px', borderRadius: '999px', fontSize: '10px',
-                        fontWeight: 700, letterSpacing: '.02em',
-                        background: '#d1fae5', color: '#065f46',
-                      }}>{t('refund.refunded_pill')}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3" style={{ textAlign: 'end' }}>
-                    <Link to={`/sales/credit-notes/${cn.id}`} style={{ fontSize: '11px', color: theme.brand, fontWeight: 600, textDecoration: 'none' }}>
-                      {t('common.view')} →
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+    <OceanPage
+      testid="credit-notes-ocean"
+      title={t('returns.credit_notes_title')}
+      subtitle={t('returns.credit_notes_desc')}
+      actions={<>
+        <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided} count={notesVoidedCount} />
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => navigate('/sales/credit-notes/new')}><Plus size={18} aria-hidden="true" />{t('returns.new_credit_note')}</button>
+      </>}
+      below={legacyReturns.length > 0 ? (
+        // Z3 — the only way back to returns raised before the credit note
+        // became the document; hidden for a company that never raised one.
+        <Link to="/sales/returns" className="sb-row-link text-brand-600" style={{ paddingInline: 0, marginTop: 8 }}>
+          {t('returns.legacy_returns_link', { count: legacyReturns.length })}
+        </Link>
+      ) : undefined}
+    >
+      {isLoading
+        ? <div className="sb-card sb-empty">{t('common.loading')}</div>
+        : <OceanTable columns={columns} rows={notes} keyFn={(cn) => cn.id} cardTitleKey="cust"
+            onRowClick={(cn) => navigate(`/sales/credit-notes/${cn.id}`)} rowMuted={(cn) => cn.status === 'void'} emptyMessage={t('returns.no_credit_notes')} />}
+    </OceanPage>
   );
 }

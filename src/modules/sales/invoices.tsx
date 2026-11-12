@@ -5,12 +5,11 @@ import { useNavigate, useMatch, Outlet } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
-import { Button } from '@/ui/button';
 import { VoidedToggle } from '@/ui/voided-toggle';
 import { useHideVoided } from '@/hooks/use-hide-voided';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
 import { StatusBadge } from '@/ui/status-badge';
+import { Plus } from 'lucide-react';
+import '@/styles/stockbolt-ocean-teal.css';
 import { ListFilters } from '@/ui/list-filters';
 import { useState } from 'react';
 import type { InvoiceRow, ContactRow } from '@/data/adapter';
@@ -20,42 +19,24 @@ function fmt(n: number) {
 }
 
 // ── Payment-status badge (Zoho-style: the question is "am I paid?") ───────
+// `dueDate` and `today` are both ISO yyyy-mm-dd, so the string comparison is
+// a date comparison. (It used to receive the formatted dd/mm/yyyy date, which
+// made "Overdue" depend on the day of the month.)
 function PayBadge({ status, total, applied, dueDate, today }: {
   status: string; total: number; applied: number; dueDate: string | null; today: string;
 }) {
+  const { t } = useTranslation();
   if (status !== 'confirmed') return <StatusBadge status={status} />;
   const outstanding = total - applied;
   const cfg =
     outstanding <= 0.005
-      ? { label: 'Paid',      bg: '#ecfdf5', text: '#047857', border: '#a7f3d0' }
+      ? { key: 'paid',    tone: 'sb-pill-good' }
       : dueDate && dueDate < today
-      ? { label: 'Overdue',   bg: '#fef2f2', text: '#dc2626', border: '#fecaca' }
+      ? { key: 'overdue', tone: 'sb-pill-bad' }
       : applied > 0.005
-      ? { label: 'Partial',   bg: '#fffbeb', text: '#b45309', border: '#fde68a' }
-      : { label: 'Unpaid',    bg: '#f5f3ff', text: '#6d28d9', border: '#ddd6fe' };
-  return (
-    <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: '999px',
-      fontSize: '10px', fontWeight: 600, whiteSpace: 'nowrap',
-      background: cfg.bg, color: cfg.text, border: `1px solid ${cfg.border}`,
-    }}>{cfg.label}</span>
-  );
-}
-
-function FilterPill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        padding: '5px 12px', borderRadius: '999px', fontSize: '12px', fontWeight: 600,
-        border: active ? `1px solid ${theme.brand}` : `1px solid ${theme.border}`,
-        background: active ? theme.brand : '#fff',
-        color: active ? '#fff' : theme.inkMuted,
-        cursor: 'pointer', transition: 'background-color .12s, color .12s, border-color .12s',
-      }}
-    >{label}</button>
-  );
+      ? { key: 'partial', tone: 'sb-pill-warn' }
+      : { key: 'unpaid',  tone: '' };
+  return <span className={`sb-pill ${cfg.tone}`} style={{ marginTop: 0, fontSize: 12, padding: '2px 10px' }}>{t(`docStatus.${cfg.key}`)}</span>;
 }
 
 /**
@@ -131,110 +112,104 @@ export default function InvoicesPage() {
 
   // A single-line stat segment inside the slim strip below — label, value
   // and sub-count share one row instead of stacking across three.
-  const statSegment = (label: string, value: string, valueColor: string, sub: string) => (
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', padding: '10px 16px', flex: 1, minWidth: 0 }}>
-      <span style={{ fontSize: '10px', fontWeight: 700, color: theme.inkFaint, textTransform: 'uppercase', letterSpacing: '.07em', whiteSpace: 'nowrap' }}>{label}</span>
-      <span style={{ fontSize: '15px', fontWeight: 800, color: valueColor, letterSpacing: '-.3px', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</span>
-      <span style={{ fontSize: '11px', color: theme.inkFaint, whiteSpace: 'nowrap', marginInlineStart: 'auto' }}>{sub}</span>
-    </div>
-  );
 
+  // Ocean Teal (UI v1.1): look only — same list, search, period, status
+  // filter, voided toggle, totals and preview pane as before.
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <PageHeader
-        title={t('sales.invoices_title')}
-        subtitle={`${filtered.length} ${filtered.length === 1 ? 'invoice' : 'invoices'}`}
-        actions={
-          <Button size="sm" onClick={() => navigate('/sales/invoices/new')}>
-            + {t('sales.new_invoice')}
-          </Button>
-        }
-      />
-
-      {/* Slim single-line strip (was two full stat cards ~70-90px tall each,
-          stacked label/value/sub — pushed the list too far down). */}
-      {!isLoading && allRows.length > 0 && (
-        <div style={{ display: 'flex', background: theme.card, border: `1px solid ${theme.border}`, borderRadius: '10px', boxShadow: theme.shadowSm }}>
-          {statSegment('Outstanding', `${currency} ${fmt(totalOutstanding)}`, theme.ink, `${countConfirmed} confirmed`)}
-          <div style={{ width: '1px', background: theme.border }} />
-          {statSegment('Overdue', `${currency} ${fmt(totalOverdue)}`, theme.danger, `${countOverdue} past due`)}
+    <div className="sb-ocean sb-page sb-inv" data-testid="invoices-ocean">
+      <div className="sb-hero">
+        <div className="sb-clist-head">
+          <div style={{ minWidth: 0 }}>
+            <h1 className="sb-title" style={{ marginTop: 0 }}>{t('sales.invoices_title')}</h1>
+            <div className="sb-clist-count">{t('salesOcean.invoices_count', { count: filtered.length })}</div>
+          </div>
+          <div className="sb-actions" style={{ marginTop: 0 }}>
+            <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => navigate('/sales/invoices/new')}>
+              <Plus size={18} aria-hidden="true" />{t('sales.new_invoice')}
+            </button>
+          </div>
         </div>
-      )}
-
-      {/* ── list (full-width until an invoice is opened, then side-by-side) ── */}
-      <div className={selectedId ? 'flex flex-col lg:flex-row' : ''} style={{ gap: '16px' }}>
-        {/* LEFT — list */}
-        {/* Below lg the opened invoice replaces the list (it used to open
-            underneath it, off-screen on a phone); Back returns to the list. */}
-        <aside className={`flex-col ${selectedId ? 'hidden lg:flex lg:w-[340px] lg:shrink-0' : 'flex w-full'}`} style={{ gap: '10px' }}>
-          <ListFilters
-            search={search}
-            onSearch={setSearch}
-            searchPlaceholder={t('sales.search_invoices') || 'Search invoice # or customer…'}
-            storageKey="stockbolt.list.invoices.period"
-            onDateFrom={setDateFrom}
-            onDateTo={setDateTo}
-          />
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {['', 'draft', 'confirmed', 'void'].map(s => (
-              <FilterPill key={s} label={s === '' ? t('common.all') : s.charAt(0).toUpperCase() + s.slice(1)} active={statusFilter === s} onClick={() => setStatusFilter(s)} />
-            ))}
-            {/* Z4 — only meaningful on the All view; picking the Void pill
-                is already an explicit request to see them. */}
-            {!statusFilter && (
-              <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided} count={voidedCount} />
-            )}
-          </div>
-          <div className="bg-white" style={{ border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm, maxHeight: '78vh', overflowY: 'auto', overscrollBehavior: 'contain' }}>
-            {isLoading ? (
-              <p style={{ fontSize: '13px', color: theme.inkFaint, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>
-            ) : filtered.length === 0 ? (
-              <p style={{ fontSize: '13px', color: theme.inkFaint, padding: '36px 12px', textAlign: 'center' }}>{t('sales.invoices_empty')}</p>
-            ) : (
-              filtered.map((inv, idx) => {
-                const active = inv.id === selectedId;
-                return (
-                  <button
-                    key={inv.id}
-                    onClick={() => navigate(`/sales/invoices/${inv.id}`)}
-                    className="w-full text-start"
-                    style={{
-                      display: 'block', padding: '10px 12px', cursor: 'pointer',
-                      borderTop: idx === 0 ? 'none' : '1px solid #f1f5f9',
-                      borderLeft: active ? `3px solid ${theme.brand}` : '3px solid transparent',
-                      background: active ? '#f5f3ff' : 'transparent',
-                      transition: 'background-color .12s',
-                    }}
-                    onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = theme.panelHead; }}
-                    onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                      <span className="font-mono" style={{ fontSize: '12px', fontWeight: 600, color: theme.brandSoftText }}>{inv.invoice_number}</span>
-                      <PayBadge status={inv.status} total={Number(inv.total_amount ?? 0)} applied={appliedMap[inv.id] ?? 0} dueDate={formatDate(inv.due_date)} today={today} />
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginTop: '3px' }}>
-                      <span style={{ fontSize: '13px', fontWeight: 500, color: theme.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{customerMap[inv.contact_id] ?? '—'}</span>
-                      <span className="font-mono" style={{ fontSize: '12px', color: theme.inkMuted, whiteSpace: 'nowrap' }}>{inv.currency} {fmt(Number(inv.total_amount))}</span>
-                    </div>
-                    <div style={{ fontSize: '11px', color: theme.inkFaint, marginTop: '2px' }}>{formatDate(inv.date)}</div>
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </aside>
-
-        {/* RIGHT — document preview (only once an invoice is opened).
-            Its own scroll box (overscroll-contain) so scrolling the template
-            moves only this pane, not the whole page or the left list. */}
-        {selectedId && (
-          <div
-            className="min-w-0 flex-1 lg:max-h-[82vh] lg:overflow-y-auto"
-            style={{ overscrollBehavior: 'contain' }}
-          >
-            <Outlet />
+        {!isLoading && allRows.length > 0 && (
+          <div className="sb-inv-stats">
+            <div className="sb-card sb-inv-stat">
+              <span className="sb-info-label">{t('salesOcean.outstanding')}</span>
+              <bdi dir="ltr" className="sb-inv-stat-val">{currency} {fmt(totalOutstanding)}</bdi>
+              <span className="sb-fx-name">{t('salesOcean.confirmed_count', { count: countConfirmed })}</span>
+            </div>
+            <div className="sb-card sb-inv-stat">
+              <span className="sb-info-label">{t('salesOcean.overdue')}</span>
+              <bdi dir="ltr" className="sb-inv-stat-val is-bad">{currency} {fmt(totalOverdue)}</bdi>
+              <span className="sb-fx-name">{t('salesOcean.past_due_count', { count: countOverdue })}</span>
+            </div>
           </div>
         )}
+      </div>
+
+      <div className="sb-body">
+        {/* ── list (full-width until an invoice is opened, then side-by-side) ── */}
+        <div className={selectedId ? 'flex flex-col lg:flex-row' : ''} style={{ gap: '16px' }}>
+          {/* Below lg the opened invoice replaces the list; Back returns to it. */}
+          <aside className={`flex-col ${selectedId ? 'hidden lg:flex lg:w-[340px] lg:shrink-0' : 'flex w-full'}`} style={{ gap: '10px' }}>
+            <div className="sb-inv-filters">
+              <ListFilters
+                search={search}
+                onSearch={setSearch}
+                searchPlaceholder={t('sales.search_invoices') || 'Search invoice # or customer…'}
+                storageKey="stockbolt.list.invoices.period"
+                onDateFrom={setDateFrom}
+                onDateTo={setDateTo}
+              />
+            </div>
+            <div className="sb-chips" style={{ marginTop: 0 }} role="group" aria-label={t('sales.status')}>
+              {['', 'draft', 'confirmed', 'void'].map(s => (
+                <button key={s} type="button" aria-pressed={statusFilter === s} className={`sb-chip ${statusFilter === s ? 'active' : ''}`} onClick={() => setStatusFilter(s)}>
+                  {s === '' ? t('common.all') : t(`docStatus.${s}`)}
+                </button>
+              ))}
+              {/* Z4 — only meaningful on the All view. */}
+              {!statusFilter && (
+                <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided} count={voidedCount} />
+              )}
+            </div>
+            <div className={`sb-card sb-inv-list ${selectedId ? 'is-narrow' : ''}`}>
+              {isLoading ? (
+                <div className="sb-empty">{t('common.loading')}</div>
+              ) : filtered.length === 0 ? (
+                <div className="sb-empty" style={{ textAlign: 'center' }}>{t('sales.invoices_empty')}</div>
+              ) : (
+                filtered.map((inv) => {
+                  const active = inv.id === selectedId;
+                  return (
+                    <button
+                      key={inv.id}
+                      type="button"
+                      onClick={() => navigate(`/sales/invoices/${inv.id}`)}
+                      aria-current={active ? 'true' : undefined}
+                      className={`sb-inv-row ${active ? 'active' : ''}`}
+                    >
+                      <span className="sb-inv-row-top">
+                        <bdi dir="ltr" className="sb-inv-no">{inv.invoice_number}</bdi>
+                        <PayBadge status={inv.status} total={Number(inv.total_amount ?? 0)} applied={appliedMap[inv.id] ?? 0} dueDate={inv.due_date ?? null} today={today} />
+                      </span>
+                      <span className="sb-inv-row-mid">
+                        <span className="sb-dash-ellipsis" style={{ fontWeight: 600 }}>{customerMap[inv.contact_id] ?? '—'}</span>
+                        <bdi dir="ltr" className="sb-inv-amt">{inv.currency} {fmt(Number(inv.total_amount))}</bdi>
+                      </span>
+                      <bdi dir="ltr" className="sb-fx-name" style={{ fontSize: 12 }}>{formatDate(inv.date)}</bdi>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </aside>
+
+          {/* RIGHT — the opened invoice, in its own scroll box. */}
+          {selectedId && (
+            <div className="min-w-0 flex-1 lg:max-h-[82vh] lg:overflow-y-auto" style={{ overscrollBehavior: 'contain' }}>
+              <Outlet />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 /**
  * StatusBadge — Option B multi-color dot-badge system.
  *
@@ -49,9 +50,12 @@ const palette: Record<string, { bg: string; text: string; border: string; dot: s
 const DEFAULT = { bg: '#f4f4f5', text: '#71717a', border: '#d4d4d8', dot: '#a1a1aa' };
 
 export function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation();
   const key = (status ?? '').toLowerCase().replace(/\s+/g, '_');
   const p = palette[key] ?? DEFAULT;
-  const label = p.label ?? (status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' '));
+  // English label stays the fallback; `docStatus.<key>` translates it.
+  const fallback = p.label ?? (status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' '));
+  const label = t(`docStatus.${key}`, { defaultValue: fallback });
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: '5px',

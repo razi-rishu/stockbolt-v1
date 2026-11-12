@@ -5,10 +5,10 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
 import { Pagination, paginate } from '@/ui/pagination';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Plus } from 'lucide-react';
 import { StatusBadge } from '@/ui/status-badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
@@ -26,42 +26,12 @@ function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// ── Shared status-pill primitive (matched to sample) ──────────────────────
-type Tone = { bg: string; text: string; border: string };
-function Pill({ label, tone }: { label: string; tone: Tone }) {
-  return (
-    <span style={{
-      display: 'inline-block',
-      padding: '3px 9px',
-      borderRadius: '999px',
-      fontSize: '11px', fontWeight: 600,
-      textTransform: 'capitalize',
-      background: tone.bg, color: tone.text,
-      border: `1px solid ${tone.border}`,
-    }}>{label}</span>
-  );
-}
-
-function AllocationBadge({ status, alloc }: { status: string; alloc: AllocStatus }) {
-  if (status !== 'confirmed' || !alloc) return null;
-  const map: Record<string, { label: string; tone: Tone }> = {
-    unallocated: { label: 'Advance',       tone: { bg: '#f5f3ff', text: '#6d28d9', border: '#ddd6fe' } },
-    partial:     { label: 'Partial',       tone: { bg: '#fffbeb', text: '#b45309', border: '#fde68a' } },
-    full:        { label: 'Fully applied', tone: { bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' } },
-  };
-  const cfg = map[alloc];
-  if (!cfg) return null;
-  return <span style={{ marginInlineStart: '6px' }}><Pill label={cfg.label} tone={cfg.tone} /></span>;
-}
-
-function ReconciledBadge({ reconciled, status }: { reconciled: boolean; status: string }) {
-  if (!reconciled || status !== 'confirmed') return null;
-  return (
-    <span style={{ marginInlineStart: '6px' }}>
-      <Pill label="Reconciled" tone={{ bg: '#ecfdf5', text: '#059669', border: '#a7f3d0' }} />
-    </span>
-  );
-}
+// Allocation / reconciliation pills — keys translate via salesOcean.*.
+const ALLOC: Record<string, { key: string; tone: string }> = {
+  unallocated: { key: 'alloc_advance', tone: '' },
+  partial:     { key: 'alloc_partial', tone: 'sb-pill-warn' },
+  full:        { key: 'alloc_full',    tone: 'sb-pill-good' },
+};
 
 export default function PaymentsPage() {
   const { t } = useTranslation();
@@ -103,96 +73,53 @@ export default function PaymentsPage() {
 
   const paged = paginate(allPayments as PaymentWithAlloc[], page, PAGE_SIZE);
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        title={t('payments.title')}
-        subtitle={`${allPayments.length} ${allPayments.length === 1 ? 'receipt' : 'receipts'}`}
-        actions={
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <PeriodPicker
-              mode="range" allowAllTime preset={preset} from={from} to={to}
-              onPresetChange={(p) => { setPreset(p); setPage(1); }}
-              onCustomRange={(f, tt) => { setCustomRange(f, tt); setPage(1); }}
-            />
-            <VoidedToggle hideVoided={hideVoided} onChange={(v) => { setHideVoided(v); setPage(1); }} count={paymentsVoidedCount} />
-            <Button size="sm" onClick={() => navigate('/sales/payments/new')}>
-              + {t('payments.new_payment')}
-            </Button>
-          </div>
-        }
-      />
+  const columns: Column<PaymentWithAlloc>[] = [
+    { key: 'no', header: t('payments.payment_number'), render: (p) => <bdi dir="ltr" className="sb-inv-no">{p.payment_number}</bdi> },
+    { key: 'cust', header: t('sales.customer'), render: (p) => <span style={{ fontWeight: 600 }}>{customerMap[p.contact_id] ?? '—'}</span> },
+    { key: 'date', header: t('payments.date'), render: (p) => <bdi dir="ltr">{formatDate(p.date)}</bdi> },
+    { key: 'class', header: t('payments.classification'), render: (p) => t(`salesOcean.class_${p.classification}`, { defaultValue: p.classification.replace('_', ' ') }) },
+    { key: 'amt', header: t('payments.amount'), align: 'end', render: (p) => <bdi dir="ltr" className="sb-dash-num">{p.currency} {fmt(Number(p.amount))}</bdi> },
+    {
+      key: 'status', header: '',
+      render: (p) => {
+        const alloc = p.status === 'confirmed' && p.allocation_status ? ALLOC[p.allocation_status] : null;
+        return (
+          <span className="sb-wh-badges">
+            <StatusBadge status={p.status} />
+            {alloc && <span className={`sb-pill ${alloc.tone}`} style={{ marginTop: 0 }}>{t(`salesOcean.${alloc.key}`)}</span>}
+            {p.status === 'confirmed' && reconciledSet.has(p.id) && <span className="sb-pill sb-pill-good" style={{ marginTop: 0 }}>{t('salesOcean.reconciled')}</span>}
+          </span>
+        );
+      },
+    },
+  ];
 
+  // Ocean Teal (UI v1.1): look only — same receipts, period, voided toggle,
+  // pills and pagination as before.
+  return (
+    <OceanPage
+      testid="receipts-ocean"
+      title={t('payments.title')}
+      subtitle={t('salesOcean.receipts_count', { count: allPayments.length })}
+      actions={<>
+        <PeriodPicker
+          mode="range" allowAllTime preset={preset} from={from} to={to}
+          onPresetChange={(p) => { setPreset(p); setPage(1); }}
+          onCustomRange={(f, tt) => { setCustomRange(f, tt); setPage(1); }}
+        />
+        <VoidedToggle hideVoided={hideVoided} onChange={(v) => { setHideVoided(v); setPage(1); }} count={paymentsVoidedCount} />
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => navigate('/sales/payments/new')}><Plus size={18} aria-hidden="true" />{t('payments.new_payment')}</button>
+      </>}
+    >
       {isLoading ? (
-        <p style={{ fontSize: '13px', color: theme.inkFaint, padding: '48px 0', textAlign: 'center' }}>{t('common.loading')}</p>
-      ) : allPayments.length === 0 ? (
-        <p style={{ fontSize: '13px', color: theme.inkFaint, padding: '48px 0', textAlign: 'center' }}>{t('payments.empty')}</p>
+        <div className="sb-card sb-empty">{t('common.loading')}</div>
       ) : (
-        <div
-          className="overflow-x-auto bg-white"
-          style={{ border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm }}
-        >
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
-                {[
-                  { l: t('payments.payment_number'), a: 'start' as const },
-                  { l: t('sales.customer'),          a: 'start' as const },
-                  { l: t('payments.date'),           a: 'start' as const },
-                  { l: t('payments.classification'), a: 'start' as const },
-                  { l: t('payments.amount'),         a: 'end'   as const },
-                  { l: t('payments.status'),         a: 'start' as const },
-                ].map(c => (
-                  <th
-                    key={c.l}
-                    className="px-4 py-3"
-                    style={{
-                      fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
-                      textTransform: 'uppercase', letterSpacing: '.06em',
-                      textAlign: c.a, whiteSpace: 'nowrap',
-                    }}
-                  >{c.l}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {paged.map((pmt, idx) => (
-                <tr
-                  key={pmt.id}
-                  onClick={() => navigate(`/sales/payments/${pmt.id}`)}
-                  className="cursor-pointer"
-                  style={{
-                    borderTop: idx === 0 ? 'none' : '1px solid #f1f5f9',
-                    transition: 'background-color .12s',
-                  }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = theme.panelHead; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
-                >
-                  <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>{pmt.payment_number}</td>
-                  <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px', fontWeight: 500 }}>{customerMap[pmt.contact_id] ?? '—'}</td>
-                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(pmt.date)}</td>
-                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px', textTransform: 'capitalize' }}>{pmt.classification.replace('_', ' ')}</td>
-                  <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>
-                    {pmt.currency} {fmt(Number(pmt.amount))}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={pmt.status} />
-                    <AllocationBadge status={pmt.status} alloc={pmt.allocation_status ?? null} />
-                    <ReconciledBadge status={pmt.status} reconciled={reconciledSet.has(pmt.id)} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <Pagination
-            page={page}
-            pageSize={PAGE_SIZE}
-            total={allPayments.length}
-            onChange={setPage}
-            className="border-t"
-          />
-        </div>
+        <>
+          <OceanTable columns={columns} rows={paged} keyFn={(p) => p.id} cardTitleKey="cust"
+            onRowClick={(p) => navigate(`/sales/payments/${p.id}`)} rowMuted={(p) => p.status === 'void'} emptyMessage={t('payments.empty')} />
+          {allPayments.length > 0 && <Pagination page={page} pageSize={PAGE_SIZE} total={allPayments.length} onChange={setPage} />}
+        </>
       )}
-    </div>
+    </OceanPage>
   );
 }

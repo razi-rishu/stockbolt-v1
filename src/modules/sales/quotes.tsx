@@ -4,9 +4,9 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Plus, ArrowRightLeft } from 'lucide-react';
 import { StatusBadge } from '@/ui/status-badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
@@ -58,99 +58,41 @@ export default function QuotesPage() {
     },
   });
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        title={t('sales.quotes_title')}
-        subtitle={`${quotes.length} ${quotes.length === 1 ? 'quote' : 'quotes'}`}
-        actions={
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-            <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided}
-              count={quotesVoidedCount} />
-            <Button size="sm" onClick={() => navigate('/sales/quotes/new')}>
-              + {t('sales.new_quote')}
-            </Button>
-          </div>
-        }
-      />
+  const columns: Column<SalesQuoteRow>[] = [
+    { key: 'no', header: t('sales.quote_number'), render: (q) => <bdi dir="ltr" className="sb-inv-no">{q.quote_number}</bdi> },
+    { key: 'cust', header: t('sales.customer'), render: (q) => <span style={{ fontWeight: 600 }}>{customerMap[q.contact_id] ?? '—'}</span> },
+    { key: 'date', header: t('sales.date'), render: (q) => <bdi dir="ltr">{formatDate(q.date)}</bdi> },
+    { key: 'exp', header: t('sales.expiry_date'), render: (q) => <bdi dir="ltr">{q.expiry_date ?? '—'}</bdi> },
+    { key: 'amt', header: t('sales.total_amount'), align: 'end', render: (q) => <bdi dir="ltr" className="sb-dash-num">{q.currency} {fmt(Number(q.total_amount))}</bdi> },
+    { key: 'status', header: '', render: (q) => <StatusBadge status={q.status} /> },
+    {
+      key: 'convert', header: '', align: 'end',
+      render: (q) => ['draft', 'sent', 'accepted'].includes(q.status) && (
+        <button type="button" className="sb-row-link text-brand-600" disabled={convertMutation.isPending}
+          onClick={(e) => { e.stopPropagation(); convertMutation.mutate(q.id); }}>
+          <ArrowRightLeft size={15} aria-hidden="true" />{t('sales.convert_to_invoice')}
+        </button>
+      ),
+    },
+  ];
 
-      {isLoading ? (
-        <p style={{ fontSize: '13px', color: theme.inkFaint, padding: '48px 0', textAlign: 'center' }}>{t('common.loading')}</p>
-      ) : quotes.length === 0 ? (
-        <p style={{ fontSize: '13px', color: theme.inkFaint, padding: '48px 0', textAlign: 'center' }}>{t('sales.quotes_empty')}</p>
-      ) : (
-        <div
-          className="overflow-x-auto bg-white"
-          style={{ border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm }}
-        >
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
-                {[
-                  { l: t('sales.quote_number'),  a: 'start' as const },
-                  { l: t('sales.customer'),      a: 'start' as const },
-                  { l: t('sales.date'),          a: 'start' as const },
-                  { l: t('sales.expiry_date'),   a: 'start' as const },
-                  { l: t('sales.total_amount'),  a: 'end'   as const },
-                  { l: t('sales.status'),        a: 'start' as const },
-                  { l: '',                       a: 'end'   as const },
-                ].map((c, i) => (
-                  <th
-                    key={i}
-                    className="px-4 py-3"
-                    style={{
-                      fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
-                      textTransform: 'uppercase', letterSpacing: '.06em',
-                      textAlign: c.a, whiteSpace: 'nowrap',
-                    }}
-                  >{c.l}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {(quotes as SalesQuoteRow[]).map((q, idx) => (
-                <tr
-                  key={q.id}
-                  style={{
-                    borderTop: idx === 0 ? 'none' : '1px solid #f1f5f9',
-                    transition: 'background-color .12s',
-                  }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = theme.panelHead; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
-                >
-                  <td
-                    className="px-4 py-3 font-mono cursor-pointer"
-                    style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}
-                    onClick={() => navigate(`/sales/quotes/${q.id}`)}
-                  >
-                    {q.quote_number}
-                  </td>
-                  <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px', fontWeight: 500 }}>{customerMap[q.contact_id] ?? '—'}</td>
-                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(q.date)}</td>
-                  <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{q.expiry_date ?? '—'}</td>
-                  <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>
-                    {q.currency} {fmt(Number(q.total_amount))}
-                  </td>
-                  <td className="px-4 py-3"><StatusBadge status={q.status} /></td>
-                  <td className="px-4 py-3" style={{ textAlign: 'end' }}>
-                    {['draft','sent','accepted'].includes(q.status) && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => convertMutation.mutate(q.id)}
-                        disabled={convertMutation.isPending}
-                      >
-                        {t('sales.convert_to_invoice')}
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+  // Ocean Teal (UI v1.1): look only — same quotes, period, voided toggle and
+  // convert-to-invoice as before.
+  return (
+    <OceanPage
+      testid="quotes-ocean"
+      title={t('sales.quotes_title')}
+      subtitle={t('salesOcean.quotes_count', { count: quotes.length })}
+      actions={<>
+        <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided} count={quotesVoidedCount} />
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => navigate('/sales/quotes/new')}><Plus size={18} aria-hidden="true" />{t('sales.new_quote')}</button>
+      </>}
+    >
+      {isLoading
+        ? <div className="sb-card sb-empty">{t('common.loading')}</div>
+        : <OceanTable columns={columns} rows={quotes as SalesQuoteRow[]} keyFn={(q) => q.id} cardTitleKey="cust"
+            onRowClick={(q) => navigate(`/sales/quotes/${q.id}`)} rowMuted={(q) => q.status === 'void'} emptyMessage={t('sales.quotes_empty')} />}
+    </OceanPage>
   );
 }
