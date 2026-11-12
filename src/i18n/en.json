@@ -3351,5 +3351,15 @@
   },
   "dnOcean": {
     "returnable_title": "{{qty}} still returnable on this bill line"
+  },
+  "prodOcean": {
+    "items_count": "Items: {{count}}",
+    "stock_link_title": "View this product's stock movements",
+    "now": "now",
+    "oe": "OE:"
+  },
+  "navOcean": {
+    "catalog": "Catalog",
+    "stock": "Stock"
   }
 }

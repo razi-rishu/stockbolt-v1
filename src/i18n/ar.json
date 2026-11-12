@@ -3351,5 +3351,15 @@
   },
   "dnOcean": {
     "returnable_title": "المتبقي القابل للإرجاع على سطر الفاتورة هذا: {{qty}}"
+  },
+  "prodOcean": {
+    "items_count": "الأصناف: {{count}}",
+    "stock_link_title": "عرض حركات مخزون هذا المنتج",
+    "now": "الآن",
+    "oe": "رقم OE:"
+  },
+  "navOcean": {
+    "catalog": "الكتالوج",
+    "stock": "المخزون"
   }
 }

@@ -177,7 +177,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
       perm: 'inventory.read',
       groups: [
         {
-          label: 'Catalog',
+          label: t('navOcean.catalog'),
           items: [
             { to: '/products', label: t('nav.all_products') },
             { to: '/products/categories', label: t('nav.categories') },
@@ -185,7 +185,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
           ],
         },
         {
-          label: 'Stock',
+          label: t('navOcean.stock'),
           items: [
             { to: '/inventory/transfers', label: t('inventory.transfers_title') },
             { to: '/inventory/adjustments', label: t('inventory.adjustments_title') },

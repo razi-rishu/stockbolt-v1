@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Badge } from '@/ui/badge';
+import { OceanPage } from '@/components/ocean-list';
 import type {
   ProductRow,
   VehicleMakeRow,
@@ -14,12 +14,12 @@ import type {
   VehicleEngineRow,
 } from '@/data/adapter';
 
-const QUALITY_VARIANT: Record<string, 'brand' | 'success' | 'warning' | 'muted'> = {
-  genuine: 'brand', oem: 'success', premium: 'warning', economy: 'muted',
+// Quality tier pills — Ocean tones, same tiers as the Products list.
+const QUALITY_TONE: Record<string, string> = {
+  genuine: '', oem: 'sb-pill-good', premium: 'sb-pill-warn', economy: 'sb-pill-muted',
 };
 
-const selectCls =
-  'h-10 rounded-input border border-border-strong bg-surface-subtle px-4 text-sm focus:border-brand-500 focus:outline-none disabled:opacity-50';
+const selectCls = 'sb-pc-select';
 
 /**
  * Parts Catalog — cascading vehicle filter (Phase 32 / catalog C5).
@@ -80,16 +80,19 @@ export default function PartsCatalogPage() {
   function variantLabel(v: VehicleVariantRow) {
     const eng = engines.find((e) => e.id === v.engine_id);
     const base = v.label || [eng?.engine_code, v.fuel_type, v.transmission].filter(Boolean).join(' · ') || t('parts_catalog.variant');
-    const yr = (v.year_from || v.year_to) ? ` (${v.year_from ?? '…'}–${v.year_to ?? 'now'})` : '';
+    const yr = (v.year_from || v.year_to) ? ` (${v.year_from ?? '…'}–${v.year_to ?? t('prodOcean.now')})` : '';
     return base + yr;
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-bold text-ink-primary">{t('parts_catalog.title')}</h1>
-
-      {/* Cascading vehicle filter */}
-      <div className="flex flex-wrap gap-3">
+    // Ocean Teal (UI v1.1): look only — same cascading filter and results.
+    <OceanPage
+      testid="parts-catalog-ocean"
+      title={t('parts_catalog.title')}
+      subtitle={modelId && !isFetching ? t('prodOcean.items_count', { count: products.length }) : undefined}
+      below={
+      /* Cascading vehicle filter */
+      <div className="sb-pc-filters">
         <select value={makeId} onChange={(e) => { setMakeId(e.target.value); setModelId(''); setGenId(''); setVarId(''); }} className={selectCls}>
           <option value="">{t('parts_catalog.select_make')}</option>
           {makes.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -102,7 +105,7 @@ export default function PartsCatalogPage() {
 
         <select value={genId} onChange={(e) => { setGenId(e.target.value); setVarId(''); }} disabled={!modelId} className={selectCls}>
           <option value="">{t('parts_catalog.all_generations')}</option>
-          {generations.map((g) => <option key={g.id} value={g.id}>{g.name}{(g.year_from || g.year_to) ? ` (${g.year_from ?? '…'}–${g.year_to ?? 'now'})` : ''}</option>)}
+          {generations.map((g) => <option key={g.id} value={g.id}>{g.name}{(g.year_from || g.year_to) ? ` (${g.year_from ?? '…'}–${g.year_to ?? t('prodOcean.now')})` : ''}</option>)}
         </select>
 
         <select value={varId} onChange={(e) => setVarId(e.target.value)} disabled={!genId} className={selectCls}>
@@ -118,21 +121,23 @@ export default function PartsCatalogPage() {
           min={1970}
           max={new Date().getFullYear() + 2}
           disabled={!modelId}
-          className={`${selectCls} w-28`}
+          className={`${selectCls} sb-pc-year`}
         />
       </div>
+      }
+    >
 
       {/* Results */}
       {!modelId && (
-        <p className="py-12 text-center text-ink-tertiary">{t('parts_catalog.select_make_hint')}</p>
+        <div className="sb-card sb-empty" style={{ textAlign: 'center' }}>{t('parts_catalog.select_make_hint')}</div>
       )}
 
       {modelId && isFetching && (
-        <div className="py-12 text-center text-ink-tertiary">{t('common.loading')}</div>
+        <div className="sb-card sb-empty" style={{ textAlign: 'center' }}>{t('common.loading')}</div>
       )}
 
       {modelId && !isFetching && products.length === 0 && (
-        <p className="py-12 text-center text-ink-tertiary">{t('parts_catalog.no_results')}</p>
+        <div className="sb-card sb-empty" style={{ textAlign: 'center' }}>{t('parts_catalog.no_results')}</div>
       )}
 
       {products.length > 0 && (
@@ -141,30 +146,31 @@ export default function PartsCatalogPage() {
             <button
               key={p.id}
               onClick={() => navigate(`/products/${p.id}`)}
-              className="flex flex-col gap-2 rounded-card border border-border-subtle bg-surface-card p-4 text-start transition-shadow hover:shadow-card"
+              type="button"
+              className="sb-card sb-pc-card"
             >
               <div className="flex items-start justify-between gap-2">
-                <span className="font-mono text-xs font-medium text-ink-secondary">{p.sku}</span>
+                <bdi dir="ltr" className="sb-inv-no">{p.sku}</bdi>
                 {p.quality_tier && (
-                  <Badge variant={QUALITY_VARIANT[p.quality_tier] ?? 'muted'}>
+                  <span className={`sb-pill ${QUALITY_TONE[p.quality_tier] ?? 'sb-pill-muted'}`} style={{ marginTop: 0 }}>
                     {t(`products.quality_${p.quality_tier}`)}
-                  </Badge>
+                  </span>
                 )}
               </div>
               <div>
-                <div className="font-medium text-ink-primary">{p.name}</div>
+                <div style={{ fontWeight: 700, color: 'var(--sb-text)' }}>{p.name}</div>
                 {p.name_ar && <div className="text-xs text-ink-tertiary" dir="rtl">{p.name_ar}</div>}
               </div>
               {p.oe_number && (
-                <span className="font-mono text-xs text-ink-tertiary">OE: {p.oe_number}</span>
+                <span className="sb-fx-name" style={{ fontSize: 12 }}>{t('prodOcean.oe')} <bdi dir="ltr" style={{ fontFamily: 'ui-monospace, monospace' }}>{p.oe_number}</bdi></span>
               )}
-              <div className="mt-auto pt-1 font-semibold text-ink-primary">
+              <bdi dir="ltr" className="sb-dash-num" style={{ marginTop: 'auto', paddingTop: 4, fontSize: 16, textAlign: 'start' }}>
                 {Number(p.selling_price).toFixed(2)}
-              </div>
+              </bdi>
             </button>
           ))}
         </div>
       )}
-    </div>
+    </OceanPage>
   );
 }

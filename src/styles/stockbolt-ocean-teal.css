@@ -1510,3 +1510,11 @@
 .sb-ocean .sb-exp-switch:checked { background: var(--sb-primary); }
 .sb-ocean .sb-exp-switch:checked::after { inset-inline-start: 21px; }
 .sb-ocean .sb-exp-switch:focus-visible { outline: 2px solid var(--sb-primary); outline-offset: 2px; }
+
+/* ── Products list + parts catalog ─────────────────────────────────────── */
+.sb-ocean .sb-pc-filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr)); gap: 10px; margin-top: 14px; }
+.sb-ocean .sb-pc-select { height: 42px; width: 100%; min-width: 0; padding: 0 12px; border: 1px solid var(--sb-border); border-radius: 12px; background: #fff; font-size: 14px; color: var(--sb-text); }
+.sb-ocean .sb-pc-select:focus { outline: none; border-color: var(--sb-primary); box-shadow: 0 0 0 3px rgba(0, 143, 135, .15); }
+.sb-ocean .sb-pc-select:disabled { opacity: .55; background: var(--sb-background); }
+.sb-ocean .sb-pc-card { display: flex; flex-direction: column; gap: 8px; padding: 14px; text-align: start; cursor: pointer; transition: transform .15s, box-shadow .15s, border-color .15s; }
+.sb-ocean .sb-pc-card:hover { transform: translateY(-2px); border-color: var(--sb-primary-light); box-shadow: 0 10px 24px rgba(0, 143, 135, .12); }
