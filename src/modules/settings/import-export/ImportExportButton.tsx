@@ -11,6 +11,7 @@
  *   - chip:    smaller text, no border — useful in dense list toolbars
  */
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/ui/button';
 
 interface Props {
@@ -29,6 +30,7 @@ export default function ImportExportButton({
   moduleKey, label, size = 'sm', variant = 'ghost',
 }: Props) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const onClick = () => {
     const url = moduleKey
       ? `/settings/import-export?module=${encodeURIComponent(moduleKey)}`
@@ -40,9 +42,9 @@ export default function ImportExportButton({
       size={size}
       variant={variant}
       onClick={onClick}
-      title="Bulk export to CSV / Excel, download a template, or import a file"
+      title={t('settingsPages.io.button_title')}
     >
-      ⤓ {label ?? 'Import / Export'}
+      ⤓ {label ?? t('settingsPages.io.button')}
     </Button>
   );
 }

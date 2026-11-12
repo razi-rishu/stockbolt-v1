@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
 import { Modal } from '@/ui/modal';
 import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
@@ -113,6 +115,9 @@ import {
 
 export default function ChartOfAccountsPage() {
   const { t } = useTranslation();
+  // English labels in FLAT_TYPES stay as the fallback text.
+  const ftGroup = (ft: FlatTypeMeta) => t(`settingsPages.coa.group.${ft.value}`, { defaultValue: ft.group });
+  const ftLabel = (ft: FlatTypeMeta | undefined) => (ft ? t(`settingsPages.coa.type.${ft.value}`, { defaultValue: ft.label }) : '');
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
   const companyCurrency = useCompanyCurrency();    // Phase 14.14m — default for bank quick-create
@@ -135,15 +140,22 @@ export default function ChartOfAccountsPage() {
   // silently no-op when an optional field is undefined / required field empty.
   const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('chart-of-accounts');
 
+  // Bank quick-create fields. Every reset() must include them: a reset with
+  // partial values becomes the form's new defaults, and the schema rejects
+  // the missing bank fields — which blocked "Add account" after any Edit or
+  // Cancel until the page was reloaded.
+  const BANK_DEFAULTS = {
+    also_bank_account: false,
+    bank_account_type: 'bank' as const,
+    bank_account_number: '', bank_name: '', bank_iban: '',
+    bank_swift: '', bank_branch: '', bank_currency: companyCurrency,
+  };
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
     defaultValues: {
       code: '', name: '', name_ar: '', flat_type: 'current_asset',
       sub_type_extra: '', parent_id: null,
-      also_bank_account: false,
-      bank_account_type: 'bank',
-      bank_account_number: '', bank_name: '', bank_iban: '',
-      bank_swift: '', bank_branch: '', bank_currency: companyCurrency,
+      ...BANK_DEFAULTS,
     },
   });
 
@@ -389,6 +401,7 @@ export default function ChartOfAccountsPage() {
       flat_type: meta.value,
       sub_type_extra: meta.type === 'equity' ? (a.sub_type ?? '') : '',
       parent_id: a.parent_id ?? null,
+      ...BANK_DEFAULTS,
     });
     setOpen(true);
   }
@@ -396,7 +409,7 @@ export default function ChartOfAccountsPage() {
   function closeModal() {
     setOpen(false);
     setEditing(null);
-    reset({ code: '', name: '', name_ar: '', flat_type: 'current_asset', sub_type_extra: '', parent_id: null });
+    reset({ code: '', name: '', name_ar: '', flat_type: 'current_asset', sub_type_extra: '', parent_id: null, ...BANK_DEFAULTS });
   }
 
   // Group accounts by flat type (each account decoded from its (type, sub_type) tuple)
@@ -445,151 +458,106 @@ export default function ChartOfAccountsPage() {
     grouped[ft.value] = out;
   }
 
+  const columns: Column<CoaRow>[] = [
+    {
+      key: 'code', header: t('accounting.code'), width: '120px',
+      render: (a) => {
+        // Phase 14.13 — indent child accounts visually so the hierarchy reads at a glance.
+        const depth = depthById.get(a.id) ?? 0;
+        return (
+          <bdi dir="ltr" className="sb-mono">
+            {depth > 0 && <span aria-hidden style={{ display: 'inline-block', width: `${depth * 16}px`, color: 'var(--sb-text-secondary)' }}>└</span>}
+            {a.code}
+          </bdi>
+        );
+      },
+    },
+    {
+      key: 'name', header: t('accounting.account_name'),
+      // Phase 14.10b — the name in the UI language; English when no Arabic name exists.
+      render: (a) => (document.documentElement.dir === 'rtl' && a.name_ar ? <span dir="rtl">{a.name_ar}</span> : a.name),
+    },
+    { key: 'sub', header: t('accounting.sub_type'), render: (a) => (a.sub_type ? t(`settingsPages.coa.sub.${a.sub_type}`, { defaultValue: a.sub_type }) : '—') },
+    {
+      key: 'flags', header: '',
+      render: (a) => (
+        <span className="sb-wh-badges">
+          {a.is_system && <span className="sb-pill sb-pill-muted">{t('accounting.system')}</span>}
+          {a.is_active === false && <span className="sb-pill sb-pill-warn">{t('common.inactive')}</span>}
+        </span>
+      ),
+    },
+    {
+      key: 'actions', header: '', align: 'end',
+      render: (a) => {
+        const inactive = a.is_active === false;
+        return (
+          <span className="sb-users-actions">
+            <button type="button" onClick={() => startEdit(a)} className="sb-row-link text-brand-600">{t('common.edit')}</button>
+            {!a.is_system && (inactive ? (
+              <button type="button" className="sb-row-link text-brand-600" disabled={activateMutation.isPending}
+                onClick={() => { setActionError(null); activateMutation.mutate(a.id); }}>{t('settingsPages.coa.activate')}</button>
+            ) : (
+              <button type="button" className="sb-row-link text-danger-500" disabled={deactivateMutation.isPending}
+                onClick={() => {
+                  if (!window.confirm(t('settingsPages.coa.confirm_deactivate', { code: a.code, name: a.name }))) return;
+                  setActionError(null);
+                  deactivateMutation.mutate(a.id);
+                }}>{t('settingsPages.coa.deactivate')}</button>
+            ))}
+          </span>
+        );
+      },
+    },
+  ];
+
+  // Ocean Teal (UI v1.1): look only — same accounts, grouping, hierarchy,
+  // show-inactive filter, add / edit / activate / deactivate as before.
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">{t('accounting.coa_title')}</h1>
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-1.5 text-xs text-ink-secondary cursor-pointer select-none">
-            <input
-              type="checkbox" className="h-3.5 w-3.5"
-              checked={showInactive}
-              onChange={(e) => setShowInactive(e.target.checked)}
-            />
-            <span>Show inactive</span>
-          </label>
-          <ImportExportButton moduleKey="coa" />
-          <Button size="sm" onClick={() => { setEditing(null); reset(); setActionError(null); setOpen(true); }}>
-            {t('accounting.add_account')}
-          </Button>
-        </div>
-      </div>
-      {actionError && (
-        <div className="rounded-card border border-red-300 bg-red-50 px-4 py-2.5 text-sm text-red-700">
-          {actionError}
-        </div>
-      )}
+    <OceanPage
+      testid="coa-ocean"
+      title={t('settingsNav.items.chart_of_accounts.title')}
+      subtitle={t('settingsNav.items.chart_of_accounts.desc')}
+      actions={<>
+        <span className="sb-clist-io"><ImportExportButton moduleKey="coa" /></span>
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => { setEditing(null); reset(); setActionError(null); setOpen(true); }}>
+          <Plus size={18} aria-hidden="true" />{t('accounting.add_account')}
+        </button>
+      </>}
+      below={
+        <label className="sb-check-row" style={{ marginTop: 14, display: 'inline-flex' }}>
+          <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+          <span className="sb-check-text">{t('settingsPages.coa.show_inactive')}</span>
+        </label>
+      }
+    >
+      {actionError && <p className="sb-alert sb-alert-danger" role="alert">{actionError}</p>}
 
       {isLoading ? (
-        <p className="text-sm text-ink-secondary">{t('common.loading')}</p>
+        <div className="sb-card sb-empty">{t('common.loading')}</div>
       ) : (
-        <div className="space-y-4">
-          {FLAT_TYPES.map((ft) => (
-            <div key={ft.value} className="rounded-card border border-border-subtle bg-surface-card">
-              <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-3">
-                <span className={`rounded-pill px-2 py-0.5 text-xs font-medium ${ft.pill}`}>
-                  {ft.group}
-                </span>
-                <span className="text-xs text-ink-tertiary">({grouped[ft.value].length})</span>
-              </div>
-              {grouped[ft.value].length === 0 ? (
-                <p className="px-4 py-3 text-sm text-ink-tertiary">{t('accounting.no_accounts')}</p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
-                      <th className="px-4 py-2 text-start font-medium w-[110px]">{t('accounting.code')}</th>
-                      <th className="px-4 py-2 text-start font-medium">{t('accounting.account_name')}</th>
-                      <th className="px-4 py-2 text-start font-medium w-[140px]">{t('accounting.sub_type')}</th>
-                      <th className="px-4 py-2 text-start font-medium w-[100px]">{t('accounting.system')}</th>
-                      <th className="px-4 py-2 text-end font-medium w-[160px]">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {grouped[ft.value].map((a) => {
-                      const inactive = a.is_active === false;
-                      return (
-                        <tr key={a.id}
-                            className="border-b border-border-subtle last:border-0 hover:bg-surface-muted/50"
-                            style={{ opacity: inactive ? 0.5 : 1 }}>
-                          <td className="px-4 py-2.5 font-mono text-xs text-ink-primary">
-                            {/* Phase 14.13 — indent child accounts visually so the hierarchy reads at a glance. */}
-                            {(() => {
-                              const depth = depthById.get(a.id) ?? 0;
-                              if (depth === 0) return a.code;
-                              return (
-                                <span>
-                                  <span
-                                    aria-hidden
-                                    style={{ display: 'inline-block', width: `${depth * 16}px`, color: '#94A3B8' }}
-                                  >{'└'.padStart(1, ' ')}</span>
-                                  {a.code}
-                                </span>
-                              );
-                            })()}
-                          </td>
-                          <td className="px-4 py-2.5 text-ink-primary">
-                            {/* Phase 14.10b — render the name in whichever
-                                 language the UI is set to (i18next `dir`
-                                 flips when the user toggles عربي). Falls
-                                 back to the English name when the Arabic
-                                 translation is missing. Previously this
-                                 cell ALWAYS appended the Arabic name in
-                                 parens after the English one, which
-                                 leaked Arabic into the English view. */}
-                            {document.documentElement.dir === 'rtl' && a.name_ar
-                              ? <span dir="rtl">{a.name_ar}</span>
-                              : a.name}
-                          </td>
-                          <td className="px-4 py-2.5 text-ink-secondary">{a.sub_type ?? '—'}</td>
-                          <td className="px-4 py-2.5">
-                            {a.is_system && (
-                              <span className="rounded-pill bg-surface-muted px-1.5 py-0.5 text-xs text-ink-tertiary">
-                                {t('accounting.system')}
-                              </span>
-                            )}
-                            {inactive && (
-                              <span className="ms-1 rounded-pill bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">
-                                Inactive
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-2.5 text-end">
-                            <div className="inline-flex gap-3 text-xs">
-                              <button
-                                type="button"
-                                onClick={() => startEdit(a)}
-                                className="text-brand-600 hover:text-brand-700 font-medium"
-                              >Edit</button>
-                              {!a.is_system && (
-                                inactive ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => { setActionError(null); activateMutation.mutate(a.id); }}
-                                    className="text-emerald-600 hover:text-emerald-700 font-medium"
-                                    disabled={activateMutation.isPending}
-                                  >Activate</button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      if (!window.confirm(`Deactivate ${a.code} ${a.name}?\nIt will be hidden from pickers but kept for audit history.`)) return;
-                                      setActionError(null);
-                                      deactivateMutation.mutate(a.id);
-                                    }}
-                                    className="text-red-600 hover:text-red-700 font-medium"
-                                    disabled={deactivateMutation.isPending}
-                                  >Deactivate</button>
-                                )
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
+        FLAT_TYPES.map((ft) => (
+          <section key={ft.value} className="sb-section-card">
+            <div className="sb-users-head">
+              <h2 className="sb-form-title">{ftGroup(ft)} <span className="sb-tab-count">{grouped[ft.value].length}</span></h2>
             </div>
-          ))}
-        </div>
+            <OceanTable
+              columns={columns}
+              rows={grouped[ft.value]}
+              keyFn={(a) => a.id}
+              cardTitleKey="name"
+              rowMuted={(a) => a.is_active === false}
+              emptyMessage={t('accounting.no_accounts')}
+            />
+          </section>
+        ))
       )}
 
       <Modal
         open={open}
         onClose={closeModal}
         title={editing
-          ? `Edit account ${editing.code} ${editing.name}`
+          ? t('settingsPages.coa.edit_title', { code: editing.code, name: editing.name })
           : t('accounting.add_account')}
       >
         <form
@@ -597,58 +565,55 @@ export default function ChartOfAccountsPage() {
             clearBanner();
             (editing ? editMutation : createMutation).mutate(v as FormValues);
           }, onInvalid)}
-          className="space-y-4"
+          className="sb-ocean sb-form sb-modal-form"
         >
           <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           {/* Phase 14.10 — banner explaining what's locked on system accounts. */}
           {editing?.is_system && (
-            <div className="rounded-card border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              <strong>System account.</strong> Code and type are locked because built-in
-              postings (invoices, payments, GRNs) reference this account by code. You can
-              still rename it in English / Arabic to match your local terminology.
-            </div>
+            <p className="sb-alert sb-alert-warn" style={{ fontWeight: 400 }}>
+              <strong>{t('settingsPages.coa.system_title')}</strong> {t('settingsPages.coa.system_body')}
+            </p>
           )}
           {/* Phase 14.13f — permanence hint. Tell the operator, BEFORE they
                type anything, whether what they're about to add survives a
                company-data reset. Seed (system) accounts always survive.
                Custom accounts are cleared on reset. */}
           {!editing && (
-            <div className="rounded-card border border-border-subtle bg-surface-muted px-3 py-2 text-xs text-ink-secondary">
-              <strong>Cleared on Reset Company Data.</strong> Custom accounts you add here are wiped
-              by Settings → Reset Company Data. The seeded system accounts (e.g. 1100, 1110, 1200)
-              always survive.
-            </div>
+            <p className="sb-info-note">
+              <strong>{t('settingsPages.coa.reset_title')}</strong> {t('settingsPages.coa.reset_body')}
+            </p>
           )}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="sb-form-grid">
             <div>
-              <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.code')}</label>
+              <label className="sb-flabel">{t('accounting.code')}</label>
               <Input
                 {...register('code')}
-                placeholder="e.g. 1700"
+                dir="ltr"
+                placeholder={t('settingsPages.coa.code_ph')}
                 disabled={editing?.is_system === true}
               />
-              {errors.code && <p className="mt-1 text-xs text-red-500">{errors.code.message}</p>}
+              {errors.code && <p className="sb-form-hint" style={{ color: 'var(--sb-danger)' }}>{errors.code.message}</p>}
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.type')}</label>
+              <label className="sb-flabel">{t('accounting.type')}</label>
               <select
                 {...register('flat_type')}
                 disabled={editing?.is_system === true}
-                className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-surface-muted disabled:text-ink-tertiary"
+                className="sb-field sb-print-input"
               >
                 {FLAT_TYPES.map((ft) => (
-                  <option key={ft.value} value={ft.value}>{ft.label}</option>
+                  <option key={ft.value} value={ft.value}>{ftLabel(ft)}</option>
                 ))}
               </select>
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.account_name')}</label>
+            <label className="sb-flabel">{t('accounting.account_name')}</label>
             <Input {...register('name')} placeholder={t('accounting.account_name')} />
-            {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name.message}</p>}
+            {errors.name && <p className="sb-form-hint" style={{ color: 'var(--sb-danger)' }}>{errors.name.message}</p>}
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.account_name_ar')}</label>
+            <label className="sb-flabel">{t('accounting.account_name_ar')}</label>
             <Input {...register('name_ar')} dir="rtl" />
           </div>
           {/* Phase 14.13 — parent picker. Nest sub-accounts (e.g. specific
@@ -658,15 +623,15 @@ export default function ChartOfAccountsPage() {
                descendants of the row being edited are filtered out so a
                cycle is impossible. Empty = top-level account. */}
           <div>
-            <label className="mb-1 block text-xs font-medium text-ink-secondary">
-              Parent account <span className="text-ink-tertiary">(optional — leave blank for a top-level account)</span>
+            <label className="sb-flabel">
+              {t('settingsPages.coa.parent')} <span style={{ fontWeight: 400 }}>{t('settingsPages.coa.parent_hint')}</span>
             </label>
             <select
               {...register('parent_id', { setValueAs: (v) => v === '' ? null : v })}
-              className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-surface-muted disabled:text-ink-tertiary"
+              className="sb-field sb-print-input"
               disabled={editing?.is_system === true}
             >
-              <option value="">— Top-level —</option>
+              <option value="">{t('settingsPages.coa.top_level')}</option>
               {eligibleParents.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.code} — {p.name}
@@ -674,8 +639,8 @@ export default function ChartOfAccountsPage() {
               ))}
             </select>
             {eligibleParents.length === 0 && (
-              <p className="mt-1 text-xs text-ink-tertiary">
-                No eligible parents yet for {flatTypeMeta?.label}. Add a top-level account of this type first.
+              <p className="sb-form-hint" style={{ marginTop: 6 }}>
+                {t('settingsPages.coa.no_parents', { type: ftLabel(flatTypeMeta) })}
               </p>
             )}
           </div>
@@ -685,36 +650,30 @@ export default function ChartOfAccountsPage() {
                 this, the new sub-CoA would not show up in payment / expense
                 pickers (those read bank_accounts, not chart_of_accounts). */}
           {parentIsBankOrCash && !editing && (
-            <div className="rounded-card border border-brand-200 bg-brand-50/40 p-3">
-              <label className="flex items-start gap-2 text-sm text-ink-primary">
+            <div className="sb-hw-test">
+              <label className="sb-check-row">
                 <input
                   type="checkbox"
-                  className="mt-0.5"
                   {...register('also_bank_account')}
                 />
-                <span>
-                  <span className="font-medium">
-                    Also add this as a {inferredBankType === 'cash' ? 'cash drawer' : 'bank'} account
-                  </span>
-                  <span className="mt-0.5 block text-xs text-ink-secondary">
-                    Creates a matching row in Settings → Bank Accounts so it
-                    appears in payment, expense, and bank-transfer pickers.
-                  </span>
+                <span className="sb-check-text">
+                  {inferredBankType === 'cash' ? t('settingsPages.coa.also_cash') : t('settingsPages.coa.also_bank')}
+                  <span className="sb-form-hint">{t('settingsPages.coa.also_hint')}</span>
                 </span>
               </label>
 
               {watch('also_bank_account') && (
-                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <label className="mb-1 block text-xs font-medium text-ink-secondary">Account type</label>
-                    <div className="flex items-center gap-4 text-sm">
-                      <label className="flex items-center gap-1">
+                <div className="sb-form-grid" style={{ marginTop: 4 }}>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <span className="sb-flabel">{t('settingsPages.coa.acc_type')}</span>
+                    <div className="sb-hw-papers">
+                      <label className="sb-check-row">
                         <input type="radio" value="bank" {...register('bank_account_type')} />
-                        Bank
+                        <span className="sb-check-text">{t('settingsPages.coa.bank')}</span>
                       </label>
-                      <label className="flex items-center gap-1">
+                      <label className="sb-check-row">
                         <input type="radio" value="cash" {...register('bank_account_type')} />
-                        Cash
+                        <span className="sb-check-text">{t('settingsPages.coa.cash')}</span>
                       </label>
                     </div>
                   </div>
@@ -722,33 +681,33 @@ export default function ChartOfAccountsPage() {
                   {watch('bank_account_type') !== 'cash' && (
                     <>
                       <div>
-                        <label className="mb-1 block text-xs font-medium text-ink-secondary">Bank name</label>
-                        <Input {...register('bank_name')} placeholder="e.g. ADCB, IDBI" />
+                        <label className="sb-flabel">{t('settingsPages.coa.bank_name')}</label>
+                        <Input {...register('bank_name')} placeholder={t('settingsPages.coa.bank_name_ph')} />
                       </div>
                       <div>
-                        <label className="mb-1 block text-xs font-medium text-ink-secondary">Account number</label>
-                        <Input {...register('bank_account_number')} placeholder="e.g. 1234567890" />
+                        <label className="sb-flabel">{t('settingsPages.coa.acc_no')}</label>
+                        <Input {...register('bank_account_number')} dir="ltr" placeholder="1234567890" />
                       </div>
                       <div>
-                        <label className="mb-1 block text-xs font-medium text-ink-secondary">IBAN</label>
-                        <Input {...register('bank_iban')} placeholder="AE07 0331 2345 6789 0123 456" />
+                        <label className="sb-flabel">{t('settingsPages.coa.iban')}</label>
+                        <Input {...register('bank_iban')} dir="ltr" placeholder="AE07 0331 2345 6789 0123 456" />
                       </div>
                       <div>
-                        <label className="mb-1 block text-xs font-medium text-ink-secondary">SWIFT / BIC</label>
-                        <Input {...register('bank_swift')} placeholder="ADCBAEAA" />
+                        <label className="sb-flabel">{t('settingsPages.coa.swift')}</label>
+                        <Input {...register('bank_swift')} dir="ltr" placeholder="ADCBAEAA" />
                       </div>
                       <div>
-                        <label className="mb-1 block text-xs font-medium text-ink-secondary">Branch</label>
-                        <Input {...register('bank_branch')} placeholder="e.g. Main branch" />
+                        <label className="sb-flabel">{t('settingsPages.coa.branch')}</label>
+                        <Input {...register('bank_branch')} placeholder={t('settingsPages.coa.branch_ph')} />
                       </div>
                     </>
                   )}
 
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-ink-secondary">Currency</label>
+                    <label className="sb-flabel">{t('settingsPages.coa.currency')}</label>
                     <select
                       {...register('bank_currency')}
-                      className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500"
+                      className="sb-field sb-print-input"
                     >
                       <option value="AED">AED — UAE Dirham</option>
                       <option value="SAR">SAR — Saudi Riyal</option>
@@ -768,32 +727,33 @@ export default function ChartOfAccountsPage() {
           )}
           {showSubTypeExtra && (
             <div>
-              <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.sub_type')} <span className="text-ink-tertiary">(optional)</span></label>
-              <Input {...register('sub_type_extra')} placeholder="e.g. owner, retained, drawings"
+              <label className="sb-flabel">{t('accounting.sub_type')} <span style={{ fontWeight: 400 }}>{t('settingsPages.coa.optional')}</span></label>
+              <Input {...register('sub_type_extra')} placeholder={t('settingsPages.coa.sub_type_ph')}
                      disabled={editing?.is_system === true} />
-              <p className="mt-1 text-xs text-ink-tertiary">Free-text tag for grouping equity accounts.</p>
+              <p className="sb-form-hint" style={{ marginTop: 6 }}>{t('settingsPages.coa.sub_type_hint')}</p>
             </div>
           )}
           {(createMutation.isError || editMutation.isError) && (
-            <p className="text-xs text-red-500">
+            <p className="sb-alert sb-alert-danger" role="alert">
               {String((createMutation.error as Error | undefined)?.message
                     ?? (editMutation.error   as Error | undefined)?.message
                     ?? t('common.error'))}
             </p>
           )}
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="ghost" onClick={closeModal}>{t('common.cancel')}</Button>
-            <Button
+          <div className="sb-form-actions">
+            <button type="button" className="sb-secondary-btn" onClick={closeModal}>{t('common.cancel')}</button>
+            <button
               type="submit"
+              className="sb-primary-btn"
               disabled={isSubmitting || createMutation.isPending || editMutation.isPending}
             >
               {editing
-                ? (editMutation.isPending ? '…' : 'Save changes')
+                ? (editMutation.isPending ? '…' : t('settingsPages.coa.save_changes'))
                 : (createMutation.isPending ? '…' : t('common.save'))}
-            </Button>
+            </button>
           </div>
         </form>
       </Modal>
-    </div>
+    </OceanPage>
   );
 }

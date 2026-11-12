@@ -1155,3 +1155,34 @@
 .sb-ocean .sb-dev-gate { display: flex; align-items: flex-start; gap: 12px; background: var(--sb-primary-soft); border-color: var(--sb-primary-light); }
 .sb-ocean .sb-dev-secret { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px; border-radius: var(--sb-radius-sm); background: var(--sb-background); border: 1px solid var(--sb-border); }
 .sb-ocean .sb-dev-secret code { flex: 1 1 220px; min-width: 0; font-size: 13px; word-break: break-all; color: var(--sb-text); }
+
+/* ── Settings step 6: Chart of accounts, Period lock, Import/Export, Opening balances ── */
+.sb-ocean .sb-flabel { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--sb-text-secondary); }
+.sb-ocean .sb-pill-warn { background: #FEF3C7; color: var(--sb-warning); }
+.sb-ocean .sb-pl-current { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: var(--sb-radius-md); background: var(--sb-background); border: 1px solid var(--sb-border); }
+
+/* Import / Export */
+.sb-ocean .sb-io-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: 10px; }
+.sb-ocean .sb-io-tile, .sb-ocean .sb-io-action {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 14px 16px; text-align: start;
+  border: 1px solid var(--sb-border); border-radius: var(--sb-radius-md); background: #fff; font: inherit; color: var(--sb-text);
+}
+.sb-ocean .sb-io-tile { cursor: pointer; min-height: 96px; }
+.sb-ocean .sb-io-tile:hover { border-color: var(--sb-primary-light); background: var(--sb-primary-soft); }
+.sb-ocean .sb-io-tile.is-on, .sb-ocean .sb-io-action.is-on { border-color: var(--sb-primary); background: var(--sb-primary-soft); box-shadow: 0 0 0 1px var(--sb-primary); }
+.sb-ocean .sb-io-emoji { font-size: 22px; line-height: 1; }
+.sb-ocean .sb-io-name { font-size: 15px; font-weight: 700; }
+.sb-ocean .sb-io-desc { font-size: 13px; color: var(--sb-text-secondary); line-height: 1.45; }
+.sb-ocean .sb-io-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 10px; }
+.sb-ocean .sb-io-action .sb-primary-btn, .sb-ocean .sb-io-action .sb-secondary-btn { margin-top: 6px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-ocean .sb-io-preview-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 16px; border-bottom: 1px solid var(--sb-border); }
+.sb-ocean .sb-io-preview-actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.sb-ocean .sb-io-done { border-color: #BBF7D0; background: #F0FDF4; }
+.sb-ocean .sb-io-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-top: 10px; }
+.sb-ocean .sb-seg button { font: inherit; }
+
+/* Opening balances: the existing wizard sits on Ocean surfaces. */
+.sb-ocean .sb-ob-body { display: flex; flex-direction: column; gap: 20px; }
+.sb-ocean .sb-ob-body .rounded-card { border-radius: var(--sb-radius-lg); }
+.sb-ocean .sb-ob-body .bg-surface-card { box-shadow: var(--sb-shadow); }
+.sb-ocean.sb-olist .rounded-card.border { border-radius: var(--sb-radius-lg); }

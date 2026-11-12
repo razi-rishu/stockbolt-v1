@@ -20,8 +20,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { BackupCard } from './_backup-card';
-import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
+import { useTranslation } from 'react-i18next';
+import { OceanPage } from '@/components/ocean-list';
 import {
   downloadCSV, downloadXLSX, readPickedFile, type RawRow,
 } from './_io';
@@ -184,6 +185,11 @@ export default function ImportExportHub() {
   const [fileName,     setFileName]     = useState<string | null>(null);
   const [previewRows,  setPreviewRows]  = useState<PreviewRow[]>([]);
   const [parseError,   setParseError]   = useState<string | null>(null);
+  const { t } = useTranslation();
+  // Module names / blurbs come from each adapter in English (the fallback);
+  // file column headers are part of the file format and stay as they are.
+  const modLabel = (k: string, fallback: string) => t(`settingsPages.io.mod.${k}.label`, { defaultValue: fallback });
+  const modDesc = (k: string, fallback: string) => t(`settingsPages.io.mod.${k}.desc`, { defaultValue: fallback });
   const [posting,      setPosting]      = useState(false);
   const [applyResult,  setApplyResult]  = useState<ApplyResult | null>(null);
 
@@ -230,13 +236,13 @@ export default function ImportExportHub() {
       return;
     }
     if (result.rows.length === 0) {
-      setParseError('The file contains no data rows. Check that the first row is headers and there is data below.');
+      setParseError(t('settingsPages.io.err_empty'));
       return;
     }
     // Header sanity-check — soft warning if any required headers missing.
     const missing = adapter.headers.filter(h => !result.headers.includes(h)).filter(h => ['sku','name'].includes(h));
     if (missing.length > 0) {
-      setParseError(`Missing required column(s): ${missing.join(', ')}. Download the template for the correct format.`);
+      setParseError(t('settingsPages.io.err_missing', { cols: missing.join(', ') }));
       return;
     }
 
@@ -285,7 +291,7 @@ export default function ImportExportHub() {
       await qc.invalidateQueries({ queryKey: ['products', company_id] });
       await qc.invalidateQueries({ queryKey: ['import_existing', moduleKey, company_id] });
     } catch (e) {
-      setParseError(e instanceof Error ? e.message : 'Apply failed');
+      setParseError(e instanceof Error ? e.message : t('settingsPages.io.err_apply'));
     } finally {
       setPosting(false);
     }
@@ -305,26 +311,22 @@ export default function ImportExportHub() {
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6 pb-16">
-      <div className="flex items-center gap-3">
-        <BackButton to="/settings" label="Settings" />
-        <span className="text-ink-tertiary">/</span>
-        <h1 className="text-xl font-semibold text-ink-primary">Import / Export</h1>
-      </div>
-
-      <div className="rounded-card border border-border-subtle bg-surface-card p-5 text-sm text-ink-secondary">
-        <p>
-          Bulk-load master data from a spreadsheet, or export your current data
-          for backup / reporting. Imports cover <strong className="text-ink-primary">master data only</strong>{' '}
-          (no money posting). For migrating opening balances use the dedicated{' '}
-          <button onClick={() => navigate('/settings/opening-balances')} className="text-brand-600 underline hover:text-brand-700">
-            Opening Balances wizard
+    // Ocean Teal (UI v1.1): look only — same modules, templates, export,
+    // file parsing, validation preview, duplicate policy and import.
+    <OceanPage
+      testid="import-export-ocean"
+      back={<BackButton to="/settings" label={t('settingsNav.title')} />}
+      title={t('settingsNav.items.import_export.title')}
+      subtitle={t('settingsNav.items.import_export.desc')}
+    >
+      <div className="sb-info-note">
+        <p style={{ margin: 0 }}>
+          {t('settingsPages.io.intro')}{' '}
+          <button type="button" onClick={() => navigate('/settings/opening-balances')} className="sb-row-link text-brand-600" style={{ minHeight: 0, padding: 0, textDecoration: 'underline' }}>
+            {t('settingsPages.io.ob_wizard')}
           </button>.
         </p>
-        <p className="mt-2 text-xs text-ink-tertiary">
-          Tip: start by downloading the template, fill it in, then upload — that
-          way the column names and order are already correct.
-        </p>
+        <p style={{ margin: '6px 0 0', fontSize: 13 }}>{t('settingsPages.io.tip')}</p>
       </div>
 
       {/* Module picker */}
@@ -333,83 +335,67 @@ export default function ImportExportHub() {
           is the bigger question, and the wizard reads as the answer to it. */}
       <BackupCard />
 
-      <div className="rounded-card border border-border-subtle bg-surface-card overflow-hidden">
-        <div className="border-b border-border-subtle px-5 py-3">
-          <h2 className="text-sm font-semibold text-ink-primary">Pick a module</h2>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 p-4">
+      <section className="sb-card">
+        <h2 className="sb-form-title" style={{ lineHeight: 1.3, marginBottom: 12 }}>{t('settingsPages.io.pick')}</h2>
+        <div className="sb-io-grid">
           {Object.entries(MODULES).map(([key, entry]) => {
             const isActive = moduleKey === key;
             return (
               <button
                 key={key}
+                type="button"
+                aria-pressed={isActive}
                 onClick={() => { setModuleKey(key); startOver(); }}
-                style={{
-                  border: `1px solid ${isActive ? '#7c3aed' : '#E2E8F0'}`,
-                  background: isActive ? '#f5f3ff' : '#FFF',
-                  borderRadius: '12px',
-                  padding: '14px 16px',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                }}
+                className={`sb-io-tile ${isActive ? 'is-on' : ''}`}
               >
-                <div style={{ fontSize: '22px' }}>{entry.adapter.icon}</div>
-                <div style={{
-                  marginTop: '6px', fontWeight: 600, fontSize: '13.5px',
-                  color: isActive ? '#3730A3' : '#0F172A',
-                }}>{entry.adapter.label}</div>
-                <div style={{ marginTop: '2px', fontSize: '11.5px', color: '#64748B' }}>
-                  {entry.adapter.description}
-                </div>
+                <span className="sb-io-emoji" aria-hidden="true">{entry.adapter.icon}</span>
+                <span className="sb-io-name">{modLabel(key, entry.adapter.label)}</span>
+                <span className="sb-io-desc">{modDesc(key, entry.adapter.description)}</span>
               </button>
             );
           })}
         </div>
-      </div>
+      </section>
 
       {/* Actions for the picked module */}
       {entry && adapter && (
         <>
-          <div className="rounded-card border border-border-subtle bg-surface-card overflow-hidden">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle px-5 py-3">
-              <h2 className="text-sm font-semibold text-ink-primary">
-                {adapter.label} · {existingRows.length} record{existingRows.length === 1 ? '' : 's'} in system
+          <section className="sb-card">
+            <div className="sb-users-head" style={{ marginBottom: 12 }}>
+              <h2 className="sb-form-title" style={{ flex: 1, lineHeight: 1.3 }}>
+                {modLabel(adapter.key, adapter.label)} <span className="sb-tab-count">{t('settingsPages.io.in_system', { count: existingRows.length })}</span>
               </h2>
               {/* Format toggle */}
-              <div className="inline-flex rounded border border-border-strong overflow-hidden text-xs font-semibold">
+              <div className="sb-seg" role="group" aria-label={t('settingsPages.io.format')}>
                 {(['csv','xlsx'] as const).map(f => (
                   <button
                     key={f}
+                    type="button"
+                    aria-pressed={format === f}
+                    className={format === f ? 'active' : ''}
                     onClick={() => setFormat(f)}
-                    style={{
-                      padding: '5px 12px',
-                      background: format === f ? '#f5f3ff' : '#FFF',
-                      color:      format === f ? '#3730A3' : '#64748B',
-                      borderLeft: f === 'xlsx' ? '1px solid #CBD5E1' : undefined,
-                      textTransform: 'uppercase',
-                    }}
-                  >{f}</button>
+                  ><bdi dir="ltr">{f.toUpperCase()}</bdi></button>
                 ))}
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4">
+            <div className="sb-io-actions">
               <ActionCard
-                title="1. Download template"
-                description={`Empty ${format.toUpperCase()} with the right column headers + 1-2 example rows.`}
-                cta={`Download ${format} template`}
+                title={t('settingsPages.io.a1_title')}
+                description={t('settingsPages.io.a1_desc', { format: format.toUpperCase() })}
+                cta={t('settingsPages.io.a1_cta', { format: format.toUpperCase() })}
                 onClick={downloadTemplate}
               />
               <ActionCard
-                title="2. Export current data"
-                description={`Snapshot every ${adapter.label.toLowerCase()} row currently in the system.`}
-                cta={existingRows.length === 0 ? 'No rows to export' : `Export ${existingRows.length} rows`}
+                title={t('settingsPages.io.a2_title')}
+                description={t('settingsPages.io.a2_desc', { module: modLabel(adapter.key, adapter.label) })}
+                cta={existingRows.length === 0 ? t('settingsPages.io.a2_none') : t('settingsPages.io.a2_cta', { count: existingRows.length })}
                 onClick={exportCurrent}
                 disabled={existingRows.length === 0}
               />
               <ActionCard
-                title="3. Upload a file"
-                description="Fill in your file, then upload here. We validate every row and show a preview before anything is saved."
-                cta={fileName ? `Replace: ${fileName}` : 'Choose file…'}
+                title={t('settingsPages.io.a3_title')}
+                description={t('settingsPages.io.a3_desc')}
+                cta={fileName ? t('settingsPages.io.a3_replace', { file: fileName }) : t('settingsPages.io.a3_cta')}
                 onClick={() => document.getElementById('ie-file-input')?.click()}
                 accent
               />
@@ -425,53 +411,37 @@ export default function ImportExportHub() {
                 }}
               />
             </div>
-          </div>
+          </section>
 
-          {parseError && (
-            <div className="rounded-card border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
-              {parseError}
-            </div>
-          )}
+          {parseError && <p className="sb-alert sb-alert-danger" role="alert">{parseError}</p>}
 
           {/* Preview section */}
           {step === 'preview' && previewRows.length > 0 && (
-            <div className="rounded-card border border-border-subtle bg-surface-card overflow-hidden">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle px-5 py-3">
-                <div>
-                  <h2 className="text-sm font-semibold text-ink-primary">Preview — {fileName}</h2>
-                  <div className="mt-1 text-xs text-ink-secondary">
-                    <strong className="text-emerald-700">{validCount} valid</strong>
-                    {errorCount > 0 && (
-                      <> · <strong className="text-red-700">{errorCount} with errors</strong></>
-                    )}
-                    {dupCount > 0 && (
-                      <> · <strong className="text-amber-700">{dupCount} duplicate</strong></>
-                    )}
+            <section className="sb-card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div className="sb-io-preview-head">
+                <div style={{ minWidth: 0 }}>
+                  <h2 className="sb-form-title" style={{ lineHeight: 1.3 }}>{t('settingsPages.io.preview')} — <bdi>{fileName}</bdi></h2>
+                  <div className="sb-wh-badges" style={{ marginTop: 6 }}>
+                    <span className="sb-pill sb-pill-good">{t('settingsPages.io.valid', { count: validCount })}</span>
+                    {errorCount > 0 && <span className="sb-pill sb-pill-bad">{t('settingsPages.io.with_errors', { count: errorCount })}</span>}
+                    {dupCount > 0 && <span className="sb-pill sb-pill-warn">{t('settingsPages.io.duplicates', { count: dupCount })}</span>}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="sb-io-preview-actions">
                   {dupCount > 0 && (
-                    <div className="text-xs">
-                      <label className="block mb-1 font-medium text-ink-secondary">On duplicate ({adapter.key === 'products' ? 'SKU' : 'natural key'} match):</label>
-                      <select
-                        value={policy}
-                        onChange={(e) => setPolicy(e.target.value as DuplicatePolicy)}
-                        className="border border-border-strong rounded px-2 py-1 text-xs"
-                      >
-                        <option value="skip">Skip duplicates (default)</option>
-                        <option value="update">Update existing rows</option>
-                        <option value="error">Fail the import</option>
+                    <label className="sb-select-field">
+                      <span className="sb-select-label">{adapter.key === 'products' ? t('settingsPages.io.on_dup_sku') : t('settingsPages.io.on_dup_key')}</span>
+                      <select className="sb-field sb-print-input" value={policy} onChange={(e) => setPolicy(e.target.value as DuplicatePolicy)}>
+                        <option value="skip">{t('settingsPages.io.pol_skip')}</option>
+                        <option value="update">{t('settingsPages.io.pol_update')}</option>
+                        <option value="error">{t('settingsPages.io.pol_error')}</option>
                       </select>
-                    </div>
+                    </label>
                   )}
-                  <Button variant="ghost" size="sm" onClick={startOver}>Cancel</Button>
-                  <Button
-                    size="sm"
-                    onClick={applyImport}
-                    disabled={validCount === 0 || posting}
-                  >
-                    {posting ? 'Importing…' : `Import ${validCount} row${validCount === 1 ? '' : 's'}`}
-                  </Button>
+                  <button type="button" className="sb-secondary-btn" onClick={startOver}>{t('common.cancel')}</button>
+                  <button type="button" className="sb-primary-btn" onClick={applyImport} disabled={validCount === 0 || posting}>
+                    {posting ? t('settingsPages.io.importing') : t('settingsPages.io.import_rows', { count: validCount })}
+                  </button>
                 </div>
               </div>
               <div className="overflow-x-auto max-h-[500px]">
@@ -479,7 +449,7 @@ export default function ImportExportHub() {
                   <thead className="sticky top-0 bg-surface-muted">
                     <tr className="border-b border-border-subtle text-ink-tertiary">
                       <th className="px-2 py-1.5 text-end font-medium w-[40px]">#</th>
-                      <th className="px-2 py-1.5 text-start font-medium w-[80px]">Status</th>
+                      <th className="px-2 py-1.5 text-start font-medium w-[80px]">{t('settingsPages.io.status')}</th>
                       {adapter.headers.map(h => (
                         <th key={h} className="px-2 py-1.5 text-start font-medium whitespace-nowrap">{h}</th>
                       ))}
@@ -495,11 +465,11 @@ export default function ImportExportHub() {
                         <td className="px-2 py-1.5 text-end text-ink-tertiary">{idx + 1}</td>
                         <td className="px-2 py-1.5">
                           {!p.ok ? (
-                            <span className="rounded-pill bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">Error</span>
+                            <span className="sb-pill sb-pill-bad">{t('settingsPages.io.st_error')}</span>
                           ) : p.isDuplicate ? (
-                            <span className="rounded-pill bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Duplicate</span>
+                            <span className="sb-pill sb-pill-warn">{t('settingsPages.io.st_dup')}</span>
                           ) : (
-                            <span className="rounded-pill bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">OK</span>
+                            <span className="sb-pill sb-pill-good">{t('settingsPages.io.st_ok')}</span>
                           )}
                         </td>
                         {adapter.headers.map(h => (
@@ -514,7 +484,7 @@ export default function ImportExportHub() {
               </div>
               {errorCount > 0 && (
                 <div className="border-t border-border-subtle p-3 bg-red-50 text-xs">
-                  <div className="font-semibold text-red-800 mb-1">Errors found:</div>
+                  <div className="font-semibold text-red-800 mb-1">{t('settingsPages.io.errors_found')}</div>
                   <ul className="space-y-1 text-red-700 max-h-32 overflow-y-auto">
                     {previewRows
                       .map((p, idx) => ({ p, idx }))
@@ -522,47 +492,47 @@ export default function ImportExportHub() {
                       .slice(0, 20)
                       .map(({ p, idx }) => (
                         <li key={idx}>
-                          <strong>Row {idx + 1}:</strong> {p.errors.join(', ')}
+                          <strong>{t('settingsPages.io.row', { n: idx + 1 })}</strong> {p.errors.join(', ')}
                         </li>
                       ))}
                     {errorCount > 20 && (
-                      <li className="italic">…and {errorCount - 20} more</li>
+                      <li className="italic">{t('settingsPages.io.and_more', { count: errorCount - 20 })}</li>
                     )}
                   </ul>
                 </div>
               )}
-            </div>
+            </section>
           )}
 
           {/* Done state */}
           {step === 'done' && applyResult && (
-            <div className="rounded-card border border-emerald-200 bg-emerald-50 p-5">
-              <h2 className="text-sm font-semibold text-emerald-900">Import complete</h2>
-              <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                <Stat label="Inserted" value={applyResult.inserted} good />
-                <Stat label="Updated"  value={applyResult.updated}  good />
-                <Stat label="Skipped"  value={applyResult.skipped} />
-                <Stat label="Errors"   value={applyResult.errors.length} bad={applyResult.errors.length > 0} />
+            <section className="sb-card sb-io-done">
+              <h2 className="sb-form-title" style={{ lineHeight: 1.3 }}>{t('settingsPages.io.done')}</h2>
+              <div className="sb-io-stats">
+                <Stat label={t('settingsPages.io.inserted')} value={applyResult.inserted} good />
+                <Stat label={t('settingsPages.io.updated')}  value={applyResult.updated}  good />
+                <Stat label={t('settingsPages.io.skipped')}  value={applyResult.skipped} />
+                <Stat label={t('settingsPages.io.errors')}   value={applyResult.errors.length} bad={applyResult.errors.length > 0} />
               </div>
               {applyResult.errors.length > 0 && (
-                <div className="mt-3 text-xs text-emerald-900">
-                  <strong>Per-row errors:</strong>
+                <div className="mt-3 text-xs">
+                  <strong>{t('settingsPages.io.row_errors')}</strong>
                   <ul className="mt-1 space-y-0.5 text-red-700 max-h-32 overflow-y-auto">
                     {applyResult.errors.map((e, i) => (
-                      <li key={i}>Row {e.rowIndex + 1}: {e.message}</li>
+                      <li key={i}>{t('settingsPages.io.row', { n: e.rowIndex + 1 })} {e.message}</li>
                     ))}
                   </ul>
                 </div>
               )}
-              <div className="mt-4 flex gap-2">
-                <Button size="sm" variant="ghost" onClick={startOver}>Import another file</Button>
-                <Button size="sm" onClick={() => navigate('/catalog/products')}>View imported products →</Button>
+              <div className="sb-form-actions" style={{ justifyContent: 'flex-start', marginTop: 14 }}>
+                <button type="button" className="sb-secondary-btn" onClick={startOver}>{t('settingsPages.io.another')}</button>
+                <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => navigate('/catalog/products')}>{t('settingsPages.io.view_products')} <span className="sb-flip" aria-hidden="true">→</span></button>
               </div>
-            </div>
+            </section>
           )}
         </>
       )}
-    </div>
+    </OceanPage>
   );
 }
 
@@ -574,29 +544,21 @@ function ActionCard({
   onClick: () => void; disabled?: boolean; accent?: boolean;
 }) {
   return (
-    <div
-      style={{
-        border: `1px solid ${accent ? '#7c3aed' : '#E2E8F0'}`,
-        background: accent ? '#f5f3ff' : '#FFF',
-        borderRadius: '12px',
-        padding: '14px 16px',
-        display: 'flex', flexDirection: 'column', gap: '6px',
-      }}
-    >
-      <div style={{ fontSize: '12.5px', fontWeight: 600, color: accent ? '#3730A3' : '#0F172A' }}>{title}</div>
-      <div style={{ fontSize: '11.5px', color: '#64748B', flex: 1 }}>{description}</div>
-      <Button size="sm" variant={accent ? 'primary' : 'ghost'} disabled={disabled} onClick={onClick}>
-        {cta}
-      </Button>
+    <div className={`sb-io-action ${accent ? 'is-on' : ''}`}>
+      <div className="sb-io-name">{title}</div>
+      <div className="sb-io-desc" style={{ flex: 1 }}>{description}</div>
+      <button type="button" className={accent ? 'sb-primary-btn' : 'sb-secondary-btn'} disabled={disabled} onClick={onClick}>
+        <bdi>{cta}</bdi>
+      </button>
     </div>
   );
 }
 
 function Stat({ label, value, good, bad }: { label: string; value: number; good?: boolean; bad?: boolean }) {
-  const color = bad ? '#B91C1C' : good ? '#047857' : '#475569';
+  const color = bad ? 'var(--sb-danger)' : good ? 'var(--sb-success)' : 'var(--sb-text-secondary)';
   return (
-    <div>
-      <div className="text-[10.5px] font-semibold uppercase tracking-wider text-ink-tertiary">{label}</div>
+    <div className="sb-stat">
+      <div className="sb-info-label">{label}</div>
       <div style={{ marginTop: '2px', fontSize: '20px', fontWeight: 700, color, fontVariantNumeric: 'tabular-nums' }}>
         {value}
       </div>

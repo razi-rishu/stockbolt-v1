@@ -39,6 +39,8 @@ import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { downloadBlob } from '@/lib/io-export';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
+import { useTranslation } from 'react-i18next';
+import { OceanPage } from '@/components/ocean-list';
 import { Tabs } from '@/ui/tabs';
 import { buildCoaTreeOptions, coaOptionLabel } from '@/core/seeds/coa-tree';
 import type {
@@ -259,6 +261,7 @@ function VoidableStockRow({
 
 // ── Page ───────────────────────────────────────────────────────────────────
 export default function OpeningBalancesPage() {
+  const { t } = useTranslation();
   const { company_id } = useAuthStore();
   const companyCurrency = useCompanyCurrency();   // Issue 1 — localize money to tenant currency
   const navigate = useNavigate();
@@ -926,30 +929,32 @@ export default function OpeningBalancesPage() {
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6 pb-16">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-3">
-        <BackButton to="/settings" label="Settings" />
-        <span className="text-ink-tertiary">/</span>
-        <h1 className="text-xl font-semibold text-ink-primary">Opening Balances</h1>
-        <span className="rounded-pill bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">Migration</span>
-        <div className="ms-auto flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => navigate('/settings/import-export?module=openingBalances')}
-            title="Migrating 50+ rows? Use the bulk CSV / Excel importer instead."
-          >
-            ⤓ Bulk import from CSV / Excel
-          </Button>
-          {/* Posts AR/AP + GL draft rows together (inventory has its own
-              Post button inside its tab). Lives in the header so it stays
-              reachable from any tab. */}
-          <Button size="sm" onClick={postAll} disabled={!canPost}>
-            {posting ? 'Posting…' : `Post ${totalDraft} draft row${totalDraft === 1 ? '' : 's'}`}
-          </Button>
-        </div>
-      </div>
+    // Ocean Teal (UI v1.1): page frame only — the wizard below (tabs, rows,
+    // 3010 check, posting, voids) is unchanged and follows the scoped teal
+    // palette.
+    <OceanPage
+      testid="opening-balances-ocean"
+      back={<BackButton to="/settings" label={t('settingsNav.title')} />}
+      title={t('settingsNav.items.opening_balances.title')}
+      subtitle={<><span className="sb-pill" style={{ marginInlineEnd: 8 }}>{t('settingsPages.ob.migration')}</span>{t('settingsNav.items.opening_balances.desc')}</>}
+      actions={<>
+        <button
+          type="button"
+          className="sb-secondary-btn"
+          onClick={() => navigate('/settings/import-export?module=openingBalances')}
+          title={t('settingsPages.ob.bulk_title')}
+        >
+          ⤓ {t('settingsPages.ob.bulk')}
+        </button>
+        {/* Posts AR/AP + GL draft rows together (inventory has its own
+            Post button inside its tab). Lives in the header so it stays
+            reachable from any tab. */}
+        <button type="button" className="sb-primary-btn" onClick={postAll} disabled={!canPost}>
+          {posting ? t('settingsPages.ob.posting') : t('settingsPages.ob.post', { count: totalDraft })}
+        </button>
+      </>}
+    >
+      <div className="sb-ob-body">
 
       {/* ── 3010 migration check — the page's "am I done?" indicator ─────── */}
       <div className="rounded-card border border-border-subtle bg-surface-card px-5 py-3">
@@ -961,7 +966,7 @@ export default function OpeningBalancesPage() {
             <div className="mt-1 flex items-baseline gap-3">
               <span className="text-xs text-ink-secondary">Now:</span>
               <span className="font-mono text-sm font-medium text-ink-primary">
-                ${companyCurrency} {fmt(live3010)}
+                {companyCurrency} {fmt(live3010)}
               </span>
               {(totals.batchNet3010 !== 0) && (
                 <>
@@ -970,7 +975,7 @@ export default function OpeningBalancesPage() {
                     className="font-mono text-sm font-semibold"
                     style={{ color: Math.abs(totals.projected3010) < 0.005 ? '#047857' : '#B45309' }}
                   >
-                    ${companyCurrency} {fmt(totals.projected3010)}
+                    {companyCurrency} {fmt(totals.projected3010)}
                   </span>
                 </>
               )}
@@ -1043,7 +1048,7 @@ export default function OpeningBalancesPage() {
                 {meta.short}
               </div>
               <div style={{ marginTop: '4px', fontSize: '17px', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                ${companyCurrency} {fmt(val)}
+                {companyCurrency} {fmt(val)}
               </div>
               <div style={{ marginTop: '2px', fontSize: '10.5px', opacity: 0.85 }}>
                 {meta.label}
@@ -1059,7 +1064,7 @@ export default function OpeningBalancesPage() {
             Subsidiary net (this batch)
           </div>
           <div style={{ marginTop: '4px', fontSize: '17px', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-            {-totals.subsidiaryNet3010 >= 0 ? '+' : '−'}${companyCurrency} {fmt(Math.abs(totals.subsidiaryNet3010))}
+            {-totals.subsidiaryNet3010 >= 0 ? '+' : '−'}{companyCurrency} {fmt(Math.abs(totals.subsidiaryNet3010))}
           </div>
           <div style={{ marginTop: '2px', fontSize: '10.5px', opacity: 0.85 }}>
             {-totals.subsidiaryNet3010 >= 0
@@ -2021,6 +2026,7 @@ export default function OpeningBalancesPage() {
           </div>
         );
       })()}
-    </div>
+      </div>
+    </OceanPage>
   );
 }

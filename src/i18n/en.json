@@ -2714,6 +2714,166 @@
       "scope_write_contacts_desc": "Create and update customers and suppliers.",
       "scope_write_orders": "Write orders",
       "scope_write_orders_desc": "Create orders (post as draft invoices)."
+    },
+    "coa": {
+      "sub": {"current": "Current", "fixed": "Fixed", "long_term": "Long-term", "direct": "Direct", "indirect": "Indirect"},
+      "show_inactive": "Show inactive",
+      "activate": "Activate",
+      "deactivate": "Deactivate",
+      "confirm_deactivate": "Deactivate {{code}} {{name}}?\nIt will be hidden from pickers but kept for audit history.",
+      "edit_title": "Edit account {{code}} {{name}}",
+      "system_title": "System account.",
+      "system_body": "Code and type are locked because built-in postings (invoices, payments, GRNs) reference this account by code. You can still rename it in English or Arabic to match your local terminology.",
+      "reset_title": "Cleared on Reset Company Data.",
+      "reset_body": "Custom accounts you add here are wiped by Settings → Reset Company Data. The seeded system accounts (e.g. 1100, 1110, 1200) always survive.",
+      "code_ph": "e.g. 1700",
+      "parent": "Parent account",
+      "parent_hint": "(optional — leave blank for a top-level account)",
+      "top_level": "— Top-level —",
+      "no_parents": "No eligible parents yet for {{type}}. Add a top-level account of this type first.",
+      "also_bank": "Also add this as a bank account",
+      "also_cash": "Also add this as a cash drawer account",
+      "also_hint": "Creates a matching row in Settings → Bank Accounts so it appears in payment, expense and bank-transfer pickers.",
+      "acc_type": "Account type",
+      "bank": "Bank",
+      "cash": "Cash",
+      "bank_name": "Bank name",
+      "bank_name_ph": "e.g. ADCB, IDBI",
+      "acc_no": "Account number",
+      "iban": "IBAN",
+      "swift": "SWIFT / BIC",
+      "branch": "Branch",
+      "branch_ph": "e.g. Main branch",
+      "currency": "Currency",
+      "optional": "(optional)",
+      "sub_type_ph": "e.g. owner, retained, drawings",
+      "sub_type_hint": "Free-text tag for grouping equity accounts.",
+      "save_changes": "Save changes",
+      "group": {
+        "current_asset": "Current assets",
+        "fixed_asset": "Fixed assets",
+        "current_liability": "Current liabilities",
+        "long_term_liability": "Long-term liabilities",
+        "equity": "Equity",
+        "direct_income": "Direct income",
+        "indirect_income": "Indirect income",
+        "direct_expense": "Direct expense (COGS)",
+        "indirect_expense": "Indirect expense"
+      },
+      "type": {
+        "current_asset": "Current asset",
+        "fixed_asset": "Fixed asset",
+        "current_liability": "Current liability",
+        "long_term_liability": "Long-term liability",
+        "equity": "Equity",
+        "direct_income": "Direct income (sales)",
+        "indirect_income": "Indirect income (other income)",
+        "direct_expense": "Direct expense (COGS)",
+        "indirect_expense": "Indirect expense (operating)"
+      }
+    },
+    "io": {
+      "button": "Import / Export",
+      "button_title": "Bulk export to CSV / Excel, download a template, or import a file",
+      "intro": "Bulk-load master data from a spreadsheet, or export your current data for backup or reporting. Imports cover master data only (no money posting). For migrating opening balances use the dedicated",
+      "ob_wizard": "Opening balances wizard",
+      "tip": "Tip: start by downloading the template, fill it in, then upload — that way the column names and order are already correct.",
+      "pick": "Pick a module",
+      "in_system": "In system: {{count}}",
+      "format": "File format",
+      "a1_title": "1. Download template",
+      "a1_desc": "Empty {{format}} with the right column headers and 1–2 example rows.",
+      "a1_cta": "Download {{format}} template",
+      "a2_title": "2. Export current data",
+      "a2_desc": "A snapshot of every {{module}} row currently in the system.",
+      "a2_none": "No rows to export",
+      "a2_cta": "Export rows: {{count}}",
+      "a3_title": "3. Upload a file",
+      "a3_desc": "Fill in your file, then upload it here. We validate every row and show a preview before anything is saved.",
+      "a3_cta": "Choose file…",
+      "a3_replace": "Replace: {{file}}",
+      "err_empty": "The file contains no data rows. Check that the first row is headers and there is data below.",
+      "err_missing": "Missing required column(s): {{cols}}. Download the template for the correct format.",
+      "err_apply": "Apply failed",
+      "preview": "Preview",
+      "valid": "Valid: {{count}}",
+      "with_errors": "With errors: {{count}}",
+      "duplicates": "Duplicates: {{count}}",
+      "on_dup_sku": "On duplicate (SKU match)",
+      "on_dup_key": "On duplicate (natural key match)",
+      "pol_skip": "Skip duplicates (default)",
+      "pol_update": "Update existing rows",
+      "pol_error": "Fail the import",
+      "importing": "Importing…",
+      "import_rows": "Import rows: {{count}}",
+      "status": "Status",
+      "st_error": "Error",
+      "st_dup": "Duplicate",
+      "st_ok": "OK",
+      "errors_found": "Errors found:",
+      "row": "Row {{n}}:",
+      "and_more": "…and {{count}} more",
+      "done": "Import complete",
+      "inserted": "Inserted",
+      "updated": "Updated",
+      "skipped": "Skipped",
+      "errors": "Errors",
+      "row_errors": "Per-row errors:",
+      "another": "Import another file",
+      "view_products": "View imported products",
+      "mod": {
+        "products": {
+          "label": "Products",
+          "desc": "SKU catalog. Required: SKU and name. Brand, category and unit resolved by name."
+        },
+        "contacts": {
+          "label": "Contacts",
+          "desc": "Customers and suppliers in one sheet. The \"type\" column controls which side."
+        },
+        "coa": {
+          "label": "Chart of accounts",
+          "desc": "GL accounts. System accounts are skipped on import (built-in postings reference them by code)."
+        },
+        "taxRates": {
+          "label": "Tax rates",
+          "desc": "UAE 5% VAT, zero-rated, exempt, or any locale-specific rates."
+        },
+        "units": {
+          "label": "Units of measure",
+          "desc": "PCS, KG, L, M, BOX — whatever you stock and sell by."
+        },
+        "brands": {
+          "label": "Brands",
+          "desc": "Castrol, Bosch, NGK, etc. Used to tag products."
+        },
+        "categories": {
+          "label": "Categories",
+          "desc": "Product groupings. Self-nesting: the parent column refers to another category by name."
+        },
+        "salespeople": {
+          "label": "Salespeople",
+          "desc": "Sales staff for commission tracking. Tagged on invoices and quotes."
+        },
+        "warehouses": {
+          "label": "Warehouses",
+          "desc": "Physical locations stock is held at. Each invoice or GRN picks one."
+        },
+        "priceLevels": {
+          "label": "Price levels",
+          "desc": "Tier pricing — Retail, Wholesale, Fleet, Member, etc."
+        },
+        "openingBalances": {
+          "label": "Opening balances",
+          "desc": "Bulk-migrate unpaid AR / AP / credits on file from a CSV. Each row posts its own entry keyed to the original date so aging works."
+        }
+      }
+    },
+    "ob": {
+      "migration": "Migration",
+      "bulk": "Bulk import from CSV / Excel",
+      "bulk_title": "Migrating 50+ rows? Use the bulk CSV / Excel importer instead.",
+      "posting": "Posting…",
+      "post": "Post draft rows: {{count}}"
     }
   }
 }
