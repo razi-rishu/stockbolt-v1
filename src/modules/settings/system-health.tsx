@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
-import { PageHeader } from '@/ui/primitives';
+import { OceanPage } from '@/components/ocean-list';
+import { ShieldCheck, ShieldAlert, Loader2 } from 'lucide-react';
 import type { InvariantResult, MalformedJE, ArMismatch, StockMismatch } from '@/data/adapter';
 
 function fmt(n: number) {
@@ -74,24 +75,24 @@ export default function SystemHealthPage() {
   const failCount = results.filter(r => !r.pass).length;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader title={t('settings.system_health')} subtitle={t('settings.system_health_desc')} />
-
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-surface-card p-4">
-        <div>
-          <label className="block text-xs text-ink-secondary mb-1">{t('reports.as_of_date')}</label>
-          <input type="date" value={asOf} onChange={e => setAsOf(e.target.value)} className="input-field h-9 text-sm" />
-        </div>
-        <button onClick={run} disabled={loading} className="btn-primary h-9 px-5 text-sm font-semibold">
+    // Ocean Teal (UI v1.1): look only — same checks, drill-downs and repair.
+    <OceanPage testid="system-health-ocean" title={t('settingsNav.items.system_health.title')} subtitle={t('settings.system_health_desc')}>
+      <section className="sb-card sb-health-run">
+        <label className="sb-select-field">
+          <span className="sb-select-label">{t('reports.as_of_date')}</span>
+          <input type="date" dir="ltr" className="sb-field" value={asOf} onChange={e => setAsOf(e.target.value)} aria-label={t('reports.as_of_date')} />
+        </label>
+        <button type="button" onClick={run} disabled={loading} className="sb-primary-btn sb-btn-inline">
+          {loading ? <Loader2 size={18} className="sb-spin" aria-hidden="true" /> : <ShieldCheck size={18} aria-hidden="true" />}
           {loading ? t('settings.running_checks') : t('settings.run_health_check')}
         </button>
-      </div>
+      </section>
 
       {ran && (
         <>
           {/* Summary banner */}
-          <div className={`flex items-center gap-3 rounded-lg px-5 py-4 text-sm font-semibold ${allPass ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
-            <span className="text-2xl">{allPass ? '✅' : '❌'}</span>
+          <div className={`sb-alert ${allPass ? 'sb-alert-good' : 'sb-alert-danger'} sb-health-summary`} role="status">
+            {allPass ? <ShieldCheck size={22} aria-hidden="true" /> : <ShieldAlert size={22} aria-hidden="true" />}
             <span>
               {allPass
                 ? t('settings.all_invariants_pass')
@@ -100,28 +101,28 @@ export default function SystemHealthPage() {
           </div>
 
           {/* Invariant table */}
-          <div className="overflow-x-auto rounded-lg border border-border bg-surface-card shadow-sm">
-            <table className="w-full text-sm">
-              <thead className="bg-surface-subtle">
+          <div className="sb-card sb-dtable-wrap">
+            <table className="sb-dtable">
+              <thead>
                 <tr>
-                  <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('settings.invariant')}</th>
-                  <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('settings.check')}</th>
-                  <th className="px-4 py-2 text-center font-medium text-ink-secondary">{t('common.status')}</th>
-                  <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('settings.difference')}</th>
+                  <th>{t('settings.invariant')}</th>
+                  <th>{t('settings.check')}</th>
+                  <th style={{ textAlign: 'center' }}>{t('common.status')}</th>
+                  <th className="sb-num">{t('settings.difference')}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody>
                 {results.map(r => (
-                  <tr key={r.invariant as string} className={r.pass ? '' : 'bg-red-50'}>
-                    <td className="px-4 py-2 font-mono text-xs text-ink-secondary">{r.invariant as string}</td>
-                    <td className="px-4 py-2 text-ink-primary">{r.name as string}</td>
-                    <td className="px-4 py-2 text-center">
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${r.pass ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                  <tr key={r.invariant as string} className={r.pass ? '' : 'is-bad'}>
+                    <td><bdi dir="ltr" className="sb-mono sb-fx-name">{r.invariant as string}</bdi></td>
+                    <td>{r.name as string}</td>
+                    <td style={{ textAlign: 'center' }}>
+                      <span className={`sb-pill ${r.pass ? 'sb-pill-good' : 'sb-pill-bad'}`}>
                         {r.pass ? t('common.pass') : t('common.fail')}
                       </span>
                     </td>
-                    <td className="px-4 py-2 text-right text-ink-secondary text-xs">
-                      {typeof r.difference === 'number' ? r.difference.toFixed(2) : '—'}
+                    <td className="sb-num">
+                      <bdi dir="ltr">{typeof r.difference === 'number' ? r.difference.toFixed(2) : '—'}</bdi>
                     </td>
                   </tr>
                 ))}
@@ -131,34 +132,30 @@ export default function SystemHealthPage() {
 
           {/* ── Malformed JE drill-down (shown when JE_BAL fails) ──────── */}
           {malformed.length > 0 && (
-            <div className="overflow-x-auto rounded-lg border border-red-200 bg-surface-card shadow-sm">
-              <div className="border-b border-red-200 bg-red-50 px-4 py-3">
-                <p className="font-semibold text-red-800">Malformed journal entries ({malformed.length})</p>
-                <p className="mt-0.5 text-xs text-red-700">
-                  These journal entries are out of balance. Click an entry number to inspect the
-                  underlying source document. To fix, void + repost the source document (invoice,
-                  bill, payment, etc.) — or post a manual reversing JE.
-                </p>
+            <div className="sb-card sb-dtable-wrap sb-drill is-bad">
+              <div className="sb-drill-head">
+                <p className="sb-drill-title">{t('settingsPages.health.je_title')} <span className="sb-tab-count">{malformed.length}</span></p>
+                <p className="sb-form-hint">{t('settingsPages.health.je_desc')}</p>
               </div>
-              <table className="w-full text-sm">
-                <thead className="bg-surface-subtle">
+              <table className="sb-dtable">
+                <thead>
                   <tr>
-                    <th className="px-3 py-2 text-left font-medium text-ink-secondary">Entry #</th>
-                    <th className="px-3 py-2 text-left font-medium text-ink-secondary">Date</th>
-                    <th className="px-3 py-2 text-left font-medium text-ink-secondary">Source</th>
-                    <th className="px-3 py-2 text-right font-medium text-ink-secondary">Hdr DR / CR</th>
-                    <th className="px-3 py-2 text-right font-medium text-ink-secondary">Body DR / CR</th>
-                    <th className="px-3 py-2 text-right font-medium text-ink-secondary">Δ internal</th>
-                    <th className="px-3 py-2 text-left font-medium text-ink-secondary">Problem</th>
-                    <th className="px-3 py-2 text-right font-medium text-ink-secondary">Action</th>
+                    <th>{t('settingsPages.health.c_entry')}</th>
+                    <th>{t('settingsPages.health.c_date')}</th>
+                    <th>{t('settingsPages.health.c_source')}</th>
+                    <th className="sb-num">{t('settingsPages.health.c_hdr')}</th>
+                    <th className="sb-num">{t('settingsPages.health.c_body')}</th>
+                    <th className="sb-num">{t('settingsPages.health.c_delta_int')}</th>
+                    <th>{t('settingsPages.health.c_problem')}</th>
+                    <th className="sb-num">{t('settingsPages.health.c_action')}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
+                <tbody>
                   {malformed.map(je => {
                     const canRepair = je.source_type === 'vendor_bill';
                     const isRepairing = !!repairing[je.je_id];
                     return (
-                      <tr key={je.je_id} className="hover:bg-surface-muted/50">
+                      <tr key={je.je_id}>
                         <td className="px-3 py-2 font-mono text-xs">
                           <button
                             type="button"
@@ -172,13 +169,13 @@ export default function SystemHealthPage() {
                         <td className="px-3 py-2 text-ink-secondary capitalize">
                           {(je.source_type ?? '').replace(/_/g, ' ') || '—'}
                         </td>
-                        <td className="px-3 py-2 text-right font-mono text-xs text-ink-secondary">
+                        <td className="sb-num sb-mono">
                           {fmt(je.header_debit)} / {fmt(je.header_credit)}
                         </td>
-                        <td className="px-3 py-2 text-right font-mono text-xs text-ink-primary">
+                        <td className="sb-num sb-mono">
                           {fmt(je.body_debit)} / {fmt(je.body_credit)}
                         </td>
-                        <td className="px-3 py-2 text-right font-mono text-xs font-semibold text-red-700">
+                        <td className="sb-num sb-mono sb-bad">
                           {fmt(je.delta_internal)}
                         </td>
                         <td className="px-3 py-2 text-xs text-red-700">{je.problem}</td>
@@ -188,14 +185,14 @@ export default function SystemHealthPage() {
                               type="button"
                               onClick={() => repair(je.je_id)}
                               disabled={isRepairing}
-                              className="rounded-pill bg-brand-600 px-3 py-1 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
-                              title="Re-derive the missing GL rows + stock movement from the underlying vendor bill"
+                              className="sb-primary-btn" style={{ minHeight: 36, padding: '0 14px', fontSize: 13 }}
+                              title={t('settingsPages.health.repair_title')}
                             >
-                              {isRepairing ? '…' : 'Repair'}
+                              {isRepairing ? '…' : t('settingsPages.health.repair')}
                             </button>
                           ) : (
-                            <span className="text-xs text-ink-tertiary" title="Auto-repair only supports vendor_bill JEs in v1">
-                              Manual fix
+                            <span className="sb-fx-name" title={t('settingsPages.health.manual_title')}>
+                              {t('settingsPages.health.manual')}
                             </span>
                           )}
                         </td>
@@ -205,7 +202,7 @@ export default function SystemHealthPage() {
                 </tbody>
               </table>
               {repairMsg && (
-                <div className="border-t border-border-subtle bg-surface-muted px-4 py-2 text-xs">
+                <div className="sb-drill-foot">
                   {repairMsg}
                 </div>
               )}
@@ -214,29 +211,23 @@ export default function SystemHealthPage() {
 
           {/* ── B1 drill-down: per-customer AR drift ───────────────────── */}
           {arMismatches.length > 0 && (
-            <div className="overflow-x-auto rounded-lg border border-red-200 bg-surface-card shadow-sm">
-              <div className="border-b border-red-200 bg-red-50 px-4 py-3">
-                <p className="font-semibold text-red-800">AR drift by customer ({arMismatches.length})</p>
-                <p className="mt-0.5 text-xs text-red-700">
-                  These customers have a difference between what the AR aging
-                  calc says they owe and what GL 1200 says. Common cause:
-                  an unlinked credit note, or an apply_advance allocation that
-                  pointed at a now-voided invoice. Click the customer name to
-                  inspect their statement.
-                </p>
+            <div className="sb-card sb-dtable-wrap sb-drill is-bad">
+              <div className="sb-drill-head">
+                <p className="sb-drill-title">{t('settingsPages.health.ar_title')} <span className="sb-tab-count">{arMismatches.length}</span></p>
+                <p className="sb-form-hint">{t('settingsPages.health.ar_desc')}</p>
               </div>
-              <table className="w-full text-sm">
-                <thead className="bg-surface-subtle">
+              <table className="sb-dtable">
+                <thead>
                   <tr>
-                    <th className="px-3 py-2 text-left font-medium text-ink-secondary">Customer</th>
-                    <th className="px-3 py-2 text-right font-medium text-ink-secondary">GL says (1200)</th>
-                    <th className="px-3 py-2 text-right font-medium text-ink-secondary">Aging calc</th>
-                    <th className="px-3 py-2 text-right font-medium text-ink-secondary">Δ</th>
+                    <th>{t('settingsPages.health.c_customer')}</th>
+                    <th className="sb-num">{t('settingsPages.health.c_gl1200')}</th>
+                    <th className="sb-num">{t('settingsPages.health.c_aging')}</th>
+                    <th className="sb-num">Δ</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
+                <tbody>
                   {arMismatches.map(r => (
-                    <tr key={r.contact_id ?? r.contact_name} className="hover:bg-surface-muted/50">
+                    <tr key={r.contact_id ?? r.contact_name}>
                       <td className="px-3 py-2">
                         {r.contact_id ? (
                           <button
@@ -250,9 +241,9 @@ export default function SystemHealthPage() {
                           <span className="text-ink-tertiary">{r.contact_name}</span>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-right font-mono text-xs text-ink-secondary">{fmt(r.gl_balance)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-xs text-ink-primary">{fmt(r.aging_balance)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-xs font-semibold text-red-700">{fmt(r.difference)}</td>
+                      <td className="sb-num sb-mono">{fmt(r.gl_balance)}</td>
+                      <td className="sb-num sb-mono">{fmt(r.aging_balance)}</td>
+                      <td className="sb-num sb-mono sb-bad">{fmt(r.difference)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -262,31 +253,24 @@ export default function SystemHealthPage() {
 
           {/* ── E1 drill-down: per-product stock value drift ───────────── */}
           {stockMismatches.length > 0 && (
-            <div className="overflow-x-auto rounded-lg border border-amber-200 bg-surface-card shadow-sm">
-              <div className="border-b border-amber-200 bg-amber-50 px-4 py-3">
-                <p className="font-semibold text-amber-800">Stock value drift by product ({stockMismatches.length})</p>
-                <p className="mt-0.5 text-xs text-amber-700">
-                  For each product, the latest "running qty × MAC" should
-                  equal the sum of all its stock_ledger movements. A drift
-                  usually means a stock row was written with a different
-                  unit cost than the GL entry (the discount-on-vendor-bill
-                  bug — now fixed for new bills). Click the product name
-                  to inspect its stock ledger.
-                </p>
+            <div className="sb-card sb-dtable-wrap sb-drill is-warn">
+              <div className="sb-drill-head">
+                <p className="sb-drill-title">{t('settingsPages.health.stock_title')} <span className="sb-tab-count">{stockMismatches.length}</span></p>
+                <p className="sb-form-hint">{t('settingsPages.health.stock_desc')}</p>
               </div>
-              <table className="w-full text-sm">
-                <thead className="bg-surface-subtle">
+              <table className="sb-dtable">
+                <thead>
                   <tr>
-                    <th className="px-3 py-2 text-left font-medium text-ink-secondary">Product</th>
-                    <th className="px-3 py-2 text-left font-medium text-ink-secondary">SKU</th>
-                    <th className="px-3 py-2 text-right font-medium text-ink-secondary">Latest value (qty × MAC)</th>
-                    <th className="px-3 py-2 text-right font-medium text-ink-secondary">Txn-sum</th>
-                    <th className="px-3 py-2 text-right font-medium text-ink-secondary">Δ</th>
+                    <th>{t('settingsPages.health.c_product')}</th>
+                    <th>{t('settingsPages.health.c_sku')}</th>
+                    <th className="sb-num">{t('settingsPages.health.c_latest')}</th>
+                    <th className="sb-num">{t('settingsPages.health.c_txn')}</th>
+                    <th className="sb-num">Δ</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
+                <tbody>
                   {stockMismatches.map(r => (
-                    <tr key={r.product_id ?? r.sku} className="hover:bg-surface-muted/50">
+                    <tr key={r.product_id ?? r.sku}>
                       <td className="px-3 py-2">
                         {r.product_id ? (
                           <button
@@ -301,9 +285,9 @@ export default function SystemHealthPage() {
                         )}
                       </td>
                       <td className="px-3 py-2 text-ink-secondary text-xs font-mono">{r.sku}</td>
-                      <td className="px-3 py-2 text-right font-mono text-xs text-ink-primary">{fmt(r.stock_value)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-xs text-ink-secondary">{fmt(r.stock_txn_sum)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-xs font-semibold text-amber-700">{fmt(r.difference)}</td>
+                      <td className="sb-num sb-mono">{fmt(r.stock_value)}</td>
+                      <td className="sb-num sb-mono">{fmt(r.stock_txn_sum)}</td>
+                      <td className="sb-num sb-mono sb-warn">{fmt(r.difference)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -312,13 +296,13 @@ export default function SystemHealthPage() {
           )}
 
           {!allPass && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-              <p className="font-semibold">{t('settings.health_fail_action')}</p>
-              <p className="mt-1 text-red-700">{t('settings.health_fail_desc')}</p>
+            <div className="sb-alert sb-alert-danger" style={{ fontWeight: 400 }}>
+              <p style={{ margin: 0, fontWeight: 700 }}>{t('settings.health_fail_action')}</p>
+              <p style={{ margin: '4px 0 0' }}>{t('settings.health_fail_desc')}</p>
             </div>
           )}
         </>
       )}
-    </div>
+    </OceanPage>
   );
 }

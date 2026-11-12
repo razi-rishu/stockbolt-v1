@@ -3,8 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
-import { PageHeader } from '@/ui/primitives';
+import { useTranslation } from 'react-i18next';
+import { OceanPage } from '@/components/ocean-list';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 import type { Company, ResetCompanyDataResult } from '@/data/adapter';
 
 /**
@@ -28,6 +29,7 @@ import type { Company, ResetCompanyDataResult } from '@/data/adapter';
 export default function ResetDataPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { t } = useTranslation();
   const { company_id, role } = useAuthStore();
 
   const [typed, setTyped] = useState('');
@@ -92,7 +94,7 @@ export default function ResetDataPage() {
     },
     onError: (e: Error) => {
       console.error('[reset] FAILED', e);
-      setError(e.message || String(e) || 'Unknown error');
+      setError(e.message || String(e) || t('settingsPages.reset.unknown_error'));
     },
   });
 
@@ -103,8 +105,8 @@ export default function ResetDataPage() {
       return;
     }
     const ok = window.confirm(
-      `${expressMode ? '[Express] ' : 'Final confirmation. '}Wipe ALL transactional data for "${expected}"?\n\n` +
-      `This cannot be undone. Click OK to proceed.`
+      (expressMode ? t('settingsPages.reset.confirm_express') : t('settingsPages.reset.confirm_final')) +
+      ' ' + t('settingsPages.reset.confirm_body', { name: expected })
     );
     if (!ok) {
       console.log('[reset] aborted — user clicked Cancel on browser dialog');
@@ -115,167 +117,123 @@ export default function ResetDataPage() {
     resetMutation.mutate();
   }
 
+  // Ocean Teal (UI v1.1): look only — same admin gate, typed-name check,
+  // browser confirmation, express mode and reset call as before.
   if (result) {
     const total = Object.values(result.counts ?? {}).reduce((s: number, n) => s + Number(n ?? 0), 0);
     return (
-      <div className="max-w-2xl space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-ink-primary">Reset complete</h1>
-          <p className="text-sm text-ink-tertiary mt-1">
-            Deleted {total} rows across {Object.keys(result.counts ?? {}).length} tables at{' '}
-            {new Date(result.reset_at).toLocaleString()}.
-          </p>
-        </div>
-
-        <div className="rounded-card border border-border-subtle bg-surface-card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-muted">
+      <OceanPage
+        narrow
+        testid="reset-done-ocean"
+        title={t('settingsPages.reset.done_title')}
+        subtitle={t('settingsPages.reset.done_sub', { rows: total, tables: Object.keys(result.counts ?? {}).length, at: new Date(result.reset_at).toLocaleString() })}
+      >
+        <div className="sb-card sb-dtable-wrap">
+          <table className="sb-dtable">
+            <thead>
               <tr>
-                <th className="px-4 py-2 text-left text-xs font-medium text-ink-secondary">Table</th>
-                <th className="px-4 py-2 text-right text-xs font-medium text-ink-secondary">Rows deleted</th>
+                <th>{t('settingsPages.reset.c_table')}</th>
+                <th className="sb-num">{t('settingsPages.reset.c_rows')}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border-subtle">
+            <tbody>
               {Object.entries(result.counts ?? {})
                 .sort(([, a], [, b]) => Number(b) - Number(a))
                 .map(([table, count]) => (
                   <tr key={table}>
-                    <td className="px-4 py-2 font-mono text-xs text-ink-secondary">{table}</td>
-                    <td className="px-4 py-2 text-right font-mono">{Number(count).toLocaleString()}</td>
+                    <td><bdi dir="ltr" className="sb-mono sb-fx-name">{table}</bdi></td>
+                    <td className="sb-num sb-mono"><bdi dir="ltr">{Number(count).toLocaleString()}</bdi></td>
                   </tr>
                 ))}
             </tbody>
           </table>
         </div>
 
-        <div className="flex gap-2">
-          <Button onClick={() => navigate('/dashboard')}>Go to Dashboard</Button>
-          <Button variant="ghost" onClick={() => window.location.reload()}>Reload page</Button>
+        <div className="sb-form-actions" style={{ justifyContent: 'flex-start' }}>
+          <button type="button" className="sb-primary-btn" onClick={() => navigate('/dashboard')}>{t('settingsPages.reset.go_dashboard')}</button>
+          <button type="button" className="sb-secondary-btn" onClick={() => window.location.reload()}>{t('settingsPages.reset.reload')}</button>
         </div>
-      </div>
+      </OceanPage>
     );
   }
 
+  const WIPED = ['w1', 'w2', 'w3', 'w4', 'w5', 'w6', 'w7', 'w8', 'w9', 'w10', 'w11'];
+
   return (
-    <div style={{ maxWidth: '720px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        title="Reset Company Data"
-        subtitle="Destructive admin operation for testing. True clean slate — wipes ALL transactions AND ALL setup masters (bank accounts, warehouses, units, brands, etc.). Only your company, profile, and chart of accounts survive."
-      />
-
-
+    <OceanPage narrow testid="reset-data-ocean" title={t('settingsNav.items.reset_data.title')} subtitle={t('settingsPages.reset.subtitle')}>
       {!isAdmin && (
-        <div className="rounded bg-yellow-50 border border-yellow-200 px-4 py-3 text-sm text-yellow-800">
-          Only an <strong>admin</strong> can reset company data. Your role is <strong>{role ?? 'unknown'}</strong>.
-        </div>
+        <p className="sb-alert sb-alert-warn" role="alert">{t('settingsPages.reset.admin_only', { role: role ?? t('settingsPages.reset.unknown') })}</p>
       )}
 
       {/* QA Express Mode — for the testing loop (seed → test → wipe → repeat).
            Skips the typed-name gate; server-side guards stay intact. */}
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={expressMode}
-            onChange={e => setExpressModePersist(e.target.checked)}
-            className="mt-1 h-4 w-4 accent-amber-600"
-          />
-          <span className="text-sm">
-            <strong className="text-amber-900">Express mode (QA)</strong>
-            <span className="text-amber-800"> — skip the type-the-name gate so you can wipe in one click during testing. Server-side admin + name match still apply. Setting is persisted in this browser.</span>
-          </span>
-        </label>
-      </div>
+      <label className={`sb-check-row sb-reset-express ${expressMode ? 'is-on' : ''}`}>
+        <input type="checkbox" checked={expressMode} onChange={e => setExpressModePersist(e.target.checked)} />
+        <span className="sb-check-text">
+          {t('settingsPages.reset.express')}
+          <span className="sb-form-hint">{t('settingsPages.reset.express_hint')}</span>
+        </span>
+      </label>
 
-      <div className="rounded-card border border-red-300 bg-red-50 p-5 space-y-3">
-        <h2 className="text-lg font-semibold text-red-700">⚠ This action cannot be undone</h2>
-        <p className="text-sm text-red-800">
-          The following will be <strong>permanently deleted</strong>:
-        </p>
-        <ul className="text-sm text-red-800 list-disc list-inside space-y-1">
-          <li>All invoices, quotes, sales orders, credit notes, sales returns</li>
-          <li>All vendor bills, POs, GRNs, debit notes</li>
-          <li>All customer + vendor payments and their allocations</li>
-          <li>All bank transfers, expenses, PDC cheques, POS sessions</li>
-          <li>All stock transfers, inventory adjustments</li>
-          <li>All journal entries, general ledger, stock ledger, bank reconciliations</li>
-          <li>All customers, suppliers, products (with serials, compatibility, supplier codes)</li>
-          <li>All attachments, notifications, document sequences (reset to 1000)</li>
-          <li>All audit log entries (one final entry recording this reset will be kept)</li>
-          <li><strong>All setup masters</strong> — bank accounts, warehouses, units, categories, brands, vehicles, price levels, tax rates, payment methods, salespeople, print templates</li>
-          <li><strong>All custom chart-of-account rows</strong> you added (e.g. 1111 ADCB, 1112 IDBI). The seed accounts (1100, 1110, 1200, 2400, 3010, etc.) are kept because RPCs reference them by code.</li>
+      <section className="sb-card sb-reset-danger">
+        <h2 className="sb-reset-title"><AlertTriangle size={22} aria-hidden="true" />{t('settingsPages.reset.cannot_undo')}</h2>
+        <p>{t('settingsPages.reset.deleted_intro')}</p>
+        <ul>
+          {WIPED.map(k => <li key={k}>{t(`settingsPages.reset.${k}`)}</li>)}
         </ul>
-        <p className="text-sm text-red-800 pt-2 border-t border-red-200">
-          The following will be <strong>preserved</strong> (structurally required):
-        </p>
-        <ul className="text-sm text-red-800 list-disc list-inside space-y-1">
-          <li>Your company record, your user profile, and onboarding state</li>
-          <li>The seed chart of accounts (is_system=true rows only — needed by every confirm_* RPC)</li>
+        <p className="sb-reset-sep">{t('settingsPages.reset.kept_intro')}</p>
+        <ul>
+          <li>{t('settingsPages.reset.k1')}</li>
+          <li>{t('settingsPages.reset.k2')}</li>
         </ul>
-        <p className="text-xs text-red-700 pt-2 italic">
-          True clean slate. After reset you'll need to recreate bank accounts,
-          tax rates, warehouses, and any custom CoA before booking new transactions.
-        </p>
-      </div>
+        <p className="sb-reset-note">{t('settingsPages.reset.after')}</p>
+      </section>
 
       {error && (
-        <div className="sticky top-2 z-10 rounded-lg border-2 border-red-500 bg-red-50 p-4 shadow-lg">
-          <p className="text-sm font-bold text-red-800">Reset failed</p>
-          <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-red-700 font-mono">{error}</pre>
-          <p className="mt-2 text-xs text-red-600">
-            Also check the browser DevTools Console + Network tab for the underlying error
-            (look for the POST request to <code className="font-mono bg-red-100 px-1 rounded">reset_company_data</code>).
-          </p>
+        <div className="sb-alert sb-alert-danger sb-reset-error" role="alert">
+          <p style={{ margin: 0, fontWeight: 700 }}>{t('settingsPages.reset.failed')}</p>
+          <pre dir="ltr">{error}</pre>
+          <p style={{ margin: 0, fontWeight: 400, fontSize: 13 }}>{t('settingsPages.reset.failed_hint')} <code dir="ltr">reset_company_data</code></p>
         </div>
       )}
 
       {resetMutation.isPending && (
-        <div className="rounded-lg border-2 border-blue-500 bg-blue-50 p-4">
-          <p className="text-sm font-semibold text-blue-800">Resetting… this may take a few seconds.</p>
-        </div>
+        <p className="sb-info-note sb-btn-inline" role="status"><Loader2 size={18} className="sb-spin" aria-hidden="true" />{t('settingsPages.reset.resetting_long')}</p>
       )}
 
-      <div className="rounded-card border border-border-subtle bg-surface-card p-5 space-y-4">
+      <section className="sb-card sb-form">
         {expressMode ? (
-          <p className="text-sm text-ink-secondary">
-            Express mode is ON — clicking the button below will wipe data for <strong className="font-mono">{expected || '…'}</strong> after a single browser confirmation. Uncheck Express above to require typed confirmation.
+          <p className="sb-form-hint" style={{ margin: 0, fontSize: 14 }}>
+            {t('settingsPages.reset.express_on')} <bdi className="sb-mono" style={{ color: 'var(--sb-text)' }}>{expected || '…'}</bdi>
           </p>
         ) : (
-          <div>
-            <label className="block text-sm font-medium text-ink-primary mb-1">
-              To confirm, type the company name <strong>exactly</strong>:
-            </label>
-            <p className="text-xs text-ink-tertiary mb-2">
-              Expected: <span className="font-mono">{expected || '…'}</span>
-            </p>
+          <label className="sb-select-field" style={{ maxWidth: 'none' }}>
+            <span className="sb-select-label">{t('settingsPages.reset.type_name')}</span>
+            <span className="sb-form-hint">{t('settingsPages.reset.expected')} <bdi className="sb-mono">{expected || '…'}</bdi></span>
             <input
               type="text"
+              className="sb-field sb-mono"
               value={typed}
               onChange={e => setTyped(e.target.value)}
               placeholder={expected}
               disabled={!isAdmin || resetMutation.isPending}
-              className="w-full h-10 rounded-md border border-border-strong px-3 text-sm font-mono disabled:bg-surface-muted"
               autoComplete="off"
               autoCorrect="off"
               autoCapitalize="off"
               spellCheck={false}
             />
-          </div>
+          </label>
         )}
 
-        <div className="flex gap-2 pt-2">
-          <Button variant="ghost" onClick={() => navigate('/dashboard')} disabled={resetMutation.isPending}>
-            Cancel
-          </Button>
-          <Button
-            disabled={!canConfirm || resetMutation.isPending}
-            className={canConfirm ? 'bg-red-600 hover:bg-red-700' : ''}
-            onClick={onConfirmReset}
-          >
-            {resetMutation.isPending ? 'Resetting…' : 'Reset all data'}
-          </Button>
+        <div className="sb-form-actions" style={{ marginTop: 14 }}>
+          <button type="button" className="sb-secondary-btn" onClick={() => navigate('/dashboard')} disabled={resetMutation.isPending}>
+            {t('common.cancel')}
+          </button>
+          <button type="button" className="sb-danger-btn" disabled={!canConfirm || resetMutation.isPending} onClick={onConfirmReset}>
+            {resetMutation.isPending ? t('settingsPages.reset.resetting') : t('settingsPages.reset.reset_all')}
+          </button>
         </div>
-      </div>
-    </div>
+      </section>
+    </OceanPage>
   );
 }

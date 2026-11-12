@@ -7,6 +7,7 @@ import { DocLink } from '@/ui/doc-link';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
+import { OceanPage } from '@/components/ocean-list';
 
 export default function AuditLogPage() {
   const { t } = useTranslation();
@@ -21,10 +22,10 @@ export default function AuditLogPage() {
   });
 
   const actionColor = (action: string) => {
-    if (action.includes('create') || action.includes('insert')) return 'bg-emerald-100 text-emerald-800';
-    if (action.includes('update')) return 'bg-blue-100 text-blue-800';
-    if (action.includes('delete') || action.includes('void')) return 'bg-red-100 text-red-800';
-    return 'bg-surface-subtle text-ink-secondary';
+    if (action.includes('create') || action.includes('insert')) return 'sb-pill-good';
+    if (action.includes('update')) return '';
+    if (action.includes('delete') || action.includes('void')) return 'sb-pill-bad';
+    return 'sb-pill-muted';
   };
 
   const exportRows: Record<string, unknown>[] = rows.map(r => ({
@@ -37,45 +38,49 @@ export default function AuditLogPage() {
   const exportHeaders = ['Timestamp', 'User', 'Action', 'Entity', 'Entity ID'];
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.audit_log')}</h1>
-        <div data-print-hide className="flex flex-wrap items-center gap-2">
+    // Ocean Teal (UI v1.1): look only — same period filter, export / print,
+    // rows, drill-down links and change diff.
+    <OceanPage
+      testid="audit-log-ocean"
+      title={t('reports.audit_log')}
+      subtitle={t('settingsNav.items.audit_log.desc')}
+      actions={
+        <div data-print-hide className="sb-audit-tools">
           <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
           <ReportActions rows={exportRows} headers={exportHeaders} filename={`audit-log-${from}_${to}`} disabled={rows.length === 0} />
         </div>
-      </div>
-
-      {isFetching && rows.length === 0 && <p className="text-sm text-ink-secondary">{t('common.loading')}</p>}
-      {!isFetching && rows.length === 0 && <p className="text-sm text-ink-tertiary">{t('reports.no_data')}</p>}
+      }
+    >
+      {isFetching && rows.length === 0 && <div className="sb-card sb-empty">{t('common.loading')}</div>}
+      {!isFetching && rows.length === 0 && <div className="sb-card sb-empty">{t('reports.no_data')}</div>}
 
       {rows.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-border bg-surface-card shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-subtle">
+        <div className="sb-card sb-dtable-wrap">
+          <table className="sb-dtable">
+            <thead>
               <tr>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('reports.timestamp')}</th>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('reports.user')}</th>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('reports.action')}</th>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('reports.entity')}</th>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('reports.entity_id')}</th>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('reports.changes')}</th>
+                <th>{t('reports.timestamp')}</th>
+                <th>{t('reports.user')}</th>
+                <th>{t('reports.action')}</th>
+                <th>{t('reports.entity')}</th>
+                <th>{t('reports.entity_id')}</th>
+                <th>{t('reports.changes')}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody>
               {rows.map(r => (
                 <Fragment key={r.id}>
-                  <tr className="hover:bg-surface-subtle/50">
-                    <td className="px-4 py-2 text-ink-secondary text-xs whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</td>
-                    <td className="px-4 py-2 text-ink-secondary text-xs truncate max-w-[160px]">{r.user_email}</td>
-                    <td className="px-4 py-2">
-                      <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${actionColor(r.action)}`}>{r.action}</span>
+                  <tr>
+                    <td style={{ whiteSpace: 'nowrap' }}><bdi dir="ltr">{new Date(r.created_at).toLocaleString()}</bdi></td>
+                    <td className="truncate max-w-[180px]"><bdi dir="ltr">{r.user_email}</bdi></td>
+                    <td>
+                      <span className={`sb-pill ${actionColor(r.action)}`} style={{ marginTop: 0 }}><bdi dir="ltr">{r.action}</bdi></span>
                     </td>
-                    <td className="px-4 py-2 text-ink-secondary text-xs">{r.entity_type}</td>
-                    <td className="px-4 py-2 text-xs font-mono truncate max-w-[120px]"><DocLink type={r.entity_type} id={r.entity_id} label={r.entity_id} className="text-brand-600 hover:underline" /></td>
-                    <td className="px-4 py-2">
+                    <td><bdi dir="ltr">{r.entity_type}</bdi></td>
+                    <td className="sb-mono truncate max-w-[140px]"><DocLink type={r.entity_type} id={r.entity_id} label={r.entity_id} className="text-brand-600 hover:underline" /></td>
+                    <td>
                       {(r.old_values || r.new_values) && (
-                        <button onClick={() => setExpanded(expanded === r.id ? null : r.id)} className="text-xs text-brand-600 hover:underline">
+                        <button type="button" onClick={() => setExpanded(expanded === r.id ? null : r.id)} className="sb-row-link text-brand-600">
                           {expanded === r.id ? t('common.hide') : t('common.show')}
                         </button>
                       )}
@@ -83,7 +88,7 @@ export default function AuditLogPage() {
                   </tr>
                   {expanded === r.id && (
                     <tr>
-                      <td colSpan={6} className="px-4 py-2 bg-surface-subtle">
+                      <td colSpan={6} className="sb-audit-diff">
                         <div className="grid grid-cols-2 gap-4 text-xs">
                           {r.old_values && (
                             <div>
@@ -105,9 +110,9 @@ export default function AuditLogPage() {
               ))}
             </tbody>
           </table>
-          <p className="px-4 py-2 text-xs text-ink-tertiary">{t('reports.showing_n_rows', { n: rows.length })}</p>
+          <p className="sb-form-hint" style={{ padding: '10px 16px', margin: 0 }}>{t('reports.showing_n_rows', { n: rows.length })}</p>
         </div>
       )}
-    </div>
+    </OceanPage>
   );
 }

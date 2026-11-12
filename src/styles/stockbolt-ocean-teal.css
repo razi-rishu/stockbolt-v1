@@ -1186,3 +1186,56 @@
 .sb-ocean .sb-ob-body .rounded-card { border-radius: var(--sb-radius-lg); }
 .sb-ocean .sb-ob-body .bg-surface-card { box-shadow: var(--sb-shadow); }
 .sb-ocean.sb-olist .rounded-card.border { border-radius: var(--sb-radius-lg); }
+
+/* ── Settings step 7: System health, Maintenance, Audit log, Reset data ──── */
+/* Ocean data table for technical lists that keep their columns. */
+.sb-ocean .sb-dtable-wrap { padding: 0; overflow-x: auto; }
+.sb-ocean .sb-dtable { width: 100%; border-collapse: collapse; font-size: 14px; }
+.sb-ocean .sb-dtable th {
+  text-align: start; padding: 10px 14px; font-size: 12px; font-weight: 700; color: var(--sb-text-secondary);
+  background: var(--sb-background); border-bottom: 1px solid var(--sb-border); white-space: nowrap;
+}
+.sb-ocean .sb-dtable td { padding: 10px 14px; border-top: 1px solid var(--sb-border); color: var(--sb-text); vertical-align: middle; }
+.sb-ocean .sb-dtable tbody tr:first-child td { border-top: 0; }
+.sb-ocean .sb-dtable .sb-num { text-align: end; white-space: nowrap; }
+.sb-ocean .sb-dtable tr.is-bad td { background: var(--sb-danger-bg); }
+.sb-ocean .sb-dtable .sb-bad { color: var(--sb-danger); font-weight: 700; }
+.sb-ocean .sb-dtable .sb-warn { color: var(--sb-warning); font-weight: 700; }
+.sb-ocean .sb-dtable-total td { font-weight: 700; background: var(--sb-background); border-top: 2px solid var(--sb-border); }
+
+.sb-ocean .sb-health-run { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.sb-ocean .sb-health-run .sb-field { border-radius: var(--sb-radius-sm); padding: 0 12px; }
+.sb-ocean .sb-health-summary { display: flex; align-items: center; gap: 10px; font-size: 15px; }
+.sb-ocean .sb-drill.is-bad { border-color: #FECACA; }
+.sb-ocean .sb-drill.is-warn { border-color: #FDE68A; }
+.sb-ocean .sb-drill-head { padding: 14px 16px; border-bottom: 1px solid var(--sb-border); }
+.sb-ocean .sb-drill.is-bad .sb-drill-head { background: #FEF2F2; }
+.sb-ocean .sb-drill.is-warn .sb-drill-head { background: #FFFBEB; }
+.sb-ocean .sb-drill-title { margin: 0 0 4px; font-size: 15px; font-weight: 700; color: var(--sb-text); }
+.sb-ocean .sb-drill-foot { padding: 10px 16px; border-top: 1px solid var(--sb-border); font-size: 13px; background: var(--sb-background); }
+
+.sb-ocean .sb-maint { display: flex; flex-direction: column; gap: 4px; }
+.sb-ocean .sb-maint .flex.gap-2 { gap: 8px; flex-wrap: wrap; }
+.sb-ocean .sb-maint-table { margin-top: 12px; border: 1px solid var(--sb-border); border-radius: var(--sb-radius-md); }
+
+.sb-ocean .sb-audit-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sb-ocean .sb-audit-diff { background: var(--sb-background); }
+.sb-ocean .sb-audit-diff pre { border-radius: var(--sb-radius-sm); }
+
+/* Reset company data */
+.sb-ocean .sb-danger-btn {
+  background: var(--sb-danger); color: #fff; border: none; border-radius: 999px; padding: 11px 20px;
+  min-height: 44px; font: inherit; font-weight: 700; cursor: pointer;
+}
+.sb-ocean .sb-danger-btn:hover:not(:disabled) { background: #B91C1C; }
+.sb-ocean .sb-danger-btn:disabled { opacity: .45; cursor: not-allowed; }
+.sb-ocean .sb-reset-express { border-color: #FDE68A; background: #FFFBEB; }
+.sb-ocean .sb-reset-express input { accent-color: var(--sb-warning); }
+.sb-ocean .sb-reset-danger { border-color: #FCA5A5; background: #FEF2F2; color: #7F1D1D; font-size: 14px; line-height: 1.55; }
+.sb-ocean .sb-reset-danger p { margin: 0 0 8px; }
+.sb-ocean .sb-reset-danger ul { margin: 0 0 10px; padding-inline-start: 22px; display: flex; flex-direction: column; gap: 4px; }
+.sb-ocean .sb-reset-title { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 18px; font-weight: 800; color: var(--sb-danger); }
+.sb-ocean .sb-reset-sep { padding-top: 10px; border-top: 1px solid #FECACA; }
+.sb-ocean .sb-reset-note { font-style: italic; font-size: 13px; }
+.sb-ocean .sb-reset-error pre { margin: 8px 0; white-space: pre-wrap; word-break: break-word; font-size: 12px; font-weight: 400; }
+.sb-ocean .sb-maint .sb-pill { white-space: normal; line-height: 1.4; border-radius: var(--sb-radius-sm); padding: 6px 12px; }

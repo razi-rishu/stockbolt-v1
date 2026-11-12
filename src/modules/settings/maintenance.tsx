@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
 import { hasPerm } from '@/lib/permissions';
-import { PageHeader } from '@/ui/primitives';
+import { OceanPage } from '@/components/ocean-list';
 import type { DeferredCogsRepairResult, SubledgerRepairResult } from '@/data/adapter';
 
 /**
@@ -78,29 +78,30 @@ export default function MaintenancePage() {
   };
 
   return (
-    <div className="flex flex-col gap-5">
-      <PageHeader title={t('maint.title')} subtitle={t('maint.subtitle')} />
+    // Ocean Teal (UI v1.1): look only — same previews, permissions,
+    // acknowledgement and repair calls.
+    <OceanPage testid="maintenance-ocean" title={t('settingsNav.items.maintenance.title')} subtitle={t('maint.subtitle')}>
 
       {/* ── GL-neutral repair ───────────────────────────────────────────── */}
-      <section className="rounded-card border border-border-subtle bg-surface-card p-4">
+      <section className="sb-card sb-maint">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="max-w-2xl">
-            <h2 className="text-sm font-semibold text-ink-primary">{t('maint.sub_title')}</h2>
-            <p className="mt-1 text-xs text-ink-secondary">{t('maint.sub_desc')}</p>
-            <p className="mt-1 text-xs font-medium text-success-600">{t('maint.gl_neutral')}</p>
+            <h2 className="sb-form-title" style={{ lineHeight: 1.3 }}>{t('maint.sub_title')}</h2>
+            <p className="sb-form-hint" style={{ marginTop: 6 }}>{t('maint.sub_desc')}</p>
+            <p className="sb-pill sb-pill-good" style={{ marginTop: 8 }}>{t('maint.gl_neutral')}</p>
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => runSub(true)}
               disabled={subBusy || !canInventory}
-              className="h-9 rounded-card border border-border-strong bg-surface-card px-4 text-sm text-ink-primary hover:bg-surface-muted disabled:opacity-50"
+              className="sb-secondary-btn"
             >
               {subBusy ? t('common.loading') : t('maint.preview')}
             </button>
             <button
               onClick={() => runSub(false)}
               disabled={subBusy || !canInventory || !subPreview || subPreview.rows === 0}
-              className="btn-primary h-9 px-4 text-sm font-semibold"
+              className="sb-primary-btn"
             >
               {t('maint.apply')}
             </button>
@@ -111,30 +112,30 @@ export default function MaintenancePage() {
         {subMsg && <p className="mt-3 text-sm text-ink-primary">{subMsg}</p>}
 
         {subPreview && subPreview.rows > 0 && (
-          <div className="mt-3 overflow-x-auto rounded border border-border-subtle">
-            <table className="w-full text-sm">
-              <thead className="bg-surface-subtle text-xs uppercase tracking-wide text-ink-tertiary">
+          <div className="sb-dtable-wrap sb-maint-table">
+            <table className="sb-dtable">
+              <thead>
                 <tr>
-                  <th className="px-3 py-2 text-start">{t('maint.col_product')}</th>
-                  <th className="px-3 py-2 text-end">{t('maint.col_qty')}</th>
-                  <th className="px-3 py-2 text-end">{t('maint.col_unit_cost')}</th>
-                  <th className="px-3 py-2 text-end">{t('maint.col_value')}</th>
+                  <th>{t('maint.col_product')}</th>
+                  <th className="sb-num">{t('maint.col_qty')}</th>
+                  <th className="sb-num">{t('maint.col_unit_cost')}</th>
+                  <th className="sb-num">{t('maint.col_value')}</th>
                 </tr>
               </thead>
               <tbody>
                 {subPreview.plan.map(l => (
                   <tr key={l.stock_row_id} className="border-t border-border-subtle">
                     <td className="px-3 py-2 font-mono text-xs text-ink-secondary">{l.product_id.slice(0, 8)}…</td>
-                    <td className="px-3 py-2 text-end text-ink-secondary">{l.quantity}</td>
-                    <td className="px-3 py-2 text-end text-ink-secondary">{fmt(Number(l.unit_cost))}</td>
-                    <td className="px-3 py-2 text-end font-medium text-ink-primary">{fmt(Number(l.total_cost))}</td>
+                    <td className="sb-num">{l.quantity}</td>
+                    <td className="sb-num">{fmt(Number(l.unit_cost))}</td>
+                    <td className="sb-num">{fmt(Number(l.total_cost))}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 border-border-strong bg-surface-subtle font-semibold text-ink-primary">
+                <tr className="sb-dtable-total">
                   <td className="px-3 py-2" colSpan={3}>{t('maint.total')}</td>
-                  <td className="px-3 py-2 text-end">{fmt(subPreview.value)}</td>
+                  <td className="sb-num">{fmt(subPreview.value)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -143,25 +144,25 @@ export default function MaintenancePage() {
       </section>
 
       {/* ── GL-posting repair ───────────────────────────────────────────── */}
-      <section className="rounded-card border border-border-subtle bg-surface-card p-4">
+      <section className="sb-card sb-maint">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="max-w-2xl">
-            <h2 className="text-sm font-semibold text-ink-primary">{t('maint.def_title')}</h2>
-            <p className="mt-1 text-xs text-ink-secondary">{t('maint.def_desc')}</p>
-            <p className="mt-1 text-xs font-medium text-warning-600">{t('maint.posts_to_gl')}</p>
+            <h2 className="sb-form-title" style={{ lineHeight: 1.3 }}>{t('maint.def_title')}</h2>
+            <p className="sb-form-hint" style={{ marginTop: 6 }}>{t('maint.def_desc')}</p>
+            <p className="sb-pill sb-pill-warn" style={{ marginTop: 8 }}>{t('maint.posts_to_gl')}</p>
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => runDef(true)}
               disabled={defBusy || !canAccount}
-              className="h-9 rounded-card border border-border-strong bg-surface-card px-4 text-sm text-ink-primary hover:bg-surface-muted disabled:opacity-50"
+              className="sb-secondary-btn"
             >
               {defBusy ? t('common.loading') : t('maint.preview')}
             </button>
             <button
               onClick={() => runDef(false)}
               disabled={defBusy || !canAccount || !defPreview || defPreview.entries === 0 || !defAck}
-              className="btn-primary h-9 px-4 text-sm font-semibold"
+              className="sb-primary-btn"
             >
               {t('maint.apply')}
             </button>
@@ -173,39 +174,39 @@ export default function MaintenancePage() {
 
         {defPreview && defPreview.entries > 0 && (
           <>
-            <div className="mt-3 overflow-x-auto rounded border border-border-subtle">
-              <table className="w-full text-sm">
-                <thead className="bg-surface-subtle text-xs uppercase tracking-wide text-ink-tertiary">
+            <div className="sb-dtable-wrap sb-maint-table">
+              <table className="sb-dtable">
+                <thead>
                   <tr>
-                    <th className="px-3 py-2 text-start">{t('maint.col_date')}</th>
-                    <th className="px-3 py-2 text-end">{t('maint.col_rows')}</th>
-                    <th className="px-3 py-2 text-end">{t('maint.col_amount')}</th>
+                    <th>{t('maint.col_date')}</th>
+                    <th className="sb-num">{t('maint.col_rows')}</th>
+                    <th className="sb-num">{t('maint.col_amount')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {defPreview.plan.map(e => (
                     <tr key={`${e.bill_id}-${e.date}`} className="border-t border-border-subtle">
                       <td className="px-3 py-2 text-ink-secondary">{e.date}</td>
-                      <td className="px-3 py-2 text-end text-ink-secondary">{e.rows}</td>
-                      <td className="px-3 py-2 text-end font-medium text-ink-primary">{fmt(Number(e.amount))}</td>
+                      <td className="sb-num">{e.rows}</td>
+                      <td className="sb-num">{fmt(Number(e.amount))}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t-2 border-border-strong bg-surface-subtle font-semibold text-ink-primary">
+                  <tr className="sb-dtable-total">
                     <td className="px-3 py-2" colSpan={2}>{t('maint.total')}</td>
-                    <td className="px-3 py-2 text-end">{fmt(defPreview.total)}</td>
+                    <td className="sb-num">{fmt(defPreview.total)}</td>
                   </tr>
                 </tfoot>
               </table>
             </div>
-            <label className="mt-3 flex items-center gap-2 text-xs text-ink-secondary">
+            <label className="sb-check-row" style={{ marginTop: 12 }}>
               <input type="checkbox" checked={defAck} onChange={e => setDefAck(e.target.checked)} />
               {t('maint.def_ack', { total: fmt(defPreview.total) })}
             </label>
           </>
         )}
       </section>
-    </div>
+    </OceanPage>
   );
 }
