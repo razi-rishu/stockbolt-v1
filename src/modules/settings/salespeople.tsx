@@ -9,6 +9,7 @@ import { OceanPage, OceanTable } from '@/components/ocean-list';
 import { Plus, UserRound, Loader2 } from 'lucide-react';
 import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { SalespersonRow } from '@/data/adapter';
+import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -38,6 +39,7 @@ export default function SalespeoplePage() {
   const qc = useQueryClient();
   const { company_id } = useAuthStore();
   const { t } = useTranslation();
+  const arabicOn = useArabicEnabled();   // India companies: English only
 
   const [showInactive, setShowInactive] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -178,8 +180,10 @@ export default function SalespeoplePage() {
           <div className="sb-form-grid">
             <Input id="sp-name" label={t('settingsPages.sales.name')} required value={form.name}
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+            {arabicOn && (
             <Input id="sp-name-ar" label={t('settingsPages.sales.name_ar')} dir="rtl" value={form.name_ar}
               onChange={e => setForm(f => ({ ...f, name_ar: e.target.value }))} />
+            )}
             <Input id="sp-email" label={t('settingsPages.sales.email')} type="email" dir="ltr" value={form.email}
               onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
             <Input id="sp-phone" label={t('settingsPages.sales.phone')} type="tel" dir="ltr" value={form.phone}

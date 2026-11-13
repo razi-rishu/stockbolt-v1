@@ -16,6 +16,7 @@ import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
 import { FormErrorBanner } from '@/ui/form-error-banner';
 import { OceanPage } from '@/components/ocean-list';
 import { Plus, ChevronDown, ChevronRight, ArrowUp, ArrowDown, Pencil, Trash2, FolderPlus } from 'lucide-react';
+import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
 
 const schema = z.object({
   name:           z.string().min(1, 'Required'),
@@ -42,6 +43,7 @@ interface FlatNode { node: CategoryRow; depth: number; hasChildren: boolean; sib
  */
 export default function CategoriesPage() {
   const { t } = useTranslation();
+  const arabicOn = useArabicEnabled();   // India companies: English only
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -225,7 +227,9 @@ export default function CategoriesPage() {
         <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v); }, onInvalid)} className="sb-ocean sb-form sb-modal-form">
           <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           <Input label={t('catalog.categories.name')} required error={errors.name?.message} {...register('name')} />
+          {arabicOn && (
           <Input label={t('catalog.categories.name_ar')} dir="rtl" {...register('name_ar')} />
+          )}
           <div className="flex flex-col gap-1">
             <label className="sb-select-label" htmlFor="category-parent">{t('catalog.categories.parent')}</label>
             <select id="category-parent" className="sb-field" {...register('parent_id')}>
@@ -238,7 +242,9 @@ export default function CategoriesPage() {
             <Input label={t('catalog.categories.image_url')} placeholder="https://" {...register('image_url')} />
           </div>
           <Textarea label={t('catalog.categories.description')} rows={2} {...register('description')} />
+          {arabicOn && (
           <Textarea label={t('catalog.categories.description_ar')} rows={2} dir="rtl" {...register('description_ar')} />
+          )}
           <label className="sb-check-row">
             <input type="checkbox" {...register('is_active')} />
             <span className="sb-check-text">{t('catalog.categories.active')}</span>

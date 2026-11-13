@@ -18,6 +18,7 @@ import ImportExportButton from '@/modules/settings/import-export/ImportExportBut
 import type { BrandRow } from '@/data/adapter';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
 import { FormErrorBanner } from '@/ui/form-error-banner';
+import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
 
 const schema = z.object({
   name:         z.string().min(1, 'Required'),
@@ -33,6 +34,7 @@ const EMPTY: FormValues = { name: '', name_ar: '', country: '', manufacturer: ''
 
 export default function BrandsPage() {
   const { t } = useTranslation();
+  const arabicOn = useArabicEnabled();   // India companies: English only
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -214,7 +216,9 @@ export default function BrandsPage() {
         <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v); }, onInvalid)} className="sb-ocean sb-form sb-modal-form">
           <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           <Input label={t('catalog.brands.name')} required error={errors.name?.message} {...register('name')} />
+          {arabicOn && (
           <Input label={t('catalog.brands.name_ar')} dir="rtl" {...register('name_ar')} />
+          )}
           <div className="grid grid-cols-2 gap-4">
             <Input label={t('catalog.brands.manufacturer')} {...register('manufacturer')} />
             <Input label={t('catalog.brands.country')} {...register('country')} />

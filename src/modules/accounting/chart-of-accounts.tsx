@@ -108,6 +108,7 @@ type FormValues = z.infer<typeof schema>;
 // flow. 1110 = Bank Account (Main), 1100 = Cash in Hand. Both are the
 // canonical seed accounts those sub-rows nest under.
 // Phase 14.14s — codes moved to src/core/seeds/control-accounts.ts.
+import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
 import {
   BANK_PARENT_CODE_SET as BANK_PARENT_CODES,
   BANK_PARENT_CODES as BANK_CODE,
@@ -115,6 +116,7 @@ import {
 
 export default function ChartOfAccountsPage() {
   const { t } = useTranslation();
+  const arabicOn = useArabicEnabled();   // India companies: English only
   // English labels in FLAT_TYPES stay as the fallback text.
   const ftGroup = (ft: FlatTypeMeta) => t(`settingsPages.coa.group.${ft.value}`, { defaultValue: ft.group });
   const ftLabel = (ft: FlatTypeMeta | undefined) => (ft ? t(`settingsPages.coa.type.${ft.value}`, { defaultValue: ft.label }) : '');
@@ -612,10 +614,12 @@ export default function ChartOfAccountsPage() {
             <Input {...register('name')} placeholder={t('accounting.account_name')} />
             {errors.name && <p className="sb-form-hint" style={{ color: 'var(--sb-danger)' }}>{errors.name.message}</p>}
           </div>
+          {arabicOn && (
           <div>
             <label className="sb-flabel">{t('accounting.account_name_ar')}</label>
             <Input {...register('name_ar')} dir="rtl" />
           </div>
+          )}
           {/* Phase 14.13 — parent picker. Nest sub-accounts (e.g. specific
                bank accounts under "1100 Bank Account (Main)", or branch
                cash drawers under "1000 Cash in Hand"). Filtered to the

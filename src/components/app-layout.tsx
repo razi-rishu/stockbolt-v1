@@ -29,6 +29,8 @@ import { fiscalYearLabel } from '@/lib/locale';
 import { useBackHandler } from '@/navigation/use-back-handler';
 import { isAppShell } from '@/lib/platform';
 import { AppShell } from '@/app-shell/AppShell';
+import { useUiLayoutStore } from '@/store/ui-layout';
+import { useEnglishOnlyWhenArabicDisabled } from '@/hooks/use-arabic-enabled';
 import '@/styles/stockbolt-ocean-teal.css';
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -623,6 +625,8 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [sidebarHidden, setSidebarHidden] = useState(false);
   const location = useLocation();
   const currency = useCompanyCurrency();
+  // India companies work in English only — switch back if Arabic was remembered.
+  useEnglishOnlyWhenArabicDisabled();
 
   // Global v1 — links into a module the company has switched off are hidden;
   // ModuleGate refuses the same URLs. A legacy company has every module on.
@@ -654,6 +658,22 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   // Close the mobile drawer whenever the route changes.
   useEffect(() => { setDrawerOpen(false); }, [location.pathname]);
+
+  // A screen with its own side menu (Settings rail, product step rail) is on
+  // show: collapse the main sidebar so two side menus never sit side by side.
+  // The menu button still reopens it, and when the inner menu goes away the
+  // sidebar goes back to how it was before.
+  const innerNavActive = useUiLayoutStore((s) => s.innerNavCount > 0);
+  const hiddenBeforeInnerNav = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (innerNavActive) {
+      setSidebarHidden((h) => { hiddenBeforeInnerNav.current = h; return true; });
+    } else if (hiddenBeforeInnerNav.current !== null) {
+      const prev = hiddenBeforeInnerNav.current;
+      hiddenBeforeInnerNav.current = null;
+      setSidebarHidden(prev);
+    }
+  }, [innerNavActive]);
   useBackHandler(drawerOpen, () => setDrawerOpen(false));
 
   async function handleSignOut() {

@@ -1,11 +1,14 @@
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth';
+import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
 
 /** Toggles between English and Arabic and flips document direction.
- *  variant="dark" renders white-on-transparent for the dark top nav. */
+ *  variant="dark" renders white-on-transparent for the dark top nav.
+ *  Not shown for a company registered in India (English only). */
 export function LanguageToggle({ className = '', variant = 'light' }: { className?: string; variant?: 'light' | 'dark' }) {
   const { i18n } = useTranslation();
   const { language, set_language } = useAuthStore();
+  const arabicEnabled = useArabicEnabled();
 
   function toggle() {
     const next = language === 'en' ? 'ar' : 'en';
@@ -16,6 +19,8 @@ export function LanguageToggle({ className = '', variant = 'light' }: { classNam
   const look = variant === 'dark'
     ? 'border-white/25 text-white/80 hover:bg-white/10 hover:text-white'
     : 'border-border-strong text-ink-secondary hover:bg-surface-muted';
+
+  if (!arabicEnabled) return null;
 
   return (
     <button

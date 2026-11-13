@@ -16,6 +16,7 @@ import { StatusBadge } from '@/ui/status-badge';
 import { FormErrorBanner } from '@/ui/form-error-banner';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
 import type { ProjectRow, ProjectStatus } from '@/data/adapter';
+import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
 
 const STATUSES: ProjectStatus[] = ['planned', 'active', 'completed', 'cancelled'];
 
@@ -52,6 +53,7 @@ const EMPTY: FormValues = {
  */
 export default function ProjectsListPage() {
   const { t } = useTranslation();
+  const arabicOn = useArabicEnabled();   // India companies: English only
   const { company_id } = useAuthStore();
   const projectsEnabled = useProjectsEnabled();
   const qc = useQueryClient();
@@ -256,7 +258,9 @@ export default function ProjectsListPage() {
         >
           <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           <Input label={t('projects.name')} required error={errors.name?.message} {...register('name')} />
+          {arabicOn && (
           <Input label={t('projects.name_ar')} dir="rtl" {...register('name_ar')} />
+          )}
 
           <Select
             label={t('projects.customer')}

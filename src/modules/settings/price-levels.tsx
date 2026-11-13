@@ -16,6 +16,7 @@ import ImportExportButton from '@/modules/settings/import-export/ImportExportBut
 import type { PriceLevelRow } from '@/data/adapter';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
 import { FormErrorBanner } from '@/ui/form-error-banner';
+import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
 
 const schema = z.object({
   name:           z.string().min(1, 'Required'),
@@ -28,6 +29,7 @@ type FormValues = z.infer<typeof schema>;
 
 export default function PriceLevelsPage() {
   const { t } = useTranslation();
+  const arabicOn = useArabicEnabled();   // India companies: English only
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -69,7 +71,7 @@ export default function PriceLevelsPage() {
 
   const columns: Column<PriceLevelRow>[] = [
     { key: 'name', header: t('settings.price_levels.name'), render: (r) => <span className="font-medium">{r.name}</span> },
-    { key: 'name_ar', header: t('settings.price_levels.name_ar'), render: (r) => <span dir="rtl">{r.name_ar ?? '—'}</span> },
+    ...(arabicOn ? [{ key: 'name_ar', header: t('settings.price_levels.name_ar'), render: (r: PriceLevelRow) => <span dir="rtl">{r.name_ar ?? '—'}</span> }] : []),
     { key: 'markup', header: t('settings.price_levels.markup'), render: (r) => r.markup_percent != null ? <bdi dir="ltr" className="sb-mono">{r.markup_percent}%</bdi> : '—' },
     { key: 'default', header: '', width: '80px', render: (r) => r.is_default ? <span className="sb-pill">{t('common.default')}</span> : null },
     {
@@ -103,7 +105,9 @@ export default function PriceLevelsPage() {
         <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v as FormValues); }, onInvalid)} className="sb-ocean sb-form sb-modal-form">
           <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           <Input label={t('settings.price_levels.name')} required error={errors.name?.message} {...register('name')} />
+          {arabicOn && (
           <Input label={t('settings.price_levels.name_ar')} dir="rtl" {...register('name_ar')} />
+          )}
           <Input label={t('settings.price_levels.markup')} type="number" step="0.01" hint={t('settings.price_levels.markup_hint')} {...register('markup_percent')} />
           <Input label={t('settings.price_levels.sort_order')} type="number" {...register('sort_order')} />
           <label className="flex items-center gap-2 cursor-pointer">

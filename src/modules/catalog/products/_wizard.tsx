@@ -59,6 +59,8 @@ function Panel({ icon, title, children }: { icon?: ReactNode; title: string; chi
   );
 }
 import { ContactQuickCreate } from '@/components/quick-create/contact-quick-create';
+import { useInnerNav } from '@/hooks/use-inner-nav';
+import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
 
 // ── Step metadata ───────────────────────────────────────────────────────
 const STEPS = [
@@ -134,6 +136,8 @@ const initialForm: WizardForm = {
 export function ProductWizard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  // The step rail is a side menu of its own: the main sidebar steps aside.
+  useInnerNav();
   const { company_id } = useAuthStore();
   const companyCurrency = useCompanyCurrency();   // Issue 1 — localize money to tenant currency
 
@@ -466,6 +470,7 @@ function Step1({
   openCategoryQC: () => void;
 }) {
   const { t } = useTranslation();
+  const arabicOn = useArabicEnabled();   // India companies: English only
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <Panel icon={<Tag size={17} />} title={t('pwOcean.sec_identity')}>
@@ -494,9 +499,11 @@ function Step1({
           <Field label={t('pwOcean.name_en')} required>
             <Input value={form.name}    onChange={(e) => set('name', e.target.value)}    placeholder={t('pwOcean.name_en_ph')} />
           </Field>
+          {arabicOn && (
           <Field label={t('pwOcean.name_ar')}>
             <Input value={form.name_ar} onChange={(e) => set('name_ar', e.target.value)} placeholder="اسم الصنف" dir="rtl" />
           </Field>
+          )}
         </Grid>
 
         <Grid cols={3}>

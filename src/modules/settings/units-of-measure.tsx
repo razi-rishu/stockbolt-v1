@@ -16,6 +16,7 @@ import ImportExportButton from '@/modules/settings/import-export/ImportExportBut
 import type { UnitRow } from '@/data/adapter';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
 import { FormErrorBanner } from '@/ui/form-error-banner';
+import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
 
 const schema = z.object({
   code:    z.string().min(1, 'Required'),
@@ -26,6 +27,7 @@ type FormValues = z.infer<typeof schema>;
 
 export default function UnitsOfMeasurePage() {
   const { t } = useTranslation();
+  const arabicOn = useArabicEnabled();   // India companies: English only
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -63,7 +65,7 @@ export default function UnitsOfMeasurePage() {
   const columns: Column<UnitRow>[] = [
     { key: 'code', header: t('settings.units.code'), width: '80px', render: (r) => <bdi dir="ltr" className="sb-wh-code">{r.code}</bdi> },
     { key: 'name', header: t('settings.units.name'), render: (r) => r.name },
-    { key: 'name_ar', header: t('settings.units.name_ar'), render: (r) => <span dir="rtl">{r.name_ar ?? '—'}</span> },
+    ...(arabicOn ? [{ key: 'name_ar', header: t('settings.units.name_ar'), render: (r: UnitRow) => <span dir="rtl">{r.name_ar ?? '—'}</span> }] : []),
     {
       key: 'actions', header: '', width: '100px',
       render: (r) => (
@@ -96,7 +98,9 @@ export default function UnitsOfMeasurePage() {
           <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           <Input label={t('settings.units.code')} required error={errors.code?.message} {...register('code')} />
           <Input label={t('settings.units.name')} required error={errors.name?.message} {...register('name')} />
+          {arabicOn && (
           <Input label={t('settings.units.name_ar')} dir="rtl" {...register('name_ar')} />
+          )}
           {saveMutation.error && <p className="text-xs text-danger-500">{String(saveMutation.error)}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="secondary" onClick={() => setOpen(false)}>{t('common.cancel')}</Button>

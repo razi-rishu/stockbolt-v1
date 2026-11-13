@@ -16,6 +16,7 @@ import { PageHeader } from '@/ui/primitives';
 import { theme } from '@/ui/theme';
 import { computeGratuity, serviceLabel } from './gratuity';
 import type { EmployeeRow, EmployeeInsert, BankAccountRow } from '@/data/adapter';
+import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -58,6 +59,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export default function EmployeesPage() {
+  const arabicOn = useArabicEnabled();   // India companies: English only
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
@@ -235,7 +237,9 @@ export default function EmployeesPage() {
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <Field label="Code"><input className={inputCls} value={draft.code} onChange={e => setDraft(d => ({ ...d, code: e.target.value }))} /></Field>
             <Field label="Name *"><input className={inputCls} value={draft.name} autoFocus onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} /></Field>
+            {arabicOn && (
             <Field label="Name (Arabic)"><input className={inputCls} dir="rtl" value={draft.name_ar} onChange={e => setDraft(d => ({ ...d, name_ar: e.target.value }))} /></Field>
+            )}
             <Field label="Designation"><input className={inputCls} value={draft.designation} placeholder="e.g. Storekeeper" onChange={e => setDraft(d => ({ ...d, designation: e.target.value }))} /></Field>
             <Field label="Phone"><input className={inputCls} value={draft.phone} onChange={e => setDraft(d => ({ ...d, phone: e.target.value }))} /></Field>
             <Field label="Email"><input className={inputCls} type="email" value={draft.email} onChange={e => setDraft(d => ({ ...d, email: e.target.value }))} /></Field>

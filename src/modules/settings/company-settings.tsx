@@ -11,6 +11,7 @@ import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
 import { FormErrorBanner } from '@/ui/form-error-banner';
 import { ImageIcon, Building2, Percent, Package, Coins, Landmark, Upload, Loader2 } from 'lucide-react';
 import '@/styles/stockbolt-ocean-teal.css';
+import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
 
 /** Ocean Teal card heading: icon square + title. */
 function SectionHead({ icon, title, hint }: { icon: React.ReactNode; title: string; hint?: string }) {
@@ -45,6 +46,7 @@ type FormValues = z.infer<typeof schema>;
 
 export default function CompanySettingsPage() {
   const { t } = useTranslation();
+  const arabicOn = useArabicEnabled();   // India companies: English only
   const { company_id } = useAuthStore();
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -205,9 +207,13 @@ export default function CompanySettingsPage() {
             <SectionHead icon={<Building2 size={20} />} title={t('settings.company.details')} />
             <div className="sb-form-grid">
               <Input label={t('settings.company.name')} required error={errors.name?.message} {...inv('name')} {...register('name')} />
+              {arabicOn && (
               <Input label={t('settings.company.name_ar')} dir="rtl" error={errors.name_ar?.message} {...register('name_ar')} />
+              )}
               <Input label={t('settings.company.address')} error={errors.address?.message} {...register('address')} />
+              {arabicOn && (
               <Input label={t('settings.company.address_ar')} dir="rtl" error={errors.address_ar?.message} {...register('address_ar')} />
+              )}
               <Input label={t('settings.company.city')} error={errors.city?.message} {...register('city')} />
               <Input label={t('settings.company.state')} error={errors.state?.message} {...register('state')} />
               <Input label={t('settings.company.phone')} type="tel" dir="ltr" placeholder="+971 …" error={errors.phone?.message} {...register('phone')} />

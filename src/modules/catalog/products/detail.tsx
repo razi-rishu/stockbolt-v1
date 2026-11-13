@@ -23,6 +23,7 @@ import { findProductDuplicates } from '@/lib/duplicate-check';
 import { FormErrorBanner } from '@/ui/form-error-banner';
 import { Pencil, Trash2, Plus } from 'lucide-react';
 import '@/styles/stockbolt-ocean-teal.css';
+import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
 
 const schema = z.object({
   sku:                z.string().min(1, 'Required'),
@@ -86,6 +87,7 @@ const S = {
 
 export default function ProductDetailPage() {
   const { t } = useTranslation();
+  const arabicOn = useArabicEnabled();   // India companies: English only
   const { id } = useParams<{ id: string }>();
   const isNew = id === 'new';
   const navigate = useNavigate();
@@ -351,11 +353,15 @@ export default function ProductDetailPage() {
             <div style={S.body}>
               <div style={S.row2}>
                 <Input label={t('products.name')} required error={errors.name ? t('prodOcean.required') : undefined} {...register('name')} />
+                {arabicOn && (
                 <Input label={t('products.name_ar')} dir="rtl" {...register('name_ar')} />
+                )}
               </div>
               <div style={S.row2}>
                 <Textarea label={t('products.description')} {...register('description')} />
+                {arabicOn && (
                 <Textarea label={t('products.description_ar')} dir="rtl" {...register('description_ar')} />
+                )}
               </div>
             </div>
           </div>

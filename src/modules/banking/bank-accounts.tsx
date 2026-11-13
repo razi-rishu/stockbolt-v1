@@ -34,6 +34,7 @@ import { theme } from '@/ui/theme';
 import type { BankAccountRow, CoaRow } from '@/data/adapter';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
 import { FormErrorBanner } from '@/ui/form-error-banner';
+import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
 
 const schema = z.object({
   name:           z.string().min(1, 'Required'),
@@ -56,6 +57,7 @@ const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2,
 
 export default function BankAccountsPage() {
   const { t } = useTranslation();
+  const arabicOn = useArabicEnabled();   // India companies: English only
   const { company_id } = useAuthStore();
   // The company's own currency (INR for an Indian company). A literal 'AED'
   // here labelled every Indian company's balances in dirhams and pre-filled
@@ -559,7 +561,9 @@ export default function BankAccountsPage() {
           )}
           <div className="grid grid-cols-2 gap-4">
             <Input label="Display name" required error={errors.name?.message} {...register('name')} />
+            {arabicOn && (
             <Input label="Display name (Arabic)" dir="rtl" {...register('name_ar')} />
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

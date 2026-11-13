@@ -20,6 +20,7 @@ import { theme } from '@/ui/theme';
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
 import { SAMPLE_TAX_INVOICE } from '@/modules/print/_signature/sample-data';
 import { STYLE_PRESETS, STYLE_ORDER } from '@/modules/print/engine/presets';
+import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
 import {
   DEFAULT_TEMPLATE_SETTINGS, normalizeSettings,
   type PrintTemplate, type TemplateSettings, type TemplateStyle, type PrintDocumentType,
@@ -78,6 +79,7 @@ function newTemplateDraft(): Partial<PrintTemplate> & { name: string } {
 export default function PrintSettingsPage() {
   const navigate   = useNavigate();
   const { t } = useTranslation();
+  const arabicOn = useArabicEnabled();   // India companies: English only
   const company_id = useAuthStore(s => s.company_id);
   const adapter    = getAdapter();
 
@@ -504,8 +506,10 @@ export default function PrintSettingsPage() {
                 <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div><label className={labelCls}>{t('settingsPages.print.footer_en')}</label>
                     <textarea className="sb-field sb-print-input sb-print-area" rows={2} value={tpl.settings.footerEn} onChange={e => setFooter('footerEn', e.target.value)} placeholder="Bank: ENBD · IBAN: AE00… · Thank you" /></div>
+                  {arabicOn && (
                   <div><label className={labelCls}>{t('settingsPages.print.footer_ar')}</label>
                     <textarea className="sb-field sb-print-input sb-print-area" dir="rtl" rows={2} value={tpl.settings.footerAr} onChange={e => setFooter('footerAr', e.target.value)} /></div>
+                  )}
                 </div>
               </div>
 
@@ -515,8 +519,10 @@ export default function PrintSettingsPage() {
                 <div className="mt-1 grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div><label className={labelCls}>{t('settingsPages.print.terms_en')}</label>
                     <textarea className="sb-field sb-print-input sb-print-area" rows={2} value={tpl.settings.paymentTermsEn} onChange={e => setFooter('paymentTermsEn', e.target.value)} placeholder="Payment due within 30 days of invoice date." /></div>
+                  {arabicOn && (
                   <div><label className={labelCls}>{t('settingsPages.print.terms_ar')}</label>
                     <textarea className="sb-field sb-print-input sb-print-area" dir="rtl" rows={2} value={tpl.settings.paymentTermsAr} onChange={e => setFooter('paymentTermsAr', e.target.value)} /></div>
+                  )}
                 </div>
               </div>
 
@@ -544,7 +550,7 @@ export default function PrintSettingsPage() {
               <div className={card}>
                 <h2 className="sb-print-h2">{t('settingsPages.print.show_on_docs')}</h2>
                 <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {TOGGLES.map(({ key, label }) => (
+                  {TOGGLES.filter(({ key }) => arabicOn || key !== 'showItemDescription').map(({ key, label }) => (
                     <label key={key} className="flex cursor-pointer items-center gap-2">
                       <input type="checkbox" className="h-4 w-4 rounded border-border-subtle accent-brand-600" checked={!!tpl.settings[key]} onChange={e => setToggle(key, e.target.checked)} />
                       <span className="text-sm text-ink-primary">{t(`settingsPages.print.toggle.${String(key)}`, { defaultValue: label })}</span>

@@ -4,6 +4,7 @@ import { useEnabledModules } from '@/hooks/use-enabled-modules';
 import { useTranslation } from 'react-i18next';
 import { itemIcon, itemTitle, sectionTitle } from './_nav-ocean';
 import '@/styles/stockbolt-ocean-teal.css';
+import { useInnerNav } from '@/hooks/use-inner-nav';
 
 /**
  * Settings two-pane layout — pinned left nav rail + content Outlet.
@@ -20,7 +21,10 @@ export default function SettingsLayout() {
   const { t } = useTranslation();
   // The hub (/settings) shows the cards full-width; the pinned nav rail appears
   // only once you drill into a specific setting.
-  if (pathname === '/settings' || pathname === '/settings/') return <Outlet />;
+  const isHub = pathname === '/settings' || pathname === '/settings/';
+  // With the rail on screen the main app sidebar steps aside (reopenable).
+  useInnerNav(!isHub);
+  if (isHub) return <Outlet />;
 
   return (
     <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">

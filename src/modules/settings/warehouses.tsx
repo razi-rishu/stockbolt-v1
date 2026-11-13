@@ -14,6 +14,7 @@ import ImportExportButton from '@/modules/settings/import-export/ImportExportBut
 import type { WarehouseRow } from '@/data/adapter';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
 import { FormErrorBanner } from '@/ui/form-error-banner';
+import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
 
 const schema = z.object({
   code:     z.string().min(1, 'Required'),
@@ -29,6 +30,7 @@ type FormValues = z.infer<typeof schema>;
 
 export default function WarehousesPage() {
   const { t } = useTranslation();
+  const arabicOn = useArabicEnabled();   // India companies: English only
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -150,7 +152,7 @@ export default function WarehousesPage() {
                   <tr>
                     <th>{t('settings.warehouses.code')}</th>
                     <th>{t('settings.warehouses.name')}</th>
-                    <th>{t('settings.warehouses.name_ar')}</th>
+                    {arabicOn && <th>{t('settings.warehouses.name_ar')}</th>}
                     <th>{t('settings.warehouses.city')}</th>
                     <th aria-label={t('common.active')} />
                     <th aria-label={t('common.edit')} />
@@ -161,7 +163,7 @@ export default function WarehousesPage() {
                     <tr key={r.id}>
                       <td><bdi dir="ltr" className="sb-wh-code">{r.code}</bdi></td>
                       <td style={{ fontWeight: 600 }}>{r.name}</td>
-                      <td>{r.name_ar ? <bdi>{r.name_ar}</bdi> : '—'}</td>
+                      {arabicOn && <td>{r.name_ar ? <bdi>{r.name_ar}</bdi> : '—'}</td>}
                       <td>{r.city ?? '—'}</td>
                       <td><div className="sb-wh-badges">{badges(r)}</div></td>
                       <td><div className="sb-row-actions">{actions(r, 16)}</div></td>
@@ -181,7 +183,9 @@ export default function WarehousesPage() {
             <Input label={t('settings.warehouses.code')} required dir="ltr" error={errors.code?.message} aria-invalid={errors.code ? true : undefined} {...register('code')} />
             <Input label={t('settings.warehouses.name')} required error={errors.name?.message} aria-invalid={errors.name ? true : undefined} {...register('name')} />
           </div>
+          {arabicOn && (
           <Input label={t('settings.warehouses.name_ar')} dir="rtl" {...register('name_ar')} />
+          )}
           <div className="sb-form-grid">
             <Input label={t('settings.warehouses.address')} {...register('address')} />
             <Input label={t('settings.warehouses.city')} {...register('city')} />

@@ -18,6 +18,7 @@ import { Search, Phone, MapPin, Pencil, Trash2, Plus, ChevronRight } from 'lucid
 import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import { Pagination, paginate } from '@/ui/pagination';
 import type { ContactRow } from '@/data/adapter';
+import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
 import '@/styles/stockbolt-ocean-teal.css';
 
 type TermsFilter = 'all' | 'cod' | 'credit';
@@ -42,6 +43,7 @@ const terms = (r: ContactRow, cod: string) => (r.payment_terms_days > 0 ? `Net $
 
 export function CustomerListOcean(p: CustomerListOceanProps) {
   const { t } = useTranslation();
+  const arabicOn = useArabicEnabled();   // India companies: English only
   const navigate = useNavigate();
   const [filter, setFilter] = useState<TermsFilter>('all');
 
@@ -146,7 +148,7 @@ export function CustomerListOcean(p: CustomerListOceanProps) {
                 <thead>
                   <tr>
                     <th>{t('contacts.name')}</th>
-                    <th>{t('contacts.name_ar')}</th>
+                    {arabicOn && <th>{t('contacts.name_ar')}</th>}
                     <th>{t('contacts.phone')}</th>
                     <th>{t('contacts.email')}</th>
                     <th>{t('contacts.payment_terms')}</th>
@@ -161,7 +163,7 @@ export function CustomerListOcean(p: CustomerListOceanProps) {
                         <button type="button" className="sb-link" onClick={() => open(r)}>{r.name}</button>
                         {r.type === 'both' && <span className="sb-pill sb-pill-muted" style={{ marginInlineStart: 8 }}>{t('contacts.type_both')}</span>}
                       </td>
-                      <td>{r.name_ar ? <bdi>{r.name_ar}</bdi> : '—'}</td>
+                      {arabicOn && <td>{r.name_ar ? <bdi>{r.name_ar}</bdi> : '—'}</td>}
                       <td><bdi dir="ltr">{r.phone ?? r.mobile ?? '—'}</bdi></td>
                       <td>{r.email ?? '—'}</td>
                       <td><span className="sb-pill">{terms(r, cod)}</span></td>

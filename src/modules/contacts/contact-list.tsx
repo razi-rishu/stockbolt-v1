@@ -21,6 +21,7 @@ import { FormErrorBanner } from '@/ui/form-error-banner';
 import { DuplicateWarning } from '@/ui/duplicate-warning';
 import { findContactDuplicates } from '@/lib/duplicate-check';
 import { CustomerListOcean } from './customer-list-ocean';
+import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
 
 const PAGE_SIZE = 50;
 
@@ -72,6 +73,7 @@ interface ContactListPageProps {
 
 export function ContactListPage({ defaultType, singularKey }: ContactListPageProps) {
   const { t } = useTranslation();
+  const arabicOn = useArabicEnabled();   // India companies: English only
   const { company_id } = useAuthStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const qc = useQueryClient();
@@ -252,7 +254,9 @@ export function ContactListPage({ defaultType, singularKey }: ContactListPagePro
           <DuplicateWarning hits={duplicateHits} docType={defaultType} />
           <div className="grid grid-cols-2 gap-4">
             <Input label={t('contacts.name')} required error={errors.name?.message} {...register('name')} />
+            {arabicOn && (
             <Input label={t('contacts.name_ar')} dir="rtl" {...register('name_ar')} />
+            )}
           </div>
 
           <div className="flex flex-col gap-1">
