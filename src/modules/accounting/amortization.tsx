@@ -604,7 +604,7 @@ export default function AmortizationPage() {
 
           {saveMutation.error && <p className="sb-alert sb-alert-danger">{(saveMutation.error as Error).message}</p>}
         </div>
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="sb-ocean sb-modal-foot mt-4 flex justify-end gap-2">
           <Button size="sm" variant="secondary" onClick={() => setFormOpen(false)}>{t('common.cancel')}</Button>
           <Button size="sm" onClick={() => saveMutation.mutate()}
             disabled={saveMutation.isPending || !form.name || !form.start_date || !form.pl_account_code
@@ -692,7 +692,7 @@ export default function AmortizationPage() {
           <Input label={t('am.cancel_reason')} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} />
           {cancelMutation.error && <p className="sb-alert sb-alert-danger">{(cancelMutation.error as Error).message}</p>}
         </div>
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="sb-ocean sb-modal-foot mt-4 flex justify-end gap-2">
           <Button size="sm" variant="secondary" onClick={() => setCancelOpen(false)}>{t('common.back')}</Button>
           <Button size="sm" variant="danger" onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}>
             {t('am.confirm_cancel')}
@@ -706,7 +706,7 @@ export default function AmortizationPage() {
           <p className="sb-alert sb-alert-warn">{t('am.reverse_confirm')}</p>
           {reverseMutation.error && <p className="sb-alert sb-alert-danger">{(reverseMutation.error as Error).message}</p>}
         </div>
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="sb-ocean sb-modal-foot mt-4 flex justify-end gap-2">
           <Button size="sm" variant="secondary" onClick={() => setReverseOpen(false)}>{t('common.cancel')}</Button>
           <Button size="sm" variant="danger" onClick={() => reverseMutation.mutate()} disabled={reverseMutation.isPending}>
             {t('am.confirm_reverse')}

@@ -552,7 +552,7 @@ export default function FixedAssetsPage() {
 
           {saveMutation.error && <p className="sb-alert sb-alert-danger">{(saveMutation.error as Error).message}</p>}
         </div>
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="sb-ocean sb-modal-foot mt-4 flex justify-end gap-2">
           <Button size="sm" variant="secondary" onClick={() => setFormOpen(false)}>{t('common.cancel')}</Button>
           <Button size="sm" onClick={() => saveMutation.mutate()}
             disabled={saveMutation.isPending || !form.name || !form.in_service_date || !form.acquisition_date || !form.asset_account_code}>
@@ -687,7 +687,7 @@ export default function FixedAssetsPage() {
           <p className="sb-alert sb-alert-warn">{t('fa.reverse_confirm')}</p>
           {reverseMutation.error && <p className="sb-alert sb-alert-danger">{(reverseMutation.error as Error).message}</p>}
         </div>
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="sb-ocean sb-modal-foot mt-4 flex justify-end gap-2">
           <Button size="sm" variant="secondary" onClick={() => setReverseOpen(false)}>{t('common.cancel')}</Button>
           <Button size="sm" variant="danger" onClick={() => reverseMutation.mutate()} disabled={reverseMutation.isPending}>
             {t('fa.confirm_reverse')}

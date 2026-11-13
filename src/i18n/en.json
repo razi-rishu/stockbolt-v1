@@ -3866,5 +3866,11 @@
   "btOcean": {
     "details": "Transfer details",
     "amount_positive": "Amount must be greater than zero"
+  },
+  "pdcOcean": {
+    "awaiting": "Awaiting clearance",
+    "cheques": "Cheques: {{count}}",
+    "due_week": "Due within 7 days",
+    "overdue": "Past due: {{count}}"
   }
 }

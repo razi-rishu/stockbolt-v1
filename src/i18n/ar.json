@@ -3866,5 +3866,11 @@
   "btOcean": {
     "details": "تفاصيل التحويل",
     "amount_positive": "يجب أن يكون المبلغ أكبر من صفر"
+  },
+  "pdcOcean": {
+    "awaiting": "بانتظار التحصيل",
+    "cheques": "الشيكات: {{count}}",
+    "due_week": "تستحق خلال 7 أيام",
+    "overdue": "متأخرة: {{count}}"
   }
 }

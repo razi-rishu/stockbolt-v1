@@ -400,7 +400,7 @@ export default function TdsPage() {
           <p className="sb-form-hint" style={{ margin: 0 }}>{t('tds.edit_rate_note')}</p>
           {saveSection.error && <p className="sb-alert sb-alert-danger">{(saveSection.error as Error).message}</p>}
         </div>
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="sb-ocean sb-modal-foot mt-4 flex justify-end gap-2">
           <Button size="sm" variant="secondary" onClick={() => setSectionModal(false)}>{t('common.cancel')}</Button>
           <Button size="sm" onClick={() => saveSection.mutate()}
             disabled={saveSection.isPending || !sectionForm.code || !sectionForm.description}>

@@ -1742,3 +1742,14 @@
   .sb-ocean .sb-bt-arrow { transform: none; margin-bottom: 4px; }
   [dir='rtl'] .sb-ocean .sb-bt-arrow { transform: none; }
 }
+
+/* Banking step 7 — post-dated cheques */
+.sb-ocean .sb-pdc-acts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.sb-ocean .sb-pdc-act { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--sb-primary-light); background: var(--sb-primary-soft); color: var(--sb-primary-dark); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.sb-ocean .sb-pdc-act:hover { background: var(--sb-primary-light); }
+.sb-ocean .sb-pdc-act.is-good { border-color: #BBF7D0; background: var(--sb-success-bg); color: var(--sb-success); }
+.sb-ocean .sb-pdc-act.is-bad { border-color: #FECDD3; background: var(--sb-danger-bg); color: var(--sb-danger); }
+.sb-ocean .sb-pdc-act.is-muted { border-color: var(--sb-border); background: var(--sb-surface); color: var(--sb-text-secondary); }
+.sb-ocean.sb-modal-foot { background: transparent; min-height: 0; }
+.sb-ocean.sb-modal-form .sb-flabel, .sb-ocean .sb-modal-form .sb-flabel { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--sb-text-secondary); }
+[dir='rtl'] .sb-ocean.sb-modal-form .sb-flabel { letter-spacing: 0; }
