@@ -256,7 +256,7 @@ export default function PDCReceivedPage() {
         title={t('banking.new_pdc')}>
         <div className="sb-ocean sb-modal-form space-y-3 mb-4">
           {createError && <p className="sb-alert sb-alert-danger">{createError}</p>}
-          <div>
+          <div className="sb-ss-field">
             <label className="sb-flabel">{t('banking.customer')}</label>
             <SearchableSelect
               options={customers.map((c) => ({ value: c.id, label: c.name }))}

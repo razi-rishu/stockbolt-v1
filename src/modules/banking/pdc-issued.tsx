@@ -231,7 +231,7 @@ export default function PDCIssuedPage() {
         title={t('banking.new_pdc_issued')}>
         <div className="sb-ocean sb-modal-form space-y-3 mb-4">
           {createError && <p className="sb-alert sb-alert-danger">{createError}</p>}
-          <div>
+          <div className="sb-ss-field">
             <label className="sb-flabel">{t('banking.supplier')}</label>
             <SearchableSelect
               options={suppliers.map((c) => ({ value: c.id, label: c.name }))}
