@@ -8,6 +8,8 @@ import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
+import { StatusBadge } from '@/ui/status-badge';
+import { ArrowRight, Ban, CircleCheck, Pencil } from 'lucide-react';
 import type { BankAccountRow, BankTransferRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -67,7 +69,7 @@ export default function BankTransferEditorPage() {
       }
       const amt = parseFloat(amount);
       if (!isFinite(amt) || amt <= 0) {
-        throw new Error('Amount must be greater than zero');
+        throw new Error(t('btOcean.amount_positive'));
       }
       const payload = {
         company_id:      company_id!,
@@ -127,47 +129,84 @@ export default function BankTransferEditorPage() {
   const accountOpts = bankAccounts.map(a => ({ value: a.id, label: a.name }));
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <BackButton to="/banking/transfers" label={t('banking.transfers_title')} />
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink-primary">
-          {isNew ? t('banking.new_transfer') : (transfer?.transfer_number ?? t('banking.new_transfer'))}
-        </h1>
-        {transfer && (
-          <span className={`px-2.5 py-1 rounded text-xs font-semibold ${
-            transfer.status === 'confirmed' ? 'bg-green-100 text-green-700'
-            : transfer.status === 'void' ? 'bg-red-100 text-red-600'
-            : 'bg-yellow-100 text-yellow-700'
-          }`}>{transfer.status.toUpperCase()}</span>
-        )}
+    // Ocean Teal (UI v1.1): look only — same fields, save, confirm, edit and void.
+    <div className="sb-ocean sb-docx sb-docx-edit sb-bt-editor" data-testid="bank-transfer-edit-ocean">
+      <div className="sb-card sb-doc-bar">
+        <div className="sb-doc-bar-id">
+          <BackButton to="/banking/transfers" label={t('banking.transfers_title')} />
+          {isNew
+            ? <h1 className="sb-doc-bar-no">{t('banking.new_transfer')}</h1>
+            : <bdi dir="ltr" className="sb-doc-bar-no">{transfer?.transfer_number ?? t('banking.new_transfer')}</bdi>}
+          {transfer && <StatusBadge status={transfer.status} />}
+        </div>
+        <div className="sb-doc-bar-actions">
+          {isDraft && (
+            <>
+              <Button size="sm" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+                {t('common.save')}
+              </Button>
+              {!isNew && (
+                <Button size="sm" variant="primary" disabled={confirmMutation.isPending || !fromAccountId || !toAccountId}
+                  onClick={() => { setError(null); confirmMutation.mutate(); }}>
+                  <CircleCheck size={15} aria-hidden="true" /> {t('banking.confirm_transfer')}
+                </Button>
+              )}
+            </>
+          )}
+          {isConfirmed && (
+            <>
+              <Button size="sm" variant="ghost" disabled={reopenMutation.isPending}
+                onClick={() => { if (confirm(t('common.reopen_warn') || 'Edit this confirmed document? It reverses its posted entries and reopens it as a draft so you can change it and confirm again.')) { setError(null); reopenMutation.mutate(); } }}>
+                <Pencil size={15} aria-hidden="true" /> {t('common.edit') || 'Edit'}
+              </Button>
+              <Button size="sm" variant="ghost" style={{ color: 'var(--sb-danger)' }}
+                disabled={voidMutation.isPending}
+                onClick={() => { if (confirm(t('banking.void_confirm_text'))) { setError(null); voidMutation.mutate(); } }}>
+                <Ban size={15} aria-hidden="true" /> {t('banking.void_transfer')}
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
-      {error && <p className="text-sm text-red-600 bg-red-50 rounded p-3">{error}</p>}
+      {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
 
-      <div className="bg-white border border-border-subtle rounded-lg p-6 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-ink-secondary mb-1">{t('banking.from_account')}</label>
-            <select disabled={!isDraft}
-              value={fromAccountId} onChange={e => setFromAccountId(e.target.value)}
-              className="w-full h-9 rounded-md border border-border-strong px-2 text-sm disabled:bg-surface-muted">
+      {/* Confirmed summary */}
+      {isConfirmed && (
+        <div className="sb-alert sb-alert-good" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <CircleCheck size={18} aria-hidden="true" style={{ flexShrink: 0 }} />
+          <span>
+            {t('banking.transfer_confirmed')} · {t('banking.amount')}: <bdi dir="ltr">{fmt(transfer.amount)}</bdi>
+          </span>
+        </div>
+      )}
+
+      <div className="sb-card sb-form sb-doc-card space-y-4">
+        <h2 className="sb-doc-card-title">{t('btOcean.details')}</h2>
+
+        {/* From → To, the heart of a transfer */}
+        <div className="sb-bt-route-edit">
+          <div className="sb-bt-side">
+            <label className="sb-flabel" htmlFor="bt-from">{t('banking.from_account')}</label>
+            <select id="bt-from" className="sb-pc-select" disabled={!isDraft}
+              value={fromAccountId} onChange={e => setFromAccountId(e.target.value)}>
               <option value="">{t('banking.select_account')}</option>
               {accountOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-ink-secondary mb-1">{t('banking.to_account')}</label>
-            <select disabled={!isDraft}
-              value={toAccountId} onChange={e => setToAccountId(e.target.value)}
-              className="w-full h-9 rounded-md border border-border-strong px-2 text-sm disabled:bg-surface-muted">
+          <span className="sb-bt-arrow" aria-hidden="true"><ArrowRight size={18} className="sb-rtl-flip" /></span>
+          <div className="sb-bt-side">
+            <label className="sb-flabel" htmlFor="bt-to">{t('banking.to_account')}</label>
+            <select id="bt-to" className="sb-pc-select" disabled={!isDraft}
+              value={toAccountId} onChange={e => setToAccountId(e.target.value)}>
               <option value="">{t('banking.select_account')}</option>
               {accountOpts.filter(o => o.value !== fromAccountId).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <Input label={t('banking.amount')} type="number" value={amount}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Input label={t('banking.amount')} type="number" dir="ltr" value={amount}
             onChange={e => setAmount(e.target.value)} disabled={!isDraft} />
           <Input label={t('common.date')} type="date" value={date}
             onChange={e => setDate(e.target.value)} disabled={!isDraft} />
@@ -176,44 +215,6 @@ export default function BankTransferEditorPage() {
           onChange={e => setReference(e.target.value)} disabled={!isDraft} />
         <Input label={t('banking.notes')} value={notes}
           onChange={e => setNotes(e.target.value)} disabled={!isDraft} />
-      </div>
-
-      {/* Confirmed summary */}
-      {isConfirmed && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-sm text-green-800">
-          <p className="font-semibold">{t('banking.transfer_confirmed')}</p>
-          <p className="mt-1">{t('banking.amount')}: <strong>{fmt(transfer.amount)}</strong></p>
-        </div>
-      )}
-
-      <div className="flex gap-3">
-        <Button variant="ghost" onClick={() => navigate('/banking/transfers')}>{t('common.back')}</Button>
-        {isDraft && (
-          <>
-            <Button disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
-              {t('common.save')}
-            </Button>
-            {!isNew && (
-              <Button variant="primary" disabled={confirmMutation.isPending || !fromAccountId || !toAccountId}
-                onClick={() => { setError(null); confirmMutation.mutate(); }}>
-                {t('banking.confirm_transfer')}
-              </Button>
-            )}
-          </>
-        )}
-        {isConfirmed && (
-          <>
-            <Button variant="primary" disabled={reopenMutation.isPending}
-              onClick={() => { if (confirm(t('common.reopen_warn') || 'Edit this confirmed document? It reverses its posted entries and reopens it as a draft so you can change it and confirm again.')) { setError(null); reopenMutation.mutate(); } }}>
-              ✎ {t('common.edit') || 'Edit'}
-            </Button>
-            <Button variant="ghost" className="text-red-600 border-red-300"
-              disabled={voidMutation.isPending}
-              onClick={() => { if (confirm(t('banking.void_confirm_text'))) { setError(null); voidMutation.mutate(); } }}>
-              {t('banking.void_transfer')}
-            </Button>
-          </>
-        )}
       </div>
     </div>
   );

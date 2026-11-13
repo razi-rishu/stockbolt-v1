@@ -1729,3 +1729,16 @@
 .sb-ocean .sb-ba-meta .sb-mono { font-size: 11px; color: var(--sb-text-secondary); }
 .sb-ocean .sb-ba-oblabel { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--sb-text-secondary); }
 [dir='rtl'] .sb-ocean .sb-ba-oblabel { letter-spacing: 0; }
+
+/* Banking step 6 — bank transfers */
+.sb-ocean .sb-bt-route { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sb-ocean .sb-bt-route svg { color: var(--sb-primary); flex: none; }
+.sb-ocean.sb-bt-editor { max-width: 860px; }
+.sb-ocean .sb-bt-route-edit { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-items: end; padding: 14px; border-radius: var(--sb-radius-md); background: var(--sb-primary-soft); border: 1px solid var(--sb-primary-light); }
+.sb-ocean .sb-bt-arrow { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 999px; background: var(--sb-primary); color: #fff; justify-self: center; transform: rotate(90deg); }
+[dir='rtl'] .sb-ocean .sb-bt-arrow { transform: rotate(90deg); }
+@media (min-width: 640px) {
+  .sb-ocean .sb-bt-route-edit { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+  .sb-ocean .sb-bt-arrow { transform: none; margin-bottom: 4px; }
+  [dir='rtl'] .sb-ocean .sb-bt-arrow { transform: none; }
+}

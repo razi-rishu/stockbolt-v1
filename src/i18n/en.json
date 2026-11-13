@@ -3862,5 +3862,9 @@
     "save_changes": "Save changes",
     "delete_confirm": "Delete bank account \"{{name}}\"?\n\nThis cannot be undone. The delete will fail if any payment, expense, bank transfer, PDC cheque or reconciliation uses it — in that case deactivate it instead (Edit → untick Active).",
     "delete_failed": "Could not delete \"{{name}}\":\n\n{{msg}}"
+  },
+  "btOcean": {
+    "details": "Transfer details",
+    "amount_positive": "Amount must be greater than zero"
   }
 }

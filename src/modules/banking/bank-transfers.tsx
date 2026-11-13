@@ -1,21 +1,29 @@
 import { useQuery } from '@tanstack/react-query';
 import { formatDate } from '@/lib/locale';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { ArrowRight, Plus } from 'lucide-react';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
 import { StatusBadge } from '@/ui/status-badge';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { VoidedToggle } from '@/ui/voided-toggle';
 import { useHideVoided, showsInList } from '@/hooks/use-hide-voided';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
 import type { BankTransferRow, BankAccountRow } from '@/data/adapter';
+
+/**
+ * Bank transfers list. Ocean Teal layout (2026-11): look only — same period
+ * filter, voided toggle, list and drill-through to the editor.
+ */
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function BankTransfersPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { company_id } = useAuthStore();
   // Phase 47c — period filter (default All time = show every transfer).
   const { preset, from, to, setPreset, setCustomRange } = usePeriodPicker('stockbolt.list.bank-transfers.period', 'all_time');
@@ -43,63 +51,55 @@ export default function BankTransfersPage() {
   });
   const accountMap = Object.fromEntries(bankAccounts.map(a => [a.id, a.name]));
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-ink-primary">{t('banking.transfers_title')}</h1>
-          <p className="text-sm text-ink-tertiary mt-1">{t('banking.transfers_desc')}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-          <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided}
-            count={transfersVoidedCount} />
-          <Link to="/banking/transfers/new">
-            <Button variant="primary">{t('banking.new_transfer')}</Button>
-          </Link>
-        </div>
-      </div>
+  const columns: Column<BankTransferRow>[] = [
+    {
+      key: 'number', header: t('banking.transfer_number'),
+      render: (r) => <bdi dir="ltr" className="sb-inv-no">{r.transfer_number}</bdi>,
+    },
+    { key: 'date', header: t('common.date'), render: (r) => <bdi dir="ltr">{formatDate(r.date)}</bdi> },
+    {
+      key: 'route', header: `${t('banking.from_account')} → ${t('banking.to_account')}`,
+      render: (r) => (
+        <span className="sb-bt-route">
+          <span>{accountMap[r.from_account_id] ?? r.from_account_id}</span>
+          <ArrowRight size={14} className="sb-rtl-flip" aria-hidden="true" />
+          <span>{accountMap[r.to_account_id] ?? r.to_account_id}</span>
+        </span>
+      ),
+    },
+    {
+      key: 'amount', header: t('banking.amount'), align: 'end',
+      render: (r) => <bdi dir="ltr" className="sb-dash-num">{fmt(r.amount)}</bdi>,
+    },
+    { key: 'status', header: '', render: (r) => <StatusBadge status={r.status} /> },
+  ];
 
-      <div className="bg-white border border-border-subtle rounded-lg overflow-hidden">
-        {isLoading ? (
-          <p className="p-8 text-center text-sm text-ink-tertiary">{t('common.loading')}</p>
-        ) : transfers.length === 0 ? (
-          <p className="p-8 text-center text-ink-tertiary">{t('banking.no_transfers')}</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-surface-muted border-b border-border-subtle">
-                <tr>
-                  <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('banking.transfer_number')}</th>
-                  <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('common.date')}</th>
-                  <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('banking.from_account')}</th>
-                  <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('banking.to_account')}</th>
-                  <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('banking.amount')}</th>
-                  <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('common.status')}</th>
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border-subtle">
-                {transfers.map(t2 => (
-                  <tr key={t2.id} className="hover:bg-surface-muted transition-colors">
-                    <td className="px-4 py-3 font-mono text-brand-600">{t2.transfer_number}</td>
-                    <td className="px-4 py-3 text-ink-secondary">{formatDate(t2.date)}</td>
-                    <td className="px-4 py-3 text-ink-secondary text-sm">{accountMap[t2.from_account_id] ?? t2.from_account_id}</td>
-                    <td className="px-4 py-3 text-ink-secondary text-sm">{accountMap[t2.to_account_id] ?? t2.to_account_id}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-ink-primary">{fmt(t2.amount)}</td>
-                    <td className="px-4 py-3"><StatusBadge status={t2.status} /></td>
-                    <td className="px-4 py-3 text-right">
-                      <Link to={`/banking/transfers/${t2.id}`} className="text-xs text-brand-600 hover:underline">
-                        {t('common.view')}
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
+  return (
+    <OceanPage
+      testid="bank-transfers-ocean"
+      title={t('banking.transfers_title')}
+      subtitle={t('banking.transfers_desc')}
+      actions={<>
+        <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided} count={transfersVoidedCount} />
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => navigate('/banking/transfers/new')}>
+          <Plus size={18} aria-hidden="true" />{t('banking.new_transfer')}
+        </button>
+      </>}
+    >
+      {isLoading ? (
+        <p className="sb-empty" style={{ margin: 0, textAlign: 'center' }}>{t('common.loading')}</p>
+      ) : (
+        <OceanTable
+          columns={columns}
+          rows={transfers}
+          keyFn={(r) => r.id}
+          cardTitleKey="number"
+          onRowClick={(r) => navigate(`/banking/transfers/${r.id}`)}
+          rowMuted={(r) => r.status === 'void'}
+          emptyMessage={t('banking.no_transfers')}
+        />
+      )}
+    </OceanPage>
   );
 }
