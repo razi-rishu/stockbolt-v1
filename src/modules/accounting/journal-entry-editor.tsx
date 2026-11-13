@@ -12,6 +12,8 @@ import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
+import { Pencil, Copy, Undo2, Plus, X, Repeat, Send } from 'lucide-react';
+import '@/styles/stockbolt-ocean-teal.css';
 import { buildCoaTreeOptions, coaOptionLabel } from '@/core/seeds/coa-tree';
 import type { JELine, JournalEntryRow, GeneralLedgerRow, CoaRow, ContactRow } from '@/data/adapter';
 
@@ -21,11 +23,12 @@ import type { JELine, JournalEntryRow, GeneralLedgerRow, CoaRow, ContactRow } fr
  * moves the control account while the customer's or supplier's own sub-ledger
  * stays put — the two then disagree permanently and nothing detects it.
  */
+// Values are i18n keys (jeOcean.ctrl_*), resolved where they are shown.
 const CONTROL_ACCOUNTS: Record<string, string> = {
-  '1200': 'Accounts Receivable',
-  '2100': 'Accounts Payable',
-  '2400': 'Customer Advances',
-  '1400': 'Vendor Advances',
+  '1200': 'jeOcean.ctrl_1200',
+  '2100': 'jeOcean.ctrl_2100',
+  '2400': 'jeOcean.ctrl_2400',
+  '1400': 'jeOcean.ctrl_1400',
 };
 
 interface LineRow extends JELine {
@@ -196,7 +199,7 @@ export default function JournalEntryEditorPage() {
         }
       } catch (err) {
         if (posted > 0) {
-          throw new Error(`Posted ${posted} of ${scheduleDates.length} entries, then failed: ${err instanceof Error ? err.message : String(err)}`);
+          throw new Error(t('jeOcean.partial_post', { posted, total: scheduleDates.length, msg: err instanceof Error ? err.message : String(err) }));
         }
         throw err;
       }
@@ -256,26 +259,26 @@ export default function JournalEntryEditorPage() {
   if (!isNew && existingJE) {
     const je = existingJE as any;
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-3">
-          <BackButton to="/accounting/journal-entries" label={t('accounting.je_title')} confirm={confirmLeave} />
-        </div>
-        <div className="rounded-card border border-border-subtle bg-surface-card p-5 space-y-3">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="font-mono text-lg font-semibold text-brand-600">{existingJE.entry_number}</p>
-              <p className="text-sm text-ink-secondary">{formatDate(existingJE.date)} · {je.source_type}</p>
-              {existingJE.description && <p className="mt-1 text-sm text-ink-primary">{existingJE.description}</p>}
-            </div>
-            <div className="flex gap-2">
+      // Ocean Teal (UI v1.1): look only — same lines, edit (reverse + copy),
+      // duplicate and reverse actions.
+      <div className="sb-ocean sb-docx" data-testid="je-view-ocean">
+        <div className="sb-card sb-doc-bar">
+          <div className="sb-doc-bar-id">
+            <BackButton to="/accounting/journal-entries" label={t('accounting.je_title')} confirm={confirmLeave} />
+            <bdi dir="ltr" className="sb-doc-bar-no">{existingJE.entry_number}</bdi>
+            {je.reversed_by_id
+              ? <span className="sb-pill sb-pill-bad" style={{ marginTop: 0 }}>{t('accounting.reversed')}</span>
+              : <span className="sb-pill sb-pill-good" style={{ marginTop: 0 }}>{t('accounting.posted')}</span>}
+          </div>
+          <div className="sb-doc-bar-actions">
               {je.source_type === 'manual' && !je.reversed_by_id && (
                 <Button
                   size="sm"
                   onClick={() => { setError(''); editMutation.mutate(); }}
                   disabled={editMutation.isPending}
-                  title="Reverses this entry and opens a copy so you can post the corrected version"
+                  title={t('jeOcean.edit_title')}
                 >
-                  {editMutation.isPending ? '…' : (t('common.edit') || 'Edit')}
+                  <Pencil size={15} aria-hidden="true" /> {editMutation.isPending ? '…' : (t('common.edit') || 'Edit')}
                 </Button>
               )}
               <Button
@@ -293,7 +296,7 @@ export default function JournalEntryEditorPage() {
                   });
                 }}
               >
-                {t('common.duplicate')}
+                <Copy size={15} aria-hidden="true" /> {t('common.duplicate')}
               </Button>
               {!je.reversed_by_id && (
                 <Button
@@ -302,42 +305,49 @@ export default function JournalEntryEditorPage() {
                   onClick={() => { setError(''); reverseMutation.mutate(); }}
                   disabled={reverseMutation.isPending}
                 >
-                  {t('accounting.reverse')}
+                  <Undo2 size={15} aria-hidden="true" /> {t('accounting.reverse')}
                 </Button>
               )}
-              {je.reversed_by_id && (
-                <span className="rounded-pill bg-red-50 px-2 py-0.5 text-xs text-red-600">{t('accounting.reversed')}</span>
-              )}
-            </div>
           </div>
-          {error && <p className="text-xs text-red-500">{error}</p>}
-          <table className="w-full text-sm">
+        </div>
+        {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+        <div className="sb-card sb-doc-card">
+          <div className="sb-je-meta">
+            <span className="sb-info-label">{t('accounting.date')}</span><bdi dir="ltr">{formatDate(existingJE.date)}</bdi>
+            <span className="sb-info-label">{t('accounting.source_type')}</span><span>{t(`jeOcean.src_${je.source_type}`, { defaultValue: je.source_type })}</span>
+            {existingJE.description && <><span className="sb-info-label">{t('accounting.description')}</span><span>{existingJE.description}</span></>}
+          </div>
+        </div>
+        <div className="sb-card sb-doc-card sb-doc-lines">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm" style={{ minWidth: 520 }}>
             <thead>
-              <tr className="border-b border-border-subtle text-xs text-ink-tertiary">
-                <th className="py-2 text-start font-medium">{t('accounting.code')}</th>
-                <th className="py-2 text-start font-medium">{t('accounting.description')}</th>
-                <th className="py-2 text-end font-medium">{t('accounting.debit')}</th>
-                <th className="py-2 text-end font-medium">{t('accounting.credit')}</th>
+              <tr>
+                <th className="px-4 py-2 text-start font-medium">{t('accounting.code')}</th>
+                <th className="px-4 py-2 text-start font-medium">{t('accounting.description')}</th>
+                <th className="px-4 py-2 text-end font-medium">{t('accounting.debit')}</th>
+                <th className="px-4 py-2 text-end font-medium">{t('accounting.credit')}</th>
               </tr>
             </thead>
             <tbody>
               {(glLines as GeneralLedgerRow[]).map((gl) => (
                 <tr key={gl.id} className="border-b border-border-subtle last:border-0">
-                  <td className="py-2 font-mono text-xs">{(gl as any).account_code}</td>
-                  <td className="py-2 text-ink-secondary">{gl.description ?? '—'}</td>
-                  <td className="py-2 text-end font-mono">{gl.debit > 0 ? fmt(gl.debit) : ''}</td>
-                  <td className="py-2 text-end font-mono">{gl.credit > 0 ? fmt(gl.credit) : ''}</td>
+                  <td className="px-4 py-2 font-mono text-xs"><bdi dir="ltr">{(gl as any).account_code}</bdi></td>
+                  <td className="px-4 py-2 text-ink-secondary">{gl.description ?? '—'}</td>
+                  <td className="px-4 py-2 text-end font-mono" dir="ltr">{gl.debit > 0 ? fmt(gl.debit) : ''}</td>
+                  <td className="px-4 py-2 text-end font-mono" dir="ltr">{gl.credit > 0 ? fmt(gl.credit) : ''}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className="border-t border-border-subtle font-semibold">
-                <td colSpan={2} className="py-2 text-xs text-ink-secondary">{t('accounting.total')}</td>
-                <td className="py-2 text-end font-mono">{fmt(Number(existingJE.total_debit))}</td>
-                <td className="py-2 text-end font-mono">{fmt(Number(existingJE.total_credit))}</td>
+              <tr className="font-semibold" style={{ background: 'var(--sb-primary-soft)', color: 'var(--sb-primary-dark)' }}>
+                <td colSpan={2} className="px-4 py-2 text-sm">{t('accounting.total')}</td>
+                <td className="px-4 py-2 text-end font-mono" dir="ltr">{fmt(Number(existingJE.total_debit))}</td>
+                <td className="px-4 py-2 text-end font-mono" dir="ltr">{fmt(Number(existingJE.total_credit))}</td>
               </tr>
             </tfoot>
           </table>
+          </div>
         </div>
       </div>
     );
@@ -345,15 +355,19 @@ export default function JournalEntryEditorPage() {
 
   // Create mode
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <BackButton to="/accounting/journal-entries" label={t('accounting.je_title')} confirm={confirmLeave} />
+    // Ocean Teal (UI v1.1): look only — same lines, balance check, party
+    // warning, recurring schedule and posting.
+    <div className="sb-ocean sb-docx sb-docx-edit" data-testid="je-edit-ocean">
+      <div className="sb-card sb-doc-bar">
+        <div className="sb-doc-bar-id">
+          <BackButton to="/accounting/journal-entries" label={t('accounting.je_title')} confirm={confirmLeave} />
+          <h1 className="sb-doc-bar-no">{t('accounting.new_je')}</h1>
+        </div>
       </div>
-      <h1 className="text-xl font-semibold text-ink-primary">{t('accounting.new_je')}</h1>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="rounded-card border border-border-subtle bg-surface-card p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
+        <div className="sb-card sb-form sb-doc-card space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-xs font-medium text-ink-secondary">{repeat ? t('accounting.start_date') : t('accounting.date')}</label>
               <Input type="date" value={date} onChange={(e) => { setDate(e.target.value); setDirty(true); }} />
@@ -364,23 +378,32 @@ export default function JournalEntryEditorPage() {
             </div>
           </div>
 
-          {/* Lines */}
-          <div>
-            <table className="w-full text-sm">
+        </div>
+
+        {/* Lines */}
+        <div className="sb-card sb-doc-card sb-doc-lines">
+          <div className="sb-doc-lines-head">
+            <h2 className="sb-doc-card-title" style={{ margin: 0 }}>{t('jeOcean.lines')}</h2>
+            <span className={`sb-pill ${isBalanced ? 'sb-pill-good' : totalDebit > 0 || totalCredit > 0 ? 'sb-pill-bad' : 'sb-pill-muted'}`} style={{ marginTop: 0 }}>
+              {isBalanced ? t('jeOcean.balanced') : t('jeOcean.difference', { amount: fmt(Math.abs(totalDebit - totalCredit)) })}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" style={{ minWidth: 820 }}>
               <thead>
-                <tr className="border-b border-border-subtle text-xs text-ink-tertiary">
-                  <th className="pb-2 text-start font-medium">{t('accounting.code')}</th>
-                  <th className="pb-2 text-start font-medium">{t('accounting.party')}</th>
-                  <th className="pb-2 text-start font-medium">{t('accounting.line_desc')}</th>
-                  <th className="pb-2 text-end font-medium">{t('accounting.debit')}</th>
-                  <th className="pb-2 text-end font-medium">{t('accounting.credit')}</th>
-                  <th className="pb-2" />
+                <tr>
+                  <th className="px-3 py-2 text-start font-medium">{t('accounting.code')}</th>
+                  <th className="px-3 py-2 text-start font-medium">{t('accounting.party')}</th>
+                  <th className="px-3 py-2 text-start font-medium">{t('accounting.line_desc')}</th>
+                  <th className="px-3 py-2 text-end font-medium">{t('accounting.debit')}</th>
+                  <th className="px-3 py-2 text-end font-medium">{t('accounting.credit')}</th>
+                  <th className="px-2 py-2" />
                 </tr>
               </thead>
               <tbody>
                 {lines.map((line) => (
                   <tr key={line._key} className="border-b border-border-subtle last:border-0">
-                    <td className="py-1.5 pr-2 w-64">
+                    <td className="px-3 py-1.5 w-64">
                       {/* Phase 12.51 — pick the account by typing either
                            the code (e.g. "1100") or any part of the name
                            (e.g. "cash"). Sends the account_code to the
@@ -395,7 +418,7 @@ export default function JournalEntryEditorPage() {
                     </td>
                     {/* S5 — who this line belongs to. Required in practice on a
                         control account, optional everywhere else. */}
-                    <td className="py-1.5 pr-2 w-56">
+                    <td className="px-3 py-1.5 w-56">
                       <SearchableSelect
                         options={contactOpts}
                         value={line.contact_id ?? ''}
@@ -410,14 +433,14 @@ export default function JournalEntryEditorPage() {
                           ? 'ring-1 ring-warning-500 rounded-input' : undefined}
                       />
                     </td>
-                    <td className="py-1.5 pr-2">
+                    <td className="px-3 py-1.5">
                       <Input
                         value={line.description ?? ''}
                         onChange={(e) => updateLine(line._key, 'description', e.target.value)}
                         placeholder={t('accounting.optional')}
                       />
                     </td>
-                    <td className="py-1.5 pr-2 w-28">
+                    <td className="px-3 py-1.5 w-28">
                       <Input
                         type="number"
                         min="0"
@@ -427,7 +450,7 @@ export default function JournalEntryEditorPage() {
                         className="text-end"
                       />
                     </td>
-                    <td className="py-1.5 pr-2 w-28">
+                    <td className="px-3 py-1.5 w-28">
                       <Input
                         type="number"
                         min="0"
@@ -442,9 +465,10 @@ export default function JournalEntryEditorPage() {
                         <button
                           type="button"
                           onClick={() => removeLine(line._key)}
-                          className="text-ink-tertiary hover:text-red-500"
+                          className="sb-doc-line-del"
+                          aria-label={t('invOcean.remove_line')} title={t('invOcean.remove_line')}
                         >
-                          ×
+                          <X size={15} aria-hidden="true" />
                         </button>
                       )}
                     </td>
@@ -452,53 +476,55 @@ export default function JournalEntryEditorPage() {
                 ))}
               </tbody>
               <tfoot>
-                <tr className="border-t border-border-subtle">
-                  <td colSpan={3} className="pt-2 text-xs text-ink-secondary">{t('accounting.total')}</td>
-                  <td className={`pt-2 text-end font-mono text-sm font-semibold ${isBalanced ? 'text-green-600' : 'text-red-500'}`}>
+                <tr style={{ background: isBalanced ? 'var(--sb-primary-soft)' : 'var(--sb-danger-bg)' }}>
+                  <td colSpan={3} className="px-3 py-2 text-sm font-semibold">{t('accounting.total')}</td>
+                  <td dir="ltr" className={`px-3 py-2 text-end font-mono text-sm font-semibold ${isBalanced ? 'text-green-600' : 'text-red-500'}`}>
                     {fmt(totalDebit)}
                   </td>
-                  <td className={`pt-2 text-end font-mono text-sm font-semibold ${isBalanced ? 'text-green-600' : 'text-red-500'}`}>
+                  <td dir="ltr" className={`px-3 py-2 text-end font-mono text-sm font-semibold ${isBalanced ? 'text-green-600' : 'text-red-500'}`}>
                     {fmt(totalCredit)}
                   </td>
                   <td />
                 </tr>
               </tfoot>
             </table>
-
-            <button
-              type="button"
-              onClick={addLine}
-              className="mt-2 text-xs text-brand-600 hover:underline"
-            >
-              + {t('accounting.add_line')}
+          </div>
+          <div className="sb-doc-add-line">
+            <button type="button" onClick={addLine} className="sb-row-link text-brand-600">
+              <Plus size={15} aria-hidden="true" /> {t('accounting.add_line')}
             </button>
           </div>
+        </div>
+
+        <div className="sb-card sb-form sb-doc-card space-y-3">
 
           {!isBalanced && totalDebit > 0 && (
-            <p className="text-xs text-red-500">{t('accounting.unbalanced_hint')}</p>
+            <p className="sb-alert sb-alert-danger" style={{ fontWeight: 400 }}>{t('accounting.unbalanced_hint')}</p>
           )}
 
           {/* S5 — a warning, not a block. Posting is still allowed because an
               aggregate opening entry legitimately has no single party; what is
               not acceptable is doing it by accident. */}
           {unattributed.length > 0 && (
-            <p className="text-xs text-warning-600">
+            <p className="sb-alert sb-alert-warn" style={{ fontWeight: 400 }}>
               {t('accounting.party_warning', {
-                accounts: [...new Set(unattributed.map(l => `${l.account_code} ${CONTROL_ACCOUNTS[l.account_code]}`))].join(', '),
+                accounts: [...new Set(unattributed.map(l => `${l.account_code} ${t(CONTROL_ACCOUNTS[l.account_code])}`))].join(', '),
               })}
             </p>
           )}
 
           {/* Recurring — one Post creates the whole schedule of entries. */}
-          <div className="rounded-card border border-border-subtle bg-surface-muted/40 p-3">
+          <div className="sb-hw-test">
             <label className="flex cursor-pointer select-none items-center gap-2">
               <input
                 type="checkbox"
                 checked={repeat}
                 onChange={(e) => setRepeat(e.target.checked)}
-                className="h-4 w-4 accent-brand-600"
+                className="h-4 w-4"
+                style={{ accentColor: 'var(--sb-primary)' }}
               />
-              <span className="text-sm font-medium text-ink-primary">{t('accounting.repeat_entry')}</span>
+              <Repeat size={16} aria-hidden="true" style={{ color: 'var(--sb-primary)' }} />
+              <span className="text-sm font-semibold text-ink-primary">{t('accounting.repeat_entry')}</span>
             </label>
 
             {repeat && (
@@ -542,15 +568,15 @@ export default function JournalEntryEditorPage() {
             )}
           </div>
 
-          {error && <p className="text-xs text-red-500">{error}</p>}
         </div>
+        {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
 
-        <div className="flex justify-end gap-2">
+        <div className="sb-card flex flex-wrap justify-end gap-2" style={{ padding: '12px 16px' }}>
           <Button type="button" variant="ghost" onClick={() => { if (confirmLeave()) navigate('/accounting/journal-entries'); }}>
             {t('common.cancel')}
           </Button>
           <Button type="submit" disabled={postMutation.isPending}>
-            {repeat ? t('accounting.post_n_entries', { count: scheduleDates.length }) : t('accounting.post_je')}
+            <Send size={15} aria-hidden="true" /> {repeat ? t('accounting.post_n_entries', { count: scheduleDates.length }) : t('accounting.post_je')}
           </Button>
         </div>
       </form>

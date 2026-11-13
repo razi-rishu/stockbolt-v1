@@ -1654,3 +1654,6 @@
 .sb-ocean .sb-top-pop-item.is-danger:hover { background: var(--sb-danger-bg); color: var(--sb-danger); }
 /* Company initials badge: teal inside the Ocean shell (purple elsewhere until restyled). */
 .sb-ocean .sb-avatar-initials, .sb-ocean-top .sb-avatar-initials, .sb-ocean-menu .sb-avatar-initials { background: var(--sb-primary) !important; }
+
+/* ── Journal entry view: meta grid ─────────────────────────────────────── */
+.sb-ocean .sb-je-meta { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 16px; font-size: 14px; color: var(--sb-text); align-items: baseline; }

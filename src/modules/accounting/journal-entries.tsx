@@ -5,89 +5,17 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Button } from '@/ui/button';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
+import type { Column } from '@/ui/table';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Plus } from 'lucide-react';
 import type { JournalEntryRow } from '@/data/adapter';
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// Phase 12.51 — friendly labels for the source_type column. Anything not
-// listed here is treated as 'system' (auto-posted by an RPC).
-const SOURCE_LABEL: Record<string, string> = {
-  manual:               'Manual',
-  sales_invoice:        'Invoice',
-  sales_invoice_edit:   'Invoice edit',
-  sales_invoice_void:   'Invoice void',
-  sales_payment:        'Customer payment',
-  customer_advance:     'Customer advance',
-  pos_sale:             'POS sale',
-  vendor_bill:          'Vendor bill',
-  vendor_bill_edit:     'Bill edit',
-  vendor_bill_void:     'Bill void',
-  vendor_payment:       'Vendor payment',
-  vendor_advance:       'Vendor advance',
-  expense:              'Expense',
-  bank_transfer:        'Bank transfer',
-  credit_note:          'Credit note',
-  debit_note:           'Debit note',
-  inventory_adjustment: 'Inventory adjustment',
-  stock_transfer:       'Stock transfer',
-  opening_balance:      'Opening balance',
-  reversal:             'Reversal',
-};
-
-// ── Pill helper (sample look) ────────────────────────────────────────────
-function Pill({ label, tone }: { label: string; tone: 'brand' | 'success' | 'danger' | 'slate' }) {
-  const t = {
-    brand:   { bg: theme.brandSoft,   text: theme.brandSoftText, border: '#ddd6fe' },
-    success: { bg: '#f0fdf4',         text: '#15803d',           border: '#bbf7d0' },
-    danger:  { bg: '#fef2f2',         text: '#dc2626',           border: '#fecaca' },
-    slate:   { bg: theme.muted,       text: theme.inkMuted,      border: theme.border },
-  }[tone];
-  return (
-    <span style={{
-      display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
-      fontSize: '11px', fontWeight: 600,
-      background: t.bg, color: t.text, border: `1px solid ${t.border}`,
-    }}>{label}</span>
-  );
-}
-
-// ── Tab filter chip ──────────────────────────────────────────────────────
-function FilterPill({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        padding: '6px 14px',
-        borderRadius: '999px',
-        fontSize: '12px', fontWeight: 600,
-        border: active ? `1px solid ${theme.brand}` : `1px solid ${theme.border}`,
-        background: active ? theme.brand : '#fff',
-        color: active ? '#fff' : theme.inkMuted,
-        cursor: 'pointer',
-        transition: 'background-color .12s, color .12s, border-color .12s',
-        display: 'inline-flex', alignItems: 'center', gap: '8px',
-      }}
-    >
-      <span>{label}</span>
-      <span style={{
-        background: active ? 'rgba(255,255,255,.25)' : theme.muted,
-        color: active ? '#fff' : theme.inkMuted,
-        borderRadius: '999px',
-        padding: '1px 7px',
-        fontSize: '10px',
-        fontFamily: theme.fontMono,
-      }}>{count}</span>
-    </button>
-  );
-}
-
 type Tab = 'manual' | 'system' | 'all';
+type JeRow = JournalEntryRow & { source_type?: string; reversed_by_id?: string | null };
 
 export default function JournalEntriesPage() {
   const { t } = useTranslation();
@@ -105,106 +33,70 @@ export default function JournalEntriesPage() {
     enabled: !!company_id,
   });
 
-  const all = entries as JournalEntryRow[];
-  const manualCount = useMemo(() => all.filter(je => (je as any).source_type === 'manual').length, [all]);
+  const all = entries as JeRow[];
+  const manualCount = useMemo(() => all.filter(je => je.source_type === 'manual').length, [all]);
   const systemCount = all.length - manualCount;
 
   const filtered = useMemo(() => {
-    if (tab === 'manual') return all.filter(je => (je as any).source_type === 'manual');
-    if (tab === 'system') return all.filter(je => (je as any).source_type !== 'manual');
+    if (tab === 'manual') return all.filter(je => je.source_type === 'manual');
+    if (tab === 'system') return all.filter(je => je.source_type !== 'manual');
     return all;
   }, [all, tab]);
 
+  // Labels for every source type the journal_entries CHECK allows; anything
+  // new falls back to a readable form of the raw value.
+  const srcLabel = (src: string) => t(`jeOcean.src_${src}`, { defaultValue: src.replace(/_/g, ' ') });
+
+  const columns: Column<JeRow>[] = [
+    { key: 'no', header: t('accounting.entry_number'), render: (je) => <bdi dir="ltr" className="sb-inv-no">{je.entry_number}</bdi> },
+    { key: 'date', header: t('accounting.date'), render: (je) => <bdi dir="ltr">{formatDate(je.date)}</bdi> },
+    { key: 'desc', header: t('accounting.description'), render: (je) => <span style={{ fontWeight: 600 }}>{je.description ?? '—'}</span> },
+    {
+      key: 'src', header: t('accounting.source_type'),
+      render: (je) => je.source_type
+        ? <span className={`sb-pill ${je.source_type === 'manual' ? '' : 'sb-pill-muted'}`} style={{ marginTop: 0 }}>{srcLabel(je.source_type)}</span>
+        : '—',
+    },
+    { key: 'amt', header: t('accounting.debit'), align: 'end', render: (je) => <bdi dir="ltr" className="sb-dash-num">{fmt(Number(je.total_debit))}</bdi> },
+    {
+      key: 'status', header: '',
+      render: (je) => je.reversed_by_id
+        ? <span className="sb-pill sb-pill-bad" style={{ marginTop: 0 }}>{t('accounting.reversed')}</span>
+        : <span className="sb-pill sb-pill-good" style={{ marginTop: 0 }}>{t('accounting.posted')}</span>,
+    },
+  ];
+
+  const emptyMessage = tab === 'manual' ? t('jeOcean.empty_manual')
+    : tab === 'system' ? t('jeOcean.empty_system')
+    : t('accounting.je_empty');
+
+  const chips: { v: Tab; label: string; count: number }[] = [
+    { v: 'manual', label: t('jeOcean.tab_manual'), count: manualCount },
+    { v: 'system', label: t('jeOcean.tab_system'), count: systemCount },
+    { v: 'all',    label: t('common.all'),          count: all.length },
+  ];
+
+  // Ocean Teal (UI v1.1): look only — same entries, tabs and drill-in.
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        title={t('accounting.je_title')}
-        subtitle={`${all.length} total · ${manualCount} manual · ${systemCount} system`}
-        actions={
-          <Button size="sm" onClick={() => navigate('/accounting/journal-entries/new')}>
-            + {t('accounting.new_je')}
-          </Button>
-        }
-      />
-
-      {/* Manual / System / All tabs */}
-      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-        <FilterPill label="Manual"            count={manualCount} active={tab === 'manual'} onClick={() => setTab('manual')} />
-        <FilterPill label="System auto-posted" count={systemCount} active={tab === 'system'} onClick={() => setTab('system')} />
-        <FilterPill label="All"               count={all.length}  active={tab === 'all'}    onClick={() => setTab('all')} />
-      </div>
-
-      {isLoading ? (
-        <p style={{ fontSize: '13px', color: theme.inkFaint, padding: '48px 0', textAlign: 'center' }}>{t('common.loading')}</p>
-      ) : filtered.length === 0 ? (
-        <p style={{ fontSize: '13px', color: theme.inkFaint, padding: '48px 0', textAlign: 'center' }}>
-          {tab === 'manual'
-            ? 'No manual journals yet. Click + New to post one.'
-            : tab === 'system'
-              ? 'No system-generated journals in the period.'
-              : t('accounting.je_empty')}
-        </p>
-      ) : (
-        <div
-          className="overflow-x-auto bg-white"
-          style={{ border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm }}
-        >
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
-                {[
-                  { l: t('accounting.entry_number'), a: 'start' as const },
-                  { l: t('accounting.date'),         a: 'start' as const },
-                  { l: t('accounting.description'),  a: 'start' as const },
-                  { l: t('accounting.source_type'),  a: 'start' as const },
-                  { l: t('accounting.debit'),        a: 'end'   as const },
-                  { l: t('accounting.status'),       a: 'end'   as const },
-                ].map((c, i) => (
-                  <th key={i} className="px-4 py-3" style={{
-                    fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
-                    textTransform: 'uppercase', letterSpacing: '.06em',
-                    textAlign: c.a, whiteSpace: 'nowrap',
-                  }}>{c.l}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((je, idx) => {
-                const src = (je as any).source_type as string | undefined;
-                const isManual = src === 'manual';
-                return (
-                  <tr
-                    key={je.id}
-                    onClick={() => navigate(`/accounting/journal-entries/${je.id}`)}
-                    className="cursor-pointer"
-                    style={{
-                      borderTop: idx === 0 ? 'none' : '1px solid #f1f5f9',
-                      transition: 'background-color .12s',
-                    }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = theme.panelHead; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
-                  >
-                    <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>{je.entry_number}</td>
-                    <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(je.date)}</td>
-                    <td className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px' }}>{je.description ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      {src
-                        ? <Pill label={SOURCE_LABEL[src] ?? src} tone={isManual ? 'brand' : 'slate'} />
-                        : <span style={{ color: theme.inkFaint }}>—</span>}
-                    </td>
-                    <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>{fmt(Number(je.total_debit))}</td>
-                    <td className="px-4 py-3" style={{ textAlign: 'end' }}>
-                      {(je as any).reversed_by_id
-                        ? <Pill label={t('accounting.reversed')} tone="danger" />
-                        : <Pill label={t('accounting.posted')}  tone="success" />}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+    <OceanPage
+      testid="journal-entries-ocean"
+      title={t('accounting.je_title')}
+      subtitle={t('jeOcean.counts', { total: all.length, manual: manualCount, system: systemCount })}
+      actions={<button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => navigate('/accounting/journal-entries/new')}><Plus size={18} aria-hidden="true" />{t('accounting.new_je')}</button>}
+      below={
+        <div className="sb-chips" style={{ marginTop: 14 }} role="group" aria-label={t('accounting.source_type')}>
+          {chips.map(c => (
+            <button key={c.v} type="button" aria-pressed={tab === c.v} className={`sb-chip ${tab === c.v ? 'active' : ''}`} onClick={() => setTab(c.v)}>
+              {c.label}<span className="sb-chip-count">{c.count}</span>
+            </button>
+          ))}
         </div>
-      )}
-    </div>
+      }
+    >
+      {isLoading
+        ? <div className="sb-card sb-empty">{t('common.loading')}</div>
+        : <OceanTable columns={columns} rows={filtered} keyFn={(je) => je.id} cardTitleKey="desc"
+            onRowClick={(je) => navigate(`/accounting/journal-entries/${je.id}`)} rowMuted={(je) => !!je.reversed_by_id} emptyMessage={emptyMessage} />}
+    </OceanPage>
   );
 }
