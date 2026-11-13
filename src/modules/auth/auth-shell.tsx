@@ -1,13 +1,17 @@
 import { forwardRef, type InputHTMLAttributes, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { LanguageToggle } from '@/components/language-toggle';
-import { BrandLogo } from '@/components/brand-logo';
+import { BrandMark } from '@/components/brand-logo';
+import '@/modules/marketing/landing/landing.css';
 
 /**
  * Shared split-panel shell for the auth pages (2026-07 redesign).
  *
- * Left: marketing panel — logo, two-line headline with a brand-violet accent,
- * feature bullets and a testimonial card. Hidden below `lg`.
+ * Left: website panel — logo (links home), two-line headline with a teal
+ * accent, feature bullets and a real StockBolt screen. Hidden below `lg`.
+ * Restyled 2026-11 to match the Ocean Teal website; the forms, Google
+ * sign-in and every auth call are unchanged.
  * Right: the form panel — language toggle + account-switch link on top,
  * centred column (max 420px) that renders the page's form as children.
  *
@@ -139,8 +143,6 @@ export interface AuthMarketing {
   line2_post: string;
   subtitle: string;
   features: AuthFeature[];
-  quote: string;
-  author: string;
 }
 
 interface AuthShellProps {
@@ -152,41 +154,32 @@ interface AuthShellProps {
 }
 
 export function AuthShell({ marketing, topQuestion, topLinkLabel, topLinkTo, children }: AuthShellProps) {
+  const { t } = useTranslation();
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#ECEEF9] p-3 sm:p-6">
+    <div className="sb-auth-page flex min-h-screen items-center justify-center p-3 sm:p-6">
       {/* grid-cols-[minmax(0,1fr)] below lg: the single column is the screen
           width, not the width of its widest row (which ran off a phone). */}
-      <div className="grid w-full max-w-[1240px] grid-cols-[minmax(0,1fr)] overflow-hidden rounded-[24px] bg-white shadow-[0_24px_64px_-16px_rgba(76,29,149,0.18)] lg:min-h-[680px] lg:grid-cols-[46%_54%]">
-        {/* ── Left: marketing panel ── */}
-        <div className="relative hidden flex-col overflow-hidden bg-gradient-to-br from-[#F7F5FE] via-[#F3EFFD] to-[#ECE5FB] p-10 lg:flex">
-          {/* decorative dot grid */}
-          <svg className="absolute end-10 top-12 h-16 w-24 text-brand-300/60" aria-hidden="true">
-            {Array.from({ length: 4 }).map((_, r) =>
-              Array.from({ length: 7 }).map((_, c) => (
-                <circle key={`${r}-${c}`} cx={6 + c * 14} cy={6 + r * 14} r="1.6" fill="currentColor" />
-              )),
-            )}
-          </svg>
-          {/* decorative concentric circles */}
-          <div aria-hidden="true" className="pointer-events-none absolute -bottom-24 -end-24 h-96 w-96 rounded-full border-[28px] border-brand-500/[0.05]" />
-          <div aria-hidden="true" className="pointer-events-none absolute -bottom-6 -end-6 h-52 w-52 rounded-full border-[20px] border-brand-500/[0.06]" />
+      <div className="grid w-full max-w-[1240px] grid-cols-[minmax(0,1fr)] overflow-hidden rounded-[24px] bg-white shadow-[0_24px_64px_-16px_rgba(0,97,92,0.20)] lg:min-h-[680px] lg:grid-cols-[46%_54%]">
+        {/* ── Left: website panel (Ocean Teal, matches stockbolt.online) ── */}
+        <div className="sb-auth-panel relative hidden flex-col overflow-hidden p-10 lg:flex">
+          <Link to="/" aria-label={t('landing.auth.back_home')} className="self-start">
+            <WebsiteLogo />
+          </Link>
 
-          <BrandLogo mark={40} text={18} />
-
-          <h1 className="mt-14 text-[34px] font-extrabold leading-[1.2] tracking-tight text-ink-primary">
+          <h1 className="mt-12 text-[34px] font-extrabold leading-[1.2] tracking-tight text-ink-primary">
             {marketing.line1}
             <br />
             {marketing.line2_pre}
-            <span className="text-brand-500">{marketing.line2_accent}</span>
+            <span className="sb-auth-accent">{marketing.line2_accent}</span>
             {marketing.line2_post}
           </h1>
 
           <p className="mt-4 max-w-sm text-[15px] leading-relaxed text-ink-secondary">{marketing.subtitle}</p>
 
-          <div className="mt-10 flex flex-col gap-6">
+          <div className="mt-9 flex flex-col gap-5">
             {marketing.features.map((f) => (
               <div key={f.title} className="flex items-center gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-brand-500 shadow-card">
+                <div className="sb-auth-feature-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white shadow-card">
                   {f.icon}
                 </div>
                 <div>
@@ -197,18 +190,9 @@ export function AuthShell({ marketing, topQuestion, topLinkLabel, topLinkTo, chi
             ))}
           </div>
 
-          <div className="relative mt-auto flex items-center justify-between gap-4 rounded-2xl bg-white p-5 shadow-card">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-serif text-2xl font-bold leading-none text-brand-500">&ldquo;</span>
-                <span className="text-xs tracking-[0.15em] text-amber-400">★★★★★</span>
-              </div>
-              <p className="mt-1.5 text-[13.5px] leading-relaxed text-ink-primary/90">{marketing.quote}</p>
-              <p className="mt-2 text-[13px] text-ink-secondary">{marketing.author}</p>
-            </div>
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-500">
-              <IconStore />
-            </div>
+          {/* A real StockBolt screen (demo company), not a mock-up. */}
+          <div className="sb-auth-shot mt-10" dir="ltr">
+            <img src="/landing/app-dashboard.webp" width={1600} height={922} alt={t('landing.hero.shot_alt')} loading="lazy" decoding="async" />
           </div>
         </div>
 
@@ -218,7 +202,7 @@ export function AuthShell({ marketing, topQuestion, topLinkLabel, topLinkTo, chi
             <LanguageToggle />
             <span className="text-end text-sm text-ink-secondary">
               {topQuestion}{' '}
-              <Link to={topLinkTo} className="font-semibold text-brand-500 hover:underline">
+              <Link to={topLinkTo} className="sb-auth-link font-semibold hover:underline">
                 {topLinkLabel}
               </Link>
             </span>
@@ -226,13 +210,23 @@ export function AuthShell({ marketing, topQuestion, topLinkLabel, topLinkTo, chi
 
           {/* small-screen brand row (left panel is hidden) */}
           <div className="mt-8 flex justify-center lg:hidden">
-            <BrandLogo mark={36} text={16} />
+            <Link to="/" aria-label={t('landing.auth.back_home')}><WebsiteLogo /></Link>
           </div>
 
           <div className="mx-auto flex w-full max-w-[420px] flex-1 flex-col justify-center py-8">{children}</div>
         </div>
       </div>
     </div>
+  );
+}
+
+/** The website's teal mark + wordmark (the app itself keeps the orange mark). */
+function WebsiteLogo() {
+  return (
+    <span className="inline-flex items-center gap-2.5" dir="ltr">
+      <BrandMark size={36} color="#008F87" />
+      <span className="text-[16px] font-extrabold leading-none tracking-[0.1em] text-ink-primary">STOCKBOLT</span>
+    </span>
   );
 }
 
@@ -258,7 +252,7 @@ export const AuthField = forwardRef<HTMLInputElement, AuthFieldProps>(
           <input
             ref={ref}
             id={inputId}
-            className={`h-11 w-full rounded-xl border bg-white ps-10 text-sm text-ink-primary outline-none transition-[border-color,box-shadow] placeholder:text-ink-tertiary focus:border-brand-400 focus:ring-4 focus:ring-brand-500/10 ${
+            className={`h-11 w-full rounded-xl border bg-white ps-10 text-sm text-ink-primary outline-none transition-[border-color,box-shadow] placeholder:text-ink-tertiary focus:border-[#33A9A2] focus:ring-4 focus:ring-[#008F87]/10 ${
               trailing ? 'pe-11' : 'pe-3'
             } ${error ? 'border-danger-500' : 'border-border-subtle'} ${className}`}
             {...rest}
@@ -294,7 +288,7 @@ export function GoogleButton({ label, onClick, loading }: { label: string; onCli
       disabled={loading}
       className="flex h-11 w-full items-center justify-center gap-3 rounded-xl border border-border-subtle bg-white text-sm font-semibold text-ink-primary transition-colors hover:bg-surface-subtle disabled:pointer-events-none disabled:opacity-60"
     >
-      {loading ? <Spinner className="h-5 w-5 text-brand-500" /> : <GoogleG />}
+      {loading ? <Spinner className="h-5 w-5 text-[#008F87]" /> : <GoogleG />}
       {label}
     </button>
   );
@@ -315,7 +309,7 @@ export function AuthSubmitButton({ children, loading }: { children: ReactNode; l
     <button
       type="submit"
       disabled={loading}
-      className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-[#8B5CF6] text-sm font-semibold text-white shadow-[0_10px_22px_-8px_rgba(124,58,237,0.6)] transition-[filter] hover:brightness-110 active:brightness-95 disabled:pointer-events-none disabled:opacity-60"
+      className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#008F87] text-sm font-semibold text-white shadow-[0_10px_22px_-8px_rgba(0,143,135,0.6)] transition-colors hover:bg-[#00776F] active:bg-[#00615C] disabled:pointer-events-none disabled:opacity-60"
     >
       {loading && <Spinner />}
       {children}

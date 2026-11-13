@@ -78,7 +78,7 @@ export default function ForgotPasswordPage() {
               {t('auth.forgot.submit')}
             </Button>
 
-            <Link to="/login" className="text-center text-sm text-brand-500 hover:underline">
+            <Link to="/login" className="text-center text-sm text-[#008F87] hover:underline">
               {t('common.back_to_login')}
             </Link>
           </form>

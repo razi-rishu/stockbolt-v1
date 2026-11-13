@@ -130,18 +130,16 @@ export default function RegisterPage() {
   }
 
   const marketing: AuthMarketing = {
-    line1: t('auth.register.heading_line1'),
-    line2_pre: t('auth.register.heading_pre'),
-    line2_accent: t('auth.register.heading_accent'),
-    line2_post: t('auth.register.heading_post'),
-    subtitle: t('auth.register.left_subtitle'),
+    line1: t('landing.auth.line1'),
+    line2_pre: t('landing.auth.line2_pre'),
+    line2_accent: t('landing.auth.line2_accent'),
+    line2_post: t('landing.auth.line2_post'),
+    subtitle: t('landing.auth.register_sub'),
     features: [
-      { icon: <IconBolt />, title: t('auth.features.fast_title'), caption: t('auth.register.feature_fast') },
-      { icon: <IconShield />, title: t('auth.features.secure_title'), caption: t('auth.register.feature_secure') },
-      { icon: <IconChart />, title: t('auth.features.insights_title'), caption: t('auth.register.feature_insights') },
+      { icon: <IconBolt />, title: t('landing.auth.f1_title'), caption: t('landing.auth.f1_caption') },
+      { icon: <IconShield />, title: t('landing.auth.f2_title'), caption: t('landing.auth.f2_caption') },
+      { icon: <IconChart />, title: t('landing.auth.f3_title'), caption: t('landing.auth.f3_caption') },
     ],
-    quote: t('auth.register.testimonial'),
-    author: t('auth.register.testimonial_author'),
   };
 
   return (
@@ -240,12 +238,12 @@ export default function RegisterPage() {
 
           <div className="flex flex-col gap-1">
             <label className="flex cursor-pointer select-none items-start gap-2 text-sm text-ink-primary">
-              <input type="checkbox" className="mt-0.5 h-4 w-4 rounded accent-brand-500" {...register('agree')} />
+              <input type="checkbox" className="mt-0.5 h-4 w-4 rounded accent-[#008F87]" {...register('agree')} />
               <span>
                 {t('auth.register.agree_pre')}{' '}
-                <span className="font-medium text-brand-500">{t('auth.register.terms')}</span>{' '}
+                <span className="font-medium text-[#008F87]">{t('auth.register.terms')}</span>{' '}
                 {t('auth.register.and')}{' '}
-                <span className="font-medium text-brand-500">{t('auth.register.privacy')}</span>
+                <span className="font-medium text-[#008F87]">{t('auth.register.privacy')}</span>
               </span>
             </label>
             {errors.agree && <p className="text-xs text-danger-600">{errors.agree.message}</p>}

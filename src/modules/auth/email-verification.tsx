@@ -39,7 +39,7 @@ export default function EmailVerificationPage() {
         <button
           type="button"
           onClick={() => navigate('/login')}
-          className="mt-3 text-sm text-brand-600 hover:text-brand-700"
+          className="mt-3 text-sm text-[#008F87] hover:text-[#00615C]"
         >
           {t('common.back_to_login')}
         </button>
