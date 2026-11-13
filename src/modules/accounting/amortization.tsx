@@ -9,6 +9,8 @@ import { Modal } from '@/ui/modal';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { DocLink } from '@/ui/doc-link';
+import { OceanPage } from '@/components/ocean-list';
+import { AlertTriangle, CalendarClock, CalendarRange, PlayCircle, Plus, Search, Undo2, XCircle } from 'lucide-react';
 import {
   projectSchedule, duePeriods, AMORTIZATION_KINDS, type AmortizationKind,
 } from '@/lib/amortization';
@@ -35,6 +37,7 @@ import type {
  *
  * All posting requires accounting.write and is period-lock guarded by
  * post_journal_entry inside the RPCs.
+ * Ocean Teal layout (2026-11): look only, same data and actions.
  */
 
 const MONEY = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -293,44 +296,43 @@ export default function AmortizationPage() {
 
   const kindPill = (k: AmortizationScheduleRow['kind']) => {
     const map: Record<string, string> = {
-      prepaid_expense:  'bg-brand-50 text-brand-600',
-      deferred_revenue: 'bg-success-50 text-success-600',
-      accrued_expense:  'bg-warning-50 text-warning-600',
+      prepaid_expense:  '',
+      deferred_revenue: 'sb-pill-good',
+      accrued_expense:  'sb-pill-warn',
     };
-    return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${map[k]}`}>{t(`am.kind_${k}`)}</span>;
+    return <span className={`sb-pill ${map[k]}`}>{t(`am.kind_${k}`)}</span>;
   };
   const statusPill = (s: AmortizationScheduleRow['status']) => {
     const map: Record<string, string> = {
-      active: 'bg-success-50 text-success-600',
-      completed: 'bg-surface-subtle text-ink-tertiary',
-      cancelled: 'bg-danger-50 text-danger-600',
+      active: 'sb-pill-good',
+      completed: 'sb-pill-muted',
+      cancelled: 'sb-pill-bad',
     };
-    return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${map[s]}`}>{t(`am.status_${s}`)}</span>;
+    return <span className={`sb-pill ${map[s]}`}>{t(`am.status_${s}`)}</span>;
   };
 
   return (
-    <div className="space-y-4">
-      {/* Page header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-ink-primary">{t('am.title')}</h1>
-          <p className="text-xs text-ink-tertiary">{t('am.subtitle')}</p>
-        </div>
-        {canWrite && (
-          <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={() => { setRunResult(null); runMutation.reset(); setRunOpen(true); }}>
-              {t('am.run')}
-            </Button>
-            <Button size="sm" onClick={openCreate}>{t('am.new_schedule')}</Button>
-          </div>
-        )}
-      </div>
-
+    <OceanPage
+      testid="amortization-ocean"
+      title={t('am.title')}
+      subtitle={t('am.subtitle')}
+      actions={canWrite ? (
+        <>
+          <Button variant="secondary" size="sm" onClick={() => { setRunResult(null); runMutation.reset(); setRunOpen(true); }}>
+            <PlayCircle size={15} aria-hidden="true" /> {t('am.run')}
+          </Button>
+          <Button size="sm" onClick={openCreate}><Plus size={15} aria-hidden="true" /> {t('am.new_schedule')}</Button>
+        </>
+      ) : undefined}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* Coverage warning — the balance-sheet account must hold what we amortize */}
       {coverage.length > 0 && (
-        <div className="rounded-card border border-warning-500/40 bg-warning-50 px-4 py-3 text-sm text-warning-600">
-          <p className="mb-1 font-medium">{t('am.coverage_title')}</p>
-          <ul className="list-inside list-disc text-xs">
+        <div className="sb-alert sb-alert-warn" style={{ display: 'flex', gap: 10 }}>
+          <AlertTriangle size={18} aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }} />
+          <div>
+          <p style={{ margin: '0 0 4px' }}>{t('am.coverage_title')}</p>
+          <ul className="list-inside list-disc" style={{ margin: 0, fontWeight: 500, fontSize: 13 }}>
             {coverage.map((c) => (
               <li key={c.code}>
                 {t('am.coverage_line', {
@@ -340,21 +342,27 @@ export default function AmortizationPage() {
               </li>
             ))}
           </ul>
+          </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="sb-acct-md">
         {/* ── Register ────────────────────────────────────────────────────── */}
-        <div className="glass-card overflow-hidden">
-          <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-3">
-            <input
-              className="h-9 flex-1 rounded-input border border-border-subtle bg-surface-input px-3 text-sm text-ink-primary focus:outline-none focus:ring-1 focus:ring-brand-500"
-              placeholder={t('am.search_placeholder')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+        <div className="sb-card sb-doc-card sb-doc-lines">
+          <div className="sb-doc-lines-head sb-acct-filterbar">
+            <label className="sb-search" style={{ margin: 0, flex: 1, minWidth: 180 }}>
+              <Search size={18} className="sb-icon" aria-hidden="true" />
+              <span className="sr-only">{t('am.search_placeholder')}</span>
+              <input
+                type="search"
+                placeholder={t('am.search_placeholder')}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </label>
             <select
-              className="h-9 rounded-input border border-border-subtle bg-surface-input px-2 text-sm text-ink-primary focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className="sb-pc-select"
+              style={{ width: 'auto' }}
               value={kindFilter}
               onChange={(e) => setKindFilter(e.target.value as typeof kindFilter)}
             >
@@ -362,7 +370,8 @@ export default function AmortizationPage() {
               {AMORTIZATION_KINDS.map((k) => <option key={k} value={k}>{t(`am.kind_${k}`)}</option>)}
             </select>
             <select
-              className="h-9 rounded-input border border-border-subtle bg-surface-input px-2 text-sm text-ink-primary focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className="sb-pc-select"
+              style={{ width: 'auto' }}
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
             >
@@ -374,8 +383,8 @@ export default function AmortizationPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-surface-subtle text-xs uppercase tracking-wide text-ink-tertiary">
+            <table className="w-full text-sm" style={{ minWidth: 640 }}>
+              <thead>
                 <tr>
                   <th className="px-4 py-2 text-start">{t('am.col_schedule')}</th>
                   <th className="px-4 py-2 text-start">{t('am.col_kind')}</th>
@@ -387,29 +396,32 @@ export default function AmortizationPage() {
               </thead>
               <tbody>
                 {isLoading && (
-                  <tr><td colSpan={6} className="px-4 py-6 text-center text-ink-tertiary">{t('common.loading')}</td></tr>
+                  <tr><td colSpan={6} className="sb-empty text-center">{t('common.loading')}</td></tr>
                 )}
                 {!isLoading && visible.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-6 text-center text-ink-tertiary">{t('am.empty')}</td></tr>
+                  <tr><td colSpan={6} className="sb-empty text-center">{t('am.empty')}</td></tr>
                 )}
                 {visible.map((s) => (
                   <tr
                     key={s.id}
                     onClick={() => setSelectedId(s.id)}
-                    className={`cursor-pointer border-t border-border-subtle hover:bg-surface-subtle ${selectedId === s.id ? 'bg-brand-50' : ''}`}
+                    className={`sb-acct-row ${selectedId === s.id ? 'is-selected' : ''}`}
                   >
                     <td className="px-4 py-2">
-                      <span className="font-medium text-ink-primary">{s.name}</span>
-                      {s.reference && <div className="text-xs text-ink-tertiary">{s.reference}</div>}
-                      <div className="text-xs text-ink-tertiary">
-                        {s.periods_posted}/{s.periods} {t('am.periods_posted')}
+                      <span className="font-medium">{s.name}</span>
+                      {s.reference && <div className="sb-fx-name" style={{ fontSize: 12 }}>{s.reference}</div>}
+                      <div className="sb-acct-progress" aria-hidden="true">
+                        <span style={{ width: `${s.periods ? Math.min(100, (Number(s.periods_posted) / Number(s.periods)) * 100) : 0}%` }} />
+                      </div>
+                      <div className="sb-fx-name" style={{ fontSize: 12 }}>
+                        <bdi dir="ltr">{s.periods_posted}/{s.periods}</bdi> {t('am.periods_posted')}
                       </div>
                     </td>
                     <td className="px-4 py-2">{kindPill(s.kind)}</td>
-                    <td className="px-4 py-2 text-end text-ink-secondary">{MONEY(Number(s.total_amount))}</td>
-                    <td className="px-4 py-2 text-end text-ink-secondary">{MONEY(Number(s.amortized_amount))}</td>
-                    <td className="px-4 py-2 text-end font-medium text-ink-primary">
-                      {MONEY(round2(Number(s.total_amount) - Number(s.amortized_amount)))}
+                    <td className="px-4 py-2 text-end text-ink-secondary"><bdi dir="ltr">{MONEY(Number(s.total_amount))}</bdi></td>
+                    <td className="px-4 py-2 text-end text-ink-secondary"><bdi dir="ltr">{MONEY(Number(s.amortized_amount))}</bdi></td>
+                    <td className="px-4 py-2 text-end">
+                      <bdi dir="ltr" className="sb-dash-num">{MONEY(round2(Number(s.total_amount) - Number(s.amortized_amount)))}</bdi>
                     </td>
                     <td className="px-4 py-2">{statusPill(s.status)}</td>
                   </tr>
@@ -417,11 +429,11 @@ export default function AmortizationPage() {
               </tbody>
               {visible.length > 0 && (
                 <tfoot>
-                  <tr className="border-t-2 border-border-strong bg-surface-subtle font-semibold text-ink-primary">
+                  <tr className="sb-acct-total-row">
                     <td className="px-4 py-2" colSpan={2}>{t('am.totals_open')}</td>
-                    <td className="px-4 py-2 text-end">{MONEY(totals.total)}</td>
-                    <td className="px-4 py-2 text-end">{MONEY(totals.amortized)}</td>
-                    <td className="px-4 py-2 text-end">{MONEY(round2(totals.total - totals.amortized))}</td>
+                    <td className="px-4 py-2 text-end"><bdi dir="ltr">{MONEY(totals.total)}</bdi></td>
+                    <td className="px-4 py-2 text-end"><bdi dir="ltr">{MONEY(totals.amortized)}</bdi></td>
+                    <td className="px-4 py-2 text-end"><bdi dir="ltr">{MONEY(round2(totals.total - totals.amortized))}</bdi></td>
                     <td />
                   </tr>
                 </tfoot>
@@ -431,20 +443,26 @@ export default function AmortizationPage() {
         </div>
 
         {/* ── Detail ──────────────────────────────────────────────────────── */}
-        <div className="glass-card p-4">
+        <div className="sb-card sb-doc-card sb-acct-detail">
           {!selected ? (
-            <p className="py-10 text-center text-sm text-ink-tertiary">{t('am.select_hint')}</p>
+            <div className="sb-acct-empty">
+              <span className="sb-side-ico" style={{ background: 'var(--sb-primary-light)', color: 'var(--sb-primary-dark)' }} aria-hidden="true"><CalendarRange size={18} /></span>
+              <p className="sb-fx-name" style={{ margin: 0 }}>{t('am.select_hint')}</p>
+            </div>
           ) : (
             <div className="space-y-4">
               <div className="flex items-start justify-between gap-2">
-                <div>
-                  <h2 className="text-sm font-semibold text-ink-primary">{selected.name}</h2>
-                  <p className="text-xs text-ink-tertiary">
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, minWidth: 0 }}>
+                  <span className="sb-side-ico" style={{ background: 'var(--sb-primary-light)', color: 'var(--sb-primary-dark)' }} aria-hidden="true"><CalendarRange size={17} /></span>
+                  <div style={{ minWidth: 0 }}>
+                  <h2 className="sb-doc-card-title" style={{ margin: 0 }}>{selected.name}</h2>
+                  <p className="sb-fx-name" style={{ margin: 0, fontSize: 12 }}>
                     {t('am.detail_summary', { periods: selected.periods, start: selected.start_date })}
                   </p>
-                  <p className="text-xs text-ink-tertiary">
-                    {selected.bs_account_code} ↔ {selected.pl_account_code}
+                  <p style={{ margin: '2px 0 0' }}>
+                    <bdi dir="ltr" className="sb-acct-code">{selected.bs_account_code} ↔ {selected.pl_account_code}</bdi>
                   </p>
+                  </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   {kindPill(selected.kind)}
@@ -452,25 +470,16 @@ export default function AmortizationPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="rounded-card bg-surface-subtle p-2">
-                  <p className="text-xs text-ink-tertiary">{t('am.col_total')}</p>
-                  <p className="text-sm font-semibold text-ink-primary">{MONEY(Number(selected.total_amount))}</p>
-                </div>
-                <div className="rounded-card bg-surface-subtle p-2">
-                  <p className="text-xs text-ink-tertiary">{t('am.col_amortized')}</p>
-                  <p className="text-sm font-semibold text-ink-primary">{MONEY(Number(selected.amortized_amount))}</p>
-                </div>
-                <div className="rounded-card bg-surface-subtle p-2">
-                  <p className="text-xs text-ink-tertiary">{t('am.col_remaining')}</p>
-                  <p className="text-sm font-semibold text-ink-primary">{MONEY(remaining)}</p>
-                </div>
+              <div className="sb-acct-tiles">
+                <div><span className="sb-info-label">{t('am.col_total')}</span><bdi dir="ltr" className="sb-dash-num">{MONEY(Number(selected.total_amount))}</bdi></div>
+                <div><span className="sb-info-label">{t('am.col_amortized')}</span><bdi dir="ltr" className="sb-dash-num">{MONEY(Number(selected.amortized_amount))}</bdi></div>
+                <div><span className="sb-info-label">{t('am.col_remaining')}</span><bdi dir="ltr" className="sb-dash-num" style={{ color: 'var(--sb-primary-dark)' }}>{MONEY(remaining)}</bdi></div>
               </div>
 
               {selected.status === 'cancelled' && (
-                <div className="rounded-card border border-border-subtle bg-surface-subtle p-3 text-xs text-ink-secondary">
-                  <p>{t('am.cancelled_note', { remaining: MONEY(remaining) })}</p>
-                  {selected.cancel_reason && <p className="mt-1 italic">{selected.cancel_reason}</p>}
+                <div className="sb-info-note" style={{ fontSize: 13 }}>
+                  <p style={{ margin: 0 }}>{t('am.cancelled_note', { remaining: MONEY(remaining) })}</p>
+                  {selected.cancel_reason && <p style={{ margin: '4px 0 0', fontStyle: 'italic' }}>{selected.cancel_reason}</p>}
                 </div>
               )}
 
@@ -479,12 +488,12 @@ export default function AmortizationPage() {
                   <Button size="sm" variant="secondary" onClick={() => openEdit(selected)}>{t('common.edit')}</Button>
                   {entries.some((e) => !e.reversed_at) && (
                     <Button size="sm" variant="danger" onClick={() => { reverseMutation.reset(); setReverseOpen(true); }}>
-                      {t('am.reverse_last')}
+                      <Undo2 size={15} aria-hidden="true" /> {t('am.reverse_last')}
                     </Button>
                   )}
                   {selected.status === 'active' && (
                     <Button size="sm" variant="danger" onClick={() => { cancelMutation.reset(); setCancelOpen(true); }}>
-                      {t('am.cancel_schedule')}
+                      <XCircle size={15} aria-hidden="true" /> {t('am.cancel_schedule')}
                     </Button>
                   )}
                 </div>
@@ -492,10 +501,10 @@ export default function AmortizationPage() {
 
               {/* Schedule: posted then projected */}
               <div>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">{t('am.schedule')}</p>
-                <div className="max-h-80 overflow-y-auto rounded-card border border-border-subtle">
+                <p className="sb-acct-label" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><CalendarClock size={14} aria-hidden="true" />{t('am.schedule')}</p>
+                <div className="sb-acct-schedule">
                   <table className="w-full text-xs">
-                    <thead className="sticky top-0 bg-surface-subtle text-ink-tertiary">
+                    <thead>
                       <tr>
                         <th className="px-2 py-1.5 text-start">#</th>
                         <th className="px-2 py-1.5 text-start">{t('am.col_period')}</th>
@@ -505,10 +514,10 @@ export default function AmortizationPage() {
                     </thead>
                     <tbody>
                       {entries.map((e) => (
-                        <tr key={e.id} className={`border-t border-border-subtle ${e.reversed_at ? 'text-ink-tertiary line-through' : ''}`}>
+                        <tr key={e.id} className={e.reversed_at ? 'sb-acct-reversed' : undefined}>
                           <td className="px-2 py-1.5">{e.period_index}</td>
-                          <td className="px-2 py-1.5">{e.period_end}</td>
-                          <td className="px-2 py-1.5 text-end">{MONEY(Number(e.amount))}</td>
+                          <td className="px-2 py-1.5"><bdi dir="ltr">{e.period_end}</bdi></td>
+                          <td className="px-2 py-1.5 text-end"><bdi dir="ltr">{MONEY(Number(e.amount))}</bdi></td>
                           <td className="px-2 py-1.5">
                             {e.journal_entry_id
                               ? <DocLink type="journal_entry" id={e.journal_entry_id} status={e.reversed_at ? 'reversed' : 'active'} />
@@ -517,15 +526,15 @@ export default function AmortizationPage() {
                         </tr>
                       ))}
                       {projected.map((r) => (
-                        <tr key={`p-${r.index}`} className="border-t border-border-subtle text-ink-tertiary">
+                        <tr key={`p-${r.index}`} className="sb-acct-projected">
                           <td className="px-2 py-1.5">{r.index}</td>
-                          <td className="px-2 py-1.5">{r.period_end}</td>
-                          <td className="px-2 py-1.5 text-end">{MONEY(r.amount)}</td>
-                          <td className="px-2 py-1.5 italic">{t('am.projected')}</td>
+                          <td className="px-2 py-1.5"><bdi dir="ltr">{r.period_end}</bdi></td>
+                          <td className="px-2 py-1.5 text-end"><bdi dir="ltr">{MONEY(r.amount)}</bdi></td>
+                          <td className="px-2 py-1.5"><span className="sb-pill sb-pill-muted" style={{ fontSize: 11, padding: '1px 8px' }}>{t('am.projected')}</span></td>
                         </tr>
                       ))}
                       {entries.length === 0 && projected.length === 0 && (
-                        <tr><td colSpan={4} className="px-2 py-4 text-center text-ink-tertiary">{t('am.no_schedule')}</td></tr>
+                        <tr><td colSpan={4} className="sb-empty text-center">{t('am.no_schedule')}</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -535,16 +544,17 @@ export default function AmortizationPage() {
           )}
         </div>
       </div>
+      </div>
 
       {/* ── Schedule form ────────────────────────────────────────────────── */}
       <Modal open={formOpen} onClose={() => setFormOpen(false)} title={editing ? t('am.edit_schedule') : t('am.new_schedule')} width="lg">
-        <div className="space-y-3">
+        <div className="sb-ocean sb-modal-form space-y-3">
           {basisLocked && (
-            <p className="rounded-card border border-warning-500/40 bg-warning-50 px-3 py-2 text-xs text-warning-600">
+            <p className="sb-alert sb-alert-warn">
               {t('am.basis_locked')}
             </p>
           )}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Select
               label={t('am.f_kind')}
               options={AMORTIZATION_KINDS.map((k) => ({ value: k, label: t(`am.kind_${k}`) }))}
@@ -577,12 +587,12 @@ export default function AmortizationPage() {
             />
           </div>
 
-          <p className="rounded-card bg-surface-subtle px-3 py-2 text-xs text-ink-secondary">
+          <p className="sb-info-note">
             {t(`am.direction_${form.kind}`)}
           </p>
 
           {formPreview && (
-            <p className="rounded-card bg-surface-subtle px-3 py-2 text-xs text-ink-secondary">
+            <p className="sb-info-note">
               {t('am.form_preview', {
                 first: MONEY(formPreview.first),
                 count: formPreview.count,
@@ -592,7 +602,7 @@ export default function AmortizationPage() {
             </p>
           )}
 
-          {saveMutation.error && <p className="text-xs text-danger-600">{(saveMutation.error as Error).message}</p>}
+          {saveMutation.error && <p className="sb-alert sb-alert-danger">{(saveMutation.error as Error).message}</p>}
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button size="sm" variant="secondary" onClick={() => setFormOpen(false)}>{t('common.cancel')}</Button>
@@ -607,10 +617,10 @@ export default function AmortizationPage() {
       {/* ── Run amortization ─────────────────────────────────────────────── */}
       <Modal open={runOpen} onClose={() => setRunOpen(false)} title={t('am.run')} width="lg">
         {runResult ? (
-          <div className="space-y-3">
-            <div className="rounded-card border border-success-500/40 bg-success-50 px-3 py-3 text-sm text-success-600">
-              <p className="font-semibold">{t('am.run_done')}</p>
-              <p className="text-xs">
+          <div className="sb-ocean sb-modal-form space-y-3">
+            <div className="sb-alert sb-alert-good">
+              <p style={{ margin: 0 }}>{t('am.run_done')}</p>
+              <p style={{ margin: 0, fontWeight: 500, fontSize: 13 }}>
                 {t('am.run_done_detail', {
                   count: runResult.entries_posted,
                   total: MONEY(Number(runResult.total_amount)),
@@ -618,22 +628,22 @@ export default function AmortizationPage() {
                 })}
               </p>
             </div>
-            <p className="text-xs text-ink-tertiary">{t('am.run_posted_note')}</p>
+            <p className="sb-form-hint" style={{ margin: 0 }}>{t('am.run_posted_note')}</p>
             <div className="flex justify-end">
               <Button size="sm" onClick={() => setRunOpen(false)}>{t('common.done')}</Button>
             </div>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="sb-ocean sb-modal-form space-y-3">
             <Input label={t('am.f_period_end')} type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
             {periodLocked && (
-              <p className="rounded-card border border-danger-500/40 bg-danger-50 px-3 py-2 text-xs text-danger-600">
+              <p className="sb-alert sb-alert-danger">
                 {t('am.period_locked', { lock: lockDate })}
               </p>
             )}
-            <div className="max-h-72 overflow-y-auto rounded-card border border-border-subtle">
+            <div className="sb-acct-schedule">
               <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-surface-subtle text-ink-tertiary">
+                <thead>
                   <tr>
                     <th className="px-2 py-1.5 text-start">{t('am.col_schedule')}</th>
                     <th className="px-2 py-1.5 text-end">{t('am.col_periods')}</th>
@@ -642,28 +652,28 @@ export default function AmortizationPage() {
                 </thead>
                 <tbody>
                   {runPreview.rows.map((r) => (
-                    <tr key={r.s.id} className="border-t border-border-subtle">
-                      <td className="px-2 py-1.5 text-ink-primary">{r.s.name}</td>
+                    <tr key={r.s.id}>
+                      <td className="px-2 py-1.5">{r.s.name}</td>
                       <td className="px-2 py-1.5 text-end text-ink-secondary">{r.periods}</td>
-                      <td className="px-2 py-1.5 text-end text-ink-secondary">{MONEY(r.amount)}</td>
+                      <td className="px-2 py-1.5 text-end"><bdi dir="ltr">{MONEY(r.amount)}</bdi></td>
                     </tr>
                   ))}
                   {runPreview.rows.length === 0 && (
-                    <tr><td colSpan={3} className="px-2 py-4 text-center text-ink-tertiary">{t('am.nothing_due')}</td></tr>
+                    <tr><td colSpan={3} className="sb-empty text-center">{t('am.nothing_due')}</td></tr>
                   )}
                 </tbody>
                 {runPreview.rows.length > 0 && (
                   <tfoot>
-                    <tr className="border-t-2 border-border-strong bg-surface-subtle font-semibold text-ink-primary">
+                    <tr className="sb-acct-total-row">
                       <td className="px-2 py-1.5" colSpan={2}>{t('am.total_to_post')}</td>
-                      <td className="px-2 py-1.5 text-end">{MONEY(runPreview.total)}</td>
+                      <td className="px-2 py-1.5 text-end"><bdi dir="ltr">{MONEY(runPreview.total)}</bdi></td>
                     </tr>
                   </tfoot>
                 )}
               </table>
             </div>
-            <p className="text-xs text-ink-tertiary">{t('am.run_preview_note')}</p>
-            {runMutation.error && <p className="text-xs text-danger-600">{(runMutation.error as Error).message}</p>}
+            <p className="sb-form-hint" style={{ margin: 0 }}>{t('am.run_preview_note')}</p>
+            {runMutation.error && <p className="sb-alert sb-alert-danger">{(runMutation.error as Error).message}</p>}
             <div className="flex justify-end gap-2">
               <Button size="sm" variant="secondary" onClick={() => setRunOpen(false)}>{t('common.cancel')}</Button>
               <Button size="sm" onClick={() => runMutation.mutate()}
@@ -677,11 +687,11 @@ export default function AmortizationPage() {
 
       {/* ── Cancel schedule ──────────────────────────────────────────────── */}
       <Modal open={cancelOpen} onClose={() => setCancelOpen(false)} title={t('am.cancel_schedule')} width="md">
-        <p className="text-sm text-ink-secondary">{t('am.cancel_confirm', { remaining: MONEY(remaining) })}</p>
-        <div className="mt-3">
+        <div className="sb-ocean sb-modal-form space-y-3">
+          <p className="sb-alert sb-alert-warn">{t('am.cancel_confirm', { remaining: MONEY(remaining) })}</p>
           <Input label={t('am.cancel_reason')} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} />
+          {cancelMutation.error && <p className="sb-alert sb-alert-danger">{(cancelMutation.error as Error).message}</p>}
         </div>
-        {cancelMutation.error && <p className="mt-2 text-xs text-danger-600">{(cancelMutation.error as Error).message}</p>}
         <div className="mt-4 flex justify-end gap-2">
           <Button size="sm" variant="secondary" onClick={() => setCancelOpen(false)}>{t('common.back')}</Button>
           <Button size="sm" variant="danger" onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}>
@@ -692,8 +702,10 @@ export default function AmortizationPage() {
 
       {/* ── Reverse last installment ─────────────────────────────────────── */}
       <Modal open={reverseOpen} onClose={() => setReverseOpen(false)} title={t('am.reverse_last')} width="md">
-        <p className="text-sm text-ink-secondary">{t('am.reverse_confirm')}</p>
-        {reverseMutation.error && <p className="mt-2 text-xs text-danger-600">{(reverseMutation.error as Error).message}</p>}
+        <div className="sb-ocean sb-modal-form space-y-3">
+          <p className="sb-alert sb-alert-warn">{t('am.reverse_confirm')}</p>
+          {reverseMutation.error && <p className="sb-alert sb-alert-danger">{(reverseMutation.error as Error).message}</p>}
+        </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button size="sm" variant="secondary" onClick={() => setReverseOpen(false)}>{t('common.cancel')}</Button>
           <Button size="sm" variant="danger" onClick={() => reverseMutation.mutate()} disabled={reverseMutation.isPending}>
@@ -701,6 +713,6 @@ export default function AmortizationPage() {
           </Button>
         </div>
       </Modal>
-    </div>
+    </OceanPage>
   );
 }

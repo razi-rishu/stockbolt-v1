@@ -1692,3 +1692,27 @@
 .sb-ocean .sb-acct-sum-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (max-width: 560px) { .sb-ocean .sb-acct-sum { grid-template-columns: minmax(0, 1fr); } }
 [dir='rtl'] .sb-ocean .sb-rtl-flip { transform: scaleX(-1); }
+
+/* Accounting step 4 — fixed assets, amortization (master-detail) */
+.sb-ocean .sb-acct-md { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (min-width: 1100px) { .sb-ocean .sb-acct-md { grid-template-columns: minmax(0, 1fr) 380px; } }
+.sb-ocean .sb-acct-row td bdi, .sb-ocean .sb-acct-row .sb-pill { white-space: nowrap; }
+.sb-ocean .sb-acct-row td { vertical-align: top; }
+.sb-ocean .sb-acct-filterbar { flex-wrap: wrap; gap: 8px; }
+.sb-ocean .sb-acct-row { cursor: pointer; transition: background .12s; }
+.sb-ocean .sb-acct-row:hover { background: var(--sb-background); }
+.sb-ocean .sb-acct-row.is-selected { background: var(--sb-primary-soft); box-shadow: inset 3px 0 0 var(--sb-primary); }
+[dir='rtl'] .sb-ocean .sb-acct-row.is-selected { box-shadow: inset -3px 0 0 var(--sb-primary); }
+.sb-ocean .sb-acct-detail { padding: 16px; }
+@media (min-width: 1100px) { .sb-ocean .sb-acct-detail { position: sticky; top: 12px; } }
+.sb-ocean .sb-acct-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.sb-ocean .sb-acct-tiles > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 10px 12px; border-radius: var(--sb-radius-sm); background: var(--sb-background); border: 1px solid var(--sb-border); }
+.sb-ocean .sb-acct-tiles .sb-info-label { font-size: 12px; }
+.sb-ocean .sb-acct-tiles .sb-dash-num { font-size: 14px; overflow-wrap: anywhere; white-space: normal; }
+@media (max-width: 420px) { .sb-ocean .sb-acct-tiles { grid-template-columns: minmax(0, 1fr); } }
+.sb-ocean .sb-acct-schedule { max-height: 320px; overflow: auto; border: 1px solid var(--sb-border); border-radius: var(--sb-radius-sm); }
+.sb-ocean .sb-acct-schedule thead th { position: sticky; top: 0; background: var(--sb-background); color: var(--sb-text-secondary); font-weight: 700; z-index: 1; }
+.sb-ocean .sb-acct-schedule tbody tr { border-top: 1px solid var(--sb-border); }
+.sb-ocean .sb-acct-projected td { color: var(--sb-text-secondary); }
+.sb-ocean .sb-acct-progress { height: 4px; border-radius: 999px; background: var(--sb-border); margin: 6px 0 2px; max-width: 160px; overflow: hidden; }
+.sb-ocean .sb-acct-progress > span { display: block; height: 100%; background: var(--sb-primary); border-radius: inherit; }

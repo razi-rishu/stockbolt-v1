@@ -9,6 +9,8 @@ import { Modal } from '@/ui/modal';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { DocLink } from '@/ui/doc-link';
+import { OceanPage } from '@/components/ocean-list';
+import { Building2, CalendarClock, PlayCircle, Plus, Search, Undo2 } from 'lucide-react';
 import { monthlyCharge, projectSchedule, type DepreciationAsset } from '@/lib/depreciation';
 import type {
   Company, CoaRow, FixedAssetRow, FixedAssetInsert, DepreciationEntryRow,
@@ -30,6 +32,7 @@ import type {
  *
  * All posting actions require accounting.write and are period-lock guarded by
  * post_journal_entry inside the RPCs.
+ * Ocean Teal layout (2026-11): look only, same data and actions.
  */
 
 const MONEY = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -266,45 +269,46 @@ export default function FixedAssetsPage() {
 
   const statusPill = (s: FixedAssetRow['status']) => {
     const map: Record<string, string> = {
-      active: 'bg-success-50 text-success-600',
-      fully_depreciated: 'bg-surface-subtle text-ink-tertiary',
-      disposed: 'bg-danger-50 text-danger-600',
+      active: 'sb-pill-good',
+      fully_depreciated: 'sb-pill-muted',
+      disposed: 'sb-pill-bad',
     };
-    return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${map[s]}`}>{t(`fa.status_${s}`)}</span>;
+    return <span className={`sb-pill ${map[s]}`}>{t(`fa.status_${s}`)}</span>;
   };
 
   return (
-    <div className="space-y-4">
-      {/* Page header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-ink-primary">{t('fa.title')}</h1>
-          <p className="text-xs text-ink-tertiary">{t('fa.subtitle')}</p>
-        </div>
-        {canWrite && (
-          <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={() => { setRunResult(null); runMutation.reset(); setRunOpen(true); }}>
-              {t('fa.run_depreciation')}
-            </Button>
-            <Button size="sm" onClick={openCreate} disabled={fixedAccounts.length === 0}>
-              {t('fa.new_asset')}
-            </Button>
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+    <OceanPage
+      testid="fixed-assets-ocean"
+      title={t('fa.title')}
+      subtitle={t('fa.subtitle')}
+      actions={canWrite ? (
+        <>
+          <Button variant="secondary" size="sm" onClick={() => { setRunResult(null); runMutation.reset(); setRunOpen(true); }}>
+            <PlayCircle size={15} aria-hidden="true" /> {t('fa.run_depreciation')}
+          </Button>
+          <Button size="sm" onClick={openCreate} disabled={fixedAccounts.length === 0}>
+            <Plus size={15} aria-hidden="true" /> {t('fa.new_asset')}
+          </Button>
+        </>
+      ) : undefined}
+    >
+      <div className="sb-acct-md">
         {/* ── Register ────────────────────────────────────────────────────── */}
-        <div className="glass-card overflow-hidden">
-          <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-3">
-            <input
-              className="h-9 flex-1 rounded-input border border-border-subtle bg-surface-input px-3 text-sm text-ink-primary focus:outline-none focus:ring-1 focus:ring-brand-500"
-              placeholder={t('fa.search_placeholder')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+        <div className="sb-card sb-doc-card sb-doc-lines">
+          <div className="sb-doc-lines-head sb-acct-filterbar">
+            <label className="sb-search" style={{ margin: 0, flex: 1, minWidth: 180 }}>
+              <Search size={18} className="sb-icon" aria-hidden="true" />
+              <span className="sr-only">{t('fa.search_placeholder')}</span>
+              <input
+                type="search"
+                placeholder={t('fa.search_placeholder')}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </label>
             <select
-              className="h-9 rounded-input border border-border-subtle bg-surface-input px-2 text-sm text-ink-primary focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className="sb-pc-select"
+              style={{ width: 'auto' }}
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
             >
@@ -316,8 +320,8 @@ export default function FixedAssetsPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-surface-subtle text-xs uppercase tracking-wide text-ink-tertiary">
+            <table className="w-full text-sm" style={{ minWidth: 640 }}>
+              <thead>
                 <tr>
                   <th className="px-4 py-2 text-start">{t('fa.col_asset')}</th>
                   <th className="px-4 py-2 text-start">{t('fa.col_in_service')}</th>
@@ -329,27 +333,27 @@ export default function FixedAssetsPage() {
               </thead>
               <tbody>
                 {isLoading && (
-                  <tr><td colSpan={6} className="px-4 py-6 text-center text-ink-tertiary">{t('common.loading')}</td></tr>
+                  <tr><td colSpan={6} className="sb-empty text-center">{t('common.loading')}</td></tr>
                 )}
                 {!isLoading && visible.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-6 text-center text-ink-tertiary">{t('fa.empty')}</td></tr>
+                  <tr><td colSpan={6} className="sb-empty text-center">{t('fa.empty')}</td></tr>
                 )}
                 {visible.map((a) => (
                   <tr
                     key={a.id}
                     onClick={() => setSelectedId(a.id)}
-                    className={`cursor-pointer border-t border-border-subtle hover:bg-surface-subtle ${selectedId === a.id ? 'bg-brand-50' : ''}`}
+                    className={`sb-acct-row ${selectedId === a.id ? 'is-selected' : ''}`}
                   >
                     <td className="px-4 py-2">
-                      <span className="font-medium text-ink-primary">{a.name}</span>
-                      {a.asset_tag && <span className="ms-2 text-xs text-ink-tertiary">{a.asset_tag}</span>}
-                      {a.category && <div className="text-xs text-ink-tertiary">{a.category}</div>}
+                      <span className="font-medium">{a.name}</span>
+                      {a.asset_tag && <div><bdi dir="ltr" className="sb-acct-code">{a.asset_tag}</bdi></div>}
+                      {a.category && <div className="sb-fx-name" style={{ fontSize: 12 }}>{a.category}</div>}
                     </td>
-                    <td className="px-4 py-2 text-ink-secondary">{a.in_service_date}</td>
-                    <td className="px-4 py-2 text-end text-ink-secondary">{MONEY(Number(a.cost))}</td>
-                    <td className="px-4 py-2 text-end text-ink-secondary">{MONEY(Number(a.accumulated_depreciation))}</td>
-                    <td className="px-4 py-2 text-end font-medium text-ink-primary">
-                      {MONEY(round2(Number(a.cost) - Number(a.accumulated_depreciation)))}
+                    <td className="px-4 py-2 text-ink-secondary"><bdi dir="ltr">{a.in_service_date}</bdi></td>
+                    <td className="px-4 py-2 text-end text-ink-secondary"><bdi dir="ltr">{MONEY(Number(a.cost))}</bdi></td>
+                    <td className="px-4 py-2 text-end text-ink-secondary"><bdi dir="ltr">{MONEY(Number(a.accumulated_depreciation))}</bdi></td>
+                    <td className="px-4 py-2 text-end">
+                      <bdi dir="ltr" className="sb-dash-num">{MONEY(round2(Number(a.cost) - Number(a.accumulated_depreciation)))}</bdi>
                     </td>
                     <td className="px-4 py-2">{statusPill(a.status)}</td>
                   </tr>
@@ -357,11 +361,11 @@ export default function FixedAssetsPage() {
               </tbody>
               {visible.length > 0 && (
                 <tfoot>
-                  <tr className="border-t-2 border-border-strong bg-surface-subtle font-semibold text-ink-primary">
+                  <tr className="sb-acct-total-row">
                     <td className="px-4 py-2" colSpan={2}>{t('fa.totals_on_book')}</td>
-                    <td className="px-4 py-2 text-end">{MONEY(totals.cost)}</td>
-                    <td className="px-4 py-2 text-end">{MONEY(totals.accum)}</td>
-                    <td className="px-4 py-2 text-end">{MONEY(round2(totals.cost - totals.accum))}</td>
+                    <td className="px-4 py-2 text-end"><bdi dir="ltr">{MONEY(totals.cost)}</bdi></td>
+                    <td className="px-4 py-2 text-end"><bdi dir="ltr">{MONEY(totals.accum)}</bdi></td>
+                    <td className="px-4 py-2 text-end"><bdi dir="ltr">{MONEY(round2(totals.cost - totals.accum))}</bdi></td>
                     <td />
                   </tr>
                 </tfoot>
@@ -371,44 +375,41 @@ export default function FixedAssetsPage() {
         </div>
 
         {/* ── Detail ──────────────────────────────────────────────────────── */}
-        <div className="glass-card p-4">
+        <div className="sb-card sb-doc-card sb-acct-detail">
           {!selected ? (
-            <p className="py-10 text-center text-sm text-ink-tertiary">{t('fa.select_hint')}</p>
+            <div className="sb-acct-empty">
+              <span className="sb-side-ico" style={{ background: 'var(--sb-primary-light)', color: 'var(--sb-primary-dark)' }} aria-hidden="true"><Building2 size={18} /></span>
+              <p className="sb-fx-name" style={{ margin: 0 }}>{t('fa.select_hint')}</p>
+            </div>
           ) : (
             <div className="space-y-4">
               <div className="flex items-start justify-between gap-2">
-                <div>
-                  <h2 className="text-sm font-semibold text-ink-primary">{selected.name}</h2>
-                  <p className="text-xs text-ink-tertiary">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                  <span className="sb-side-ico" style={{ background: 'var(--sb-primary-light)', color: 'var(--sb-primary-dark)' }} aria-hidden="true"><Building2 size={17} /></span>
+                  <div style={{ minWidth: 0 }}>
+                  <h2 className="sb-doc-card-title" style={{ margin: 0 }}>{selected.name}</h2>
+                  <p className="sb-fx-name" style={{ margin: 0, fontSize: 12 }}>
                     {selected.asset_tag ? `${selected.asset_tag} · ` : ''}
                     {t(`fa.method_${selected.method}`)}
                     {selected.method === 'straight_line'
                       ? ` · ${selected.useful_life_months} ${t('fa.months')}`
                       : ` · ${Number(selected.wdv_rate)}%`}
                   </p>
+                  </div>
                 </div>
                 {statusPill(selected.status)}
               </div>
 
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="rounded-card bg-surface-subtle p-2">
-                  <p className="text-xs text-ink-tertiary">{t('fa.col_cost')}</p>
-                  <p className="text-sm font-semibold text-ink-primary">{MONEY(Number(selected.cost))}</p>
-                </div>
-                <div className="rounded-card bg-surface-subtle p-2">
-                  <p className="text-xs text-ink-tertiary">{t('fa.col_accumulated')}</p>
-                  <p className="text-sm font-semibold text-ink-primary">{MONEY(Number(selected.accumulated_depreciation))}</p>
-                </div>
-                <div className="rounded-card bg-surface-subtle p-2">
-                  <p className="text-xs text-ink-tertiary">{t('fa.col_book_value')}</p>
-                  <p className="text-sm font-semibold text-ink-primary">{MONEY(bookValue)}</p>
-                </div>
+              <div className="sb-acct-tiles">
+                <div><span className="sb-info-label">{t('fa.col_cost')}</span><bdi dir="ltr" className="sb-dash-num">{MONEY(Number(selected.cost))}</bdi></div>
+                <div><span className="sb-info-label">{t('fa.col_accumulated')}</span><bdi dir="ltr" className="sb-dash-num">{MONEY(Number(selected.accumulated_depreciation))}</bdi></div>
+                <div><span className="sb-info-label">{t('fa.col_book_value')}</span><bdi dir="ltr" className="sb-dash-num" style={{ color: 'var(--sb-primary-dark)' }}>{MONEY(bookValue)}</bdi></div>
               </div>
 
               {selected.status === 'disposed' && (
-                <div className="rounded-card border border-border-subtle bg-surface-subtle p-3 text-xs text-ink-secondary">
-                  <p>{t('fa.disposed_on')} {selected.disposal_date} · {t('fa.proceeds')} {MONEY(Number(selected.disposal_proceeds ?? 0))}</p>
-                  <p className={Number(selected.disposal_gain_loss) >= 0 ? 'text-success-600' : 'text-danger-600'}>
+                <div className="sb-info-note" style={{ fontSize: 13 }}>
+                  <p style={{ margin: 0 }}>{t('fa.disposed_on')} <bdi dir="ltr">{selected.disposal_date}</bdi> · {t('fa.proceeds')} <bdi dir="ltr">{MONEY(Number(selected.disposal_proceeds ?? 0))}</bdi></p>
+                  <p style={{ margin: 0, fontWeight: 700, color: Number(selected.disposal_gain_loss) >= 0 ? 'var(--sb-success)' : 'var(--sb-danger)' }}>
                     {Number(selected.disposal_gain_loss) >= 0 ? t('fa.gain') : t('fa.loss')}{' '}
                     {MONEY(Math.abs(Number(selected.disposal_gain_loss ?? 0)))}
                     {selected.disposal_je_id && <> · <DocLink type="journal_entry" id={selected.disposal_je_id} /></>}
@@ -428,7 +429,7 @@ export default function FixedAssetsPage() {
                   )}
                   {entries.some((e) => !e.reversed_at) && selected.status !== 'disposed' && (
                     <Button size="sm" variant="danger" onClick={() => { reverseMutation.reset(); setReverseOpen(true); }}>
-                      {t('fa.reverse_last')}
+                      <Undo2 size={15} aria-hidden="true" /> {t('fa.reverse_last')}
                     </Button>
                   )}
                 </div>
@@ -436,10 +437,10 @@ export default function FixedAssetsPage() {
 
               {/* Schedule: posted rows then projected */}
               <div>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">{t('fa.schedule')}</p>
-                <div className="max-h-80 overflow-y-auto rounded-card border border-border-subtle">
+                <p className="sb-acct-label" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><CalendarClock size={14} aria-hidden="true" />{t('fa.schedule')}</p>
+                <div className="sb-acct-schedule">
                   <table className="w-full text-xs">
-                    <thead className="sticky top-0 bg-surface-subtle text-ink-tertiary">
+                    <thead>
                       <tr>
                         <th className="px-2 py-1.5 text-start">{t('fa.col_period')}</th>
                         <th className="px-2 py-1.5 text-end">{t('fa.col_charge')}</th>
@@ -449,10 +450,10 @@ export default function FixedAssetsPage() {
                     </thead>
                     <tbody>
                       {entries.map((e) => (
-                        <tr key={e.id} className={`border-t border-border-subtle ${e.reversed_at ? 'text-ink-tertiary line-through' : ''}`}>
-                          <td className="px-2 py-1.5">{e.period_end}</td>
-                          <td className="px-2 py-1.5 text-end">{MONEY(Number(e.charge))}</td>
-                          <td className="px-2 py-1.5 text-end">{MONEY(Number(e.book_value_after))}</td>
+                        <tr key={e.id} className={e.reversed_at ? 'sb-acct-reversed' : undefined}>
+                          <td className="px-2 py-1.5"><bdi dir="ltr">{e.period_end}</bdi></td>
+                          <td className="px-2 py-1.5 text-end"><bdi dir="ltr">{MONEY(Number(e.charge))}</bdi></td>
+                          <td className="px-2 py-1.5 text-end"><bdi dir="ltr">{MONEY(Number(e.book_value_after))}</bdi></td>
                           <td className="px-2 py-1.5">
                             {e.journal_entry_id
                               ? <DocLink type="journal_entry" id={e.journal_entry_id} status={e.reversed_at ? 'reversed' : 'active'} />
@@ -461,15 +462,15 @@ export default function FixedAssetsPage() {
                         </tr>
                       ))}
                       {projected.map((r) => (
-                        <tr key={`p-${r.period_end}`} className="border-t border-border-subtle text-ink-tertiary">
-                          <td className="px-2 py-1.5">{r.period_end}</td>
-                          <td className="px-2 py-1.5 text-end">{MONEY(r.charge)}</td>
-                          <td className="px-2 py-1.5 text-end">{MONEY(r.book_value)}</td>
-                          <td className="px-2 py-1.5 italic">{t('fa.projected')}</td>
+                        <tr key={`p-${r.period_end}`} className="sb-acct-projected">
+                          <td className="px-2 py-1.5"><bdi dir="ltr">{r.period_end}</bdi></td>
+                          <td className="px-2 py-1.5 text-end"><bdi dir="ltr">{MONEY(r.charge)}</bdi></td>
+                          <td className="px-2 py-1.5 text-end"><bdi dir="ltr">{MONEY(r.book_value)}</bdi></td>
+                          <td className="px-2 py-1.5"><span className="sb-pill sb-pill-muted" style={{ fontSize: 11, padding: '1px 8px' }}>{t('fa.projected')}</span></td>
                         </tr>
                       ))}
                       {entries.length === 0 && projected.length === 0 && (
-                        <tr><td colSpan={4} className="px-2 py-4 text-center text-ink-tertiary">{t('fa.no_schedule')}</td></tr>
+                        <tr><td colSpan={4} className="sb-empty text-center">{t('fa.no_schedule')}</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -482,13 +483,13 @@ export default function FixedAssetsPage() {
 
       {/* ── Asset form ───────────────────────────────────────────────────── */}
       <Modal open={formOpen} onClose={() => setFormOpen(false)} title={editing ? t('fa.edit_asset') : t('fa.new_asset')} width="lg">
-        <div className="space-y-3">
+        <div className="sb-ocean sb-modal-form space-y-3">
           {basisLocked && (
-            <p className="rounded-card border border-warning-500/40 bg-warning-50 px-3 py-2 text-xs text-warning-600">
+            <p className="sb-alert sb-alert-warn">
               {t('fa.basis_locked')}
             </p>
           )}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Input label={t('fa.f_name')} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             <Input label={t('fa.f_tag')} value={form.asset_tag ?? ''} onChange={(e) => setForm({ ...form, asset_tag: e.target.value })} />
             <Input label={t('fa.f_category')} value={form.category ?? ''} onChange={(e) => setForm({ ...form, category: e.target.value })} />
@@ -537,7 +538,7 @@ export default function FixedAssetsPage() {
               });
               if (rows.length === 0) return null;
               return (
-                <p className="rounded-card bg-surface-subtle px-3 py-2 text-xs text-ink-secondary">
+                <p className="sb-info-note">
                   {t('fa.preview_summary', {
                     first: MONEY(rows[0].charge),
                     months: rows.length,
@@ -549,7 +550,7 @@ export default function FixedAssetsPage() {
             })()
           )}
 
-          {saveMutation.error && <p className="text-xs text-danger-600">{(saveMutation.error as Error).message}</p>}
+          {saveMutation.error && <p className="sb-alert sb-alert-danger">{(saveMutation.error as Error).message}</p>}
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button size="sm" variant="secondary" onClick={() => setFormOpen(false)}>{t('common.cancel')}</Button>
@@ -563,29 +564,29 @@ export default function FixedAssetsPage() {
       {/* ── Run depreciation ─────────────────────────────────────────────── */}
       <Modal open={runOpen} onClose={() => setRunOpen(false)} title={t('fa.run_depreciation')} width="lg">
         {runResult ? (
-          <div className="space-y-3">
-            <div className="rounded-card border border-success-500/40 bg-success-50 px-3 py-3 text-sm text-success-600">
-              <p className="font-semibold">{t('fa.run_done')}</p>
-              <p className="text-xs">
+          <div className="sb-ocean sb-modal-form space-y-3">
+            <div className="sb-alert sb-alert-good">
+              <p style={{ margin: 0 }}>{t('fa.run_done')}</p>
+              <p style={{ margin: 0, fontWeight: 500, fontSize: 13 }}>
                 {t('fa.run_done_detail', { count: runResult.entries_posted, total: MONEY(Number(runResult.total_charge)), period: runResult.period_end })}
               </p>
             </div>
-            <p className="text-xs text-ink-tertiary">{t('fa.run_posted_note')}</p>
+            <p className="sb-form-hint" style={{ margin: 0 }}>{t('fa.run_posted_note')}</p>
             <div className="flex justify-end">
               <Button size="sm" onClick={() => setRunOpen(false)}>{t('common.done')}</Button>
             </div>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="sb-ocean sb-modal-form space-y-3">
             <Input label={t('fa.f_period_end')} type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
             {periodLocked && (
-              <p className="rounded-card border border-danger-500/40 bg-danger-50 px-3 py-2 text-xs text-danger-600">
+              <p className="sb-alert sb-alert-danger">
                 {t('fa.period_locked', { lock: lockDate })}
               </p>
             )}
-            <div className="max-h-72 overflow-y-auto rounded-card border border-border-subtle">
+            <div className="sb-acct-schedule">
               <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-surface-subtle text-ink-tertiary">
+                <thead>
                   <tr>
                     <th className="px-2 py-1.5 text-start">{t('fa.col_asset')}</th>
                     <th className="px-2 py-1.5 text-end">{t('fa.col_months')}</th>
@@ -594,28 +595,28 @@ export default function FixedAssetsPage() {
                 </thead>
                 <tbody>
                   {runPreview.rows.map((r) => (
-                    <tr key={r.asset.id} className="border-t border-border-subtle">
-                      <td className="px-2 py-1.5 text-ink-primary">{r.asset.name}</td>
+                    <tr key={r.asset.id}>
+                      <td className="px-2 py-1.5">{r.asset.name}</td>
                       <td className="px-2 py-1.5 text-end text-ink-secondary">{r.periods}</td>
-                      <td className="px-2 py-1.5 text-end text-ink-secondary">{MONEY(r.charge)}</td>
+                      <td className="px-2 py-1.5 text-end"><bdi dir="ltr">{MONEY(r.charge)}</bdi></td>
                     </tr>
                   ))}
                   {runPreview.rows.length === 0 && (
-                    <tr><td colSpan={3} className="px-2 py-4 text-center text-ink-tertiary">{t('fa.nothing_due')}</td></tr>
+                    <tr><td colSpan={3} className="sb-empty text-center">{t('fa.nothing_due')}</td></tr>
                   )}
                 </tbody>
                 {runPreview.rows.length > 0 && (
                   <tfoot>
-                    <tr className="border-t-2 border-border-strong bg-surface-subtle font-semibold text-ink-primary">
+                    <tr className="sb-acct-total-row">
                       <td className="px-2 py-1.5" colSpan={2}>{t('fa.total_charge')}</td>
-                      <td className="px-2 py-1.5 text-end">{MONEY(runPreview.total)}</td>
+                      <td className="px-2 py-1.5 text-end"><bdi dir="ltr">{MONEY(runPreview.total)}</bdi></td>
                     </tr>
                   </tfoot>
                 )}
               </table>
             </div>
-            <p className="text-xs text-ink-tertiary">{t('fa.run_preview_note')}</p>
-            {runMutation.error && <p className="text-xs text-danger-600">{(runMutation.error as Error).message}</p>}
+            <p className="sb-form-hint" style={{ margin: 0 }}>{t('fa.run_preview_note')}</p>
+            {runMutation.error && <p className="sb-alert sb-alert-danger">{(runMutation.error as Error).message}</p>}
             <div className="flex justify-end gap-2">
               <Button size="sm" variant="secondary" onClick={() => setRunOpen(false)}>{t('common.cancel')}</Button>
               <Button size="sm" onClick={() => runMutation.mutate()}
@@ -630,10 +631,10 @@ export default function FixedAssetsPage() {
       {/* ── Dispose ──────────────────────────────────────────────────────── */}
       <Modal open={disposeOpen} onClose={() => setDisposeOpen(false)} title={t('fa.dispose')} width="md">
         {disposeResult ? (
-          <div className="space-y-3">
-            <div className="rounded-card border border-success-500/40 bg-success-50 px-3 py-3 text-sm text-success-600">
-              <p className="font-semibold">{t('fa.dispose_done')}</p>
-              <p className="text-xs">
+          <div className="sb-ocean sb-modal-form space-y-3">
+            <div className="sb-alert sb-alert-good">
+              <p style={{ margin: 0 }}>{t('fa.dispose_done')}</p>
+              <p style={{ margin: 0, fontWeight: 500, fontSize: 13 }}>
                 {Number(disposeResult.gain_loss) >= 0 ? t('fa.gain') : t('fa.loss')} {MONEY(Math.abs(Number(disposeResult.gain_loss)))}
                 {' · '}<DocLink type="journal_entry" id={disposeResult.journal_entry_id} />
               </p>
@@ -643,7 +644,7 @@ export default function FixedAssetsPage() {
             </div>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="sb-ocean sb-modal-form space-y-3">
             <Input label={t('fa.f_disposal_date')} type="date" required value={disposal.date}
               onChange={(e) => setDisposal({ ...disposal, date: e.target.value })} />
             <Input label={`${t('fa.proceeds')} (${currency})`} type="number" step="0.01" value={disposal.proceeds}
@@ -656,19 +657,19 @@ export default function FixedAssetsPage() {
             />
 
             {disposeNeedsCatchUp && (
-              <p className="rounded-card border border-warning-500/40 bg-warning-50 px-3 py-2 text-xs text-warning-600">
+              <p className="sb-alert sb-alert-warn">
                 {t('fa.dispose_catch_up')}
               </p>
             )}
 
-            <div className="rounded-card bg-surface-subtle px-3 py-2 text-xs text-ink-secondary">
-              <p>{t('fa.col_book_value')}: {MONEY(bookValue)}</p>
-              <p className={disposalGainLoss >= 0 ? 'text-success-600' : 'text-danger-600'}>
+            <div className="sb-info-note" style={{ fontSize: 13 }}>
+              <p style={{ margin: 0 }}>{t('fa.col_book_value')}: <bdi dir="ltr">{MONEY(bookValue)}</bdi></p>
+              <p style={{ margin: 0, fontWeight: 700, color: disposalGainLoss >= 0 ? 'var(--sb-success)' : 'var(--sb-danger)' }}>
                 {disposalGainLoss >= 0 ? t('fa.gain_to_4250') : t('fa.loss_to_6910')}: {MONEY(Math.abs(disposalGainLoss))}
               </p>
             </div>
 
-            {disposeMutation.error && <p className="text-xs text-danger-600">{(disposeMutation.error as Error).message}</p>}
+            {disposeMutation.error && <p className="sb-alert sb-alert-danger">{(disposeMutation.error as Error).message}</p>}
             <div className="flex justify-end gap-2">
               <Button size="sm" variant="secondary" onClick={() => setDisposeOpen(false)}>{t('common.cancel')}</Button>
               <Button size="sm" onClick={() => disposeMutation.mutate()}
@@ -682,8 +683,10 @@ export default function FixedAssetsPage() {
 
       {/* ── Reverse last depreciation ────────────────────────────────────── */}
       <Modal open={reverseOpen} onClose={() => setReverseOpen(false)} title={t('fa.reverse_last')} width="md">
-        <p className="text-sm text-ink-secondary">{t('fa.reverse_confirm')}</p>
-        {reverseMutation.error && <p className="mt-2 text-xs text-danger-600">{(reverseMutation.error as Error).message}</p>}
+        <div className="sb-ocean sb-modal-form space-y-3">
+          <p className="sb-alert sb-alert-warn">{t('fa.reverse_confirm')}</p>
+          {reverseMutation.error && <p className="sb-alert sb-alert-danger">{(reverseMutation.error as Error).message}</p>}
+        </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button size="sm" variant="secondary" onClick={() => setReverseOpen(false)}>{t('common.cancel')}</Button>
           <Button size="sm" variant="danger" onClick={() => reverseMutation.mutate()} disabled={reverseMutation.isPending}>
@@ -691,6 +694,6 @@ export default function FixedAssetsPage() {
           </Button>
         </div>
       </Modal>
-    </div>
+    </OceanPage>
   );
 }
