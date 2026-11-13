@@ -10,6 +10,8 @@
  * account in the CoA (the cash/bank side of every payment posts into
  * `coa_account_id`). The "default" flag picks the account that gets
  * pre-selected on new payments.
+ *
+ * Ocean Teal layout (2026-11): look only, same data and actions.
  */
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -25,12 +27,10 @@ import { Select } from '@/ui/select';
 import { Modal } from '@/ui/modal';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Table, type Column } from '@/ui/table';
-import { Badge } from '@/ui/badge';
-import { Breadcrumbs } from '@/ui/breadcrumbs';
+import type { Column } from '@/ui/table';
 import { DocLink } from '@/ui/doc-link';
-import { PageHeader, Stat } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { Banknote, CheckCircle2, Landmark, Pencil, Plus, Search, Trash2, Wallet } from 'lucide-react';
 import type { BankAccountRow, CoaRow } from '@/data/adapter';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
 import { FormErrorBanner } from '@/ui/form-error-banner';
@@ -89,17 +89,12 @@ export default function BankAccountsPage() {
   });
 
   function onDelete(row: BankAccountRow) {
-    const ok = window.confirm(
-      `Delete bank account "${row.name}"?\n\n` +
-      `This cannot be undone. The delete will FAIL if any payment, expense, ` +
-      `bank transfer, PDC cheque, or reconciliation references it — in that ` +
-      `case use Deactivate (Edit → uncheck Active) instead.`
-    );
+    const ok = window.confirm(t('baOcean.delete_confirm', { name: row.name }));
     if (!ok) return;
     deleteMutation.mutate(row.id, {
       onError: (e: unknown) => {
         const msg = e instanceof Error ? e.message : String(e);
-        window.alert(`Could not delete "${row.name}":\n\n${msg}`);
+        window.alert(t('baOcean.delete_failed', { name: row.name, msg }));
       },
     });
   }
@@ -154,7 +149,7 @@ export default function BankAccountsPage() {
 
   async function handleSaveOb() {
     const newAmt = parseFloat(obDraft);
-    if (isNaN(newAmt) || newAmt < 0) { setObError('Enter a valid amount ≥ 0'); return; }
+    if (isNaN(newAmt) || newAmt < 0) { setObError(t('baOcean.ob_invalid')); return; }
     setObSaving(true); setObError(''); setObSuccess(false);
     try {
       const dateStr = existingBankOb?.date ?? new Date().toISOString().slice(0, 10);
@@ -319,21 +314,8 @@ export default function BankAccountsPage() {
   const money = (n: number | null) => n === null ? '\u2014' : `${n < 0 ? '-' : ''}${companyCurrency} ${fmt(Math.abs(n))}`;
 
   const AccountIcon = ({ kind }: { kind: string }) => (
-    <span
-      aria-hidden="true"
-      style={{
-        width: '32px', height: '32px', borderRadius: '10px', flexShrink: 0,
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        background: kind === 'cash' ? '#ECFDF5' : theme.brandSoft,
-        color:      kind === 'cash' ? '#047857' : theme.brandSoftText,
-      }}
-    >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-           stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        {kind === 'cash'
-          ? <><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /></>
-          : <><path d="M3 10h18M5 10V8l7-4 7 4v2M5 10v8m14-8v8M3 18h18" /></>}
-      </svg>
+    <span className={`sb-ba-ico ${kind === 'cash' ? 'is-cash' : ''}`} aria-hidden="true">
+      {kind === 'cash' ? <Wallet size={16} /> : <Landmark size={16} />}
     </span>
   );
 
@@ -341,7 +323,7 @@ export default function BankAccountsPage() {
     {
       key: 'name', header: t('banking.col_account_name'),
       render: (r) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
           <AccountIcon kind={r.account_type ?? 'bank'} />
           <div style={{ minWidth: 0 }}>
             {/* The name opens the LEDGER. Seeing what moved through an
@@ -350,6 +332,7 @@ export default function BankAccountsPage() {
                 Edit when there is no GL code, so it is never a dead click. */}
             <button
               type="button"
+              className="sb-row-link"
               title={r.coa_account_id && coaCode(r.coa_account_id) ? t('banking.view_ledger') : t('common.edit')}
               onClick={(e) => {
                 e.stopPropagation();
@@ -357,39 +340,36 @@ export default function BankAccountsPage() {
                 if (code) navigate(`/accounting/general-ledger?code=${encodeURIComponent(code)}`);
                 else openEdit(r);
               }}
-              style={{ background: 'transparent', border: 'none', padding: 0, fontSize: '13px', fontWeight: 600, color: theme.brandSoftText, cursor: 'pointer', textAlign: 'start' }}
             >
               {r.name}
             </button>
-            {r.bank_name && <div style={{ fontSize: '11px', color: theme.inkFaint, marginTop: '1px' }}>{r.bank_name}</div>}
+            {r.bank_name && <div className="sb-fx-name" style={{ fontSize: 12 }}>{r.bank_name}</div>}
+            {/* Type and currency ride under the name: two narrow columns of
+                their own pushed status and actions off a 1440px screen. */}
+            <div className="sb-ba-meta">
+              <span className={`sb-pill ${r.account_type === 'cash' ? 'sb-pill-good' : ''}`} title={t('banking.col_type')}>
+                {r.account_type === 'cash' ? t('banking.type_cash') : t('banking.type_bank')}
+              </span>
+              <bdi dir="ltr" className="sb-mono" title={t('banking.col_currency')}>{r.currency}</bdi>
+            </div>
           </div>
         </div>
       ),
     },
     {
-      key: 'type', header: t('banking.col_type'), width: '110px',
-      render: (r) => (
-        <Badge variant={r.account_type === 'cash' ? 'success' : 'brand'}>
-          {r.account_type === 'cash' ? t('banking.type_cash') : t('banking.type_bank')}
-        </Badge>
-      ),
-    },
-    { key: 'currency', header: t('banking.col_currency'), width: '90px', render: (r) => <span className="font-mono" style={{ fontSize: '12px' }}>{r.currency}</span> },
-    {
       key: 'coa', header: t('banking.col_gl_code'),
       render: (r) => (
-        <span className="font-mono" style={{ fontSize: '11px', color: theme.inkMuted }}>
-          {r.coa_account_id ? coaName(r.coa_account_id) : '\u2014'}
-        </span>
+        <bdi dir="ltr" className="sb-acct-code" style={{ fontWeight: 600 }}>
+          {r.coa_account_id ? coaName(r.coa_account_id) : '—'}
+        </bdi>
       ),
     },
     {
       key: 'opening', header: t('banking.col_opening'), align: 'end', width: '130px',
       render: (r) => (
-        <span className="font-mono" style={{ color: theme.inkMuted }}
-          title={t('banking.opening_hint')}>
+        <bdi dir="ltr" className="text-ink-secondary" title={t('banking.opening_hint')}>
           {fmt(Number(r.opening_balance ?? 0))}
-        </span>
+        </bdi>
       ),
     },
     {
@@ -397,15 +377,15 @@ export default function BankAccountsPage() {
       render: (r) => {
         const bal = balanceOf(r.id);
         if (bal === null) {
-          return <span style={{ fontSize: '12px', color: theme.inkFaint }}>{balLoading ? '\u2026' : '\u2014'}</span>;
+          return <span className="sb-fx-name">{balLoading ? '…' : '—'}</span>;
         }
         // A negative cash account is a real condition worth seeing on the
         // page rather than only in a System Health check.
         return (
-          <span className="font-mono" style={{ fontWeight: 700, color: bal < 0 ? theme.danger : theme.ink }}
+          <bdi dir="ltr" className={`sb-dash-num ${bal < 0 ? 'is-bad' : ''}`}
             title={bal < 0 ? t('banking.negative_hint') : undefined}>
             {fmt(bal)}
-          </span>
+          </bdi>
         );
       },
     },
@@ -413,251 +393,239 @@ export default function BankAccountsPage() {
       key: 'last', header: t('banking.col_last_txn'), width: '170px',
       render: (r) => {
         const a = (activity as Record<string, import('@/data/adapter').BankAccountActivity>)[r.id];
-        if (!a?.last_date) return <span style={{ fontSize: '12px', color: theme.inkFaint }}>{'\u2014'}</span>;
+        if (!a?.last_date) return <span className="sb-fx-name">{'—'}</span>;
         return (
           <div>
-            <div style={{ fontSize: '12px', color: theme.ink }}>{a.last_date}</div>
-            <div style={{ fontSize: '11px', color: theme.inkFaint, marginTop: '1px' }}>
+            <bdi dir="ltr" style={{ fontSize: 12 }}>{a.last_date}</bdi>
+            <div className="sb-fx-name" style={{ fontSize: 12 }}>
               {a.related_doc_type && a.related_doc_id
                 ? <DocLink type={a.related_doc_type} id={a.related_doc_id} />
-                : (a.description ?? '\u2014')}
+                : (a.description ?? '—')}
             </div>
           </div>
         );
       },
     },
     {
-      key: 'status', header: t('banking.col_status'), width: '110px',
+      key: 'status', header: t('banking.col_status'), width: '120px',
       render: (r) => (
         <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-          <Badge variant={r.is_active ? 'success' : 'muted'}>
+          <span className={`sb-pill ${r.is_active ? 'sb-pill-good' : 'sb-pill-muted'}`}>
             {r.is_active ? t('common.active') : t('common.inactive')}
-          </Badge>
-          {r.is_default && <Badge variant="brand">{t('banking.default')}</Badge>}
+          </span>
+          {r.is_default && <span className="sb-pill">{t('banking.default')}</span>}
         </div>
       ),
     },
     {
-      key: 'actions', header: t('banking.col_actions'), width: '120px', align: 'end',
+      key: 'actions', header: '', width: '96px', align: 'end',
       render: (r) => (
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+        <div className="sb-row-actions">
           <button
-            type="button"
+            type="button" className="sb-icon-btn"
             onClick={(e) => { e.stopPropagation(); openEdit(r); }}
-            style={{ background: 'transparent', border: 'none', padding: 0, fontSize: '12px', color: theme.brandSoftText, cursor: 'pointer' }}
-            title={t('banking.edit_hint')}
+            title={t('banking.edit_hint')} aria-label={t('common.edit')}
           >
-            {t('common.edit')}
+            <Pencil size={15} aria-hidden="true" />
           </button>
           <button
-            type="button"
+            type="button" className="sb-icon-btn" style={{ color: 'var(--sb-danger)' }}
             onClick={(e) => { e.stopPropagation(); onDelete(r); }}
             disabled={deleteMutation.isPending}
-            style={{ background: 'transparent', border: 'none', padding: 0, fontSize: '12px', color: theme.danger, cursor: 'pointer' }}
-            title={t('banking.delete_hint')}
+            title={t('banking.delete_hint')} aria-label={t('common.delete')}
           >
-            {t('common.delete')}
+            <Trash2 size={15} aria-hidden="true" />
           </button>
         </div>
       ),
     },
   ];
 
-  const fieldStyle: React.CSSProperties = {
-    border: `1px solid ${theme.border}`, borderRadius: '8px', padding: '8px 10px',
-    fontSize: '13px', color: theme.ink, background: '#fff', outline: 'none',
-  };
-  const filterLabel: React.CSSProperties = {
-    fontSize: '10px', fontWeight: 700, color: theme.inkFaint,
-    textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '3px', display: 'block',
-  };
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {/* Banking has no landing page of its own, so the section is a plain
-          label. Linking it to Transfers would make "Banking" a click that
-          lands somewhere you did not ask for. */}
-      <Breadcrumbs items={[
-        { label: t('nav.banking') },
-        { label: t('banking.accounts_title') },
-      ]} />
-
-      <PageHeader
-        title={t('banking.accounts_title')}
-        subtitle={t('banking.accounts_subtitle')}
-        actions={<Button size="sm" onClick={openAdd}>+ {t('banking.add_account')}</Button>}
-      />
-
-      {/* KPI row. Summed across every account, not the filtered view. */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-        <Stat label={t('banking.kpi_total')}  value={accounts.length} hint={t('banking.kpi_total_hint')} />
-        <Stat label={t('banking.kpi_active')} value={activeCount} color="success"
-              hint={activeCount === accounts.length ? t('banking.kpi_all_active') : t('banking.kpi_some_inactive')} />
-        <Stat label={t('banking.kpi_combined')} value={money(cards ? combined : null)}
-              color={combined < 0 ? 'danger' : 'brand'} hint={t('banking.kpi_combined_hint')} />
-        <Stat label={t('banking.kpi_cash')} value={money(cards ? cashOnHand : null)}
-              color={cashOnHand < 0 ? 'danger' : undefined} hint={t('banking.kpi_cash_hint')} />
-      </div>
-
-      {/* Filter bar */}
-      <div style={{
-        background: theme.card, border: `1px solid ${theme.border}`,
-        borderRadius: theme.radiusLg, padding: '12px 14px',
-        display: 'flex', alignItems: 'flex-end', gap: '10px', flexWrap: 'wrap',
-      }}>
-        <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 240px', minWidth: '200px' }}>
-          <label style={filterLabel} htmlFor="ba-search">{t('common.search')}</label>
-          <input id="ba-search" style={fieldStyle} value={search}
-                 placeholder={t('banking.search_placeholder')}
-                 onChange={(e) => setSearch(e.target.value)} />
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <label style={filterLabel} htmlFor="ba-type">{t('banking.col_type')}</label>
-          <select id="ba-type" style={fieldStyle} value={typeFilter}
-                  onChange={(e) => setTypeFilter(e.target.value as 'all' | 'bank' | 'cash')}>
+    <OceanPage
+      testid="bank-accounts-ocean"
+      title={t('banking.accounts_title')}
+      subtitle={t('banking.accounts_subtitle')}
+      actions={
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={openAdd}>
+          <Plus size={18} aria-hidden="true" />{t('banking.add_account')}
+        </button>
+      }
+      below={
+        <div className="sb-ba-filters">
+          <label className="sb-search" style={{ margin: 0 }}>
+            <Search size={18} className="sb-icon" aria-hidden="true" />
+            <span className="sr-only">{t('common.search')}</span>
+            <input type="search" value={search} placeholder={t('banking.search_placeholder')}
+              onChange={(e) => setSearch(e.target.value)} />
+          </label>
+          <select className="sb-pc-select" aria-label={t('banking.col_type')} value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as 'all' | 'bank' | 'cash')}>
             <option value="all">{t('banking.all_types')}</option>
             <option value="bank">{t('banking.type_bank')}</option>
             <option value="cash">{t('banking.type_cash')}</option>
           </select>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <label style={filterLabel} htmlFor="ba-status">{t('banking.col_status')}</label>
-          <select id="ba-status" style={fieldStyle} value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}>
+          <select className="sb-pc-select" aria-label={t('banking.col_status')} value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}>
             <option value="all">{t('banking.all_statuses')}</option>
             <option value="active">{t('common.active')}</option>
             <option value="inactive">{t('common.inactive')}</option>
           </select>
         </div>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* KPI chips. Summed across every account, not the filtered view. */}
+        <div className="sb-exp-kpis" data-testid="bank-kpis">
+          <div className="sb-exp-kpi is-hero">
+            <span className="sb-exp-kpi-ico" aria-hidden="true"><Banknote size={17} /></span>
+            <div className="sb-exp-kpi-txt">
+              <span className="sb-exp-kpi-label">{t('banking.kpi_combined')}</span>
+              <bdi dir="ltr" className="sb-exp-kpi-val" style={combined < 0 ? { color: '#FECACA' } : undefined}>{money(cards ? combined : null)}</bdi>
+              <span className="sb-exp-kpi-sub" style={{ color: '#D7F4F1' }}>{t('banking.kpi_combined_hint')}</span>
+            </div>
+          </div>
+          <div className="sb-exp-kpi">
+            <span className="sb-exp-kpi-ico" aria-hidden="true"><Wallet size={17} /></span>
+            <div className="sb-exp-kpi-txt">
+              <span className="sb-exp-kpi-label">{t('banking.kpi_cash')}</span>
+              <bdi dir="ltr" className={`sb-exp-kpi-val ${cashOnHand < 0 ? 'is-warn' : ''}`}>{money(cards ? cashOnHand : null)}</bdi>
+              <span className="sb-exp-kpi-sub">{t('banking.kpi_cash_hint')}</span>
+            </div>
+          </div>
+          <div className="sb-exp-kpi">
+            <span className="sb-exp-kpi-ico" aria-hidden="true"><Landmark size={17} /></span>
+            <div className="sb-exp-kpi-txt">
+              <span className="sb-exp-kpi-label">{t('banking.kpi_total')}</span>
+              <span className="sb-exp-kpi-val">{accounts.length}</span>
+              <span className="sb-exp-kpi-sub">{t('banking.kpi_total_hint')}</span>
+            </div>
+          </div>
+          <div className="sb-exp-kpi">
+            <span className={`sb-exp-kpi-ico ${activeCount < accounts.length ? 'is-warn' : ''}`} aria-hidden="true"><CheckCircle2 size={17} /></span>
+            <div className="sb-exp-kpi-txt">
+              <span className="sb-exp-kpi-label">{t('banking.kpi_active')}</span>
+              <span className="sb-exp-kpi-val">{activeCount}</span>
+              <span className="sb-exp-kpi-sub">{activeCount === accounts.length ? t('banking.kpi_all_active') : t('banking.kpi_some_inactive')}</span>
+            </div>
+          </div>
+        </div>
+
+        {isLoading
+          ? <p className="sb-empty" style={{ margin: 0, textAlign: 'center' }}>{t('common.loading')}</p>
+          : <>
+              <OceanTable
+                columns={columns}
+                rows={visible}
+                keyFn={(r) => r.id}
+                rowMuted={(r) => !r.is_active}
+                emptyMessage={accounts.length === 0 ? t('banking.empty') : t('banking.empty_filtered')}
+              />
+              <p className="sb-form-hint" style={{ margin: 0 }}>{t('banking.balances_note')}</p>
+            </>
+        }
       </div>
 
-      {isLoading
-        ? <div style={{ padding: '48px 0', textAlign: 'center', fontSize: '13px', color: theme.inkFaint }}>{t('common.loading')}</div>
-        : <>
-            <Table
-              columns={columns}
-              rows={visible}
-              keyFn={(r) => r.id}
-              emptyMessage={accounts.length === 0 ? t('banking.empty') : t('banking.empty_filtered')}
-            />
-            <p style={{ fontSize: '11px', color: theme.inkFaint, margin: 0 }}>
-              {t('banking.balances_note')}
-            </p>
-          </>
-      }
-
-
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Edit bank account' : 'Add bank account'} width="lg">
-        <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v); }, onInvalid)} className="flex flex-col gap-4">
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? t('baOcean.edit_title') : t('baOcean.add_title')} width="lg">
+        <form onSubmit={handleSubmit((v) => { clearBanner(); return saveMutation.mutateAsync(v); }, onInvalid)} className="sb-ocean sb-modal-form flex flex-col gap-4">
           <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
           {/* Phase 14.13f — permanence hint. Bank accounts are wiped on
                Reset Company Data, same as every other operational master. */}
           {!editing && (
-            <div className="rounded-card border border-border-subtle bg-surface-muted px-3 py-2 text-xs text-ink-secondary">
-              <strong>Cleared on Reset Company Data.</strong> Bank accounts are wiped along with
-              transactions on a company reset. Only your company, profile, and seeded chart of
-              accounts survive.
-            </div>
+            <p className="sb-info-note" style={{ fontSize: 13 }}>
+              <strong>{t('baOcean.reset_title')}</strong> {t('baOcean.reset_body')}
+            </p>
           )}
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="Display name" required error={errors.name?.message} {...register('name')} />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Input label={t('baOcean.f_name')} required error={errors.name?.message ? t('baOcean.required') : undefined} {...register('name')} />
             {arabicOn && (
-            <Input label="Display name (Arabic)" dir="rtl" {...register('name_ar')} />
+            <Input label={t('baOcean.f_name_ar')} dir="rtl" {...register('name_ar')} />
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <Select label="Type" required {...register('account_type')}
-              options={[{ value: 'bank', label: 'Bank' }, { value: 'cash', label: 'Cash' }]} />
-            <Input label="Currency" required error={errors.currency?.message} {...register('currency')} />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Select label={t('banking.col_type')} required {...register('account_type')}
+              options={[{ value: 'bank', label: t('banking.type_bank') }, { value: 'cash', label: t('banking.type_cash') }]} />
+            <Input label={t('banking.col_currency')} required error={errors.currency?.message ? t('baOcean.currency_hint') : undefined} {...register('currency')} />
           </div>
 
           <Select
-            label="GL account" required
-            error={errors.coa_account_id?.message}
+            label={t('baOcean.f_gl')} required
+            error={errors.coa_account_id?.message ? t('baOcean.required') : undefined}
             {...register('coa_account_id')}
             options={[
-              { value: '', label: '— Select cash / bank GL account —' },
+              { value: '', label: t('baOcean.f_gl_pick') },
               ...cashBankAccounts.map(a => ({ value: a.id, label: `${a.code} ${a.name}` })),
             ]}
           />
 
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="Bank name" {...register('bank_name')} />
-            <Input label="Branch" {...register('branch')} />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Input label={t('baOcean.f_bank_name')} {...register('bank_name')} />
+            <Input label={t('baOcean.f_branch')} {...register('branch')} />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="Account number" {...register('account_number')} />
-            <Input label="IBAN" {...register('iban')} />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Input label={t('baOcean.f_account_no')} dir="ltr" {...register('account_number')} />
+            <Input label={t('baOcean.f_iban')} dir="ltr" {...register('iban')} />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="SWIFT / BIC" {...register('swift_code')} />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Input label={t('baOcean.f_swift')} dir="ltr" {...register('swift_code')} />
             {/* Opening balance — read-only hint for NEW accounts (post via
                 Opening Balances wizard). For EDIT, the inline OB editor below
                 handles void+repost atomically through the GL. */}
             {!editing ? (
               <div>
                 <Input
-                  label="Opening balance"
+                  label={t('banking.col_opening')}
                   type="number"
                   step="0.01"
                   min="0"
                   {...register('opening_balance')}
                 />
-                <p className="mt-1 text-xs" style={{ color: theme.inkFaint }}>
-                  Sets the column only. For a proper GL opening entry, go to{' '}
-                  <a href="/settings/opening-balances" className="font-medium" style={{ color: theme.brandSoftText }}
+                <p className="sb-form-hint" style={{ margin: '4px 0 0' }}>
+                  {t('baOcean.ob_new_hint')}{' '}
+                  <a href="/settings/opening-balances" className="sb-link"
                     onClick={(e) => { e.preventDefault(); window.location.assign('/settings/opening-balances'); }}>
-                    Settings → Opening Balances
-                  </a>.
+                    {t('baOcean.ob_link')}
+                  </a>
                 </p>
               </div>
             ) : (
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: theme.inkMuted, display: 'block', marginBottom: '4px' }}>
-                  Opening Balance
-                </label>
+                <span className="sb-ba-oblabel">{t('banking.col_opening')}</span>
 
                 {/* Existing JE info card — shows once the targeted query returns */}
                 {obLoading && (
-                  <p style={{ fontSize: '11px', color: theme.inkFaint, margin: '0 0 6px' }}>Loading posted entry…</p>
+                  <p className="sb-form-hint" style={{ margin: '0 0 6px' }}>{t('baOcean.ob_loading')}</p>
                 )}
                 {!obLoading && existingBankOb && (
-                  <div style={{
-                    background: theme.brandSoft, border: `1px solid ${theme.brandRing}`,
-                    borderRadius: '7px', padding: '6px 10px', marginBottom: '6px',
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
-                  }}>
+                  <div className="sb-ba-ob">
                     <div>
-                      <span style={{ fontSize: '11px', fontWeight: 700, color: theme.brandSoftText }}>
-                        Posted: {existingBankOb.doc_number}
-                      </span>
-                      <span style={{ fontSize: '11px', color: theme.inkMuted, marginInlineStart: '8px' }}>
+                      <span style={{ fontWeight: 700 }}>{t('baOcean.ob_posted', { number: existingBankOb.doc_number })}</span>
+                      <bdi dir="ltr" style={{ marginInlineStart: 8, color: 'var(--sb-text-secondary)' }}>
                         {existingBankOb.date} · {fmt(existingBankOb.amount)}
-                      </span>
+                      </bdi>
                     </div>
                     {editing && (
                       <a
                         href="#"
+                        className="sb-link"
                         onClick={(e) => {
                           e.preventDefault();
                           const code = (coa as CoaRow[]).find(a => a.id === editing.coa_account_id)?.code ?? '';
                           const yr = existingBankOb.date.slice(0, 4) + '-01-01';
                           window.location.assign(`/accounting/general-ledger?code=${encodeURIComponent(code)}&from=${yr}&to=${existingBankOb.date}`);
                         }}
-                        style={{ fontSize: '11px', color: theme.brandSoftText, textDecoration: 'underline', whiteSpace: 'nowrap' }}
+                        style={{ whiteSpace: 'nowrap' }}
                       >
-                        View in GL →
+                        {t('baOcean.ob_view_gl')}
                       </a>
                     )}
                   </div>
                 )}
                 {!obLoading && !existingBankOb && (
-                  <p style={{ fontSize: '11px', color: theme.inkFaint, margin: '0 0 6px' }}>
-                    No opening JE posted yet — enter an amount and click Post.
-                  </p>
+                  <p className="sb-form-hint" style={{ margin: '0 0 6px' }}>{t('baOcean.ob_none')}</p>
                 )}
 
                 {/* Edit / post input row */}
@@ -666,66 +634,45 @@ export default function BankAccountsPage() {
                     type="number"
                     step="0.01"
                     min="0"
+                    dir="ltr"
+                    className="sb-pc-select"
                     value={obDraft}
                     onChange={(e) => { setObDraft(e.target.value); setObSuccess(false); setObError(''); }}
                     disabled={obLoading || obSaving}
-                    style={{
-                      flex: 1, height: '36px', border: `1px solid ${theme.border}`,
-                      borderRadius: '7px', padding: '0 10px', fontSize: '13px',
-                      background: obLoading ? theme.panelHead : '#fff', color: theme.ink,
-                    }}
+                    style={{ flex: 1, minWidth: 0 }}
                   />
-                  <button
-                    type="button"
-                    onClick={handleSaveOb}
-                    disabled={obLoading || obSaving}
-                    style={{
-                      height: '36px', padding: '0 14px', borderRadius: '7px',
-                      border: `1px solid ${obLoading ? theme.border : theme.brand}`,
-                      background: obLoading ? theme.panelHead : theme.brand,
-                      color: obLoading ? theme.inkFaint : '#fff',
-                      fontSize: '12px', fontWeight: 600,
-                      cursor: (obLoading || obSaving) ? 'not-allowed' : 'pointer',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {obSaving ? 'Saving…' : obLoading ? 'Loading…' : existingBankOb ? 'Update' : 'Post'}
-                  </button>
+                  <Button type="button" size="sm" onClick={handleSaveOb} disabled={obLoading || obSaving}>
+                    {obSaving ? t('baOcean.ob_saving') : obLoading ? t('common.loading') : existingBankOb ? t('baOcean.ob_update') : t('baOcean.ob_post')}
+                  </Button>
                 </div>
 
-                {obError && (
-                  <p className="mt-1 text-xs" style={{ color: theme.danger }}>{obError}</p>
-                )}
-                {obSuccess && (
-                  <p className="mt-1 text-xs" style={{ color: '#15803d' }}>
-                    ✓ Updated — TB, BS, P&L and General Ledger will reflect the new amount.
-                  </p>
-                )}
+                {obError && <p className="sb-alert sb-alert-danger" style={{ marginTop: 8, fontSize: 13 }}>{obError}</p>}
+                {obSuccess && <p className="sb-alert sb-alert-good" style={{ marginTop: 8, fontSize: 13 }}>{t('baOcean.ob_done')}</p>}
               </div>
             )}
           </div>
 
-          <div className="flex gap-6 pt-2">
+          <div className="flex flex-wrap gap-6 pt-2">
             <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" className="h-4 w-4" {...register('is_default')} />
-              <span style={{ fontSize: '13px', color: theme.ink }}>Set as default</span>
+              <input type="checkbox" className="h-4 w-4" style={{ accentColor: 'var(--sb-primary)' }} {...register('is_default')} />
+              <span style={{ fontSize: 14 }}>{t('baOcean.f_default')}</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" className="h-4 w-4" {...register('is_active')} />
-              <span style={{ fontSize: '13px', color: theme.ink }}>Active</span>
+              <input type="checkbox" className="h-4 w-4" style={{ accentColor: 'var(--sb-primary)' }} {...register('is_active')} />
+              <span style={{ fontSize: 14 }}>{t('common.active')}</span>
             </label>
           </div>
 
           {saveMutation.error && (
-            <p style={{ fontSize: '12px', color: theme.danger }}>{String(saveMutation.error)}</p>
+            <p className="sb-alert sb-alert-danger">{String(saveMutation.error)}</p>
           )}
 
           <div className="flex justify-end gap-3 pt-2">
-            <Button type="button" variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="submit" loading={isSubmitting}>{editing ? 'Save changes' : 'Add account'}</Button>
+            <Button type="button" variant="secondary" onClick={() => setOpen(false)}>{t('common.cancel')}</Button>
+            <Button type="submit" loading={isSubmitting}>{editing ? t('baOcean.save_changes') : t('banking.add_account')}</Button>
           </div>
         </form>
       </Modal>
-    </div>
+    </OceanPage>
   );
 }

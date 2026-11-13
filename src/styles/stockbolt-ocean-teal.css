@@ -1716,3 +1716,16 @@
 .sb-ocean .sb-acct-projected td { color: var(--sb-text-secondary); }
 .sb-ocean .sb-acct-progress { height: 4px; border-radius: 999px; background: var(--sb-border); margin: 6px 0 2px; max-width: 160px; overflow: hidden; }
 .sb-ocean .sb-acct-progress > span { display: block; height: 100%; background: var(--sb-primary); border-radius: inherit; }
+
+/* Banking step 5 — bank accounts */
+.sb-ocean .sb-ba-filters { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin-top: 14px; }
+@media (min-width: 720px) { .sb-ocean .sb-ba-filters { grid-template-columns: minmax(0, 1fr) 180px 180px; align-items: center; } }
+.sb-ocean .sb-ba-filters .sb-search { max-width: none; }
+.sb-ocean .sb-ba-ico { width: 34px; height: 34px; flex: none; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: var(--sb-primary-light); color: var(--sb-primary-dark); }
+.sb-ocean .sb-ba-ico.is-cash { background: var(--sb-success-bg); color: var(--sb-success); }
+.sb-ocean .sb-ba-ob { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; padding: 8px 12px; border-radius: var(--sb-radius-sm); background: var(--sb-primary-soft); border: 1px solid var(--sb-primary-light); font-size: 12.5px; color: var(--sb-primary-dark); }
+.sb-ocean .sb-ba-meta { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.sb-ocean .sb-ba-meta .sb-pill { font-size: 11px; padding: 1px 8px; margin: 0; }
+.sb-ocean .sb-ba-meta .sb-mono { font-size: 11px; color: var(--sb-text-secondary); }
+.sb-ocean .sb-ba-oblabel { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--sb-text-secondary); }
+[dir='rtl'] .sb-ocean .sb-ba-oblabel { letter-spacing: 0; }
