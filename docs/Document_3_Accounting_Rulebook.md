@@ -78,7 +78,7 @@ Every company is auto-seeded with these accounts on signup. Code references thro
 ### Expenses (6000s) — Debit Normal
 | Code | Name | Used For |
 |---|---|---|
-| 6100 | Salaries & Benefits | (used in v2 payroll) |
+| 6100 | Salaries & Benefits | Payroll runs and leave salary (Part P) |
 | 6200 | Rent & Utilities | |
 | 6300 | Marketing & Advertising | |
 | 6400 | Logistics & Shipping | |
@@ -1440,6 +1440,60 @@ The build agent (Claude Code) MUST honor:
 2. v1 ships only `MovingAverageCostingStrategy`. Do not write `FIFOCostingStrategy`, `LIFOCostingStrategy`, `StandardCostingStrategy`, or any other variant.
 3. The `companies.costing_method` field exists, but in v1 it is constrained by CHECK to only allow 'mac'. Do not relax this constraint without explicit instruction.
 4. If any prompt or spec references LIFO, treat it as an error and stop.
+
+---
+
+# PART P — PAYROLL
+
+Payroll was moved into v1 by owner decision on 2026-06-13 (AGENTS.md §6.3).
+The engines shipped then; their source types reached the
+`journal_entries` CHECK constraint only in phase125, so nothing posted
+before it.
+
+## P1. Payroll Run — Confirm
+
+**Trigger:** A draft payroll run is confirmed ("Confirm (post to books)").
+
+**Source type:** `payroll_run` (engine `confirm_payroll_run`)
+
+**Journal entry:**
+
+```
+Dr  6100 Salaries & Benefits      [gross − deductions]
+Dr  6100 Salaries & Benefits      [gratuity accrued this month, if any]
+    Cr  1450 Employee Advances         [loan recoveries, if any]
+    Cr  2360 Gratuity Provision        [gratuity accrued this month]
+    Cr  2350 Salaries Payable          [net pay]
+```
+
+## P2. Payroll Run — Pay
+
+**Trigger:** A confirmed run is paid from a bank or cash account.
+
+**Source type:** `payroll_run` (engine `pay_payroll_run`)
+
+```
+Dr  2350 Salaries Payable         [net pay]
+    Cr  Bank / Cash                    [same]
+```
+
+## P3. Leave Salary Payment
+
+**Source type:** `leave_salary` (engine `pay_leave_salary`)
+
+```
+Dr  6100 Salaries & Benefits      [leave salary]
+    Cr  Bank / Cash                    [same]
+```
+
+## P4. Gratuity Settlement (end of service)
+
+**Source type:** `gratuity_settlement` (engine `settle_gratuity`)
+
+```
+Dr  2360 Gratuity Provision       [amount settled]
+    Cr  Bank / Cash                    [same]
+```
 
 ---
 

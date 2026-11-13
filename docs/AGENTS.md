@@ -250,6 +250,12 @@ export type SourceType =
   // source_type to a table.
   | 'credit_note_writeoff'     // Dr 6700 / Cr 5100        (phase89, Z2)
   | 'credit_note_fee'          // Dr 1200 / Cr 2200 + 4200 (phase89, Z2)
+  // phase125 — payroll (moved into v1 2026-06-13, see §6.3). Shipped in
+  // 2026-06 without widening the constraint, so none of them could post.
+  | 'payroll_run'              // confirm: Dr 6100 / Cr 1450, 2350, 2360
+                              // pay:     Dr 2350 / Cr bank
+  | 'gratuity_settlement'      // Dr 2360 / Cr bank        (gratuity paid out)
+  | 'leave_salary'             // Dr 6100 / Cr bank        (leave salary paid)
   // Accepted by the constraint and used by nothing: no row has ever carried
   // it. Kept only so widening the constraint stayed additive.
   | 'advance_refund'

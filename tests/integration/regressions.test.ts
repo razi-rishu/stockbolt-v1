@@ -5652,6 +5652,74 @@ describe('Phase 87 — posting source types (soft until applied)', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 125 — the payroll engines could never post
+//
+// confirm_payroll_run / pay_payroll_run ('payroll_run'), settle_gratuity
+// ('gratuity_settlement') and pay_leave_salary ('leave_salary') shipped in
+// 2026-06 without widening journal_entries_source_type_check. The phase87
+// general check missed them because it only reads the JSONB shape
+// ('source_type', 'x') — these engines INSERT INTO journal_entries directly.
+// The check below reads that shape too.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 125 — payroll source types (soft until applied)', () => {
+  const PAYROLL = ['payroll_run', 'gratuity_settlement', 'leave_salary'];
+  const allowed = async (): Promise<string[]> => {
+    const r = await sql<{ def: string }>(`SELECT pg_get_constraintdef(oid) AS def
+      FROM pg_constraint WHERE conname='journal_entries_source_type_check'`);
+    return [...(r[0]?.def ?? '').matchAll(/'([a-z_]+)'/g)].map(m => m[1]!);
+  };
+
+  it('phase125: the constraint accepts the payroll source types', async () => {
+    const list = await allowed();
+    if (!PAYROLL.every(v => list.includes(v))) {
+      console.warn('⚠ phase125 not applied yet — run ' +
+        'supabase/migrations/20261113000001_phase125_payroll_source_types.sql. ' +
+        'Until then payroll confirm/pay, leave salary and gratuity settlement fail at the DB.');
+      return;
+    }
+    for (const v of PAYROLL) expect(list, `${v} is accepted`).toContain(v);
+  });
+
+  it('phase125: no direct INSERT INTO journal_entries names a rejected source_type', async () => {
+    const list = await allowed();
+    if (!PAYROLL.every(v => list.includes(v))) return;   // soft until applied
+    const fns = await sql<{ proname: string; s: string }>(`
+      SELECT proname, pg_get_functiondef(oid) AS s FROM pg_proc
+       WHERE pronamespace='public'::regnamespace AND prokind='f'
+         AND pg_get_functiondef(oid) ILIKE '%INSERT INTO public.journal_entries%'`);
+    const bad: string[] = [];
+    for (const f of fns) {
+      const re = /INSERT INTO public\.journal_entries\s*\(([^)]*)\)\s*VALUES\s*\(/gi;
+      for (const m of f.s.matchAll(re)) {
+        const cols = m[1]!.split(',').map(c => c.trim());
+        const at = cols.indexOf('source_type');
+        if (at < 0) continue;
+        // Split the VALUES list on top-level commas.
+        const vals: string[] = []; let depth = 0; let cur = '';
+        for (const ch of f.s.slice(m.index! + m[0].length)) {
+          if (ch === '(') depth++;
+          if (ch === ')') { if (depth === 0) { vals.push(cur); break; } depth--; }
+          if (ch === ',' && depth === 0) { vals.push(cur); cur = ''; continue; }
+          cur += ch;
+        }
+        const expr = (vals[at] ?? '').trim();
+        // Only plain literals are checked; variables and CASE expressions are
+        // covered by the phase87 JSONB check or copy an existing row's type.
+        const lit = /^'([a-z_]+)'$/.exec(expr);
+        if (lit && !list.includes(lit[1]!)) bad.push(`${f.proname} -> ${lit[1]}`);
+      }
+    }
+    expect(bad, `functions inserting a rejected source_type: ${JSON.stringify(bad)}`).toHaveLength(0);
+  });
+
+  it('AGENTS.md lists the payroll source types', async () => {
+    const { readFileSync } = await import('node:fs');
+    const doc = readFileSync(resolve(process.cwd(), 'AGENTS.md'), 'utf8');
+    for (const v of PAYROLL) expect(doc, `AGENTS.md lists '${v}'`).toContain(`'${v}'`);
+  });
+});
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 88 (Z1) — the credit note absorbs the sales return
