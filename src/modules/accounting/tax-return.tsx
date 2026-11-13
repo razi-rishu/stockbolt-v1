@@ -8,6 +8,8 @@ import { Button } from '@/ui/button';
 import { Modal } from '@/ui/modal';
 import { Input } from '@/ui/input';
 import { ReportActions } from '@/ui/report-actions';
+import { OceanPage } from '@/components/ocean-list';
+import { ChevronLeft, ChevronRight, CheckCircle2, FileCheck2, FileDown, History } from 'lucide-react';
 import { downloadCSV } from '@/lib/io-export';
 import {
   jurisdictionForCountry, jurisdictionLabel, resolveFilingPeriod,
@@ -22,6 +24,7 @@ import type { Company } from '@/data/adapter';
  * GST), previews it with a GL-vs-documents reconciliation, and drives the
  * filing lifecycle (file → lock → reopen) via the AC-3A adapter methods. All
  * figures come straight from getTaxReturn — the UI recomputes NOTHING.
+ * Ocean Teal layout (2026-11): look only, same data and actions.
  */
 export default function TaxReturnPage() {
   const { t } = useTranslation();
@@ -117,185 +120,174 @@ export default function TaxReturnPage() {
   const exportName = `tax-return-${jurisdiction}-${period.period_start}_${period.period_end}`;
 
   const periodLabel = `${fmtDate(period.period_start)} – ${fmtDate(period.period_end)}`;
+  const jurLabel = t(`acctOcean.jur_${jurisdiction}`, { defaultValue: jurisdictionLabel(jurisdiction) });
 
   return (
-    <div className="space-y-6">
-      <div data-print-hide>
-        <h1 className="text-xl font-semibold text-ink-primary">{t('accounting.tr_title')}</h1>
-        <p className="mt-1 text-sm text-ink-secondary">{t('accounting.tr_hint')}</p>
-      </div>
+    <OceanPage
+      testid="tax-return-ocean"
+      title={t('accounting.tr_title')}
+      subtitle={t('accounting.tr_hint')}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* ── Region A — prepare & file ────────────────────────────────────── */}
+        {loadingReturn && !ret ? (
+          <div className="sb-card sb-doc-card" data-print-hide><p className="sb-empty" style={{ margin: 0 }}>{t('common.loading')}</p></div>
+        ) : ret ? (
+          <div className="sb-card sb-doc-card sb-doc-lines">
+            {/* Print-only header */}
+            <div data-print-only className="hidden mb-4">
+              <p className="text-base font-bold text-ink-primary">{(company as any)?.name ?? ''}</p>
+              <p className="text-sm text-ink-secondary">{jurLabel} — {t('accounting.tr_title')}</p>
+              <p className="text-xs text-ink-tertiary">{periodLabel}</p>
+            </div>
 
-      {/* ── Region A — prepare & file ────────────────────────────────────── */}
-      {loadingReturn && !ret ? (
-        <ReturnSkeleton />
-      ) : ret ? (
-        <div className="rounded-card border border-border-subtle bg-surface-card overflow-hidden">
-          {/* Print-only header */}
-          <div data-print-only className="hidden mb-4">
-            <p className="text-base font-bold text-ink-primary">{(company as any)?.name ?? ''}</p>
-            <p className="text-sm text-ink-secondary">{jurisdictionLabel(jurisdiction)} — {t('accounting.tr_title')}</p>
-            <p className="text-xs text-ink-tertiary">{periodLabel}</p>
-          </div>
-
-          {/* Header: period navigator + actions */}
-          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border-subtle px-5 py-4">
-            <div className="flex items-center gap-2">
-              <button
-                data-print-hide type="button" onClick={() => setOffset((o) => o - 1)}
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-subtle text-ink-secondary hover:bg-surface-muted"
-                title={t('accounting.tr_prev_period')}
-              >‹</button>
-              <div>
-                <p className="text-sm font-semibold text-ink-primary">{jurisdictionLabel(jurisdiction)} · {periodLabel}</p>
-                <p className="text-xs text-ink-tertiary">
-                  {t('accounting.tr_frequency')}: {t(`accounting.tr_freq_${frequency}`)}
-                  {existing && <> · <StatusBadge status={existing.status} t={t} /></>}
-                </p>
+            {/* Header: period navigator + actions */}
+            <div className="sb-doc-lines-head sb-acct-head">
+              <div className="sb-acct-period">
+                <button
+                  data-print-hide type="button" onClick={() => setOffset((o) => o - 1)}
+                  className="sb-icon-btn" title={t('accounting.tr_prev_period')} aria-label={t('accounting.tr_prev_period')}
+                ><ChevronLeft size={17} className="sb-rtl-flip" aria-hidden="true" /></button>
+                <div style={{ minWidth: 0 }}>
+                  <p className="sb-doc-card-title" style={{ margin: 0 }}>{jurLabel} · <bdi dir="ltr">{periodLabel}</bdi></p>
+                  <p className="sb-fx-name" style={{ margin: 0, fontSize: 12 }}>
+                    {t('accounting.tr_frequency')}: {t(`accounting.tr_freq_${frequency}`)}
+                    {existing && <> · <StatusPill status={existing.status} t={t} /></>}
+                  </p>
+                </div>
+                <button
+                  data-print-hide type="button" onClick={() => setOffset((o) => Math.min(0, o + 1))} disabled={offset >= 0}
+                  className="sb-icon-btn" title={t('accounting.tr_next_period')} aria-label={t('accounting.tr_next_period')}
+                ><ChevronRight size={17} className="sb-rtl-flip" aria-hidden="true" /></button>
               </div>
-              <button
-                data-print-hide type="button" onClick={() => setOffset((o) => Math.min(0, o + 1))} disabled={offset >= 0}
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-subtle text-ink-secondary hover:bg-surface-muted disabled:opacity-40 disabled:pointer-events-none"
-                title={t('accounting.tr_next_period')}
-              >›</button>
+              <div data-print-hide className="sb-acct-actions">
+                <ReportActions rows={exportRows} headers={exportHeaders} filename={exportName} disabled={!ret} />
+                <button
+                  type="button" disabled={!ret} title={t('accounting.tr_export_csv')}
+                  onClick={() => downloadCSV(exportRows, exportHeaders, `${exportName}.csv`)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-white px-3 py-1.5 text-xs font-semibold text-ink-secondary transition-colors hover:border-border-strong hover:text-ink-primary disabled:pointer-events-none disabled:opacity-50"
+                ><FileDown size={14} aria-hidden="true" /> {t('acctOcean.csv')}</button>
+                {canWrite && (
+                  <Button size="sm" onClick={() => { setFileResult(null); setReference(''); fileMutation.reset(); setShowFile(true); }} disabled={alreadyFiled || !periodEnded}>
+                    <FileCheck2 size={15} aria-hidden="true" /> {t('accounting.tr_file_return')}
+                  </Button>
+                )}
+              </div>
             </div>
-            <div data-print-hide className="flex flex-wrap items-center gap-2">
-              <ReportActions rows={exportRows} headers={exportHeaders} filename={exportName} disabled={!ret} />
-              <button
-                type="button" onClick={() => downloadCSV(exportRows, exportHeaders, `${exportName}.csv`)} disabled={!ret}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-white px-3 py-1.5 text-xs font-semibold text-ink-secondary transition-colors hover:border-border-strong hover:text-ink-primary disabled:pointer-events-none disabled:opacity-50"
-                title={t('accounting.tr_export_csv')}
-              >CSV</button>
-              {canWrite && (
-                <Button size="sm" onClick={() => { setFileResult(null); setReference(''); fileMutation.reset(); setShowFile(true); }} disabled={alreadyFiled || !periodEnded}>
-                  {t('accounting.tr_file_return')}
-                </Button>
-              )}
-            </div>
-          </div>
 
-          {/* Summary tiles */}
-          <div className="grid grid-cols-1 gap-3 px-5 py-4 sm:grid-cols-3">
-            <Tile label={t('accounting.tr_output_tax')} value={money(ret.output_tax)} />
-            <Tile label={t('accounting.tr_input_tax')} value={money(ret.input_tax)} />
-            <Tile
-              label={t('accounting.tr_net')}
-              value={`${money(ret.net_payable)}`}
-              sub={netLabel(ret.net_payable)}
-              accent={ret.net_payable < 0 ? 'green' : 'amber'}
-              emphasis
-            />
-          </div>
-
-          {/* Reconciliation */}
-          <div className="border-t border-border-subtle px-5 py-4">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wide text-ink-tertiary">{t('accounting.tr_reconciliation')}</p>
-              <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold ${ret.reconciliation.matched ? 'bg-emerald-100 text-emerald-700' : 'bg-warning-50 text-warning-600'}`}>
-                {ret.reconciliation.matched ? t('accounting.tr_recon_matched') : t('accounting.tr_recon_mismatch')}
-              </span>
+            {/* Summary strip */}
+            <div className="sb-gl-summary sb-acct-sum">
+              <div><span className="sb-info-label">{t('accounting.tr_output_tax')}</span><bdi dir="ltr" className="sb-dash-num">{money(ret.output_tax)}</bdi></div>
+              <div><span className="sb-info-label">{t('accounting.tr_input_tax')}</span><bdi dir="ltr" className="sb-dash-num">{money(ret.input_tax)}</bdi></div>
+              <div>
+                <span className="sb-info-label">{t('accounting.tr_net')}</span>
+                <bdi dir="ltr" className="sb-dash-num" style={{ color: ret.net_payable < 0 ? 'var(--sb-success)' : 'var(--sb-warning)' }}>{money(ret.net_payable)}</bdi>
+                <span className="sb-fx-name" style={{ fontSize: 12, color: ret.net_payable < 0 ? 'var(--sb-success)' : 'var(--sb-warning)' }}>{netLabel(ret.net_payable)}</span>
+              </div>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border-subtle text-xs text-ink-tertiary">
-                    <th className="px-2 py-2 text-start font-medium">{t('accounting.tr_recon_side')}</th>
-                    <th className="px-2 py-2 text-end font-medium">{t('accounting.tr_recon_gl')}</th>
-                    <th className="px-2 py-2 text-end font-medium">{t('accounting.tr_recon_docs')}</th>
-                    <th className="px-2 py-2 text-end font-medium">{t('accounting.tr_recon_diff')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <ReconRow label={t('accounting.tr_output_tax')} r={ret.reconciliation.output} fmt={fmt} />
-                  <ReconRow label={t('accounting.tr_input_tax')} r={ret.reconciliation.input} fmt={fmt} />
-                </tbody>
-              </table>
-            </div>
-            <p className="mt-3 text-xs text-ink-tertiary">{t('accounting.tr_recon_hint')}</p>
-          </div>
 
-          {/* Filing preview / plain-language explanation */}
-          <div className="border-t border-border-subtle px-5 py-4">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">{t('accounting.tr_filing_preview')}</p>
-            <dl className="grid grid-cols-1 gap-x-8 gap-y-2 sm:grid-cols-2">
-              <Field label={t('accounting.tr_return_period')} value={periodLabel} />
-              <Field label={t('accounting.tr_frequency')} value={t(`accounting.tr_freq_${frequency}`)} />
-              <Field label={t('accounting.tr_output_tax')} value={money(ret.output_tax)} />
-              <Field label={t('accounting.tr_input_tax')} value={money(ret.input_tax)} />
-              <Field label={t('accounting.tr_net')} value={`${money(ret.net_payable)} ${netLabel(ret.net_payable)}`} />
-              <Field label={t('accounting.tr_lock_after')} value={fmtDate(period.period_end)} />
-            </dl>
-            <div className="mt-4 rounded-lg bg-surface-subtle px-4 py-3">
-              <p className="text-sm text-ink-secondary">
+            {/* Reconciliation */}
+            <div className="sb-acct-section">
+              <div className="sb-acct-section-head">
+                <p className="sb-acct-label">{t('accounting.tr_reconciliation')}</p>
+                <span className={`sb-pill ${ret.reconciliation.matched ? 'sb-pill-good' : 'sb-pill-warn'}`}>
+                  {ret.reconciliation.matched ? t('accounting.tr_recon_matched') : t('accounting.tr_recon_mismatch')}
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm" style={{ minWidth: 460 }}>
+                  <thead>
+                    <tr>
+                      <th className="px-3 py-2 text-start font-medium">{t('accounting.tr_recon_side')}</th>
+                      <th className="px-3 py-2 text-end font-medium">{t('accounting.tr_recon_gl')}</th>
+                      <th className="px-3 py-2 text-end font-medium">{t('accounting.tr_recon_docs')}</th>
+                      <th className="px-3 py-2 text-end font-medium">{t('accounting.tr_recon_diff')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <ReconRow label={t('accounting.tr_output_tax')} r={ret.reconciliation.output} fmt={fmt} />
+                    <ReconRow label={t('accounting.tr_input_tax')} r={ret.reconciliation.input} fmt={fmt} />
+                  </tbody>
+                </table>
+              </div>
+              <p className="sb-form-hint" style={{ margin: 0 }}>{t('accounting.tr_recon_hint')}</p>
+            </div>
+
+            {/* Filing preview / plain-language explanation */}
+            <div className="sb-acct-section">
+              <p className="sb-acct-label">{t('accounting.tr_filing_preview')}</p>
+              <dl className="sb-acct-fields">
+                <Field label={t('accounting.tr_return_period')} value={periodLabel} />
+                <Field label={t('accounting.tr_frequency')} value={t(`accounting.tr_freq_${frequency}`)} />
+                <Field label={t('accounting.tr_output_tax')} value={money(ret.output_tax)} />
+                <Field label={t('accounting.tr_input_tax')} value={money(ret.input_tax)} />
+                <Field label={t('accounting.tr_net')} value={`${money(ret.net_payable)} ${netLabel(ret.net_payable)}`} />
+                <Field label={t('accounting.tr_lock_after')} value={fmtDate(period.period_end)} />
+              </dl>
+              <p className="sb-info-note">
                 {t('accounting.tr_explain', {
-                  jurisdiction: jurisdictionLabel(jurisdiction),
+                  jurisdiction: jurLabel,
                   period: periodLabel,
                   net: money(ret.net_payable),
                   netLabel: netLabel(ret.net_payable),
                   lock: fmtDate(period.period_end),
                 })}
               </p>
+              {!periodEnded && <p className="sb-alert sb-alert-warn">{t('accounting.tr_not_ended')}</p>}
+              {alreadyFiled && <p className="sb-alert sb-alert-good">{t('accounting.tr_already_filed')}</p>}
             </div>
-            {!periodEnded && (
-              <p className="mt-3 rounded-lg border border-border-subtle bg-surface-subtle px-3 py-2 text-xs text-ink-secondary">
-                {t('accounting.tr_not_ended')}
-              </p>
-            )}
-            {alreadyFiled && (
-              <p className="mt-3 rounded-lg border border-border-subtle bg-surface-subtle px-3 py-2 text-xs text-ink-secondary">
-                {t('accounting.tr_already_filed')}
-              </p>
-            )}
           </div>
-        </div>
-      ) : null}
+        ) : null}
 
-      {/* ── Region B — filing history ────────────────────────────────────── */}
-      <div data-print-hide className="rounded-card border border-border-subtle bg-surface-card overflow-hidden">
-        <div className="border-b border-border-subtle px-5 py-3">
-          <p className="text-sm font-semibold text-ink-primary">{t('accounting.tr_history')}</p>
-        </div>
-        {loadingFilings ? (
-          <div className="px-5 py-6 text-center text-sm text-ink-tertiary">{t('common.loading')}</div>
-        ) : (filings ?? []).length === 0 ? (
-          <div className="px-5 py-8 text-center">
-            <p className="text-sm text-ink-secondary">{t('accounting.tr_no_filings')}</p>
+        {/* ── Region B — filing history ────────────────────────────────────── */}
+        <div data-print-hide className="sb-card sb-doc-card sb-doc-lines">
+          <div className="sb-doc-lines-head">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+              <span className="sb-side-ico" style={{ background: 'var(--sb-primary-light)', color: 'var(--sb-primary-dark)' }} aria-hidden="true"><History size={17} /></span>
+              <p className="sb-doc-card-title" style={{ margin: 0 }}>{t('accounting.tr_history')}</p>
+            </div>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border-subtle text-xs text-ink-tertiary">
-                  <th className="px-4 py-2 text-start font-medium">{t('accounting.tr_period')}</th>
-                  <th className="px-4 py-2 text-start font-medium">{t('accounting.tr_jurisdiction')}</th>
-                  <th className="px-4 py-2 text-start font-medium">{t('accounting.tr_status')}</th>
-                  <th className="px-4 py-2 text-start font-medium">{t('accounting.tr_filed_on')}</th>
-                  <th className="px-4 py-2 text-start font-medium">{t('accounting.tr_reference')}</th>
-                  <th className="px-4 py-2 text-end font-medium">{t('accounting.tr_net')}</th>
-                  <th className="px-4 py-2 text-end font-medium"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {(filings ?? []).map((f) => (
-                  <tr key={f.id} className="border-b border-border-subtle/60">
-                    <td className="px-4 py-2 font-medium text-ink-primary">{fmtDate(f.period_start)} – {fmtDate(f.period_end)}</td>
-                    <td className="px-4 py-2 text-ink-secondary">{jurisdictionLabel(f.jurisdiction)}</td>
-                    <td className="px-4 py-2"><StatusBadge status={f.status} t={t} /></td>
-                    <td className="px-4 py-2 text-ink-secondary">{fmtDate(f.filed_at)}</td>
-                    <td className="px-4 py-2 text-ink-secondary">{f.reference_number || '—'}</td>
-                    <td className="px-4 py-2 text-end font-mono text-ink-primary">{money(Number(f.net_payable))} {netLabel(Number(f.net_payable))}</td>
-                    <td className="px-4 py-2 text-end">
-                      {canWrite && f.status === 'filed' && f.period_end === latestFiledEnd && (
-                        <Button variant="secondary" size="sm" onClick={() => { setReopenDone(false); reopenMutation.reset(); setReopenRow(f); }}>
-                          {t('accounting.tr_reopen')}
-                        </Button>
-                      )}
-                    </td>
+          {loadingFilings ? (
+            <p className="sb-empty" style={{ margin: 0 }}>{t('common.loading')}</p>
+          ) : (filings ?? []).length === 0 ? (
+            <p className="sb-empty" style={{ margin: 0 }}>{t('accounting.tr_no_filings')}</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm" style={{ minWidth: 760 }}>
+                <thead>
+                  <tr>
+                    <th className="px-4 py-2 text-start font-medium">{t('accounting.tr_period')}</th>
+                    <th className="px-4 py-2 text-start font-medium">{t('accounting.tr_jurisdiction')}</th>
+                    <th className="px-4 py-2 text-start font-medium">{t('accounting.tr_status')}</th>
+                    <th className="px-4 py-2 text-start font-medium">{t('accounting.tr_filed_on')}</th>
+                    <th className="px-4 py-2 text-start font-medium">{t('accounting.tr_reference')}</th>
+                    <th className="px-4 py-2 text-end font-medium">{t('accounting.tr_net')}</th>
+                    <th className="px-4 py-2 text-end font-medium"></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {(filings ?? []).map((f) => (
+                    <tr key={f.id}>
+                      <td className="px-4 py-2 font-medium"><bdi dir="ltr">{fmtDate(f.period_start)} – {fmtDate(f.period_end)}</bdi></td>
+                      <td className="px-4 py-2 text-ink-secondary">{t(`acctOcean.jur_${f.jurisdiction}`, { defaultValue: jurisdictionLabel(f.jurisdiction) })}</td>
+                      <td className="px-4 py-2"><StatusPill status={f.status} t={t} /></td>
+                      <td className="px-4 py-2 text-ink-secondary"><bdi dir="ltr">{fmtDate(f.filed_at)}</bdi></td>
+                      <td className="px-4 py-2 text-ink-secondary">{f.reference_number || '—'}</td>
+                      <td className="px-4 py-2 text-end"><bdi dir="ltr" className="sb-dash-num">{money(Number(f.net_payable))}</bdi> <span className="sb-fx-name">{netLabel(Number(f.net_payable))}</span></td>
+                      <td className="px-4 py-2 text-end">
+                        {canWrite && f.status === 'filed' && f.period_end === latestFiledEnd && (
+                          <Button variant="secondary" size="sm" onClick={() => { setReopenDone(false); reopenMutation.reset(); setReopenRow(f); }}>
+                            {t('accounting.tr_reopen')}
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── File confirmation / success modal ────────────────────────────── */}
@@ -305,35 +297,33 @@ export default function TaxReturnPage() {
         title={fileResult ? t('accounting.tr_file_success_title') : t('accounting.tr_file_confirm_title')}
       >
         {fileResult ? (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-              </span>
-              <p className="text-sm text-ink-secondary">{t('accounting.tr_file_success_body', { period: periodLabel, lock: fmtDate(fileResult.period_lock_date) })}</p>
-            </div>
+          <div className="sb-ocean sb-modal-form" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <p className="sb-alert sb-alert-good" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <CheckCircle2 size={18} aria-hidden="true" style={{ flexShrink: 0 }} />
+              {t('accounting.tr_file_success_body', { period: periodLabel, lock: fmtDate(fileResult.period_lock_date) })}
+            </p>
             <div className="flex justify-end">
               <Button size="sm" onClick={() => { setShowFile(false); setFileResult(null); fileMutation.reset(); }}>{t('common.done')}</Button>
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
-            <p className="text-sm text-ink-secondary">
+          <div className="sb-ocean sb-modal-form" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <p className="text-sm text-ink-secondary" style={{ margin: 0 }}>
               {t('accounting.tr_file_confirm_body', {
-                jurisdiction: jurisdictionLabel(jurisdiction), period: periodLabel,
+                jurisdiction: jurLabel, period: periodLabel,
                 net: ret ? money(ret.net_payable) : '', netLabel: ret ? netLabel(ret.net_payable) : '',
                 lock: fmtDate(period.period_end),
               })}
             </p>
             {ret && !ret.reconciliation.matched && (
-              <p className="rounded-lg border border-warning-500 bg-warning-50 px-3 py-2 text-xs text-warning-600">{t('accounting.tr_file_mismatch_warn')}</p>
+              <p className="sb-alert sb-alert-warn">{t('accounting.tr_file_mismatch_warn')}</p>
             )}
             <div>
-              <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.tr_reference_optional')}</label>
+              <label className="sb-flabel">{t('accounting.tr_reference_optional')}</label>
               <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder={t('accounting.tr_reference_placeholder')} className="w-full" />
             </div>
             {fileMutation.isError && (
-              <p className="rounded-lg border border-danger-500 bg-danger-50 px-3 py-2 text-xs text-danger-600">{friendlyError(fileMutation.error)}</p>
+              <p className="sb-alert sb-alert-danger">{friendlyError(fileMutation.error, t)}</p>
             )}
             <div className="flex justify-end gap-2">
               <Button variant="secondary" size="sm" onClick={() => setShowFile(false)} disabled={fileMutation.isPending}>{t('common.cancel')}</Button>
@@ -350,19 +340,19 @@ export default function TaxReturnPage() {
         title={reopenDone ? t('accounting.tr_reopen_success_title') : t('accounting.tr_reopen_confirm_title')}
       >
         {reopenDone ? (
-          <div className="space-y-4">
-            <p className="text-sm text-ink-secondary">{t('accounting.tr_reopen_success_body')}</p>
+          <div className="sb-ocean sb-modal-form" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <p className="sb-alert sb-alert-good">{t('accounting.tr_reopen_success_body')}</p>
             <div className="flex justify-end">
               <Button size="sm" onClick={() => { setReopenRow(null); setReopenDone(false); reopenMutation.reset(); }}>{t('common.done')}</Button>
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
-            <p className="text-sm text-ink-secondary">
+          <div className="sb-ocean sb-modal-form" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <p className="text-sm text-ink-secondary" style={{ margin: 0 }}>
               {reopenRow && t('accounting.tr_reopen_confirm_body', { period: `${fmtDate(reopenRow.period_start)} – ${fmtDate(reopenRow.period_end)}` })}
             </p>
             {reopenMutation.isError && (
-              <p className="rounded-lg border border-danger-500 bg-danger-50 px-3 py-2 text-xs text-danger-600">{friendlyError(reopenMutation.error)}</p>
+              <p className="sb-alert sb-alert-danger">{friendlyError(reopenMutation.error, t)}</p>
             )}
             <div className="flex justify-end gap-2">
               <Button variant="secondary" size="sm" onClick={() => setReopenRow(null)} disabled={reopenMutation.isPending}>{t('common.cancel')}</Button>
@@ -371,7 +361,7 @@ export default function TaxReturnPage() {
           </div>
         )}
       </Modal>
-    </div>
+    </OceanPage>
   );
 }
 
@@ -392,69 +382,42 @@ function stepPeriod(frequency: FilingFrequency, offset: number) {
 }
 
 // ── presentational helpers ───────────────────────────────────────────────────
-function Tile({ label, value, sub, accent, emphasis }: { label: string; value: string; sub?: string; accent?: 'green' | 'amber'; emphasis?: boolean }) {
-  const color = accent === 'green' ? 'text-emerald-700' : accent === 'amber' ? 'text-warning-600' : 'text-ink-primary';
-  return (
-    <div className="rounded-lg border border-border-subtle bg-surface-subtle px-4 py-3">
-      <p className="text-xs font-medium text-ink-tertiary">{label}</p>
-      <p className={`mt-1 font-mono font-semibold ${emphasis ? 'text-xl' : 'text-base'} ${color}`}>{value}</p>
-      {sub && <p className={`text-xs font-medium ${color}`}>{sub}</p>}
-    </div>
-  );
-}
-
 function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 border-b border-border-subtle/40 py-1">
-      <dt className="text-xs text-ink-tertiary">{label}</dt>
-      <dd className="text-sm font-medium text-end text-ink-primary">{value}</dd>
+    <div className="sb-acct-field">
+      <dt className="sb-info-label">{label}</dt>
+      <dd className="sb-info-value"><bdi dir="ltr">{value}</bdi></dd>
     </div>
   );
 }
 
 function ReconRow({ label, r, fmt }: { label: string; r: { gl: number; documents: number; difference: number; matched: boolean }; fmt: (n: number) => string }) {
   return (
-    <tr className="border-b border-border-subtle/60">
-      <td className="px-2 py-1.5 text-ink-primary">{label}</td>
-      <td className="px-2 py-1.5 text-end font-mono text-ink-primary">{fmt(r.gl)}</td>
-      <td className="px-2 py-1.5 text-end font-mono text-ink-secondary">{fmt(r.documents)}</td>
-      <td className={`px-2 py-1.5 text-end font-mono ${r.matched ? 'text-ink-tertiary' : 'text-danger-600'}`}>{r.difference === 0 ? '—' : fmt(r.difference)}</td>
+    <tr>
+      <td className="px-3 py-2">{label}</td>
+      <td className="px-3 py-2 text-end"><bdi dir="ltr" className="sb-dash-num">{fmt(r.gl)}</bdi></td>
+      <td className="px-3 py-2 text-end text-ink-secondary"><bdi dir="ltr">{fmt(r.documents)}</bdi></td>
+      <td className="px-3 py-2 text-end" style={{ color: r.matched ? 'var(--sb-text-secondary)' : 'var(--sb-danger)' }}><bdi dir="ltr">{r.difference === 0 ? '—' : fmt(r.difference)}</bdi></td>
     </tr>
   );
 }
 
-function StatusBadge({ status, t }: { status: string; t: (k: string) => string }) {
-  const map: Record<string, string> = {
-    filed: 'bg-emerald-100 text-emerald-700',
-    reopened: 'bg-warning-50 text-warning-600',
-    draft: 'bg-surface-muted text-ink-tertiary',
-  };
+function StatusPill({ status, t }: { status: string; t: (k: string) => string }) {
+  const tone: Record<string, string> = { filed: 'sb-pill-good', reopened: 'sb-pill-warn', draft: 'sb-pill-muted' };
   const label: Record<string, string> = {
     filed: t('accounting.tr_status_filed'),
     reopened: t('accounting.tr_status_reopened'),
     draft: t('accounting.tr_status_notfiled'),
   };
-  return <span className={`rounded px-2 py-0.5 text-xs font-semibold ${map[status] ?? map.draft}`}>{label[status] ?? status}</span>;
+  return <span className={`sb-pill ${tone[status] ?? tone.draft}`}>{label[status] ?? status}</span>;
 }
 
-function ReturnSkeleton() {
-  return (
-    <div data-print-hide className="rounded-card border border-border-subtle bg-surface-card p-5">
-      <div className="h-4 w-48 animate-pulse rounded bg-surface-muted" />
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {[0, 1, 2].map((i) => <div key={i} className="h-16 animate-pulse rounded-lg bg-surface-muted" />)}
-      </div>
-      <div className="mt-4 h-24 animate-pulse rounded-lg bg-surface-muted" />
-    </div>
-  );
-}
-
-function friendlyError(err: unknown): string {
+function friendlyError(err: unknown, t: (k: string) => string): string {
   const msg = err instanceof Error ? err.message : String(err);
-  if (/permission|not authorized|insufficient|42501/i.test(msg)) return 'You don’t have permission to file or reopen tax returns.';
-  if (/does not exist|schema cache|PGRST202|could not find/i.test(msg)) return 'The tax-filing engine isn’t installed yet. Apply the pending database migration, then try again.';
-  if (/already filed/i.test(msg)) return 'This tax period is already filed.';
-  if (/has not ended/i.test(msg)) return 'This tax period has not ended yet.';
-  if (/reverse order|later tax periods/i.test(msg)) return 'Reopen the most recently filed period first.';
+  if (/permission|not authorized|insufficient|42501/i.test(msg)) return t('acctOcean.tr_err_permission');
+  if (/does not exist|schema cache|PGRST202|could not find/i.test(msg)) return t('acctOcean.tr_err_missing');
+  if (/already filed/i.test(msg)) return t('acctOcean.tr_err_already');
+  if (/has not ended/i.test(msg)) return t('acctOcean.tr_err_not_ended');
+  if (/reverse order|later tax periods/i.test(msg)) return t('acctOcean.tr_err_order');
   return msg.replace(/^accounting\.\w+:\s*/, '');
 }

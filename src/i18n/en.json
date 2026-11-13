@@ -3812,5 +3812,23 @@
       "f3_caption": "Setup recommends the modules you need",
       "back_home": "Back to stockbolt.online"
     }
+  },
+  "acctOcean": {
+    "csv": "CSV",
+    "jur_AE_VAT": "UAE VAT",
+    "jur_IN_GST": "India GST",
+    "tr_err_permission": "You don’t have permission to file or reopen tax returns.",
+    "tr_err_missing": "The tax-filing engine isn’t installed yet. Apply the pending database migration, then try again.",
+    "tr_err_already": "This tax period is already filed.",
+    "tr_err_not_ended": "This tax period has not ended yet.",
+    "tr_err_order": "Reopen the most recently filed period first.",
+    "yec_err_permission": "You don’t have permission to close or reopen fiscal years.",
+    "yec_err_missing": "The year-end close engine isn’t installed yet. Apply the pending database migration, then try again.",
+    "tds_q1": "Q1 (Apr–Jun)",
+    "tds_q2": "Q2 (Jul–Sep)",
+    "tds_q3": "Q3 (Oct–Dec)",
+    "tds_q4": "Q4 (Jan–Mar)",
+    "tds_fy": "FY {{range}}",
+    "tds_rows": "Rows: {{count}}"
   }
 }
