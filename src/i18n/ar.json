@@ -3611,5 +3611,26 @@
     "src_vendor_debit_note": "إشعار مدين مورد",
     "src_vendor_refund": "استرداد من مورد",
     "src_year_end_close": "إقفال نهاية السنة"
+  },
+  "glOcean": {
+    "lines_count": "البنود: {{count}}",
+    "pick_hint": "اختر الحساب والفترة ثم اعرض دفتر الأستاذ",
+    "hide_reversed": "إخفاء القيود المعكوسة",
+    "all_reversed": "كل القيود معكوسة أو ملغاة. ألغِ تحديد \"إخفاء القيود المعكوسة\" لعرضها.",
+    "source": "المصدر",
+    "closing": "الرصيد الختامي",
+    "src_invoice": "بيع",
+    "src_vendor_bill": "شراء",
+    "src_payment": "دفعة",
+    "src_expense": "مصروف",
+    "src_goods_receipt": "استلام بضاعة",
+    "src_credit_note": "إشعار دائن",
+    "src_debit_note": "إشعار مدين",
+    "src_sales_return": "مرتجع",
+    "src_inventory_adjustment": "تسوية",
+    "src_stock_transfer": "تحويل",
+    "src_bank_transfer": "تحويل بنكي",
+    "src_opening_balance": "افتتاحي",
+    "src_inventory_cogs": "تكلفة المبيعات"
   }
 }

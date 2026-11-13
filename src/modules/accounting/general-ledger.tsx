@@ -7,6 +7,8 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/ui/button';
 import { DocLink } from '@/ui/doc-link';
+import { OceanPage } from '@/components/ocean-list';
+import { BookOpen, Eye } from 'lucide-react';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import type { LedgerEntry, CoaRow } from '@/data/adapter';
@@ -15,31 +17,24 @@ function fmt(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// ── Source chip — human label per document type ────────────────────────────
-const SOURCE_LABELS: Record<string, { label: string; cls: string }> = {
-  invoice:              { label: 'Sale',        cls: 'bg-brand-50 text-brand-700' },
-  vendor_bill:          { label: 'Purchase',    cls: 'bg-emerald-50 text-emerald-700' },
-  payment:              { label: 'Payment',     cls: 'bg-sky-50 text-sky-700' },
-  expense:              { label: 'Expense',     cls: 'bg-amber-50 text-amber-700' },
-  goods_receipt:        { label: 'GRN',         cls: 'bg-emerald-50 text-emerald-700' },
-  credit_note:          { label: 'Credit Note', cls: 'bg-rose-50 text-rose-700' },
-  debit_note:           { label: 'Debit Note',  cls: 'bg-rose-50 text-rose-700' },
-  sales_return:         { label: 'Return',      cls: 'bg-rose-50 text-rose-700' },
-  inventory_adjustment: { label: 'Adjustment',  cls: 'bg-surface-muted text-ink-secondary' },
-  stock_transfer:       { label: 'Transfer',    cls: 'bg-surface-muted text-ink-secondary' },
-  bank_transfer:        { label: 'Bank Transfer', cls: 'bg-sky-50 text-sky-700' },
-  opening_balance:      { label: 'Opening',     cls: 'bg-surface-muted text-ink-secondary' },
-  inventory_cogs:       { label: 'COGS',        cls: 'bg-amber-50 text-amber-700' },
+// ── Source chip — human label per document type (glOcean.src_*) ───────────
+// Tones only group the chips visually; the label is the translated type.
+const SOURCE_TONE: Record<string, string> = {
+  invoice: '', vendor_bill: 'sb-pill-good', payment: '', expense: 'sb-pill-warn',
+  goods_receipt: 'sb-pill-good', credit_note: 'sb-pill-bad', debit_note: 'sb-pill-bad',
+  sales_return: 'sb-pill-bad', inventory_adjustment: 'sb-pill-muted', stock_transfer: 'sb-pill-muted',
+  bank_transfer: '', opening_balance: 'sb-pill-muted', inventory_cogs: 'sb-pill-warn',
 };
 
 function SourceCell({ type, id, number }: { type: string; id: string | null; number: string | null }) {
-  const meta = SOURCE_LABELS[type] ?? { label: type ? type.replace(/_/g, ' ') : 'Manual', cls: 'bg-surface-muted text-ink-secondary' };
+  const { t } = useTranslation();
+  const label = type
+    ? t(`glOcean.src_${type}`, { defaultValue: t(`jeOcean.src_${type}`, { defaultValue: type.replace(/_/g, ' ') }) })
+    : t('jeOcean.src_manual');
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-      {number && <DocLink type={type} id={id} label={number} className="font-mono text-xs text-brand-600 hover:underline" />}
-      <span className={`rounded-pill px-1.5 py-0.5 text-[10px] font-semibold capitalize ${meta.cls}`}>
-        {meta.label}
-      </span>
+      {number && <bdi dir="ltr"><DocLink type={type} id={id} label={number} className="font-mono text-xs text-brand-600 hover:underline" /></bdi>}
+      <span className={`sb-pill ${SOURCE_TONE[type] ?? 'sb-pill-muted'}`} style={{ marginTop: 0, fontSize: 11, padding: '1px 8px' }}>{label}</span>
     </span>
   );
 }
@@ -123,110 +118,130 @@ export default function GeneralLedgerPage() {
 
   const totalDebit  = visibleEntries.reduce((s, e) => s + e.debit,  0);
   const totalCredit = visibleEntries.reduce((s, e) => s + e.credit, 0);
+  const closing = visibleEntries.length ? visibleEntries[visibleEntries.length - 1].running_balance : 0;
 
   const selectedAccount = accounts.find((a) => a.code === query?.code);
 
+  // Ocean Teal (UI v1.1): look only — same account/period filter, Trial
+  // Balance drill-down, hide-reversed rule, running balance and totals.
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-ink-primary">{t('accounting.gl_title')}</h1>
-
-      <form onSubmit={handleSearch} className="flex flex-wrap items-end gap-3">
-        <div>
-          <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.account_code')}</label>
-          <select
-            value={accountCode}
-            onChange={(e) => setAccountCode(e.target.value)}
-            className="h-9 w-56 rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500"
-          >
-            <option value="">{t('accounting.select_account')}</option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.code}>{a.code} — {a.name}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('reports.period') || 'Period'}</label>
-          <PeriodPicker
-            mode="range" preset={preset} from={from} to={to}
-            onPresetChange={setPreset} onCustomRange={setCustomRange}
-          />
-        </div>
-        <Button type="submit" size="sm">{t('accounting.view_ledger')}</Button>
-      </form>
-
-      {query && (
-        <div className="rounded-card border border-border-subtle bg-surface-card">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle px-4 py-3">
-            <div>
-              <p className="font-medium text-ink-primary">
-                {query.code}{selectedAccount ? ` — ${selectedAccount.name}` : ''}
-              </p>
-              <p className="text-xs text-ink-tertiary">{query.from} → {query.to}</p>
-            </div>
-            {/* Hide-reversed toggle — keeps ledger clean after edit/void cycles */}
-            <label className="flex cursor-pointer select-none items-center gap-1.5 text-xs text-ink-secondary">
-              <input
-                type="checkbox"
-                checked={hideReversed}
-                onChange={(ev) => setHideReversed(ev.target.checked)}
-                className="h-3.5 w-3.5 rounded border-border-subtle accent-brand-600"
-              />
-              Hide reversed entries
-            </label>
+    <OceanPage
+      testid="general-ledger-ocean"
+      title={t('accounting.gl_title')}
+      subtitle={query ? t('glOcean.lines_count', { count: visibleEntries.length }) : t('glOcean.pick_hint')}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <form onSubmit={handleSearch} className="sb-card sb-form sb-doc-card sb-gl-filters">
+          <div style={{ minWidth: 0 }}>
+            <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('accounting.account_code')}</label>
+            <select
+              value={accountCode}
+              onChange={(e) => setAccountCode(e.target.value)}
+              className="sb-pc-select"
+            >
+              <option value="">{t('accounting.select_account')}</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.code}>{a.code} — {a.name}</option>
+              ))}
+            </select>
           </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-ink-secondary">{t('reports.period') || 'Period'}</label>
+            <PeriodPicker
+              mode="range" preset={preset} from={from} to={to}
+              onPresetChange={setPreset} onCustomRange={setCustomRange}
+            />
+          </div>
+          <Button type="submit" size="sm"><Eye size={15} aria-hidden="true" /> {t('accounting.view_ledger')}</Button>
+        </form>
 
-          {isFetching ? (
-            <p className="px-4 py-6 text-sm text-ink-secondary">{t('common.loading')}</p>
-          ) : visibleEntries.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-ink-tertiary">
-              {entries.length > 0 && hideReversed
-                ? 'All entries are reversed / voided. Uncheck "Hide reversed entries" to view them.'
-                : t('accounting.gl_empty')}
-            </p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
-                  <th className="px-4 py-2 text-start font-medium">{t('accounting.date')}</th>
-                  <th className="px-4 py-2 text-start font-medium">{t('accounting.entry_number')}</th>
-                  <th className="px-4 py-2 text-start font-medium">Source</th>
-                  <th className="px-4 py-2 text-start font-medium">{t('accounting.description')}</th>
-                  <th className="px-4 py-2 text-end font-medium">{t('accounting.debit')}</th>
-                  <th className="px-4 py-2 text-end font-medium">{t('accounting.credit')}</th>
-                  <th className="px-4 py-2 text-end font-medium">{t('accounting.balance')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleEntries.map((e) => (
-                  <tr key={e.id} className="border-b border-border-subtle last:border-0 hover:bg-surface-muted/50">
-                    <td className="px-4 py-2.5 text-ink-secondary">{formatDate(e.date)}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs">
-                      <DocLink type="journal_entry" id={e.journal_entry_id} label={e.entry_number}
-                        status={e.reversed_by_id ? 'reversed' : 'active'}
-                        className="font-mono text-xs text-brand-600 hover:underline" />
-                    </td>
-                    <td className="px-4 py-2.5"><SourceCell type={e.source_type} id={e.source_id} number={e.source_number} /></td>
-                    <td className="px-4 py-2.5 text-ink-primary">{e.description || '—'}</td>
-                    <td className="px-4 py-2.5 text-end font-mono">{e.debit > 0 ? fmt(e.debit) : ''}</td>
-                    <td className="px-4 py-2.5 text-end font-mono">{e.credit > 0 ? fmt(e.credit) : ''}</td>
-                    <td className={`px-4 py-2.5 text-end font-mono ${e.running_balance < 0 ? 'text-red-500' : ''}`}>
-                      {fmt(e.running_balance)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-border-subtle font-semibold">
-                  <td colSpan={4} className="px-4 py-2.5 text-xs text-ink-secondary">{t('accounting.total')}</td>
-                  <td className="px-4 py-2.5 text-end font-mono">{fmt(totalDebit)}</td>
-                  <td className="px-4 py-2.5 text-end font-mono">{fmt(totalCredit)}</td>
-                  <td />
-                </tr>
-              </tfoot>
-            </table>
-          )}
-        </div>
-      )}
-    </div>
+        {query && (
+          <div className="sb-card sb-doc-card sb-doc-lines">
+            <div className="sb-doc-lines-head">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                <span className="sb-side-ico" style={{ background: 'var(--sb-primary-light)', color: 'var(--sb-primary-dark)' }} aria-hidden="true"><BookOpen size={17} /></span>
+                <div style={{ minWidth: 0 }}>
+                  <p className="sb-doc-card-title" style={{ margin: 0 }}>
+                    <bdi dir="ltr">{query.code}</bdi>{selectedAccount ? ` — ${selectedAccount.name}` : ''}
+                  </p>
+                  <bdi dir="ltr" className="sb-fx-name" style={{ fontSize: 12 }}>{query.from} → {query.to}</bdi>
+                </div>
+              </div>
+              {/* Hide-reversed toggle — keeps ledger clean after edit/void cycles */}
+              <label className="flex cursor-pointer select-none items-center gap-1.5 text-sm text-ink-secondary">
+                <input
+                  type="checkbox"
+                  checked={hideReversed}
+                  onChange={(ev) => setHideReversed(ev.target.checked)}
+                  className="h-4 w-4"
+                  style={{ accentColor: 'var(--sb-primary)' }}
+                />
+                {t('glOcean.hide_reversed')}
+              </label>
+            </div>
+
+            {isFetching ? (
+              <p className="sb-empty" style={{ margin: 0 }}>{t('common.loading')}</p>
+            ) : visibleEntries.length === 0 ? (
+              <p className="sb-empty" style={{ margin: 0 }}>
+                {entries.length > 0 && hideReversed ? t('glOcean.all_reversed') : t('accounting.gl_empty')}
+              </p>
+            ) : (
+              <>
+                <div className="sb-gl-summary">
+                  <div><span className="sb-info-label">{t('accounting.debit')}</span><bdi dir="ltr" className="sb-dash-num">{fmt(totalDebit)}</bdi></div>
+                  <div><span className="sb-info-label">{t('accounting.credit')}</span><bdi dir="ltr" className="sb-dash-num">{fmt(totalCredit)}</bdi></div>
+                  <div><span className="sb-info-label">{t('glOcean.closing')}</span><bdi dir="ltr" className="sb-dash-num" style={{ color: closing < 0 ? 'var(--sb-danger)' : 'var(--sb-primary-dark)' }}>{fmt(closing)}</bdi></div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm" style={{ minWidth: 860 }}>
+                    <thead>
+                      <tr>
+                        <th className="px-4 py-2 text-start font-medium">{t('accounting.date')}</th>
+                        <th className="px-4 py-2 text-start font-medium">{t('accounting.entry_number')}</th>
+                        <th className="px-4 py-2 text-start font-medium">{t('glOcean.source')}</th>
+                        <th className="px-4 py-2 text-start font-medium">{t('accounting.description')}</th>
+                        <th className="px-4 py-2 text-end font-medium">{t('accounting.debit')}</th>
+                        <th className="px-4 py-2 text-end font-medium">{t('accounting.credit')}</th>
+                        <th className="px-4 py-2 text-end font-medium">{t('accounting.balance')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleEntries.map((e) => (
+                        <tr key={e.id} className="border-b border-border-subtle last:border-0">
+                          <td className="px-4 py-2.5 text-ink-secondary whitespace-nowrap"><bdi dir="ltr">{formatDate(e.date)}</bdi></td>
+                          <td className="px-4 py-2.5 font-mono text-xs">
+                            <bdi dir="ltr">
+                              <DocLink type="journal_entry" id={e.journal_entry_id} label={e.entry_number}
+                                status={e.reversed_by_id ? 'reversed' : 'active'}
+                                className="font-mono text-xs text-brand-600 hover:underline" />
+                            </bdi>
+                          </td>
+                          <td className="px-4 py-2.5"><SourceCell type={e.source_type} id={e.source_id} number={e.source_number} /></td>
+                          <td className="px-4 py-2.5 text-ink-primary">{e.description || '—'}</td>
+                          <td className="px-4 py-2.5 text-end font-mono" dir="ltr">{e.debit > 0 ? fmt(e.debit) : ''}</td>
+                          <td className="px-4 py-2.5 text-end font-mono" dir="ltr">{e.credit > 0 ? fmt(e.credit) : ''}</td>
+                          <td className={`px-4 py-2.5 text-end font-mono ${e.running_balance < 0 ? 'text-red-500' : ''}`} dir="ltr">
+                            {fmt(e.running_balance)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="font-semibold" style={{ background: 'var(--sb-primary-soft)', color: 'var(--sb-primary-dark)' }}>
+                        <td colSpan={4} className="px-4 py-2.5 text-sm">{t('accounting.total')}</td>
+                        <td className="px-4 py-2.5 text-end font-mono" dir="ltr">{fmt(totalDebit)}</td>
+                        <td className="px-4 py-2.5 text-end font-mono" dir="ltr">{fmt(totalCredit)}</td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </OceanPage>
   );
 }

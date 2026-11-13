@@ -1657,3 +1657,10 @@
 
 /* ── Journal entry view: meta grid ─────────────────────────────────────── */
 .sb-ocean .sb-je-meta { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 16px; font-size: 14px; color: var(--sb-text); align-items: baseline; }
+
+/* ── General ledger: filter row + summary strip ─────────────────────────── */
+.sb-ocean .sb-gl-filters { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: end; }
+@media (min-width: 720px) { .sb-ocean .sb-gl-filters { grid-template-columns: minmax(0, 1.4fr) auto auto; } }
+.sb-ocean .sb-gl-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--sb-border); border-bottom: 1px solid var(--sb-border); }
+.sb-ocean .sb-gl-summary > div { background: var(--sb-surface); padding: 10px 16px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sb-ocean .sb-gl-summary .sb-dash-num { font-size: 16px; text-align: start; }

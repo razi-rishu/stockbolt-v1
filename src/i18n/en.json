@@ -3611,5 +3611,26 @@
     "src_vendor_debit_note": "Supplier debit note",
     "src_vendor_refund": "Supplier refund",
     "src_year_end_close": "Year-end close"
+  },
+  "glOcean": {
+    "lines_count": "Lines: {{count}}",
+    "pick_hint": "Pick an account and period, then view the ledger",
+    "hide_reversed": "Hide reversed entries",
+    "all_reversed": "All entries are reversed or voided. Untick \"Hide reversed entries\" to see them.",
+    "source": "Source",
+    "closing": "Closing balance",
+    "src_invoice": "Sale",
+    "src_vendor_bill": "Purchase",
+    "src_payment": "Payment",
+    "src_expense": "Expense",
+    "src_goods_receipt": "GRN",
+    "src_credit_note": "Credit note",
+    "src_debit_note": "Debit note",
+    "src_sales_return": "Return",
+    "src_inventory_adjustment": "Adjustment",
+    "src_stock_transfer": "Transfer",
+    "src_bank_transfer": "Bank transfer",
+    "src_opening_balance": "Opening",
+    "src_inventory_cogs": "COGS"
   }
 }
