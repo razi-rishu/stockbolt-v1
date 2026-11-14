@@ -8420,3 +8420,70 @@ describe('Phase 126 — fixed asset purchase (soft until applied)', () => {
     expect(off, `purchases whose register cost differs from the ledger: ${JSON.stringify(off)}`).toHaveLength(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 127 — fixed asset quantity, partial disposal, void
+//
+// A partial disposal splits the asset: the disposed units move to a new row
+// (parent_asset_id) that the existing dispose_fixed_asset() then disposes. The
+// split must never create or lose money: each disposed child's JE removes
+// exactly its cost from the asset account. Void posts nothing, so it is only
+// allowed where nothing was ever posted.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 127 — fixed asset quantity, partial disposal, void (soft until applied)', () => {
+  const FNS = ['dispose_fixed_asset_partial', 'void_fixed_asset'];
+  const applied = async (): Promise<boolean> => {
+    const r = await sql<{ ok: boolean }>(`SELECT to_regprocedure('public.void_fixed_asset(uuid,text)') IS NOT NULL AS ok`);
+    return !!r[0]?.ok;
+  };
+
+  it('phase127: functions run as the caller and are not callable by anon', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ phase127 not applied yet — run supabase/migrations/20261115000001_phase127_fixed_asset_quantity_partial_void.sql.');
+      return;
+    }
+    const rows = await sql<{ proname: string; prosecdef: boolean; anon_exec: boolean }>(`
+      SELECT p.proname, p.prosecdef, has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_exec
+        FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = ANY (ARRAY['${FNS.join("','")}'])`);
+    expect(rows.map(r => r.proname).sort()).toEqual([...FNS].sort());
+    for (const r of rows) {
+      expect(r.prosecdef, `${r.proname} must be SECURITY INVOKER`).toBe(false);
+      expect(r.anon_exec, `${r.proname} must not be executable by anon`).toBe(false);
+    }
+  });
+
+  it('phase127: quantity is positive, void is a status, the split guard is installed', async () => {
+    if (!(await applied())) return;
+    const c = await sql<{ def: string }>(`SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+      WHERE conrelid = 'public.fixed_assets'::regclass AND conname IN ('fixed_assets_status_check','fixed_assets_quantity_positive')`);
+    const defs = c.map(r => r.def).join(' | ');
+    expect(defs).toContain("'void'");
+    expect(defs).toContain('quantity > ');
+    const tg = await sql<{ n: number }>(`SELECT count(*)::int AS n FROM pg_trigger WHERE tgname = 'depreciation_entries_split_guard'`);
+    expect(tg[0]?.n).toBe(1);
+  });
+
+  it('phase127: every partial disposal removed exactly the split-off cost from the asset account', async () => {
+    if (!(await applied())) return;
+    const off = await sql<{ id: string; cost: number; credited: number }>(`
+      SELECT c.id, c.cost,
+             (SELECT COALESCE(SUM(g.credit - g.debit), 0) FROM public.gl_active g
+               WHERE g.journal_entry_id = c.disposal_je_id AND g.account_code = c.asset_account_code) AS credited
+        FROM public.fixed_assets c
+       WHERE c.parent_asset_id IS NOT NULL AND c.status = 'disposed' AND c.disposal_je_id IS NOT NULL`);
+    const bad = off.filter(r => Math.abs(Number(r.cost) - Number(r.credited)) > 0.01);
+    if (bad.length) console.warn(`⚠ phase127: partial disposals whose JE differs from the split cost: ${JSON.stringify(bad)}`);
+    expect(bad).toHaveLength(0);
+  });
+
+  it('phase127: no void asset has depreciation, a disposal or a purchase behind it', async () => {
+    if (!(await applied())) return;
+    const bad = await sql<{ id: string }>(`
+      SELECT a.id FROM public.fixed_assets a
+       WHERE a.status = 'void'
+         AND (a.purchase_id IS NOT NULL OR a.accumulated_depreciation <> 0 OR a.disposal_je_id IS NOT NULL
+              OR EXISTS (SELECT 1 FROM public.depreciation_entries d WHERE d.asset_id = a.id AND d.reversed_at IS NULL))`);
+    if (bad.length) console.warn(`⚠ phase127: void assets with postings: ${JSON.stringify(bad)}`);
+    expect(bad).toHaveLength(0);
+  });
+});

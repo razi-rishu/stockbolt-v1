@@ -11,7 +11,7 @@ import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { DocLink } from '@/ui/doc-link';
 import { OceanPage } from '@/components/ocean-list';
-import { Building2, CalendarClock, FileClock, PlayCircle, Plus, Receipt, Search, Undo2 } from 'lucide-react';
+import { Ban, Building2, CalendarClock, FileClock, PlayCircle, Plus, Receipt, Search, Undo2 } from 'lucide-react';
 import { monthlyCharge, projectSchedule, type DepreciationAsset } from '@/lib/depreciation';
 import type {
   Company, CoaRow, FixedAssetRow, FixedAssetInsert, DepreciationEntryRow,
@@ -35,6 +35,10 @@ import type {
  * post_journal_entry inside the RPCs.
  * Ocean Teal layout (2026-11): look only, same data and actions.
  */
+
+/** Units on a register row (1 for rows from before phase127). */
+const qtyOf = (a: FixedAssetRow) => Number(a.quantity ?? 1) || 1;
+const QTY = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 3 });
 
 const MONEY = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -85,7 +89,7 @@ const emptyForm: FixedAssetInsert = {
   cost: 0, salvage_value: 0, useful_life_months: 60,
   method: 'straight_line', wdv_rate: 0,
   asset_account_code: '', accum_dep_account_code: '1790', expense_account_code: '6750',
-  notes: '',
+  notes: '', quantity: 1,
 };
 
 export default function FixedAssetsPage() {
@@ -95,7 +99,7 @@ export default function FixedAssetsPage() {
   const canWrite = hasPerm(role, permissions, 'accounting.write');
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'disposed' | 'fully_depreciated'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'disposed' | 'fully_depreciated' | 'void'>('all');
   const [search, setSearch] = useState('');
 
   const [formOpen, setFormOpen] = useState(false);
@@ -107,9 +111,11 @@ export default function FixedAssetsPage() {
   const [runResult, setRunResult] = useState<RunDepreciationResult | null>(null);
 
   const [disposeOpen, setDisposeOpen] = useState(false);
-  const [disposal, setDisposal] = useState({ date: '', proceeds: '0', account: '' });
+  const [disposal, setDisposal] = useState({ date: '', proceeds: '0', account: '', qty: '1' });
   const [disposeResult, setDisposeResult] = useState<DisposeAssetResult | null>(null);
   const [reverseOpen, setReverseOpen] = useState(false);
+  const [voidOpen, setVoidOpen] = useState(false);
+  const [voidReason, setVoidReason] = useState('');
 
   const { data: company } = useQuery<Company | null>({
     queryKey: ['company', company_id],
@@ -166,7 +172,7 @@ export default function FixedAssetsPage() {
 
   const totals = useMemo(() => visible.reduce(
     (acc, a) => {
-      if (a.status === 'disposed') return acc;   // disposed assets are off the books
+      if (a.status === 'disposed' || a.status === 'void') return acc;   // off the books
       acc.cost += Number(a.cost);
       acc.accum += Number(a.accumulated_depreciation);
       return acc;
@@ -210,6 +216,7 @@ export default function FixedAssetsPage() {
         cost: Number(form.cost), salvage_value: Number(form.salvage_value),
         useful_life_months: Number(form.useful_life_months), wdv_rate: Number(form.wdv_rate),
         asset_tag: form.asset_tag || null, category: form.category || null, notes: form.notes || null,
+        quantity: Number(form.quantity) > 0 ? Number(form.quantity) : 1,
       };
       if (editing) await getAdapter().fixedAssets.update(editing.id, payload);
       else {
@@ -226,13 +233,25 @@ export default function FixedAssetsPage() {
   });
 
   const disposeMutation = useMutation({
-    mutationFn: () => getAdapter().fixedAssets.dispose({
-      asset_id: selected!.id,
-      disposal_date: disposal.date,
-      proceeds: Number(disposal.proceeds) || 0,
-      proceeds_account_code: disposal.account,
-    }),
+    mutationFn: () => {
+      const input = {
+        asset_id: selected!.id,
+        disposal_date: disposal.date,
+        proceeds: Number(disposal.proceeds) || 0,
+        proceeds_account_code: disposal.account,
+      };
+      // phase127 — part of the units: split them off and dispose that part.
+      // The whole quantity stays on the plain disposal.
+      return disposeQty < qtyOf(selected!)
+        ? getAdapter().fixedAssets.disposePartial({ ...input, quantity: disposeQty })
+        : getAdapter().fixedAssets.dispose(input);
+    },
     onSuccess: (res) => { setDisposeResult(res); invalidate(); },
+  });
+
+  const voidMutation = useMutation({
+    mutationFn: () => getAdapter().fixedAssets.voidAsset(selected!.id, voidReason.trim()),
+    onSuccess: () => { setVoidOpen(false); invalidate(); },
   });
 
   const reverseMutation = useMutation({
@@ -242,13 +261,27 @@ export default function FixedAssetsPage() {
 
   // ── Derived detail values ─────────────────────────────────────────────────
   const bookValue = selected ? round2(Number(selected.cost) - Number(selected.accumulated_depreciation)) : 0;
-  const disposalGainLoss = selected ? round2((Number(disposal.proceeds) || 0) - bookValue) : 0;
+  // phase127 — the disposed share, rounded the way dispose_fixed_asset_partial does.
+  const disposeQty = Number(disposal.qty) || 0;
+  const disposeQtyValid = !!selected && disposeQty > 0 && disposeQty <= qtyOf(selected);
+  const disposeRatio = selected && disposeQtyValid ? disposeQty / qtyOf(selected) : 1;
+  const disposedCost = selected ? (disposeRatio === 1 ? Number(selected.cost) : round2(Number(selected.cost) * disposeRatio)) : 0;
+  const disposedAcc = selected
+    ? (disposeRatio === 1 ? Number(selected.accumulated_depreciation) : Math.min(round2(Number(selected.accumulated_depreciation) * disposeRatio), disposedCost))
+    : 0;
+  const disposedBook = round2(disposedCost - disposedAcc);
+  const disposalGainLoss = selected ? round2((Number(disposal.proceeds) || 0) - disposedBook) : 0;
+  /** Void is for a register entry made in error: nothing may be posted on it. */
+  const canVoid = !!selected && selected.status !== 'void' && selected.status !== 'disposed'
+    && !selected.purchase_id && !selected.parent_asset_id
+    && Number(selected.accumulated_depreciation) === 0 && !entries.some((e) => !e.reversed_at)
+    && !assets.some((a) => a.parent_asset_id === selected.id);
   /** Disposing before catching depreciation up overstates the gain — warn. */
   const disposeNeedsCatchUp = !!selected && !!disposal.date &&
     pendingPeriods(selected, disposal.date).length > 0 && selected.status === 'active';
 
   const projected = useMemo(() => {
-    if (!selected || selected.status === 'disposed') return [];
+    if (!selected || selected.status === 'disposed' || selected.status === 'void') return [];
     const all = projectSchedule(toDepAsset(selected));
     const posted = new Set(entries.filter((e) => !e.reversed_at).map((e) => e.period_end));
     return all.filter((r) => !posted.has(r.period_end));
@@ -263,6 +296,7 @@ export default function FixedAssetsPage() {
       useful_life_months: Number(a.useful_life_months), method: a.method, wdv_rate: Number(a.wdv_rate),
       asset_account_code: a.asset_account_code, accum_dep_account_code: a.accum_dep_account_code,
       expense_account_code: a.expense_account_code, notes: a.notes ?? '',
+      quantity: qtyOf(a),
     });
     setFormOpen(true);
   }
@@ -270,12 +304,16 @@ export default function FixedAssetsPage() {
   /** Once anything is posted the basis is frozen — editing it would desync the
    *  asset from its ledger. Descriptive fields stay editable. */
   const basisLocked = !!editing && Number(editing.accumulated_depreciation) > 0;
+  /** A purchased asset's cost, account and quantity come from its bill or
+   *  expense line — changing them here would part the register from the ledger. */
+  const purchaseLocked = basisLocked || !!editing?.purchase_id || !!editing?.parent_asset_id;
 
   const statusPill = (s: FixedAssetRow['status']) => {
     const map: Record<string, string> = {
       active: 'sb-pill-good',
       fully_depreciated: 'sb-pill-muted',
       disposed: 'sb-pill-bad',
+      void: 'sb-pill-muted',
     };
     return <span className={`sb-pill ${map[s]}`}>{t(`fa.status_${s}`)}</span>;
   };
@@ -334,6 +372,7 @@ export default function FixedAssetsPage() {
               <option value="active">{t('fa.status_active')}</option>
               <option value="fully_depreciated">{t('fa.status_fully_depreciated')}</option>
               <option value="disposed">{t('fa.status_disposed')}</option>
+              <option value="void">{t('fa.status_void')}</option>
             </select>
           </div>
 
@@ -342,6 +381,7 @@ export default function FixedAssetsPage() {
               <thead>
                 <tr>
                   <th className="px-4 py-2 text-start">{t('fa.col_asset')}</th>
+                  <th className="px-4 py-2 text-end">{t('fa.col_qty')}</th>
                   <th className="px-4 py-2 text-start">{t('fa.col_in_service')}</th>
                   <th className="px-4 py-2 text-end">{t('fa.col_cost')}</th>
                   <th className="px-4 py-2 text-end">{t('fa.col_accumulated')}</th>
@@ -351,10 +391,10 @@ export default function FixedAssetsPage() {
               </thead>
               <tbody>
                 {isLoading && (
-                  <tr><td colSpan={6} className="sb-empty text-center">{t('common.loading')}</td></tr>
+                  <tr><td colSpan={7} className="sb-empty text-center">{t('common.loading')}</td></tr>
                 )}
                 {!isLoading && visible.length === 0 && (
-                  <tr><td colSpan={6} className="sb-empty text-center">{t('fa.empty')}</td></tr>
+                  <tr><td colSpan={7} className="sb-empty text-center">{t('fa.empty')}</td></tr>
                 )}
                 {visible.map((a) => (
                   <tr
@@ -367,6 +407,7 @@ export default function FixedAssetsPage() {
                       {a.asset_tag && <div><bdi dir="ltr" className="sb-acct-code">{a.asset_tag}</bdi></div>}
                       {a.category && <div className="sb-fx-name" style={{ fontSize: 12 }}>{a.category}</div>}
                     </td>
+                    <td className="px-4 py-2 text-end text-ink-secondary"><bdi dir="ltr">{QTY(qtyOf(a))}</bdi></td>
                     <td className="px-4 py-2 text-ink-secondary"><bdi dir="ltr">{a.in_service_date}</bdi></td>
                     <td className="px-4 py-2 text-end text-ink-secondary"><bdi dir="ltr">{MONEY(Number(a.cost))}</bdi></td>
                     <td className="px-4 py-2 text-end text-ink-secondary"><bdi dir="ltr">{MONEY(Number(a.accumulated_depreciation))}</bdi></td>
@@ -380,7 +421,7 @@ export default function FixedAssetsPage() {
               {visible.length > 0 && (
                 <tfoot>
                   <tr className="sb-acct-total-row">
-                    <td className="px-4 py-2" colSpan={2}>{t('fa.totals_on_book')}</td>
+                    <td className="px-4 py-2" colSpan={3}>{t('fa.totals_on_book')}</td>
                     <td className="px-4 py-2 text-end"><bdi dir="ltr">{MONEY(totals.cost)}</bdi></td>
                     <td className="px-4 py-2 text-end"><bdi dir="ltr">{MONEY(totals.accum)}</bdi></td>
                     <td className="px-4 py-2 text-end"><bdi dir="ltr">{MONEY(round2(totals.cost - totals.accum))}</bdi></td>
@@ -410,6 +451,7 @@ export default function FixedAssetsPage() {
                   <h2 className="sb-doc-card-title" style={{ margin: 0 }}>{selected.name}</h2>
                   <p className="sb-fx-name" style={{ margin: 0, fontSize: 12 }}>
                     {selected.asset_tag ? `${selected.asset_tag} · ` : ''}
+                    {t('fa.qty_n', { n: QTY(qtyOf(selected)) })} · 
                     {t(`fa.method_${selected.method}`)}
                     {selected.method === 'straight_line'
                       ? ` · ${selected.useful_life_months} ${t('fa.months')}`
@@ -444,15 +486,27 @@ export default function FixedAssetsPage() {
                 </div>
               )}
 
-              {canWrite && (
+              {selected.status === 'void' && (
+                <div className="sb-info-note" style={{ fontSize: 13 }}>
+                  <p style={{ margin: 0, fontWeight: 700 }}>{t('fa.voided_on')} <bdi dir="ltr">{(selected.voided_at ?? '').slice(0, 10)}</bdi></p>
+                  {selected.void_reason && <p style={{ margin: 0 }}>{selected.void_reason}</p>}
+                </div>
+              )}
+
+              {canWrite && selected.status !== 'void' && (
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="secondary" onClick={() => openEdit(selected)}>{t('common.edit')}</Button>
                   {selected.status !== 'disposed' && (
                     <Button size="sm" onClick={() => {
                       setDisposeResult(null); disposeMutation.reset();
-                      setDisposal({ date: '', proceeds: '0', account: cashAccounts[0]?.code ?? '' });
+                      setDisposal({ date: '', proceeds: '0', account: cashAccounts[0]?.code ?? '', qty: String(qtyOf(selected)) });
                       setDisposeOpen(true);
                     }}>{t('fa.dispose')}</Button>
+                  )}
+                  {canVoid && (
+                    <Button size="sm" variant="ghost" onClick={() => { voidMutation.reset(); setVoidReason(''); setVoidOpen(true); }}>
+                      <Ban size={15} aria-hidden="true" /> {t('fa.void')}
+                    </Button>
                   )}
                   {entries.some((e) => !e.reversed_at) && selected.status !== 'disposed' && (
                     <Button size="sm" variant="danger" onClick={() => { reverseMutation.reset(); setReverseOpen(true); }}>
@@ -516,6 +570,9 @@ export default function FixedAssetsPage() {
               {t('fa.basis_locked')}
             </p>
           )}
+          {!basisLocked && purchaseLocked && (
+            <p className="sb-alert sb-alert-warn">{t('fa.purchase_locked')}</p>
+          )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Input label={t('fa.f_name')} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             <Input label={t('fa.f_tag')} value={form.asset_tag ?? ''} onChange={(e) => setForm({ ...form, asset_tag: e.target.value })} />
@@ -524,15 +581,17 @@ export default function FixedAssetsPage() {
               label={t('fa.f_asset_account')}
               options={fixedAccounts.map((c) => ({ value: c.code, label: `${c.code} — ${c.name}` }))}
               value={form.asset_account_code}
-              disabled={basisLocked}
+              disabled={purchaseLocked}
               onChange={(e) => setForm({ ...form, asset_account_code: e.target.value })}
             />
-            <Input label={t('fa.f_acquisition_date')} type="date" required value={form.acquisition_date}
+            <Input label={t('fa.f_acquisition_date')} type="date" required value={form.acquisition_date} disabled={purchaseLocked}
               onChange={(e) => setForm({ ...form, acquisition_date: e.target.value })} />
             <Input label={t('fa.f_in_service_date')} type="date" required value={form.in_service_date} disabled={basisLocked}
               onChange={(e) => setForm({ ...form, in_service_date: e.target.value })} />
-            <Input label={`${t('fa.f_cost')} (${currency})`} type="number" step="0.01" required value={String(form.cost)} disabled={basisLocked}
+            <Input label={`${t('fa.f_cost')} (${currency})`} type="number" step="0.01" required value={String(form.cost)} disabled={purchaseLocked}
               onChange={(e) => setForm({ ...form, cost: Number(e.target.value) })} />
+            <Input label={t('fa.f_quantity')} type="number" step="0.001" min="0.001" required value={String(form.quantity ?? 1)} disabled={purchaseLocked}
+              onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })} />
             <Input label={`${t('fa.f_salvage')} (${currency})`} type="number" step="0.01" value={String(form.salvage_value)} disabled={basisLocked}
               onChange={(e) => setForm({ ...form, salvage_value: Number(e.target.value) })} />
             <Select
@@ -674,6 +733,15 @@ export default function FixedAssetsPage() {
           <div className="sb-ocean sb-modal-form space-y-3">
             <Input label={t('fa.f_disposal_date')} type="date" required value={disposal.date}
               onChange={(e) => setDisposal({ ...disposal, date: e.target.value })} />
+            {selected && (
+              <Input label={t('fa.f_dispose_qty')} type="number" step="0.001" min="0.001" max={String(qtyOf(selected))} required
+                value={disposal.qty}
+                onChange={(e) => setDisposal({ ...disposal, qty: e.target.value })}
+                hint={t('fa.dispose_qty_hint', { total: QTY(qtyOf(selected)) })} />
+            )}
+            {selected && !disposeQtyValid && (
+              <p className="sb-alert sb-alert-danger">{t('fa.dispose_qty_invalid', { total: QTY(qtyOf(selected)) })}</p>
+            )}
             <Input label={`${t('fa.proceeds')} (${currency})`} type="number" step="0.01" value={disposal.proceeds}
               onChange={(e) => setDisposal({ ...disposal, proceeds: e.target.value })} />
             <Select
@@ -690,7 +758,10 @@ export default function FixedAssetsPage() {
             )}
 
             <div className="sb-info-note" style={{ fontSize: 13 }}>
-              <p style={{ margin: 0 }}>{t('fa.col_book_value')}: <bdi dir="ltr">{MONEY(bookValue)}</bdi></p>
+              {disposeRatio < 1 && (
+                <p style={{ margin: 0 }}>{t('fa.disposed_share', { cost: MONEY(disposedCost), acc: MONEY(disposedAcc) })}</p>
+              )}
+              <p style={{ margin: 0 }}>{t('fa.col_book_value')}: <bdi dir="ltr">{MONEY(disposedBook)}</bdi></p>
               <p style={{ margin: 0, fontWeight: 700, color: disposalGainLoss >= 0 ? 'var(--sb-success)' : 'var(--sb-danger)' }}>
                 {disposalGainLoss >= 0 ? t('fa.gain_to_4250') : t('fa.loss_to_6910')}: {MONEY(Math.abs(disposalGainLoss))}
               </p>
@@ -700,12 +771,27 @@ export default function FixedAssetsPage() {
             <div className="flex justify-end gap-2">
               <Button size="sm" variant="secondary" onClick={() => setDisposeOpen(false)}>{t('common.cancel')}</Button>
               <Button size="sm" onClick={() => disposeMutation.mutate()}
-                disabled={disposeMutation.isPending || !disposal.date || (Number(disposal.proceeds) > 0 && !disposal.account)}>
+                disabled={disposeMutation.isPending || !disposal.date || !disposeQtyValid || (Number(disposal.proceeds) > 0 && !disposal.account)}>
                 {t('fa.confirm_dispose')}
               </Button>
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* ── Void (phase127) ──────────────────────────────────────────────── */}
+      <Modal open={voidOpen} onClose={() => setVoidOpen(false)} title={t('fa.void_title')} width="md">
+        <div className="sb-ocean sb-modal-form space-y-3">
+          <p className="sb-alert sb-alert-warn">{t('fa.void_confirm')}</p>
+          <Input label={t('fa.void_reason')} required value={voidReason} onChange={(e) => setVoidReason(e.target.value)} />
+          {voidMutation.error && <p className="sb-alert sb-alert-danger">{(voidMutation.error as Error).message}</p>}
+        </div>
+        <div className="sb-ocean sb-modal-foot mt-4 flex justify-end gap-2">
+          <Button size="sm" variant="secondary" onClick={() => setVoidOpen(false)}>{t('common.cancel')}</Button>
+          <Button size="sm" variant="danger" onClick={() => voidMutation.mutate()} disabled={voidMutation.isPending || !voidReason.trim()}>
+            {t('fa.void')}
+          </Button>
+        </div>
       </Modal>
 
       {/* ── Reverse last depreciation ────────────────────────────────────── */}

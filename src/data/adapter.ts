@@ -1272,7 +1272,7 @@ export interface EInvoicesAPI {
 
 // ── AC-5A — fixed assets + depreciation ──────────────────────────────────────
 export type DepreciationMethodDb = 'straight_line' | 'reducing_balance';
-export type FixedAssetStatus = 'active' | 'disposed' | 'fully_depreciated';
+export type FixedAssetStatus = 'active' | 'disposed' | 'fully_depreciated' | 'void';
 export interface FixedAssetRow {
   id: string;
   company_id: string;
@@ -1301,6 +1301,12 @@ export interface FixedAssetRow {
   updated_at: string;
   /** phase126 — the purchase (bill or expense) that bought it, if any. */
   purchase_id?: string | null;
+  /** phase127 — units this row holds (1 before phase127). */
+  quantity?: number;
+  /** phase127 — set on the row split off by a partial disposal. */
+  parent_asset_id?: string | null;
+  void_reason?: string | null;
+  voided_at?: string | null;
 }
 
 // ── phase126 — fixed asset purchase (credit = vendor bill, cash/bank = expense)
@@ -1358,6 +1364,8 @@ export interface FixedAssetInsert {
   accum_dep_account_code?: string;
   expense_account_code?: string;
   notes?: string | null;
+  /** phase127 */
+  quantity?: number;
 }
 export type FixedAssetUpdate = Partial<FixedAssetInsert>;
 export interface DepreciationEntryRow {
@@ -1375,6 +1383,8 @@ export interface DepreciationEntryRow {
 export interface RunDepreciationResult { entries_posted: number; total_charge: number; period_end: string }
 export interface DisposeAssetInput { asset_id: string; disposal_date: string; proceeds: number; proceeds_account_code: string }
 export interface DisposeAssetResult { journal_entry_id: string; gain_loss: number; status: string }
+/** phase127 — dispose part of an asset's units (the whole quantity = a normal disposal). */
+export interface DisposeAssetPartialInput extends DisposeAssetInput { quantity: number }
 export interface ReverseDepreciationResult { reversed_entry_id: string; journal_entry_id: string; charge: number }
 export interface FixedAssetsAPI {
   list(company_id: string): Promise<FixedAssetRow[]>;
@@ -1388,6 +1398,10 @@ export interface FixedAssetsAPI {
   /** Post depreciation for every active asset up to the given month-end. */
   runDepreciation(period_end: string): Promise<RunDepreciationResult>;
   dispose(input: DisposeAssetInput): Promise<DisposeAssetResult>;
+  /** phase127 — split off `quantity` units and dispose them. */
+  disposePartial(input: DisposeAssetPartialInput): Promise<DisposeAssetResult>;
+  /** phase127 — void a register entry made in error (nothing posted on it). */
+  voidAsset(asset_id: string, reason: string): Promise<void>;
   /** LIFO-reverse the latest depreciation entry (correction path). */
   reverseLast(asset_id: string): Promise<ReverseDepreciationResult>;
 

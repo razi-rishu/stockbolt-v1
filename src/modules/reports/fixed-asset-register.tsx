@@ -41,7 +41,8 @@ export default function FixedAssetRegisterPage() {
 
   /** Only assets in service by the as-of date are on the books that day. */
   const rows = useMemo(
-    () => assets.filter((a) => a.in_service_date <= asOf),
+    // A voided asset was entered in error and never reached the ledger.
+    () => assets.filter((a) => a.in_service_date <= asOf && a.status !== 'void'),
     [assets, asOf],
   );
 

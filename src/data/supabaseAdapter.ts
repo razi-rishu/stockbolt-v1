@@ -2691,6 +2691,23 @@ export function createSupabaseAdapter(
         return data as unknown as DisposeAssetResult;
       },
 
+      async disposePartial(input): Promise<DisposeAssetResult> {
+        const { data, error } = await client.rpc('dispose_fixed_asset_partial' as any, {
+          p_asset_id: input.asset_id,
+          p_quantity: input.quantity,
+          p_disposal_date: input.disposal_date,
+          p_proceeds: input.proceeds,
+          p_proceeds_account_code: input.proceeds_account_code || null,
+        } as any);
+        if (error) throw new SupabaseDataError(`fixedAssets.disposePartial: ${error.message}`);
+        return data as unknown as DisposeAssetResult;
+      },
+
+      async voidAsset(asset_id, reason): Promise<void> {
+        const { error } = await client.rpc('void_fixed_asset' as any, { p_asset_id: asset_id, p_reason: reason } as any);
+        if (error) throw new SupabaseDataError(`fixedAssets.voidAsset: ${error.message}`);
+      },
+
       async reverseLast(asset_id): Promise<ReverseDepreciationResult> {
         const { data, error } = await client.rpc('reverse_last_depreciation' as any, { p_asset_id: asset_id } as any);
         if (error) throw new SupabaseDataError(`fixedAssets.reverseLast: ${error.message}`);
