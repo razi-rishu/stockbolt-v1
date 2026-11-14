@@ -7,6 +7,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { postJournalEntry, reverseJournalEntry, JournalValidationError } from '@/core/gl/posting-engine';
+import { validateLines, assertMapping } from '@/core/gl/journal-validator';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
@@ -94,19 +95,33 @@ export default function JournalEntryEditorPage() {
   // lines in router state. Seed the form once per navigation (date resets to
   // today). Works whether we arrive fresh at /new or duplicate in-place from
   // a view page (same component instance, so we key off location.key).
+  //
+  // Edit sends `editOf` as well. Nothing is reversed on the way in: the
+  // original is reversed only when the corrected entry is posted, so backing
+  // out of the editor leaves the books exactly as they were.
   const seededKey = useRef<string | null>(null);
+  const [editOf, setEditOf] = useState<{ id: string; entry_number: string } | null>(null);
   useEffect(() => {
-    const seed = (location.state as { cloneFrom?: { description?: string; lines: { account_code: string; debit: number; credit: number; description?: string }[] } } | null)?.cloneFrom;
+    const st = location.state as {
+      cloneFrom?: { description?: string; date?: string; lines: { account_code: string; debit: number; credit: number; description?: string; contact_id?: string }[] };
+      editOf?: { id: string; entry_number: string };
+    } | null;
+    const seed = st?.cloneFrom;
     if (!seed || seededKey.current === location.key) return;
     seededKey.current = location.key;
+    setEditOf(st?.editOf ?? null);
+    if (st?.editOf) setRepeat(false);
     setDescription(seed.description ?? '');
     setLines(
       seed.lines.length
-        ? seed.lines.map((l) => ({ _key: ++_keySeq, account_code: l.account_code, debit: Number(l.debit) || 0, credit: Number(l.credit) || 0, description: l.description ?? '' }))
+        ? seed.lines.map((l) => ({ _key: ++_keySeq, account_code: l.account_code, debit: Number(l.debit) || 0, credit: Number(l.credit) || 0, description: l.description ?? '', contact_id: l.contact_id || undefined }))
         : [newLine(), newLine()],
     );
-    setDate(new Date().toISOString().slice(0, 10));
-    setDirty(true);   // a clone is unsaved data — warn if the user backs out
+    // An edit keeps the entry's own date; a duplicate starts from today.
+    setDate(st?.editOf && seed.date ? seed.date : new Date().toISOString().slice(0, 10));
+    // A duplicate is unsaved data — warn if the user backs out. An untouched
+    // edit is not: leaving it changes nothing.
+    setDirty(!st?.editOf);
   }, [location.key, location.state]);
 
   // View mode: load existing JE
@@ -189,6 +204,22 @@ export default function JournalEntryEditorPage() {
         contact_id: l.contact_id || undefined,
       }));
       const adapter = getAdapter();
+      if (editOf) {
+        // Check the correction before touching the original, so a typo in
+        // the form cannot leave the original reversed with nothing in its place.
+        validateLines(cleanLines);
+        assertMapping('manual', cleanLines);
+        await reverseJournalEntry(editOf.id, adapter, 'Reversed to edit');
+        // From here the original is gone; a retry must only post.
+        setEditOf(null);
+        qc.invalidateQueries({ queryKey: ['je', editOf.id] });
+        try {
+          await postJournalEntry({ source_type: 'manual', description: description || undefined, date, lines: cleanLines }, adapter);
+        } catch (err) {
+          throw new Error(t('jeOcean.edit_post_failed', { no: editOf.entry_number, msg: err instanceof Error ? err.message : String(err) }));
+        }
+        return 1;
+      }
       // Post one journal entry per scheduled date. Sequential so each gets
       // its own entry number and a mid-run failure stops cleanly.
       let posted = 0;
@@ -227,28 +258,6 @@ export default function JournalEntryEditorPage() {
     onError: () => setError(t('common.error')),
   });
 
-  // Edit a manual JE the audit-safe way: reverse the original, then drop into
-  // a pre-filled new entry so the user posts the corrected version. Leaves a
-  // clean trail (original + reversal + correction) — posted GL is never mutated.
-  const editMutation = useMutation({
-    mutationFn: async () => reverseJournalEntry(id!, getAdapter(), 'Reversed to edit'),
-    onSuccess: async () => {
-      await invalidateBooks();
-      qc.invalidateQueries({ queryKey: ['journal_entries', company_id] });
-      qc.invalidateQueries({ queryKey: ['je', id] });
-      const cloneLines = (glLines as GeneralLedgerRow[]).map((gl) => ({
-        account_code: (gl as any).account_code as string,
-        debit: Number(gl.debit) || 0,
-        credit: Number(gl.credit) || 0,
-        description: gl.description ?? undefined,
-      }));
-      navigate('/accounting/journal-entries/new', {
-        state: { cloneFrom: { description: existingJE?.description ?? undefined, lines: cloneLines } },
-      });
-    },
-    onError: () => setError(t('common.error')),
-  });
-
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -258,6 +267,18 @@ export default function JournalEntryEditorPage() {
   // View mode
   if (!isNew && existingJE) {
     const je = existingJE as any;
+    // Only an ordinary manual entry can be edited or reversed here. A reversal
+    // is itself a correction: reversing it puts the original back into the
+    // books while the ledger still lists both as cancelled. A system entry is
+    // voided from its own document, so the document and the books stay in step.
+    const canChange = je.source_type === 'manual' && !je.reversed_by_id && !je.reversal_of_id;
+    const lineSeed = () => (glLines as GeneralLedgerRow[]).map((gl) => ({
+      account_code: (gl as any).account_code as string,
+      debit: Number(gl.debit) || 0,
+      credit: Number(gl.credit) || 0,
+      description: gl.description ?? undefined,
+      contact_id: gl.contact_id ?? undefined,
+    }));
     return (
       // Ocean Teal (UI v1.1): look only — same lines, edit (reverse + copy),
       // duplicate and reverse actions.
@@ -271,34 +292,30 @@ export default function JournalEntryEditorPage() {
               : <span className="sb-pill sb-pill-good" style={{ marginTop: 0 }}>{t('accounting.posted')}</span>}
           </div>
           <div className="sb-doc-bar-actions">
-              {je.source_type === 'manual' && !je.reversed_by_id && (
+              {canChange && (
                 <Button
                   size="sm"
-                  onClick={() => { setError(''); editMutation.mutate(); }}
-                  disabled={editMutation.isPending}
+                  onClick={() => navigate('/accounting/journal-entries/new', {
+                    state: {
+                      cloneFrom: { description: existingJE.description ?? undefined, date: existingJE.date, lines: lineSeed() },
+                      editOf: { id: existingJE.id, entry_number: existingJE.entry_number },
+                    },
+                  })}
                   title={t('jeOcean.edit_title')}
                 >
-                  <Pencil size={15} aria-hidden="true" /> {editMutation.isPending ? '…' : (t('common.edit') || 'Edit')}
+                  <Pencil size={15} aria-hidden="true" /> {t('common.edit') || 'Edit'}
                 </Button>
               )}
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => {
-                  const cloneLines = (glLines as GeneralLedgerRow[]).map((gl) => ({
-                    account_code: (gl as any).account_code as string,
-                    debit: Number(gl.debit) || 0,
-                    credit: Number(gl.credit) || 0,
-                    description: gl.description ?? undefined,
-                  }));
-                  navigate('/accounting/journal-entries/new', {
-                    state: { cloneFrom: { description: existingJE.description ?? undefined, lines: cloneLines } },
-                  });
-                }}
+                onClick={() => navigate('/accounting/journal-entries/new', {
+                  state: { cloneFrom: { description: existingJE.description ?? undefined, lines: lineSeed() } },
+                })}
               >
                 <Copy size={15} aria-hidden="true" /> {t('common.duplicate')}
               </Button>
-              {!je.reversed_by_id && (
+              {canChange && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -317,6 +334,7 @@ export default function JournalEntryEditorPage() {
             <span className="sb-info-label">{t('accounting.source_type')}</span><span>{t(`jeOcean.src_${je.source_type}`, { defaultValue: je.source_type })}</span>
             {existingJE.description && <><span className="sb-info-label">{t('accounting.description')}</span><span>{existingJE.description}</span></>}
           </div>
+          {je.reversal_of_id && <p className="sb-alert sb-alert-warn" style={{ fontWeight: 400, marginTop: 12 }}>{t('jeOcean.is_reversal')}</p>}
         </div>
         <div className="sb-card sb-doc-card sb-doc-lines">
           <div className="overflow-x-auto">
@@ -361,9 +379,10 @@ export default function JournalEntryEditorPage() {
       <div className="sb-card sb-doc-bar">
         <div className="sb-doc-bar-id">
           <BackButton to="/accounting/journal-entries" label={t('accounting.je_title')} confirm={confirmLeave} />
-          <h1 className="sb-doc-bar-no">{t('accounting.new_je')}</h1>
+          <h1 className="sb-doc-bar-no">{editOf ? t('jeOcean.editing', { no: editOf.entry_number }) : t('accounting.new_je')}</h1>
         </div>
       </div>
+      {editOf && <p className="sb-alert sb-alert-warn" style={{ fontWeight: 400 }}>{t('jeOcean.editing_hint', { no: editOf.entry_number })}</p>}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
         <div className="sb-card sb-form sb-doc-card space-y-4">
@@ -513,8 +532,9 @@ export default function JournalEntryEditorPage() {
             </p>
           )}
 
-          {/* Recurring — one Post creates the whole schedule of entries. */}
-          <div className="sb-hw-test">
+          {/* Recurring — one Post creates the whole schedule of entries. Not
+              offered on an edit: an edit replaces exactly one entry. */}
+          {!editOf && <div className="sb-hw-test">
             <label className="flex cursor-pointer select-none items-center gap-2">
               <input
                 type="checkbox"
@@ -566,7 +586,7 @@ export default function JournalEntryEditorPage() {
                 </p>
               </div>
             )}
-          </div>
+          </div>}
 
         </div>
         {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}

@@ -103,10 +103,34 @@ export default function GeneralLedgerPage() {
   const visibleEntries = useMemo(() => {
     const all = entries as LedgerEntry[];
     if (!hideReversed) return all;
+    // Hide entries in cancelling PAIRS (a reversal + the entry it reverses),
+    // working from the newest reversal back. Hiding every row that is "a
+    // reversal" or "reversed" is wrong once a reversal is itself reversed:
+    // A, B = reversal of A, C = reversal of B leaves A's amount live in the
+    // books (C), and hiding all three made the ledger disagree with the
+    // Trial Balance and Balance Sheet. Pairing hides C+B and keeps A.
+    const byJe = new Map<string, LedgerEntry>();
+    for (const e of all) if (e.journal_entry_id && !byJe.has(e.journal_entry_id)) byJe.set(e.journal_entry_id, e);
+    const hidden = new Set<string>();
+    const reversals = [...byJe.values()]
+      .filter((e) => e.reversal_of_id)
+      // Newest first; on the same date a reversal of X always carries a
+      // higher entry number than X.
+      .sort((a, b) => (a.date !== b.date
+        ? (a.date < b.date ? 1 : -1)
+        : b.entry_number.localeCompare(a.entry_number, undefined, { numeric: true })));
+    for (const r of reversals) {
+      const target = r.reversal_of_id!;
+      if (hidden.has(r.journal_entry_id!) || hidden.has(target)) continue;
+      hidden.add(r.journal_entry_id!);
+      // Partner outside the period: hide the reversal alone, as before.
+      if (byJe.has(target)) hidden.add(target);
+    }
     const filtered = all.filter(
       (e) =>
-        e.reversed_by_id === null &&
-        e.reversal_of_id === null &&
+        !(e.journal_entry_id && hidden.has(e.journal_entry_id)) &&
+        // an original whose reversal falls outside the period
+        !(e.reversed_by_id && e.journal_entry_id && !byJe.has(e.reversed_by_id)) &&
         !e.description.toLowerCase().startsWith('void opening'),
     );
     let running = 0;
