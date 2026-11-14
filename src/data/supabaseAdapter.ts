@@ -2085,20 +2085,37 @@ export function createSupabaseAdapter(
         if (row?.is_system) {
           throw new Error(`Cannot deactivate system account ${row.code} ${row.name} — it's used by built-in RPCs.`);
         }
-        // GL history guard. count={ exact, head: true } returns just the
-        // count, no rows; cheap.
-        const glHistory = await (client.from as unknown as (t: string) => {
-          select: (cols: string, opts: { count: 'exact'; head: true }) => {
-            eq: (k: string, v: unknown) => Promise<{ count: number | null; error: unknown }>;
-          };
-        })('general_ledger')
-          .select('id', { count: 'exact', head: true })
-          .eq('account_id', id);
-        assertNoError(glHistory.error as Error | null, 'coa.deactivate/glcount');
-        if ((glHistory.count ?? 0) > 0) {
+        // Balance guard. History alone is no reason to refuse: the ledger
+        // keeps every line forever, so "reverse the entries first" could
+        // never succeed. What must not happen is hiding an account that
+        // still carries money. Sum EVERY line (reversals included) — that is
+        // the true balance however long a reversal chain is. Paged so the
+        // PostgREST 1000-row cap can never truncate the sum.
+        let net = 0;
+        for (let from = 0; ; from += 1000) {
+          const { data: page, error: glErr } = await client
+            .from('general_ledger').select('debit, credit')
+            .eq('account_id', id).order('id').range(from, from + 999);
+          assertNoError(glErr, 'coa.deactivate/balance');
+          for (const r of (page ?? []) as { debit: number | null; credit: number | null }[]) {
+            net += Number(r.debit ?? 0) - Number(r.credit ?? 0);
+          }
+          if (!page || page.length < 1000) break;
+        }
+        if (Math.abs(net) > 0.005) {
           throw new Error(
-            `Cannot deactivate — this account has ${glHistory.count} journal-entry line(s) in its history. ` +
-            `Deactivating would hide them. Either reverse the entries first or post offsetting JEs to zero it out.`
+            `Cannot deactivate ${row?.code} ${row?.name} — it still has a balance of ${net.toFixed(2)}. ` +
+            `Post an entry that brings it to zero first.`
+          );
+        }
+        // A bank/cash account still pointing here would post to a hidden account.
+        const { data: banks, error: bankErr } = await client
+          .from('bank_accounts').select('name').eq('coa_account_id', id).eq('is_active', true);
+        assertNoError(bankErr, 'coa.deactivate/banks');
+        if (banks && banks.length > 0) {
+          throw new Error(
+            `Cannot deactivate ${row?.code} ${row?.name} — bank account "${banks.map((b) => b.name).join('", "')}" ` +
+            `uses it. Delete or deactivate that bank account first (Banking → Bank Accounts).`
           );
         }
         const { error } = await client.from('chart_of_accounts').update({ is_active: false }).eq('id', id);
