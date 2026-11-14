@@ -3315,6 +3315,8 @@
     "err_customer": "Billable lines need a customer.",
     "reopen_confirm": "Editing reverses this expense's journal entry and reopens it as a draft. You'll confirm again after your changes. Continue?",
     "void_prompt": "Void reason (optional):",
+    "open_asset_purchase": "Open asset purchase",
+    "asset_purchase_note": "This expense is a fixed-asset purchase. Reopen or reverse it from Accounting → Fixed Assets so the asset register stays in step.",
     "void_reason": "Void reason:",
     "amount": "Expense amount",
     "excl_tax": "Amount excludes tax",

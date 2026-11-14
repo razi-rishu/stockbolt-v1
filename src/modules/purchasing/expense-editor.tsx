@@ -70,7 +70,7 @@ import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
 import { StatusBadge } from '@/ui/status-badge';
-import { Pencil, Printer, Eye, Plus, Minus, X, Tag, ReceiptText, UserRoundCheck } from 'lucide-react';
+import { Pencil, Printer, Eye, Plus, Minus, X, Tag, ReceiptText, UserRoundCheck, Ban } from 'lucide-react';
 import '@/styles/stockbolt-ocean-teal.css';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { ContactPicker } from '@/components/contact-picker';
@@ -460,6 +460,14 @@ export default function ExpenseEditorPage() {
   // expenses show the read-only template view.
   // Verified payments / refunds / bank-cash lines for the Payment details section.
   const docPayments = useDocumentPayments('expense', expense?.id, !!expense && expense.status !== 'draft');
+  // phase126 — an expense that carries a fixed-asset purchase is reopened from
+  // that purchase (which also removes the register rows), never from here.
+  const { data: assetPurchases = [] } = useQuery({
+    queryKey: ['fixed_asset_purchases', company_id],
+    queryFn: () => getAdapter().fixedAssets.listPurchases(company_id!),
+    enabled: !!company_id && !!expense && expense.status === 'confirmed',
+  });
+  const assetPurchase = expense ? assetPurchases.find(p => p.doc_type === 'expense' && p.doc_id === expense.id) : undefined;
   if (viewMode && !isNew && expense && expense.status !== 'draft') {
     const docBase = expenseToDocumentData({
       expense,
@@ -485,11 +493,27 @@ export default function ExpenseEditorPage() {
                 <Pencil size={15} aria-hidden="true" /> {t('common.edit') || 'Edit'}
               </Button>
             )}
-            {isConfirmed && canEditExpenses && (
+            {isConfirmed && assetPurchase && (
+              <Button size="sm" onClick={() => navigate(`/accounting/fixed-assets/purchase/${assetPurchase.id}`)}>
+                {t('expOcean.open_asset_purchase')}
+              </Button>
+            )}
+            {isConfirmed && !assetPurchase && canEditExpenses && (
               <Button size="sm" disabled={reopenMutation.isPending} onClick={() => {
                 if (window.confirm(t('expOcean.reopen_confirm'))) reopenMutation.mutate();
               }}>
                 <Pencil size={15} aria-hidden="true" /> {reopenMutation.isPending ? t('billOcean.reopening') : (t('common.edit') || 'Edit')}
+              </Button>
+            )}
+            {/* Void lives here: a confirmed expense always opens in this view, and
+                Edit reopens it as a draft, so the editor's own Void was never reached. */}
+            {isConfirmed && !assetPurchase && canEditExpenses && (
+              <Button variant="danger" size="sm" disabled={voidMutation.isPending} data-testid="expense-void" onClick={() => {
+                const r = prompt(t('expOcean.void_prompt'));
+                setVoidReason(r ?? '');
+                if (r !== null) voidMutation.mutate();
+              }}>
+                <Ban size={15} aria-hidden="true" /> {t('common.void')}
               </Button>
             )}
             {expense?.id && (
@@ -499,6 +523,13 @@ export default function ExpenseEditorPage() {
             )}
           </div>
         </div>
+        {error && <p data-print-hide className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+        {isConfirmed && assetPurchase && (
+          <p data-print-hide className="sb-info-note">{t('expOcean.asset_purchase_note')}</p>
+        )}
+        {isVoid && expense.void_reason && (
+          <p data-print-hide className="sb-alert sb-alert-warn"><strong>{t('expOcean.void_reason')}</strong> {expense.void_reason}</p>
+        )}
         <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
