@@ -6,10 +6,7 @@ import { DocLink } from '@/ui/doc-link';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
-
-function fmt(n: number) {
-  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
+import { OceanReport, ReportCard, ReportMessage, ReportTable, exportFromColumns, money as fmt, Num, ltr, type ReportColumn } from '@/components/ocean-report';
 
 /**
  * Accounting-style signed formatter — negatives wrapped in parens.
@@ -35,121 +32,57 @@ export default function ARAgingPage() {
     queryFn: () => getAdapter().reports.getARAgingReport(company_id!, asOf),
     enabled: !!company_id,
   });
+  const buckets = ar?.buckets ?? [];
+  type Row = typeof buckets[number];
 
-  const exportRows: Record<string, unknown>[] = (ar?.buckets ?? []).map(b => ({
-    Customer: b.contact_name,
-    Current: b.current.toFixed(2),
-    '31-60': b.days_31_60.toFixed(2),
-    '61-90': b.days_61_90.toFixed(2),
-    '>90': b.over_90.toFixed(2),
-    Total: b.total.toFixed(2),
-    Advance: b.advance_credit.toFixed(2),
-    'Credit Notes': b.credit_note_credit.toFixed(2),
-    'Net Due': b.net_due.toFixed(2),
-  }));
-  const exportHeaders = ['Customer', 'Current', '31-60', '61-90', '>90', 'Total', 'Advance', 'Credit Notes', 'Net Due'];
+  const totAdvance = buckets.reduce((s, b) => s + b.advance_credit, 0);
+  const totCN      = buckets.reduce((s, b) => s + b.credit_note_credit, 0);
+  const totNet     = buckets.reduce((s, b) => s + b.net_due, 0);
+  const dash = (n: number, min = 0) => (n > min ? fmt(n) : '—');
+
+  const columns: ReportColumn<Row>[] = [
+    { key: 'customer', header: t('reports.customer'), cell: b => <DocLink type="customer" id={b.contact_id} label={b.contact_name} />, exp: b => b.contact_name },
+    { key: 'current', header: t('reports.current'), num: true, cell: b => dash(b.current), foot: ar ? fmt(ar.total_current) : '', exp: b => b.current.toFixed(2) },
+    { key: 'd31', header: '31–60', headerLtr: true, num: true, cls: b => (b.days_31_60 > 0 ? 'is-warn' : 'muted'), cell: b => dash(b.days_31_60), foot: ar ? fmt(ar.total_31_60) : '', exp: b => b.days_31_60.toFixed(2) },
+    { key: 'd61', header: '61–90', headerLtr: true, num: true, cls: b => (b.days_61_90 > 0 ? 'is-down' : 'muted'), cell: b => dash(b.days_61_90), foot: ar ? fmt(ar.total_61_90) : '', exp: b => b.days_61_90.toFixed(2) },
+    { key: 'd90', header: '>90', headerLtr: true, num: true, cls: b => (b.over_90 > 0 ? 'is-down strong' : 'muted'), cell: b => dash(b.over_90), foot: ar ? fmt(ar.total_over_90) : '', exp: b => b.over_90.toFixed(2) },
+    { key: 'total', header: t('reports.total'), num: true, cls: 'strong', cell: b => fmt(b.total), foot: ar ? fmt(ar.grand_total) : '', exp: b => b.total.toFixed(2) },
+    // Phase 12.24 — advance + net due columns
+    { key: 'advance', header: t('rptOcean.ar_advance'), title: t('rptOcean.ar_advance_hint'), num: true, cls: b => (b.advance_credit > 0.005 ? 'is-up' : 'muted'), cell: b => dash(b.advance_credit, 0.005), foot: fmt(totAdvance), exp: b => b.advance_credit.toFixed(2) },
+    // Phase 94 — a credit note still owed to the customer. Not aged,
+    // because a credit note is not an overdue receivable.
+    { key: 'cn', header: t('reports.credit_note_credit'), title: t('reports.credit_note_credit_hint'), num: true, cls: b => (b.credit_note_credit > 0.005 ? 'is-up' : 'muted'), cell: b => dash(b.credit_note_credit, 0.005), foot: fmt(totCN), exp: b => b.credit_note_credit.toFixed(2) },
+    { key: 'net', header: t('rptOcean.ar_net_due'), title: t('rptOcean.ar_net_due_hint'), num: true, cls: b => (b.net_due < -0.005 ? 'is-up strong' : 'strong'), cell: b => fmtSigned(b.net_due), foot: fmtSigned(totNet), exp: b => b.net_due.toFixed(2) },
+  ];
+  const xl = exportFromColumns(columns, buckets);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.ar_aging_title')}</h1>
-        <div data-print-hide className="flex flex-wrap items-center gap-2">
-          <PeriodPicker
-            mode="asOf" preset={preset} from={from} to={to}
-            onPresetChange={setPreset} onCustomRange={setCustomRange}
-          />
-          <ReportActions rows={exportRows} headers={exportHeaders} filename={`ar-aging-${asOf}`} disabled={!ar} />
-        </div>
-      </div>
+    <OceanReport
+      testid="ar-aging-ocean"
+      title={t('reports.ar_aging_title')}
+      subtitle={t('rptOcean.as_of_date', { date: ltr(asOf) })}
+      controls={<>
+        <PeriodPicker mode="asOf" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <ReportActions rows={xl.rows} headers={xl.headers} filename={`ar-aging-${asOf}`} disabled={!ar} />
+      </>}
+    >
+      {isLoading && <ReportCard><ReportMessage>{t('common.loading')}</ReportMessage></ReportCard>}
+      {error && <ReportCard><ReportMessage tone="bad">{String(error)}</ReportMessage></ReportCard>}
 
-      {isLoading && <p className="text-sm text-ink-secondary">{t('common.loading')}</p>}
-      {error && <p className="text-sm text-red-600">{String(error)}</p>}
+      {ar && buckets.length === 0 && <ReportCard><ReportMessage>{t('reports.no_outstanding')}</ReportMessage></ReportCard>}
 
-      {ar && ar.buckets.length === 0 && (
-        <p className="text-sm text-ink-tertiary">{t('reports.no_outstanding')}</p>
+      {ar && buckets.length > 0 && (
+        <ReportCard
+          figures={[
+            { label: t('reports.current'), value: <Num>{fmt(ar.total_current)}</Num> },
+            { label: t('rptOcean.ar_31_90'), value: <Num>{fmt(ar.total_31_60 + ar.total_61_90)}</Num>, tone: ar.total_31_60 + ar.total_61_90 > 0 ? 'warn' : undefined },
+            { label: t('rptOcean.ar_over_90'), value: <Num>{fmt(ar.total_over_90)}</Num>, tone: ar.total_over_90 > 0 ? 'bad' : undefined },
+            { label: t('rptOcean.ar_net_due'), value: <Num>{fmtSigned(totNet)}</Num>, tone: 'brand' },
+          ]}
+        >
+          <ReportTable columns={columns} rows={buckets} rowKey={b => b.contact_id} footLabel={t('reports.total')} minWidth={940} />
+        </ReportCard>
       )}
-
-      {ar && ar.buckets.length > 0 && (
-        <div className="rounded-card border border-border-subtle bg-surface-card">
-          <div className="border-b border-border-subtle px-5 py-3 text-sm text-ink-secondary">
-            {t('reports.as_of_date')}: {asOf}
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-xs text-ink-tertiary">
-                <th className="px-4 py-2.5 text-start font-medium">{t('reports.customer')}</th>
-                <th className="px-4 py-2.5 text-end font-medium">{t('reports.current')}</th>
-                <th className="px-4 py-2.5 text-end font-medium">31–60</th>
-                <th className="px-4 py-2.5 text-end font-medium">61–90</th>
-                <th className="px-4 py-2.5 text-end font-medium">&gt;90</th>
-                <th className="px-4 py-2.5 text-end font-medium">{t('reports.total')}</th>
-                {/* Phase 12.24 — advance + net due columns */}
-                <th
-                  className="px-4 py-2.5 text-end font-medium"
-                  title="Unallocated customer advance held in 2400 Customer Advances"
-                >
-                  Advance
-                </th>
-                {/* Phase 94 — a credit note still owed to the customer. Not
-                    aged, because a credit note is not an overdue receivable. */}
-                <th
-                  className="px-4 py-2.5 text-end font-medium"
-                  title={t('reports.credit_note_credit_hint')}
-                >
-                  {t('reports.credit_note_credit')}
-                </th>
-                <th
-                  className="px-4 py-2.5 text-end font-medium"
-                  title="Outstanding minus advance and credit notes — what the customer actually owes (negative = we owe them)"
-                >
-                  Net Due
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {ar.buckets.map(b => {
-                const netNegative = b.net_due < -0.005;
-                return (
-                  <tr key={b.contact_id} className="border-b border-border-subtle last:border-0">
-                    <td className="px-4 py-2.5"><DocLink type="customer" id={b.contact_id} label={b.contact_name} className="font-medium text-brand-600 hover:underline" /></td>
-                    <td className="px-4 py-2.5 text-end font-mono text-ink-primary">{b.current > 0 ? fmt(b.current) : '—'}</td>
-                    <td className="px-4 py-2.5 text-end font-mono text-orange-600">{b.days_31_60 > 0 ? fmt(b.days_31_60) : '—'}</td>
-                    <td className="px-4 py-2.5 text-end font-mono text-red-500">{b.days_61_90 > 0 ? fmt(b.days_61_90) : '—'}</td>
-                    <td className="px-4 py-2.5 text-end font-mono text-red-700">{b.over_90 > 0 ? fmt(b.over_90) : '—'}</td>
-                    <td className="px-4 py-2.5 text-end font-mono font-semibold text-ink-primary">{fmt(b.total)}</td>
-                    <td className="px-4 py-2.5 text-end font-mono text-emerald-700">
-                      {b.advance_credit > 0.005 ? fmt(b.advance_credit) : '—'}
-                    </td>
-                    <td className="px-4 py-2.5 text-end font-mono text-emerald-700">
-                      {b.credit_note_credit > 0.005 ? fmt(b.credit_note_credit) : '—'}
-                    </td>
-                    <td className={`px-4 py-2.5 text-end font-mono font-semibold ${netNegative ? 'text-emerald-700' : 'text-ink-primary'}`}>
-                      {fmtSigned(b.net_due)}
-                    </td>
-                  </tr>
-                );
-              })}
-              <tr className="border-t-2 border-border-subtle bg-surface-muted font-semibold">
-                <td className="px-4 py-2.5 text-ink-primary">{t('reports.total')}</td>
-                <td className="px-4 py-2.5 text-end font-mono">{fmt(ar.total_current)}</td>
-                <td className="px-4 py-2.5 text-end font-mono">{fmt(ar.total_31_60)}</td>
-                <td className="px-4 py-2.5 text-end font-mono">{fmt(ar.total_61_90)}</td>
-                <td className="px-4 py-2.5 text-end font-mono">{fmt(ar.total_over_90)}</td>
-                <td className="px-4 py-2.5 text-end font-mono">{fmt(ar.grand_total)}</td>
-                <td className="px-4 py-2.5 text-end font-mono text-emerald-700">
-                  {fmt(ar.buckets.reduce((s, b) => s + b.advance_credit, 0))}
-                </td>
-                <td className="px-4 py-2.5 text-end font-mono text-emerald-700">
-                  {fmt(ar.buckets.reduce((s, b) => s + b.credit_note_credit, 0))}
-                </td>
-                <td className="px-4 py-2.5 text-end font-mono">
-                  {fmtSigned(ar.buckets.reduce((s, b) => s + b.net_due, 0))}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+    </OceanReport>
   );
 }

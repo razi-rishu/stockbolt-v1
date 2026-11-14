@@ -5,9 +5,7 @@ import { useAuthStore } from '@/store/auth';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
-
-const fmt = (n: number) =>
-  n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+import { OceanReport, ReportCard, ReportMessage, ReportTable, exportFromColumns, money as fmt, Num, type ReportColumn } from '@/components/ocean-report';
 
 export default function DailySalesReportPage() {
   const { t } = useTranslation();
@@ -20,6 +18,7 @@ export default function DailySalesReportPage() {
     queryFn: () =>
       getAdapter().pos.getDailySalesSummary(company_id!, { date_from: from, date_to: to }),
   });
+  type Row = typeof rows[number];
 
   const totalCash    = rows.reduce((s, r) => s + r.cash_total,   0);
   const totalCard    = rows.reduce((s, r) => s + r.card_total,   0);
@@ -27,100 +26,41 @@ export default function DailySalesReportPage() {
   const grandTotal   = rows.reduce((s, r) => s + r.grand_total,  0);
   const totalInv     = rows.reduce((s, r) => s + r.invoice_count, 0);
 
-  const exportRows: Record<string, unknown>[] = rows.map(r => ({
-    Date: r.date,
-    Cash: r.cash_total.toFixed(2),
-    Card: r.card_total.toFixed(2),
-    Credit: r.credit_total.toFixed(2),
-    Invoices: r.invoice_count,
-    'Grand Total': r.grand_total.toFixed(2),
-  }));
-  const exportHeaders = ['Date', 'Cash', 'Card', 'Credit', 'Invoices', 'Grand Total'];
+  // Totals row only when there is more than one day, as before.
+  const multi = rows.length > 1;
+  const columns: ReportColumn<Row>[] = [
+    { key: 'date', header: t('common.date'), cls: 'strong', cell: r => <Num>{r.date}</Num>, exp: r => r.date },
+    { key: 'cash', header: t('pos.payment_cash'), num: true, cls: 'muted', cell: r => fmt(r.cash_total), foot: multi ? fmt(totalCash) : undefined, exp: r => r.cash_total.toFixed(2) },
+    { key: 'card', header: t('pos.payment_card'), num: true, cls: 'muted', cell: r => fmt(r.card_total), foot: multi ? fmt(totalCard) : undefined, exp: r => r.card_total.toFixed(2) },
+    { key: 'credit', header: t('pos.payment_credit'), num: true, cls: 'muted', cell: r => fmt(r.credit_total), foot: multi ? fmt(totalCredit) : undefined, exp: r => r.credit_total.toFixed(2) },
+    { key: 'inv', header: t('reports.invoices'), num: true, cls: 'muted', cell: r => r.invoice_count, foot: multi ? totalInv : undefined, exp: r => r.invoice_count },
+    { key: 'total', header: t('reports.grand_total'), num: true, cls: 'strong', cell: r => fmt(r.grand_total), foot: multi ? fmt(grandTotal) : undefined, exp: r => r.grand_total.toFixed(2) },
+  ];
+  const xl = exportFromColumns(columns, rows);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-ink-primary">{t('reports.daily_sales_summary')}</h1>
-          <p className="text-sm text-ink-tertiary mt-1">{t('reports.daily_sales_summary_desc')}</p>
-        </div>
-        <div data-print-hide className="flex flex-wrap items-center gap-2">
-          <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-          <ReportActions rows={exportRows} headers={exportHeaders} filename={`daily-sales-${from}_${to}`} disabled={rows.length === 0} />
-        </div>
-      </div>
-
-      {/* Summary Cards */}
-      {rows.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-          <div className="bg-white border border-border-subtle rounded-lg p-4">
-            <p className="text-xs text-ink-tertiary">{t('pos.payment_cash')}</p>
-            <p className="text-xl font-bold text-ink-primary mt-1">{fmt(totalCash)}</p>
-          </div>
-          <div className="bg-white border border-border-subtle rounded-lg p-4">
-            <p className="text-xs text-ink-tertiary">{t('pos.payment_card')}</p>
-            <p className="text-xl font-bold text-ink-primary mt-1">{fmt(totalCard)}</p>
-          </div>
-          <div className="bg-white border border-border-subtle rounded-lg p-4">
-            <p className="text-xs text-ink-tertiary">{t('pos.payment_credit')}</p>
-            <p className="text-xl font-bold text-ink-primary mt-1">{fmt(totalCredit)}</p>
-          </div>
-          <div className="bg-white border border-border-subtle rounded-lg p-4">
-            <p className="text-xs text-ink-tertiary">{t('reports.total_invoices')}</p>
-            <p className="text-xl font-bold text-ink-primary mt-1">{totalInv}</p>
-          </div>
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-xs text-brand-600">{t('reports.grand_total')}</p>
-            <p className="text-xl font-bold text-blue-700 mt-1">{fmt(grandTotal)}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Table */}
-      <div className="bg-white border border-border-subtle rounded-lg overflow-hidden">
-        {rows.length === 0 ? (
-          <p className="p-8 text-center text-ink-tertiary">{isFetching ? t('common.loading') : t('pos.no_sales')}</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-surface-muted border-b border-border-subtle">
-                <tr>
-                  <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('common.date')}</th>
-                  <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('pos.payment_cash')}</th>
-                  <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('pos.payment_card')}</th>
-                  <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('pos.payment_credit')}</th>
-                  <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('reports.invoices')}</th>
-                  <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('reports.grand_total')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border-subtle">
-                {rows.map(row => (
-                  <tr key={row.date} className="hover:bg-surface-muted transition-colors">
-                    <td className="px-4 py-3 font-medium text-ink-primary">{row.date}</td>
-                    <td className="px-4 py-3 text-right text-ink-secondary">{fmt(row.cash_total)}</td>
-                    <td className="px-4 py-3 text-right text-ink-secondary">{fmt(row.card_total)}</td>
-                    <td className="px-4 py-3 text-right text-ink-secondary">{fmt(row.credit_total)}</td>
-                    <td className="px-4 py-3 text-right text-ink-secondary">{row.invoice_count}</td>
-                    <td className="px-4 py-3 text-right font-bold text-ink-primary">{fmt(row.grand_total)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              {rows.length > 1 && (
-                <tfoot className="bg-surface-muted border-t-2 border-border-strong">
-                  <tr>
-                    <td className="px-4 py-3 font-semibold text-ink-secondary">{t('common.total')}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-ink-primary">{fmt(totalCash)}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-ink-primary">{fmt(totalCard)}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-ink-primary">{fmt(totalCredit)}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-ink-primary">{totalInv}</td>
-                    <td className="px-4 py-3 text-right font-bold text-blue-700">{fmt(grandTotal)}</td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
+    <OceanReport
+      testid="daily-sales-ocean"
+      title={t('reports.daily_sales_summary')}
+      subtitle={t('reports.daily_sales_summary_desc')}
+      controls={<>
+        <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <ReportActions rows={xl.rows} headers={xl.headers} filename={`daily-sales-${from}_${to}`} disabled={rows.length === 0} />
+      </>}
+    >
+      <ReportCard
+        figures={rows.length > 0 ? [
+          { label: t('pos.payment_cash'), value: <Num>{fmt(totalCash)}</Num> },
+          { label: t('pos.payment_card'), value: <Num>{fmt(totalCard)}</Num> },
+          { label: t('pos.payment_credit'), value: <Num>{fmt(totalCredit)}</Num> },
+          { label: t('reports.total_invoices'), value: <Num>{totalInv}</Num> },
+          { label: t('reports.grand_total'), value: <Num>{fmt(grandTotal)}</Num>, tone: 'brand' },
+        ] : undefined}
+      >
+        {rows.length === 0
+          ? <ReportMessage>{isFetching ? t('common.loading') : t('pos.no_sales')}</ReportMessage>
+          : <ReportTable columns={columns} rows={rows} rowKey={r => r.date} footLabel={t('rptOcean.total')} minWidth={640} />}
+      </ReportCard>
+    </OceanReport>
   );
 }

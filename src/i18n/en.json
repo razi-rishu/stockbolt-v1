@@ -4123,6 +4123,15 @@
     "range_vs": "{{from}} — {{to}} · vs {{pfrom}} — {{pto}}",
     "sec_summary": "Summary",
     "sec_totals": "Totals",
-    "unassigned": "Unassigned"
+    "unassigned": "Unassigned",
+    "fig_customers": "Customers",
+    "fig_products": "Products",
+    "fig_brands": "Brands",
+    "ar_advance": "Advance",
+    "ar_advance_hint": "Unallocated customer advance held in 2400 Customer Advances",
+    "ar_net_due": "Net due",
+    "ar_net_due_hint": "Outstanding minus advance and credit notes: what the customer actually owes (negative = we owe them)",
+    "ar_31_90": "31–90 days",
+    "ar_over_90": "Over 90 days"
   }
 }

@@ -119,3 +119,89 @@ export function ltr(s: string | number): string {
 export function Num({ children, className }: { children: ReactNode; className?: string }) {
   return <bdi dir="ltr" className={className}>{children}</bdi>;
 }
+
+/**
+ * Flat report table driven by a column list. The same columns give the
+ * screen table, the totals row and (via `exportFromColumns`) the Excel
+ * sheet, so the three cannot drift apart.
+ */
+export interface ReportColumn<T> {
+  key: string;
+  header: string;
+  /** Tooltip on the column heading. */
+  title?: string;
+  /** Right-aligned figure, kept left-to-right in Arabic. */
+  num?: boolean;
+  /** Extra cell classes: 'muted' | 'strong' | 'is-up' | 'is-down' | 'is-warn'. */
+  cls?: string | ((row: T) => string | undefined);
+  cell: (row: T) => ReactNode;
+  /** Totals-row content for this column. */
+  foot?: ReactNode;
+  /** Excel value. Columns without it are left out of the sheet. */
+  exp?: (row: T) => unknown;
+  /** Hide on narrow screens. */
+  hideSm?: boolean;
+  /** Heading is a figure/range ("31–60"): keep it left-to-right in Arabic. */
+  headerLtr?: boolean;
+}
+
+export function ReportTable<T>({ columns, rows, rowKey, footLabel, minWidth, onRowClick }: {
+  columns: ReportColumn<T>[];
+  rows: T[];
+  rowKey: (row: T, index: number) => string;
+  /** Label in the first cell of the totals row. */
+  footLabel?: string;
+  /** Below this width the table scrolls sideways instead of squeezing. */
+  minWidth?: number;
+  onRowClick?: (row: T) => void;
+}) {
+  const cellCls = (c: ReportColumn<T>, row?: T) => [
+    c.num ? 'num' : '',
+    c.hideSm ? 'hide-sm' : '',
+    row ? (typeof c.cls === 'function' ? c.cls(row) ?? '' : c.cls ?? '') : '',
+  ].filter(Boolean).join(' ') || undefined;
+  const hasFoot = columns.some((c) => c.foot !== undefined);
+  return (
+    <ReportTableWrap>
+      <table className="sb-rpt-table sb-rpt-flat" style={minWidth != null ? { minWidth } : undefined}>
+        <thead>
+          <tr>{columns.map((c) => <th key={c.key} className={cellCls(c)} title={c.title}>{c.headerLtr ? <Num>{c.header}</Num> : c.header}</th>)}</tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={rowKey(row, i)} className={onRowClick ? 'is-click' : undefined} onClick={onRowClick ? () => onRowClick(row) : undefined}>
+              {columns.map((c) => (
+                <td key={c.key} className={cellCls(c, row)}>{c.num ? <Num>{c.cell(row)}</Num> : c.cell(row)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+        {hasFoot && (
+          <tfoot>
+            <tr className="sb-rpt-total">
+              {columns.map((c, i) => (
+                <td key={c.key} className={cellCls(c)}>
+                  {c.foot !== undefined ? (c.num ? <Num>{c.foot}</Num> : c.foot) : (i === 0 ? footLabel : null)}
+                </td>
+              ))}
+            </tr>
+          </tfoot>
+        )}
+      </table>
+    </ReportTableWrap>
+  );
+}
+
+/** Excel rows + headers from the same column list (screen-language headers). */
+export function exportFromColumns<T>(columns: ReportColumn<T>[], rows: T[]): { rows: Record<string, unknown>[]; headers: string[] } {
+  const cols = columns.filter((c) => c.exp);
+  return {
+    headers: cols.map((c) => c.header),
+    rows: rows.map((r) => Object.fromEntries(cols.map((c) => [c.header, c.exp!(r)]))),
+  };
+}
+
+/** Two-decimal amount, Western digits. */
+export function money(n: number): string {
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}

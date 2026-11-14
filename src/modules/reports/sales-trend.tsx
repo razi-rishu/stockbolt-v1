@@ -6,8 +6,7 @@ import { useAuthStore } from '@/store/auth';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
-
-function fmt(n: number) { return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
+import { OceanReport, ReportCard, ReportMessage, ReportTable, exportFromColumns, money as fmt, Num, ltr, type ReportColumn } from '@/components/ocean-report';
 
 export default function SalesTrendPage() {
   const { t } = useTranslation();
@@ -21,89 +20,68 @@ export default function SalesTrendPage() {
     enabled: !!company_id,
   });
   const rows = data ?? [];
+  type Row = typeof rows[number];
 
   const maxAmt = Math.max(...rows.map(r => r.net_sales), 1);
+  // Figures strip only — the table has no totals row, as before.
+  const totNet = rows.reduce((s, r) => s + r.net_sales, 0);
+  const totGP  = rows.reduce((s, r) => s + r.gross_profit, 0);
+  const totInv = rows.reduce((s, r) => s + r.invoice_count, 0);
 
-  const exportRows: Record<string, unknown>[] = rows.map(r => ({
-    Period: r.bucket,
-    'Invoice Count': r.invoice_count,
-    'Gross Sales': r.gross_sales.toFixed(2),
-    Returns: r.returns.toFixed(2),
-    'Net Sales': r.net_sales.toFixed(2),
-    'Gross Profit': r.gross_profit.toFixed(2),
-  }));
-  const exportHeaders = ['Period', 'Invoice Count', 'Gross Sales', 'Returns', 'Net Sales', 'Gross Profit'];
+  const columns: ReportColumn<Row>[] = [
+    { key: 'period', header: t('reports.period'), cls: 'strong', cell: r => <Num>{r.bucket}</Num>, exp: r => r.bucket },
+    { key: 'count', header: t('reports.invoice_count'), num: true, cls: 'muted', cell: r => r.invoice_count, exp: r => r.invoice_count },
+    { key: 'gross', header: t('reports.gross_sales'), num: true, cls: 'muted', cell: r => fmt(r.gross_sales), exp: r => r.gross_sales.toFixed(2) },
+    { key: 'returns', header: t('reports.returns'), num: true, cls: r => (r.returns > 0 ? 'is-down' : 'muted'), cell: r => (r.returns > 0 ? `(${fmt(r.returns)})` : '—'), exp: r => r.returns.toFixed(2) },
+    { key: 'net', header: t('reports.net_sales'), num: true, cls: 'strong', cell: r => fmt(r.net_sales), exp: r => r.net_sales.toFixed(2) },
+    { key: 'gp', header: t('reports.gross_profit'), num: true, cls: 'is-up strong', cell: r => fmt(r.gross_profit), exp: r => r.gross_profit.toFixed(2) },
+  ];
+  const xl = exportFromColumns(columns, rows);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.sales_trend')}</h1>
-        <div data-print-hide className="flex flex-wrap items-center gap-2">
-          <select
-            value={bucket}
-            onChange={e => setBucket(e.target.value as 'day' | 'week' | 'month')}
-            className="h-[30px] rounded-lg border border-border-subtle bg-white px-2.5 text-xs font-semibold text-ink-secondary outline-none focus:border-brand-400"
-            title={t('reports.bucket')}
-          >
-            <option value="day">{t('reports.bucket_day')}</option>
-            <option value="week">{t('reports.bucket_week')}</option>
-            <option value="month">{t('reports.bucket_month')}</option>
-          </select>
-          <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-          <ReportActions rows={exportRows} headers={exportHeaders} filename={`sales-trend-${from}_${to}`} disabled={rows.length === 0} />
-        </div>
-      </div>
-
-      {isFetching && rows.length === 0 && <p className="text-sm text-ink-secondary">{t('common.loading')}</p>}
-      {!isFetching && rows.length === 0 && <p className="text-sm text-ink-tertiary">{t('reports.no_data')}</p>}
+    <OceanReport
+      testid="sales-trend-ocean"
+      title={t('reports.sales_trend')}
+      subtitle={t('rptOcean.range', { from: ltr(from), to: ltr(to) })}
+      controls={<>
+        <select
+          value={bucket} onChange={e => setBucket(e.target.value as 'day' | 'week' | 'month')}
+          className="sb-rpt-select" title={t('reports.bucket')} aria-label={t('reports.bucket')}
+        >
+          <option value="day">{t('reports.bucket_day')}</option>
+          <option value="week">{t('reports.bucket_week')}</option>
+          <option value="month">{t('reports.bucket_month')}</option>
+        </select>
+        <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <ReportActions rows={xl.rows} headers={xl.headers} filename={`sales-trend-${from}_${to}`} disabled={rows.length === 0} />
+      </>}
+    >
+      {rows.length === 0 && <ReportCard><ReportMessage>{isFetching ? t('common.loading') : t('reports.no_data')}</ReportMessage></ReportCard>}
 
       {rows.length > 0 && (
         <>
-          {/* Bar chart */}
-          <div className="rounded-lg border border-border bg-surface-card p-5 shadow-sm">
-            <div className="flex h-40 items-end gap-1 overflow-x-auto">
+          <ReportCard
+            figures={[
+              { label: t('reports.invoice_count'), value: <Num>{totInv}</Num> },
+              { label: t('reports.net_sales'), value: <Num>{fmt(totNet)}</Num>, tone: 'brand' },
+              { label: t('reports.gross_profit'), value: <Num>{fmt(totGP)}</Num>, tone: totGP < 0 ? 'bad' : 'good' },
+            ]}
+          >
+            {/* Bar chart — net sales per period */}
+            <div className="sb-rpt-bars" dir="ltr">
               {rows.map(r => (
-                <div key={r.bucket} className="group relative flex flex-col items-center gap-1 flex-1 min-w-[20px]">
-                  <div
-                    className="w-full bg-brand-400 rounded-t hover:bg-brand-500 transition-colors"
-                    style={{ height: `${Math.max(4, (r.net_sales / maxAmt) * 100)}%` }}
-                    title={`${r.bucket}: ${fmt(r.net_sales)}`}
-                  />
-                  <span className="text-[9px] text-ink-tertiary truncate w-full text-center">{r.bucket.slice(-5)}</span>
+                <div key={r.bucket} className="sb-rpt-bar" title={`${r.bucket}: ${fmt(r.net_sales)}`}>
+                  <span style={{ height: `${Math.max(4, (r.net_sales / maxAmt) * 100)}%` }} />
+                  <span>{r.bucket.slice(-5)}</span>
                 </div>
               ))}
             </div>
-          </div>
-
-          {/* Table */}
-          <div className="overflow-x-auto rounded-lg border border-border bg-surface-card shadow-sm">
-            <table className="w-full text-sm">
-              <thead className="bg-surface-subtle">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('reports.period')}</th>
-                  <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.invoice_count')}</th>
-                  <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.gross_sales')}</th>
-                  <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.returns')}</th>
-                  <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.net_sales')}</th>
-                  <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.gross_profit')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {rows.map(r => (
-                  <tr key={r.bucket} className="hover:bg-surface-subtle/50">
-                    <td className="px-4 py-2 text-ink-primary font-medium">{r.bucket}</td>
-                    <td className="px-4 py-2 text-right text-ink-secondary">{r.invoice_count}</td>
-                    <td className="px-4 py-2 text-right text-ink-secondary">{fmt(r.gross_sales)}</td>
-                    <td className="px-4 py-2 text-right text-red-600">{r.returns > 0 ? `(${fmt(r.returns)})` : '—'}</td>
-                    <td className="px-4 py-2 text-right text-ink-primary font-medium">{fmt(r.net_sales)}</td>
-                    <td className="px-4 py-2 text-right text-emerald-700 font-medium">{fmt(r.gross_profit)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          </ReportCard>
+          <ReportCard>
+            <ReportTable columns={columns} rows={rows} rowKey={r => r.bucket} minWidth={680} />
+          </ReportCard>
         </>
       )}
-    </div>
+    </OceanReport>
   );
 }

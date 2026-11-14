@@ -5,8 +5,7 @@ import { useAuthStore } from '@/store/auth';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
-
-function fmt(n: number) { return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
+import { OceanReport, ReportCard, ReportMessage, ReportTable, exportFromColumns, money as fmt, Num, ltr, type ReportColumn } from '@/components/ocean-report';
 
 export default function SalesByBrandPage() {
   const { t } = useTranslation();
@@ -19,66 +18,43 @@ export default function SalesByBrandPage() {
     enabled: !!company_id,
   });
   const rows = data ?? [];
+  type Row = typeof rows[number];
 
   const totRev = rows.reduce((s, r) => s + r.revenue, 0);
   const totGP  = rows.reduce((s, r) => s + r.gross_profit, 0);
+  const totPct = `${totRev > 0 ? (totGP / totRev * 100).toFixed(1) : 0}%`;
 
-  const exportRows: Record<string, unknown>[] = rows.map(r => ({
-    Brand: r.brand_name,
-    'Qty Sold': r.qty_sold,
-    Revenue: r.revenue.toFixed(2),
-    'Gross Profit': r.gross_profit.toFixed(2),
-    'GP %': r.gp_pct.toFixed(1),
-  }));
-  const exportHeaders = ['Brand', 'Qty Sold', 'Revenue', 'Gross Profit', 'GP %'];
+  const columns: ReportColumn<Row>[] = [
+    { key: 'brand', header: t('products.brand'), cls: 'strong', cell: r => r.brand_name, exp: r => r.brand_name },
+    { key: 'qty', header: t('reports.qty_sold'), num: true, cls: 'muted', cell: r => r.qty_sold, exp: r => r.qty_sold },
+    { key: 'rev', header: t('reports.revenue'), num: true, cls: 'strong', cell: r => fmt(r.revenue), foot: fmt(totRev), exp: r => r.revenue.toFixed(2) },
+    { key: 'gp', header: t('reports.gross_profit'), num: true, cls: 'is-up strong', cell: r => fmt(r.gross_profit), foot: fmt(totGP), exp: r => r.gross_profit.toFixed(2) },
+    { key: 'pct', header: t('reports.gp_pct'), num: true, cls: 'muted', cell: r => `${r.gp_pct.toFixed(1)}%`, foot: totPct, exp: r => r.gp_pct.toFixed(1) },
+  ];
+  const xl = exportFromColumns(columns, rows);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.sales_by_brand')}</h1>
-        <div data-print-hide className="flex flex-wrap items-center gap-2">
-          <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-          <ReportActions rows={exportRows} headers={exportHeaders} filename={`sales-by-brand-${from}_${to}`} disabled={rows.length === 0} />
-        </div>
-      </div>
-
-      {isFetching && rows.length === 0 && <p className="text-sm text-ink-secondary">{t('common.loading')}</p>}
-      {!isFetching && rows.length === 0 && <p className="text-sm text-ink-tertiary">{t('reports.no_data')}</p>}
-
-      {rows.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-border bg-surface-card shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-subtle">
-              <tr>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('products.brand')}</th>
-                <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.qty_sold')}</th>
-                <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.revenue')}</th>
-                <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.gross_profit')}</th>
-                <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.gp_pct')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {rows.map(r => (
-                <tr key={r.brand_id} className="hover:bg-surface-subtle/50">
-                  <td className="px-4 py-2 text-ink-primary font-medium">{r.brand_name}</td>
-                  <td className="px-4 py-2 text-right text-ink-secondary">{r.qty_sold}</td>
-                  <td className="px-4 py-2 text-right text-ink-primary font-medium">{fmt(r.revenue)}</td>
-                  <td className="px-4 py-2 text-right text-emerald-700 font-medium">{fmt(r.gross_profit)}</td>
-                  <td className="px-4 py-2 text-right text-ink-secondary">{r.gp_pct.toFixed(1)}%</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot className="border-t-2 border-border bg-surface-subtle font-semibold">
-              <tr>
-                <td colSpan={2} className="px-4 py-2 text-ink-primary">{t('common.total')}</td>
-                <td className="px-4 py-2 text-right text-ink-primary">{fmt(totRev)}</td>
-                <td className="px-4 py-2 text-right text-emerald-700">{fmt(totGP)}</td>
-                <td className="px-4 py-2 text-right text-ink-secondary">{totRev > 0 ? (totGP / totRev * 100).toFixed(1) : 0}%</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
-    </div>
+    <OceanReport
+      testid="sales-by-brand-ocean"
+      title={t('reports.sales_by_brand')}
+      subtitle={t('rptOcean.range', { from: ltr(from), to: ltr(to) })}
+      controls={<>
+        <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <ReportActions rows={xl.rows} headers={xl.headers} filename={`sales-by-brand-${from}_${to}`} disabled={rows.length === 0} />
+      </>}
+    >
+      <ReportCard
+        figures={rows.length > 0 ? [
+          { label: t('rptOcean.fig_brands'), value: <Num>{rows.length}</Num> },
+          { label: t('reports.revenue'), value: <Num>{fmt(totRev)}</Num>, tone: 'brand' },
+          { label: t('reports.gross_profit'), value: <Num>{fmt(totGP)}</Num>, tone: totGP < 0 ? 'bad' : 'good' },
+          { label: t('reports.gp_pct'), value: <Num>{totPct}</Num> },
+        ] : undefined}
+      >
+        {rows.length === 0
+          ? <ReportMessage>{isFetching ? t('common.loading') : t('reports.no_data')}</ReportMessage>
+          : <ReportTable columns={columns} rows={rows} rowKey={r => r.brand_id} footLabel={t('rptOcean.total')} minWidth={560} />}
+      </ReportCard>
+    </OceanReport>
   );
 }
