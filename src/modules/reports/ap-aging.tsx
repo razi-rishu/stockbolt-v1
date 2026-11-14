@@ -6,8 +6,7 @@ import { DocLink } from '@/ui/doc-link';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
-
-const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+import { OceanReport, ReportCard, ReportMessage, ReportTable, exportFromColumns, money as fmt, Num, ltr, type ReportColumn } from '@/components/ocean-report';
 
 export default function APAgingPage() {
   const { t } = useTranslation();
@@ -20,69 +19,45 @@ export default function APAgingPage() {
     queryFn: () => getAdapter().reports.getAPAgingReport(company_id!, asOf),
     enabled: !!company_id,
   });
+  const buckets = data?.buckets ?? [];
+  type Row = typeof buckets[number];
+  const dash = (n: number) => (n > 0 ? fmt(n) : '—');
 
-  const exportRows: Record<string, unknown>[] = (data?.buckets ?? []).map(b => ({
-    Supplier: b.contact_name,
-    Current: b.current.toFixed(2),
-    '31-60': b.days_31_60.toFixed(2),
-    '61-90': b.days_61_90.toFixed(2),
-    '>90': b.over_90.toFixed(2),
-    Total: b.total.toFixed(2),
-  }));
-  const exportHeaders = ['Supplier', 'Current', '31-60', '61-90', '>90', 'Total'];
+  const columns: ReportColumn<Row>[] = [
+    { key: 'supplier', header: t('reports.supplier'), cell: b => <DocLink type="supplier" id={b.contact_id} label={b.contact_name} />, exp: b => b.contact_name },
+    { key: 'current', header: t('reports.current'), num: true, cell: b => dash(b.current), foot: data ? fmt(data.total_current) : '', exp: b => b.current.toFixed(2) },
+    { key: 'd31', header: '31–60', headerLtr: true, num: true, cls: b => (b.days_31_60 > 0 ? 'is-warn' : 'muted'), cell: b => dash(b.days_31_60), foot: data ? fmt(data.total_31_60) : '', exp: b => b.days_31_60.toFixed(2) },
+    { key: 'd61', header: '61–90', headerLtr: true, num: true, cls: b => (b.days_61_90 > 0 ? 'is-warn strong' : 'muted'), cell: b => dash(b.days_61_90), foot: data ? fmt(data.total_61_90) : '', exp: b => b.days_61_90.toFixed(2) },
+    { key: 'd90', header: t('reports.over_90'), num: true, cls: b => (b.over_90 > 0 ? 'is-down strong' : 'muted'), cell: b => dash(b.over_90), foot: data ? fmt(data.total_over_90) : '', exp: b => b.over_90.toFixed(2) },
+    { key: 'total', header: t('reports.total'), num: true, cls: 'strong', cell: b => fmt(b.total), foot: data ? fmt(data.grand_total) : '', exp: b => b.total.toFixed(2) },
+  ];
+  const xl = exportFromColumns(columns, buckets);
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.ap_aging')}</h1>
-        <div data-print-hide className="flex flex-wrap items-center gap-2">
-          <PeriodPicker mode="asOf" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-          <ReportActions rows={exportRows} headers={exportHeaders} filename={`ap-aging-${asOf}`} disabled={!data} />
-        </div>
-      </div>
-
-      {isFetching && !data && <div className="text-sm text-ink-tertiary">{t('common.loading')}</div>}
+    <OceanReport
+      testid="ap-aging-ocean"
+      title={t('reports.ap_aging')}
+      subtitle={t('rptOcean.as_of_date', { date: ltr(asOf) })}
+      controls={<>
+        <PeriodPicker mode="asOf" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <ReportActions rows={xl.rows} headers={xl.headers} filename={`ap-aging-${asOf}`} disabled={!data} />
+      </>}
+    >
+      {isFetching && !data && <ReportCard><ReportMessage>{t('common.loading')}</ReportMessage></ReportCard>}
       {data && (
-        <div className="rounded-card border border-border-subtle bg-surface-card overflow-x-auto">
-          <div className="border-b border-border-subtle px-5 py-3 text-sm text-ink-secondary">
-            {t('reports.as_of_date')}: {asOf}
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary text-xs">
-                <th className="px-4 py-3 text-start font-medium">{t('reports.supplier')}</th>
-                <th className="px-4 py-3 text-end font-medium">{t('reports.current')}</th>
-                <th className="px-4 py-3 text-end font-medium">31–60</th>
-                <th className="px-4 py-3 text-end font-medium">61–90</th>
-                <th className="px-4 py-3 text-end font-medium">{t('reports.over_90')}</th>
-                <th className="px-4 py-3 text-end font-medium">{t('reports.total')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.buckets.map(b => (
-                <tr key={b.contact_id} className="border-b border-border-subtle last:border-0">
-                  <td className="px-4 py-3"><DocLink type="supplier" id={b.contact_id} label={b.contact_name} className="font-medium text-brand-600 hover:underline" /></td>
-                  <td className="px-4 py-3 text-end font-mono">{b.current > 0 ? fmt(b.current) : '—'}</td>
-                  <td className="px-4 py-3 text-end font-mono text-yellow-600">{b.days_31_60 > 0 ? fmt(b.days_31_60) : '—'}</td>
-                  <td className="px-4 py-3 text-end font-mono text-orange-600">{b.days_61_90 > 0 ? fmt(b.days_61_90) : '—'}</td>
-                  <td className="px-4 py-3 text-end font-mono text-red-600">{b.over_90 > 0 ? fmt(b.over_90) : '—'}</td>
-                  <td className="px-4 py-3 text-end font-mono font-semibold">{fmt(b.total)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-border-subtle bg-surface-muted font-semibold text-xs">
-                <td className="px-4 py-3">{t('reports.total')}</td>
-                <td className="px-4 py-3 text-end font-mono">{fmt(data.total_current)}</td>
-                <td className="px-4 py-3 text-end font-mono text-yellow-600">{fmt(data.total_31_60)}</td>
-                <td className="px-4 py-3 text-end font-mono text-orange-600">{fmt(data.total_61_90)}</td>
-                <td className="px-4 py-3 text-end font-mono text-red-600">{fmt(data.total_over_90)}</td>
-                <td className="px-4 py-3 text-end font-mono">{fmt(data.grand_total)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+        <ReportCard
+          figures={[
+            { label: t('reports.current'), value: <Num>{fmt(data.total_current)}</Num> },
+            { label: t('rptOcean.ar_31_90'), value: <Num>{fmt(data.total_31_60 + data.total_61_90)}</Num>, tone: data.total_31_60 + data.total_61_90 > 0 ? 'warn' : undefined },
+            { label: t('rptOcean.ar_over_90'), value: <Num>{fmt(data.total_over_90)}</Num>, tone: data.total_over_90 > 0 ? 'bad' : undefined },
+            { label: t('rptOcean.ap_total_payable'), value: <Num>{fmt(data.grand_total)}</Num>, tone: 'brand' },
+          ]}
+        >
+          {buckets.length === 0
+            ? <ReportMessage>{t('rptOcean.ap_none')}</ReportMessage>
+            : <ReportTable columns={columns} rows={buckets} rowKey={b => b.contact_id} footLabel={t('reports.total')} minWidth={720} />}
+        </ReportCard>
       )}
-    </div>
+    </OceanReport>
   );
 }

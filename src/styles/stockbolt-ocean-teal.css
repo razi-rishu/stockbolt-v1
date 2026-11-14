@@ -1943,3 +1943,4 @@
 @media print {
   .sb-ocean .sb-rpt-flat th:first-child, .sb-ocean .sb-rpt-flat td:first-child { position: static; box-shadow: none; max-width: none; }
 }
+.sb-ocean .sb-rpt-select-wide { max-width: 240px; min-width: 180px; }

@@ -5,8 +5,7 @@ import { useAuthStore } from '@/store/auth';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
-
-function fmt(n: number) { return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
+import { OceanReport, ReportCard, ReportMessage, ReportTable, exportFromColumns, money as fmt, Num, ltr, type ReportColumn } from '@/components/ocean-report';
 
 export default function PurchasesBySupplierPage() {
   const { t } = useTranslation();
@@ -19,64 +18,41 @@ export default function PurchasesBySupplierPage() {
     enabled: !!company_id,
   });
   const rows = data ?? [];
+  type Row = typeof rows[number];
 
   const totNet = rows.reduce((s, r) => s + r.net_purchases, 0);
+  const totBills = rows.reduce((s, r) => s + r.bill_count, 0);
 
-  const exportRows: Record<string, unknown>[] = rows.map(r => ({
-    Supplier: r.contact_name,
-    'Bill Count': r.bill_count,
-    'Gross Purchases': r.gross_purchases.toFixed(2),
-    'Net Purchases': r.net_purchases.toFixed(2),
-    '% of Total': r.pct_of_total.toFixed(1),
-  }));
-  const exportHeaders = ['Supplier', 'Bill Count', 'Gross Purchases', 'Net Purchases', '% of Total'];
+  const columns: ReportColumn<Row>[] = [
+    { key: 'supplier', header: t('contacts.supplier'), cls: 'strong', cell: r => r.contact_name, exp: r => r.contact_name },
+    { key: 'count', header: t('reports.bill_count'), num: true, cls: 'muted', cell: r => r.bill_count, exp: r => r.bill_count },
+    { key: 'gross', header: t('reports.gross_purchases'), num: true, cls: 'muted', cell: r => fmt(r.gross_purchases), exp: r => r.gross_purchases.toFixed(2) },
+    { key: 'net', header: t('reports.net_purchases'), num: true, cls: 'strong', cell: r => fmt(r.net_purchases), foot: fmt(totNet), exp: r => r.net_purchases.toFixed(2) },
+    { key: 'pct', header: t('reports.pct_of_total'), num: true, cls: 'muted', cell: r => `${r.pct_of_total.toFixed(1)}%`, foot: '100%', exp: r => r.pct_of_total.toFixed(1) },
+  ];
+  const xl = exportFromColumns(columns, rows);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.purchases_by_supplier')}</h1>
-        <div data-print-hide className="flex flex-wrap items-center gap-2">
-          <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-          <ReportActions rows={exportRows} headers={exportHeaders} filename={`purchases-by-supplier-${from}_${to}`} disabled={rows.length === 0} />
-        </div>
-      </div>
-
-      {isFetching && rows.length === 0 && <p className="text-sm text-ink-secondary">{t('common.loading')}</p>}
-      {!isFetching && rows.length === 0 && <p className="text-sm text-ink-tertiary">{t('reports.no_data')}</p>}
-
-      {rows.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-border bg-surface-card shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-subtle">
-              <tr>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('contacts.supplier')}</th>
-                <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.bill_count')}</th>
-                <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.gross_purchases')}</th>
-                <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.net_purchases')}</th>
-                <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.pct_of_total')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {rows.map(r => (
-                <tr key={r.contact_id} className="hover:bg-surface-subtle/50">
-                  <td className="px-4 py-2 text-ink-primary font-medium">{r.contact_name}</td>
-                  <td className="px-4 py-2 text-right text-ink-secondary">{r.bill_count}</td>
-                  <td className="px-4 py-2 text-right text-ink-secondary">{fmt(r.gross_purchases)}</td>
-                  <td className="px-4 py-2 text-right text-ink-primary font-medium">{fmt(r.net_purchases)}</td>
-                  <td className="px-4 py-2 text-right text-ink-secondary">{r.pct_of_total.toFixed(1)}%</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot className="border-t-2 border-border bg-surface-subtle font-semibold">
-              <tr>
-                <td colSpan={3} className="px-4 py-2 text-ink-primary">{t('common.total')}</td>
-                <td className="px-4 py-2 text-right text-ink-primary">{fmt(totNet)}</td>
-                <td className="px-4 py-2 text-right text-ink-secondary">100%</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
-    </div>
+    <OceanReport
+      testid="purchases-by-supplier-ocean"
+      title={t('reports.purchases_by_supplier')}
+      subtitle={t('rptOcean.range', { from: ltr(from), to: ltr(to) })}
+      controls={<>
+        <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <ReportActions rows={xl.rows} headers={xl.headers} filename={`purchases-by-supplier-${from}_${to}`} disabled={rows.length === 0} />
+      </>}
+    >
+      <ReportCard
+        figures={rows.length > 0 ? [
+          { label: t('rptOcean.fig_suppliers'), value: <Num>{rows.length}</Num> },
+          { label: t('reports.bill_count'), value: <Num>{totBills}</Num> },
+          { label: t('reports.net_purchases'), value: <Num>{fmt(totNet)}</Num>, tone: 'brand' },
+        ] : undefined}
+      >
+        {rows.length === 0
+          ? <ReportMessage>{isFetching ? t('common.loading') : t('reports.no_data')}</ReportMessage>
+          : <ReportTable columns={columns} rows={rows} rowKey={r => r.contact_id} footLabel={t('rptOcean.total')} minWidth={620} />}
+      </ReportCard>
+    </OceanReport>
   );
 }

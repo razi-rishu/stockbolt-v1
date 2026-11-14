@@ -3,14 +3,12 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Select } from '@/ui/select';
 import { DocLink } from '@/ui/doc-link';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
+import { OceanReport, ReportCard, ReportMessage, ReportTable, exportFromColumns, money as fmt, Num, ltr, type ReportColumn } from '@/components/ocean-report';
 import type { ContactRow } from '@/data/adapter';
-
-const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function SupplierStatementPage() {
   const { t } = useTranslation();
@@ -29,69 +27,49 @@ export default function SupplierStatementPage() {
     queryFn: () => getAdapter().reports.getSupplierStatement(company_id!, supplierId, from, to),
     enabled: !!supplierId && !!company_id,
   });
+  const lines = data?.lines ?? [];
+  type Row = typeof lines[number];
+  const dash = (n: number) => (n > 0 ? fmt(n) : '—');
 
-  const supplierOpts = [{ value: '', label: t('purchasing.select_supplier') }, ...suppliers.map(s => ({ value: s.id, label: s.name }))];
-
-  const exportRows: Record<string, unknown>[] = (data?.lines ?? []).map(line => ({
-    Date: line.date,
-    Document: line.doc_number,
-    Debit: line.debit.toFixed(2),
-    Credit: line.credit.toFixed(2),
-    Balance: line.balance.toFixed(2),
-  }));
-  const exportHeaders = ['Date', 'Document', 'Debit', 'Credit', 'Balance'];
+  const columns: ReportColumn<Row>[] = [
+    { key: 'date', header: t('reports.date'), cls: 'muted', cell: l => <Num>{l.date}</Num>, exp: l => l.date },
+    { key: 'doc', header: t('reports.document'), cell: l => <DocLink type={l.doc_type} id={l.doc_id ?? null} label={l.doc_number} status={l.is_reversed ? 'reversed' : 'active'} />, exp: l => l.doc_number },
+    { key: 'debit', header: t('reports.debit'), num: true, cell: l => dash(l.debit), exp: l => l.debit.toFixed(2) },
+    { key: 'credit', header: t('reports.credit'), num: true, cell: l => dash(l.credit), exp: l => l.credit.toFixed(2) },
+    { key: 'balance', header: t('reports.balance'), num: true, cls: 'strong', cell: l => fmt(l.balance), foot: data ? fmt(data.closing_balance) : '', exp: l => l.balance.toFixed(2) },
+  ];
+  const xl = exportFromColumns(columns, lines);
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.supplier_statement')}</h1>
-        <div data-print-hide className="flex flex-wrap items-center gap-2">
-          <div className="w-52">
-            <Select options={supplierOpts} value={supplierId} onChange={e => setSupplierId(e.target.value)} />
-          </div>
-          <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-          <ReportActions rows={exportRows} headers={exportHeaders} filename={`supplier-statement-${from}_${to}`} disabled={!data} />
-        </div>
-      </div>
-
-      {!supplierId && <p className="text-sm text-ink-tertiary">{t('purchasing.select_supplier')}</p>}
-      {isFetching && !data && <div className="text-sm text-ink-tertiary">{t('common.loading')}</div>}
+    <OceanReport
+      testid="supplier-statement-ocean"
+      title={t('reports.supplier_statement')}
+      subtitle={t('rptOcean.range', { from: ltr(from), to: ltr(to) })}
+      controls={<>
+        <select
+          value={supplierId} onChange={e => setSupplierId(e.target.value)}
+          className="sb-rpt-select sb-rpt-select-wide" aria-label={t('purchasing.select_supplier')}
+        >
+          <option value="">{t('purchasing.select_supplier')}</option>
+          {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <ReportActions rows={xl.rows} headers={xl.headers} filename={`supplier-statement-${from}_${to}`} disabled={!data} />
+      </>}
+    >
+      {!supplierId && <ReportCard><ReportMessage>{t('purchasing.select_supplier')}</ReportMessage></ReportCard>}
+      {supplierId && isFetching && !data && <ReportCard><ReportMessage>{t('common.loading')}</ReportMessage></ReportCard>}
       {data && (
-        <div className="rounded-card border border-border-subtle bg-surface-card overflow-x-auto">
-          <div className="px-5 py-4 border-b border-border-subtle">
-            <p className="font-semibold text-ink-primary">{data.contact_name}</p>
-            <p className="text-xs text-ink-tertiary">{data.from_date} → {data.to_date}</p>
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary text-xs">
-                <th className="px-4 py-3 text-start font-medium">{t('reports.date')}</th>
-                <th className="px-4 py-3 text-start font-medium">{t('reports.document')}</th>
-                <th className="px-4 py-3 text-end font-medium">{t('reports.debit')}</th>
-                <th className="px-4 py-3 text-end font-medium">{t('reports.credit')}</th>
-                <th className="px-4 py-3 text-end font-medium">{t('reports.balance')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.lines.map((line, i) => (
-                <tr key={i} className="border-b border-border-subtle last:border-0">
-                  <td className="px-4 py-3 text-ink-secondary">{line.date}</td>
-                  <td className="px-4 py-3 font-mono text-xs"><DocLink type={line.doc_type} id={line.doc_id ?? null} label={line.doc_number} status={line.is_reversed ? 'reversed' : 'active'} className="font-mono text-xs text-brand-600 hover:underline" /></td>
-                  <td className="px-4 py-3 text-end font-mono">{line.debit > 0 ? fmt(line.debit) : '—'}</td>
-                  <td className="px-4 py-3 text-end font-mono">{line.credit > 0 ? fmt(line.credit) : '—'}</td>
-                  <td className="px-4 py-3 text-end font-mono font-medium">{fmt(line.balance)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-border-subtle font-semibold">
-                <td colSpan={4} className="px-4 py-3 text-ink-primary">{t('reports.closing_balance')}</td>
-                <td className="px-4 py-3 text-end font-mono">{fmt(data.closing_balance)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+        <ReportCard
+          title={data.contact_name}
+          meta={t('rptOcean.range', { from: ltr(data.from_date), to: ltr(data.to_date) })}
+          figures={[{ label: t('reports.closing_balance'), value: <Num>{fmt(data.closing_balance)}</Num>, tone: 'brand' }]}
+        >
+          {lines.length === 0
+            ? <ReportMessage>{t('reports.no_data')}</ReportMessage>
+            : <ReportTable columns={columns} rows={lines} rowKey={(_, i) => String(i)} footLabel={t('reports.closing_balance')} minWidth={500} />}
+        </ReportCard>
       )}
-    </div>
+    </OceanReport>
   );
 }

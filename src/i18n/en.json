@@ -4132,6 +4132,10 @@
     "ar_net_due": "Net due",
     "ar_net_due_hint": "Outstanding minus advance and credit notes: what the customer actually owes (negative = we owe them)",
     "ar_31_90": "31–90 days",
-    "ar_over_90": "Over 90 days"
+    "ar_over_90": "Over 90 days",
+    "ap_total_payable": "Total payable",
+    "fig_suppliers": "Suppliers",
+    "fig_open_orders": "Open orders",
+    "ap_none": "No outstanding payables."
   }
 }

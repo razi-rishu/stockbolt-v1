@@ -5,8 +5,7 @@ import { useAuthStore } from '@/store/auth';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
-
-function fmt(n: number) { return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
+import { OceanReport, ReportCard, ReportMessage, ReportTable, exportFromColumns, money as fmt, Num, ltr, type ReportColumn } from '@/components/ocean-report';
 
 export default function PurchasesByProductPage() {
   const { t } = useTranslation();
@@ -19,55 +18,40 @@ export default function PurchasesByProductPage() {
     enabled: !!company_id,
   });
   const rows = data ?? [];
+  type Row = typeof rows[number];
 
-  const exportRows: Record<string, unknown>[] = rows.map(r => ({
-    SKU: r.sku,
-    Product: r.product_name,
-    'Qty Purchased': r.qty_purchased,
-    'Total Cost': r.total_cost.toFixed(2),
-    'Avg Unit Cost': r.avg_unit_cost.toFixed(2),
-  }));
-  const exportHeaders = ['SKU', 'Product', 'Qty Purchased', 'Total Cost', 'Avg Unit Cost'];
+  // Figures strip only — the table has no totals row, as before.
+  const totCost = rows.reduce((s, r) => s + r.total_cost, 0);
+
+  const columns: ReportColumn<Row>[] = [
+    { key: 'sku', header: t('products.sku'), cell: r => <span className="code">{r.sku}</span>, exp: r => r.sku },
+    { key: 'name', header: t('products.name'), cls: 'strong', cell: r => r.product_name, exp: r => r.product_name },
+    { key: 'qty', header: t('reports.qty_purchased'), num: true, cls: 'muted', cell: r => r.qty_purchased, exp: r => r.qty_purchased },
+    { key: 'cost', header: t('reports.total_cost'), num: true, cls: 'strong', cell: r => fmt(r.total_cost), exp: r => r.total_cost.toFixed(2) },
+    { key: 'avg', header: t('reports.avg_unit_cost'), num: true, cls: 'muted', cell: r => fmt(r.avg_unit_cost), exp: r => r.avg_unit_cost.toFixed(2) },
+  ];
+  const xl = exportFromColumns(columns, rows);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.purchases_by_product')}</h1>
-        <div data-print-hide className="flex flex-wrap items-center gap-2">
-          <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-          <ReportActions rows={exportRows} headers={exportHeaders} filename={`purchases-by-product-${from}_${to}`} disabled={rows.length === 0} />
-        </div>
-      </div>
-
-      {isFetching && rows.length === 0 && <p className="text-sm text-ink-secondary">{t('common.loading')}</p>}
-      {!isFetching && rows.length === 0 && <p className="text-sm text-ink-tertiary">{t('reports.no_data')}</p>}
-
-      {rows.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-border bg-surface-card shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-subtle">
-              <tr>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('products.sku')}</th>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('products.name')}</th>
-                <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.qty_purchased')}</th>
-                <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.total_cost')}</th>
-                <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.avg_unit_cost')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {rows.map(r => (
-                <tr key={r.product_id} className="hover:bg-surface-subtle/50">
-                  <td className="px-4 py-2 text-ink-secondary font-mono text-xs">{r.sku}</td>
-                  <td className="px-4 py-2 text-ink-primary font-medium">{r.product_name}</td>
-                  <td className="px-4 py-2 text-right text-ink-secondary">{r.qty_purchased}</td>
-                  <td className="px-4 py-2 text-right text-ink-primary font-medium">{fmt(r.total_cost)}</td>
-                  <td className="px-4 py-2 text-right text-ink-secondary">{fmt(r.avg_unit_cost)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+    <OceanReport
+      testid="purchases-by-product-ocean"
+      title={t('reports.purchases_by_product')}
+      subtitle={t('rptOcean.range', { from: ltr(from), to: ltr(to) })}
+      controls={<>
+        <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <ReportActions rows={xl.rows} headers={xl.headers} filename={`purchases-by-product-${from}_${to}`} disabled={rows.length === 0} />
+      </>}
+    >
+      <ReportCard
+        figures={rows.length > 0 ? [
+          { label: t('rptOcean.fig_products'), value: <Num>{rows.length}</Num> },
+          { label: t('reports.total_cost'), value: <Num>{fmt(totCost)}</Num>, tone: 'brand' },
+        ] : undefined}
+      >
+        {rows.length === 0
+          ? <ReportMessage>{isFetching ? t('common.loading') : t('reports.no_data')}</ReportMessage>
+          : <ReportTable columns={columns} rows={rows} rowKey={r => r.product_id} minWidth={620} />}
+      </ReportCard>
+    </OceanReport>
   );
 }

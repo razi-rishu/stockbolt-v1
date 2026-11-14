@@ -5,8 +5,7 @@ import { useAuthStore } from '@/store/auth';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
-
-const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+import { OceanReport, ReportCard, ReportMessage, ReportTable, exportFromColumns, money as fmt, Num, ltr, type ReportColumn } from '@/components/ocean-report';
 
 export default function GRNReconciliationPage() {
   const { t } = useTranslation();
@@ -19,74 +18,44 @@ export default function GRNReconciliationPage() {
     queryFn: () => getAdapter().reports.getGRNReconciliation(company_id!, asOf),
     enabled: !!company_id,
   });
+  const lines = data?.lines ?? [];
+  type Row = typeof lines[number];
 
-  const exportRows: Record<string, unknown>[] = (data?.lines ?? []).map(line => ({
-    GRN: line.grn_number,
-    Supplier: line.supplier_name,
-    Date: line.date,
-    'Total Cost': line.total_cost.toFixed(2),
-    Billed: line.billed_amount.toFixed(2),
-    Unbilled: line.unbilled_amount.toFixed(2),
-  }));
-  const exportHeaders = ['GRN', 'Supplier', 'Date', 'Total Cost', 'Billed', 'Unbilled'];
+  const columns: ReportColumn<Row>[] = [
+    { key: 'grn', header: t('purchasing.grn_number'), cell: l => <span className="code">{l.grn_number}</span>, exp: l => l.grn_number },
+    { key: 'supplier', header: t('purchasing.supplier'), cell: l => l.supplier_name, exp: l => l.supplier_name },
+    { key: 'date', header: t('purchasing.date'), cls: 'muted', cell: l => <Num>{l.date}</Num>, exp: l => l.date },
+    { key: 'cost', header: t('reports.total_cost'), num: true, cell: l => fmt(l.total_cost), exp: l => l.total_cost.toFixed(2) },
+    { key: 'billed', header: t('reports.billed'), num: true, cls: 'is-up', cell: l => fmt(l.billed_amount), exp: l => l.billed_amount.toFixed(2) },
+    { key: 'unbilled', header: t('reports.unbilled'), num: true, cls: l => (l.unbilled_amount > 0 ? 'is-warn strong' : 'muted'), cell: l => fmt(l.unbilled_amount), exp: l => l.unbilled_amount.toFixed(2) },
+  ];
+  const xl = exportFromColumns(columns, lines);
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.grn_reconciliation')}</h1>
-        <div data-print-hide className="flex flex-wrap items-center gap-2">
-          <PeriodPicker mode="asOf" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-          <ReportActions rows={exportRows} headers={exportHeaders} filename={`grn-reconciliation-${asOf}`} disabled={!data} />
-        </div>
-      </div>
-      <p className="text-sm text-ink-secondary">{t('reports.grn_reconciliation_desc')}</p>
-
-      {isFetching && !data && <div className="text-sm text-ink-tertiary">{t('common.loading')}</div>}
+    <OceanReport
+      testid="grn-reconciliation-ocean"
+      title={t('reports.grn_reconciliation')}
+      subtitle={t('rptOcean.as_of_date', { date: ltr(asOf) })}
+      controls={<>
+        <PeriodPicker mode="asOf" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <ReportActions rows={xl.rows} headers={xl.headers} filename={`grn-reconciliation-${asOf}`} disabled={!data} />
+      </>}
+    >
+      {isFetching && !data && <ReportCard><ReportMessage>{t('common.loading')}</ReportMessage></ReportCard>}
       {data && (
-        <>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="rounded-card border border-border-subtle bg-surface-card p-4">
-              <p className="text-xs text-ink-tertiary">{t('reports.total_accrual')}</p>
-              <p className="text-xl font-semibold text-ink-primary mt-1">{fmt(data.total_accrual)}</p>
-            </div>
-            <div className="rounded-card border border-border-subtle bg-surface-card p-4">
-              <p className="text-xs text-ink-tertiary">{t('reports.total_billed')}</p>
-              <p className="text-xl font-semibold text-green-600 mt-1">{fmt(data.total_billed)}</p>
-            </div>
-            <div className="rounded-card border border-border-subtle bg-surface-card p-4">
-              <p className="text-xs text-ink-tertiary">{t('reports.total_unbilled')}</p>
-              <p className="text-xl font-semibold text-orange-600 mt-1">{fmt(data.total_unbilled)}</p>
-            </div>
-          </div>
-
-          <div className="rounded-card border border-border-subtle bg-surface-card overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary text-xs">
-                  <th className="px-4 py-3 text-start font-medium">{t('purchasing.grn_number')}</th>
-                  <th className="px-4 py-3 text-start font-medium">{t('purchasing.supplier')}</th>
-                  <th className="px-4 py-3 text-start font-medium">{t('purchasing.date')}</th>
-                  <th className="px-4 py-3 text-end font-medium">{t('reports.total_cost')}</th>
-                  <th className="px-4 py-3 text-end font-medium">{t('reports.billed')}</th>
-                  <th className="px-4 py-3 text-end font-medium">{t('reports.unbilled')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.lines.map(line => (
-                  <tr key={line.grn_id} className="border-b border-border-subtle last:border-0">
-                    <td className="px-4 py-3 font-mono text-xs text-brand-700">{line.grn_number}</td>
-                    <td className="px-4 py-3 text-ink-primary">{line.supplier_name}</td>
-                    <td className="px-4 py-3 text-ink-secondary">{line.date}</td>
-                    <td className="px-4 py-3 text-end font-mono">{fmt(line.total_cost)}</td>
-                    <td className="px-4 py-3 text-end font-mono text-green-600">{fmt(line.billed_amount)}</td>
-                    <td className="px-4 py-3 text-end font-mono text-orange-600">{fmt(line.unbilled_amount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
+        <ReportCard
+          figures={[
+            { label: t('reports.total_accrual'), value: <Num>{fmt(data.total_accrual)}</Num> },
+            { label: t('reports.total_billed'), value: <Num>{fmt(data.total_billed)}</Num>, tone: 'good' },
+            { label: t('reports.total_unbilled'), value: <Num>{fmt(data.total_unbilled)}</Num>, tone: data.total_unbilled > 0 ? 'warn' : undefined },
+          ]}
+          hint={t('reports.grn_reconciliation_desc')}
+        >
+          {lines.length === 0
+            ? <ReportMessage>{t('reports.no_data')}</ReportMessage>
+            : <ReportTable columns={columns} rows={lines} rowKey={l => l.grn_id} minWidth={720} />}
+        </ReportCard>
       )}
-    </div>
+    </OceanReport>
   );
 }

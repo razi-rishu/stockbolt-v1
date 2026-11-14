@@ -4,9 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
 import { ReportActions } from '@/ui/report-actions';
+import { OceanReport, ReportCard, ReportMessage, ReportTable, exportFromColumns, money as fmt, Num, type ReportColumn } from '@/components/ocean-report';
 import type { OutstandingPOLine } from '@/data/adapter';
-
-function fmt(n: number) { return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
 
 export default function OutstandingPOsPage() {
   const { t } = useTranslation();
@@ -22,68 +21,35 @@ export default function OutstandingPOsPage() {
 
   const totPending = rows.reduce((s, r) => s + r.pending_value, 0);
 
-  const exportRows: Record<string, unknown>[] = rows.map(r => ({
-    PO: r.po_number,
-    Supplier: r.supplier_name,
-    Date: r.date,
-    'Expected Delivery': r.expected_delivery ?? '',
-    Total: r.total.toFixed(2),
-    Received: r.received_value.toFixed(2),
-    Pending: r.pending_value.toFixed(2),
-  }));
-  const exportHeaders = ['PO', 'Supplier', 'Date', 'Expected Delivery', 'Total', 'Received', 'Pending'];
+  const columns: ReportColumn<OutstandingPOLine>[] = [
+    { key: 'po', header: t('purchasing.po_number'), cell: r => <Link to={`/purchasing/orders/${r.po_id}`}>{r.po_number}</Link>, exp: r => r.po_number },
+    { key: 'supplier', header: t('contacts.supplier'), cell: r => r.supplier_name, exp: r => r.supplier_name },
+    { key: 'date', header: t('common.date'), cls: 'muted', cell: r => <Num>{r.date}</Num>, exp: r => r.date },
+    { key: 'expected', header: t('purchasing.expected_delivery'), cls: 'muted', cell: r => <Num>{r.expected_delivery ?? '—'}</Num>, exp: r => r.expected_delivery ?? '' },
+    { key: 'total', header: t('common.total'), num: true, cls: 'muted', cell: r => fmt(r.total), exp: r => r.total.toFixed(2) },
+    { key: 'received', header: t('reports.received'), num: true, cls: 'is-up', cell: r => fmt(r.received_value), exp: r => r.received_value.toFixed(2) },
+    { key: 'pending', header: t('reports.pending'), num: true, cls: 'is-warn strong', cell: r => fmt(r.pending_value), foot: fmt(totPending), exp: r => r.pending_value.toFixed(2) },
+  ];
+  const xl = exportFromColumns(columns, rows);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.outstanding_pos')}</h1>
-        <ReportActions rows={exportRows} headers={exportHeaders} filename="outstanding-pos" disabled={rows.length === 0} />
-      </div>
-
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
-        </div>
-      ) : rows.length === 0 ? (
-        <div className="py-20 text-center text-ink-secondary">{t('common.no_data')}</div>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-border bg-surface-card shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-subtle">
-              <tr>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('purchasing.po_number')}</th>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('contacts.supplier')}</th>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('common.date')}</th>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('purchasing.expected_delivery')}</th>
-                <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('common.total')}</th>
-                <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.received')}</th>
-                <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('reports.pending')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {rows.map(r => (
-                <tr key={r.po_id} className="hover:bg-surface-subtle/50">
-                  <td className="px-4 py-2">
-                    <Link to={`/purchasing/orders/${r.po_id}`} className="font-medium text-brand-600 hover:underline">{r.po_number}</Link>
-                  </td>
-                  <td className="px-4 py-2 text-ink-primary">{r.supplier_name}</td>
-                  <td className="px-4 py-2 text-ink-secondary">{r.date}</td>
-                  <td className="px-4 py-2 text-ink-secondary">{r.expected_delivery ?? '—'}</td>
-                  <td className="px-4 py-2 text-right text-ink-secondary">{fmt(r.total)}</td>
-                  <td className="px-4 py-2 text-right text-emerald-700">{fmt(r.received_value)}</td>
-                  <td className="px-4 py-2 text-right text-amber-700 font-medium">{fmt(r.pending_value)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot className="border-t-2 border-border bg-surface-subtle font-semibold">
-              <tr>
-                <td colSpan={6} className="px-4 py-2 text-ink-primary">{t('reports.total_pending')}</td>
-                <td className="px-4 py-2 text-right text-amber-700">{fmt(totPending)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
-    </div>
+    <OceanReport
+      testid="outstanding-pos-ocean"
+      title={t('reports.outstanding_pos')}
+      controls={<ReportActions rows={xl.rows} headers={xl.headers} filename="outstanding-pos" disabled={rows.length === 0} />}
+    >
+      <ReportCard
+        figures={rows.length > 0 ? [
+          { label: t('rptOcean.fig_open_orders'), value: <Num>{rows.length}</Num> },
+          { label: t('reports.total_pending'), value: <Num>{fmt(totPending)}</Num>, tone: 'warn' },
+        ] : undefined}
+      >
+        {loading
+          ? <ReportMessage>{t('common.loading')}</ReportMessage>
+          : rows.length === 0
+            ? <ReportMessage>{t('common.no_data')}</ReportMessage>
+            : <ReportTable columns={columns} rows={rows} rowKey={r => r.po_id} footLabel={t('reports.total_pending')} minWidth={820} />}
+      </ReportCard>
+    </OceanReport>
   );
 }
