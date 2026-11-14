@@ -18,6 +18,7 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { PERIOD_PRESETS, type PeriodPreset } from '@/hooks/use-period-picker';
 
 interface PeriodPickerProps {
@@ -32,11 +33,13 @@ interface PeriodPickerProps {
   allowAllTime?: boolean;
 }
 
-const LABELS: Record<PeriodPreset, string> = {
-  ...Object.fromEntries(PERIOD_PRESETS.map((p) => [p.key, p.label])),
-  all_time: 'All time',
-  custom: 'Custom',
-} as Record<PeriodPreset, string>;
+// Translated at render time (rptOcean.p_*); the English labels in
+// PERIOD_PRESETS stay as the fallback.
+function presetLabel(t: (k: string, o?: Record<string, unknown>) => string, key: PeriodPreset): string {
+  const fallback = PERIOD_PRESETS.find((p) => p.key === key)?.label
+    ?? (key === 'all_time' ? 'All time' : 'Custom');
+  return t(`rptOcean.p_${key}`, { defaultValue: fallback });
+}
 
 // Sized to the longest option ('Custom range\u2026'), not to a round number.
 // 224px left most of the menu empty beside 'Today'.
@@ -68,8 +71,12 @@ export function PeriodPicker({
   onCustomRange,
   allowAllTime,
 }: PeriodPickerProps) {
+  const { t } = useTranslation();
   const isCustom = preset === 'custom';
   const [open, setOpen] = useState(false);
+  // Inside an Ocean page the portal menu takes the Ocean look too (it renders
+  // under <body>, outside the page's .sb-ocean scope).
+  const [inOcean, setInOcean] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -98,7 +105,11 @@ export function PeriodPicker({
     setPos({ top, left });
   };
 
-  useLayoutEffect(() => { if (open) place(); }, [open]);
+  useLayoutEffect(() => {
+    if (!open) return;
+    setInOcean(!!triggerRef.current?.closest('.sb-ocean'));
+    place();
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -131,8 +142,8 @@ export function PeriodPicker({
 
   // Trigger label: preset name, or the resolved dates when in custom mode.
   const triggerLabel = isCustom
-    ? (mode === 'range' ? `${from} → ${to}` : `As of ${to}`)
-    : (LABELS[preset] ?? 'Select period');
+    ? (mode === 'range' ? `${from} → ${to}` : t('rptOcean.as_of_date', { date: `\u2066${to}\u2069` }))
+    : presetLabel(t, preset);
 
   return (
     <>
@@ -142,8 +153,8 @@ export function PeriodPicker({
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        title="Change reporting period"
-        className="inline-flex h-7 max-w-[220px] items-center gap-1 rounded-md border border-border-subtle bg-white px-2.5 text-xs font-medium text-ink-secondary hover:border-border-strong hover:text-ink-primary"
+        title={t('rptOcean.change_period')}
+        className="sb-period-trigger inline-flex h-7 max-w-[220px] items-center gap-1 rounded-md border border-border-subtle bg-white px-2.5 text-xs font-medium text-ink-secondary hover:border-border-strong hover:text-ink-primary"
       >
         {/* The calendar glyph was decoration: the label already says the
             period, and every one of these sits in a filter bar. */}
@@ -158,7 +169,7 @@ export function PeriodPicker({
           ref={menuRef}
           role="listbox"
           style={{ position: 'fixed', top: pos.top, left: pos.left, width: MENU_W, zIndex: 1000 }}
-          className="rounded-lg border border-border-subtle bg-white py-1 shadow-md"
+          className={`rounded-lg border border-border-subtle bg-white py-1 shadow-md ${inOcean ? 'sb-ocean sb-period-menu' : ''}`}
         >
           {/* All time is a preset like any other, so it is spaced like one.
               The divider that used to follow it made the menu read as three
@@ -172,7 +183,7 @@ export function PeriodPicker({
               onClick={() => choose('all_time')}
               className={row(preset === 'all_time')}
             >
-              All time
+              {presetLabel(t, 'all_time')}
             </button>
           )}
           {PERIOD_PRESETS.map((p) => (
@@ -184,7 +195,7 @@ export function PeriodPicker({
               onClick={() => choose(p.key)}
               className={row(preset === p.key)}
             >
-              {p.label}
+              {presetLabel(t, p.key)}
             </button>
           ))}
 
@@ -199,29 +210,29 @@ export function PeriodPicker({
             onClick={() => onPresetChange('custom')}
             className={row(isCustom)}
           >
-            Custom range…
+            {t('rptOcean.custom_range')}
           </button>
 
           {isCustom && (
             <div className="flex flex-col gap-1.5 border-t border-border-subtle px-2.5 pb-2 pt-1.5">
               {mode === 'range' && (
                 <label className="flex flex-col gap-1">
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-tertiary">From</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-tertiary">{t('rptOcean.from')}</span>
                   <input type="date" value={draftFrom} onChange={(e) => setDraftFrom(e.target.value)} className={dateField} />
                 </label>
               )}
               <label className="flex flex-col gap-1">
                 <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-tertiary">
-                  {mode === 'range' ? 'To' : 'As of'}
+                  {mode === 'range' ? t('rptOcean.to') : t('rptOcean.as_of')}
                 </span>
                 <input type="date" value={draftTo} onChange={(e) => setDraftTo(e.target.value)} className={dateField} />
               </label>
               <button
                 type="button"
                 onClick={applyCustom}
-                className="h-8 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700"
+                className="sb-period-apply h-8 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700"
               >
-                Apply
+                {t('rptOcean.apply')}
               </button>
             </div>
           )}

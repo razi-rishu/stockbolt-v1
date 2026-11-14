@@ -8,6 +8,7 @@
  * Phase 12.24.
  */
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import type { ControlAccountContactLine } from '@/data/adapter';
 
@@ -47,6 +48,7 @@ export function ControlAccountDrillDown({
   colSpan: number;
   labelColSpan?: number;
 }) {
+  const { t } = useTranslation();
   const { data, isFetching } = useQuery<ControlAccountContactLine[]>({
     queryKey: ['control_account_breakdown', companyId, accountCode, asOfDate],
     queryFn: () => getAdapter().reports.getControlAccountByContact(companyId, accountCode, asOfDate),
@@ -54,9 +56,9 @@ export function ControlAccountDrillDown({
 
   if (isFetching) {
     return (
-      <tr className="bg-surface-muted/30">
-        <td colSpan={colSpan} className="px-10 py-3 text-xs text-ink-tertiary">
-          Loading per-contact breakdown…
+      <tr className="sb-rpt-drill bg-surface-muted/30">
+        <td colSpan={colSpan} className="indent px-10 py-3 text-xs text-ink-tertiary">
+          {t('rptOcean.drill_loading')}
         </td>
       </tr>
     );
@@ -64,9 +66,9 @@ export function ControlAccountDrillDown({
 
   if (!data || data.length === 0) {
     return (
-      <tr className="bg-surface-muted/30">
-        <td colSpan={colSpan} className="px-10 py-3 text-xs text-ink-tertiary">
-          No per-contact rows for this account.
+      <tr className="sb-rpt-drill bg-surface-muted/30">
+        <td colSpan={colSpan} className="indent px-10 py-3 text-xs text-ink-tertiary">
+          {t('rptOcean.drill_none')}
         </td>
       </tr>
     );
@@ -74,21 +76,24 @@ export function ControlAccountDrillDown({
 
   return (
     <>
-      <tr className="bg-surface-muted/30">
-        <td colSpan={colSpan} className="px-10 pt-2 pb-1 text-[10px] uppercase tracking-wide text-ink-tertiary">
-          Breakdown by contact ({data.length})
+      <tr className="sb-rpt-drill sb-rpt-drill-head bg-surface-muted/30">
+        <td colSpan={colSpan} className="indent px-10 pt-2 pb-1 text-[10px] uppercase tracking-wide text-ink-tertiary">
+          {t('rptOcean.drill_head', { count: data.length })}
         </td>
       </tr>
       {data.map((line) => (
-        <tr key={`drill-${accountCode}-${line.contact_id ?? 'none'}`} className="bg-surface-muted/30">
-          <td className="pl-10 pr-4 py-1.5 text-xs text-ink-tertiary">↳</td>
-          <td colSpan={labelColSpan} className="px-4 py-1.5 text-sm text-ink-secondary">
-            {line.contact_name}
+        <tr key={`drill-${accountCode}-${line.contact_id ?? 'none'}`} className="sb-rpt-drill bg-surface-muted/30">
+          <td className="indent pl-10 pr-4 py-1.5 text-xs text-ink-tertiary">↳</td>
+          {/* Label takes one cell; the rest are fillers that a report can hide on
+              narrow screens together with the column above them (hide-sm). */}
+          <td className="px-4 py-1.5 text-sm text-ink-secondary">
+            {line.contact_id ? line.contact_name : t('rptOcean.drill_no_contact', { defaultValue: line.contact_name })}
           </td>
-          <td className="px-4 py-1.5 text-end font-mono text-xs text-ink-secondary">
+          {Array.from({ length: Math.max(0, labelColSpan - 1) }, (_, i) => <td key={i} className="hide-sm" />)}
+          <td className="num px-4 py-1.5 text-end font-mono text-xs text-ink-secondary">
             {line.debit > 0.005 ? fmt(line.debit) : ''}
           </td>
-          <td className="px-4 py-1.5 text-end font-mono text-xs text-ink-secondary">
+          <td className="num px-4 py-1.5 text-end font-mono text-xs text-ink-secondary">
             {line.credit > 0.005 ? fmt(line.credit) : ''}
           </td>
         </tr>

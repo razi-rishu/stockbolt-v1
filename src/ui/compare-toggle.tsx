@@ -6,6 +6,7 @@
  * via useComparativePeriods. Hidden in print (data-print-hide) like the rest of
  * the report action bar.
  */
+import { useTranslation } from 'react-i18next';
 import type { CompareBasis } from '@/lib/comparative';
 
 const selectCls =
@@ -19,8 +20,9 @@ export function CompareToggle({
   onToggle: (on: boolean) => void;
   onBasis: (basis: CompareBasis) => void;
 }) {
+  const { t } = useTranslation();
   return (
-    <div data-print-hide className="inline-flex items-center gap-2">
+    <div data-print-hide className="sb-cmp inline-flex items-center gap-2">
       <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-ink-secondary">
         <input
           type="checkbox"
@@ -28,17 +30,17 @@ export function CompareToggle({
           onChange={(e) => onToggle(e.target.checked)}
           className="h-3.5 w-3.5 accent-brand-600"
         />
-        Compare
+        {t('rptOcean.compare')}
       </label>
       {on && (
         <select
           value={basis}
           onChange={(e) => onBasis(e.target.value as CompareBasis)}
           className={selectCls}
-          title="What to compare the current period against"
+          title={t('rptOcean.compare_title')}
         >
-          <option value="previous_period">vs Previous period</option>
-          <option value="previous_year">vs Same period last year</option>
+          <option value="previous_period">{t('rptOcean.vs_prev_period')}</option>
+          <option value="previous_year">{t('rptOcean.vs_prev_year')}</option>
         </select>
       )}
     </div>

@@ -1,11 +1,10 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { AlertTriangle, ChevronRight } from 'lucide-react';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
@@ -13,6 +12,7 @@ import { useComparativePeriods } from '@/hooks/use-comparative-periods';
 import { CompareToggle } from '@/ui/compare-toggle';
 import { mergeComparativeTrialBalance } from '@/lib/comparative';
 import type { TrialBalance, TrialBalanceLine, Company } from '@/data/adapter';
+import { OceanReport, ReportCard, ReportTableWrap, ReportMessage, Num, ltr } from '@/components/ocean-report';
 import { ControlAccountDrillDown, CONTROL_ACCOUNTS } from './_shared/control-account-drilldown';
 
 function fmtVar(n: number): string {
@@ -47,7 +47,7 @@ export default function TrialBalancePage() {
   const cmp = useComparativePeriods({
     storageKey: 'stockbolt.report.trial-balance.compare',
     preset, current: { from, to },
-    fiscalYearStart: (company as any)?.fiscal_year_start ?? null,
+    fiscalYearStart: company?.fiscal_year_start ?? null,
   });
 
   function toggleExpand(code: string) {
@@ -88,15 +88,24 @@ export default function TrialBalancePage() {
   const types = TYPE_ORDER.filter((t2) => grouped[t2]?.length > 0);
 
   const isBalanced = data ? Math.abs(data.total_debit - data.total_credit) <= 0.01 : true;
+  const typeLabel = (type: string) => t(`rptOcean.type_${type}`, { defaultValue: type });
 
+  // Excel columns follow the screen language.
+  const H = {
+    code: t('rptOcean.col_code'), account: t('rptOcean.col_account'), type: t('rptOcean.col_type'),
+    debit: t('rptOcean.col_debit'), credit: t('rptOcean.col_credit'),
+    curDr: t('rptOcean.col_current_dr'), curCr: t('rptOcean.col_current_cr'),
+    prevDr: t('rptOcean.col_previous_dr'), prevCr: t('rptOcean.col_previous_cr'),
+    diff: t('rptOcean.col_difference'),
+  };
   const exportRows: Record<string, unknown>[] = (data?.lines ?? []).map(l => ({
-    Code: l.account_code,
-    Account: l.account_name,
-    Type: l.account_type,
-    Debit: (l.debit ?? 0).toFixed(2),
-    Credit: (l.credit ?? 0).toFixed(2),
+    [H.code]: l.account_code,
+    [H.account]: l.account_name,
+    [H.type]: typeLabel(l.account_type),
+    [H.debit]: (l.debit ?? 0).toFixed(2),
+    [H.credit]: (l.credit ?? 0).toFixed(2),
   }));
-  const exportHeaders = ['Code', 'Account', 'Type', 'Debit', 'Credit'];
+  const exportHeaders = [H.code, H.account, H.type, H.debit, H.credit];
 
   // Comparative export overrides the single-period rows while compare is on.
   let finalRows = exportRows;
@@ -104,169 +113,126 @@ export default function TrialBalancePage() {
   let exportName = `trial-balance-${asOf}`;
   if (comparative) {
     finalRows = comparative.lines.map((l) => ({
-      Code: l.account_code, Account: l.account_name, Type: l.account_type,
-      'Current Dr': l.current_debit.toFixed(2), 'Current Cr': l.current_credit.toFixed(2),
-      'Previous Dr': l.previous_debit.toFixed(2), 'Previous Cr': l.previous_credit.toFixed(2),
-      Difference: l.difference.toFixed(2),
+      [H.code]: l.account_code, [H.account]: l.account_name, [H.type]: typeLabel(l.account_type),
+      [H.curDr]: l.current_debit.toFixed(2), [H.curCr]: l.current_credit.toFixed(2),
+      [H.prevDr]: l.previous_debit.toFixed(2), [H.prevCr]: l.previous_credit.toFixed(2),
+      [H.diff]: l.difference.toFixed(2),
     }));
-    finalHeaders = ['Code', 'Account', 'Type', 'Current Dr', 'Current Cr', 'Previous Dr', 'Previous Cr', 'Difference'];
+    finalHeaders = [H.code, H.account, H.type, H.curDr, H.curCr, H.prevDr, H.prevCr, H.diff];
     exportName = `trial-balance-comparative-${asOf}`;
   }
 
+  const subtitle = cmp.compareOn
+    ? t('rptOcean.as_of_vs', { date: ltr(asOf), prev: ltr(cmp.asOf.previous) })
+    : (data ? t('rptOcean.as_of_date', { date: ltr(data.as_of_date) }) : undefined);
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        title={t('reports.trial_balance')}
-        subtitle={cmp.compareOn ? `As of ${asOf}  ·  vs  ${cmp.asOf.previous}` : (data ? `As of ${data.as_of_date}` : '')}
-        actions={
-          <div data-print-hide style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <PeriodPicker
-              mode="asOf" preset={preset} from={from} to={to}
-              onPresetChange={(p) => { setPreset(p); setExpandedCodes(new Set()); }}
-              onCustomRange={(f, tt) => { setCustomRange(f, tt); setExpandedCodes(new Set()); }}
-            />
-            <CompareToggle on={cmp.compareOn} basis={cmp.basis} onToggle={cmp.setCompareOn} onBasis={cmp.setBasis} />
-            <ReportActions rows={finalRows} headers={finalHeaders} filename={exportName} disabled={cmp.compareOn ? !comparative : !data} />
-          </div>
-        }
-      />
-
-      {isFetching && <p style={{ fontSize: '13px', color: theme.inkMuted, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>}
-
-      {cmp.compareOn && data && !comparative && !isFetching && (
-        <p style={{ fontSize: '13px', color: theme.inkMuted, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>
+    <OceanReport
+      testid="trial-balance-ocean"
+      title={t('reports.trial_balance')}
+      subtitle={subtitle}
+      controls={<>
+        <PeriodPicker
+          mode="asOf" preset={preset} from={from} to={to}
+          onPresetChange={(p) => { setPreset(p); setExpandedCodes(new Set()); }}
+          onCustomRange={(f, tt) => { setCustomRange(f, tt); setExpandedCodes(new Set()); }}
+        />
+        <CompareToggle on={cmp.compareOn} basis={cmp.basis} onToggle={cmp.setCompareOn} onBasis={cmp.setBasis} />
+        <ReportActions rows={finalRows} headers={finalHeaders} filename={exportName} disabled={cmp.compareOn ? !comparative : !data} />
+      </>}
+    >
+      {(isFetching || (cmp.compareOn && data && !comparative)) && (
+        <ReportCard><ReportMessage>{t('common.loading')}</ReportMessage></ReportCard>
       )}
 
       {!cmp.compareOn && data && !isFetching && (
-        <div style={{
-          background: theme.card,
-          border: `1px solid ${theme.border}`,
-          borderRadius: '12px',
-          boxShadow: theme.shadowSm,
-          overflow: 'hidden',
-        }}>
-          <div style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}`, padding: '12px 16px' }}>
-            <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>{t('reports.trial_balance')}</p>
-            <p style={{ margin: '2px 0 0', fontSize: '12px', color: theme.inkMuted }}>{t('reports.as_of')} {data.as_of_date}</p>
-            <p style={{ margin: '6px 0 0', fontSize: '11px', color: theme.inkFaint }}>
-              Tip: click a control account row (1200, 2100, 2400, …) to see the per-contact breakdown.
-              Click the account code to drill into the General Ledger.
-            </p>
-          </div>
-
+        <ReportCard
+          figures={data.lines.length > 0 ? [
+            { label: t('rptOcean.total_debit'), value: <Num>{fmt(data.total_debit)}</Num> },
+            { label: t('rptOcean.total_credit'), value: <Num>{fmt(data.total_credit)}</Num> },
+            {
+              label: t('rptOcean.difference'),
+              value: <Num>{fmt(Math.abs(data.total_debit - data.total_credit))}</Num>,
+              note: isBalanced ? t('rptOcean.balanced') : t('rptOcean.not_balanced'),
+              tone: isBalanced ? 'good' : 'bad',
+            },
+            { label: t('rptOcean.accounts'), value: <Num>{data.lines.length}</Num> },
+          ] : undefined}
+          hint={data.lines.length > 0 ? t('rptOcean.tb_hint') : undefined}
+        >
           {data.lines.length === 0 ? (
-            <p style={{ padding: '24px 16px', fontSize: '13px', color: theme.inkFaint }}>{t('reports.tb_empty')}</p>
+            <ReportMessage>{t('reports.tb_empty')}</ReportMessage>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
-                  {[
-                    { l: t('accounting.code'),         a: 'start' as const },
-                    { l: t('accounting.account_name'), a: 'start' as const },
-                    { l: t('accounting.type'),         a: 'start' as const },
-                    { l: t('accounting.debit'),        a: 'end'   as const },
-                    { l: t('accounting.credit'),       a: 'end'   as const },
-                  ].map(c => (
-                    <th
-                      key={c.l}
-                      className="px-4 py-3"
-                      style={{
-                        fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
-                        textTransform: 'uppercase', letterSpacing: '.06em',
-                        textAlign: c.a, whiteSpace: 'nowrap',
-                      }}
-                    >{c.l}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {types.map((type) => (
-                  <>
-                    <tr key={`hdr-${type}`}>
-                      <td
-                        colSpan={5}
-                        className="px-4 py-2"
-                        style={{
-                          background: '#f1f5f9',
-                          fontSize: '11px', fontWeight: 700,
-                          color: theme.inkMuted,
-                          textTransform: 'uppercase', letterSpacing: '.08em',
-                        }}
-                      >
-                        {t(`accounting.type_${type}`)}
-                      </td>
-                    </tr>
-                    {grouped[type].map((line) => {
-                      const isControl = CONTROL_ACCOUNTS.has(line.account_code);
-                      const isExpanded = expandedCodes.has(line.account_code);
-                      return (
-                        <>
-                          <tr
-                            key={line.account_code}
-                            onClick={() => isControl ? toggleExpand(line.account_code) : openLedgerForAccount(line.account_code)}
-                            className="cursor-pointer"
-                            style={{
-                              borderTop: '1px solid #f1f5f9',
-                              background: isExpanded ? theme.panelHead : undefined,
-                              transition: 'background-color .12s',
-                            }}
-                            title={isControl ? 'Click to expand per-contact breakdown · click the code to open General Ledger' : 'Open this account in General Ledger'}
-                            onMouseEnter={(e) => { if (!isExpanded) (e.currentTarget as HTMLElement).style.background = theme.panelHead; }}
-                            onMouseLeave={(e) => { if (!isExpanded) (e.currentTarget as HTMLElement).style.background = ''; }}
-                          >
-                            <td
-                              className="px-4 py-2.5 font-mono cursor-pointer"
-                              style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}
-                              onClick={(e) => { e.stopPropagation(); openLedgerForAccount(line.account_code); }}
-                            >
-                              {isControl && (
-                                <span style={{ display: 'inline-block', width: '12px', color: theme.inkFaint, marginInlineEnd: '4px' }}>
-                                  {isExpanded ? '▾' : '▸'}
-                                </span>
-                              )}
-                              {line.account_code}
-                            </td>
-                            <td className="px-4 py-2.5" style={{ color: theme.ink, fontSize: '13px' }}>{line.account_name}</td>
-                            <td className="px-4 py-2.5" style={{ color: theme.inkMuted, fontSize: '13px', textTransform: 'capitalize' }}>{line.account_type}</td>
-                            <td className="px-4 py-2.5 font-mono" style={{ textAlign: 'end', color: theme.ink }}>{line.debit > 0 ? fmt(line.debit) : ''}</td>
-                            <td className="px-4 py-2.5 font-mono" style={{ textAlign: 'end', color: theme.ink }}>{line.credit > 0 ? fmt(line.credit) : ''}</td>
-                          </tr>
-                          {isControl && isExpanded && company_id && (
-                            <ControlAccountDrillDown
-                              companyId={company_id}
-                              accountCode={line.account_code}
-                              asOfDate={asOf}
-                              colSpan={5}
-                              labelColSpan={2}
-                            />
-                          )}
-                        </>
-                      );
-                    })}
-                  </>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{
-                  borderTop: `2px solid ${isBalanced ? '#bbf7d0' : '#fecaca'}`,
-                  background: isBalanced ? '#f0fdf4' : '#fef2f2',
-                  fontWeight: 700,
-                }}>
-                  <td colSpan={3} className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px' }}>{t('accounting.total')}</td>
-                  <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: isBalanced ? '#15803d' : '#dc2626' }}>{fmt(data.total_debit)}</td>
-                  <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: isBalanced ? '#15803d' : '#dc2626' }}>{fmt(data.total_credit)}</td>
-                </tr>
-                {!isBalanced && (
+            <ReportTableWrap>
+              <table className="sb-rpt-table">
+                <thead>
                   <tr>
-                    <td colSpan={5} className="px-4 py-2" style={{ fontSize: '11px', color: '#dc2626' }}>
-                      ⚠ {t('reports.tb_unbalanced')}
-                    </td>
+                    <th>{t('rptOcean.col_code')}</th>
+                    <th>{t('rptOcean.col_account')}</th>
+                    <th className="hide-sm">{t('rptOcean.col_type')}</th>
+                    <th className="num">{t('rptOcean.col_debit')}</th>
+                    <th className="num">{t('rptOcean.col_credit')}</th>
                   </tr>
-                )}
-              </tfoot>
-            </table>
+                </thead>
+                <tbody>
+                  {types.map((type) => (
+                    <Fragment key={type}>
+                      <tr className="sb-rpt-section"><td colSpan={5}>{typeLabel(type)}</td></tr>
+                      {grouped[type].map((line) => {
+                        const isControl = CONTROL_ACCOUNTS.has(line.account_code);
+                        const isExpanded = expandedCodes.has(line.account_code);
+                        return (
+                          <Fragment key={line.account_code}>
+                            <tr
+                              onClick={() => isControl ? toggleExpand(line.account_code) : openLedgerForAccount(line.account_code)}
+                              className={`is-click ${isExpanded ? 'is-open' : ''}`}
+                              title={isControl ? t('rptOcean.tb_row_expand') : t('rptOcean.tb_row_open')}
+                            >
+                              <td>
+                                <button
+                                  type="button" className="code"
+                                  onClick={(e) => { e.stopPropagation(); openLedgerForAccount(line.account_code); }}
+                                  title={t('rptOcean.tb_row_open')}
+                                >
+                                  {isControl && <span className="chev"><ChevronRight size={13} aria-hidden="true" /></span>}
+                                  {line.account_code}
+                                </button>
+                              </td>
+                              <td>{line.account_name}</td>
+                              <td className="muted hide-sm">{typeLabel(line.account_type)}</td>
+                              <td className="num"><Num>{line.debit > 0 ? fmt(line.debit) : ''}</Num></td>
+                              <td className="num"><Num>{line.credit > 0 ? fmt(line.credit) : ''}</Num></td>
+                            </tr>
+                            {isControl && isExpanded && company_id && (
+                              <ControlAccountDrillDown
+                                companyId={company_id}
+                                accountCode={line.account_code}
+                                asOfDate={asOf}
+                                colSpan={5}
+                                labelColSpan={2}
+                              />
+                            )}
+                          </Fragment>
+                        );
+                      })}
+                    </Fragment>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className={`sb-rpt-total ${isBalanced ? '' : 'is-bad'}`}>
+                    <td colSpan={2}>{t('rptOcean.total')}</td>
+                    <td className="hide-sm" />
+                    <td className="num"><Num>{fmt(data.total_debit)}</Num></td>
+                    <td className="num"><Num>{fmt(data.total_credit)}</Num></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </ReportTableWrap>
           )}
-        </div>
+          {data.lines.length > 0 && !isBalanced && (
+            <p className="sb-rpt-warn"><AlertTriangle size={15} aria-hidden="true" /> {t('reports.tb_unbalanced')}</p>
+          )}
+        </ReportCard>
       )}
 
       {comparative && (() => {
@@ -276,60 +242,58 @@ export default function TrialBalancePage() {
         const types = TYPE_ORDER.filter((t2) => grouped[t2]?.length > 0);
         const curBal = Math.abs(c.total_debit.current - c.total_credit.current) <= 0.01;
         const prevBal = Math.abs(c.total_debit.previous - c.total_credit.previous) <= 0.01;
-        const th = (label: string, align: 'start' | 'end') => (
-          <th key={label} className="px-4 py-3" style={{ fontSize: '11px', fontWeight: 600, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.06em', textAlign: align, whiteSpace: 'nowrap' }}>{label}</th>
-        );
         const num = (n: number, muted?: boolean) => (
-          <td className="px-4 py-2.5 font-mono" style={{ textAlign: 'end', color: muted ? theme.inkMuted : theme.ink, fontSize: '13px' }}>{n > 0 ? fmt(n) : ''}</td>
+          <td className={`num ${muted ? 'muted' : ''}`}><Num>{n > 0 ? fmt(n) : ''}</Num></td>
         );
         return (
-          <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm, overflow: 'hidden' }}>
-            <div style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}`, padding: '12px 16px' }}>
-              <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>{t('reports.trial_balance')} — comparative</p>
-              <p style={{ margin: '2px 0 0', fontSize: '12px', color: theme.inkMuted }}>As of {asOf}  ·  vs  {cmp.asOf.previous}</p>
-            </div>
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
-                  {th('Code', 'start')}{th('Account', 'start')}{th('Type', 'start')}
-                  {th('Current Dr', 'end')}{th('Current Cr', 'end')}{th('Previous Dr', 'end')}{th('Previous Cr', 'end')}{th('Difference', 'end')}
-                </tr>
-              </thead>
-              <tbody>
-                {types.flatMap((type) => [
-                  <tr key={`h-${type}`}>
-                    <td colSpan={8} className="px-4 py-2" style={{ background: '#f1f5f9', fontSize: '11px', fontWeight: 700, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.08em' }}>
-                      {t(`accounting.type_${type}`)}
-                    </td>
-                  </tr>,
-                  ...grouped[type].map((l) => (
-                    <tr key={l.account_code} style={{ borderTop: '1px solid #f1f5f9' }}>
-                      <td className="px-4 py-2.5 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>{l.account_code}</td>
-                      <td className="px-4 py-2.5" style={{ color: theme.ink, fontSize: '13px' }}>{l.account_name}</td>
-                      <td className="px-4 py-2.5" style={{ color: theme.inkMuted, fontSize: '13px', textTransform: 'capitalize' }}>{l.account_type}</td>
-                      {num(l.current_debit)}{num(l.current_credit)}
-                      {num(l.previous_debit, true)}{num(l.previous_credit, true)}
-                      <td className="px-4 py-2.5 font-mono" style={{ textAlign: 'end', fontSize: '13px', color: Math.abs(l.difference) < 0.005 ? theme.inkFaint : (l.difference < 0 ? '#dc2626' : '#15803d') }}>
-                        {Math.abs(l.difference) < 0.005 ? '—' : fmtVar(l.difference)}
-                      </td>
-                    </tr>
-                  )),
-                ])}
-              </tbody>
-              <tfoot>
-                <tr style={{ borderTop: `2px solid ${theme.border}`, background: theme.panelHead, fontWeight: 700 }}>
-                  <td colSpan={3} className="px-4 py-3" style={{ color: theme.ink, fontSize: '13px' }}>{t('accounting.total')}</td>
-                  <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: curBal ? '#15803d' : '#dc2626' }}>{fmt(c.total_debit.current)}</td>
-                  <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: curBal ? '#15803d' : '#dc2626' }}>{fmt(c.total_credit.current)}</td>
-                  <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: prevBal ? '#15803d' : '#dc2626' }}>{fmt(c.total_debit.previous)}</td>
-                  <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: prevBal ? '#15803d' : '#dc2626' }}>{fmt(c.total_credit.previous)}</td>
-                  <td className="px-4 py-3" />
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+          <ReportCard
+            title={t('rptOcean.tb_comparative')}
+            meta={t('rptOcean.as_of_vs', { date: ltr(asOf), prev: ltr(cmp.asOf.previous) })}
+          >
+            <ReportTableWrap>
+              <table className="sb-rpt-table" style={{ minWidth: 860 }}>
+                <thead>
+                  <tr>
+                    <th>{H.code}</th><th>{H.account}</th><th>{H.type}</th>
+                    <th className="num">{H.curDr}</th><th className="num">{H.curCr}</th>
+                    <th className="num">{H.prevDr}</th><th className="num">{H.prevCr}</th>
+                    <th className="num">{H.diff}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {types.map((type) => (
+                    <Fragment key={type}>
+                      <tr className="sb-rpt-section"><td colSpan={8}>{typeLabel(type)}</td></tr>
+                      {grouped[type].map((l) => (
+                        <tr key={l.account_code}>
+                          <td><span className="code">{l.account_code}</span></td>
+                          <td>{l.account_name}</td>
+                          <td className="muted">{typeLabel(l.account_type)}</td>
+                          {num(l.current_debit)}{num(l.current_credit)}
+                          {num(l.previous_debit, true)}{num(l.previous_credit, true)}
+                          <td className={`num ${Math.abs(l.difference) < 0.005 ? 'muted' : (l.difference < 0 ? 'is-down' : 'is-up')}`}>
+                            <Num>{Math.abs(l.difference) < 0.005 ? '—' : fmtVar(l.difference)}</Num>
+                          </td>
+                        </tr>
+                      ))}
+                    </Fragment>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className={`sb-rpt-total ${curBal && prevBal ? '' : 'is-bad'}`}>
+                    <td colSpan={3}>{t('rptOcean.total')}</td>
+                    <td className="num"><Num>{fmt(c.total_debit.current)}</Num></td>
+                    <td className="num"><Num>{fmt(c.total_credit.current)}</Num></td>
+                    <td className="num"><Num>{fmt(c.total_debit.previous)}</Num></td>
+                    <td className="num"><Num>{fmt(c.total_credit.previous)}</Num></td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            </ReportTableWrap>
+          </ReportCard>
         );
       })()}
-    </div>
+    </OceanReport>
   );
 }

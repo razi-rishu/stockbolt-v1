@@ -8,6 +8,7 @@
  * link, preserving the audit trail (req 12).
  */
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth';
 import { hasPerm } from '@/lib/permissions';
 import { normalizeDocType, DOC_REGISTRY } from '@/lib/doc-links';
@@ -22,16 +23,17 @@ export interface DocLinkProps {
 }
 
 export function DocLink({ type, id, label, status = 'active', className }: DocLinkProps) {
+  const { t } = useTranslation();
   const role = useAuthStore((s) => s.role);
   const perms = useAuthStore((s) => s.permissions);
 
   const canon = normalizeDocType(type);
   const meta = canon ? DOC_REGISTRY[canon] : null;
-  const text = label ?? meta?.label ?? '—';
+  const text = label ?? (canon && meta ? t(`rptOcean.doc_${canon}`, { defaultValue: meta.label }) : '—');
 
   const badge = status !== 'active' ? (
     <span className="ms-1 rounded bg-surface-muted px-1 py-0.5 text-[10px] font-semibold text-ink-tertiary align-middle">
-      {status}
+      {t(`rptOcean.status_${status}`, { defaultValue: status })}
     </span>
   ) : null;
 
