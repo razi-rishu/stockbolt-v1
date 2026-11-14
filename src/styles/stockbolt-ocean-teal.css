@@ -1894,3 +1894,30 @@
   .sb-ocean .sb-rpt-table tr.sb-rpt-drill td.indent { padding-inline-start: 18px; }
   .sb-ocean .sb-rpt-table .hide-sm { display: none; }
 }
+
+/* Reports step 2 — statements (P&L, balance sheet, cash flow, VAT) */
+.sb-ocean .sb-rpt-stmt td:first-child { width: auto; }
+.sb-ocean .sb-rpt-table tr.sb-rpt-section.is-toggle { cursor: pointer; user-select: none; }
+.sb-ocean .sb-rpt-table tr.sb-rpt-section.is-toggle:hover td { background: var(--sb-primary-light); }
+.sb-ocean .sb-rpt-section-in { display: flex; align-items: center; gap: 6px; }
+.sb-ocean .sb-rpt-section-in .chev { color: var(--sb-primary-dark); }
+.sb-ocean .sb-rpt-table tr.sb-rpt-section.is-open .chev { transform: rotate(90deg); }
+.sb-ocean .sb-rpt-section-val { margin-inline-start: auto; font-size: 13px; letter-spacing: 0; color: var(--sb-text); font-variant-numeric: tabular-nums; }
+.sb-ocean .sb-rpt-acct { display: inline-flex; align-items: baseline; gap: 8px; min-width: 0; }
+.sb-ocean .sb-rpt-acct .chev { align-self: center; }
+.sb-ocean .sb-rpt-table tr.sb-rpt-subtotal td { background: var(--sb-background); font-weight: 700; }
+.sb-ocean .sb-rpt-table tr.sb-rpt-banner td { padding-block: 10px; font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+[dir='rtl'] .sb-ocean .sb-rpt-table tr.sb-rpt-banner td { letter-spacing: 0; font-size: 14px; }
+.sb-ocean .sb-rpt-table tr.sb-rpt-key td { font-weight: 800; border-top: 2px solid var(--sb-border); }
+.sb-ocean .sb-rpt-table tr.sb-rpt-key.is-big td { font-size: 14.5px; padding-block: 12px; }
+.sb-ocean .sb-rpt-table tr.is-brand td { background: var(--sb-primary-light); color: var(--sb-primary-dark); border-top-color: var(--sb-primary); }
+.sb-ocean .sb-rpt-table tr.is-bad td { background: var(--sb-danger-bg); color: #B91C1C; border-top-color: #FECACA; }
+.sb-ocean .sb-rpt-table tr.is-good td { background: var(--sb-success-bg); color: var(--sb-success); border-top-color: #BBF7D0; }
+.sb-ocean .sb-rpt-table tr.is-ink td { background: #EEF2F7; color: var(--sb-text); border-top-color: #CBD5E1; }
+.sb-ocean .sb-rpt-table tr.sb-rpt-key .muted { color: inherit; }
+.sb-ocean .sb-rpt-table tr.sb-rpt-minor td { padding-block: 6px 2px; border-top-style: dashed; font-size: 12px; font-weight: 700; color: var(--sb-text-secondary); }
+.sb-ocean .sb-rpt-table td.sb-rpt-indent { padding-inline-start: 32px; }
+.sb-ocean .sb-rpt-var { display: inline-flex; align-items: center; gap: 4px; }
+.sb-ocean .sb-rpt-warn.is-soft { background: #FFFBEB; color: var(--sb-warning); font-weight: 500; }
+.sb-ocean .sb-rpt-foot { margin: 0; padding: 9px 18px; font-size: 12.5px; color: var(--sb-text-secondary); border-top: 1px solid var(--sb-border); }
+.sb-ocean .sb-rpt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 14px; align-items: start; }

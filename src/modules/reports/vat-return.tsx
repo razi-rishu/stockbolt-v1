@@ -2,15 +2,14 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
+import { OceanReport, ReportCard, ReportTableWrap, ReportMessage, Num, ltr } from '@/components/ocean-report';
 import type { VATReturn, VATReturnRegionRow } from '@/data/adapter';
 
 function fmt(n: number) {
-  return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+  return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 }
 
 export default function VATReturnPage() {
@@ -27,150 +26,126 @@ export default function VATReturnPage() {
     enabled: !!company_id,
   });
 
+  const H = {
+    section: t('rptOcean.col_section'), box: t('reports.box'), desc: t('reports.description'),
+    taxable: t('reports.taxable_amount'), vat: t('reports.vat_amount'),
+  };
   const exportRows: Record<string, unknown>[] = [];
   if (data) {
-    for (const b of data.output_boxes) exportRows.push({ Section: 'VAT on Sales', Box: b.box, Description: b.label, 'Taxable Amount': b.taxable_amount.toFixed(2), 'VAT Amount': b.vat_amount.toFixed(2) });
-    for (const b of data.input_boxes) exportRows.push({ Section: 'VAT on Expenses', Box: b.box, Description: b.label, 'Taxable Amount': b.taxable_amount.toFixed(2), 'VAT Amount': b.vat_amount.toFixed(2) });
-    exportRows.push({ Section: 'Summary', Box: '', Description: 'Net VAT Payable', 'Taxable Amount': '', 'VAT Amount': data.net_vat_payable.toFixed(2) });
+    for (const b of data.output_boxes) exportRows.push({ [H.section]: t('reports.vat_on_sales'), [H.box]: b.box, [H.desc]: b.label, [H.taxable]: b.taxable_amount.toFixed(2), [H.vat]: b.vat_amount.toFixed(2) });
+    for (const b of data.input_boxes) exportRows.push({ [H.section]: t('reports.vat_on_expenses'), [H.box]: b.box, [H.desc]: b.label, [H.taxable]: b.taxable_amount.toFixed(2), [H.vat]: b.vat_amount.toFixed(2) });
+    exportRows.push({ [H.section]: t('rptOcean.sec_summary'), [H.box]: '', [H.desc]: t('reports.net_vat_payable'), [H.taxable]: '', [H.vat]: data.net_vat_payable.toFixed(2) });
   }
-  const exportHeaders = ['Section', 'Box', 'Description', 'Taxable Amount', 'VAT Amount'];
+  const exportHeaders = [H.section, H.box, H.desc, H.taxable, H.vat];
 
   const Section = ({ title, boxes, total, totalLabel }: { title: string; boxes: VATReturn['output_boxes']; total: number; totalLabel: string }) => (
-    <div style={{
-      background: theme.card, border: `1px solid ${theme.border}`,
-      borderRadius: '12px', boxShadow: theme.shadowSm, overflow: 'hidden',
-    }}>
-      <div style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}`, padding: '10px 16px' }}>
-        <span style={{ fontSize: '11px', fontWeight: 700, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.06em' }}>{title}</span>
-      </div>
-      <table className="w-full text-sm">
-        <thead>
-          <tr style={{ borderBottom: `1px solid ${theme.border}` }}>
-            {[
-              { l: t('reports.box'),            a: 'start' as const },
-              { l: t('reports.description'),    a: 'start' as const },
-              { l: t('reports.taxable_amount'), a: 'end'   as const },
-              { l: t('reports.vat_amount'),     a: 'end'   as const },
-            ].map(c => (
-              <th key={c.l} className="px-4 py-2" style={{
-                fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
-                textTransform: 'uppercase', letterSpacing: '.06em',
-                textAlign: c.a,
-              }}>{c.l}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {boxes.map((b, i) => (
-            <tr key={b.box} style={{ borderTop: i === 0 ? 'none' : '1px solid #f1f5f9' }}>
-              <td className="px-4 py-2 font-mono" style={{ color: theme.inkMuted, fontSize: '12px' }}>{b.box}</td>
-              <td className="px-4 py-2" style={{ color: theme.ink, fontSize: '13px' }}>{b.label}</td>
-              <td className="px-4 py-2 font-mono" style={{ textAlign: 'end', color: theme.inkMuted, fontSize: '13px' }}>{fmt(b.taxable_amount)}</td>
-              <td className="px-4 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px', fontWeight: 500 }}>{fmt(b.vat_amount)}</td>
+    <ReportCard title={title}>
+      <ReportTableWrap>
+        <table className="sb-rpt-table" style={{ minWidth: 0 }}>
+          <thead>
+            <tr>
+              <th>{t('reports.box')}</th>
+              <th>{t('reports.description')}</th>
+              <th className="num">{t('reports.taxable_amount')}</th>
+              <th className="num">{t('reports.vat_amount')}</th>
             </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr style={{ borderTop: `2px solid ${theme.border}`, background: theme.panelHead, fontWeight: 700 }}>
-            <td colSpan={3} className="px-4 py-2.5" style={{ color: theme.ink, fontSize: '13px' }}>{totalLabel}</td>
-            <td className="px-4 py-2.5 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>{fmt(total)}</td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {boxes.map((b) => (
+              <tr key={b.box}>
+                <td><span className="code">{b.box}</span></td>
+                <td>{b.label}</td>
+                <td className="num muted"><Num>{fmt(b.taxable_amount)}</Num></td>
+                <td className="num"><Num>{fmt(b.vat_amount)}</Num></td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="sb-rpt-total">
+              <td colSpan={3}>{totalLabel}</td>
+              <td className="num"><Num>{fmt(total)}</Num></td>
+            </tr>
+          </tfoot>
+        </table>
+      </ReportTableWrap>
+    </ReportCard>
   );
 
   // Place-wise breakdown (customer/supplier regions; emirates → VAT201 1a–1g).
   const RegionSection = ({ title, hint, rows, showTaxable }: { title: string; hint: string; rows: VATReturnRegionRow[]; showTaxable: boolean }) => (
-    <div style={{
-      background: theme.card, border: `1px solid ${theme.border}`,
-      borderRadius: '12px', boxShadow: theme.shadowSm, overflow: 'hidden',
-    }}>
-      <div style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}`, padding: '10px 16px' }}>
-        <span style={{ fontSize: '11px', fontWeight: 700, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.06em' }}>{title}</span>
-      </div>
-      <table className="w-full text-sm">
-        <thead>
-          <tr style={{ borderBottom: `1px solid ${theme.border}` }}>
-            {[
-              { l: t('reports.box'),   a: 'start' as const },
-              { l: t('reports.place'), a: 'start' as const },
-              ...(showTaxable ? [{ l: t('reports.taxable_amount'), a: 'end' as const }] : []),
-              { l: t('reports.vat_amount'), a: 'end' as const },
-            ].map(c => (
-              <th key={c.l} className="px-4 py-2" style={{
-                fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
-                textTransform: 'uppercase', letterSpacing: '.06em', textAlign: c.a,
-              }}>{c.l}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={`${r.region_name}-${i}`} style={{ borderTop: i === 0 ? 'none' : '1px solid #f1f5f9' }}>
-              <td className="px-4 py-2 font-mono" style={{ color: theme.inkMuted, fontSize: '12px' }}>{r.box ?? '—'}</td>
-              <td className="px-4 py-2" style={{ color: r.region_name === 'Unassigned' ? theme.inkFaint : theme.ink, fontSize: '13px', fontStyle: r.region_name === 'Unassigned' ? 'italic' : 'normal' }}>{r.region_name}</td>
-              {showTaxable && <td className="px-4 py-2 font-mono" style={{ textAlign: 'end', color: theme.inkMuted, fontSize: '13px' }}>{fmt(r.taxable_amount)}</td>}
-              <td className="px-4 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px', fontWeight: 500 }}>{fmt(r.vat_amount)}</td>
+    <ReportCard title={title}>
+      <ReportTableWrap>
+        <table className="sb-rpt-table" style={{ minWidth: 0 }}>
+          <thead>
+            <tr>
+              <th>{t('reports.box')}</th>
+              <th>{t('reports.place')}</th>
+              {showTaxable && <th className="num">{t('reports.taxable_amount')}</th>}
+              <th className="num">{t('reports.vat_amount')}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <p style={{ margin: 0, padding: '8px 16px', fontSize: '11px', color: theme.inkFaint, borderTop: `1px solid ${theme.border}` }}>{hint}</p>
-    </div>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={`${r.region_name}-${i}`}>
+                <td><span className="code">{r.box ?? '—'}</span></td>
+                <td className={r.region_name === 'Unassigned' ? 'muted' : undefined}>
+                  {r.region_name === 'Unassigned' ? t('rptOcean.unassigned') : r.region_name}
+                </td>
+                {showTaxable && <td className="num muted"><Num>{fmt(r.taxable_amount)}</Num></td>}
+                <td className="num"><Num>{fmt(r.vat_amount)}</Num></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </ReportTableWrap>
+      <p className="sb-rpt-foot">{hint}</p>
+    </ReportCard>
   );
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        title={t('reports.vat_return')}
-        subtitle={data ? `${data.period_start} — ${data.period_end}` : `${from} — ${to}`}
-        actions={
-          <div data-print-hide style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <PeriodPicker
-              mode="range" preset={preset} from={from} to={to}
-              onPresetChange={setPreset} onCustomRange={setCustomRange}
-            />
-            <ReportActions rows={exportRows} headers={exportHeaders} filename={`vat-return-${from}_${to}`} disabled={!data} />
-          </div>
-        }
-      />
+  const range = data
+    ? t('rptOcean.range', { from: ltr(data.period_start), to: ltr(data.period_end) })
+    : t('rptOcean.range', { from: ltr(from), to: ltr(to) });
+  const refund = !!data && data.net_vat_payable < 0;
 
-      {loading && !data && <p style={{ fontSize: '13px', color: theme.inkMuted, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>}
+  return (
+    <OceanReport
+      testid="vat-return-ocean"
+      title={t('reports.vat_return')}
+      subtitle={range}
+      controls={<>
+        <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <ReportActions rows={exportRows} headers={exportHeaders} filename={`vat-return-${from}_${to}`} disabled={!data} />
+      </>}
+    >
+      {loading && !data && <ReportCard><ReportMessage>{t('common.loading')}</ReportMessage></ReportCard>}
 
       {data && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: '16px' }}>
-          <Section title={t('reports.vat_on_sales')}    boxes={data.output_boxes} total={data.total_output_vat} totalLabel={t('reports.total_output_vat')} />
-          <Section title={t('reports.vat_on_expenses')} boxes={data.input_boxes}  total={data.total_input_vat}  totalLabel={t('reports.total_input_vat')} />
+        <>
+          <ReportCard
+            figures={[
+              { label: t('reports.total_output_vat'), value: <Num>{fmt(data.total_output_vat)}</Num> },
+              { label: t('reports.total_input_vat'), value: <Num>{fmt(data.total_input_vat)}</Num> },
+              {
+                label: t('reports.net_vat_payable'),
+                value: <Num>{fmt(Math.abs(data.net_vat_payable))}</Num>,
+                note: refund ? t('reports.refund') : undefined,
+                tone: refund ? 'good' : 'warn',
+              },
+            ]}
+          />
+          <div className="sb-rpt-grid">
+            <Section title={t('reports.vat_on_sales')}    boxes={data.output_boxes} total={data.total_output_vat} totalLabel={t('reports.total_output_vat')} />
+            <Section title={t('reports.vat_on_expenses')} boxes={data.input_boxes}  total={data.total_input_vat}  totalLabel={t('reports.total_input_vat')} />
 
-          {data.output_by_region && data.output_by_region.length > 0 && (
-            <RegionSection title={t('reports.vat_by_place')} hint={t('reports.vat_place_hint')} rows={data.output_by_region} showTaxable />
-          )}
-          {data.input_by_region && data.input_by_region.length > 0 && (
-            <RegionSection title={t('reports.vat_input_by_place')} hint={t('reports.vat_input_place_hint')} rows={data.input_by_region} showTaxable={false} />
-          )}
-
-          {/* Net payable */}
-          <div style={{
-            gridColumn: '1 / -1',
-            background: theme.brandSoft,
-            border: `2px solid ${theme.brand}`,
-            borderRadius: '12px',
-            padding: '20px',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '16px', fontWeight: 700, color: theme.brandSoftText }}>{t('reports.net_vat_payable')}</span>
-              <span style={{ fontSize: '24px', fontWeight: 800, color: data.net_vat_payable >= 0 ? '#dc2626' : '#15803d' }}>
-                {fmt(Math.abs(data.net_vat_payable))}
-                {data.net_vat_payable < 0 && <span style={{ fontSize: '12px', marginInlineStart: '6px', color: '#15803d' }}>({t('reports.refund')})</span>}
-              </span>
-            </div>
-            <p style={{ margin: '6px 0 0', fontSize: '11px', color: theme.brand }}>
-              {t('reports.vat_period')}: {data.period_start} — {data.period_end}
-            </p>
+            {data.output_by_region && data.output_by_region.length > 0 && (
+              <RegionSection title={t('reports.vat_by_place')} hint={t('reports.vat_place_hint')} rows={data.output_by_region} showTaxable />
+            )}
+            {data.input_by_region && data.input_by_region.length > 0 && (
+              <RegionSection title={t('reports.vat_input_by_place')} hint={t('reports.vat_input_place_hint')} rows={data.input_by_region} showTaxable={false} />
+            )}
           </div>
-        </div>
+        </>
       )}
-    </div>
+    </OceanReport>
   );
 }

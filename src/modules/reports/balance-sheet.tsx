@@ -2,23 +2,20 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { AlertTriangle } from 'lucide-react';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
 import { useComparativePeriods } from '@/hooks/use-comparative-periods';
 import { CompareToggle } from '@/ui/compare-toggle';
 import { mergeComparativeBalanceSheet, formatVariancePct, makeValue } from '@/lib/comparative';
+import { OceanReport, ReportCard, ReportTableWrap, ReportMessage, Num, ltr } from '@/components/ocean-report';
 import { ComparativeHead, ComparativeSection, ComparativeAccountRow, VarianceCells } from './_shared/variance';
+import { Amount, StmtAccount, StmtBanner, StmtEmpty, StmtKeyRow, StmtSection, StmtSubtotal, fmtParen } from './_shared/statement';
 import type { BalanceSheetLine, ControlAccountContactLine, Company } from '@/data/adapter';
 import { CONTROL_ACCOUNTS } from './_shared/control-account-drilldown';
-
-function fmt(n: number) {
-  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
 
 /**
  * Per-contact drill-down adapted for the 2-column Balance Sheet shape
@@ -28,43 +25,27 @@ function fmt(n: number) {
 function BalanceSheetDrillDown({
   companyId, accountCode, asOfDate,
 }: { companyId: string; accountCode: string; asOfDate: string }) {
+  const { t } = useTranslation();
   const { data, isFetching } = useQuery<ControlAccountContactLine[]>({
     queryKey: ['control_account_breakdown', companyId, accountCode, asOfDate],
     queryFn: () => getAdapter().reports.getControlAccountByContact(companyId, accountCode, asOfDate),
   });
 
   if (isFetching) {
-    return (
-      <tr style={{ background: theme.panelHead }}>
-        <td colSpan={2} className="px-10 py-2" style={{ fontSize: '11px', color: theme.inkFaint }}>Loading per-contact breakdown…</td>
-      </tr>
-    );
+    return <tr className="sb-rpt-drill"><td colSpan={2} className="indent">{t('rptOcean.drill_loading')}</td></tr>;
   }
   if (!data || data.length === 0) {
-    return (
-      <tr style={{ background: theme.panelHead }}>
-        <td colSpan={2} className="px-10 py-2" style={{ fontSize: '11px', color: theme.inkFaint }}>
-          No per-contact rows for this account.
-        </td>
-      </tr>
-    );
+    return <tr className="sb-rpt-drill"><td colSpan={2} className="indent">{t('rptOcean.drill_none')}</td></tr>;
   }
   return (
     <>
-      <tr style={{ background: theme.panelHead }}>
-        <td colSpan={2} className="px-10 pt-2 pb-1" style={{ fontSize: '10px', color: theme.inkFaint, textTransform: 'uppercase', letterSpacing: '.06em' }}>
-          Breakdown by contact ({data.length})
-        </td>
+      <tr className="sb-rpt-drill sb-rpt-drill-head">
+        <td colSpan={2} className="indent">{t('rptOcean.drill_head', { count: data.length })}</td>
       </tr>
       {data.map((line) => (
-        <tr key={`bs-drill-${accountCode}-${line.contact_id ?? 'none'}`} style={{ background: theme.panelHead }}>
-          <td className="py-1.5" style={{ paddingInlineStart: '40px', paddingInlineEnd: '20px', fontSize: '13px', color: theme.inkMuted }}>
-            <span style={{ marginInlineEnd: '8px', color: theme.inkFaint }}>↳</span>
-            {line.contact_name}
-          </td>
-          <td className="px-5 py-1.5 font-mono" style={{ textAlign: 'end', fontSize: '12px', color: theme.inkMuted }}>
-            {fmt(line.balance)}
-          </td>
+        <tr key={`bs-drill-${accountCode}-${line.contact_id ?? 'none'}`} className="sb-rpt-drill">
+          <td className="indent">↳ {line.contact_id ? line.contact_name : t('rptOcean.drill_no_contact', { defaultValue: line.contact_name })}</td>
+          <td className="num"><Num>{fmtParen(line.balance)}</Num></td>
         </tr>
       ))}
     </>
@@ -74,7 +55,7 @@ function BalanceSheetDrillDown({
 /**
  * Drill-down-aware Balance Sheet row.
  * - Control accounts (1200, 2400, …): row click toggles per-contact breakdown;
- *   clicking the code badge navigates to GL ledger.
+ *   clicking the code navigates to GL ledger.
  * - Leaf accounts: whole row click navigates to GL ledger.
  */
 function BSRow({
@@ -90,62 +71,21 @@ function BSRow({
   const isControl = CONTROL_ACCOUNTS.has(line.account_code);
   return (
     <>
-      <tr
-        onClick={isControl ? onToggle : () => onNavigate?.(line.account_code)}
-        className="cursor-pointer"
-        title={isControl ? 'Click to expand per-contact breakdown' : `Open ${line.account_code} in General Ledger`}
-        style={{
-          borderTop: '1px solid #f1f5f9',
-          background: expanded ? theme.panelHead : undefined,
-          transition: 'background-color .12s',
-        }}
-        onMouseEnter={(e) => { if (!expanded) (e.currentTarget as HTMLElement).style.background = theme.panelHead; }}
-        onMouseLeave={(e) => { if (!expanded) (e.currentTarget as HTMLElement).style.background = ''; }}
+      <StmtAccount
+        code={line.account_code} name={line.account_name}
+        onOpen={onNavigate} onToggle={isControl ? onToggle : undefined} expanded={expanded}
       >
-        <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>
-          {isControl && (
-            <span style={{ display: 'inline-block', width: '12px', color: theme.inkFaint, marginInlineEnd: '8px' }}>
-              {expanded ? '▾' : '▸'}
-            </span>
-          )}
-          {/* For control accounts, the code is a separate GL link so as not to
-              conflict with the row-click toggle. For leaf accounts, code is styled
-              but the whole row is already the click target. */}
-          {isControl ? (
-            <span
-              onClick={(e) => { e.stopPropagation(); onNavigate?.(line.account_code); }}
-              title={`Open ${line.account_code} in General Ledger`}
-              style={{ color: theme.brandSoftText, fontWeight: 600, marginInlineEnd: '6px', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
-            >{line.account_code}</span>
-          ) : (
-            <span style={{ color: theme.brandSoftText, fontWeight: 600, marginInlineEnd: '6px' }}>{line.account_code}</span>
-          )}
-          {line.account_name}
-        </td>
-        <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>{fmt(line.balance)}</td>
-      </tr>
+        <Amount>{fmtParen(line.balance)}</Amount>
+      </StmtAccount>
       {isControl && expanded && (
-        <BalanceSheetDrillDown
-          companyId={companyId}
-          accountCode={line.account_code}
-          asOfDate={asOfDate}
-        />
+        <BalanceSheetDrillDown companyId={companyId} accountCode={line.account_code} asOfDate={asOfDate} />
       )}
     </>
   );
 }
 
 function SubSection({
-  title,
-  lines,
-  total,
-  totalLabel,
-  emptyText,
-  companyId,
-  asOfDate,
-  expanded,
-  onToggle,
-  onNavigate,
+  title, lines, total, totalLabel, emptyText, companyId, asOfDate, expanded, onToggle, onNavigate,
 }: {
   title: string;
   lines: BalanceSheetLine[];
@@ -158,69 +98,18 @@ function SubSection({
   onToggle: (code: string) => void;
   onNavigate?: (code: string) => void;
 }) {
-  const [open, setOpen] = useState(true);
   return (
-    <>
-      {/* ── Collapsible section header ── */}
-      <tr
-        onClick={() => setOpen(o => !o)}
-        title={open ? 'Click to collapse' : 'Click to expand'}
-        style={{ cursor: 'pointer', userSelect: 'none' }}
-      >
-        <td colSpan={2} className="px-5 py-2" style={{
-          background: '#f1f5f9',
-          fontSize: '11px', fontWeight: 700, color: theme.inkMuted,
-          textTransform: 'uppercase', letterSpacing: '.08em',
-        }}>
-          <span style={{ marginInlineEnd: '6px', fontSize: '9px', opacity: 0.6 }}>
-            {open ? '▾' : '▸'}
-          </span>
-          {title}
-          {/* Show total inline when collapsed */}
-          {!open && (
-            <span style={{
-              float: 'right',
-              fontVariantNumeric: 'tabular-nums',
-              fontWeight: 700,
-              color: theme.ink,
-              fontSize: '12px',
-              textTransform: 'none',
-              letterSpacing: 0,
-            }}>
-              {fmt(total)}
-            </span>
-          )}
-        </td>
-      </tr>
-
-      {/* ── Collapsible body ── */}
-      {open && (
-        <>
-          {lines.length === 0 ? (
-            <tr style={{ borderTop: '1px solid #f1f5f9' }}>
-              <td className="px-5 py-2" style={{ color: theme.inkFaint, fontSize: '13px' }}>{emptyText}</td>
-              <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.inkFaint, fontSize: '13px' }}>—</td>
-            </tr>
-          ) : (
-            lines.map(l => (
-              <BSRow
-                key={l.account_code}
-                line={l}
-                companyId={companyId}
-                asOfDate={asOfDate}
-                expanded={expanded.has(l.account_code)}
-                onToggle={() => onToggle(l.account_code)}
-                onNavigate={onNavigate}
-              />
-            ))
-          )}
-          <tr style={{ background: theme.panelHead, borderTop: '1px solid #f1f5f9', fontWeight: 600 }}>
-            <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>{totalLabel}</td>
-            <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>{fmt(total)}</td>
-          </tr>
-        </>
-      )}
-    </>
+    <StmtSection
+      title={title} cols={2} collapsedValue={fmtParen(total)}
+      footer={<StmtSubtotal label={totalLabel}><Amount>{fmtParen(total)}</Amount></StmtSubtotal>}
+    >
+      {lines.length === 0 ? <StmtEmpty label={emptyText} cols={2} /> : lines.map(l => (
+        <BSRow
+          key={l.account_code} line={l} companyId={companyId} asOfDate={asOfDate}
+          expanded={expanded.has(l.account_code)} onToggle={() => onToggle(l.account_code)} onNavigate={onNavigate}
+        />
+      ))}
+    </StmtSection>
   );
 }
 
@@ -243,7 +132,7 @@ export default function BalanceSheetPage() {
   const cmp = useComparativePeriods({
     storageKey: 'stockbolt.report.balance-sheet.compare',
     preset, current: { from, to },
-    fiscalYearStart: (company as any)?.fiscal_year_start ?? null,
+    fiscalYearStart: company?.fiscal_year_start ?? null,
   });
 
   function toggleExpand(code: string) {
@@ -275,14 +164,24 @@ export default function BalanceSheetPage() {
 
   const balanced = bs ? Math.abs(bs.total_assets - bs.total_liabilities - bs.total_equity) < 0.02 : true;
 
+  // Section and column names (screen and Excel share them, in the screen language).
+  const S = {
+    curAssets: t('rptOcean.bs_current_assets'), fixedAssets: t('rptOcean.bs_fixed_assets'),
+    curLiab: t('rptOcean.bs_current_liab'), ltLiab: t('rptOcean.bs_lt_liab'), equity: t('rptOcean.type_equity'),
+  };
+  const H = {
+    section: t('rptOcean.col_section'), code: t('rptOcean.col_code'), account: t('rptOcean.col_account'),
+    balance: t('rptOcean.col_balance'), current: t('rptOcean.col_current'), previous: t('rptOcean.col_previous'),
+    variance: t('rptOcean.col_variance'), varPct: t('rptOcean.col_variance_pct'),
+  };
   const secOf = (l: { account_type: string; sub_type?: string | null }) =>
-    l.account_type === 'asset' ? (l.sub_type === 'fixed' ? 'Fixed Assets' : 'Current Assets')
-    : l.account_type === 'liability' ? (l.sub_type === 'long_term' ? 'Long-term Liabilities' : 'Current Liabilities')
-    : 'Equity';
+    l.account_type === 'asset' ? (l.sub_type === 'fixed' ? S.fixedAssets : S.curAssets)
+    : l.account_type === 'liability' ? (l.sub_type === 'long_term' ? S.ltLiab : S.curLiab)
+    : S.equity;
   const exportRows: Record<string, unknown>[] = (bs?.lines ?? []).map((l: BalanceSheetLine) => ({
-    Section: secOf(l), Code: l.account_code, Account: l.account_name, Balance: l.balance.toFixed(2),
+    [H.section]: secOf(l), [H.code]: l.account_code, [H.account]: l.account_name, [H.balance]: l.balance.toFixed(2),
   }));
-  const exportHeaders = ['Section', 'Code', 'Account', 'Balance'];
+  const exportHeaders = [H.section, H.code, H.account, H.balance];
 
   // Comparative export overrides the single-period rows while compare is on.
   let finalRows = exportRows;
@@ -290,34 +189,37 @@ export default function BalanceSheetPage() {
   let exportName = `balance-sheet-${asOf}`;
   if (comparative) {
     finalRows = comparative.lines.map((l) => ({
-      Section: secOf(l), Code: l.account_code, Account: l.account_name,
-      Current: l.current.toFixed(2), Previous: l.previous.toFixed(2),
-      Variance: l.variance.toFixed(2), 'Variance %': formatVariancePct(l.current, l.previous),
+      [H.section]: secOf(l), [H.code]: l.account_code, [H.account]: l.account_name,
+      [H.current]: l.current.toFixed(2), [H.previous]: l.previous.toFixed(2),
+      [H.variance]: l.variance.toFixed(2), [H.varPct]: formatVariancePct(l.current, l.previous),
     }));
-    finalHeaders = ['Section', 'Code', 'Account', 'Current', 'Previous', 'Variance', 'Variance %'];
+    finalHeaders = [H.section, H.code, H.account, H.current, H.previous, H.variance, H.varPct];
     exportName = `balance-sheet-comparative-${asOf}`;
   }
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        title={t('reports.bs_title')}
-        subtitle={cmp.compareOn ? `As of ${asOf}  ·  vs  ${cmp.asOf.previous}` : `As of ${asOf}`}
-        actions={
-          <div data-print-hide style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <PeriodPicker
-              mode="asOf" preset={preset} from={from} to={to}
-              onPresetChange={(p) => { setPreset(p); setExpandedCodes(new Set()); }}
-              onCustomRange={(f, tt) => { setCustomRange(f, tt); setExpandedCodes(new Set()); }}
-            />
-            <CompareToggle on={cmp.compareOn} basis={cmp.basis} onToggle={cmp.setCompareOn} onBasis={cmp.setBasis} />
-            <ReportActions rows={finalRows} headers={finalHeaders} filename={exportName} disabled={cmp.compareOn ? !comparative : !bs} />
-          </div>
-        }
-      />
+  const subtitle = cmp.compareOn
+    ? t('rptOcean.as_of_vs', { date: ltr(asOf), prev: ltr(cmp.asOf.previous) })
+    : t('rptOcean.as_of_date', { date: ltr(asOf) });
 
-      {isLoading && <p style={{ fontSize: '13px', color: theme.inkMuted, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>}
-      {error && <p style={{ fontSize: '13px', color: theme.danger }}>{String(error)}</p>}
+  return (
+    <OceanReport
+      testid="balance-sheet-ocean"
+      title={t('reports.bs_title')}
+      subtitle={subtitle}
+      controls={<>
+        <PeriodPicker
+          mode="asOf" preset={preset} from={from} to={to}
+          onPresetChange={(p) => { setPreset(p); setExpandedCodes(new Set()); }}
+          onCustomRange={(f, tt) => { setCustomRange(f, tt); setExpandedCodes(new Set()); }}
+        />
+        <CompareToggle on={cmp.compareOn} basis={cmp.basis} onToggle={cmp.setCompareOn} onBasis={cmp.setBasis} />
+        <ReportActions rows={finalRows} headers={finalHeaders} filename={exportName} disabled={cmp.compareOn ? !comparative : !bs} />
+      </>}
+    >
+      {(isLoading || (cmp.compareOn && bs && !comparative && !error)) && (
+        <ReportCard><ReportMessage>{t('common.loading')}</ReportMessage></ReportCard>
+      )}
+      {error && <ReportCard><ReportMessage tone="bad">{String(error)}</ReportMessage></ReportCard>}
 
       {!cmp.compareOn && bs && company_id && (() => {
         // NULL sub_type defaults to 'current' — matches the adapter logic.
@@ -331,181 +233,72 @@ export default function BalanceSheetPage() {
         const currentLiabLines     = bs.lines.filter(isCurrentLiab);
         const longTermLiabLines    = bs.lines.filter(isLongTermLiab);
         const equityLines          = bs.lines.filter(l => l.account_type === 'equity');
+        const shared = { companyId: company_id, asOfDate: asOf, expanded: expandedCodes, onToggle: toggleExpand, onNavigate: openLedger };
 
         return (
-          <>
+          <ReportCard
+            figures={[
+              { label: t('reports.total_assets'), value: <Num>{fmtParen(bs.total_assets)}</Num>, tone: 'brand' },
+              { label: t('reports.total_liabilities'), value: <Num>{fmtParen(bs.total_liabilities)}</Num> },
+              { label: t('reports.total_equity'), value: <Num>{fmtParen(bs.total_equity)}</Num> },
+              {
+                label: t('rptOcean.bs_working_capital'),
+                value: <Num>{fmtParen(bs.working_capital)}</Num>,
+                note: t('rptOcean.bs_wc_formula'),
+                tone: bs.working_capital < 0 ? 'bad' : 'good',
+              },
+            ]}
+            hint={t('rptOcean.bs_hint')}
+          >
             {!balanced && (
-              <div style={{
-                background: theme.dangerSoft,
-                border: `1px solid ${theme.dangerBorder}`,
-                borderRadius: '8px',
-                padding: '10px 16px',
-                fontSize: '13px', color: theme.danger,
-              }}>
-                {t('reports.unbalanced_warning')}
-              </div>
+              <p className="sb-rpt-warn"><AlertTriangle size={15} aria-hidden="true" /> {t('reports.unbalanced_warning')}</p>
             )}
-
-            <div style={{
-              background: theme.card, border: `1px solid ${theme.border}`,
-              borderRadius: '12px', boxShadow: theme.shadowSm, overflow: 'hidden',
-            }}>
-              <div style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}`, padding: '12px 20px' }}>
-                <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>{t('reports.bs_title')}</p>
-                <p style={{ margin: '2px 0 0', fontSize: '12px', color: theme.inkMuted }}>
-                  {t('reports.as_of_date')}: {asOf}
-                </p>
-                <p style={{ margin: '4px 0 0', fontSize: '11px', color: theme.inkFaint }}>
-                  Click any account row to open its General Ledger. Control accounts (1200, 2400, …): click the code to open GL, click the row to expand the per-contact breakdown.
-                </p>
-              </div>
-              <table className="w-full text-sm">
+            {bs.working_capital < 0 && (
+              <p className="sb-rpt-warn is-soft"><AlertTriangle size={15} aria-hidden="true" /> {t('rptOcean.bs_wc_negative')}</p>
+            )}
+            <ReportTableWrap>
+              <table className="sb-rpt-table sb-rpt-stmt">
                 <tbody>
-                  {/* ── ASSETS ──────────────────────────────────────────── */}
-                  <tr>
-                    <td colSpan={2} className="px-5 py-3" style={{
-                      background: theme.brandSoft,
-                      fontSize: '13px', fontWeight: 800,
-                      color: theme.brandSoftText,
-                      letterSpacing: '.06em',
-                    }}>
-                      ASSETS
-                    </td>
-                  </tr>
-                  <SubSection
-                    title="Current Assets"
-                    lines={currentAssetLines}
-                    total={bs.current_assets}
-                    totalLabel="Total Current Assets"
-                    emptyText="No current assets"
-                    companyId={company_id}
-                    asOfDate={asOf}
-                    expanded={expandedCodes}
-                    onToggle={toggleExpand}
-                    onNavigate={openLedger}
-                  />
-                  <SubSection
-                    title="Fixed Assets"
-                    lines={fixedAssetLines}
-                    total={bs.fixed_assets}
-                    totalLabel="Total Fixed Assets"
-                    emptyText="No fixed assets"
-                    companyId={company_id}
-                    asOfDate={asOf}
-                    expanded={expandedCodes}
-                    onToggle={toggleExpand}
-                    onNavigate={openLedger}
-                  />
-                  <tr style={{ background: theme.brandSoft, borderTop: `2px solid ${theme.brand}`, fontWeight: 700 }}>
-                    <td className="px-5 py-3" style={{ color: theme.brandSoftText, fontSize: '14px' }}>{t('reports.total_assets')}</td>
-                    <td className="px-5 py-3 font-mono" style={{ textAlign: 'end', color: theme.brandSoftText, fontSize: '14px' }}>{fmt(bs.total_assets)}</td>
-                  </tr>
+                  {/* ── ASSETS ── */}
+                  <StmtBanner label={t('rptOcean.type_asset')} tone="brand" cols={2} />
+                  <SubSection title={S.curAssets} lines={currentAssetLines} total={bs.current_assets}
+                    totalLabel={t('rptOcean.bs_total_current_assets')} emptyText={t('rptOcean.bs_no_current_assets')} {...shared} />
+                  <SubSection title={S.fixedAssets} lines={fixedAssetLines} total={bs.fixed_assets}
+                    totalLabel={t('rptOcean.bs_total_fixed_assets')} emptyText={t('rptOcean.bs_no_fixed_assets')} {...shared} />
+                  <StmtKeyRow label={t('reports.total_assets')} tone="brand" big>
+                    <Amount>{fmtParen(bs.total_assets)}</Amount>
+                  </StmtKeyRow>
 
-                  {/* ── LIABILITIES ─────────────────────────────────────── */}
-                  <tr>
-                    <td colSpan={2} className="px-5 py-3" style={{
-                      background: '#fef2f2',
-                      fontSize: '13px', fontWeight: 800,
-                      color: '#b91c1c',
-                      letterSpacing: '.06em',
-                    }}>
-                      LIABILITIES
-                    </td>
-                  </tr>
-                  <SubSection
-                    title="Current Liabilities"
-                    lines={currentLiabLines}
-                    total={bs.current_liabilities}
-                    totalLabel="Total Current Liabilities"
-                    emptyText="No current liabilities"
-                    companyId={company_id}
-                    asOfDate={asOf}
-                    expanded={expandedCodes}
-                    onToggle={toggleExpand}
-                    onNavigate={openLedger}
-                  />
-                  <SubSection
-                    title="Long-term Liabilities"
-                    lines={longTermLiabLines}
-                    total={bs.long_term_liabilities}
-                    totalLabel="Total Long-term Liabilities"
-                    emptyText="No long-term liabilities"
-                    companyId={company_id}
-                    asOfDate={asOf}
-                    expanded={expandedCodes}
-                    onToggle={toggleExpand}
-                    onNavigate={openLedger}
-                  />
-                  <tr style={{ background: '#fef2f2', borderTop: '2px solid #fecaca', fontWeight: 700 }}>
-                    <td className="px-5 py-3" style={{ color: '#b91c1c', fontSize: '14px' }}>{t('reports.total_liabilities')}</td>
-                    <td className="px-5 py-3 font-mono" style={{ textAlign: 'end', color: '#b91c1c', fontSize: '14px' }}>{fmt(bs.total_liabilities)}</td>
-                  </tr>
+                  {/* ── LIABILITIES ── */}
+                  <StmtBanner label={t('rptOcean.type_liability')} tone="bad" cols={2} />
+                  <SubSection title={S.curLiab} lines={currentLiabLines} total={bs.current_liabilities}
+                    totalLabel={t('rptOcean.bs_total_current_liab')} emptyText={t('rptOcean.bs_no_current_liab')} {...shared} />
+                  <SubSection title={S.ltLiab} lines={longTermLiabLines} total={bs.long_term_liabilities}
+                    totalLabel={t('rptOcean.bs_total_lt_liab')} emptyText={t('rptOcean.bs_no_lt_liab')} {...shared} />
+                  <StmtKeyRow label={t('reports.total_liabilities')} tone="bad" big>
+                    <Amount>{fmtParen(bs.total_liabilities)}</Amount>
+                  </StmtKeyRow>
 
-                  {/* ── EQUITY ──────────────────────────────────────────── */}
-                  <tr>
-                    <td colSpan={2} className="px-5 py-3" style={{
-                      background: theme.purpleSoft,
-                      fontSize: '13px', fontWeight: 800,
-                      color: theme.purple,
-                      letterSpacing: '.06em',
-                    }}>
-                      EQUITY
-                    </td>
-                  </tr>
-                  {equityLines.length === 0 ? (
-                    <tr style={{ borderTop: '1px solid #f1f5f9' }}>
-                      <td className="px-5 py-2" style={{ color: theme.inkFaint, fontSize: '13px' }}>No equity accounts</td>
-                      <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.inkFaint, fontSize: '13px' }}>—</td>
-                    </tr>
-                  ) : (
-                    equityLines.map(l => (
-                      <BSRow
-                        key={l.account_code}
-                        line={l}
-                        companyId={company_id}
-                        asOfDate={asOf}
-                        expanded={expandedCodes.has(l.account_code)}
-                        onToggle={() => toggleExpand(l.account_code)}
-                        onNavigate={openLedger}
-                      />
-                    ))
-                  )}
-                  <tr style={{ background: theme.purpleSoft, borderTop: `2px solid ${theme.purpleBorder}`, fontWeight: 700 }}>
-                    <td className="px-5 py-3" style={{ color: theme.purple, fontSize: '14px' }}>{t('reports.total_equity')}</td>
-                    <td className="px-5 py-3 font-mono" style={{ textAlign: 'end', color: theme.purple, fontSize: '14px' }}>{fmt(bs.total_equity)}</td>
-                  </tr>
+                  {/* ── EQUITY ── */}
+                  <StmtBanner label={t('rptOcean.type_equity')} tone="ink" cols={2} />
+                  {equityLines.length === 0 ? <StmtEmpty label={t('rptOcean.bs_no_equity')} cols={2} /> : equityLines.map(l => (
+                    <BSRow
+                      key={l.account_code} line={l} companyId={company_id} asOfDate={asOf}
+                      expanded={expandedCodes.has(l.account_code)} onToggle={() => toggleExpand(l.account_code)} onNavigate={openLedger}
+                    />
+                  ))}
+                  <StmtKeyRow label={t('reports.total_equity')} tone="ink" big>
+                    <Amount>{fmtParen(bs.total_equity)}</Amount>
+                  </StmtKeyRow>
 
                   {/* ── Liabilities + Equity grand total (must equal Assets) ── */}
-                  <tr style={{ background: theme.panelHead, borderTop: `2px solid ${theme.border}`, fontWeight: 700 }}>
-                    <td className="px-5 py-3" style={{ color: theme.ink, fontSize: '14px' }}>Total Liabilities + Equity</td>
-                    <td className="px-5 py-3 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '14px' }}>{fmt(bs.total_liabilities + bs.total_equity)}</td>
-                  </tr>
+                  <StmtKeyRow label={t('rptOcean.bs_total_le')} tone={balanced ? 'good' : 'bad'} big>
+                    <Amount>{fmtParen(bs.total_liabilities + bs.total_equity)}</Amount>
+                  </StmtKeyRow>
                 </tbody>
               </table>
-            </div>
-
-            {/* ── Working Capital callout ──────────────────────────────── */}
-            <div style={{
-              background: theme.card, border: `1px solid ${theme.border}`,
-              borderRadius: '12px', boxShadow: theme.shadowSm,
-              padding: '16px 20px',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px' }}>
-                <div>
-                  <div style={{ fontSize: '11px', fontWeight: 700, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.06em' }}>Working Capital</div>
-                  <div style={{ marginTop: '4px', fontSize: '12px', color: theme.inkMuted }}>Current Assets − Current Liabilities</div>
-                </div>
-                <div className="font-mono" style={{ fontSize: '18px', fontWeight: 700, color: bs.working_capital < 0 ? '#dc2626' : '#15803d' }}>
-                  {fmt(bs.working_capital)}
-                </div>
-              </div>
-              {bs.working_capital < 0 && (
-                <p style={{ marginTop: '8px', fontSize: '11px', color: '#dc2626' }}>
-                  Negative working capital means short-term liabilities exceed short-term assets — review cash position.
-                </p>
-              )}
-            </div>
-          </>
+            </ReportTableWrap>
+          </ReportCard>
         );
       })()}
 
@@ -519,57 +312,40 @@ export default function BalanceSheetPage() {
         const rows = (ls: typeof c.lines) => ls.map(l => (
           <ComparativeAccountRow key={l.account_code} code={l.account_code} name={l.account_name} v={l} onNavigate={openLedger} />
         ));
-        const emptyRow = (label: string) => (
-          <tr style={{ borderTop: '1px solid #f1f5f9' }}>
-            <td className="px-5 py-2" style={{ color: theme.inkFaint, fontSize: '13px' }}>{label}</td>
-            <td colSpan={4} className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.inkFaint, fontSize: '13px' }}>—</td>
-          </tr>
-        );
-        const banner = (label: string, bg: string, color: string) => (
-          <tr><td colSpan={5} className="px-5 py-3" style={{ background: bg, fontSize: '13px', fontWeight: 800, color, letterSpacing: '.06em' }}>{label}</td></tr>
-        );
-        const totalRow = (label: string, v: typeof c.total_assets, bg: string, color: string, border: string) => (
-          <tr style={{ background: bg, borderTop: `2px solid ${border}`, fontWeight: 700 }}>
-            <td className="px-5 py-3" style={{ color, fontSize: '14px' }}>{label}</td>
-            <VarianceCells v={v} emphasize />
-          </tr>
-        );
+        const empty = (label: string) => <StmtEmpty label={label} cols={5} />;
         const leValue = makeValue(c.total_liabilities.current + c.total_equity.current, c.total_liabilities.previous + c.total_equity.previous);
         return (
-          <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm, overflow: 'hidden' }}>
-            <div style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}`, padding: '12px 20px' }}>
-              <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>{t('reports.bs_title')} — comparative</p>
-              <p style={{ margin: '2px 0 0', fontSize: '12px', color: theme.inkMuted }}>As of {asOf}  ·  vs  {cmp.asOf.previous}</p>
-              <p style={{ margin: '4px 0 0', fontSize: '11px', color: theme.inkFaint }}>Click any account row to open its General Ledger.</p>
-            </div>
-            <table className="w-full text-sm">
-              <ComparativeHead firstLabel="Account" />
-              <tbody>
-                {banner('ASSETS', theme.brandSoft, theme.brandSoftText)}
-                <ComparativeSection title="Current Assets" total={c.current_assets} totalLabel="Total Current Assets">
-                  {curAssets.length ? rows(curAssets) : emptyRow('No current assets')}
-                </ComparativeSection>
-                <ComparativeSection title="Fixed Assets" total={c.fixed_assets} totalLabel="Total Fixed Assets">
-                  {fixedAssets.length ? rows(fixedAssets) : emptyRow('No fixed assets')}
-                </ComparativeSection>
-                {totalRow(t('reports.total_assets'), c.total_assets, theme.brandSoft, theme.brandSoftText, theme.brand)}
-                {banner('LIABILITIES', '#fef2f2', '#b91c1c')}
-                <ComparativeSection title="Current Liabilities" total={c.current_liabilities} totalLabel="Total Current Liabilities">
-                  {curLiab.length ? rows(curLiab) : emptyRow('No current liabilities')}
-                </ComparativeSection>
-                <ComparativeSection title="Long-term Liabilities" total={c.long_term_liabilities} totalLabel="Total Long-term Liabilities">
-                  {ltLiab.length ? rows(ltLiab) : emptyRow('No long-term liabilities')}
-                </ComparativeSection>
-                {totalRow(t('reports.total_liabilities'), c.total_liabilities, '#fef2f2', '#b91c1c', '#fecaca')}
-                {banner('EQUITY', theme.purpleSoft, theme.purple)}
-                {equity.length ? rows(equity) : emptyRow('No equity accounts')}
-                {totalRow(t('reports.total_equity'), c.total_equity, theme.purpleSoft, theme.purple, theme.purpleBorder)}
-                {totalRow('Total Liabilities + Equity', leValue, theme.panelHead, theme.ink, theme.border)}
-              </tbody>
-            </table>
-          </div>
+          <ReportCard title={t('rptOcean.comparative_title', { title: t('reports.bs_title') })} meta={subtitle} hint={t('rptOcean.stmt_hint')}>
+            <ReportTableWrap>
+              <table className="sb-rpt-table sb-rpt-stmt" style={{ minWidth: 760 }}>
+                <ComparativeHead firstLabel={H.account} />
+                <tbody>
+                  <StmtBanner label={t('rptOcean.type_asset')} tone="brand" cols={5} />
+                  <ComparativeSection title={S.curAssets} total={c.current_assets} totalLabel={t('rptOcean.bs_total_current_assets')}>
+                    {curAssets.length ? rows(curAssets) : empty(t('rptOcean.bs_no_current_assets'))}
+                  </ComparativeSection>
+                  <ComparativeSection title={S.fixedAssets} total={c.fixed_assets} totalLabel={t('rptOcean.bs_total_fixed_assets')}>
+                    {fixedAssets.length ? rows(fixedAssets) : empty(t('rptOcean.bs_no_fixed_assets'))}
+                  </ComparativeSection>
+                  <StmtKeyRow label={t('reports.total_assets')} tone="brand" big><VarianceCells v={c.total_assets} emphasize /></StmtKeyRow>
+                  <StmtBanner label={t('rptOcean.type_liability')} tone="bad" cols={5} />
+                  <ComparativeSection title={S.curLiab} total={c.current_liabilities} totalLabel={t('rptOcean.bs_total_current_liab')}>
+                    {curLiab.length ? rows(curLiab) : empty(t('rptOcean.bs_no_current_liab'))}
+                  </ComparativeSection>
+                  <ComparativeSection title={S.ltLiab} total={c.long_term_liabilities} totalLabel={t('rptOcean.bs_total_lt_liab')}>
+                    {ltLiab.length ? rows(ltLiab) : empty(t('rptOcean.bs_no_lt_liab'))}
+                  </ComparativeSection>
+                  <StmtKeyRow label={t('reports.total_liabilities')} tone="bad" big><VarianceCells v={c.total_liabilities} emphasize /></StmtKeyRow>
+                  <StmtBanner label={t('rptOcean.type_equity')} tone="ink" cols={5} />
+                  {equity.length ? rows(equity) : empty(t('rptOcean.bs_no_equity'))}
+                  <StmtKeyRow label={t('reports.total_equity')} tone="ink" big><VarianceCells v={c.total_equity} emphasize /></StmtKeyRow>
+                  <StmtKeyRow label={t('rptOcean.bs_total_le')} tone="ink" big><VarianceCells v={leValue} emphasize /></StmtKeyRow>
+                </tbody>
+              </table>
+            </ReportTableWrap>
+          </ReportCard>
         );
       })()}
-    </div>
+    </OceanReport>
   );
 }

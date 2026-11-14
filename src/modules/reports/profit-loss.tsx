@@ -1,81 +1,18 @@
-import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
 import { useComparativePeriods } from '@/hooks/use-comparative-periods';
 import { CompareToggle } from '@/ui/compare-toggle';
 import { mergeComparativeProfitAndLoss, formatVariancePct } from '@/lib/comparative';
+import { OceanReport, ReportCard, ReportTableWrap, ReportMessage, Num, ltr } from '@/components/ocean-report';
 import { ComparativeHead, ComparativeSection, ComparativeAccountRow, VarianceCells } from './_shared/variance';
+import { Amount, StmtAccount, StmtEmpty, StmtKeyRow, StmtSection, StmtSubtotal, fmtNum as fmt, fmtParen } from './_shared/statement';
 import type { Company } from '@/data/adapter';
-
-function fmt(n: number) {
-  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-/**
- * Accounting-style formatter: negative numbers render as parens, no minus.
- *   -2.50  →  "(2.50)"
- *    2.50  →  "2.50"
- * Used for contra-revenue lines (4150 Sales Discounts) on the P&L so
- * they read as "Less: Sales Discounts (2.50)" instead of "-2.50".
- */
-function fmtSigned(n: number) {
-  if (n < 0) return `(${fmt(-n)})`;
-  return fmt(n);
-}
-
-// ── Collapsible P&L section ────────────────────────────────────────────────
-// Must be defined at module level so React can preserve hook state between
-// renders. paren=true renders the total as "(n)" — convention for costs.
-function PLSection({ title, total, totalLabel, paren = false, children }: {
-  title: string;
-  total: number;
-  totalLabel: string;
-  paren?: boolean;
-  children: ReactNode;
-}) {
-  const [open, setOpen] = useState(true);
-  const displayTotal = paren ? `(${fmt(total)})` : fmt(total);
-  return (
-    <>
-      <tr
-        onClick={() => setOpen(o => !o)}
-        title={open ? 'Click to collapse' : 'Click to expand'}
-        style={{ cursor: 'pointer', userSelect: 'none' }}
-      >
-        <td colSpan={2} className="px-5 py-2" style={{
-          background: '#f1f5f9',
-          fontSize: '11px', fontWeight: 700, color: theme.inkMuted,
-          textTransform: 'uppercase', letterSpacing: '.08em',
-        }}>
-          <span style={{ marginInlineEnd: '6px', fontSize: '9px', opacity: 0.6 }}>{open ? '▾' : '▸'}</span>
-          {title}
-          {!open && (
-            <span style={{ float: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: theme.ink, fontSize: '12px', textTransform: 'none', letterSpacing: 0 }}>
-              {displayTotal}
-            </span>
-          )}
-        </td>
-      </tr>
-      {open && (
-        <>
-          {children}
-          <tr style={{ background: theme.panelHead, borderTop: '1px solid #f1f5f9', fontWeight: 600 }}>
-            <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>{totalLabel}</td>
-            <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>{displayTotal}</td>
-          </tr>
-        </>
-      )}
-    </>
-  );
-}
 
 export default function ProfitLossPage() {
   const { t } = useTranslation();
@@ -94,7 +31,7 @@ export default function ProfitLossPage() {
   const cmp = useComparativePeriods({
     storageKey: 'stockbolt.report.profit-loss.compare',
     preset, current: { from, to },
-    fiscalYearStart: (company as any)?.fiscal_year_start ?? null,
+    fiscalYearStart: company?.fiscal_year_start ?? null,
   });
   // Off-compare, the current window IS the picker range → query key unchanged.
   const curFrom = cmp.compareOn ? cmp.range.current.from : from;
@@ -119,21 +56,34 @@ export default function ProfitLossPage() {
 
   const comparative = cmp.compareOn && pl && plPrev ? mergeComparativeProfitAndLoss(pl, plPrev) : null;
 
+  // Section and column names (screen and Excel share them, in the screen language).
+  const S = {
+    revenue: t('rptOcean.pl_revenue'), cogs: t('rptOcean.pl_cogs'),
+    other: t('rptOcean.pl_other_income'), opex: t('rptOcean.pl_opex'),
+    totals: t('rptOcean.sec_totals'),
+    gross: t('reports.gross_profit'), net: t('reports.net_profit'),
+  };
+  const H = {
+    section: t('rptOcean.col_section'), code: t('rptOcean.col_account_code'), account: t('rptOcean.col_account'),
+    amount: t('rptOcean.col_amount'), current: t('rptOcean.col_current'), previous: t('rptOcean.col_previous'),
+    variance: t('rptOcean.col_variance'), varPct: t('rptOcean.col_variance_pct'),
+  };
+
   // Phase 46b — flatten the P&L into rows for Excel export (Section column
   // preserves the grouping that the collapsible UI can't carry into a sheet).
   const exportRows: Record<string, unknown>[] = [];
   if (pl) {
     const push = (section: string, code: string, name: string, amount: number) =>
-      exportRows.push({ Section: section, 'Account Code': code, Account: name, Amount: amount.toFixed(2) });
+      exportRows.push({ [H.section]: section, [H.code]: code, [H.account]: name, [H.amount]: amount.toFixed(2) });
     const isDirect = (l: typeof pl.lines[number]) => l.sub_type !== 'indirect';
-    for (const l of pl.lines.filter(l => l.account_type === 'income'  &&  isDirect(l))) push('Revenue', l.account_code, l.account_name, l.amount);
-    for (const l of pl.lines.filter(l => l.account_type === 'expense' &&  isDirect(l))) push('COGS', l.account_code, l.account_name, -l.amount);
-    push('Totals', '', 'Gross Profit', pl.gross_profit);
-    for (const l of pl.lines.filter(l => l.account_type === 'income'  && !isDirect(l))) push('Other Income', l.account_code, l.account_name, l.amount);
-    for (const l of pl.lines.filter(l => l.account_type === 'expense' && !isDirect(l))) push('Operating Expenses', l.account_code, l.account_name, -l.amount);
-    push('Totals', '', 'Net Profit', pl.net_profit);
+    for (const l of pl.lines.filter(l => l.account_type === 'income'  &&  isDirect(l))) push(S.revenue, l.account_code, l.account_name, l.amount);
+    for (const l of pl.lines.filter(l => l.account_type === 'expense' &&  isDirect(l))) push(S.cogs, l.account_code, l.account_name, -l.amount);
+    push(S.totals, '', S.gross, pl.gross_profit);
+    for (const l of pl.lines.filter(l => l.account_type === 'income'  && !isDirect(l))) push(S.other, l.account_code, l.account_name, l.amount);
+    for (const l of pl.lines.filter(l => l.account_type === 'expense' && !isDirect(l))) push(S.opex, l.account_code, l.account_name, -l.amount);
+    push(S.totals, '', S.net, pl.net_profit);
   }
-  const exportHeaders = ['Section', 'Account Code', 'Account', 'Amount'];
+  const exportHeaders = [H.section, H.code, H.account, H.amount];
 
   // Comparative export overrides the single-period rows while compare is on.
   let finalRows = exportRows;
@@ -143,45 +93,42 @@ export default function ProfitLossPage() {
     const rows: Record<string, unknown>[] = [];
     const isDir = (l: typeof comparative.lines[number]) => l.sub_type !== 'indirect';
     const pushC = (section: string, l: typeof comparative.lines[number]) => rows.push({
-      Section: section, 'Account Code': l.account_code, Account: l.account_name,
-      Current: l.current.toFixed(2), Previous: l.previous.toFixed(2),
-      Variance: l.variance.toFixed(2), 'Variance %': formatVariancePct(l.current, l.previous),
+      [H.section]: section, [H.code]: l.account_code, [H.account]: l.account_name,
+      [H.current]: l.current.toFixed(2), [H.previous]: l.previous.toFixed(2),
+      [H.variance]: l.variance.toFixed(2), [H.varPct]: formatVariancePct(l.current, l.previous),
     });
-    for (const l of comparative.lines.filter(l => l.account_type === 'income'  &&  isDir(l))) pushC('Revenue', l);
-    for (const l of comparative.lines.filter(l => l.account_type === 'expense' &&  isDir(l))) pushC('COGS', l);
-    for (const l of comparative.lines.filter(l => l.account_type === 'income'  && !isDir(l))) pushC('Other Income', l);
-    for (const l of comparative.lines.filter(l => l.account_type === 'expense' && !isDir(l))) pushC('Operating Expenses', l);
+    for (const l of comparative.lines.filter(l => l.account_type === 'income'  &&  isDir(l))) pushC(S.revenue, l);
+    for (const l of comparative.lines.filter(l => l.account_type === 'expense' &&  isDir(l))) pushC(S.cogs, l);
+    for (const l of comparative.lines.filter(l => l.account_type === 'income'  && !isDir(l))) pushC(S.other, l);
+    for (const l of comparative.lines.filter(l => l.account_type === 'expense' && !isDir(l))) pushC(S.opex, l);
     const nv = comparative.net_profit;
-    rows.push({ Section: 'Totals', 'Account Code': '', Account: 'Net Profit',
-      Current: nv.current.toFixed(2), Previous: nv.previous.toFixed(2),
-      Variance: nv.variance.toFixed(2), 'Variance %': formatVariancePct(nv.current, nv.previous) });
+    rows.push({ [H.section]: S.totals, [H.code]: '', [H.account]: S.net,
+      [H.current]: nv.current.toFixed(2), [H.previous]: nv.previous.toFixed(2),
+      [H.variance]: nv.variance.toFixed(2), [H.varPct]: formatVariancePct(nv.current, nv.previous) });
     finalRows = rows;
-    finalHeaders = ['Section', 'Account Code', 'Account', 'Current', 'Previous', 'Variance', 'Variance %'];
+    finalHeaders = [H.section, H.code, H.account, H.current, H.previous, H.variance, H.varPct];
     exportName = `profit-loss-comparative-${curFrom}_${curTo}`;
   }
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        title={t('reports.pl_title')}
-        subtitle={cmp.compareOn
-          ? `${curFrom} — ${curTo}  ·  vs  ${cmp.range.previous.from} — ${cmp.range.previous.to}`
-          : `${from} — ${to}`}
-        actions={
-          <div data-print-hide style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <PeriodPicker
-              mode="range" preset={preset} from={from} to={to}
-              onPresetChange={setPreset} onCustomRange={setCustomRange}
-            />
-            <CompareToggle on={cmp.compareOn} basis={cmp.basis} onToggle={cmp.setCompareOn} onBasis={cmp.setBasis} />
-            <ReportActions rows={finalRows} headers={finalHeaders} filename={exportName} disabled={cmp.compareOn ? !comparative : !pl} />
-          </div>
-        }
-      />
+  const rangeText = cmp.compareOn
+    ? t('rptOcean.range_vs', { from: ltr(curFrom), to: ltr(curTo), pfrom: ltr(cmp.range.previous.from), pto: ltr(cmp.range.previous.to) })
+    : t('rptOcean.range', { from: ltr(from), to: ltr(to) });
 
-      {isLoading && <p style={{ fontSize: '13px', color: theme.inkMuted, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>}
-      {cmp.compareOn && pl && !comparative && !error && <p style={{ fontSize: '13px', color: theme.inkMuted, padding: '24px 0', textAlign: 'center' }}>{t('common.loading')}</p>}
-      {error && <p style={{ fontSize: '13px', color: theme.danger }}>{String(error)}</p>}
+  return (
+    <OceanReport
+      testid="profit-loss-ocean"
+      title={t('reports.pl_title')}
+      subtitle={rangeText}
+      controls={<>
+        <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <CompareToggle on={cmp.compareOn} basis={cmp.basis} onToggle={cmp.setCompareOn} onBasis={cmp.setBasis} />
+        <ReportActions rows={finalRows} headers={finalHeaders} filename={exportName} disabled={cmp.compareOn ? !comparative : !pl} />
+      </>}
+    >
+      {(isLoading || (cmp.compareOn && pl && !comparative && !error)) && (
+        <ReportCard><ReportMessage>{t('common.loading')}</ReportMessage></ReportCard>
+      )}
+      {error && <ReportCard><ReportMessage tone="bad">{String(error)}</ReportMessage></ReportCard>}
 
       {!cmp.compareOn && pl && (() => {
         // NULL sub_type defaults to 'direct' (matches adapter) so legacy
@@ -193,156 +140,87 @@ export default function ProfitLossPage() {
         const operatingExp   = pl.lines.filter(l => l.account_type === 'expense' && !isDirect(l));
 
         const cogsTotal = pl.revenue - pl.gross_profit;
+        const paren = (n: number) => `(${fmt(n)})`;
 
         return (
-        <div style={{
-          background: theme.card, border: `1px solid ${theme.border}`,
-          borderRadius: '12px', boxShadow: theme.shadowSm, overflow: 'hidden',
-        }}>
-          <div style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}`, padding: '12px 20px' }}>
-            <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>{t('reports.pl_title')}</p>
-            <p style={{ margin: '2px 0 0', fontSize: '12px', color: theme.inkMuted }}>{t('reports.period')}: {from} — {to}</p>
-            <p style={{ margin: '4px 0 0', fontSize: '11px', color: theme.inkFaint }}>
-              Click any account row to drill into its General Ledger. Click section headers to collapse/expand.
-            </p>
-          </div>
-          <table className="w-full text-sm">
-            <tbody>
-
-              {/* ── Revenue (Direct Income) ───────────────────────── */}
-              <PLSection title="Revenue (Direct Income)" total={pl.revenue} totalLabel={t('reports.total_revenue')}>
-                {directIncome.length === 0 ? (
-                  <tr style={{ borderTop: '1px solid #f1f5f9' }}>
-                    <td className="px-5 py-2" style={{ color: theme.inkFaint, fontSize: '13px' }}>No revenue accounts</td>
-                    <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.inkFaint, fontSize: '13px' }}>—</td>
-                  </tr>
-                ) : directIncome.map(l => {
-                  const isContra = l.amount < 0;
-                  return (
-                    <tr
-                      key={l.account_code}
-                      onClick={() => openLedger(l.account_code)}
-                      className="cursor-pointer"
-                      style={{ borderTop: '1px solid #f1f5f9', transition: 'background-color .12s' }}
-                      title={`Open ${l.account_code} in General Ledger`}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = theme.panelHead; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
-                    >
-                      <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>
-                        <span style={{ color: theme.brandSoftText, fontWeight: 600, marginInlineEnd: '6px' }}>{l.account_code}</span>
-                        {isContra ? <span style={{ color: theme.inkFaint }}>Less: </span> : null}
-                        {l.account_name}
-                      </td>
-                      <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: isContra ? theme.inkFaint : theme.ink, fontSize: '13px' }}>
-                        {fmtSigned(l.amount)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </PLSection>
-
-              {/* ── Cost of Goods Sold ────────────────────────────── */}
-              <PLSection title="Cost of Goods Sold (Direct Expense)" total={cogsTotal} totalLabel="Total COGS" paren>
-                {directExpense.length === 0 ? (
-                  <tr style={{ borderTop: '1px solid #f1f5f9' }}>
-                    <td className="px-5 py-2" style={{ color: theme.inkFaint, fontSize: '13px' }}>No direct expenses</td>
-                    <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.inkFaint, fontSize: '13px' }}>—</td>
-                  </tr>
-                ) : directExpense.map(l => (
-                  <tr
-                    key={l.account_code}
-                    onClick={() => openLedger(l.account_code)}
-                    className="cursor-pointer"
-                    style={{ borderTop: '1px solid #f1f5f9', transition: 'background-color .12s' }}
-                    title={`Open ${l.account_code} in General Ledger`}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = theme.panelHead; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
+          <ReportCard
+            figures={[
+              { label: t('reports.total_revenue'), value: <Num>{fmt(pl.revenue)}</Num> },
+              { label: t('reports.gross_profit'), value: <Num>{fmtParen(pl.gross_profit)}</Num>, tone: pl.gross_profit < 0 ? 'bad' : 'brand' },
+              { label: t('rptOcean.pl_total_opex'), value: <Num>{fmt(pl.operating_expenses)}</Num> },
+              { label: t('reports.net_profit'), value: <Num>{fmtParen(pl.net_profit)}</Num>, tone: pl.net_profit < 0 ? 'bad' : 'good' },
+            ]}
+            hint={t('rptOcean.stmt_hint')}
+          >
+            <ReportTableWrap>
+              <table className="sb-rpt-table sb-rpt-stmt">
+                <tbody>
+                  {/* ── Revenue (Direct Income) ── */}
+                  <StmtSection
+                    title={S.revenue} cols={2} collapsedValue={fmt(pl.revenue)}
+                    footer={<StmtSubtotal label={t('reports.total_revenue')}><Amount>{fmt(pl.revenue)}</Amount></StmtSubtotal>}
                   >
-                    <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>
-                      <span style={{ color: theme.brandSoftText, fontWeight: 600, marginInlineEnd: '6px' }}>{l.account_code}</span>
-                      {l.account_name}
-                    </td>
-                    <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>({fmt(l.amount)})</td>
-                  </tr>
-                ))}
-              </PLSection>
+                    {directIncome.length === 0 ? <StmtEmpty label={t('rptOcean.pl_no_revenue')} cols={2} /> : directIncome.map(l => {
+                      const isContra = l.amount < 0;
+                      return (
+                        <StmtAccount key={l.account_code} code={l.account_code} name={l.account_name} prefix={isContra ? t('rptOcean.less') : undefined} onOpen={openLedger}>
+                          <Amount muted={isContra}>{fmtParen(l.amount)}</Amount>
+                        </StmtAccount>
+                      );
+                    })}
+                  </StmtSection>
 
-              {/* ── Gross Profit — always visible, never collapsible ── */}
-              <tr style={{
-                background: theme.brandSoft,
-                borderTop: `2px solid ${theme.border}`,
-                borderBottom: `2px solid ${theme.border}`,
-                fontWeight: 700,
-              }}>
-                <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>{t('reports.gross_profit')}</td>
-                <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: pl.gross_profit < 0 ? '#dc2626' : theme.brandSoftText, fontSize: '13px' }}>
-                  {fmt(pl.gross_profit)}
-                </td>
-              </tr>
-
-              {/* ── Other Income (Indirect) — only when present ────── */}
-              {otherIncome.length > 0 && (
-                <PLSection title="Other Income (Indirect)" total={pl.other_income} totalLabel="Total Other Income">
-                  {otherIncome.map(l => (
-                    <tr
-                      key={l.account_code}
-                      onClick={() => openLedger(l.account_code)}
-                      className="cursor-pointer"
-                      style={{ borderTop: '1px solid #f1f5f9', transition: 'background-color .12s' }}
-                      title={`Open ${l.account_code} in General Ledger`}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = theme.panelHead; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
-                    >
-                      <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>
-                        <span style={{ color: theme.brandSoftText, fontWeight: 600, marginInlineEnd: '6px' }}>{l.account_code}</span>
-                        {l.account_name}
-                      </td>
-                      <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>{fmt(l.amount)}</td>
-                    </tr>
-                  ))}
-                </PLSection>
-              )}
-
-              {/* ── Operating Expenses (Indirect) ─────────────────── */}
-              <PLSection title="Operating Expenses (Indirect)" total={pl.operating_expenses} totalLabel="Total Operating Expenses" paren>
-                {operatingExp.length === 0 ? (
-                  <tr style={{ borderTop: '1px solid #f1f5f9' }}>
-                    <td className="px-5 py-2" style={{ color: theme.inkFaint, fontSize: '13px' }}>No operating expenses</td>
-                    <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.inkFaint, fontSize: '13px' }}>—</td>
-                  </tr>
-                ) : operatingExp.map(l => (
-                  <tr
-                    key={l.account_code}
-                    onClick={() => openLedger(l.account_code)}
-                    className="cursor-pointer"
-                    style={{ borderTop: '1px solid #f1f5f9', transition: 'background-color .12s' }}
-                    title={`Open ${l.account_code} in General Ledger`}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = theme.panelHead; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
+                  {/* ── Cost of Goods Sold ── */}
+                  <StmtSection
+                    title={S.cogs} cols={2} collapsedValue={paren(cogsTotal)}
+                    footer={<StmtSubtotal label={t('rptOcean.pl_total_cogs')}><Amount>{paren(cogsTotal)}</Amount></StmtSubtotal>}
                   >
-                    <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>
-                      <span style={{ color: theme.brandSoftText, fontWeight: 600, marginInlineEnd: '6px' }}>{l.account_code}</span>
-                      {l.account_name}
-                    </td>
-                    <td className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.ink, fontSize: '13px' }}>({fmt(l.amount)})</td>
-                  </tr>
-                ))}
-              </PLSection>
+                    {directExpense.length === 0 ? <StmtEmpty label={t('rptOcean.pl_no_direct')} cols={2} /> : directExpense.map(l => (
+                      <StmtAccount key={l.account_code} code={l.account_code} name={l.account_name} onOpen={openLedger}>
+                        <Amount>{paren(l.amount)}</Amount>
+                      </StmtAccount>
+                    ))}
+                  </StmtSection>
 
-              {/* ── Net Profit — always visible, never collapsible ─── */}
-              <tr style={{
-                borderTop: `2px solid ${theme.border}`,
-                background: pl.net_profit < 0 ? '#fef2f2' : '#f0fdf4',
-                fontWeight: 700,
-              }}>
-                <td className="px-5 py-3" style={{ color: theme.ink, fontSize: '14px' }}>{t('reports.net_profit')}</td>
-                <td className="px-5 py-3 font-mono" style={{ textAlign: 'end', color: pl.net_profit < 0 ? '#dc2626' : '#15803d', fontSize: '14px' }}>
-                  {fmt(pl.net_profit)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+                  {/* ── Gross Profit — always visible, never collapsible ── */}
+                  <StmtKeyRow label={t('reports.gross_profit')} tone={pl.gross_profit < 0 ? 'bad' : 'brand'}>
+                    <Amount>{fmt(pl.gross_profit)}</Amount>
+                  </StmtKeyRow>
+
+                  {/* ── Other Income (Indirect) — only when present ── */}
+                  {otherIncome.length > 0 && (
+                    <StmtSection
+                      title={S.other} cols={2} collapsedValue={fmt(pl.other_income)}
+                      footer={<StmtSubtotal label={t('rptOcean.pl_total_other_income')}><Amount>{fmt(pl.other_income)}</Amount></StmtSubtotal>}
+                    >
+                      {otherIncome.map(l => (
+                        <StmtAccount key={l.account_code} code={l.account_code} name={l.account_name} onOpen={openLedger}>
+                          <Amount>{fmt(l.amount)}</Amount>
+                        </StmtAccount>
+                      ))}
+                    </StmtSection>
+                  )}
+
+                  {/* ── Operating Expenses (Indirect) ── */}
+                  <StmtSection
+                    title={S.opex} cols={2} collapsedValue={paren(pl.operating_expenses)}
+                    footer={<StmtSubtotal label={t('rptOcean.pl_total_opex')}><Amount>{paren(pl.operating_expenses)}</Amount></StmtSubtotal>}
+                  >
+                    {operatingExp.length === 0 ? <StmtEmpty label={t('rptOcean.pl_no_opex')} cols={2} /> : operatingExp.map(l => (
+                      <StmtAccount key={l.account_code} code={l.account_code} name={l.account_name} onOpen={openLedger}>
+                        <Amount>{paren(l.amount)}</Amount>
+                      </StmtAccount>
+                    ))}
+                  </StmtSection>
+
+                  {/* ── Net Profit — always visible, never collapsible ── */}
+                  <StmtKeyRow label={t('reports.net_profit')} tone={pl.net_profit < 0 ? 'bad' : 'good'} big>
+                    <Amount>{fmt(pl.net_profit)}</Amount>
+                  </StmtKeyRow>
+                </tbody>
+              </table>
+            </ReportTableWrap>
+          </ReportCard>
         );
       })()}
 
@@ -353,56 +231,41 @@ export default function ProfitLossPage() {
         const directExpense = c.lines.filter(l => l.account_type === 'expense' &&  isDirect(l));
         const otherIncome   = c.lines.filter(l => l.account_type === 'income'  && !isDirect(l));
         const operatingExp  = c.lines.filter(l => l.account_type === 'expense' && !isDirect(l));
-        const emptyRow = (label: string) => (
-          <tr style={{ borderTop: '1px solid #f1f5f9' }}>
-            <td className="px-5 py-2" style={{ color: theme.inkFaint, fontSize: '13px' }}>{label}</td>
-            <td colSpan={4} className="px-5 py-2 font-mono" style={{ textAlign: 'end', color: theme.inkFaint, fontSize: '13px' }}>—</td>
-          </tr>
-        );
         const rows = (ls: typeof c.lines) => ls.map(l => (
           <ComparativeAccountRow key={l.account_code} code={l.account_code} name={l.account_name} v={l} onNavigate={openLedger} />
         ));
         return (
-          <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm, overflow: 'hidden' }}>
-            <div style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}`, padding: '12px 20px' }}>
-              <p style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: theme.ink, letterSpacing: '-.01em' }}>{t('reports.pl_title')} — comparative</p>
-              <p style={{ margin: '2px 0 0', fontSize: '12px', color: theme.inkMuted }}>
-                {curFrom} — {curTo}  ·  vs  {cmp.range.previous.from} — {cmp.range.previous.to}
-              </p>
-              <p style={{ margin: '4px 0 0', fontSize: '11px', color: theme.inkFaint }}>
-                Click any account row to drill into its General Ledger. Click section headers to collapse/expand.
-              </p>
-            </div>
-            <table className="w-full text-sm">
-              <ComparativeHead firstLabel="Account" />
-              <tbody>
-                <ComparativeSection title="Revenue (Direct Income)" total={c.revenue} totalLabel={t('reports.total_revenue')}>
-                  {directIncome.length ? rows(directIncome) : emptyRow('No revenue accounts')}
-                </ComparativeSection>
-                <ComparativeSection title="Cost of Goods Sold (Direct Expense)" total={c.cogs} totalLabel="Total COGS">
-                  {directExpense.length ? rows(directExpense) : emptyRow('No direct expenses')}
-                </ComparativeSection>
-                <tr style={{ background: theme.brandSoft, borderTop: `2px solid ${theme.border}`, borderBottom: `2px solid ${theme.border}`, fontWeight: 700 }}>
-                  <td className="px-5 py-2" style={{ color: theme.ink, fontSize: '13px' }}>{t('reports.gross_profit')}</td>
-                  <VarianceCells v={c.gross_profit} emphasize />
-                </tr>
-                {otherIncome.length > 0 && (
-                  <ComparativeSection title="Other Income (Indirect)" total={c.other_income} totalLabel="Total Other Income">
-                    {rows(otherIncome)}
+          <ReportCard title={t('rptOcean.comparative_title', { title: t('reports.pl_title') })} meta={rangeText} hint={t('rptOcean.stmt_hint')}>
+            <ReportTableWrap>
+              <table className="sb-rpt-table sb-rpt-stmt" style={{ minWidth: 760 }}>
+                <ComparativeHead firstLabel={H.account} />
+                <tbody>
+                  <ComparativeSection title={S.revenue} total={c.revenue} totalLabel={t('reports.total_revenue')}>
+                    {directIncome.length ? rows(directIncome) : <StmtEmpty label={t('rptOcean.pl_no_revenue')} cols={5} />}
                   </ComparativeSection>
-                )}
-                <ComparativeSection title="Operating Expenses (Indirect)" total={c.operating_expenses} totalLabel="Total Operating Expenses">
-                  {operatingExp.length ? rows(operatingExp) : emptyRow('No operating expenses')}
-                </ComparativeSection>
-                <tr style={{ borderTop: `2px solid ${theme.border}`, background: c.net_profit.current < 0 ? '#fef2f2' : '#f0fdf4', fontWeight: 700 }}>
-                  <td className="px-5 py-3" style={{ color: theme.ink, fontSize: '14px' }}>{t('reports.net_profit')}</td>
-                  <VarianceCells v={c.net_profit} emphasize />
-                </tr>
-              </tbody>
-            </table>
-          </div>
+                  <ComparativeSection title={S.cogs} total={c.cogs} totalLabel={t('rptOcean.pl_total_cogs')}>
+                    {directExpense.length ? rows(directExpense) : <StmtEmpty label={t('rptOcean.pl_no_direct')} cols={5} />}
+                  </ComparativeSection>
+                  <StmtKeyRow label={t('reports.gross_profit')} tone={c.gross_profit.current < 0 ? 'bad' : 'brand'}>
+                    <VarianceCells v={c.gross_profit} emphasize />
+                  </StmtKeyRow>
+                  {otherIncome.length > 0 && (
+                    <ComparativeSection title={S.other} total={c.other_income} totalLabel={t('rptOcean.pl_total_other_income')}>
+                      {rows(otherIncome)}
+                    </ComparativeSection>
+                  )}
+                  <ComparativeSection title={S.opex} total={c.operating_expenses} totalLabel={t('rptOcean.pl_total_opex')}>
+                    {operatingExp.length ? rows(operatingExp) : <StmtEmpty label={t('rptOcean.pl_no_opex')} cols={5} />}
+                  </ComparativeSection>
+                  <StmtKeyRow label={t('reports.net_profit')} tone={c.net_profit.current < 0 ? 'bad' : 'good'} big>
+                    <VarianceCells v={c.net_profit} emphasize />
+                  </StmtKeyRow>
+                </tbody>
+              </table>
+            </ReportTableWrap>
+          </ReportCard>
         );
       })()}
-    </div>
+    </OceanReport>
   );
 }

@@ -7,6 +7,7 @@ import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
 import { StatusBadge } from '@/ui/status-badge';
+import { OceanReport, ReportCard, ReportTableWrap, ReportMessage, Num } from '@/components/ocean-report';
 import type { ProjectProfitabilityRow } from '@/data/adapter';
 
 const fmt = (n: number) =>
@@ -50,144 +51,112 @@ export default function ProjectProfitabilityPage() {
   const totalCost    = rows.reduce((s, r) => s + Number(r.cost), 0);
   const totalMargin  = totalRevenue - totalCost;
 
-  const exportHeaders = [
-    'Project', 'Customer', 'Status', 'Est. Revenue', 'Est. Cost',
-    'Revenue', 'Cost', 'Margin', 'Margin %',
-  ];
+  // Excel columns follow the screen language.
+  const H = {
+    project: t('projects.name'), customer: t('projects.customer'), status: t('projects.status'),
+    estRev: t('projects.est_revenue'), estCost: t('projects.est_cost'), revenue: t('projects.revenue'),
+    cost: t('projects.cost'), margin: t('projects.margin'), marginPct: t('rptOcean.col_margin_pct'),
+  };
+  const exportHeaders = [H.project, H.customer, H.status, H.estRev, H.estCost, H.revenue, H.cost, H.margin, H.marginPct];
   const marginPct = (r: ProjectProfitabilityRow) =>
     Number(r.revenue) === 0 ? '' : ((Number(r.margin) / Number(r.revenue)) * 100).toFixed(1);
   const exportRows: Record<string, unknown>[] = rows.map(r => ({
-    'Project': r.name,
-    'Customer': r.contact_name ?? '',
-    'Status': r.status,
-    'Est. Revenue': Number(r.estimated_revenue).toFixed(2),
-    'Est. Cost': Number(r.estimated_cost).toFixed(2),
-    'Revenue': Number(r.revenue).toFixed(2),
-    'Cost': Number(r.cost).toFixed(2),
-    'Margin': Number(r.margin).toFixed(2),
-    'Margin %': marginPct(r),
+    [H.project]: r.name,
+    [H.customer]: r.contact_name ?? '',
+    [H.status]: r.status,
+    [H.estRev]: Number(r.estimated_revenue).toFixed(2),
+    [H.estCost]: Number(r.estimated_cost).toFixed(2),
+    [H.revenue]: Number(r.revenue).toFixed(2),
+    [H.cost]: Number(r.cost).toFixed(2),
+    [H.margin]: Number(r.margin).toFixed(2),
+    [H.marginPct]: marginPct(r),
   }));
 
   if (!projectsEnabled) {
     return (
-      <div className="py-16 text-center">
-        <p className="text-sm text-ink-secondary">{t('projects.disabled')}</p>
-      </div>
+      <OceanReport testid="project-profitability-ocean" title={t('projects.report_title')}>
+        <ReportCard><ReportMessage>{t('projects.disabled')}</ReportMessage></ReportCard>
+      </OceanReport>
     );
   }
 
+  const neg = (n: number) => (n < 0 ? `(${fmt(-n)})` : fmt(n));
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-ink-primary">{t('projects.report_title')}</h1>
-          <p className="text-sm text-ink-tertiary mt-1">{t('projects.report_desc')}</p>
-        </div>
-        <div data-print-hide className="flex flex-wrap items-center gap-2">
-          <PeriodPicker
-            preset={preset}
-            from={from}
-            to={to}
-            onPresetChange={setPreset}
-            onCustomRange={setCustomRange}
-          />
-          <ReportActions
-            rows={exportRows}
-            headers={exportHeaders}
-            filename={`project-profitability-${isAllTime ? 'all-time' : to}`}
-            disabled={rows.length === 0}
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-white border border-border-subtle rounded-lg p-4">
-          <p className="text-xs font-medium text-ink-tertiary uppercase tracking-wide">{t('projects.revenue')}</p>
-          <p className="text-2xl font-bold text-green-600 mt-1" dir="ltr">{fmt(totalRevenue)}</p>
-        </div>
-        <div className="bg-white border border-border-subtle rounded-lg p-4">
-          <p className="text-xs font-medium text-ink-tertiary uppercase tracking-wide">{t('projects.cost')}</p>
-          <p className="text-2xl font-bold text-red-600 mt-1" dir="ltr">{fmt(totalCost)}</p>
-        </div>
-        <div className="bg-white border border-border-subtle rounded-lg p-4">
-          <p className="text-xs font-medium text-ink-tertiary uppercase tracking-wide">{t('projects.margin')}</p>
-          <p className={`text-2xl font-bold mt-1 ${totalMargin >= 0 ? 'text-green-700' : 'text-red-600'}`} dir="ltr">
-            {fmt(totalMargin)}
-          </p>
-        </div>
-      </div>
-
-      <div className="bg-white border border-border-subtle rounded-lg overflow-hidden">
+    <OceanReport
+      testid="project-profitability-ocean"
+      title={t('projects.report_title')}
+      subtitle={t('projects.report_desc')}
+      controls={<>
+        <PeriodPicker preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <ReportActions
+          rows={exportRows}
+          headers={exportHeaders}
+          filename={`project-profitability-${isAllTime ? 'all-time' : to}`}
+          disabled={rows.length === 0}
+        />
+      </>}
+    >
+      <ReportCard
+        figures={[
+          { label: t('projects.revenue'), value: <Num>{fmt(totalRevenue)}</Num> },
+          { label: t('projects.cost'), value: <Num>{fmt(totalCost)}</Num> },
+          { label: t('projects.margin'), value: <Num>{neg(totalMargin)}</Num>, tone: totalMargin >= 0 ? 'good' : 'bad' },
+        ]}
+      >
         {isFetching && rows.length === 0 ? (
-          <p className="p-8 text-center text-sm text-ink-tertiary">{t('common.loading')}</p>
+          <ReportMessage>{t('common.loading')}</ReportMessage>
         ) : rows.length === 0 ? (
-          <p className="p-8 text-center text-ink-tertiary">{t('projects.empty')}</p>
+          <ReportMessage>{t('projects.empty')}</ReportMessage>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-surface-muted border-b border-border-subtle">
+          <ReportTableWrap>
+            <table className="sb-rpt-table" style={{ minWidth: 820 }}>
+              <thead>
                 <tr>
-                  <th className="px-4 py-3 text-start font-medium text-ink-secondary">{t('projects.name')}</th>
-                  <th className="px-4 py-3 text-start font-medium text-ink-secondary">{t('projects.customer')}</th>
-                  <th className="px-4 py-3 text-start font-medium text-ink-secondary">{t('projects.status')}</th>
-                  <th className="px-4 py-3 text-end font-medium text-ink-secondary">{t('projects.est_revenue')}</th>
-                  <th className="px-4 py-3 text-end font-medium text-ink-secondary">{t('projects.est_cost')}</th>
-                  <th className="px-4 py-3 text-end font-medium text-ink-secondary">{t('projects.revenue')}</th>
-                  <th className="px-4 py-3 text-end font-medium text-ink-secondary">{t('projects.cost')}</th>
-                  <th className="px-4 py-3 text-end font-medium text-ink-secondary">{t('projects.margin')}</th>
+                  <th>{t('projects.name')}</th>
+                  <th>{t('projects.customer')}</th>
+                  <th>{t('projects.status')}</th>
+                  <th className="num">{t('projects.est_revenue')}</th>
+                  <th className="num">{t('projects.est_cost')}</th>
+                  <th className="num">{t('projects.revenue')}</th>
+                  <th className="num">{t('projects.cost')}</th>
+                  <th className="num">{t('projects.margin')}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border-subtle">
+              <tbody>
                 {rows.map(r => (
-                  <tr key={r.project_id} className="hover:bg-surface-muted transition-colors">
-                    <td className="px-4 py-3 font-medium text-ink-primary">
+                  <tr key={r.project_id}>
+                    <td style={{ fontWeight: 600 }}>
                       {r.name}
                       {/* gl_rows distinguishes "nothing posted" from "posted and
                           nets to zero" — identical numbers, different meaning. */}
-                      {r.gl_rows === 0 && (
-                        <span className="ms-2 text-xs text-ink-tertiary">{t('projects.nothing_posted')}</span>
-                      )}
+                      {r.gl_rows === 0 && <span className="muted" style={{ marginInlineStart: 8, fontSize: 12, fontWeight: 400 }}>{t('projects.nothing_posted')}</span>}
                     </td>
-                    <td className="px-4 py-3 text-ink-secondary">{r.contact_name ?? '—'}</td>
-                    <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
-                    {/* Numbers stay LTR inside RTL text — AGENTS.md section 15. */}
-                    <td className="px-4 py-3 text-end text-ink-tertiary" dir="ltr">{fmt(r.estimated_revenue)}</td>
-                    <td className="px-4 py-3 text-end text-ink-tertiary" dir="ltr">{fmt(r.estimated_cost)}</td>
-                    <td className="px-4 py-3 text-end text-green-600 font-semibold" dir="ltr">{fmt(r.revenue)}</td>
-                    <td className="px-4 py-3 text-end text-red-600 font-semibold" dir="ltr">{fmt(r.cost)}</td>
-                    <td
-                      className={`px-4 py-3 text-end font-bold ${Number(r.margin) >= 0 ? 'text-ink-primary' : 'text-red-600'}`}
-                      dir="ltr"
-                    >
-                      {fmt(r.margin)}
-                      {Number(r.revenue) !== 0 && (
-                        <span className="ms-1 text-xs font-normal text-ink-tertiary">
-                          ({marginPct(r)}%)
-                        </span>
-                      )}
+                    <td className="muted">{r.contact_name ?? '—'}</td>
+                    <td><StatusBadge status={r.status} /></td>
+                    <td className="num muted"><Num>{fmt(r.estimated_revenue)}</Num></td>
+                    <td className="num muted"><Num>{fmt(r.estimated_cost)}</Num></td>
+                    <td className="num"><Num>{fmt(r.revenue)}</Num></td>
+                    <td className="num"><Num>{fmt(r.cost)}</Num></td>
+                    <td className={`num ${Number(r.margin) >= 0 ? '' : 'is-down'}`} style={{ fontWeight: 700 }}>
+                      <Num>{neg(Number(r.margin))}</Num>
+                      {Number(r.revenue) !== 0 && <span className="muted" style={{ marginInlineStart: 6, fontSize: 12, fontWeight: 400 }}><Num>({marginPct(r)}%)</Num></span>}
                     </td>
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-surface-muted border-t-2 border-border-subtle">
-                <tr>
-                  <td colSpan={5} className="px-4 py-3 text-sm font-semibold text-ink-secondary">
-                    {t('common.total')}
-                  </td>
-                  <td className="px-4 py-3 text-end font-bold text-green-600" dir="ltr">{fmt(totalRevenue)}</td>
-                  <td className="px-4 py-3 text-end font-bold text-red-600" dir="ltr">{fmt(totalCost)}</td>
-                  <td
-                    className={`px-4 py-3 text-end font-bold ${totalMargin >= 0 ? 'text-ink-primary' : 'text-red-600'}`}
-                    dir="ltr"
-                  >
-                    {fmt(totalMargin)}
-                  </td>
+              <tfoot>
+                <tr className={`sb-rpt-total ${totalMargin >= 0 ? '' : 'is-bad'}`}>
+                  <td colSpan={5}>{t('rptOcean.total')}</td>
+                  <td className="num"><Num>{fmt(totalRevenue)}</Num></td>
+                  <td className="num"><Num>{fmt(totalCost)}</Num></td>
+                  <td className="num"><Num>{neg(totalMargin)}</Num></td>
                 </tr>
               </tfoot>
             </table>
-          </div>
+          </ReportTableWrap>
         )}
-      </div>
-    </div>
+      </ReportCard>
+    </OceanReport>
   );
 }
