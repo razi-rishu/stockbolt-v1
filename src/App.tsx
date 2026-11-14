@@ -85,6 +85,7 @@ const PeriodLockPage     = lazy(() => import('@/modules/accounting/period-lock')
 const YearEndClosePage   = lazy(() => import('@/modules/accounting/year-end-close'));
 const TaxReturnPage      = lazy(() => import('@/modules/accounting/tax-return'));
 const FixedAssetsPage    = lazy(() => import('@/modules/accounting/fixed-assets'));
+const AssetPurchasePage  = lazy(() => import('@/modules/accounting/asset-purchase/asset-purchase-page'));
 const AmortizationPage   = lazy(() => import('@/modules/accounting/amortization'));
 const TdsPage            = lazy(() => import('@/modules/accounting/tds'));
 
@@ -359,6 +360,9 @@ function AppRoutes() {
                 <Route path="/accounting/year-end-close"           element={<YearEndClosePage />} />
                 <Route path="/accounting/tax-return"               element={<TaxReturnPage />} />
                 <Route path="/accounting/fixed-assets"             element={<FixedAssetsPage />} />
+                {/* phase126 — New Asset: register, or buy on credit / cash / bank */}
+                <Route path="/accounting/fixed-assets/new"         element={<AssetPurchasePage />} />
+                <Route path="/accounting/fixed-assets/purchase/:id" element={<AssetPurchasePage />} />
                 <Route path="/accounting/amortization"            element={<AmortizationPage />} />
                 <Route path="/accounting/tds"                     element={<TdsPage />} />
               </Route>

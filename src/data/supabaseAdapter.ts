@@ -2627,6 +2627,53 @@ export function createSupabaseAdapter(
         return (data ?? []) as unknown as DepreciationEntryRow[];
       },
 
+      // ── phase126 — fixed asset purchase ──────────────────────────────────
+      async listPurchases(company_id) {
+        const { data, error } = await client.from('fixed_asset_purchases' as any)
+          .select('*').eq('company_id', company_id).order('created_at', { ascending: false });
+        if (error) {
+          if (isMissingRelation(error)) return [];
+          throw new SupabaseDataError(`fixedAssets.listPurchases: ${error.message}`);
+        }
+        return (data ?? []) as unknown as import('./adapter').FixedAssetPurchaseRow[];
+      },
+
+      async getPurchase(id) {
+        const { data, error } = await client.from('fixed_asset_purchases' as any).select('*').eq('id', id).maybeSingle();
+        if (error) {
+          if (isMissingRelation(error)) return null;
+          throw new SupabaseDataError(`fixedAssets.getPurchase: ${error.message}`);
+        }
+        return (data ?? null) as unknown as import('./adapter').FixedAssetPurchaseRow | null;
+      },
+
+      async createPurchase(row) {
+        const { data, error } = await client.from('fixed_asset_purchases' as any).insert(row as any).select().single();
+        assertNoError(error, 'fixedAssets.createPurchase');
+        return data as unknown as import('./adapter').FixedAssetPurchaseRow;
+      },
+
+      async updatePurchase(id, patch) {
+        const { error } = await client.from('fixed_asset_purchases' as any).update(patch as any).eq('id', id);
+        assertNoError(error, 'fixedAssets.updatePurchase');
+      },
+
+      async postPurchase(id) {
+        const { data, error } = await client.rpc('post_fixed_asset_purchase' as any, { p_purchase_id: id } as any);
+        if (error) throw new SupabaseDataError(`fixedAssets.postPurchase: ${error.message}`);
+        return data as unknown as import('./adapter').PostAssetPurchaseResult;
+      },
+
+      async reopenPurchase(id) {
+        const { error } = await client.rpc('reopen_fixed_asset_purchase' as any, { p_purchase_id: id } as any);
+        if (error) throw new SupabaseDataError(`fixedAssets.reopenPurchase: ${error.message}`);
+      },
+
+      async deletePurchaseDraft(id) {
+        const { error } = await client.rpc('delete_fixed_asset_purchase_draft' as any, { p_purchase_id: id } as any);
+        if (error) throw new SupabaseDataError(`fixedAssets.deletePurchaseDraft: ${error.message}`);
+      },
+
       async runDepreciation(period_end): Promise<RunDepreciationResult> {
         const { data, error } = await client.rpc('run_depreciation' as any, { p_period_end: period_end } as any);
         if (error) throw new SupabaseDataError(`fixedAssets.runDepreciation: ${error.message}`);

@@ -1299,6 +1299,49 @@ export interface FixedAssetRow {
   notes: string | null;
   created_at: string;   created_by: string | null;
   updated_at: string;
+  /** phase126 — the purchase (bill or expense) that bought it, if any. */
+  purchase_id?: string | null;
+}
+
+// ── phase126 — fixed asset purchase (credit = vendor bill, cash/bank = expense)
+export type AssetPurchasePaymentType = 'credit' | 'cash' | 'bank';
+/** Per-line register details kept on the purchase until it posts. */
+export interface AssetPurchaseSpec {
+  sort_order: number;
+  name: string;
+  asset_tag?: string | null;
+  category?: string | null;
+  in_service_date?: string | null;
+  salvage_value?: number;
+  useful_life_months?: number;
+  method?: DepreciationMethodDb;
+  wdv_rate?: number;
+  accum_dep_account_code?: string;
+  expense_account_code?: string;
+}
+export interface FixedAssetPurchaseRow {
+  id: string;
+  company_id: string;
+  payment_type: AssetPurchasePaymentType;
+  doc_type: 'vendor_bill' | 'expense';
+  doc_id: string;
+  status: 'draft' | 'posted';
+  asset_specs: AssetPurchaseSpec[];
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export type FixedAssetPurchaseInsert = Pick<FixedAssetPurchaseRow,
+  'company_id' | 'payment_type' | 'doc_type' | 'doc_id' | 'asset_specs' | 'notes'>;
+export type FixedAssetPurchaseUpdate = Partial<Pick<FixedAssetPurchaseRow,
+  'payment_type' | 'doc_type' | 'doc_id' | 'asset_specs' | 'notes'>>;
+export interface PostAssetPurchaseResult {
+  purchase_id: string;
+  doc_type: 'vendor_bill' | 'expense';
+  doc_id: string;
+  doc_number: string;
+  assets_created: number;
 }
 export interface FixedAssetInsert {
   asset_tag?: string | null;
@@ -1347,6 +1390,18 @@ export interface FixedAssetsAPI {
   dispose(input: DisposeAssetInput): Promise<DisposeAssetResult>;
   /** LIFO-reverse the latest depreciation entry (correction path). */
   reverseLast(asset_id: string): Promise<ReverseDepreciationResult>;
+
+  // ── phase126 — purchase an asset (credit via vendor bill, cash/bank via expense)
+  listPurchases(company_id: string): Promise<FixedAssetPurchaseRow[]>;
+  getPurchase(id: string): Promise<FixedAssetPurchaseRow | null>;
+  createPurchase(row: FixedAssetPurchaseInsert): Promise<FixedAssetPurchaseRow>;
+  updatePurchase(id: string, patch: FixedAssetPurchaseUpdate): Promise<void>;
+  /** Confirm the carrying document and create one register row per line — atomically. */
+  postPurchase(id: string): Promise<PostAssetPurchaseResult>;
+  /** Reverse through the document's own control and remove its register rows. */
+  reopenPurchase(id: string): Promise<void>;
+  /** Delete a draft purchase together with its draft document. */
+  deletePurchaseDraft(id: string): Promise<void>;
 }
 
 // ── AC-6A — prepaid / deferred-revenue / accrual schedules ───────────────────

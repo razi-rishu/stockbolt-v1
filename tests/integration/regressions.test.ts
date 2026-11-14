@@ -8366,3 +8366,57 @@ describe('phase108 — project profitability agrees with the ledger', () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 126 — fixed asset purchase (New Asset → credit / cash / bank)
+//
+// A purchase is carried by a vendor bill (credit) or an expense (cash/bank);
+// post_fixed_asset_purchase confirms it and creates one register row per line
+// in the same transaction. The register must never disagree with the ledger:
+// what the document debited to asset accounts == the cost of its assets.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 126 — fixed asset purchase (soft until applied)', () => {
+  const FNS = ['post_fixed_asset_purchase', 'reopen_fixed_asset_purchase', 'delete_fixed_asset_purchase_draft'];
+  const applied = async (): Promise<boolean> => {
+    const r = await sql<{ ok: boolean }>(`SELECT to_regclass('public.fixed_asset_purchases') IS NOT NULL AS ok`);
+    return !!r[0]?.ok;
+  };
+
+  it('phase126: functions run as the caller and are not callable by anon', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ phase126 not applied yet — run supabase/migrations/20261114000001_phase126_fixed_asset_purchase.sql.');
+      return;
+    }
+    const rows = await sql<{ proname: string; prosecdef: boolean; anon_exec: boolean }>(`
+      SELECT p.proname, p.prosecdef, has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_exec
+        FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = ANY (ARRAY['${FNS.join("','")}'])`);
+    expect(rows.map(r => r.proname).sort()).toEqual([...FNS].sort());
+    for (const r of rows) {
+      expect(r.prosecdef, `${r.proname} must be SECURITY INVOKER`).toBe(false);
+      expect(r.anon_exec, `${r.proname} must not be executable by anon`).toBe(false);
+    }
+  });
+
+  it('phase126: RLS is on and the register links back with ON DELETE RESTRICT', async () => {
+    if (!(await applied())) return;
+    const rls = await sql<{ relrowsecurity: boolean }>(`SELECT relrowsecurity FROM pg_class WHERE oid = 'public.fixed_asset_purchases'::regclass`);
+    expect(rls[0]?.relrowsecurity).toBe(true);
+    const fk = await sql<{ def: string }>(`SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+      WHERE conrelid = 'public.fixed_assets'::regclass AND contype = 'f' AND pg_get_constraintdef(oid) LIKE '%fixed_asset_purchases%'`);
+    expect(fk[0]?.def ?? '').toContain('ON DELETE RESTRICT');
+  });
+
+  it('phase126: every posted purchase — asset costs equal the asset-account debits', async () => {
+    if (!(await applied())) return;
+    const bad = await sql<{ id: string; debits: number; costs: number }>(`
+      SELECT p.id,
+             (SELECT COALESCE(SUM(g.debit), 0) FROM public.gl_active g
+               WHERE g.related_doc_id = p.doc_id
+                 AND g.account_code IN (SELECT a.asset_account_code FROM public.fixed_assets a WHERE a.purchase_id = p.id)) AS debits,
+             (SELECT COALESCE(SUM(a.cost), 0) FROM public.fixed_assets a WHERE a.purchase_id = p.id) AS costs
+        FROM public.fixed_asset_purchases p
+       WHERE p.status = 'posted'`);
+    const off = bad.filter(r => Math.abs(Number(r.debits) - Number(r.costs)) > 0.01);
+    expect(off, `purchases whose register cost differs from the ledger: ${JSON.stringify(off)}`).toHaveLength(0);
+  });
+});

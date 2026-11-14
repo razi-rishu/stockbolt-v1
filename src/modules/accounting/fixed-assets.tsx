@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
@@ -10,7 +11,7 @@ import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { DocLink } from '@/ui/doc-link';
 import { OceanPage } from '@/components/ocean-list';
-import { Building2, CalendarClock, PlayCircle, Plus, Search, Undo2 } from 'lucide-react';
+import { Building2, CalendarClock, FileClock, PlayCircle, Plus, Receipt, Search, Undo2 } from 'lucide-react';
 import { monthlyCharge, projectSchedule, type DepreciationAsset } from '@/lib/depreciation';
 import type {
   Company, CoaRow, FixedAssetRow, FixedAssetInsert, DepreciationEntryRow,
@@ -123,6 +124,14 @@ export default function FixedAssetsPage() {
     queryFn: () => getAdapter().fixedAssets.list(company_id!),
     enabled: !!company_id,
   });
+  // phase126 — purchases still in draft, so they can be finished or deleted.
+  const navigate = useNavigate();
+  const { data: purchases = [] } = useQuery({
+    queryKey: ['asset_purchases', company_id],
+    queryFn: () => getAdapter().fixedAssets.listPurchases(company_id!),
+    enabled: !!company_id,
+  });
+  const draftPurchases = purchases.filter((p) => p.status === 'draft');
 
   const { data: coa = [] } = useQuery<CoaRow[]>({
     queryKey: ['coa', company_id],
@@ -245,11 +254,6 @@ export default function FixedAssetsPage() {
     return all.filter((r) => !posted.has(r.period_end));
   }, [selected, entries]);
 
-  function openCreate() {
-    setEditing(null);
-    setForm({ ...emptyForm, asset_account_code: fixedAccounts[0]?.code ?? '' });
-    setFormOpen(true);
-  }
   function openEdit(a: FixedAssetRow) {
     setEditing(a);
     setForm({
@@ -286,7 +290,7 @@ export default function FixedAssetsPage() {
           <Button variant="secondary" size="sm" onClick={() => { setRunResult(null); runMutation.reset(); setRunOpen(true); }}>
             <PlayCircle size={15} aria-hidden="true" /> {t('fa.run_depreciation')}
           </Button>
-          <Button size="sm" onClick={openCreate} disabled={fixedAccounts.length === 0}>
+          <Button size="sm" onClick={() => navigate('/accounting/fixed-assets/new')} disabled={fixedAccounts.length === 0}>
             <Plus size={15} aria-hidden="true" /> {t('fa.new_asset')}
           </Button>
         </>
@@ -294,6 +298,20 @@ export default function FixedAssetsPage() {
     >
       <div className="sb-acct-md">
         {/* ── Register ────────────────────────────────────────────────────── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+        {draftPurchases.length > 0 && (
+          <div className="sb-alert sb-alert-warn sb-ap-drafts">
+            <FileClock size={17} aria-hidden="true" style={{ flexShrink: 0 }} />
+            <span>{t('apOcean.drafts_banner', { count: draftPurchases.length })}</span>
+            <span className="sb-ap-drafts-list">
+              {draftPurchases.map((p) => (
+                <button key={p.id} type="button" className="sb-pdc-act" onClick={() => navigate(`/accounting/fixed-assets/purchase/${p.id}`)}>
+                  {p.asset_specs[0]?.name || t('apOcean.untitled')}{p.asset_specs.length > 1 ? ` +${p.asset_specs.length - 1}` : ''}
+                </button>
+              ))}
+            </span>
+          </div>
+        )}
         <div className="sb-card sb-doc-card sb-doc-lines">
           <div className="sb-doc-lines-head sb-acct-filterbar">
             <label className="sb-search" style={{ margin: 0, flex: 1, minWidth: 180 }}>
@@ -374,6 +392,8 @@ export default function FixedAssetsPage() {
           </div>
         </div>
 
+        </div>
+
         {/* ── Detail ──────────────────────────────────────────────────────── */}
         <div className="sb-card sb-doc-card sb-acct-detail">
           {!selected ? (
@@ -399,6 +419,13 @@ export default function FixedAssetsPage() {
                 </div>
                 {statusPill(selected.status)}
               </div>
+
+              {selected.purchase_id && (
+                <button type="button" className="sb-pdc-act" style={{ alignSelf: 'flex-start' }}
+                  onClick={() => navigate(`/accounting/fixed-assets/purchase/${selected.purchase_id}`)}>
+                  <Receipt size={14} aria-hidden="true" /> {t('apOcean.view_purchase')}
+                </button>
+              )}
 
               <div className="sb-acct-tiles">
                 <div><span className="sb-info-label">{t('fa.col_cost')}</span><bdi dir="ltr" className="sb-dash-num">{MONEY(Number(selected.cost))}</bdi></div>

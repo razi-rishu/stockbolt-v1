@@ -292,6 +292,13 @@ export function createSelfHostedAdapter(): DataAdapter {
       runDepreciation: () => notImplemented('fixedAssets.runDepreciation'),
       dispose:         () => notImplemented('fixedAssets.dispose'),
       reverseLast:     () => notImplemented('fixedAssets.reverseLast'),
+      listPurchases:   () => notImplemented('fixedAssets.listPurchases'),
+      getPurchase:     () => notImplemented('fixedAssets.getPurchase'),
+      createPurchase:  () => notImplemented('fixedAssets.createPurchase'),
+      updatePurchase:  () => notImplemented('fixedAssets.updatePurchase'),
+      postPurchase:    () => notImplemented('fixedAssets.postPurchase'),
+      reopenPurchase:  () => notImplemented('fixedAssets.reopenPurchase'),
+      deletePurchaseDraft: () => notImplemented('fixedAssets.deletePurchaseDraft'),
     },
     amortization: {
       list:        () => notImplemented('amortization.list'),

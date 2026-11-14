@@ -636,6 +636,52 @@ Dr  1500 Input VAT (Claimable)    [tax_amount]
 
 ---
 
+## B4a. Fixed Asset Purchase (New Asset) — phase126
+
+**Trigger:** Accounting → Fixed Assets → New Asset, payment type *On credit*,
+*Paid in cash* or *Paid by bank*, then **Post purchase**.
+
+**No new posting rule and no new source type.** The purchase is carried by a
+document the books already post, with the line pointed at an ASSET-class GL
+account (the engine refuses any other class):
+
+| Payment type | Carried by | Source type | Engine |
+|---|---|---|---|
+| On credit | Vendor bill (B4) | `vendor_bill` | `confirm_vendor_bill` |
+| Cash / bank | Expense (D3) | `expense` | `confirm_expense` |
+
+**Journal entry — on credit:**
+```
+Dr  17xx Fixed asset account        [line net of discount, excl. recoverable tax]
+Dr  1500 Input VAT (or 1510/1520/1530 India GST)   [recoverable tax]
+    Cr  2100 Accounts Payable              [total, supplier tagged]
+```
+
+**Journal entry — cash / bank:**
+```
+Dr  17xx Fixed asset account        [line net of discount]
+Dr  1500 Input VAT                  [recoverable tax]
+    Cr  Cash / Bank account                [total]
+```
+
+**Register:** `post_fixed_asset_purchase` confirms the document and, in the
+same transaction, creates one `fixed_assets` row per line at exactly the
+amount debited to the asset account (bill: `line_total − tax_amount`;
+expense: `line_subtotal`, plus tax only when the expense engine folds it),
+so the register and the ledger cannot disagree and the cost is never posted
+twice. Depreciation then runs as in Part P/AC-5, unchanged.
+
+**Reversal:** `reopen_fixed_asset_purchase` uses the document's own control
+(`edit_vendor_bill` / `reopen_expense`: reversal at the voucher date, back to
+draft) and removes the register rows. Refused once depreciation or a disposal
+is posted on them. A credit purchase that has been paid must have its payment
+reversed first (the bill engine refuses otherwise).
+
+**"Register only"** keeps the original behaviour: the register row is written
+and nothing posts — for assets already in the books.
+
+---
+
 ## B5. Vendor Payment — Allocated to Bills
 
 **Trigger:** User creates a vendor payment and allocates to one or more bills.
