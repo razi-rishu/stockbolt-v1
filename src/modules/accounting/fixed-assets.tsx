@@ -570,9 +570,21 @@ export default function FixedAssetsPage() {
               {t('fa.basis_locked')}
             </p>
           )}
-          {!basisLocked && purchaseLocked && (
-            <p className="sb-alert sb-alert-warn">{t('fa.purchase_locked')}</p>
-          )}
+          {/* A purchased asset's cost, tax, quantity and supplier live on its
+              bill or expense; Reopen there reverses and reposts them together. */}
+          {editing?.purchase_id ? (
+            <div className="sb-alert sb-alert-warn" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <span style={{ flex: 1, minWidth: 200 }}>{t('fa.purchase_locked')}</span>
+              <Button size="sm" variant="secondary" onClick={() => {
+                setFormOpen(false);
+                navigate(`/accounting/fixed-assets/purchase/${editing.purchase_id}`);
+              }}>
+                <Receipt size={15} aria-hidden="true" /> {t('fa.edit_purchase')}
+              </Button>
+            </div>
+          ) : (!basisLocked && purchaseLocked && (
+            <p className="sb-alert sb-alert-warn">{t('fa.split_locked')}</p>
+          ))}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Input label={t('fa.f_name')} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             <Input label={t('fa.f_tag')} value={form.asset_tag ?? ''} onChange={(e) => setForm({ ...form, asset_tag: e.target.value })} />

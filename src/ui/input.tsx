@@ -52,8 +52,11 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             fontSize: '13px',
             border: `1px solid ${borderColor}`,
             borderRadius: '7px',
-            background: '#fff',
-            color: '#1e293b',
+            // A disabled field must look locked (same muted surface as Select),
+            // or users take a read-only value for an editable one.
+            background: rest.disabled ? '#f3f4f6' : '#fff',
+            color: rest.disabled ? '#6b7280' : '#1e293b',
+            cursor: rest.disabled ? 'not-allowed' : undefined,
             outline: 'none',
             transition: 'border-color .15s, box-shadow .15s',
             boxShadow: focused ? '0 0 0 3px rgba(124,58,237,.10)' : 'none',

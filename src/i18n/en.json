@@ -1757,6 +1757,8 @@
     "coverage_line": "{{code}} {{name}} — {{needed}} still to recognise but only {{available}} on the account. Check the original prepayment or receipt was posted there."
   },
   "fa": {
+    "split_locked": "This row was split off by a partial disposal, so its cost and quantity cannot change.",
+    "edit_purchase": "Edit purchase",
     "col_qty": "Qty",
     "qty_n": "Qty {{n}}",
     "f_quantity": "Quantity",
@@ -1764,7 +1766,7 @@
     "dispose_qty_hint": "Of {{total}} units on this asset",
     "dispose_qty_invalid": "Enter a quantity above 0 and no more than {{total}}.",
     "disposed_share": "Share disposed: cost {{cost}} · accumulated depreciation {{acc}}",
-    "purchase_locked": "Cost, quantity, asset account and acquisition date come from the purchase. Reopen the purchase to change them.",
+    "purchase_locked": "Cost, tax, quantity, supplier, asset account and acquisition date come from the purchase. Edit them there: Reopen reverses the bill or expense, and posting again records your changes.",
     "status_void": "Void",
     "void": "Void",
     "void_title": "Void asset",
