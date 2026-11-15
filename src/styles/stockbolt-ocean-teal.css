@@ -1991,3 +1991,19 @@
 .sb-ocean .sb-pay-package { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 0; padding: 10px 14px; border-radius: var(--sb-radius-sm); background: var(--sb-primary-soft); border: 1px solid var(--sb-primary-light); font-size: 13.5px; color: var(--sb-primary-dark); }
 .sb-ocean .sb-pay-package .sb-dash-num { font-size: 16px; color: var(--sb-primary-dark); }
 .sb-ocean .sb-pay-namecode { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; }
+/* Payroll step 2 — run editor lines, leave salary */
+.sb-ocean .sb-pay-in { width: 92px; min-height: 32px; padding: 0 8px; border: 1px solid var(--sb-border); border-radius: 8px; background: var(--sb-surface); font: inherit; font-size: 13px; text-align: end; font-variant-numeric: tabular-nums; color: var(--sb-text); }
+.sb-ocean .sb-pay-in:focus { outline: none; border-color: var(--sb-primary); box-shadow: 0 0 0 3px rgba(0, 143, 135, .15); }
+.sb-ocean .sb-pay-lines td { vertical-align: middle; }
+.sb-ocean .sb-rpt-table .sb-icon-btn { width: 30px; height: 30px; }
+.sb-ocean .sb-pay-lines { table-layout: auto; }
+.sb-ocean .sb-pay-lines th, .sb-ocean .sb-pay-lines td { padding-inline: 6px; }
+.sb-ocean .sb-pay-lines th:first-child, .sb-ocean .sb-pay-lines td:first-child { padding-inline-start: 16px; min-width: 190px; }
+.sb-ocean .sb-pay-lines th:last-child, .sb-ocean .sb-pay-lines td:last-child { padding-inline-end: 16px; }
+.sb-ocean .sb-pay-lines .sb-pay-in { width: 76px; }
+.sb-ocean.sb-modal-form .sb-rpt-figs, .sb-ocean .sb-modal-form .sb-rpt-figs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.sb-ocean .sb-pay-lines .sb-icon-btn { display: inline-flex; align-items: center; justify-content: center; padding: 0; width: 32px; height: 32px; color: var(--sb-text-secondary); }
+.sb-ocean .sb-pay-lines .sb-icon-btn:hover { color: var(--sb-danger); background: var(--sb-danger-bg); }
+.sb-ocean .sb-pay-lines .sb-icon-btn svg { flex: none; width: 15px; height: 15px; }
+.sb-ocean.sb-modal-form .sb-rpt-figs > div { grid-column: auto !important; padding: 10px 12px; }
+.sb-ocean.sb-modal-form .sb-rpt-hint { display: block; }

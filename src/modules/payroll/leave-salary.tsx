@@ -20,24 +20,23 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
+import { useTranslation } from 'react-i18next';
+import { Wallet } from 'lucide-react';
 import { Button } from '@/ui/button';
 import { Modal } from '@/ui/modal';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
-import { serviceLabel } from './gratuity';
+import { Input } from '@/ui/input';
+import { Select } from '@/ui/select';
+import { StatusBadge } from '@/ui/status-badge';
+import { OceanPage } from '@/components/ocean-list';
+import { ReportCard, ReportFigures, ReportMessage, ReportTable, Num, type ReportColumn } from '@/components/ocean-report';
+import { useServiceLabel } from './use-service-label';
 import type { EmployeeRow, BankAccountRow, LeaveSalaryRow, LeaveSalaryInsert } from '@/data/adapter';
 
 const ANNUAL_LEAVE_DAYS = 30;
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const round1 = (n: number) => Math.round(n * 10) / 10;
-const inputCls = 'h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500';
 
-const STATUS_TONE: Record<string, { bg: string; text: string; border: string }> = {
-  draft: { bg: '#fffbeb', text: '#b45309', border: '#fde68a' },
-  paid:  { bg: '#ecfdf5', text: '#047857', border: '#a7f3d0' },
-  void:  { bg: '#fef2f2', text: '#dc2626', border: '#fecaca' },
-};
 
 /** Annual leave earned to date — flat 30/year pro-rated from joining. */
 function earnedLeaveDays(joiningDate: string | null | undefined): number {
@@ -56,6 +55,8 @@ function dailyWage(e: EmployeeRow, isIndia: boolean): number {
 }
 
 export default function LeaveSalaryPage() {
+  const { t } = useTranslation();
+  const service = useServiceLabel();
   const { company_id } = useAuthStore();
   const qc = useQueryClient();
   const invalidateBooks = useInvalidateBooks();
@@ -125,12 +126,12 @@ export default function LeaveSalaryPage() {
 
   const payMutation = useMutation({
     mutationFn: async () => {
-      if (!empId) throw new Error('Pick an employee');
-      if (!bankId) throw new Error('Pick a bank account');
+      if (!empId) throw new Error(t('payOcean.err_pick_employee'));
+      if (!bankId) throw new Error(t('payOcean.err_pick_bank'));
       const d = parseFloat(days) || 0;
       const amt = parseFloat(amount) || 0;
-      if (d <= 0) throw new Error('Days must be greater than zero');
-      if (amt <= 0) throw new Error('Amount must be positive');
+      if (d <= 0) throw new Error(t('payOcean.err_days'));
+      if (amt <= 0) throw new Error(t('payOcean.err_amount'));
       const row: LeaveSalaryInsert = {
         company_id: company_id!, employee_id: empId,
         leave_from: null, leave_to: null,
@@ -151,156 +152,112 @@ export default function LeaveSalaryPage() {
   const selected = empMap[empId];
   const selBal = selected ? balanceOf(selected) : null;
 
+  const payableOf = (e: EmployeeRow) => round2(dailyWage(e, isIndia) * balanceOf(e).balance);
+  const totalBalance = round1(activeEmps.reduce((s, e) => s + balanceOf(e).balance, 0));
+  const totalPayable = activeEmps.reduce((s, e) => s + payableOf(e), 0);
+  const paidTotal = rows.filter(r => r.status === 'paid').reduce((s, r) => s + Number(r.amount), 0);
+
+  const balanceCols: ReportColumn<EmployeeRow>[] = [
+    { key: 'emp', header: t('payOcean.col_employee'), cell: e => (
+      <span className="sb-pay-namecode"><span className="strong">{e.name}</span>{e.code && <bdi dir="ltr" className="code">{e.code}</bdi>}</span>
+    ) },
+    { key: 'service', header: t('payOcean.col_service'), cls: 'muted', cell: e => service(e.joining_date as string | null) },
+    { key: 'earned', header: t('payOcean.col_earned_days'), num: true, cls: 'muted', cell: e => balanceOf(e).earned },
+    { key: 'paid', header: t('payOcean.col_paid_days'), num: true, cls: 'muted', cell: e => balanceOf(e).paid },
+    { key: 'balance', header: t('payOcean.col_balance_days'), num: true, cls: 'strong', cell: e => balanceOf(e).balance, foot: totalBalance },
+    { key: 'payable', header: t('payOcean.col_payable'), num: true, cls: 'strong', cell: e => fmt(payableOf(e)), foot: fmt(totalPayable) },
+    { key: 'pay', header: '', cell: e => (
+      <Button size="sm" variant="secondary" disabled={balanceOf(e).balance <= 0} onClick={() => openPay(e)}>
+        <Wallet size={14} aria-hidden="true" /> {t('payOcean.pay')}
+      </Button>
+    ) },
+  ];
+
+  const paymentCols: ReportColumn<LeaveSalaryRow>[] = [
+    { key: 'emp', header: t('payOcean.col_employee'), cls: 'strong', cell: r => empMap[r.employee_id]?.name ?? '—' },
+    { key: 'days', header: t('payOcean.col_days'), num: true, cls: 'muted', cell: r => Number(r.days) },
+    { key: 'date', header: t('payOcean.col_date_paid'), cls: 'muted', cell: r => <Num>{formatDate(r.date)}</Num> },
+    { key: 'amount', header: t('common.amount'), num: true, cls: 'strong', cell: r => fmt(Number(r.amount)) },
+    { key: 'status', header: '', cell: r => <StatusBadge status={r.status} /> },
+  ];
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        title="Leave Salary"
-        subtitle="Each employee earns 30 paid leave days a year, accrued from their joining date. Pay out the earned balance below."
-      />
+    // Ocean Teal (UI v1.1): look only — same balance maths, pay-out and
+    // posting as before.
+    <OceanPage
+      testid="leave-salary-ocean"
+      title={t('payOcean.leave_title')}
+      subtitle={t('payOcean.leave_subtitle')}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* ── Leave balances ── */}
+        <ReportCard
+          title={t('payOcean.balances_title')}
+          figures={activeEmps.length > 0 ? [
+            { label: t('payOcean.fig_active'), value: <Num>{activeEmps.length}</Num> },
+            { label: t('payOcean.fig_balance_days'), value: <Num>{totalBalance}</Num> },
+            { label: t('payOcean.fig_payable'), value: <Num>{fmt(totalPayable)}</Num>, tone: 'warn', note: t('payOcean.fig_payable_note') },
+          ] : undefined}
+        >
+          {activeEmps.length === 0
+            ? <ReportMessage>{t('payOcean.no_active')}</ReportMessage>
+            : <ReportTable columns={balanceCols} rows={activeEmps} rowKey={e => e.id} footLabel={t('rptOcean.total')} minWidth={820} />}
+        </ReportCard>
 
-      {/* ── Leave balances ─────────────────────────────────────────────── */}
-      <div className="overflow-x-auto bg-white" style={{ border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm }}>
-        <div className="border-b border-border-subtle px-4 py-3">
-          <h2 className="text-sm font-semibold text-ink-primary">Leave balances</h2>
-        </div>
-        {activeEmps.length === 0 ? (
-          <p style={{ fontSize: '13px', color: theme.inkFaint, padding: '32px 0', textAlign: 'center' }}>No active employees.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
-                {['Employee', 'Service', 'Earned (days)', 'Paid (days)', 'Balance (days)', 'Payable', ''].map((l, i) => (
-                  <th key={l} className="px-4 py-3" style={{
-                    fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
-                    textTransform: 'uppercase', letterSpacing: '.06em',
-                    textAlign: i >= 2 && i <= 5 ? 'end' : 'start', whiteSpace: 'nowrap',
-                  }}>{l}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {activeEmps.map((e, idx) => {
-                const b = balanceOf(e);
-                const payable = round2(dailyWage(e, isIndia) * b.balance);
-                return (
-                  <tr key={e.id} style={{ borderTop: idx === 0 ? 'none' : '1px solid #f1f5f9' }}>
-                    <td className="px-4 py-3" style={{ color: theme.ink, fontWeight: 500 }}>
-                      {e.name}{e.code ? <span className="font-mono" style={{ marginInlineStart: '8px', fontSize: '10px', color: theme.inkFaint }}>{e.code}</span> : null}
-                    </td>
-                    <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{serviceLabel(e.joining_date as string | null)}</td>
-                    <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: theme.inkMuted }}>{b.earned}</td>
-                    <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: theme.inkMuted }}>{b.paid}</td>
-                    <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', fontWeight: 700, color: '#6d28d9' }}>{b.balance}</td>
-                    <td className="px-4 py-3 font-mono" style={{ textAlign: 'end' }}>{fmt(payable)}</td>
-                    <td className="px-4 py-3" style={{ textAlign: 'end' }}>
-                      <Button size="sm" variant="ghost" disabled={b.balance <= 0} onClick={() => openPay(e)}>Pay</Button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
+        {/* ── Payment history ── */}
+        <ReportCard
+          title={t('payOcean.payments_title')}
+          aside={paidTotal > 0 ? <span className="sb-pill sb-pill-good"><Num>{fmt(paidTotal)}</Num></span> : undefined}
+        >
+          {isLoading
+            ? <ReportMessage>{t('common.loading')}</ReportMessage>
+            : rows.length === 0
+              ? <ReportMessage>{t('payOcean.no_payments')}</ReportMessage>
+              : <ReportTable columns={paymentCols} rows={rows} rowKey={r => r.id} minWidth={560} />}
+        </ReportCard>
       </div>
 
-      {/* ── Payment history ────────────────────────────────────────────── */}
-      <div className="overflow-x-auto bg-white" style={{ border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm }}>
-        <div className="border-b border-border-subtle px-4 py-3">
-          <h2 className="text-sm font-semibold text-ink-primary">Payments</h2>
-        </div>
-        {isLoading ? (
-          <p style={{ fontSize: '13px', color: theme.inkFaint, padding: '32px 0', textAlign: 'center' }}>Loading…</p>
-        ) : rows.length === 0 ? (
-          <p style={{ fontSize: '13px', color: theme.inkFaint, padding: '32px 0', textAlign: 'center' }}>No leave salary paid yet.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
-                {['Employee', 'Days', 'Date Paid', 'Amount', 'Status'].map((l, i) => (
-                  <th key={l} className="px-4 py-3" style={{
-                    fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
-                    textTransform: 'uppercase', letterSpacing: '.06em',
-                    textAlign: i >= 1 && i <= 3 ? 'end' : 'start', whiteSpace: 'nowrap',
-                  }}>{l}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, idx) => {
-                const tone = STATUS_TONE[r.status] ?? STATUS_TONE.draft;
-                return (
-                  <tr key={r.id} style={{ borderTop: idx === 0 ? 'none' : '1px solid #f1f5f9' }}>
-                    <td className="px-4 py-3" style={{ color: theme.ink, fontWeight: 500 }}>{empMap[r.employee_id]?.name ?? '—'}</td>
-                    <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: theme.inkMuted }}>{r.days}</td>
-                    <td className="px-4 py-3" style={{ textAlign: 'end', color: theme.inkMuted, fontSize: '13px' }}>{formatDate(r.date)}</td>
-                    <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', fontWeight: 600 }}>{fmt(Number(r.amount))}</td>
-                    <td className="px-4 py-3">
-                      <span style={{
-                        display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
-                        fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
-                        background: tone.bg, color: tone.text, border: `1px solid ${tone.border}`,
-                      }}>{r.status}</span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {/* ── Pay modal ──────────────────────────────────────────────────── */}
-      <Modal open={open} onClose={() => setOpen(false)} title={selected ? `Pay leave salary — ${selected.name}` : 'Pay leave salary'}>
-        <div className="space-y-4">
-          {error && <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+      {/* ── Pay modal ── */}
+      <Modal open={open} onClose={() => setOpen(false)}
+        title={selected ? t('payOcean.pay_leave_for', { name: selected.name }) : t('payOcean.pay_leave')}>
+        <div className="sb-ocean sb-modal-form flex flex-col gap-4">
+          {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
 
           {selBal && (
-            <div className="rounded-card bg-surface-muted/60 px-4 py-3 text-sm">
-              <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-ink-secondary">
-                <span>Earned: <strong className="text-ink-primary">{selBal.earned} days</strong></span>
-                <span>Paid: <strong className="text-ink-primary">{selBal.paid} days</strong></span>
-                <span>Balance: <strong style={{ color: '#6d28d9' }}>{selBal.balance} days</strong></span>
-              </div>
-              <p className="mt-1 text-[11px] text-ink-tertiary">
-                Daily wage {isIndia ? 'basic ÷ 26' : 'full wage ÷ 30'} ({isIndia ? 'India' : 'GCC'}) = {selected ? fmt(dailyWage(selected, isIndia)) : '—'}/day
+            <div className="sb-card sb-rpt-card" style={{ boxShadow: 'none' }}>
+              <ReportFigures figures={[
+                { label: t('payOcean.earned'), value: <Num>{selBal.earned}</Num>, note: t('payOcean.days') },
+                { label: t('payOcean.paid'), value: <Num>{selBal.paid}</Num>, note: t('payOcean.days') },
+                { label: t('payOcean.balance'), value: <Num>{selBal.balance}</Num>, note: t('payOcean.days'), tone: 'brand' },
+              ]} />
+              <p className="sb-rpt-hint">
+                {t(isIndia ? 'payOcean.wage_india' : 'payOcean.wage_gcc')}{' '}
+                <bdi dir="ltr"><strong>{selected ? fmt(dailyWage(selected, isIndia)) : '—'}</strong></bdi> {t('payOcean.per_day')}
               </p>
             </div>
           )}
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-ink-secondary">Days to pay</label>
-              <input className={inputCls} type="number" min="0" step="0.5" value={days} onChange={e => setDays(e.target.value)} />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-ink-secondary">Amount (auto)</label>
-              <input className={inputCls} type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} />
-            </div>
+            <Input label={t('payOcean.f_days_to_pay')} dir="ltr" type="number" min="0" step="0.5" value={days} onChange={e => setDays(e.target.value)} />
+            <Input label={t('payOcean.f_amount_auto')} dir="ltr" type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-ink-secondary">Date paid</label>
-              <input className={inputCls} type="date" value={date} onChange={e => setDate(e.target.value)} />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-ink-secondary">Pay from bank</label>
-              <select className={inputCls} value={bankId} onChange={e => setBankId(e.target.value)}>
-                <option value="">— select bank —</option>
-                {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
-            </div>
+            <Input label={t('payOcean.col_date_paid')} type="date" value={date} onChange={e => setDate(e.target.value)} />
+            <Select label={t('payOcean.f_pay_from')} value={bankId} onChange={e => setBankId(e.target.value)}
+              options={[{ value: '', label: t('payOcean.select_bank') }, ...banks.map(b => ({ value: b.id, label: b.name }))]} />
           </div>
-          <p className="text-xs text-ink-tertiary">
-            Posts Dr 6100 Salaries &amp; Benefits / Cr bank. The {days || 0} day{Number(days) === 1 ? '' : 's'} paid reduce this employee's balance.
+          <p className="sb-info-note" style={{ fontSize: 13 }}>
+            {t('payOcean.leave_explain', { count: Number(days) || 0 })}{' '}
+            <bdi dir="ltr"><strong>Dr 6100 / Cr {t('payOcean.bank')}</strong></bdi>
           </p>
           <div className="flex justify-end gap-2 pt-1">
-            <Button variant="ghost" onClick={() => setOpen(false)} disabled={payMutation.isPending}>Cancel</Button>
+            <Button variant="ghost" onClick={() => setOpen(false)} disabled={payMutation.isPending}>{t('common.cancel')}</Button>
             <Button onClick={() => payMutation.mutate()} disabled={payMutation.isPending || !empId || !bankId || !(parseFloat(amount) > 0)}>
-              {payMutation.isPending ? 'Posting…' : 'Record & Pay'}
+              {payMutation.isPending ? t('payOcean.posting') : t('payOcean.record_pay')}
             </Button>
           </div>
         </div>
       </Modal>
-    </div>
+    </OceanPage>
   );
 }

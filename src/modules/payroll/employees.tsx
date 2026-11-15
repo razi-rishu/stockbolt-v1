@@ -19,7 +19,8 @@ import { Select } from '@/ui/select';
 import { OceanPage, OceanTable } from '@/components/ocean-list';
 import { ReportFigures } from '@/components/ocean-report';
 import type { Column } from '@/ui/table';
-import { computeGratuity, serviceLabel } from './gratuity';
+import { computeGratuity } from './gratuity';
+import { useServiceLabel } from './use-service-label';
 import type { EmployeeRow, EmployeeInsert, BankAccountRow } from '@/data/adapter';
 import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
 
@@ -160,17 +161,7 @@ export default function EmployeesPage() {
   const set = <K extends keyof Draft>(key: K) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setDraft(d => ({ ...d, [key]: e.target.value }));
   const num = (v: string) => parseFloat(v) || 0;
-  // serviceLabel keeps its own arithmetic ("3 yr 9 mo"); the numbers are read
-  // back out and put into a translated sentence so Arabic reads in order.
-  const service = (d: string | null) => {
-    const label = serviceLabel(d);
-    if (label === '—') return label;
-    const y = /(\d+) yr/.exec(label)?.[1];
-    const m = /(\d+) mo/.exec(label)?.[1];
-    if (y && m) return t('payOcean.service_ym', { y, m });
-    if (y) return t('payOcean.service_y', { y });
-    return t('payOcean.service_m', { m: m ?? '0' });
-  };
+  const service = useServiceLabel();
   const gratuityOf = (e: EmployeeRow) => computeGratuity(e.joining_date as string | null, Number(e.basic_salary));
 
   const active = employees.filter(e => e.is_active);

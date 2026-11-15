@@ -18,10 +18,16 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
+import { useTranslation } from 'react-i18next';
+import { CheckCircle2, Download, Landmark, Save, Trash2, X } from 'lucide-react';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
 import { Modal } from '@/ui/modal';
-import { theme } from '@/ui/theme';
+import { Input } from '@/ui/input';
+import { Select } from '@/ui/select';
+import { StatusBadge } from '@/ui/status-badge';
+import { ReportFigures, ReportTableWrap, Num } from '@/components/ocean-report';
+import '@/styles/stockbolt-ocean-teal.css';
 import { buildSif, downloadSif, type SifResult } from './wps-sif';
 import type {
   PayrollRunRow, PayrollRunItemRow, PayrollRunItemInsert,
@@ -29,7 +35,6 @@ import type {
 } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 interface LineState {
   employee_id: string;
@@ -55,20 +60,11 @@ function lineMath(l: LineState) {
   return { gross, expense, net };
 }
 
-const cellInput: React.CSSProperties = {
-  width: '84px', padding: '5px 8px', fontSize: '12px', textAlign: 'end',
-  border: `1px solid ${theme.border}`, borderRadius: '6px', outline: 'none',
-  fontVariantNumeric: 'tabular-nums',
-};
 
-const STATUS_TONES: Record<string, { bg: string; text: string; border: string }> = {
-  draft:     { bg: '#fffbeb', text: '#b45309', border: '#fde68a' },
-  confirmed: { bg: '#f5f3ff', text: '#6d28d9', border: '#ddd6fe' },
-  paid:      { bg: '#ecfdf5', text: '#047857', border: '#a7f3d0' },
-  void:      { bg: '#fef2f2', text: '#dc2626', border: '#fecaca' },
-};
 
 export default function PayrollRunEditorPage() {
+  const { t, i18n } = useTranslation();
+  const monthName = (m: number) => new Date(2000, m - 1, 1).toLocaleString(i18n.language, { month: 'long' });
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -174,10 +170,9 @@ export default function PayrollRunEditorPage() {
   });
 
   if (!run) {
-    return <p style={{ fontSize: '13px', color: theme.inkFaint, padding: '48px 0', textAlign: 'center' }}>Loading…</p>;
+    return <div className="sb-ocean sb-docx"><div className="sb-card sb-empty">{t('common.loading')}</div></div>;
   }
 
-  const tone = STATUS_TONES[run.status] ?? STATUS_TONES.draft;
   const totals = lines.reduce(
     (acc, l) => {
       const m = lineMath(l);
@@ -189,28 +184,43 @@ export default function PayrollRunEditorPage() {
   );
   const busy = saveMutation.isPending || confirmMutation.isPending || payMutation.isPending || deleteMutation.isPending;
 
+  // Column totals for the foot of the lines table (same lines as the strip).
+  const FIELDS: Array<[keyof LineState, string]> = [
+    ['basic', t('payOcean.col_basic')], ['housing', t('payOcean.f_housing')], ['transport', t('payOcean.f_transport')],
+    ['other', t('payOcean.f_other')], ['overtime', t('payOcean.col_overtime')], ['bonus', t('payOcean.col_bonus')],
+    ['deductions', t('payOcean.col_deductions')], ['loan', t('payOcean.col_loan')],
+  ];
+  const colSum = (key: keyof LineState) => lines.reduce((s, l) => s + (parseFloat(l[key]) || 0), 0);
+
+  const paidFrom = (() => {
+    if (!run.payment_journal_entry_id) return null;
+    const ba = banks.find(b => b.id === run.bank_account_id);
+    if (ba) return t('payOcean.paid_from', { name: ba.name, kind: ba.account_type === 'cash' ? t('payOcean.kind_cash') : t('payOcean.kind_bank') });
+    return run.bank_account_id ? t('payOcean.paid_from_missing') : t('payOcean.paid_from_unknown');
+  })();
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '48px' }}>
-      {/* ── Header ───────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-        <BackButton to="/payroll/runs" label="Payroll Runs" />
-        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: theme.ink }}>
-          {run.run_number} — {MONTHS[run.period_month - 1]} {run.period_year}
-        </h1>
-        <span style={{
-          display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
-          fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
-          background: tone.bg, color: tone.text, border: `1px solid ${tone.border}`,
-        }}>{run.status}</span>
-        <div style={{ marginInlineStart: 'auto', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+    // Ocean Teal (UI v1.1): look only — same line maths, save / confirm /
+    // pay / delete and WPS file as before.
+    <div className="sb-ocean sb-docx" data-testid="payroll-run-ocean">
+      <div className="sb-card sb-doc-bar">
+        <div className="sb-doc-bar-id">
+          <BackButton to="/payroll/runs" label={t('payOcean.runs_title')} />
+          <h1 className="sb-doc-bar-no">{monthName(run.period_month)} <bdi dir="ltr">{run.period_year}</bdi></h1>
+          <bdi dir="ltr" className="sb-acct-code">{run.run_number}</bdi>
+          <StatusBadge status={run.status} />
+        </div>
+        <div className="sb-doc-bar-actions">
           {isDraft && (
             <>
-              <Button variant="ghost" size="sm" onClick={() => deleteMutation.mutate()} disabled={busy}>Delete draft</Button>
+              <Button variant="ghost" size="sm" onClick={() => deleteMutation.mutate()} disabled={busy}>
+                <Trash2 size={15} aria-hidden="true" /> {t('payOcean.delete_draft')}
+              </Button>
               <Button variant="secondary" size="sm" onClick={() => saveMutation.mutate()} disabled={busy}>
-                {saveMutation.isPending ? 'Saving…' : 'Save'}
+                <Save size={15} aria-hidden="true" /> {saveMutation.isPending ? t('common.saving') : t('common.save')}
               </Button>
               <Button size="sm" onClick={() => confirmMutation.mutate()} disabled={busy || lines.length === 0}>
-                {confirmMutation.isPending ? 'Confirming…' : 'Confirm (post to books)'}
+                <CheckCircle2 size={15} aria-hidden="true" /> {confirmMutation.isPending ? t('payOcean.confirming') : t('payOcean.confirm_post')}
               </Button>
             </>
           )}
@@ -221,188 +231,148 @@ export default function PayrollRunEditorPage() {
               setWpsResult(null);
               setWpsOpen(true);
             }} disabled={busy}>
-              ⤓ WPS SIF file
+              <Download size={15} aria-hidden="true" /> {t('payOcean.wps_file')}
             </Button>
           )}
           {run.status === 'confirmed' && (
             <Button size="sm" onClick={() => { setPayBankId(banks[0]?.id ?? ''); setPayOpen(true); }} disabled={busy}>
-              Pay from bank…
+              <Landmark size={15} aria-hidden="true" /> {t('payOcean.pay_from_bank')}
             </Button>
           )}
         </div>
       </div>
 
-      {error && (
-        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '10px 16px', fontSize: '13px', color: '#dc2626' }}>
-          {error}
-        </div>
-      )}
+      {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
 
-      {/* ── Totals strip ─────────────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 160px), 1fr))', gap: '10px' }}>
-        {([
-          ['Gross Earnings', totals.gross, theme.ink],
-          ['Deductions', totals.ded, '#b45309'],
-          ['Loan Recovery', totals.loan, '#b45309'],
-          ['Net Pay', totals.net, '#047857'],
-        ] as Array<[string, number, string]>).map(([label, val, color]) => (
-          <div key={label} style={{ background: '#fff', border: `1px solid ${theme.border}`, borderRadius: '12px', padding: '12px 16px', boxShadow: theme.shadowSm }}>
-            <div style={{ fontSize: '10px', fontWeight: 700, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</div>
-            <div className="font-mono" style={{ marginTop: '4px', fontSize: '18px', fontWeight: 700, color }}>{fmt(val)}</div>
-          </div>
-        ))}
-        {Number(run.total_gratuity) > 0 && (
-          <div style={{ background: '#fff', border: `1px solid ${theme.border}`, borderRadius: '12px', padding: '12px 16px', boxShadow: theme.shadowSm }}>
-            <div style={{ fontSize: '10px', fontWeight: 700, color: theme.inkMuted, textTransform: 'uppercase', letterSpacing: '.06em' }}>Gratuity Accrued</div>
-            <div className="font-mono" style={{ marginTop: '4px', fontSize: '18px', fontWeight: 700, color: '#6d28d9' }}>{fmt(Number(run.total_gratuity))}</div>
-          </div>
+      {/* ── Totals strip ── */}
+      <div className="sb-card sb-rpt-card">
+        <ReportFigures figures={[
+          { label: t('payOcean.fig_gross'), value: <Num>{fmt(totals.gross)}</Num> },
+          { label: t('payOcean.col_deductions'), value: <Num>{fmt(totals.ded)}</Num>, tone: totals.ded > 0 ? 'warn' : undefined },
+          { label: t('payOcean.fig_loan'), value: <Num>{fmt(totals.loan)}</Num>, tone: totals.loan > 0 ? 'warn' : undefined },
+          { label: t('payOcean.col_net'), value: <Num>{fmt(totals.net)}</Num>, tone: 'good' },
+          ...(Number(run.total_gratuity) > 0
+            ? [{ label: t('payOcean.fig_gratuity_accrued'), value: <Num>{fmt(Number(run.total_gratuity))}</Num>, tone: 'brand' as const }]
+            : []),
+        ]} />
+        {(run.journal_entry_id || paidFrom) && (
+          <p className="sb-rpt-hint">
+            {run.journal_entry_id && <span>{t('payOcean.accrual_posted')} </span>}
+            {paidFrom && <span>{paidFrom}</span>}
+          </p>
         )}
       </div>
 
-      {/* ── JE links ─────────────────────────────────────────────────── */}
-      {(run.journal_entry_id || run.payment_journal_entry_id) && (
-        <div style={{ fontSize: '12px', color: theme.inkMuted }}>
-          {run.journal_entry_id && <span>Accrual posted to the books (see Accounting → Journal Entries). </span>}
-          {run.payment_journal_entry_id && (() => {
-            // Name the account the salaries were actually paid from.
-            const ba = banks.find(b => b.id === run.bank_account_id);
-            return <span>Salary payment posted{ba ? ` from ${ba.name} (${ba.account_type === 'cash' ? 'Cash' : 'Bank'})` : run.bank_account_id ? ' from a bank account no longer listed' : ' (paying account not recorded)'}.</span>;
-          })()}
+      {/* ── Lines ── */}
+      <div className="sb-card sb-rpt-card">
+        <div className="sb-rpt-card-head">
+          <h2 className="sb-rpt-card-title">{t('payOcean.lines_title')}</h2>
+          <span className="sb-rpt-card-meta">{t('payOcean.lines_count', { count: lines.length })}</span>
         </div>
-      )}
-
-      {/* ── Items table ──────────────────────────────────────────────── */}
-      <div className="overflow-x-auto bg-white" style={{ border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm }}>
-        <table className="w-full text-sm" style={{ minWidth: '980px' }}>
-          <thead>
-            <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
-              {['Employee', 'Basic', 'Housing', 'Transport', 'Other', 'Overtime', 'Bonus', 'Deductions', 'Loan', 'Net', ''].map((l, i) => (
-                <th key={i} className="px-3 py-3" style={{
-                  fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
-                  textTransform: 'uppercase', letterSpacing: '.05em',
-                  textAlign: i === 0 ? 'start' : 'end', whiteSpace: 'nowrap',
-                }}>{l}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((l, idx) => {
-              const emp = empMap[l.employee_id];
-              const m = lineMath(l);
-              const numCell = (key: keyof LineState) => (
-                isDraft ? (
-                  <input type="number" min="0" step="0.01" style={cellInput}
-                    value={l[key]} onChange={e => setLine(idx, { [key]: e.target.value } as Partial<LineState>)} />
-                ) : (
-                  <span className="font-mono" style={{ fontSize: '12px' }}>{fmt(parseFloat(l[key]) || 0)}</span>
-                )
-              );
-              return (
-                <tr key={l.employee_id} style={{ borderTop: idx === 0 ? 'none' : '1px solid #f1f5f9' }}>
-                  <td className="px-3 py-2" style={{ whiteSpace: 'nowrap' }}>
-                    <span style={{ fontWeight: 500, color: theme.ink }}>{emp?.name ?? l.employee_id}</span>
-                    {emp?.code && <span className="font-mono" style={{ marginInlineStart: '8px', fontSize: '10px', color: theme.inkFaint }}>{emp.code}</span>}
-                  </td>
-                  <td className="px-3 py-2" style={{ textAlign: 'end' }}>{numCell('basic')}</td>
-                  <td className="px-3 py-2" style={{ textAlign: 'end' }}>{numCell('housing')}</td>
-                  <td className="px-3 py-2" style={{ textAlign: 'end' }}>{numCell('transport')}</td>
-                  <td className="px-3 py-2" style={{ textAlign: 'end' }}>{numCell('other')}</td>
-                  <td className="px-3 py-2" style={{ textAlign: 'end' }}>{numCell('overtime')}</td>
-                  <td className="px-3 py-2" style={{ textAlign: 'end' }}>{numCell('bonus')}</td>
-                  <td className="px-3 py-2" style={{ textAlign: 'end' }}>{numCell('deductions')}</td>
-                  <td className="px-3 py-2" style={{ textAlign: 'end' }}>{numCell('loan')}</td>
-                  <td className="px-3 py-2 font-mono" style={{ textAlign: 'end', fontWeight: 700, color: m.net < 0 ? '#dc2626' : theme.ink }}>
-                    {fmt(m.net)}
-                  </td>
-                  <td className="px-3 py-2" style={{ textAlign: 'end' }}>
+        <ReportTableWrap>
+          <table className="sb-rpt-table sb-rpt-flat sb-pay-lines" style={{ minWidth: 980 }}>
+            <thead>
+              <tr>
+                <th>{t('payOcean.col_employee')}</th>
+                {FIELDS.map(([k, label]) => <th key={k} className="num">{label}</th>)}
+                <th className="num">{t('payOcean.col_net')}</th>
+                {isDraft && <th aria-label={t('payOcean.remove_line')} />}
+              </tr>
+            </thead>
+            <tbody>
+              {lines.map((l, idx) => {
+                const emp = empMap[l.employee_id];
+                const m = lineMath(l);
+                return (
+                  <tr key={l.employee_id}>
+                    <td>
+                      <span className="sb-pay-namecode">
+                        <span className="strong">{emp?.name ?? l.employee_id}</span>
+                        {emp?.code && <bdi dir="ltr" className="code">{emp.code}</bdi>}
+                      </span>
+                    </td>
+                    {FIELDS.map(([key]) => (
+                      <td key={key} className="num">
+                        {isDraft ? (
+                          <input
+                            type="number" min="0" step="0.01" dir="ltr" className="sb-pay-in"
+                            aria-label={`${emp?.name ?? ''} ${FIELDS.find(f => f[0] === key)?.[1] ?? ''}`}
+                            value={l[key]} onChange={e => setLine(idx, { [key]: e.target.value } as Partial<LineState>)}
+                          />
+                        ) : (
+                          <Num className={(parseFloat(l[key]) || 0) === 0 ? 'muted' : undefined}>{fmt(parseFloat(l[key]) || 0)}</Num>
+                        )}
+                      </td>
+                    ))}
+                    <td className={`num strong ${m.net < 0 ? 'is-down' : ''}`}><Num>{fmt(m.net)}</Num></td>
                     {isDraft && (
-                      <button onClick={() => removeLine(idx)} title="Remove from this run"
-                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: theme.inkFaint, fontSize: '12px' }}>✕</button>
+                      <td className="num">
+                        <button type="button" className="sb-icon-btn" onClick={() => removeLine(idx)}
+                          title={t('payOcean.remove_line')} aria-label={t('payOcean.remove_line')}>
+                          <X size={15} aria-hidden="true" />
+                        </button>
+                      </td>
                     )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr style={{ borderTop: `2px solid ${theme.border}`, background: theme.panelHead, fontWeight: 700 }}>
-              <td className="px-3 py-2.5" style={{ fontSize: '12px' }}>Total ({lines.length} employees)</td>
-              <td colSpan={8} className="px-3 py-2.5 font-mono" style={{ textAlign: 'end', fontSize: '12px', color: theme.inkMuted }}>
-                Gross {fmt(totals.gross)} · Deductions {fmt(totals.ded)} · Loans {fmt(totals.loan)}
-              </td>
-              <td className="px-3 py-2.5 font-mono" style={{ textAlign: 'end', color: '#047857' }}>{fmt(totals.net)}</td>
-              <td />
-            </tr>
-          </tfoot>
-        </table>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="sb-rpt-total">
+                <td>{t('rptOcean.total')}</td>
+                {FIELDS.map(([key]) => <td key={key} className="num"><Num>{fmt(colSum(key))}</Num></td>)}
+                <td className="num"><Num>{fmt(totals.net)}</Num></td>
+                {isDraft && <td />}
+              </tr>
+            </tfoot>
+          </table>
+        </ReportTableWrap>
+        {isDraft && (
+          <p className="sb-rpt-foot">
+            {t('payOcean.confirm_explain')}{' '}
+            <bdi dir="ltr"><strong>Dr 6100</strong> · <strong>Cr 1450</strong> · <strong>Cr 2350</strong></bdi>
+          </p>
+        )}
       </div>
 
-      {isDraft && (
-        <p style={{ fontSize: '12px', color: theme.inkFaint, margin: 0 }}>
-          Confirm posts: <strong>Dr 6100 Salaries &amp; Benefits</strong> (gross − deductions)
-          {' '}· <strong>Cr 1450 Employee Advances</strong> (loan recovery)
-          {' '}· <strong>Cr 2350 Salaries Payable</strong> (net). Paying later settles 2350 from your bank.
-        </p>
-      )}
-
-      {/* ── Pay modal ────────────────────────────────────────────────── */}
-      <Modal open={payOpen} onClose={() => setPayOpen(false)} title={`Pay ${run.run_number} — ${fmt(Number(run.total_net))}`}>
-        <div className="space-y-4">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-ink-secondary">Pay from bank account</label>
-            <select value={payBankId} onChange={e => setPayBankId(e.target.value)}
-              className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500">
-              <option value="">— select bank —</option>
-              {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-ink-secondary">Payment date</label>
-            <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)}
-              className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500" />
-          </div>
-          <p className="text-xs text-ink-tertiary">
-            Posts Dr 2350 Salaries Payable / Cr bank for the net total. WPS SIF file export arrives in Payroll P2.
+      {/* ── Pay modal ── */}
+      <Modal open={payOpen} onClose={() => setPayOpen(false)}
+        title={t('payOcean.pay_title', { run: run.run_number, amount: fmt(Number(run.total_net)) })}>
+        <div className="sb-ocean sb-modal-form flex flex-col gap-4">
+          <Select label={t('payOcean.f_pay_from')} value={payBankId} onChange={e => setPayBankId(e.target.value)}
+            options={[{ value: '', label: t('payOcean.select_bank') }, ...banks.map(b => ({ value: b.id, label: b.name }))]} />
+          <Input label={t('payOcean.f_payment_date')} type="date" value={payDate} onChange={e => setPayDate(e.target.value)} />
+          <p className="sb-info-note" style={{ fontSize: 13 }}>
+            {t('payOcean.pay_explain')} <bdi dir="ltr"><strong>Dr 2350 / Cr {t('payOcean.bank')}</strong></bdi>
           </p>
           <div className="flex justify-end gap-2 pt-1">
-            <Button variant="ghost" onClick={() => setPayOpen(false)} disabled={payMutation.isPending}>Cancel</Button>
+            <Button variant="ghost" onClick={() => setPayOpen(false)} disabled={payMutation.isPending}>{t('common.cancel')}</Button>
             <Button onClick={() => payMutation.mutate()} disabled={payMutation.isPending || !payBankId}>
-              {payMutation.isPending ? 'Posting…' : 'Confirm payment'}
+              {payMutation.isPending ? t('payOcean.posting') : t('payOcean.confirm_payment')}
             </Button>
           </div>
         </div>
       </Modal>
 
-      {/* ── WPS SIF export modal (P2) ─────────────────────────────────── */}
-      <Modal open={wpsOpen} onClose={() => setWpsOpen(false)} title={`WPS SIF file — ${run.run_number}`}>
-        <div className="space-y-4">
+      {/* ── WPS SIF export modal (P2) ── */}
+      <Modal open={wpsOpen} onClose={() => setWpsOpen(false)} title={t('payOcean.wps_title', { run: run.run_number })}>
+        <div className="sb-ocean sb-modal-form flex flex-col gap-4">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-ink-secondary">Employer MOL establishment ID</label>
-              <input value={wpsMolId} onChange={e => setWpsMolId(e.target.value)} placeholder="13-digit MOHRE ID"
-                className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-ink-secondary">Employer bank routing code</label>
-              <input value={wpsRouting} onChange={e => setWpsRouting(e.target.value)} placeholder="9-digit agent code"
-                className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500" />
-            </div>
+            <Input label={t('payOcean.f_mol_establishment')} dir="ltr" value={wpsMolId} onChange={e => setWpsMolId(e.target.value)} placeholder={t('payOcean.f_mol_establishment_ph')} />
+            <Input label={t('payOcean.f_employer_routing')} dir="ltr" value={wpsRouting} onChange={e => setWpsRouting(e.target.value)} placeholder={t('payOcean.f_routing_ph')} />
           </div>
-          <p className="text-xs text-ink-tertiary">
-            Each employee line needs their <strong>MOL ID</strong>, <strong>IBAN</strong> and
-            <strong> bank routing code</strong> (set on the Employees page). Both employer values
-            are remembered on your company profile. Your bank/exchange validates the file on upload.
-          </p>
+          <p className="sb-info-note" style={{ fontSize: 13 }}>{t('payOcean.wps_explain')}</p>
 
           {wpsResult && (
-            <div className={`rounded border px-3 py-2 text-xs ${wpsResult.skipped.length > 0 ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-emerald-300 bg-emerald-50 text-emerald-800'}`}>
-              <p className="font-semibold">
-                {wpsResult.fileName} downloaded — {wpsResult.edrCount} employee{wpsResult.edrCount === 1 ? '' : 's'}, AED {wpsResult.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            <div className={`sb-alert ${wpsResult.skipped.length > 0 ? 'sb-alert-warn' : 'sb-alert-good'}`}>
+              <p style={{ margin: 0, fontWeight: 700 }}>
+                {t('payOcean.wps_done', { file: wpsResult.fileName, count: wpsResult.edrCount })}{' '}
+                <bdi dir="ltr">AED {wpsResult.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</bdi>
               </p>
               {wpsResult.skipped.length > 0 && (
-                <ul className="mt-1 list-inside list-disc">
+                <ul style={{ margin: '6px 0 0', paddingInlineStart: 18 }}>
                   {wpsResult.skipped.map(s => (
-                    <li key={s.name}>{s.name} — missing {s.missing.join(', ')}</li>
+                    <li key={s.name}>{t('payOcean.wps_missing', { name: s.name, fields: s.missing.join(', ') })}</li>
                   ))}
                 </ul>
               )}
@@ -410,7 +380,7 @@ export default function PayrollRunEditorPage() {
           )}
 
           <div className="flex justify-end gap-2 pt-1">
-            <Button variant="ghost" onClick={() => setWpsOpen(false)}>Close</Button>
+            <Button variant="ghost" onClick={() => setWpsOpen(false)}>{t('common.close')}</Button>
             <Button
               disabled={!wpsMolId.trim() || !wpsRouting.trim()}
               onClick={async () => {
@@ -429,7 +399,7 @@ export default function PayrollRunEditorPage() {
                 } catch { /* non-fatal — file already downloaded */ }
               }}
             >
-              Generate &amp; download
+              <Download size={15} aria-hidden="true" /> {t('payOcean.wps_generate')}
             </Button>
           </div>
         </div>
