@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ReactNode, CSSProperties } from 'react';
+import type { ReactNode } from 'react';
+import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
+import '@/styles/stockbolt-ocean-teal.css';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -17,15 +19,20 @@ import { useSetupDraft } from './global-config/use-setup-draft';
 import { vatApplies } from '@/core/global-config/country-packs';
 
 // ── Country / currency data ────────────────────────────────────────────────
+// Country names are translated at render time (wizOcean.country_<code>).
 const COUNTRIES = [
-  { value: 'AE', label: 'UAE — United Arab Emirates', currency: 'AED' },
-  { value: 'SA', label: 'Saudi Arabia',                currency: 'SAR' },
-  { value: 'KW', label: 'Kuwait',                      currency: 'KWD' },
-  { value: 'BH', label: 'Bahrain',                     currency: 'BHD' },
-  { value: 'OM', label: 'Oman',                        currency: 'OMR' },
-  { value: 'QA', label: 'Qatar',                       currency: 'QAR' },
-  { value: 'IN', label: 'India',                       currency: 'INR' },
+  { value: 'AE', currency: 'AED' },
+  { value: 'SA', currency: 'SAR' },
+  { value: 'KW', currency: 'KWD' },
+  { value: 'BH', currency: 'BHD' },
+  { value: 'OM', currency: 'OMR' },
+  { value: 'QA', currency: 'QAR' },
+  { value: 'IN', currency: 'INR' },
 ];
+const COUNTRY_KEY: Record<string, string> = {
+  AE: 'wizOcean.country_AE', SA: 'wizOcean.country_SA', KW: 'wizOcean.country_KW', BH: 'wizOcean.country_BH',
+  OM: 'wizOcean.country_OM', QA: 'wizOcean.country_QA', IN: 'wizOcean.country_IN',
+};
 
 // ── Zod schema (Phase 14.14d/e — 3-step wizard) ───────────────────────────
 const schema = z.object({
@@ -66,57 +73,22 @@ function fiscalYearMonthFor(country_code: string): string {
   return country_code === 'IN' ? '04' : '01';
 }
 
-const MONTHS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: '01', label: 'January' },
-  { value: '02', label: 'February' },
-  { value: '03', label: 'March' },
-  { value: '04', label: 'April' },
-  { value: '05', label: 'May' },
-  { value: '06', label: 'June' },
-  { value: '07', label: 'July' },
-  { value: '08', label: 'August' },
-  { value: '09', label: 'September' },
-  { value: '10', label: 'October' },
-  { value: '11', label: 'November' },
-  { value: '12', label: 'December' },
-];
-
-// Financial year runs 12 months from the chosen start month, e.g. '04' → "Apr – Mar".
-function fyRangeLabel(month: string): string {
-  const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const start = Math.max(0, Math.min(11, parseInt(month, 10) - 1));
-  return `${names[start]} – ${names[(start + 11) % 12]}`;
+/** Month name in the screen language ('long' for the picker, 'short' for ranges). */
+function monthName(m: number, lang: string, width: 'long' | 'short'): string {
+  return new Date(2000, m - 1, 1).toLocaleString(lang, { month: width });
 }
 
-// ── Step metadata used by both the sidebar and the right-panel heading ────
-type StepMeta = { label: string; title: string; eyebrow: string; heading: string; sub: string };
-const BASE_STEPS: ReadonlyArray<StepMeta> = [
-  {
-    label:   'Step 1',
-    title:   'Company basics',
-    eyebrow: 'Getting started',
-    heading: 'Tell us about\nyour company',
-    sub:     'This appears on invoices, reports & documents.',
-  },
-  {
-    label:   'Step 2',
-    title:   'Country & tax',
-    eyebrow: 'Where you operate',
-    heading: 'Country & tax\nregistration',
-    sub:     'Drives your currency, fiscal year, and VAT / GST setup.',
-  },
-  {
-    label:   'Step 3',
-    title:   'Review & create',
-    eyebrow: 'Almost done',
-    heading: 'Review and\ncreate',
-    sub:     'Double-check before we set up your company.',
-  },
-];
+// Financial year runs 12 months from the chosen start month, e.g. '04' → "Apr – Mar".
+function fyRangeLabel(month: string, lang: string): string {
+  const start = Math.max(0, Math.min(11, parseInt(month, 10) - 1));
+  return `${monthName(start + 1, lang, 'short')} – ${monthName(((start + 11) % 12) + 1, lang, 'short')}`;
+}
 
-// ── Main wizard ────────────────────────────────────────────────────────────
+// ── Step metadata used by both the rail and the panel heading ────────────
+type StepMeta = { title: string; eyebrow: string; heading: string; sub: string };
 export default function SetupWizardPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = i18n.language;
   const navigate = useNavigate();
   const { set_profile, set_onboarded } = useAuthStore();
   const [step, setStep] = useState(0);
@@ -156,13 +128,21 @@ export default function SetupWizardPage() {
 
   const globalSetup = useGlobalOnboarding(country_code);
   const stepKey = STEP_KEYS[step];
-  const STEPS: StepMeta[] = STEP_KEYS.map((k, i) => {
-    if (k === 'activities') return { label: `Step ${i + 1}`, title: t('global_config.onboarding.activities_title'), eyebrow: t('global_config.onboarding.activities_title'), heading: t('global_config.onboarding.activities_heading'), sub: t('global_config.onboarding.activities_sub') };
-    if (k === 'modules') return { label: `Step ${i + 1}`, title: t('global_config.onboarding.modules_title'), eyebrow: t('global_config.onboarding.modules_title'), heading: t('global_config.onboarding.modules_heading'), sub: t('global_config.onboarding.modules_sub') };
-    if (k === 'accounting') return { label: `Step ${i + 1}`, title: t('global_config.accounting.title'), eyebrow: t('global_config.accounting.title'), heading: t('global_config.onboarding_more.accounting_heading'), sub: t('global_config.onboarding_more.accounting_sub') };
-    if (k === 'branches') return { label: `Step ${i + 1}`, title: t('global_config.branches.title'), eyebrow: t('global_config.branches.title'), heading: t('global_config.onboarding_more.branches_heading'), sub: t('global_config.onboarding_more.branches_sub') };
-    return { ...BASE_STEPS[k === 'basics' ? 0 : k === 'country' ? 1 : 2], label: `Step ${i + 1}` };
+  const STEPS: StepMeta[] = STEP_KEYS.map((k) => {
+    if (k === 'activities') return { title: t('global_config.onboarding.activities_title'), eyebrow: t('global_config.onboarding.activities_title'), heading: t('global_config.onboarding.activities_heading'), sub: t('global_config.onboarding.activities_sub') };
+    if (k === 'modules') return { title: t('global_config.onboarding.modules_title'), eyebrow: t('global_config.onboarding.modules_title'), heading: t('global_config.onboarding.modules_heading'), sub: t('global_config.onboarding.modules_sub') };
+    if (k === 'accounting') return { title: t('global_config.accounting.title'), eyebrow: t('global_config.accounting.title'), heading: t('global_config.onboarding_more.accounting_heading'), sub: t('global_config.onboarding_more.accounting_sub') };
+    if (k === 'branches') return { title: t('global_config.branches.title'), eyebrow: t('global_config.branches.title'), heading: t('global_config.onboarding_more.branches_heading'), sub: t('global_config.onboarding_more.branches_sub') };
+    if (k === 'basics') return { title: t('wizOcean.basics_title'), eyebrow: t('wizOcean.basics_eyebrow'), heading: t('wizOcean.basics_heading'), sub: t('wizOcean.basics_sub') };
+    if (k === 'country') return { title: t('wizOcean.country_title'), eyebrow: t('wizOcean.country_eyebrow'), heading: t('wizOcean.country_heading'), sub: t('wizOcean.country_sub') };
+    return { title: t('wizOcean.review_title'), eyebrow: t('wizOcean.review_eyebrow'), heading: t('wizOcean.review_heading'), sub: t('wizOcean.review_sub') };
   });
+
+  // The schema's messages are English keys of a kind; show them translated.
+  const fieldError = (msg?: string) => (!msg ? undefined
+    : msg === 'Required' ? t('wizOcean.err_required')
+    : msg.startsWith('Tax registration number') ? t('wizOcean.err_tax_id')
+    : msg);
 
   // Phase 14.14e — tax_id validated on the country step so the superRefine fires.
   const stepFields: Record<StepKey, (keyof FormValues)[]> = {
@@ -227,7 +207,7 @@ export default function SetupWizardPage() {
     // eslint-disable-next-line no-console
     console.warn('[setup-wizard] submit blocked by validation:', formErrors);
     const first = Object.values(formErrors).find(Boolean) as { message?: string } | undefined;
-    setError(first?.message || 'Please re-check the form — one or more fields look invalid.');
+    setError(first?.message ? fieldError(first.message) ?? first.message : t('wizOcean.err_invalid'));
   }
 
   async function onSubmit(values: FormValues) {
@@ -332,144 +312,92 @@ export default function SetupWizardPage() {
   // Phones (the Android app, or a narrow browser) drop the side rail: the
   // steps move into a brand header and the buttons pin to the bottom.
   const isPhone = useIsPhone();
+  const countryLabel = (code: string) => t(COUNTRY_KEY[code] ?? code, { defaultValue: code });
+  const stepOf = t('wizard.step_of', { current: step + 1, total: STEPS.length });
 
   return (
-    <div style={isPhone ? phonePageStyle : pageWrapStyle}>
-      <div style={isPhone ? phoneCardStyle : cardWrapStyle}>
-        {/* LEFT SIDEBAR — step indicator */}
-        {!isPhone && <aside style={sidebarStyle}>
-          {/* Decorative circles */}
-          <div style={{ ...decorCircleStyle, width: 180, height: 180, top: -50, right: -60, background: 'rgba(255,255,255,0.07)' }} />
-          <div style={{ ...decorCircleStyle, width: 120, height: 120, bottom: 40, left: -30, background: 'rgba(255,255,255,0.05)' }} />
+    // Ocean Teal (UI v1.1): look only — same steps, validation, draft
+    // save/resume and company creation as before.
+    <div className={`sb-ocean sb-wiz ${isPhone ? 'is-phone' : ''}`} data-testid="setup-wizard-ocean">
+      <div className="sb-wiz-card">
+        {/* ── Side rail — step list (desktop) ── */}
+        {!isPhone && (
+          <aside className="sb-wiz-rail">
+            <div className="sb-wiz-logo"><BrandLogo mark={30} text={14} tone="white" /></div>
+            <ol className="sb-wiz-steps">
+              {STEPS.map((s, i) => {
+                const state = i === step ? 'is-active' : i < step ? 'is-done' : 'is-pending';
+                return (
+                  <li key={i} className={`sb-wiz-step ${state}`}>
+                    <span className="sb-wiz-dot" aria-hidden="true">{i < step ? <Check size={14} /> : <bdi dir="ltr">{i + 1}</bdi>}</span>
+                    <span className="sb-wiz-step-txt">
+                      <span className="sb-wiz-step-no">{t('wizOcean.step_n', { n: i + 1 })}</span>
+                      <span className="sb-wiz-step-title">{s.title}</span>
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+            <p className="sb-wiz-tagline">{t('wizOcean.tagline')}</p>
+          </aside>
+        )}
 
-          {/* Logo */}
-          <div style={{ marginBottom: '2.5rem', position: 'relative', zIndex: 1 }}>
-            <BrandLogo mark={30} text={14} tone="white" />
-          </div>
-
-          {/* Steps */}
-          <div style={{ display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 1 }}>
-            {STEPS.map((s, i) => {
-              const isActive  = i === step;
-              const isDone    = i < step;
-              const isPending = i > step;
-              return (
-                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 0', position: 'relative' }}>
-                  {i < STEPS.length - 1 && (
-                    <div style={{
-                      position: 'absolute', left: 13, top: 38,
-                      width: 1, height: 'calc(100% - 14px)',
-                      background: 'rgba(255,255,255,0.2)',
-                    }} />
-                  )}
-                  <div style={{
-                    width: 27, height: 27, borderRadius: '50%',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: isDone ? 13 : 12, fontWeight: 600, flexShrink: 0,
-                    position: 'relative', zIndex: 1,
-                    background: (isActive || isDone) ? '#fff' : 'rgba(255,255,255,0.15)',
-                    color: (isActive || isDone) ? '#6c63ff' : 'rgba(255,255,255,0.6)',
-                    boxShadow: isActive ? '0 0 0 4px rgba(255,255,255,0.25)' : 'none',
-                    transition: 'all 0.2s ease',
-                  }}>
-                    {isDone ? '✓' : i + 1}
-                  </div>
-                  <div style={{ paddingTop: 2 }}>
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>
-                      {s.label}
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: isPending ? 'rgba(255,255,255,0.5)' : '#fff' }}>
-                      {s.title}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div style={{ marginTop: 'auto', fontSize: 11, color: 'rgba(255,255,255,0.35)', paddingTop: '1rem', position: 'relative', zIndex: 1 }}>
-            StockBolt ERP · Auto Parts
-          </div>
-        </aside>}
-
-        {/* RIGHT PANEL — form */}
-        <div style={isPhone ? phonePanelStyle : rightPanelStyle}>
-          {isPhone ? <PhoneHeader step={step} steps={STEPS} /> : <>
-          {/* Top row — language toggle */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1.5rem' }}>
-            <LanguageToggle />
-          </div>
-
-          {/* Progress bar */}
-          <div style={{ height: 3, background: '#f0f0f0', borderRadius: 99, marginBottom: '2rem', overflow: 'hidden' }}>
-            <div style={{
-              height: '100%',
-              width: `${progress}%`,
-              background: '#6c63ff',
-              borderRadius: 99,
-              transition: 'width 0.4s ease',
-            }} />
-          </div>
-          </>}
+        {/* ── Panel — form ── */}
+        <div className="sb-wiz-panel">
+          {isPhone ? (
+            <header className="sb-wiz-phead">
+              <div className="sb-wiz-phead-top">
+                <BrandLogo mark={26} text={13} tone="white" />
+                <div className="sb-wiz-lang"><LanguageToggle /></div>
+              </div>
+              <div className="sb-wiz-segs" aria-hidden="true">
+                {STEPS.map((_, i) => <span key={i} className={i <= step ? 'is-on' : undefined} />)}
+              </div>
+              <p className="sb-wiz-phead-step">{stepOf} · <strong>{meta.title}</strong></p>
+            </header>
+          ) : (
+            <>
+              <div className="sb-wiz-top"><LanguageToggle /></div>
+              <div className="sb-wiz-progress" role="progressbar" aria-valuenow={step + 1} aria-valuemin={1} aria-valuemax={STEPS.length} aria-label={stepOf}>
+                <span style={{ width: `${progress}%` }} />
+              </div>
+            </>
+          )}
 
           {/* Heading */}
-          <div style={isPhone
-            ? { marginTop: -24, padding: '26px 20px 1.5rem', background: '#fff', borderRadius: '24px 24px 0 0', position: 'relative' }
-            : { marginBottom: '1.75rem' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#6c63ff', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
-              {meta.eyebrow}
-            </div>
-            <div style={{ fontSize: isPhone ? 24 : 22, fontWeight: isPhone ? 700 : 600, color: '#111827', letterSpacing: '-0.02em', lineHeight: 1.2, whiteSpace: isPhone ? 'normal' : 'pre-line' }}>
-              {isPhone ? meta.heading.replace('\n', ' ') : meta.heading}
-            </div>
-            <div style={{ fontSize: isPhone ? 14 : 13, color: '#6b7280', marginTop: 6, lineHeight: 1.45 }}>
-              {meta.sub}
-            </div>
+          <div className="sb-wiz-head">
+            <p className="sb-wiz-eyebrow">{meta.eyebrow}</p>
+            <h1 className="sb-wiz-title">{meta.heading}</h1>
+            <p className="sb-wiz-sub">{meta.sub}</p>
           </div>
 
-          <form onSubmit={handleSubmit(onSubmit, onInvalid)} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-            {/* Fields */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem', flex: 1, padding: isPhone ? '0 20px 1.5rem' : undefined }}>
+          <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="sb-wiz-form">
+            <div className="sb-wiz-fields">
 
-              {/* ── Step 1 — Company basics ───────────────────────────── */}
+              {/* ── Step 1 — Company basics ── */}
               {stepKey === 'basics' && (
                 <>
-                  <Field label="Company Name (English)" required error={errors.company_name?.message}>
-                    <input
-                      type="text"
-                      placeholder="e.g. Al Noor Auto Parts"
-                      style={inputStyle}
-                      {...register('company_name')}
-                    />
+                  <Field label={t('wizOcean.f_company_name')} required error={fieldError(errors.company_name?.message)}>
+                    <input type="text" className="sb-wiz-input" placeholder={t('wizOcean.f_company_name_ph')} {...register('company_name')} />
                   </Field>
 
-                  <Field label="Company Name (Arabic)" hint="Optional — shown on Arabic documents & receipts">
-                    <input
-                      type="text"
-                      dir="rtl"
-                      placeholder="النور لقطع غيار السيارات"
-                      style={{ ...inputStyle, textAlign: 'right' }}
-                      {...register('company_name_ar')}
-                    />
+                  <Field label={t('wizOcean.f_company_name_ar')} hint={t('wizOcean.f_company_name_ar_hint')}>
+                    <input type="text" dir="rtl" className="sb-wiz-input" placeholder="النور لقطع غيار السيارات" {...register('company_name_ar')} />
                   </Field>
 
-                  <Field label="Business Address">
-                    <input
-                      type="text"
-                      placeholder="e.g. Sharjah Industrial Zone, UAE"
-                      style={inputStyle}
-                      {...register('address')}
-                    />
+                  <Field label={t('wizOcean.f_address')}>
+                    <input type="text" className="sb-wiz-input" placeholder={t('wizOcean.f_address_ph')} {...register('address')} />
                   </Field>
                 </>
               )}
 
-              {/* ── Step 2 — Country & tax ────────────────────────────── */}
+              {/* ── Step 2 — Country & tax ── */}
               {stepKey === 'country' && (
                 <>
-                  <Field label="Country" required hint={`Sets your currency (${inferredCurrency}). Change anytime in Settings → Company.`}>
+                  <Field label={t('wizOcean.f_country')} required hint={t('wizOcean.f_country_hint', { currency: inferredCurrency })}>
                     <select
                       value={country_code}
+                      className="sb-wiz-input"
                       onChange={(e) => {
                         setValue('country_code', e.target.value);
                         // Suggest the country's usual financial-year start; user can still change it.
@@ -477,55 +405,48 @@ export default function SetupWizardPage() {
                         // phase123 — no VAT in Kuwait / Qatar: nothing to register for.
                         if (!vatApplies(e.target.value)) { setValue('is_tax_registered', false); setValue('tax_id', ''); }
                       }}
-                      style={inputStyle}
                     >
                       {COUNTRIES.map((c) => (
-                        <option key={c.value} value={c.value}>{c.label}</option>
+                        <option key={c.value} value={c.value}>{countryLabel(c.value)}</option>
                       ))}
                     </select>
                   </Field>
 
                   <Field
-                    label="Financial Year Start"
+                    label={t('wizOcean.f_fy_start')}
                     required
-                    hint={`Your books will run ${fyRangeLabel(fiscal_year_start_month)}. ${country_code === 'IN' ? 'India usually starts in April.' : 'GCC usually starts in January.'}`}
+                    hint={`${t('wizOcean.f_fy_runs', { range: fyRangeLabel(fiscal_year_start_month, lang) })} ${country_code === 'IN' ? t('wizOcean.f_fy_india') : t('wizOcean.f_fy_gcc')}`}
                   >
                     <select
                       value={fiscal_year_start_month}
+                      className="sb-wiz-input"
                       onChange={(e) => setValue('fiscal_year_start_month', e.target.value)}
-                      style={inputStyle}
                     >
-                      {MONTHS.map((m) => (
-                        <option key={m.value} value={m.value}>{m.label}</option>
-                      ))}
+                      {Array.from({ length: 12 }, (_, i) => {
+                        const v = String(i + 1).padStart(2, '0');
+                        return <option key={v} value={v}>{monthName(i + 1, lang, 'long')}</option>;
+                      })}
                     </select>
                   </Field>
 
-                  {vatApplies(country_code) && <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '4px 0' }}>
-                    <input
-                      type="checkbox"
-                      style={{ width: 16, height: 16, accentColor: '#6c63ff', cursor: 'pointer' }}
-                      {...register('is_tax_registered')}
-                    />
-                    <span style={{ fontSize: 13, color: '#111827' }}>Registered for VAT / GST</span>
-                  </label>}
+                  {vatApplies(country_code) && (
+                    <label className="sb-wiz-check">
+                      <input type="checkbox" {...register('is_tax_registered')} />
+                      <span>{t('wizOcean.f_tax_registered')}</span>
+                    </label>
+                  )}
 
                   {is_tax_registered && vatApplies(country_code) && (
-                    <Field label="Tax Registration Number" required error={errors.tax_id?.message}>
-                      <input
-                        type="text"
-                        placeholder="TRN / GSTIN / VAT Reg No."
-                        style={inputStyle}
-                        {...register('tax_id')}
-                      />
+                    <Field label={t('wizOcean.f_tax_id')} required error={fieldError(errors.tax_id?.message)}>
+                      <input type="text" dir="ltr" className="sb-wiz-input" placeholder={t('wizOcean.f_tax_id_ph')} {...register('tax_id')} />
                     </Field>
                   )}
                 </>
               )}
 
-              {/* ── Global v1 — business activities and modules ──────── */}
+              {/* ── Global v1 — business activities and modules ── */}
               {resumed && stepKey !== 'review' && (
-                <p style={{ fontSize: 12, color: '#6b7280' }} data-testid="draft-resumed">{t('global_config.draft.resumed')}</p>
+                <p className="sb-info-note" style={{ fontSize: 13, margin: 0 }} data-testid="draft-resumed">{t('global_config.draft.resumed')}</p>
               )}
               {stepKey === 'activities' && globalSetup.activitiesStep}
               {stepKey === 'modules' && globalSetup.modulesStep}
@@ -535,74 +456,59 @@ export default function SetupWizardPage() {
               )}
               {stepKey === 'branches' && globalSetup.branchesStep}
 
-              {/* ── Last step — Review & create ───────────────────────── */}
+              {/* ── Last step — Review & create ── */}
               {stepKey === 'review' && (
                 <>
-                  <div style={summaryBoxStyle}>
-                    <SummaryRow label="Company name" value={watch('company_name') || '—'} mono={false} />
+                  <dl className="sb-wiz-summary">
+                    <SummaryRow label={t('wizOcean.r_company')} value={watch('company_name') || '—'} />
                     {watch('company_name_ar') && (
-                      <SummaryRow label="Company name (Arabic)" value={watch('company_name_ar')} mono={false} rtl />
+                      <SummaryRow label={t('wizOcean.f_company_name_ar')} value={watch('company_name_ar')} rtl />
                     )}
                     {watch('address') && (
-                      <SummaryRow label="Address" value={watch('address')} mono={false} />
+                      <SummaryRow label={t('wizOcean.f_address')} value={watch('address')} />
                     )}
+                    <SummaryRow label={t('wizOcean.f_country')} value={countryLabel(country_code)} />
                     <SummaryRow
-                      label="Country"
-                      value={COUNTRIES.find((c) => c.value === country_code)?.label ?? country_code}
-                      mono={false}
+                      label={t('wizOcean.r_currency_fy')}
+                      value={`${inferredCurrency} · ${fyRangeLabel(fiscal_year_start_month, lang)}`}
+                      ltr
                     />
                     <SummaryRow
-                      label="Currency / fiscal year"
-                      value={`${inferredCurrency} · ${fyRangeLabel(fiscal_year_start_month)}`}
-                      mono
-                    />
-                    <SummaryRow
-                      label="Tax registered"
-                      value={is_tax_registered ? (watch('tax_id') || '—') : 'No'}
-                      mono={is_tax_registered}
+                      label={t('wizOcean.r_tax_registered')}
+                      value={is_tax_registered ? (watch('tax_id') || '—') : t('wizOcean.no')}
+                      ltr={is_tax_registered}
                     />
                     {GLOBAL_ONBOARDING && (
                       <>
-                        <SummaryRow label={t('global_config.onboarding.review_activities')} value={globalSetup.summary.activities || '—'} mono={false} />
-                        <SummaryRow label={t('global_config.onboarding.review_modules')} value={globalSetup.summary.modules} mono={false} />
+                        <SummaryRow label={t('global_config.onboarding.review_activities')} value={globalSetup.summary.activities || '—'} />
+                        <SummaryRow label={t('global_config.onboarding.review_modules')} value={globalSetup.summary.modules} />
                         <SummaryRow label={t('global_config.branches.head_office')}
-                          value={[globalSetup.branches.head_office.trim() || t('global_config.branches.head_office'), ...globalSetup.branches.extra].join(', ')} mono={false} />
+                          value={[globalSetup.branches.head_office.trim() || t('global_config.branches.head_office'), ...globalSetup.branches.extra].join(', ')} />
                         {globalSetup.config.modules.includes('inventory') && (
-                          <SummaryRow label={t('global_config.branches.main_warehouse')} value={globalSetup.branches.main_warehouse.trim() || 'Main Warehouse'} mono={false} />
+                          <SummaryRow label={t('global_config.branches.main_warehouse')} value={globalSetup.branches.main_warehouse.trim() || 'Main Warehouse'} />
                         )}
                       </>
                     )}
-                  </div>
+                  </dl>
 
-                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
-                    We'll also create a default <strong>Main Warehouse</strong> (code <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>MAIN</span>) and seed your chart of accounts, tax rates, and units of measure. Your company starts empty — add products, contacts and transactions from the dashboard.
-                  </div>
+                  <p className="sb-form-hint" style={{ margin: 0 }}>{t('wizOcean.review_note')}</p>
                 </>
               )}
 
               {/* Form-level error banner */}
-              {error && (
-                <div style={errorBannerStyle}>
-                  {error}
-                </div>
-              )}
+              {error && <p className="sb-alert sb-alert-danger" role="alert" style={{ margin: 0 }}>{error}</p>}
             </div>
 
             {/* Actions */}
-            <div style={isPhone ? phoneActionsStyle : actionsRowStyle}>
+            <div className="sb-wiz-actions">
               {isPhone ? (step > 0 && (
-                <button type="button" onClick={goBack} disabled={submitting} aria-label="Back" style={phoneBackBtnStyle}>
-                  ←
+                <button type="button" onClick={goBack} disabled={submitting} aria-label={t('wizOcean.back')} className="sb-wiz-back is-icon">
+                  <ArrowLeft size={20} className="sb-rtl-flip" aria-hidden="true" />
                 </button>
               )) : (
-              <button
-                type="button"
-                onClick={goBack}
-                disabled={step === 0 || submitting}
-                style={backBtnStyle(step === 0 || submitting)}
-              >
-                ← Back
-              </button>
+                <button type="button" onClick={goBack} disabled={step === 0 || submitting} className="sb-wiz-back">
+                  <ArrowLeft size={16} className="sb-rtl-flip" aria-hidden="true" /> {t('wizOcean.back')}
+                </button>
               )}
 
               {/* Separate keys: without them React turns the clicked Continue
@@ -611,22 +517,12 @@ export default function SetupWizardPage() {
                   action), so arriving on the last step created the company
                   without the user ever pressing Create. */}
               {isLast ? (
-                <button
-                  key="create"
-                  type="submit"
-                  disabled={submitting}
-                  style={{ ...primaryBtnStyle(submitting), ...(isPhone ? phonePrimaryExtra : {}) }}
-                >
-                  {submitting ? 'Creating…' : 'Create company →'}
+                <button key="create" type="submit" disabled={submitting} className="sb-primary-btn sb-wiz-next">
+                  {submitting ? t('wizOcean.creating') : t('wizOcean.create')} {!submitting && <ArrowRight size={17} className="sb-rtl-flip" aria-hidden="true" />}
                 </button>
               ) : (
-                <button
-                  key="next"
-                  type="button"
-                  onClick={goNext}
-                  style={{ ...primaryBtnStyle(false), ...(isPhone ? phonePrimaryExtra : {}) }}
-                >
-                  Continue →
+                <button key="next" type="button" onClick={goNext} className="sb-primary-btn sb-wiz-next">
+                  {t('wizOcean.continue')} <ArrowRight size={17} className="sb-rtl-flip" aria-hidden="true" />
                 </button>
               )}
             </div>
@@ -652,29 +548,6 @@ function useIsPhone(): boolean {
   return narrow || isAppShell();
 }
 
-/** Phone header: logo + language toggle, then the three steps as a segmented bar. */
-function PhoneHeader({ step, steps: STEPS }: { step: number; steps: StepMeta[] }) {
-  return (
-    <header style={{
-      background: 'linear-gradient(160deg, #6c63ff 0%, #5b5bd6 100%)', color: '#fff',
-      padding: 'calc(env(safe-area-inset-top) + 16px) 20px 44px', position: 'relative', overflow: 'hidden',
-    }}>
-      <div style={{ ...decorCircleStyle, width: 160, height: 160, top: -60, right: -40, background: 'rgba(255,255,255,0.08)' }} />
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, position: 'relative' }}>
-        <BrandLogo mark={26} text={13} tone="white" />
-        <div style={{ background: '#fff', borderRadius: 99 }}><LanguageToggle /></div>
-      </div>
-      <div style={{ display: 'flex', gap: 6, marginTop: 24, position: 'relative' }}>
-        {STEPS.map((_, i) => (
-          <div key={i} style={{ flex: 1, height: 4, borderRadius: 99, background: i <= step ? '#fff' : 'rgba(255,255,255,0.28)', transition: 'background 0.3s ease' }} />
-        ))}
-      </div>
-      <div style={{ marginTop: 12, fontSize: 13, color: 'rgba(255,255,255,0.85)', position: 'relative' }}>
-        Step {step + 1} of {STEPS.length} · <span style={{ fontWeight: 600, color: '#fff' }}>{STEPS[step].title}</span>
-      </div>
-    </header>
-  );
-}
 interface FieldProps {
   label:    string;
   required?: boolean;
@@ -684,214 +557,26 @@ interface FieldProps {
 }
 function Field({ label, required, hint, error, children }: FieldProps) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <label style={fieldLabelStyle}>
+    <div className="sb-wiz-field">
+      <label className="sb-wiz-label">
         {label}
-        {required && <span style={{ color: '#e24b4a', fontSize: 13, marginLeft: 4 }}>*</span>}
+        {required && <span className="sb-wiz-req" aria-hidden="true">*</span>}
       </label>
       {children}
       {error
-        ? <span style={{ fontSize: 11, color: '#e24b4a' }}>{error}</span>
+        ? <span className="sb-wiz-err">{error}</span>
         : hint
-        ? <span style={{ fontSize: 11, color: '#9ca3af' }}>{hint}</span>
+        ? <span className="sb-wiz-hint">{hint}</span>
         : null}
     </div>
   );
 }
 
-function SummaryRow({ label, value, mono, rtl }: { label: string; value: string; mono?: boolean; rtl?: boolean }) {
+function SummaryRow({ label, value, rtl, ltr }: { label: string; value: string; rtl?: boolean; ltr?: boolean }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0' }}>
-      <span style={{ fontSize: 12, color: '#6b7280' }}>{label}</span>
-      <span style={{
-        fontSize: 13, color: '#111827', textAlign: 'right',
-        fontFamily: mono ? 'ui-monospace, SFMono-Regular, monospace' : "'DM Sans', sans-serif",
-        direction: rtl ? 'rtl' : 'ltr',
-      }}>{value}</span>
+    <div className="sb-wiz-sumrow">
+      <dt>{label}</dt>
+      <dd dir={rtl ? 'rtl' : ltr ? 'ltr' : undefined}>{value}</dd>
     </div>
   );
 }
-
-// ── Style helpers ──────────────────────────────────────────────────────────
-const pageWrapStyle: CSSProperties = {
-  minHeight: '100vh',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  background: '#f4f4f6',
-  fontFamily: "'DM Sans', system-ui, -apple-system, sans-serif",
-  padding: '2rem',
-};
-
-const cardWrapStyle: CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: '220px 1fr',
-  borderRadius: 16,
-  overflow: 'hidden',
-  border: '1px solid #e4e4e7',
-  background: '#fff',
-  width: '100%',
-  maxWidth: 760,
-  boxShadow: '0 8px 40px rgba(108,99,255,0.10)',
-  minHeight: 560,
-};
-
-// Phone layout: full screen, the form on a white sheet that overlaps the
-// header's rounded bottom edge, the buttons pinned above the gesture bar.
-const phonePageStyle: CSSProperties = {
-  minHeight: '100dvh',
-  background: '#6c63ff',
-  fontFamily: "'DM Sans', system-ui, -apple-system, sans-serif",
-};
-
-const phoneCardStyle: CSSProperties = {
-  minHeight: '100dvh',
-  display: 'flex',
-  flexDirection: 'column',
-  background: '#fff',
-};
-
-const phonePanelStyle: CSSProperties = {
-  flex: 1,
-  display: 'flex',
-  flexDirection: 'column',
-  background: '#fff',
-};
-
-const phoneActionsStyle: CSSProperties = {
-  position: 'sticky',
-  bottom: 0,
-  display: 'flex',
-  gap: 10,
-  padding: '12px 20px calc(env(safe-area-inset-bottom) + 12px)',
-  background: '#fff',
-  borderTop: '1px solid #f0f0f0',
-  boxShadow: '0 -6px 20px rgba(17,24,39,0.04)',
-};
-
-const phonePrimaryExtra: CSSProperties = {
-  flex: 1,
-  justifyContent: 'center',
-  height: 52,
-  fontSize: 15,
-};
-
-const phoneBackBtnStyle: CSSProperties = {
-  width: 52,
-  height: 52,
-  flexShrink: 0,
-  borderRadius: 99,
-  border: '1px solid #e5e7eb',
-  background: '#fff',
-  color: '#374151',
-  fontSize: 20,
-  cursor: 'pointer',
-};
-
-const sidebarStyle: CSSProperties = {
-  background: '#6c63ff',
-  display: 'flex',
-  flexDirection: 'column',
-  padding: '2rem 1.5rem',
-  position: 'relative',
-  overflow: 'hidden',
-};
-
-const decorCircleStyle: CSSProperties = {
-  position: 'absolute',
-  borderRadius: '50%',
-};
-
-const rightPanelStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  padding: '2.25rem 2.25rem 1.75rem',
-  background: '#fff',
-};
-
-const inputStyle: CSSProperties = {
-  width: '100%',
-  height: 44,
-  borderRadius: 10,
-  border: '1px solid #e5e7eb',
-  background: '#f9fafb',
-  padding: '0 14px',
-  fontSize: 14,
-  color: '#111827',
-  fontFamily: "'DM Sans', sans-serif",
-  outline: 'none',
-  boxSizing: 'border-box',
-};
-
-const fieldLabelStyle: CSSProperties = {
-  fontSize: 11,
-  fontWeight: 600,
-  color: '#6b7280',
-  textTransform: 'uppercase',
-  letterSpacing: '0.07em',
-  display: 'flex',
-  alignItems: 'center',
-};
-
-const summaryBoxStyle: CSSProperties = {
-  borderRadius: 10,
-  border: '1px solid #e5e7eb',
-  background: '#f9fafb',
-  padding: '12px 14px',
-  display: 'flex',
-  flexDirection: 'column',
-};
-
-const actionsRowStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  marginTop: '2rem',
-  paddingTop: '1.25rem',
-  borderTop: '1px solid #f0f0f0',
-};
-
-function backBtnStyle(disabled: boolean): CSSProperties {
-  return {
-    fontSize: 13,
-    color: disabled ? '#d1d5db' : '#6b7280',
-    background: 'none',
-    border: '1px solid #e5e7eb',
-    borderRadius: 99,
-    padding: '9px 18px',
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    fontFamily: "'DM Sans', sans-serif",
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-  };
-}
-
-function primaryBtnStyle(loading: boolean): CSSProperties {
-  return {
-    background: loading ? '#a5a0ff' : '#6c63ff',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 99,
-    padding: '11px 28px',
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: loading ? 'wait' : 'pointer',
-    fontFamily: "'DM Sans', sans-serif",
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    letterSpacing: '-0.01em',
-  };
-}
-
-const errorBannerStyle: CSSProperties = {
-  marginTop: '0.75rem',
-  padding: '10px 14px',
-  borderRadius: 10,
-  border: '1px solid #fecaca',
-  background: '#fef2f2',
-  color: '#b91c1c',
-  fontSize: 13,
-  lineHeight: 1.4,
-};
