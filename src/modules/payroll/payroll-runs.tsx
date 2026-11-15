@@ -11,10 +11,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useTranslation } from 'react-i18next';
+import { Plus } from 'lucide-react';
 import { Button } from '@/ui/button';
 import { Modal } from '@/ui/modal';
-import { PageHeader } from '@/ui/primitives';
-import { theme } from '@/ui/theme';
+import { Select } from '@/ui/select';
+import { StatusBadge } from '@/ui/status-badge';
+import { OceanPage, OceanTable } from '@/components/ocean-list';
+import { ReportFigures } from '@/components/ocean-report';
+import type { Column } from '@/ui/table';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { VoidedToggle } from '@/ui/voided-toggle';
@@ -22,18 +27,13 @@ import { useHideVoided, showsInList } from '@/hooks/use-hide-voided';
 import type { PayrollRunRow, PayrollRunItemInsert, EmployeeRow } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-
-const STATUS_TONES: Record<string, { bg: string; text: string; border: string }> = {
-  draft:     { bg: '#fffbeb', text: '#b45309', border: '#fde68a' },
-  confirmed: { bg: '#f5f3ff', text: '#6d28d9', border: '#ddd6fe' },
-  paid:      { bg: '#ecfdf5', text: '#047857', border: '#a7f3d0' },
-  void:      { bg: '#fef2f2', text: '#dc2626', border: '#fecaca' },
-};
 
 export default function PayrollRunsPage() {
+  const { t, i18n } = useTranslation();
   const { company_id } = useAuthStore();
   const navigate = useNavigate();
+  // Month names in the screen language.
+  const monthName = (m: number) => new Date(2000, m - 1, 1).toLocaleString(i18n.language, { month: 'long' });
   const qc = useQueryClient();
 
   const now = new Date();
@@ -68,7 +68,7 @@ export default function PayrollRunsPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      if (employees.length === 0) throw new Error('No active employees — add employees first');
+      if (employees.length === 0) throw new Error(t('payOcean.err_no_employees'));
       const run_number = await getAdapter().payroll.getNextRunNumber(company_id!);
       // Posting date = last day of the period month.
       const lastDay = new Date(year, month, 0).getDate();
@@ -94,108 +94,82 @@ export default function PayrollRunsPage() {
     },
     onError: (e: Error) => {
       setError(/duplicate|unique/i.test(e.message)
-        ? `A payroll run for ${MONTHS[month - 1]} ${year} already exists.`
+        ? t('payOcean.err_run_exists', { period: `${monthName(month)} ${year}` })
         : e.message);
     },
   });
 
+  const live = runs.filter(r => r.status !== 'void');
+  const totalNet = live.reduce((s, r) => s + Number(r.total_net), 0);
+  const unpaidNet = live.filter(r => r.status === 'confirmed').reduce((s, r) => s + Number(r.total_net), 0);
+
+  const columns: Column<PayrollRunRow>[] = [
+    { key: 'period', header: t('payOcean.col_period'), render: r => (
+      <span className="sb-pay-namecode">
+        <span style={{ fontWeight: 700 }}>{monthName(r.period_month)} <bdi dir="ltr">{r.period_year}</bdi></span>
+        <bdi dir="ltr" className="sb-acct-code">{r.run_number}</bdi>
+      </span>
+    ) },
+    { key: 'date', header: t('payOcean.col_posting_date'), render: r => <bdi dir="ltr">{formatDate(r.date)}</bdi> },
+    { key: 'gross', header: t('payOcean.col_gross'), align: 'end', render: r => <bdi dir="ltr" className="sb-dash-num" style={{ fontWeight: 500 }}>{fmt(Number(r.total_gross))}</bdi> },
+    { key: 'deductions', header: t('payOcean.col_deductions'), align: 'end', render: r => <bdi dir="ltr" className="sb-dash-num" style={{ fontWeight: 500, color: 'var(--sb-text-secondary)' }}>{fmt(Number(r.total_deductions) + Number(r.total_loan_repayment))}</bdi> },
+    { key: 'net', header: t('payOcean.col_net'), align: 'end', render: r => <bdi dir="ltr" className="sb-dash-num">{fmt(Number(r.total_net))}</bdi> },
+    { key: 'status', header: '', render: r => <StatusBadge status={r.status} /> },
+  ];
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        title="Payroll Runs"
-        subtitle="One run per month — confirm posts salaries to the books, pay settles them from the bank"
-        actions={
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-            <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided}
-              count={runsVoidedCount} />
-            <Button size="sm" onClick={() => { setError(null); setNewOpen(true); }}>+ New Run</Button>
+    // Ocean Teal (UI v1.1): look only — same runs, period filter, voided
+    // toggle and "new run" pre-fill as before.
+    <OceanPage
+      testid="payroll-runs-ocean"
+      title={t('payOcean.runs_title')}
+      subtitle={t('payOcean.runs_subtitle')}
+      actions={<>
+        <PeriodPicker mode="range" allowAllTime preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <VoidedToggle hideVoided={hideVoided} onChange={setHideVoided} count={runsVoidedCount} />
+        <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => { setError(null); setNewOpen(true); }}>
+          <Plus size={18} aria-hidden="true" /> {t('payOcean.new_run')}
+        </button>
+      </>}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {runs.length > 0 && (
+          <div className="sb-card sb-rpt-card">
+            <ReportFigures figures={[
+              { label: t('payOcean.fig_runs'), value: <bdi dir="ltr">{live.length}</bdi> },
+              { label: t('payOcean.fig_net_total'), value: <bdi dir="ltr">{fmt(totalNet)}</bdi>, tone: 'brand' },
+              { label: t('payOcean.fig_unpaid'), value: <bdi dir="ltr">{fmt(unpaidNet)}</bdi>, tone: unpaidNet > 0 ? 'warn' : undefined, note: t('payOcean.fig_unpaid_note') },
+            ]} />
           </div>
-        }
-      />
+        )}
 
-      {isLoading ? (
-        <p style={{ fontSize: '13px', color: theme.inkFaint, padding: '48px 0', textAlign: 'center' }}>Loading…</p>
-      ) : runs.length === 0 ? (
-        <p style={{ fontSize: '13px', color: theme.inkFaint, padding: '48px 0', textAlign: 'center' }}>
-          No payroll runs yet. Create the first month's run to get started.
-        </p>
-      ) : (
-        <div className="overflow-x-auto bg-white" style={{ border: `1px solid ${theme.border}`, borderRadius: '12px', boxShadow: theme.shadowSm }}>
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: theme.panelHead, borderBottom: `1px solid ${theme.border}` }}>
-                {['Run #', 'Period', 'Posting Date', 'Gross', 'Deductions', 'Net Pay', 'Status'].map((l, i) => (
-                  <th key={l} className="px-4 py-3" style={{
-                    fontSize: '11px', fontWeight: 600, color: theme.inkMuted,
-                    textTransform: 'uppercase', letterSpacing: '.06em',
-                    textAlign: i >= 3 && i <= 5 ? 'end' : 'start', whiteSpace: 'nowrap',
-                  }}>{l}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {runs.map((r, idx) => {
-                const tone = STATUS_TONES[r.status] ?? STATUS_TONES.draft;
-                return (
-                  <tr key={r.id} onClick={() => navigate(`/payroll/runs/${r.id}`)} className="cursor-pointer"
-                    style={{ borderTop: idx === 0 ? 'none' : '1px solid #f1f5f9', transition: 'background-color .12s' }}
-                    onMouseEnter={(ev) => { (ev.currentTarget as HTMLElement).style.background = theme.panelHead; }}
-                    onMouseLeave={(ev) => { (ev.currentTarget as HTMLElement).style.background = ''; }}
-                  >
-                    <td className="px-4 py-3 font-mono" style={{ fontSize: '12px', color: theme.brandSoftText, fontWeight: 600 }}>{r.run_number}</td>
-                    <td className="px-4 py-3" style={{ color: theme.ink, fontWeight: 500 }}>{MONTHS[r.period_month - 1]} {r.period_year}</td>
-                    <td className="px-4 py-3" style={{ color: theme.inkMuted, fontSize: '13px' }}>{formatDate(r.date)}</td>
-                    <td className="px-4 py-3 font-mono" style={{ textAlign: 'end' }}>{fmt(Number(r.total_gross))}</td>
-                    <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', color: theme.inkMuted }}>{fmt(Number(r.total_deductions) + Number(r.total_loan_repayment))}</td>
-                    <td className="px-4 py-3 font-mono" style={{ textAlign: 'end', fontWeight: 600 }}>{fmt(Number(r.total_net))}</td>
-                    <td className="px-4 py-3">
-                      <span style={{
-                        display: 'inline-block', padding: '3px 9px', borderRadius: '999px',
-                        fontSize: '11px', fontWeight: 600, textTransform: 'capitalize',
-                        background: tone.bg, color: tone.text, border: `1px solid ${tone.border}`,
-                      }}>{r.status}</span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+        {isLoading
+          ? <div className="sb-card sb-empty">{t('common.loading')}</div>
+          : <OceanTable
+              columns={columns} rows={runs} keyFn={r => r.id} onRowClick={r => navigate(`/payroll/runs/${r.id}`)}
+              rowMuted={r => r.status === 'void'} emptyMessage={t('payOcean.runs_empty')} cardTitleKey="period"
+            />}
+      </div>
 
-      {/* ── New run modal ────────────────────────────────────────────── */}
-      <Modal open={newOpen} onClose={() => setNewOpen(false)} title="New payroll run">
-        <div className="space-y-4">
-          {error && <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+      {/* ── New run modal ── */}
+      <Modal open={newOpen} onClose={() => setNewOpen(false)} title={t('payOcean.new_run_title')}>
+        <div className="sb-ocean sb-modal-form flex flex-col gap-4">
+          {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-ink-secondary">Month</label>
-              <select value={month} onChange={e => setMonth(parseInt(e.target.value))}
-                className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500">
-                {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-ink-secondary">Year</label>
-              <select value={year} onChange={e => setYear(parseInt(e.target.value))}
-                className="h-9 w-full rounded-card border border-border-subtle bg-surface-card px-3 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-brand-500">
-                {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
+            <Select label={t('payOcean.f_month')} value={String(month)} onChange={e => setMonth(parseInt(e.target.value))}
+              options={Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: monthName(i + 1) }))} />
+            <Select label={t('payOcean.f_year')} value={String(year)} onChange={e => setYear(parseInt(e.target.value))}
+              options={[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(y => ({ value: String(y), label: String(y) }))} />
           </div>
-          <p className="text-xs text-ink-tertiary">
-            Pre-fills one line per active employee ({employees.length}) from their salary structure.
-            You can adjust overtime, bonus, deductions and loan recoveries before confirming.
-          </p>
+          <p className="sb-info-note" style={{ fontSize: 13 }}>{t('payOcean.new_run_body', { count: employees.length })}</p>
           <div className="flex justify-end gap-2 pt-1">
-            <Button variant="ghost" onClick={() => setNewOpen(false)} disabled={createMutation.isPending}>Cancel</Button>
+            <Button variant="ghost" onClick={() => setNewOpen(false)} disabled={createMutation.isPending}>{t('common.cancel')}</Button>
             <Button onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>
-              {createMutation.isPending ? 'Creating…' : 'Create draft run'}
+              {createMutation.isPending ? t('payOcean.creating') : t('payOcean.create_draft')}
             </Button>
           </div>
         </div>
       </Modal>
-    </div>
+    </OceanPage>
   );
 }
