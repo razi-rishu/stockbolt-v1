@@ -145,7 +145,7 @@ export interface ReportColumn<T> {
   headerLtr?: boolean;
 }
 
-export function ReportTable<T>({ columns, rows, rowKey, footLabel, minWidth, onRowClick }: {
+export function ReportTable<T>({ columns, rows, rowKey, footLabel, minWidth, onRowClick, rowCls }: {
   columns: ReportColumn<T>[];
   rows: T[];
   rowKey: (row: T, index: number) => string;
@@ -154,6 +154,8 @@ export function ReportTable<T>({ columns, rows, rowKey, footLabel, minWidth, onR
   /** Below this width the table scrolls sideways instead of squeezing. */
   minWidth?: number;
   onRowClick?: (row: T) => void;
+  /** Row classes: 'is-reversed' (struck through) | 'is-dim'. */
+  rowCls?: (row: T) => string | undefined;
 }) {
   const cellCls = (c: ReportColumn<T>, row?: T) => [
     c.num ? 'num' : '',
@@ -169,7 +171,7 @@ export function ReportTable<T>({ columns, rows, rowKey, footLabel, minWidth, onR
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={rowKey(row, i)} className={onRowClick ? 'is-click' : undefined} onClick={onRowClick ? () => onRowClick(row) : undefined}>
+            <tr key={rowKey(row, i)} className={[onRowClick ? 'is-click' : '', rowCls?.(row) ?? ''].filter(Boolean).join(' ') || undefined} onClick={onRowClick ? () => onRowClick(row) : undefined}>
               {columns.map((c) => (
                 <td key={c.key} className={cellCls(c, row)}>{c.num ? <Num>{c.cell(row)}</Num> : c.cell(row)}</td>
               ))}
@@ -204,4 +206,14 @@ export function exportFromColumns<T>(columns: ReportColumn<T>[], rows: T[]): { r
 /** Two-decimal amount, Western digits. */
 export function money(n: number): string {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** Product name with its SKU beside it, as stock reports show it. */
+export function NameSku({ name, sku }: { name: string; sku?: string | null }) {
+  return (
+    <>
+      <span className="strong">{name}</span>
+      {sku && <span className="muted" style={{ marginInlineStart: 6, fontSize: 12 }}><Num>({sku})</Num></span>}
+    </>
+  );
 }

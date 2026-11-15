@@ -3,8 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { ReportActions } from '@/ui/report-actions';
-
-const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+import { OceanReport, ReportCard, ReportMessage, ReportTable, exportFromColumns, money as fmt, Num, NameSku, type ReportColumn } from '@/components/ocean-report';
 
 export default function ReorderReportPage() {
   const { t } = useTranslation();
@@ -15,75 +14,48 @@ export default function ReorderReportPage() {
     queryFn: () => getAdapter().reports.getReorderReport(company_id!),
     enabled: !!company_id,
   });
+  type Row = typeof rows[number];
 
-  const exportRows: Record<string, unknown>[] = rows.map(r => {
-    const shortage = Math.max(0, r.min_stock_level - r.qty_on_hand);
-    return {
-      Product: r.product_name,
-      SKU: r.sku ?? '',
-      Warehouse: r.warehouse_name,
-      'Qty On Hand': r.qty_on_hand,
-      'Min Stock': r.min_stock_level,
-      Shortage: shortage,
-      'Unit Cost': r.unit_cost != null ? r.unit_cost.toFixed(2) : '',
-      'Reorder Value': (shortage * (r.unit_cost ?? 0)).toFixed(2),
-    };
-  });
-  const exportHeaders = ['Product', 'SKU', 'Warehouse', 'Qty On Hand', 'Min Stock', 'Shortage', 'Unit Cost', 'Reorder Value'];
+  const shortageOf = (r: Row) => Math.max(0, r.min_stock_level - r.qty_on_hand);
+  const valueOf = (r: Row) => shortageOf(r) * (r.unit_cost ?? 0);
+  // Figures strip only — the table has no totals row, as before.
+  const totValue = rows.reduce((s, r) => s + valueOf(r), 0);
+
+  const columns: ReportColumn<Row>[] = [
+    { key: 'product', header: t('inventory.product'), cell: r => <NameSku name={r.product_name} sku={r.sku} />, exp: r => r.product_name },
+    { key: 'wh', header: t('inventory.warehouse'), cls: 'muted', cell: r => r.warehouse_name, exp: r => r.warehouse_name },
+    { key: 'qty', header: t('inventory.qty_on_hand'), num: true, cls: 'is-down strong', cell: r => fmt(r.qty_on_hand), exp: r => r.qty_on_hand },
+    { key: 'min', header: t('reports.min_stock_level'), num: true, cls: 'muted', cell: r => fmt(r.min_stock_level), exp: r => r.min_stock_level },
+    { key: 'short', header: t('reports.shortage'), num: true, cls: 'is-warn strong', cell: r => fmt(shortageOf(r)), exp: r => shortageOf(r) },
+    { key: 'cost', header: t('inventory.unit_cost'), num: true, cls: 'muted', cell: r => (r.unit_cost != null ? fmt(r.unit_cost) : '—'), exp: r => (r.unit_cost != null ? r.unit_cost.toFixed(2) : '') },
+    { key: 'value', header: t('reports.reorder_value'), num: true, cls: 'strong', cell: r => fmt(valueOf(r)), exp: r => valueOf(r).toFixed(2) },
+  ];
+  // SKU is shown beside the name on screen but keeps its own Excel column.
+  const xl = exportFromColumns<Row>([
+    columns[0],
+    { key: 'sku', header: t('products.sku'), cell: r => r.sku ?? '', exp: r => r.sku ?? '' },
+    ...columns.slice(1),
+  ], rows);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.reorder')}</h1>
-        <ReportActions rows={exportRows} headers={exportHeaders} filename="reorder-report" disabled={rows.length === 0} />
-      </div>
-      <p className="text-sm text-ink-tertiary">{t('reports.reorder_desc')}</p>
-
-      {isLoading ? (
-        <div className="py-12 text-center text-sm text-ink-tertiary">{t('common.loading')}</div>
-      ) : rows.length === 0 ? (
-        <div className="py-12 text-center text-sm text-ink-tertiary">{t('reports.no_reorder_needed')}</div>
-      ) : (
-        <div className="rounded-card border border-border-subtle bg-surface-card overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary text-xs">
-                <th className="px-4 py-3 text-start font-medium">{t('inventory.product')}</th>
-                <th className="px-4 py-3 text-start font-medium">{t('inventory.warehouse')}</th>
-                <th className="px-4 py-3 text-end font-medium w-28">{t('inventory.qty_on_hand')}</th>
-                <th className="px-4 py-3 text-end font-medium w-28">{t('reports.min_stock_level')}</th>
-                <th className="px-4 py-3 text-end font-medium w-28">{t('reports.shortage')}</th>
-                <th className="px-4 py-3 text-end font-medium w-28">{t('inventory.unit_cost')}</th>
-                <th className="px-4 py-3 text-end font-medium w-28">{t('reports.reorder_value')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, i) => {
-                const shortage = Math.max(0, row.min_stock_level - row.qty_on_hand);
-                const reorderValue = shortage * (row.unit_cost ?? 0);
-                return (
-                  <tr key={i} className="border-b border-border-subtle last:border-0">
-                    <td className="px-4 py-3 text-ink-primary">
-                      <span className="font-medium text-sm">{row.product_name}</span>
-                      {row.sku && <span className="ml-1.5 text-xs text-ink-tertiary">({row.sku})</span>}
-                    </td>
-                    <td className="px-4 py-3 text-ink-secondary text-sm">{row.warehouse_name}</td>
-                    <td className="px-4 py-3 text-end font-mono text-red-600 font-semibold">{fmt(row.qty_on_hand)}</td>
-                    <td className="px-4 py-3 text-end font-mono text-ink-secondary">{fmt(row.min_stock_level)}</td>
-                    <td className="px-4 py-3 text-end font-mono text-orange-600 font-semibold">{fmt(shortage)}</td>
-                    <td className="px-4 py-3 text-end font-mono text-ink-secondary">
-                      {row.unit_cost != null ? fmt(row.unit_cost) : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-end font-mono font-semibold text-ink-primary">
-                      {fmt(reorderValue)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+    <OceanReport
+      testid="reorder-ocean"
+      title={t('reports.reorder')}
+      subtitle={t('reports.reorder_desc')}
+      controls={<ReportActions rows={xl.rows} headers={xl.headers} filename="reorder-report" disabled={rows.length === 0} />}
+    >
+      <ReportCard
+        figures={rows.length > 0 ? [
+          { label: t('rptOcean.fig_items'), value: <Num>{rows.length}</Num>, tone: 'warn' },
+          { label: t('reports.reorder_value'), value: <Num>{fmt(totValue)}</Num>, tone: 'brand' },
+        ] : undefined}
+      >
+        {isLoading
+          ? <ReportMessage>{t('common.loading')}</ReportMessage>
+          : rows.length === 0
+            ? <ReportMessage>{t('reports.no_reorder_needed')}</ReportMessage>
+            : <ReportTable columns={columns} rows={rows} rowKey={(_, i) => String(i)} minWidth={820} />}
+      </ReportCard>
+    </OceanReport>
   );
 }

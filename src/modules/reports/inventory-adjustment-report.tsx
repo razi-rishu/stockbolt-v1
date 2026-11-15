@@ -5,9 +5,8 @@ import { useAuthStore } from '@/store/auth';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
+import { OceanReport, ReportCard, ReportMessage, ReportTable, exportFromColumns, money as fmt, Num, ltr, type ReportColumn } from '@/components/ocean-report';
 import type { WarehouseRow } from '@/data/adapter';
-
-const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function InventoryAdjustmentReportPage() {
   const { t } = useTranslation();
@@ -29,88 +28,46 @@ export default function InventoryAdjustmentReportPage() {
     }),
     enabled: !!company_id,
   });
+  type Row = typeof rows[number];
 
   const totalGain = rows.reduce((s, r) => s + (r.total_gain ?? 0), 0);
   const totalLoss = rows.reduce((s, r) => s + (r.total_loss ?? 0), 0);
   const net = totalGain - totalLoss;
+  const netOf = (r: Row) => (r.total_gain ?? 0) - (r.total_loss ?? 0);
+  const signed = (n: number) => `${n > 0 ? '+' : ''}${fmt(n)}`;
 
-  const exportRows: Record<string, unknown>[] = rows.map(r => ({
-    Date: r.date as string,
-    'Adjustment #': r.adjustment_number,
-    Warehouse: warehouseMap[r.warehouse_id] ?? r.warehouse_id,
-    Reason: r.reason,
-    'Total Gain': (r.total_gain ?? 0).toFixed(2),
-    'Total Loss': (r.total_loss ?? 0).toFixed(2),
-    'Net Change': ((r.total_gain ?? 0) - (r.total_loss ?? 0)).toFixed(2),
-  }));
-  const exportHeaders = ['Date', 'Adjustment #', 'Warehouse', 'Reason', 'Total Gain', 'Total Loss', 'Net Change'];
+  const columns: ReportColumn<Row>[] = [
+    { key: 'date', header: t('inventory.date'), cls: 'muted', cell: r => <Num>{r.date as string}</Num>, exp: r => r.date as string },
+    { key: 'no', header: t('inventory.adjustment_number'), cell: r => <span className="code">{r.adjustment_number}</span>, exp: r => r.adjustment_number },
+    { key: 'wh', header: t('inventory.warehouse'), cls: 'muted', cell: r => warehouseMap[r.warehouse_id] ?? r.warehouse_id, exp: r => warehouseMap[r.warehouse_id] ?? r.warehouse_id },
+    { key: 'reason', header: t('inventory.reason'), cls: 'muted', cell: r => <span style={{ textTransform: 'capitalize' }}>{r.reason}</span>, exp: r => r.reason },
+    { key: 'gain', header: t('inventory.total_gain'), num: true, cls: 'is-up', cell: r => fmt(r.total_gain ?? 0), exp: r => (r.total_gain ?? 0).toFixed(2) },
+    { key: 'loss', header: t('inventory.total_loss'), num: true, cls: 'is-down', cell: r => fmt(r.total_loss ?? 0), exp: r => (r.total_loss ?? 0).toFixed(2) },
+    { key: 'net', header: t('inventory.net_change'), num: true, cls: r => (netOf(r) >= 0 ? 'is-up strong' : 'is-down strong'), cell: r => signed(netOf(r)), exp: r => netOf(r).toFixed(2) },
+  ];
+  const xl = exportFromColumns(columns, rows);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.inventory_adjustment_report')}</h1>
-        <div data-print-hide className="flex flex-wrap items-center gap-2">
-          <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-          <ReportActions rows={exportRows} headers={exportHeaders} filename={`inventory-adjustments-${from}_${to}`} disabled={rows.length === 0} />
-        </div>
-      </div>
-
-      {rows.length > 0 && (
-        <div className="grid grid-cols-3 gap-4">
-          <div className="rounded-card border border-border-subtle bg-surface-card p-4">
-            <p className="text-xs text-ink-tertiary">{t('inventory.total_gain')}</p>
-            <p className="text-lg font-semibold text-green-600 mt-1">{fmt(totalGain)}</p>
-          </div>
-          <div className="rounded-card border border-border-subtle bg-surface-card p-4">
-            <p className="text-xs text-ink-tertiary">{t('inventory.total_loss')}</p>
-            <p className="text-lg font-semibold text-red-600 mt-1">{fmt(totalLoss)}</p>
-          </div>
-          <div className="rounded-card border border-border-subtle bg-surface-card p-4">
-            <p className="text-xs text-ink-tertiary">{t('inventory.net_change')}</p>
-            <p className={`text-lg font-semibold mt-1 ${net >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {net > 0 ? '+' : ''}{fmt(net)}
-            </p>
-          </div>
-        </div>
-      )}
-
-      <div className="rounded-card border border-border-subtle bg-surface-card overflow-x-auto">
-        {rows.length === 0 ? (
-          <p className="py-12 text-center text-sm text-ink-tertiary">{isFetching ? t('common.loading') : t('reports.no_adjustments')}</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary text-xs">
-                <th className="px-4 py-3 text-start font-medium">{t('inventory.date')}</th>
-                <th className="px-4 py-3 text-start font-medium">{t('inventory.adjustment_number')}</th>
-                <th className="px-4 py-3 text-start font-medium">{t('inventory.warehouse')}</th>
-                <th className="px-4 py-3 text-start font-medium">{t('inventory.reason')}</th>
-                <th className="px-4 py-3 text-end font-medium w-28">{t('inventory.total_gain')}</th>
-                <th className="px-4 py-3 text-end font-medium w-28">{t('inventory.total_loss')}</th>
-                <th className="px-4 py-3 text-end font-medium w-28">{t('inventory.net_change')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, i) => {
-                const rowNet = (row.total_gain ?? 0) - (row.total_loss ?? 0);
-                return (
-                  <tr key={i} className="border-b border-border-subtle last:border-0">
-                    <td className="px-4 py-3 text-ink-secondary">{row.date as string}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-brand-700">{row.adjustment_number}</td>
-                    <td className="px-4 py-3 text-ink-secondary text-sm">{warehouseMap[row.warehouse_id] ?? row.warehouse_id}</td>
-                    <td className="px-4 py-3 text-ink-secondary capitalize">{row.reason}</td>
-                    <td className="px-4 py-3 text-end font-mono text-green-700">{fmt(row.total_gain ?? 0)}</td>
-                    <td className="px-4 py-3 text-end font-mono text-red-700">{fmt(row.total_loss ?? 0)}</td>
-                    <td className={`px-4 py-3 text-end font-mono font-semibold ${rowNet >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                      {rowNet > 0 ? '+' : ''}{fmt(rowNet)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
+    <OceanReport
+      testid="inventory-adjustment-ocean"
+      title={t('reports.inventory_adjustment_report')}
+      subtitle={t('rptOcean.range', { from: ltr(from), to: ltr(to) })}
+      controls={<>
+        <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <ReportActions rows={xl.rows} headers={xl.headers} filename={`inventory-adjustments-${from}_${to}`} disabled={rows.length === 0} />
+      </>}
+    >
+      <ReportCard
+        figures={rows.length > 0 ? [
+          { label: t('inventory.total_gain'), value: <Num>{fmt(totalGain)}</Num>, tone: 'good' },
+          { label: t('inventory.total_loss'), value: <Num>{fmt(totalLoss)}</Num>, tone: 'bad' },
+          { label: t('inventory.net_change'), value: <Num>{signed(net)}</Num>, tone: net >= 0 ? 'brand' : 'bad' },
+        ] : undefined}
+      >
+        {rows.length === 0
+          ? <ReportMessage>{isFetching ? t('common.loading') : t('reports.no_adjustments')}</ReportMessage>
+          : <ReportTable columns={columns} rows={rows} rowKey={(_, i) => String(i)} minWidth={820} />}
+      </ReportCard>
+    </OceanReport>
   );
 }

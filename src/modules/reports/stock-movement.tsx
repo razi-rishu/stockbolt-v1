@@ -3,20 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { Select } from '@/ui/select';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
+import { OceanReport, ReportCard, ReportMessage, ReportTable, exportFromColumns, money as fmt, Num, NameSku, ltr, type ReportColumn } from '@/components/ocean-report';
 import type { ProductRow, WarehouseRow } from '@/data/adapter';
-
-const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-const TYPE_LABELS: Record<string, string> = {
-  purchase: 'Purchase', sale: 'Sale',
-  transfer_in: 'Transfer In', transfer_out: 'Transfer Out',
-  adjustment_in: 'Adjustment In', adjustment_out: 'Adjustment Out',
-  opening: 'Opening',
-};
 
 export default function StockMovementReportPage() {
   const { t } = useTranslation();
@@ -48,103 +39,58 @@ export default function StockMovementReportPage() {
     }),
     enabled: !!company_id,
   });
-
-  const productOpts = [
-    { value: '', label: t('inventory.all_products') },
-    ...products.map(p => ({ value: p.id, label: `${p.sku} — ${p.name}` })),
-  ];
-  const warehouseOpts = [
-    { value: '', label: t('inventory.all_warehouses') },
-    ...warehouses.map(w => ({ value: w.id, label: w.name })),
-  ];
+  type Row = typeof rows[number];
 
   const totalIn  = rows.filter(r => r.direction === 1).reduce((s, r) => s + r.quantity, 0);
   const totalOut = rows.filter(r => r.direction === -1).reduce((s, r) => s + r.quantity, 0);
+  const typeLabel = (type: string) => t(`rptOcean.mv_${type}`, { defaultValue: type });
 
-  const exportRows: Record<string, unknown>[] = rows.map(r => ({
-    Date: r.date as string,
-    Product: r.product_name,
-    SKU: r.sku ?? '',
-    Warehouse: r.warehouse_name,
-    Type: TYPE_LABELS[r.movement_type] ?? r.movement_type,
-    'Qty In': r.direction === 1 ? r.quantity : 0,
-    'Qty Out': r.direction === -1 ? r.quantity : 0,
-    'Running Qty': r.running_qty,
-    'Unit Cost': r.unit_cost != null ? r.unit_cost.toFixed(2) : '',
-  }));
-  const exportHeaders = ['Date', 'Product', 'SKU', 'Warehouse', 'Type', 'Qty In', 'Qty Out', 'Running Qty', 'Unit Cost'];
+  const columns: ReportColumn<Row>[] = [
+    { key: 'date', header: t('inventory.date'), cls: 'muted', cell: r => <Num>{r.date as string}</Num>, exp: r => r.date as string },
+    { key: 'product', header: t('inventory.product'), cell: r => <NameSku name={r.product_name} sku={r.sku} />, exp: r => r.product_name },
+    { key: 'wh', header: t('inventory.warehouse'), cls: 'muted', cell: r => r.warehouse_name, exp: r => r.warehouse_name },
+    { key: 'type', header: t('inventory.type'), cls: 'muted', cell: r => typeLabel(r.movement_type), exp: r => typeLabel(r.movement_type) },
+    { key: 'in', header: t('inventory.qty_in'), num: true, cls: r => (r.direction === 1 ? 'is-up' : 'muted'), cell: r => (r.direction === 1 ? fmt(r.quantity) : '—'), exp: r => (r.direction === 1 ? r.quantity : 0) },
+    { key: 'out', header: t('inventory.qty_out'), num: true, cls: r => (r.direction === -1 ? 'is-down' : 'muted'), cell: r => (r.direction === -1 ? fmt(r.quantity) : '—'), exp: r => (r.direction === -1 ? r.quantity : 0) },
+    { key: 'run', header: t('inventory.running_qty'), num: true, cls: 'strong', cell: r => fmt(r.running_qty), exp: r => r.running_qty },
+    { key: 'cost', header: t('inventory.unit_cost'), num: true, cls: 'muted', cell: r => (r.unit_cost != null ? fmt(r.unit_cost) : '—'), exp: r => (r.unit_cost != null ? r.unit_cost.toFixed(2) : '') },
+  ];
+  // SKU is shown beside the name on screen but keeps its own Excel column.
+  const xl = exportFromColumns<Row>([
+    ...columns.slice(0, 2),
+    { key: 'sku', header: t('products.sku'), cell: r => r.sku ?? '', exp: r => r.sku ?? '' },
+    ...columns.slice(2),
+  ], rows);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.stock_movement')}</h1>
-        <div data-print-hide className="flex flex-wrap items-center gap-2">
-          <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-          <ReportActions rows={exportRows} headers={exportHeaders} filename={`stock-movement-${from}_${to}`} disabled={rows.length === 0} />
-        </div>
-      </div>
-
-      <div data-print-hide className="flex flex-wrap items-center gap-2">
-        <div className="w-64"><Select options={productOpts} value={productId} onChange={e => setProductId(e.target.value)} /></div>
-        <div className="w-48"><Select options={warehouseOpts} value={warehouseId} onChange={e => setWarehouseId(e.target.value)} /></div>
-      </div>
-
-      {rows.length > 0 && (
-        <div className="grid grid-cols-2 gap-4">
-          <div className="rounded-card border border-border-subtle bg-surface-card p-4">
-            <p className="text-xs text-ink-tertiary">{t('inventory.total_in')}</p>
-            <p className="text-lg font-semibold text-green-600 mt-1">{fmt(totalIn)}</p>
-          </div>
-          <div className="rounded-card border border-border-subtle bg-surface-card p-4">
-            <p className="text-xs text-ink-tertiary">{t('inventory.total_out')}</p>
-            <p className="text-lg font-semibold text-red-600 mt-1">{fmt(totalOut)}</p>
-          </div>
-        </div>
-      )}
-
-      <div className="rounded-card border border-border-subtle bg-surface-card overflow-x-auto">
-        {rows.length === 0 ? (
-          <p className="py-12 text-center text-sm text-ink-tertiary">{isFetching ? t('common.loading') : t('inventory.no_movements')}</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary text-xs">
-                <th className="px-4 py-3 text-start font-medium">{t('inventory.date')}</th>
-                <th className="px-4 py-3 text-start font-medium">{t('inventory.product')}</th>
-                <th className="px-4 py-3 text-start font-medium">{t('inventory.warehouse')}</th>
-                <th className="px-4 py-3 text-start font-medium">{t('inventory.type')}</th>
-                <th className="px-4 py-3 text-end font-medium w-24">{t('inventory.qty_in')}</th>
-                <th className="px-4 py-3 text-end font-medium w-24">{t('inventory.qty_out')}</th>
-                <th className="px-4 py-3 text-end font-medium w-28">{t('inventory.running_qty')}</th>
-                <th className="px-4 py-3 text-end font-medium w-28">{t('inventory.unit_cost')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, i) => {
-                const isIn = row.direction === 1;
-                const isOut = row.direction === -1;
-                return (
-                  <tr key={i} className="border-b border-border-subtle last:border-0">
-                    <td className="px-4 py-2 text-ink-secondary">{row.date as string}</td>
-                    <td className="px-4 py-2 text-ink-primary">
-                      <span className="font-medium text-sm">{row.product_name}</span>
-                      {row.sku && <span className="ml-1.5 text-xs text-ink-tertiary">({row.sku})</span>}
-                    </td>
-                    <td className="px-4 py-2 text-ink-secondary text-sm">{row.warehouse_name}</td>
-                    <td className="px-4 py-2 text-ink-secondary">{TYPE_LABELS[row.movement_type] ?? row.movement_type}</td>
-                    <td className="px-4 py-2 text-end text-green-700 font-mono">{isIn ? fmt(row.quantity) : '—'}</td>
-                    <td className="px-4 py-2 text-end text-red-700 font-mono">{isOut ? fmt(row.quantity) : '—'}</td>
-                    <td className="px-4 py-2 text-end font-mono font-semibold">{fmt(row.running_qty)}</td>
-                    <td className="px-4 py-2 text-end font-mono text-ink-secondary">
-                      {row.unit_cost != null ? fmt(row.unit_cost) : '—'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
+    <OceanReport
+      testid="stock-movement-ocean"
+      title={t('reports.stock_movement')}
+      subtitle={t('rptOcean.range', { from: ltr(from), to: ltr(to) })}
+      controls={<>
+        <select value={productId} onChange={e => setProductId(e.target.value)} className="sb-rpt-select sb-rpt-select-wide" aria-label={t('inventory.product')}>
+          <option value="">{t('inventory.all_products')}</option>
+          {products.map(p => <option key={p.id} value={p.id}>{`${p.sku} — ${p.name}`}</option>)}
+        </select>
+        <select value={warehouseId} onChange={e => setWarehouseId(e.target.value)} className="sb-rpt-select sb-rpt-select-wide" aria-label={t('inventory.warehouse')}>
+          <option value="">{t('inventory.all_warehouses')}</option>
+          {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+        </select>
+        <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <ReportActions rows={xl.rows} headers={xl.headers} filename={`stock-movement-${from}_${to}`} disabled={rows.length === 0} />
+      </>}
+    >
+      <ReportCard
+        figures={rows.length > 0 ? [
+          { label: t('rptOcean.fig_movements'), value: <Num>{rows.length}</Num> },
+          { label: t('inventory.total_in'), value: <Num>{fmt(totalIn)}</Num>, tone: 'good' },
+          { label: t('inventory.total_out'), value: <Num>{fmt(totalOut)}</Num>, tone: 'bad' },
+        ] : undefined}
+      >
+        {rows.length === 0
+          ? <ReportMessage>{isFetching ? t('common.loading') : t('inventory.no_movements')}</ReportMessage>
+          : <ReportTable columns={columns} rows={rows} rowKey={(_, i) => String(i)} minWidth={940} />}
+      </ReportCard>
+    </OceanReport>
   );
 }

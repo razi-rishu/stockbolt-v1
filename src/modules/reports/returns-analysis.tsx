@@ -5,6 +5,7 @@ import { useAuthStore } from '@/store/auth';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
+import { OceanReport, ReportCard, ReportMessage, ReportTable, money as fmt, Num, ltr, type ReportColumn } from '@/components/ocean-report';
 import type { SalesReturnReasonLine, PurchaseReturnReasonLine } from '@/data/adapter';
 
 /**
@@ -27,18 +28,9 @@ import type { SalesReturnReasonLine, PurchaseReturnReasonLine } from '@/data/ada
  * has been reversed.
  */
 
-function fmt(n: number) {
-  return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
-}
 function fmtQty(n: number) {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 }).format(n);
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 }).format(n);
 }
-
-const th     = 'px-4 py-2 text-left font-medium text-ink-secondary';
-const thNum  = 'px-4 py-2 text-right font-medium text-ink-secondary';
-const td     = 'px-4 py-2 text-ink-primary';
-const tdNum  = 'px-4 py-2 text-right tabular-nums text-ink-secondary';
-const tdTot  = 'px-4 py-2 text-right tabular-nums font-semibold text-ink-primary';
 
 export default function ReturnsAnalysisPage() {
   const { t } = useTranslation();
@@ -80,125 +72,81 @@ export default function ReturnsAnalysisPage() {
 
   // One sheet for both tables, told apart by the Side column — an export that
   // silently dropped half the page would be worse than no export.
-  const exportHeaders = ['Side', 'Reason', 'Returns', 'Qty', 'Value', 'Restocked Cost', 'Written Off', 'Fees'];
+  const H = {
+    side: t('rptOcean.col_side'), reason: t('returns.reason'), returns: t('reports.returns_count'),
+    qty: t('reports.qty_returned'), value: t('rptOcean.col_value'), restocked: t('reports.restocked_cost'),
+    written: t('reports.written_off'), fees: t('returns.restocking_fee'),
+  };
+  const exportHeaders = [H.side, H.reason, H.returns, H.qty, H.value, H.restocked, H.written, H.fees];
   const exportRows: Record<string, unknown>[] = [
     ...sales.map(r => ({
-      Side: 'Sales', Reason: label(r.reason), Returns: r.returns, Qty: r.qty,
-      Value: r.credit_value.toFixed(2), 'Restocked Cost': r.restocked_value.toFixed(2),
-      'Written Off': r.written_off.toFixed(2), Fees: r.fees.toFixed(2),
+      [H.side]: t('rptOcean.side_sales'), [H.reason]: label(r.reason), [H.returns]: r.returns, [H.qty]: r.qty,
+      [H.value]: r.credit_value.toFixed(2), [H.restocked]: r.restocked_value.toFixed(2),
+      [H.written]: r.written_off.toFixed(2), [H.fees]: r.fees.toFixed(2),
     })),
     ...purch.map(r => ({
-      Side: 'Purchase', Reason: label(r.reason), Returns: r.returns, Qty: r.qty,
-      Value: r.debit_value.toFixed(2), 'Restocked Cost': r.cost.toFixed(2),
-      'Written Off': '', Fees: '',
+      [H.side]: t('rptOcean.side_purchase'), [H.reason]: label(r.reason), [H.returns]: r.returns, [H.qty]: r.qty,
+      [H.value]: r.debit_value.toFixed(2), [H.restocked]: r.cost.toFixed(2),
+      [H.written]: '', [H.fees]: '',
     })),
   ];
 
+  const salesCols: ReportColumn<SalesReturnReasonLine>[] = [
+    { key: 'reason', header: t('returns.reason'), cls: 'strong', cell: r => label(r.reason) },
+    { key: 'returns', header: t('reports.returns_count'), num: true, cls: 'muted', cell: r => r.returns, foot: sTot.returns },
+    { key: 'qty', header: t('reports.qty_returned'), num: true, cls: 'muted', cell: r => fmtQty(r.qty), foot: fmtQty(sTot.qty) },
+    { key: 'credit', header: t('reports.credit_value'), num: true, cell: r => fmt(r.credit_value), foot: fmt(sTot.credit_value) },
+    { key: 'restocked', header: t('reports.restocked_cost'), num: true, cls: 'muted', cell: r => fmt(r.restocked_value), foot: fmt(sTot.restocked_value) },
+    { key: 'written', header: t('reports.written_off'), num: true, cls: r => (r.written_off > 0 ? 'is-down strong' : 'muted'), cell: r => fmt(r.written_off), foot: fmt(sTot.written_off) },
+    { key: 'fees', header: t('returns.restocking_fee'), num: true, cls: 'muted', cell: r => fmt(r.fees), foot: fmt(sTot.fees) },
+  ];
+  const purchCols: ReportColumn<PurchaseReturnReasonLine>[] = [
+    { key: 'reason', header: t('returns.reason'), cls: 'strong', cell: r => label(r.reason) },
+    { key: 'returns', header: t('reports.returns_count'), num: true, cls: 'muted', cell: r => r.returns, foot: pTot.returns },
+    { key: 'qty', header: t('reports.qty_returned'), num: true, cls: 'muted', cell: r => fmtQty(r.qty), foot: fmtQty(pTot.qty) },
+    { key: 'debit', header: t('reports.debit_value'), num: true, cell: r => fmt(r.debit_value), foot: fmt(pTot.debit_value) },
+    { key: 'cost', header: t('reports.returned_cost'), num: true, cls: 'muted', cell: r => fmt(r.cost), foot: fmt(pTot.cost) },
+  ];
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.returns_analysis')}</h1>
-        <div data-print-hide className="flex flex-wrap items-center gap-2">
-          <PeriodPicker mode="range" preset={preset} from={from} to={to}
-            onPresetChange={setPreset} onCustomRange={setCustomRange} />
-          <ReportActions rows={exportRows} headers={exportHeaders}
-            filename={`returns-analysis-${from}_${to}`} disabled={isEmpty} />
-        </div>
-      </div>
+    <OceanReport
+      testid="returns-analysis-ocean"
+      title={t('reports.returns_analysis')}
+      subtitle={t('rptOcean.range', { from: ltr(from), to: ltr(to) })}
+      controls={<>
+        <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <ReportActions rows={exportRows} headers={exportHeaders} filename={`returns-analysis-${from}_${to}`} disabled={isEmpty} />
+      </>}
+    >
+      {isEmpty && <ReportCard><ReportMessage>{busy ? t('common.loading') : t('reports.no_data')}</ReportMessage></ReportCard>}
 
-      {busy && isEmpty && <p className="text-sm text-ink-secondary">{t('common.loading')}</p>}
-      {!busy && isEmpty && <p className="text-sm text-ink-tertiary">{t('reports.no_data')}</p>}
-
-      {/* ── Sales returns ────────────────────────────────────────────────── */}
+      {/* ── Sales returns ── */}
       {sales.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-semibold text-ink-primary">{t('reports.returns_sales_side')}</h2>
-          <div className="overflow-x-auto rounded-lg border border-border bg-surface-card shadow-sm">
-            <table className="w-full text-sm">
-              <thead className="bg-surface-subtle">
-                <tr>
-                  <th className={th}>{t('returns.reason')}</th>
-                  <th className={thNum}>{t('reports.returns_count')}</th>
-                  <th className={thNum}>{t('reports.qty_returned')}</th>
-                  <th className={thNum}>{t('reports.credit_value')}</th>
-                  <th className={thNum}>{t('reports.restocked_cost')}</th>
-                  <th className={thNum}>{t('reports.written_off')}</th>
-                  <th className={thNum}>{t('returns.restocking_fee')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sales.map(r => (
-                  <tr key={r.reason || '_'} className="border-t border-border-subtle">
-                    <td className={td}>{label(r.reason)}</td>
-                    <td className={tdNum}>{r.returns}</td>
-                    <td className={tdNum}>{fmtQty(r.qty)}</td>
-                    <td className={tdNum}>{fmt(r.credit_value)}</td>
-                    <td className={tdNum}>{fmt(r.restocked_value)}</td>
-                    <td className={r.written_off > 0 ? 'px-4 py-2 text-right tabular-nums font-medium text-danger-600' : tdNum}>
-                      {fmt(r.written_off)}
-                    </td>
-                    <td className={tdNum}>{fmt(r.fees)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-border-strong bg-surface-subtle">
-                  <td className="px-4 py-2 font-semibold text-ink-primary">{t('common.total')}</td>
-                  <td className={tdTot}>{sTot.returns}</td>
-                  <td className={tdTot}>{fmtQty(sTot.qty)}</td>
-                  <td className={tdTot}>{fmt(sTot.credit_value)}</td>
-                  <td className={tdTot}>{fmt(sTot.restocked_value)}</td>
-                  <td className={tdTot}>{fmt(sTot.written_off)}</td>
-                  <td className={tdTot}>{fmt(sTot.fees)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-          {sTot.written_off > 0 && (
-            <p className="text-xs text-ink-tertiary">{t('reports.written_off_hint')}</p>
-          )}
-        </section>
+        <ReportCard
+          title={t('reports.returns_sales_side')}
+          figures={[
+            { label: t('reports.returns_count'), value: <Num>{sTot.returns}</Num> },
+            { label: t('reports.credit_value'), value: <Num>{fmt(sTot.credit_value)}</Num>, tone: 'brand' },
+            { label: t('reports.written_off'), value: <Num>{fmt(sTot.written_off)}</Num>, tone: sTot.written_off > 0 ? 'bad' : undefined },
+          ]}
+        >
+          <ReportTable columns={salesCols} rows={sales} rowKey={r => r.reason || '_'} footLabel={t('rptOcean.total')} minWidth={820} />
+          {sTot.written_off > 0 && <p className="sb-rpt-foot">{t('reports.written_off_hint')}</p>}
+        </ReportCard>
       )}
 
-      {/* ── Purchase returns ─────────────────────────────────────────────── */}
+      {/* ── Purchase returns ── */}
       {purch.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-semibold text-ink-primary">{t('reports.returns_purchase_side')}</h2>
-          <div className="overflow-x-auto rounded-lg border border-border bg-surface-card shadow-sm">
-            <table className="w-full text-sm">
-              <thead className="bg-surface-subtle">
-                <tr>
-                  <th className={th}>{t('returns.reason')}</th>
-                  <th className={thNum}>{t('reports.returns_count')}</th>
-                  <th className={thNum}>{t('reports.qty_returned')}</th>
-                  <th className={thNum}>{t('reports.debit_value')}</th>
-                  <th className={thNum}>{t('reports.returned_cost')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {purch.map(r => (
-                  <tr key={r.reason || '_'} className="border-t border-border-subtle">
-                    <td className={td}>{label(r.reason)}</td>
-                    <td className={tdNum}>{r.returns}</td>
-                    <td className={tdNum}>{fmtQty(r.qty)}</td>
-                    <td className={tdNum}>{fmt(r.debit_value)}</td>
-                    <td className={tdNum}>{fmt(r.cost)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-border-strong bg-surface-subtle">
-                  <td className="px-4 py-2 font-semibold text-ink-primary">{t('common.total')}</td>
-                  <td className={tdTot}>{pTot.returns}</td>
-                  <td className={tdTot}>{fmtQty(pTot.qty)}</td>
-                  <td className={tdTot}>{fmt(pTot.debit_value)}</td>
-                  <td className={tdTot}>{fmt(pTot.cost)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </section>
+        <ReportCard
+          title={t('reports.returns_purchase_side')}
+          figures={[
+            { label: t('reports.returns_count'), value: <Num>{pTot.returns}</Num> },
+            { label: t('reports.debit_value'), value: <Num>{fmt(pTot.debit_value)}</Num>, tone: 'brand' },
+          ]}
+        >
+          <ReportTable columns={purchCols} rows={purch} rowKey={r => r.reason || '_'} footLabel={t('rptOcean.total')} minWidth={620} />
+        </ReportCard>
       )}
-    </div>
+    </OceanReport>
   );
 }

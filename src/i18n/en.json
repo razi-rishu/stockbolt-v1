@@ -4156,6 +4156,27 @@
     "ap_total_payable": "Total payable",
     "fig_suppliers": "Suppliers",
     "fig_open_orders": "Open orders",
-    "ap_none": "No outstanding payables."
+    "ap_none": "No outstanding payables.",
+    "fig_items": "Items",
+    "fig_movements": "Movements",
+    "fig_charges": "Charges",
+    "bucket_0_30": "0–30 days",
+    "bucket_31_60": "31–60 days",
+    "bucket_61_90": "61–90 days",
+    "bucket_over_90": "90+ days",
+    "mv_purchase": "Purchase",
+    "mv_sale": "Sale",
+    "mv_transfer_in": "Transfer in",
+    "mv_transfer_out": "Transfer out",
+    "mv_adjustment_in": "Adjustment in",
+    "mv_adjustment_out": "Adjustment out",
+    "mv_opening": "Opening",
+    "col_side": "Side",
+    "col_value": "Value",
+    "side_sales": "Sales",
+    "side_purchase": "Purchase",
+    "col_category": "Category",
+    "col_tag": "Tag",
+    "status_posted": "posted"
   }
 }

@@ -4156,6 +4156,27 @@
     "ap_total_payable": "إجمالي المستحق للموردين",
     "fig_suppliers": "الموردون",
     "fig_open_orders": "أوامر مفتوحة",
-    "ap_none": "لا توجد مبالغ مستحقة للموردين."
+    "ap_none": "لا توجد مبالغ مستحقة للموردين.",
+    "fig_items": "الأصناف",
+    "fig_movements": "الحركات",
+    "fig_charges": "عدد القيود",
+    "bucket_0_30": "0–30 يوماً",
+    "bucket_31_60": "31–60 يوماً",
+    "bucket_61_90": "61–90 يوماً",
+    "bucket_over_90": "أكثر من 90 يوماً",
+    "mv_purchase": "شراء",
+    "mv_sale": "بيع",
+    "mv_transfer_in": "تحويل وارد",
+    "mv_transfer_out": "تحويل صادر",
+    "mv_adjustment_in": "تسوية بالزيادة",
+    "mv_adjustment_out": "تسوية بالنقص",
+    "mv_opening": "رصيد افتتاحي",
+    "col_side": "الجهة",
+    "col_value": "القيمة",
+    "side_sales": "المبيعات",
+    "side_purchase": "المشتريات",
+    "col_category": "الفئة",
+    "col_tag": "الرمز التعريفي",
+    "status_posted": "مرحّل"
   }
 }
