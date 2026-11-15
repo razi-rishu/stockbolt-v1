@@ -1,4 +1,20 @@
 {
+  "taxReg": {
+    "required": "Tax Registration Number is required when your business is VAT/GST registered.",
+    "not_available": "VAT registration is not available in this country.",
+    "format_AE": "Enter a valid 15-digit UAE VAT TRN.",
+    "format_SA": "Enter a valid 15-digit Saudi VAT number (it starts and ends with 3).",
+    "format_BH": "Enter a valid 15-digit Bahrain VAT account number.",
+    "format_OM": "Enter a valid Oman VATIN (OM followed by 10 characters).",
+    "format_IN": "Enter a valid 15-character GSTIN.",
+    "format_other": "Enter a valid tax registration number.",
+    "hint_AE": "15 digits, as on your FTA certificate.",
+    "hint_SA": "15 digits, as on your ZATCA certificate.",
+    "hint_BH": "15-digit VAT account number from your NBR certificate.",
+    "hint_OM": "VATIN from your Tax Authority certificate, e.g. OM1100012345.",
+    "hint_IN": "15-character GSTIN, e.g. 27AAPFU0939F1ZV.",
+    "saved_incomplete": "Your saved tax registration number needs correcting."
+  },
   "staff": {
     "new_salesperson": "New salesperson",
     "new_purchaser": "New purchaser",

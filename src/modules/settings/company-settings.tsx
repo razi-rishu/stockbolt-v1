@@ -12,6 +12,11 @@ import { FormErrorBanner } from '@/ui/form-error-banner';
 import { ImageIcon, Building2, Percent, Package, Coins, Landmark, Upload, Loader2 } from 'lucide-react';
 import '@/styles/stockbolt-ocean-teal.css';
 import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
+import { vatApplies } from '@/core/global-config/country-packs';
+import {
+  validateTaxRegistration, normaliseTaxId, taxRegistrationErrorKey, parseTaxRegistrationServerError,
+  type TaxRegistrationError,
+} from '@/core/global-config/tax-registration';
 
 /** Ocean Teal card heading: icon square + title. */
 function SectionHead({ icon, title, hint }: { icon: React.ReactNode; title: string; hint?: string }) {
@@ -44,6 +49,24 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
+/**
+ * phase132 — the tax registration rule needs the company's country and its
+ * saved values, which the static schema cannot see. It is only enforced when
+ * the user changes the tax fields, exactly like the database trigger: a
+ * company whose old number is missing or malformed can still save the rest
+ * of its settings, and is asked to correct the number when it edits it.
+ */
+interface TaxRule { country: string; savedRegistered: boolean; savedTaxId: string }
+function withTaxRule(rule: TaxRule) {
+  return schema.superRefine((v, ctx) => {
+    const touched = v.is_tax_registered !== rule.savedRegistered
+      || normaliseTaxId(v.tax_id) !== normaliseTaxId(rule.savedTaxId);
+    if (!touched) return;
+    const err = validateTaxRegistration(rule.country, v.is_tax_registered, v.tax_id);
+    if (err) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `tax:${err}`, path: ['tax_id'] });
+  });
+}
+
 export default function CompanySettingsPage() {
   const { t } = useTranslation();
   const arabicOn = useArabicEnabled();   // India companies: English only
@@ -59,14 +82,32 @@ export default function CompanySettingsPage() {
     queryFn: () => getAdapter().companies.getById(company_id!),
     enabled: !!company_id,
   });
+  const country = company?.country_code ?? '';
+  const taxRule = useRef<TaxRule>({ country: '', savedRegistered: false, savedTaxId: '' });
+  taxRule.current = {
+    country,
+    savedRegistered: !!company?.is_tax_registered,
+    savedTaxId: company?.tax_id ?? '',
+  };
+  // A saved registration that would not pass today: shown, never blocking.
+  const savedTaxProblem: TaxRegistrationError | null = company
+    ? validateTaxRegistration(country, company.is_tax_registered, company.tax_id)
+    : null;
+  const taxMsg = (msg?: string) => (msg?.startsWith('tax:')
+    ? t(taxRegistrationErrorKey(country, msg.slice(4) as TaxRegistrationError))
+    : msg);
 
   const {
     register,
     reset,
     watch,
+    trigger,
     handleSubmit,
     formState: { errors, isDirty, isSubmitting },
-  } = useForm<FormValues>({ resolver: zodResolver(schema) });
+  } = useForm<FormValues>({
+    // Resolved per validation so it always sees the loaded company.
+    resolver: (values, ctx, opts) => zodResolver(withTaxRule(taxRule.current))(values, ctx, opts),
+  });
   const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('company-settings');
 
   useEffect(() => {
@@ -201,7 +242,10 @@ export default function CompanySettingsPage() {
         </section>
 
         {/* Company details form */}
-        <form onSubmit={handleSubmit((v) => { clearBanner(); return onSubmit(v); }, onInvalid)} className="sb-form-body">
+        {/* noValidate: the schema validates every field and shows translated
+            messages; the browser's own pop-up would also block a company whose
+            OLD tax number is incomplete from saving anything else. */}
+        <form noValidate onSubmit={handleSubmit((v) => { clearBanner(); return onSubmit(v); }, onInvalid)} className="sb-form-body">
           <section className="sb-card">
             <FormErrorBanner message={bannerMessage} onDismiss={clearBanner} />
             <SectionHead icon={<Building2 size={20} />} title={t('settings.company.details')} />
@@ -225,12 +269,30 @@ export default function CompanySettingsPage() {
           <section className="sb-card">
             <SectionHead icon={<Percent size={20} />} title={t('settings.company.tax_section')} />
             <div className="sb-form-stack">
-              <label className="sb-check-row">
-                <input type="checkbox" {...register('is_tax_registered')} />
-                <span className="sb-check-text">{t('wizard.step2.tax_registered')}</span>
-              </label>
-              {is_tax_registered && (
-                <Input label={t('wizard.step2.tax_id')} placeholder="TRN / GSTIN" dir="ltr" error={errors.tax_id?.message} {...register('tax_id')} />
+              {/* No VAT in Kuwait / Qatar: the option is only shown there to a
+                  company already marked registered, so it can untick it. */}
+              {(vatApplies(country) || company?.is_tax_registered) && (
+                <label className="sb-check-row">
+                  <input type="checkbox" {...register('is_tax_registered')} />
+                  <span className="sb-check-text">{t('wizard.step2.tax_registered')}</span>
+                </label>
+              )}
+              {!vatApplies(country) && (
+                <p className="sb-form-hint" style={{ margin: 0 }}>{t('taxReg.not_available')}</p>
+              )}
+              {is_tax_registered && vatApplies(country) && (
+                <Input label={t('wizard.step2.tax_id')} required placeholder="TRN / GSTIN" dir="ltr"
+                  autoComplete="off" aria-invalid={!!errors.tax_id}
+                  hint={t(`taxReg.hint_${country}`, { defaultValue: '' }) || undefined}
+                  error={taxMsg(errors.tax_id?.message)} {...register('tax_id', {
+                          // Clear the message as soon as the number becomes valid.
+                          onChange: () => { if (errors.tax_id) void trigger('tax_id'); },
+                        })} />
+              )}
+              {savedTaxProblem && !errors.tax_id && (
+                <p className="sb-alert sb-alert-warn" role="status" style={{ margin: 0, fontWeight: 400 }}>
+                  {t('taxReg.saved_incomplete')} {t(taxRegistrationErrorKey(country, savedTaxProblem))}
+                </p>
               )}
               <label className="sb-check-row">
                 <input type="checkbox" {...register('prices_inclusive_of_tax')} />
@@ -273,7 +335,9 @@ export default function CompanySettingsPage() {
           {saveMutation.error && (
             <p className="sb-alert sb-alert-danger" role="alert">
               {saveMutation.error instanceof Error
-                ? saveMutation.error.message
+                ? (parseTaxRegistrationServerError(saveMutation.error.message)
+                    ? t(taxRegistrationErrorKey(country, parseTaxRegistrationServerError(saveMutation.error.message)!))
+                    : saveMutation.error.message)
                 : t('common.error')}
             </p>
           )}

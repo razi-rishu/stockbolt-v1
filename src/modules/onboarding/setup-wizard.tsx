@@ -17,6 +17,7 @@ import { GLOBAL_ONBOARDING, useGlobalOnboarding } from './global-config/onboardi
 import { AccountingStep } from './global-config/accounting-step';
 import { useSetupDraft } from './global-config/use-setup-draft';
 import { vatApplies } from '@/core/global-config/country-packs';
+import { validateTaxRegistration, taxRegistrationErrorKey, parseTaxRegistrationServerError, type TaxRegistrationError } from '@/core/global-config/tax-registration';
 
 // ── Country / currency data ────────────────────────────────────────────────
 // Country names are translated at render time (wizOcean.country_<code>).
@@ -45,14 +46,11 @@ const schema = z.object({
   tax_id:            z.string(),
   load_sample_data:  z.boolean(),
 }).superRefine((data, ctx) => {
-  // tax_id conditional required when registered (Phase 14.14d)
-  if (data.is_tax_registered && data.tax_id.trim().length === 0) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'Tax registration number is required when registered for VAT/GST',
-      path: ['tax_id'],
-    });
-  }
+  // phase132 — registered means a well-formed VAT / GST number for the
+  // country (shared rules; the database enforces the same on activation).
+  // The message carries the error code; fieldError() translates it.
+  const err = validateTaxRegistration(data.country_code, data.is_tax_registered, data.tax_id);
+  if (err) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `tax:${err}`, path: ['tax_id'] });
 });
 type FormValues = z.infer<typeof schema>;
 // The draft restores only these: anything else in a stored draft is ignored.
@@ -141,7 +139,7 @@ export default function SetupWizardPage() {
   // The schema's messages are English keys of a kind; show them translated.
   const fieldError = (msg?: string) => (!msg ? undefined
     : msg === 'Required' ? t('wizOcean.err_required')
-    : msg.startsWith('Tax registration number') ? t('wizOcean.err_tax_id')
+    : msg.startsWith('tax:') ? t(taxRegistrationErrorKey(country_code, msg.slice(4) as TaxRegistrationError))
     : msg);
 
   // Phase 14.14e — tax_id validated on the country step so the superRefine fires.
@@ -275,6 +273,15 @@ export default function SetupWizardPage() {
         await getAdapter().auth.signOut().catch(() => undefined); // already invalid; the guard then shows sign-in
         return;
       }
+      // phase132 — the server refused the tax registration (e.g. a draft
+      // restored from an older version, or a value changed on the way).
+      const taxErr = parseTaxRegistrationServerError(msg);
+      if (taxErr) {
+        setError(t(taxRegistrationErrorKey(values.country_code, taxErr)));
+        setStep(STEP_KEYS.indexOf('country'));
+        setSubmitting(false);
+        return;
+      }
       if (msg.includes('full_name_required')) {
         setError(t('wizard.error.full_name_required'));
         setSubmitting(false);
@@ -403,7 +410,10 @@ export default function SetupWizardPage() {
                         // Suggest the country's usual financial-year start; user can still change it.
                         setValue('fiscal_year_start_month', fiscalYearMonthFor(e.target.value));
                         // phase123 — no VAT in Kuwait / Qatar: nothing to register for.
-                        if (!vatApplies(e.target.value)) { setValue('is_tax_registered', false); setValue('tax_id', ''); }
+                        // The number itself is kept: the user may switch back.
+                        if (!vatApplies(e.target.value)) setValue('is_tax_registered', false);
+                        // A number typed for one country is re-checked against the new one.
+                        else if (getValues('is_tax_registered') && getValues('tax_id')) void trigger('tax_id');
                       }}
                     >
                       {COUNTRIES.map((c) => (
@@ -437,8 +447,13 @@ export default function SetupWizardPage() {
                   )}
 
                   {is_tax_registered && vatApplies(country_code) && (
-                    <Field label={t('wizOcean.f_tax_id')} required error={fieldError(errors.tax_id?.message)}>
-                      <input type="text" dir="ltr" className="sb-wiz-input" placeholder={t('wizOcean.f_tax_id_ph')} {...register('tax_id')} />
+                    <Field label={t('wizOcean.f_tax_id')} required error={fieldError(errors.tax_id?.message)}
+                      hint={t(`taxReg.hint_${country_code}`, { defaultValue: '' }) || undefined} htmlFor="tax_id">
+                      <input id="tax_id" type="text" dir="ltr" className="sb-wiz-input" placeholder={t('wizOcean.f_tax_id_ph')}
+                        aria-required="true" aria-invalid={!!errors.tax_id} autoComplete="off" {...register('tax_id', {
+                          // Clear the message as soon as the number becomes valid.
+                          onChange: () => { if (errors.tax_id) void trigger('tax_id'); },
+                        })} />
                     </Field>
                   )}
                 </>
@@ -553,18 +568,20 @@ interface FieldProps {
   required?: boolean;
   hint?:    string;
   error?:   string;
+  /** id of the input, so the label and error are tied to it for screen readers. */
+  htmlFor?: string;
   children: ReactNode;
 }
-function Field({ label, required, hint, error, children }: FieldProps) {
+function Field({ label, required, hint, error, htmlFor, children }: FieldProps) {
   return (
     <div className="sb-wiz-field">
-      <label className="sb-wiz-label">
+      <label className="sb-wiz-label" htmlFor={htmlFor}>
         {label}
         {required && <span className="sb-wiz-req" aria-hidden="true">*</span>}
       </label>
       {children}
       {error
-        ? <span className="sb-wiz-err">{error}</span>
+        ? <span className="sb-wiz-err" role="alert">{error}</span>
         : hint
         ? <span className="sb-wiz-hint">{hint}</span>
         : null}
