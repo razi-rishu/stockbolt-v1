@@ -4331,5 +4331,16 @@
     "err_pick_bank": "Pick a bank account.",
     "err_days": "Days must be greater than zero.",
     "err_amount": "Amount must be positive."
+  },
+  "projOcean": {
+    "count": "{{count}} projects",
+    "count_one": "{{count}} project",
+    "count_other": "{{count}} projects",
+    "fig_open": "Open projects",
+    "fig_open_note": "Planned or active",
+    "fig_est_revenue": "Estimated revenue",
+    "fig_est_margin": "Estimated margin",
+    "fig_budget_note": "Budget for open projects — actuals are in Project profitability",
+    "required": "Required"
   }
 }
