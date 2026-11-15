@@ -19,7 +19,7 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { useTranslation } from 'react-i18next';
-import { CheckCircle2, Download, Landmark, Save, Trash2, X } from 'lucide-react';
+import { Ban, CheckCircle2, Download, Landmark, Save, Trash2, X } from 'lucide-react';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
 import { Modal } from '@/ui/modal';
@@ -74,6 +74,8 @@ export default function PayrollRunEditorPage() {
   const [lines, setLines] = useState<LineState[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [payOpen, setPayOpen] = useState(false);
+  const [voidOpen, setVoidOpen] = useState(false);
+  const [voidReason, setVoidReason] = useState('');
   const [payBankId, setPayBankId] = useState('');
   const [payDate, setPayDate] = useState(new Date().toISOString().slice(0, 10));
   // P2 — WPS SIF export
@@ -160,6 +162,14 @@ export default function PayrollRunEditorPage() {
     onError: (e: Error) => setError(e.message),
   });
 
+  // phase131 — reverses the payment (if paid) and the accrual at their own
+  // voucher dates; the run stays on file marked Void.
+  const voidMutation = useMutation({
+    mutationFn: () => getAdapter().payroll.voidRun(id!, voidReason.trim()),
+    onSuccess: async () => { await invalidateBooks(); refresh(); setVoidOpen(false); setError(null); },
+    onError: (e: Error) => setError(e.message),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: () => getAdapter().payroll.removeRun(id!),
     onSuccess: () => {
@@ -182,7 +192,7 @@ export default function PayrollRunEditorPage() {
     },
     { gross: 0, ded: 0, loan: 0, net: 0 },
   );
-  const busy = saveMutation.isPending || confirmMutation.isPending || payMutation.isPending || deleteMutation.isPending;
+  const busy = saveMutation.isPending || confirmMutation.isPending || payMutation.isPending || deleteMutation.isPending || voidMutation.isPending;
 
   // Column totals for the foot of the lines table (same lines as the strip).
   const FIELDS: Array<[keyof LineState, string]> = [
@@ -237,6 +247,11 @@ export default function PayrollRunEditorPage() {
           {run.status === 'confirmed' && (
             <Button size="sm" onClick={() => { setPayBankId(banks[0]?.id ?? ''); setPayOpen(true); }} disabled={busy}>
               <Landmark size={15} aria-hidden="true" /> {t('payOcean.pay_from_bank')}
+            </Button>
+          )}
+          {(run.status === 'confirmed' || run.status === 'paid') && (
+            <Button variant="ghost" size="sm" onClick={() => { setVoidReason(''); setError(null); setVoidOpen(true); }} disabled={busy}>
+              <Ban size={15} aria-hidden="true" /> {t('staff.void_run')}
             </Button>
           )}
         </div>
@@ -336,6 +351,21 @@ export default function PayrollRunEditorPage() {
       </div>
 
       {/* ── Pay modal ── */}
+      <Modal open={voidOpen} onClose={() => setVoidOpen(false)} title={t('staff.void_run_title', { run: run.run_number })}>
+        <div className="sb-ocean sb-modal-form flex flex-col gap-4">
+          <p className="sb-alert sb-alert-warn" style={{ fontWeight: 400 }}>
+            {run.status === 'paid' ? t('staff.void_run_paid') : t('staff.void_run_confirmed')}
+          </p>
+          <Input label={t('staff.void_reason')} required value={voidReason} onChange={e => setVoidReason(e.target.value)} />
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setVoidOpen(false)} disabled={voidMutation.isPending}>{t('common.cancel')}</Button>
+            <Button variant="danger" onClick={() => voidMutation.mutate()} disabled={voidMutation.isPending || !voidReason.trim()}>
+              <Ban size={15} aria-hidden="true" /> {t('staff.void_run')}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal open={payOpen} onClose={() => setPayOpen(false)}
         title={t('payOcean.pay_title', { run: run.run_number, amount: fmt(Number(run.total_net)) })}>
         <div className="sb-ocean sb-modal-form flex flex-col gap-4">

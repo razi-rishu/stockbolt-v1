@@ -14,6 +14,7 @@ import '@/styles/stockbolt-ocean-teal.css';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { ProjectPicker } from '@/components/project-picker';
+import { StaffPicker } from '@/components/quick-create/staff-quick-create';
 import { ContactPicker } from '@/components/contact-picker';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
@@ -417,11 +418,13 @@ export default function QuoteEditorPage() {
             <label className="mb-1 block text-sm font-medium text-ink-primary">
               {t('invOcean.salesperson')} <span className="text-danger-500">*</span>
             </label>
-            <SearchableSelect
+            {/* phase129 — "+ Add new salesperson" creates or links an employee. */}
+            <StaffPicker
+              role="sales"
               options={salespeople.map(p => ({ value: p.id, label: p.name }))}
               value={header.salesperson_id}
               disabled={!canEdit}
-              onChange={(v) => setHeader(h => ({ ...h, salesperson_id: v }))}
+              onChange={(v) => { setHeader(h => ({ ...h, salesperson_id: v })); setDirty(true); }}
               placeholder={salespeople.length === 0 ? t('invOcean.no_salespeople') : t('invOcean.select_salesperson')}
               panelWidth={280}
             />

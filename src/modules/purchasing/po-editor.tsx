@@ -15,13 +15,14 @@ import '@/styles/stockbolt-ocean-teal.css';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { SearchableSelect } from '@/ui/searchable-select';
+import { StaffPicker } from '@/components/quick-create/staff-quick-create';
 import { ProductQuickCreate } from '@/components/quick-create/product-quick-create';
 // Phase 14.04 — Signature template view mode for saved POs.
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { purchaseOrderToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
-import type { PurchaseOrderRow, PurchaseOrderItemRow, PurchaseOrderItemInsert, ContactRow, ProductRow, TaxRateRow, WarehouseRow, Company } from '@/data/adapter';
+import type { PurchaseOrderRow, PurchaseOrderItemRow, PurchaseOrderItemInsert, ContactRow, ProductRow, TaxRateRow, WarehouseRow, Company, StaffListRow } from '@/data/adapter';
 import { calcPurchaseLine as _calc } from '@/core/purchasing/purchase-calc';
 
 interface LineRow {
@@ -75,6 +76,13 @@ export default function POEditorPage() {
     queryFn: () => getAdapter().contacts.list(company_id!, 'supplier'),
     enabled: !!company_id,
   });
+  // phase129 — purchasers are employees with the Purchasing role. Inactive
+  // ones are fetched too so an older PO still shows its purchaser's name.
+  const { data: purchasers = [] } = useQuery<StaffListRow[]>({
+    queryKey: ['staff', company_id, 'purchasing'],
+    queryFn: () => getAdapter().staff.list('purchasing', true),
+    enabled: !!company_id,
+  });
   const { data: products = [] } = useQuery<ProductRow[]>({
     queryKey: ['products', company_id],
     queryFn: () => getAdapter().products.list(company_id!),
@@ -119,6 +127,7 @@ export default function POEditorPage() {
   const [header, setHeader] = useState({
     supplier_id: '', warehouse_id: '', date: todayIso(),
     expected_delivery_date: '', reference: '', notes: '', currency: companyCurrency,
+    purchaser_id: '',
   });
   const [lines, setLines] = useState<LineRow[]>([emptyLine()]);
   // phase123 — no tax column for a no-VAT company (Kuwait / Qatar), unless a
@@ -155,6 +164,7 @@ export default function POEditorPage() {
         reference: existing.reference ?? '',
         notes: existing.notes ?? '',
         currency: existing.currency,
+        purchaser_id: existing.purchaser_id ?? '',
       });
     }
   }, [existing]);
@@ -243,6 +253,8 @@ export default function POEditorPage() {
       const row = {
         company_id: company_id!, po_number: poNum,
         supplier_id: header.supplier_id, buyer_id: null,
+        // phase129 — the employee who buys (optional). buyer_id (a login) stays unused.
+        purchaser_id: header.purchaser_id || null,
         warehouse_id: header.warehouse_id || null,
         date: header.date,
         expected_delivery_date: header.expected_delivery_date || null,
@@ -409,6 +421,19 @@ export default function POEditorPage() {
               onChange={(v) => { setHeader(h => ({ ...h, supplier_id: v })); setDirty(true); }}
               placeholder={t('purchasing.select_supplier')}
               panelWidth={320}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-ink-primary">{t('staff.purchaser')}</label>
+            <StaffPicker
+              role="purchasing"
+              options={purchasers
+                .filter(p => p.is_active || p.employee_id === header.purchaser_id)
+                .map(p => ({ value: p.employee_id, label: p.name }))}
+              value={header.purchaser_id}
+              disabled={!canEdit}
+              onChange={(v) => { setHeader(h => ({ ...h, purchaser_id: v })); setDirty(true); }}
+              placeholder={t('staff.select_purchaser')}
             />
           </div>
           <Select label={t('purchasing.warehouse')} options={warehouseOpts} value={header.warehouse_id}

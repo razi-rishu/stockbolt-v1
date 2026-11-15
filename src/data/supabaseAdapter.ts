@@ -7283,6 +7283,47 @@ export function createSupabaseAdapter(
     },
 
     // ── Payroll P1 (owner override 2026-06-13) ───────────────────────────
+    // phase129 — staff identity. Server functions only: they scope to the
+    // caller's company, check the role permission, and never expose salary.
+    staff: {
+      async search(query) {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('search_staff', { p_query: query });
+        if (error) throw new SupabaseDataError(`staff.search: ${error.message}`);
+        return (data ?? []) as import('./adapter').StaffSearchRow[];
+      },
+      async list(role, includeInactive = false) {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('list_staff', { p_role: role, p_include_inactive: includeInactive });
+        if (error) throw new SupabaseDataError(`staff.list: ${error.message}`);
+        return (data ?? []) as import('./adapter').StaffListRow[];
+      },
+      async create(input) {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('create_staff', {
+          p_name: input.name, p_name_ar: input.name_ar ?? null, p_phone: input.phone ?? null,
+          p_email: input.email ?? null, p_role: input.role, p_commission_pct: input.commission_pct ?? 0,
+        });
+        if (error) throw new SupabaseDataError(`staff.create: ${error.message}`);
+        return data as import('./adapter').StaffCreateResult;
+      },
+      async assignRole(employee_id, role, on, commission_pct) {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('assign_staff_role', {
+          p_employee_id: employee_id, p_role: role, p_on: on, p_commission_pct: commission_pct ?? null,
+        });
+        if (error) throw new SupabaseDataError(`staff.assignRole: ${error.message}`);
+        return { salesperson_id: ((data as { salesperson_id?: string | null } | null)?.salesperson_id) ?? null };
+      },
+      async updateBasic(employee_id, input) {
+        const { error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('update_staff_basic', {
+          p_employee_id: employee_id, p_name: input.name, p_name_ar: input.name_ar ?? null,
+          p_phone: input.phone ?? null, p_email: input.email ?? null, p_commission_pct: input.commission_pct ?? null,
+        });
+        if (error) throw new SupabaseDataError(`staff.updateBasic: ${error.message}`);
+      },
+      async deleteEmployee(employee_id) {
+        const { error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('delete_employee', { p_employee_id: employee_id });
+        if (error) throw new SupabaseDataError(`staff.deleteEmployee: ${error.message}`);
+      },
+    },
+
     employees: {
       async list(company_id, opts) {
         let q = client.from('employees').select('*')
@@ -7378,6 +7419,10 @@ export function createSupabaseAdapter(
         } as never);
         assertNoError(error, 'payroll.payRun');
         return data as unknown as import('./adapter').PayrollPayResult;
+      },
+      async voidRun(run_id, reason) {
+        const { error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('void_payroll_run', { p_run_id: run_id, p_reason: reason });
+        if (error) throw new SupabaseDataError(`payroll.voidRun: ${error.message}`);
       },
       async getNextRunNumber(company_id) {
         const { data, error } = await client.rpc('get_next_document_number', {

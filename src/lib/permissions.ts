@@ -31,13 +31,13 @@ export const ROLE_PERMISSIONS: Record<AppRole, Permission[]> = {
   admin: ALL,
   accountant: [
     'sales.read', 'purchasing.read', 'purchasing.write', 'inventory.read',
-    'accounting.read', 'accounting.write', 'payroll.read', 'reports.read', 'settings.read',
+    'accounting.read', 'accounting.write', 'reports.read', 'settings.read',
   ],
   sales: ['sales.read', 'sales.write', 'inventory.read', 'reports.read'],
   counter: ['sales.read', 'sales.write', 'inventory.read'],
   viewer: [
     'sales.read', 'purchasing.read', 'inventory.read', 'accounting.read',
-    'payroll.read', 'reports.read', 'settings.read',
+    'reports.read', 'settings.read',
   ],
 };
 
@@ -64,9 +64,19 @@ export function permsForRole(role: string | null | undefined): Permission[] {
   return ROLE_PERMISSIONS[role as AppRole] ?? [];
 }
 
+/**
+ * phase131 — payroll holds salaries and bank details: admin only. No role
+ * grant or per-user override opens it (has_perm() / my_permissions() in SQL
+ * enforce the same rule; this keeps the menu and screens in step).
+ */
+export function isAdminOnly(perm: string): boolean {
+  return perm.startsWith('payroll.');
+}
+
 /** Admin always passes (matches the has_perm() short-circuit in SQL). */
 export function roleHasPerm(role: string | null | undefined, perm: Permission): boolean {
   if (role === 'admin') return true;
+  if (isAdminOnly(perm)) return false;
   return permsForRole(role).includes(perm);
 }
 
@@ -82,6 +92,7 @@ export function hasPerm(
   perm: Permission,
 ): boolean {
   if (role === 'admin') return true;
+  if (isAdminOnly(perm)) return false;
   if (perms && perms.length) return perms.includes(perm);
   return roleHasPerm(role, perm);
 }

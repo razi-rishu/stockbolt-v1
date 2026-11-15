@@ -5,13 +5,19 @@
  * captured now so the P2 SIF export needs no schema change. Salary
  * structure = basic + 3 allowances; the monthly run copies these as a
  * starting point and stays editable per month.
+ *
+ * phase129 — this is the ONE person record. Sales and Purchasing roles are
+ * ticked here (or added from a sales / purchase document); a salesperson is
+ * this employee's sales role, so renaming here renames them everywhere.
+ * Delete only removes a record made by mistake (no payroll, loan, leave or
+ * document history) — otherwise untick Active.
  */
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useTranslation } from 'react-i18next';
-import { Plus, UserRoundCheck } from 'lucide-react';
+import { Plus, UserRoundCheck, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/ui/button';
 import { Modal } from '@/ui/modal';
 import { Input } from '@/ui/input';
@@ -21,7 +27,7 @@ import { ReportFigures } from '@/components/ocean-report';
 import type { Column } from '@/ui/table';
 import { computeGratuity } from './gratuity';
 import { useServiceLabel } from './use-service-label';
-import type { EmployeeRow, EmployeeInsert, BankAccountRow } from '@/data/adapter';
+import type { EmployeeRow, EmployeeInsert, BankAccountRow, SalespersonRow } from '@/data/adapter';
 import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -32,6 +38,9 @@ interface Draft {
   bank_name: string; iban: string; bank_routing_code: string; joining_date: string;
   basic_salary: string; housing_allowance: string; transport_allowance: string; other_allowance: string;
   is_active: boolean;
+  department: string;
+  /** phase129 roles */
+  is_sales: boolean; commission_pct: string; is_purchaser: boolean;
 }
 
 const emptyDraft = (code = ''): Draft => ({
@@ -39,10 +48,14 @@ const emptyDraft = (code = ''): Draft => ({
   emirates_id: '', mol_id: '', bank_name: '', iban: '', bank_routing_code: '', joining_date: '',
   basic_salary: '0', housing_allowance: '0', transport_allowance: '0', other_allowance: '0',
   is_active: true,
+  department: '', is_sales: false, commission_pct: '0', is_purchaser: false,
 });
 
-function toDraft(e: EmployeeRow): Draft {
+function toDraft(e: EmployeeRow, sp: SalespersonRow | undefined): Draft {
   return {
+    department: e.department ?? '',
+    is_sales: !!sp?.is_active, commission_pct: String(sp?.commission_pct ?? 0),
+    is_purchaser: !!e.is_purchaser,
     code: e.code ?? '', name: e.name, name_ar: e.name_ar ?? '', designation: e.designation ?? '',
     phone: e.phone ?? '', email: e.email ?? '', emirates_id: e.emirates_id ?? '', mol_id: e.mol_id ?? '',
     bank_name: e.bank_name ?? '', iban: e.iban ?? '', bank_routing_code: e.bank_routing_code ?? '',
@@ -69,6 +82,14 @@ export default function EmployeesPage() {
     queryFn: () => getAdapter().employees.list(company_id!, { includeInactive: showInactive }),
     enabled: !!company_id,
   });
+
+  // phase129 — each employee's sales role (if any), active or not.
+  const { data: salesRoles = [] } = useQuery<SalespersonRow[]>({
+    queryKey: ['salespeople', company_id, true],
+    queryFn: () => getAdapter().salespeople.list(company_id!, { include_inactive: true }),
+    enabled: !!company_id,
+  });
+  const roleOf = (empId: string) => salesRoles.find(s => s.employee_id === empId);
 
   const { data: banks = [] } = useQuery<BankAccountRow[]>({
     queryKey: ['bank_accounts', company_id],
@@ -127,12 +148,31 @@ export default function EmployeesPage() {
         transport_allowance: parseFloat(draft.transport_allowance) || 0,
         other_allowance: parseFloat(draft.other_allowance) || 0,
         is_active: draft.is_active,
+        department: draft.department.trim() || null,
       };
+      let empId = editingId;
       if (editingId) await getAdapter().employees.update(editingId, row);
-      else await getAdapter().employees.create(row);
+      else empId = (await getAdapter().employees.create(row)).id;
+
+      // Roles go through the staff functions (audit + sales-role row). Only
+      // send what changed; an inactive employee cannot be given a role.
+      const before = editingId ? employees.find(x => x.id === editingId) : undefined;
+      const sp = editingId ? roleOf(editingId) : undefined;
+      const pct = Math.min(100, Math.max(0, parseFloat(draft.commission_pct) || 0));
+      const wasSales = !!sp?.is_active;
+      if (draft.is_active && draft.is_sales && (!wasSales || Number(sp?.commission_pct ?? 0) !== pct))
+        await getAdapter().staff.assignRole(empId!, 'sales', true, pct);
+      if (!draft.is_sales && wasSales)
+        await getAdapter().staff.assignRole(empId!, 'sales', false);
+      if (draft.is_active && draft.is_purchaser !== !!before?.is_purchaser)
+        await getAdapter().staff.assignRole(empId!, 'purchasing', draft.is_purchaser);
+      if (!draft.is_active && !draft.is_purchaser && before?.is_purchaser)
+        await getAdapter().staff.assignRole(empId!, 'purchasing', false);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['employees'] });
+      qc.invalidateQueries({ queryKey: ['salespeople'] });
+      qc.invalidateQueries({ queryKey: ['staff'] });
       setModalOpen(false);
       setError(null);
     },
@@ -151,9 +191,19 @@ export default function EmployeesPage() {
   function openEdit(e: EmployeeRow) {
     setEditingId(e.id);
     setError(null);
-    setDraft(toDraft(e));
+    setDraft(toDraft(e, roleOf(e.id)));
     setModalOpen(true);
   }
+
+  const deleteMutation = useMutation({
+    mutationFn: () => getAdapter().staff.deleteEmployee(editingId!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['employees'] });
+      qc.invalidateQueries({ queryKey: ['salespeople'] });
+      setModalOpen(false);
+    },
+    onError: (e: Error) => setError(e.message),
+  });
 
   const totalPackage = (e: EmployeeRow) =>
     Number(e.basic_salary) + Number(e.housing_allowance) + Number(e.transport_allowance) + Number(e.other_allowance);
@@ -175,13 +225,30 @@ export default function EmployeesPage() {
         {e.code && <bdi dir="ltr" className="sb-acct-code">{e.code}</bdi>}
       </span>
     ) },
-    { key: 'designation', header: t('payOcean.col_designation'), render: e => e.designation ?? '—' },
+    { key: 'designation', header: t('payOcean.col_designation'), render: e => (
+      <span>
+        {e.designation ?? '—'}
+        {e.department && <span className="sb-fx-name" style={{ display: 'block', fontSize: 12 }}>{e.department}</span>}
+      </span>
+    ) },
+    { key: 'roles', header: t('staff.col_roles'), render: e => (
+      <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
+        {roleOf(e.id)?.is_active && <span className="sb-pill sb-pill-good">{t('staff.role_sales')}</span>}
+        {e.is_purchaser && <span className="sb-pill sb-pill-good">{t('staff.role_purchasing')}</span>}
+      </span>
+    ) },
     { key: 'service', header: t('payOcean.col_service'), render: e => service(e.joining_date as string | null) },
     { key: 'basic', header: t('payOcean.col_basic'), align: 'end', render: e => <bdi dir="ltr" className="sb-dash-num" style={{ fontWeight: 500 }}>{fmt(Number(e.basic_salary))}</bdi> },
     { key: 'package', header: t('payOcean.col_package'), align: 'end', render: e => <bdi dir="ltr" className="sb-dash-num">{fmt(totalPackage(e))}</bdi> },
     { key: 'gratuity', header: t('payOcean.col_gratuity'), align: 'end', render: e => <bdi dir="ltr" className="sb-dash-num" style={{ color: 'var(--sb-primary-dark)' }}>{fmt(gratuityOf(e))}</bdi> },
     { key: 'status', header: '', render: e => (
       <span className={`sb-pill ${e.is_active ? 'sb-pill-good' : 'sb-pill-muted'}`}>{e.is_active ? t('common.active') : t('payOcean.inactive')}</span>
+    ) },
+    { key: 'edit', header: '', align: 'end', render: e => (
+      <button type="button" className="sb-row-link text-brand-600"
+        onClick={(ev) => { ev.stopPropagation(); openEdit(e); }}>
+        <Pencil size={14} aria-hidden="true" /> {t('common.edit')}
+      </button>
     ) },
   ];
 
@@ -234,6 +301,7 @@ export default function EmployeesPage() {
             <Input label={t('payOcean.f_name')} required autoFocus value={draft.name} onChange={set('name')} />
             {arabicOn && <Input label={t('payOcean.f_name_ar')} dir="rtl" value={draft.name_ar} onChange={set('name_ar')} />}
             <Input label={t('payOcean.col_designation')} placeholder={t('payOcean.f_designation_ph')} value={draft.designation} onChange={set('designation')} />
+            <Input label={t('staff.f_department')} value={draft.department} onChange={set('department')} />
             <Input label={t('payOcean.f_phone')} dir="ltr" value={draft.phone} onChange={set('phone')} />
             <Input label={t('payOcean.f_email')} dir="ltr" type="email" value={draft.email} onChange={set('email')} />
             <Input label={t('payOcean.f_joining')} type="date" value={draft.joining_date} onChange={set('joining_date')} />
@@ -260,6 +328,30 @@ export default function EmployeesPage() {
             </p>
           </div>
 
+          {/* phase129 — functional roles. Ticking Sales makes them selectable
+              as a salesperson; Purchasing as a purchaser on purchase orders. */}
+          <div className="sb-pay-section">
+            <p className="sb-acct-label">{t('staff.roles')}</p>
+            <div className="flex flex-wrap items-end gap-4">
+              <label className="flex cursor-pointer items-center gap-2.5">
+                <input type="checkbox" className="h-4 w-4" style={{ accentColor: 'var(--sb-primary)' }}
+                  checked={draft.is_sales} onChange={e => setDraft(d => ({ ...d, is_sales: e.target.checked }))} />
+                <span style={{ fontSize: 14 }}>{t('staff.role_sales')}</span>
+              </label>
+              {draft.is_sales && (
+                <div style={{ width: 160 }}>
+                  <Input label={t('staff.f_commission')} dir="ltr" type="number" min="0" max="100" step="0.01"
+                    value={draft.commission_pct} onChange={set('commission_pct')} />
+                </div>
+              )}
+              <label className="flex cursor-pointer items-center gap-2.5">
+                <input type="checkbox" className="h-4 w-4" style={{ accentColor: 'var(--sb-primary)' }}
+                  checked={draft.is_purchaser} onChange={e => setDraft(d => ({ ...d, is_purchaser: e.target.checked }))} />
+                <span style={{ fontSize: 14 }}>{t('staff.role_purchasing')}</span>
+              </label>
+            </div>
+          </div>
+
           <label className="flex cursor-pointer items-center gap-2.5">
             <input type="checkbox" className="h-4 w-4" style={{ accentColor: 'var(--sb-primary)' }}
               checked={draft.is_active} onChange={e => setDraft(d => ({ ...d, is_active: e.target.checked }))} />
@@ -267,13 +359,22 @@ export default function EmployeesPage() {
           </label>
 
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-            {editingId && draft.is_active ? (
-              <Button variant="ghost" size="sm"
-                onClick={() => { const e = employees.find(x => x.id === editingId); if (e) openSettle(e); }}
-                title={t('payOcean.settle_hint')}>
-                <UserRoundCheck size={15} aria-hidden="true" /> {t('payOcean.final_settlement')}
-              </Button>
-            ) : <span />}
+            <span className="flex flex-wrap gap-2">
+              {editingId && draft.is_active && (
+                <Button variant="ghost" size="sm"
+                  onClick={() => { const e = employees.find(x => x.id === editingId); if (e) openSettle(e); }}
+                  title={t('payOcean.settle_hint')}>
+                  <UserRoundCheck size={15} aria-hidden="true" /> {t('payOcean.final_settlement')}
+                </Button>
+              )}
+              {editingId && (
+                <Button variant="ghost" size="sm" disabled={deleteMutation.isPending}
+                  title={t('staff.delete_hint')}
+                  onClick={() => { if (window.confirm(t('staff.confirm_delete', { name: draft.name }))) { setError(null); deleteMutation.mutate(); } }}>
+                  <Trash2 size={15} aria-hidden="true" /> {t('common.delete')}
+                </Button>
+              )}
+            </span>
             <div className="flex gap-2">
               <Button variant="ghost" onClick={() => setModalOpen(false)} disabled={saveMutation.isPending}>{t('common.cancel')}</Button>
               <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !draft.name.trim()}>

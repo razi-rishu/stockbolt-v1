@@ -610,6 +610,14 @@ export function createSelfHostedAdapter(): DataAdapter {
       update:      () => notImplemented('employees.update'),
       getNextCode: () => notImplemented('employees.getNextCode'),
     },
+    staff: {
+      search:         () => notImplemented('staff.search'),
+      list:           () => notImplemented('staff.list'),
+      create:         () => notImplemented('staff.create'),
+      assignRole:     () => notImplemented('staff.assignRole'),
+      updateBasic:    () => notImplemented('staff.updateBasic'),
+      deleteEmployee: () => notImplemented('staff.deleteEmployee'),
+    },
     documentSequences: {
       list: () => notImplemented('documentSequences.list'),
       save: () => notImplemented('documentSequences.save'),
@@ -629,6 +637,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       removeRun:        () => notImplemented('payroll.removeRun'),
       confirmRun:       () => notImplemented('payroll.confirmRun'),
       payRun:           () => notImplemented('payroll.payRun'),
+      voidRun:          () => notImplemented('payroll.voidRun'),
       getNextRunNumber: () => notImplemented('payroll.getNextRunNumber'),
       settleGratuity:    () => notImplemented('payroll.settleGratuity'),
       listLeaveSalary:   () => notImplemented('payroll.listLeaveSalary'),

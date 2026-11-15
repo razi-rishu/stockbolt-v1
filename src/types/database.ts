@@ -1151,6 +1151,8 @@ export type Database = {
       }
       employees: {
         Row: {
+          department: string | null
+          is_purchaser: boolean
           basic_salary: number
           bank_name: string | null
           code: string | null
@@ -1176,6 +1178,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          department?: string | null
+          is_purchaser?: boolean
           basic_salary?: number
           bank_name?: string | null
           code?: string | null
@@ -1201,6 +1205,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          department?: string | null
+          is_purchaser?: boolean
           basic_salary?: number
           bank_name?: string | null
           code?: string | null
@@ -3220,6 +3226,7 @@ export type Database = {
       }
       purchase_orders: {
         Row: {
+          purchaser_id: string | null
           buyer_id: string | null
           company_id: string
           created_at: string
@@ -3244,6 +3251,7 @@ export type Database = {
           warehouse_id: string | null
         }
         Insert: {
+          purchaser_id?: string | null
           buyer_id?: string | null
           company_id: string
           created_at?: string
@@ -3268,6 +3276,7 @@ export type Database = {
           warehouse_id?: string | null
         }
         Update: {
+          purchaser_id?: string | null
           buyer_id?: string | null
           company_id?: string
           created_at?: string

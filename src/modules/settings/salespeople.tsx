@@ -10,6 +10,7 @@ import { Plus, UserRound, Loader2 } from 'lucide-react';
 import ImportExportButton from '@/modules/settings/import-export/ImportExportButton';
 import type { SalespersonRow } from '@/data/adapter';
 import { useArabicEnabled } from '@/hooks/use-arabic-enabled';
+import { StaffQuickCreate } from '@/components/quick-create/staff-quick-create';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -32,8 +33,13 @@ const empty: FormState = { name: '', name_ar: '', email: '', phone: '', commissi
  *
  * - Active rows appear in invoice/quote Salesperson dropdowns.
  * - Deactivating a salesperson hides them from new pickers but does
- *   NOT remove them from historical sales (FK is ON DELETE SET NULL,
- *   and we soft-delete via is_active flag).
+ *   NOT remove them from historical sales (soft delete via is_active;
+ *   since phase129 a salesperson on any document cannot be deleted).
+ *
+ * phase129 — every salesperson is an employee (one person shared with
+ * Payroll). New opens the shared search-first window so the same person is
+ * never added twice; name / contact edits go to the employee and flow back
+ * here, commission and notes stay on the sales role.
  */
 export default function SalespeoplePage() {
   const qc = useQueryClient();
@@ -46,6 +52,8 @@ export default function SalespeoplePage() {
   const [form, setForm] = useState<FormState>(empty);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [qcOpen, setQcOpen] = useState(false);
+  const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(null);
 
   const { data: rows = [], isLoading } = useQuery<SalespersonRow[]>({
     queryKey: ['salespeople', company_id, showInactive],
@@ -54,13 +62,12 @@ export default function SalespeoplePage() {
   });
 
   function startNew() {
-    setEditingId(null);
-    setForm(empty);
     setError(null);
-    setShowForm(true);
+    setQcOpen(true);
   }
   function startEdit(r: SalespersonRow) {
     setEditingId(r.id);
+    setEditingEmployeeId(r.employee_id ?? null);
     setForm({
       name:            r.name,
       name_ar:         r.name_ar ?? '',
@@ -94,7 +101,14 @@ export default function SalespeoplePage() {
         notes:          form.notes.trim() || null,
       };
 
-      if (editingId) {
+      if (editingId && editingEmployeeId) {
+        // Identity lives on the employee; the sales role copies it back.
+        await getAdapter().staff.updateBasic(editingEmployeeId, {
+          name: payload.name, name_ar: payload.name_ar, phone: payload.phone,
+          email: payload.email, commission_pct: pct,
+        });
+        await getAdapter().salespeople.update(editingId, { notes: payload.notes });
+      } else if (editingId) {
         await getAdapter().salespeople.update(editingId, payload);
       } else {
         await getAdapter().salespeople.create({
@@ -106,6 +120,7 @@ export default function SalespeoplePage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['salespeople'] });
+      qc.invalidateQueries({ queryKey: ['employees'] });
       cancel();
     },
     onError: (e: Error) => setError(e.message),
@@ -214,6 +229,8 @@ export default function SalespeoplePage() {
       {isLoading
         ? <div className="sb-card sb-empty">{t('common.loading')}</div>
         : <OceanTable columns={columns} rows={rows} keyFn={(r) => r.id} rowMuted={(r) => !r.is_active} emptyMessage={t('settingsPages.sales.empty')} />}
+
+      <StaffQuickCreate open={qcOpen} role="sales" onClose={() => setQcOpen(false)} onPicked={() => setQcOpen(false)} />
     </OceanPage>
   );
 }

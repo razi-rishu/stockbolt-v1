@@ -294,8 +294,10 @@ export interface SalespersonRow {
   notes:          string | null;
   created_at:     string;
   updated_at:     string;
+  /** phase129 — the employee this sales role belongs to (NOT NULL after phase130). */
+  employee_id?:   string | null;
 }
-export type SalespersonInsert = Omit<SalespersonRow, 'id' | 'created_at' | 'updated_at'>;
+export type SalespersonInsert = Omit<SalespersonRow, 'id' | 'created_at' | 'updated_at' | 'employee_id'>;
 export type SalespersonUpdate = Partial<Omit<SalespersonRow, 'id' | 'company_id' | 'created_at' | 'updated_at'>>;
 
 export interface SalespeopleAPI {
@@ -3445,6 +3447,7 @@ export interface DataAdapter {
   openingBalances: OpeningBalancesAPI;
   // Payroll P1 (owner override 2026-06-13)
   employees: EmployeesAPI;
+  staff: StaffAPI;
   payroll: PayrollAPI;
   // Document numbering settings (2026-06-13)
   documentSequences: DocumentSequencesAPI;
@@ -3557,6 +3560,36 @@ export interface EmployeesAPI {
   getNextCode(company_id: string): Promise<string>;
 }
 
+// ── phase129 — one staff identity (employees) shared by Sales / Purchasing / Payroll
+export type StaffRole = 'sales' | 'purchasing';
+/** What a non-payroll user may see of a person: no salary, no bank data. */
+export interface StaffSearchRow {
+  employee_id: string; code: string | null; name: string; is_active: boolean;
+  has_sales: boolean; is_purchaser: boolean; salesperson_id: string | null;
+}
+export interface StaffListRow {
+  employee_id: string; code: string | null; name: string; name_ar: string | null; is_active: boolean;
+}
+export interface StaffCreateInput {
+  name: string; name_ar?: string | null; phone?: string | null; email?: string | null;
+  role: StaffRole; commission_pct?: number;
+}
+export interface StaffCreateResult { employee_id: string; salesperson_id: string | null; code: string }
+export interface StaffAPI {
+  /** Find existing people before creating one (id / code / name / roles only). */
+  search(query: string): Promise<StaffSearchRow[]>;
+  /** Selector source for a role. */
+  list(role: StaffRole, includeInactive?: boolean): Promise<StaffListRow[]>;
+  /** Quick create from Sales / Purchasing: basic identity + the role. Posts nothing. */
+  create(input: StaffCreateInput): Promise<StaffCreateResult>;
+  /** Give (on=true) or take away (on=false, payroll only) a role. */
+  assignRole(employee_id: string, role: StaffRole, on: boolean, commission_pct?: number | null): Promise<{ salesperson_id: string | null }>;
+  /** Name / contact (and commission for a salesperson). */
+  updateBasic(employee_id: string, input: { name: string; name_ar?: string | null; phone?: string | null; email?: string | null; commission_pct?: number | null }): Promise<void>;
+  /** Only an employee with no payroll or document history. */
+  deleteEmployee(employee_id: string): Promise<void>;
+}
+
 export interface PayrollAPI {
   listRuns(company_id: string): Promise<PayrollRunRow[]>;
   getRun(id: string): Promise<PayrollRunRow | null>;
@@ -3571,6 +3604,8 @@ export interface PayrollAPI {
   confirmRun(run_id: string): Promise<PayrollConfirmResult>;
   /** Posts the payment JE: Dr 2350 / Cr bank. */
   payRun(run_id: string, bank_account_id: string, date?: string): Promise<PayrollPayResult>;
+  /** phase131 — reverse a confirmed/paid run at its own voucher dates. */
+  voidRun(run_id: string, reason: string): Promise<void>;
   getNextRunNumber(company_id: string): Promise<string>;
 
   // ── P3a: gratuity settlement ──

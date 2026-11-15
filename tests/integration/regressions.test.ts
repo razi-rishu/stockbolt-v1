@@ -8487,3 +8487,88 @@ describe('Phase 127 — fixed asset quantity, partial disposal, void (soft until
     expect(bad).toHaveLength(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 129–131 — one staff identity; payroll admin-only and locked
+//
+// Every salesperson is an employee (salespeople.employee_id), staff functions
+// are company-scoped and permission-checked, a salesperson on any document
+// cannot be deleted, payroll is admin-only, posted payroll runs cannot be
+// edited directly, and payroll cannot post into a locked period.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 129–131 — staff identity + payroll hardening (soft until applied)', () => {
+  const STAFF_FNS = ['search_staff', 'list_staff', 'create_staff', 'assign_staff_role', 'update_staff_basic', 'delete_employee'];
+  const has = async (sig: string): Promise<boolean> => {
+    const r = await sql<{ ok: boolean }>(`SELECT to_regprocedure('${sig}') IS NOT NULL AS ok`);
+    return !!r[0]?.ok;
+  };
+
+  it('phase129: staff functions are definer, company-guarded and not callable by anon', async () => {
+    if (!(await has('public.create_staff(text,text,text,text,text,numeric)'))) {
+      console.warn('⚠ phase129 not applied yet — run supabase/migrations/20261115000003_phase129_staff_identity.sql.');
+      return;
+    }
+    const rows = await sql<{ proname: string; prosecdef: boolean; anon_exec: boolean; guarded: boolean }>(`
+      SELECT p.proname, p.prosecdef, has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_exec,
+             p.prosrc ~ 'current_user_company_id\(\)' AS guarded
+        FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = ANY (ARRAY['${STAFF_FNS.join("','")}'])`);
+    expect(rows.map(r => r.proname).sort()).toEqual([...STAFF_FNS].sort());
+    for (const r of rows) {
+      expect(r.prosecdef, `${r.proname} must be SECURITY DEFINER`).toBe(true);
+      expect(r.anon_exec, `${r.proname} must not be executable by anon`).toBe(false);
+      expect(r.guarded, `${r.proname} must scope to current_user_company_id()`).toBe(true);
+    }
+  });
+
+  it('phase129: documents keep their salesperson (FK ON DELETE RESTRICT)', async () => {
+    if (!(await has('public.create_staff(text,text,text,text,text,numeric)'))) return;
+    const fks = await sql<{ conname: string; def: string }>(`
+      SELECT conname, pg_get_constraintdef(oid) AS def FROM pg_constraint
+       WHERE conname IN ('invoices_salesperson_id_fkey','sales_quotes_salesperson_id_fkey',
+                         'sales_orders_salesperson_id_fkey','credit_notes_salesperson_id_fkey')`);
+    expect(fks).toHaveLength(4);
+    for (const f of fks) expect(f.def, f.conname).toContain('ON DELETE RESTRICT');
+  });
+
+  it('phase130: every salesperson is linked to an employee of the same company', async () => {
+    if (!(await has('public.create_staff(text,text,text,text,text,numeric)'))) return;
+    const bad = await sql<{ id: string }>(`
+      SELECT s.id FROM public.salespeople s
+        LEFT JOIN public.employees e ON e.id = s.employee_id
+       WHERE e.id IS NULL OR e.company_id <> s.company_id`);
+    if (bad.length) console.warn(`⚠ phase130 not applied, or unlinked salespeople: ${bad.length}`);
+    const notNull = await sql<{ nn: boolean }>(`
+      SELECT is_nullable = 'NO' AS nn FROM information_schema.columns
+       WHERE table_name = 'salespeople' AND column_name = 'employee_id'`);
+    if (notNull[0]?.nn) expect(bad).toHaveLength(0);
+  });
+
+  it('phase131: payroll is admin-only and posted runs are locked', async () => {
+    if (!(await has('public.void_payroll_run(uuid,text)'))) {
+      console.warn('⚠ phase131 not applied yet — run supabase/migrations/20261115000005_phase131_payroll_admin_only_and_locks.sql.');
+      return;
+    }
+    const f = await sql<{ hp: string; mp: string; owner: string }>(`
+      SELECT pg_get_functiondef('public.has_perm(text)'::regprocedure) AS hp,
+             pg_get_functiondef('public.my_permissions()'::regprocedure) AS mp,
+             (SELECT proowner::regrole::text FROM pg_proc WHERE proname = 'void_payroll_run') AS owner`);
+    expect(f[0].hp).toMatch(/payroll\.%'\s*THEN\s*RETURN\s*FALSE/i);
+    expect(f[0].mp).toMatch(/NOT LIKE 'payroll\.%'/);
+    expect(f[0].owner).toBe('ledger_writer');
+    const tg = await sql<{ n: number }>(`SELECT count(*)::int AS n FROM pg_trigger WHERE tgname IN
+      ('journal_entries_payroll_period_lock','payroll_runs_lock','payroll_run_items_lock','leave_salary_payments_lock')`);
+    expect(tg[0]?.n).toBe(4);
+    const pol = await sql<{ n: number }>(`SELECT count(*)::int AS n FROM pg_policies
+      WHERE tablename = 'employee_loans' AND policyname LIKE 'rbac_%'`);
+    expect(pol[0]?.n).toBe(4);
+  });
+
+  it('phase131: no posted payroll run is missing its journal entry', async () => {
+    const bad = await sql<{ id: string }>(`
+      SELECT id FROM public.payroll_runs
+       WHERE (status IN ('confirmed','paid','void') AND journal_entry_id IS NULL)
+          OR (status = 'paid' AND payment_journal_entry_id IS NULL)`);
+    if (bad.length) console.warn(`⚠ payroll runs posted without their entries: ${JSON.stringify(bad)}`);
+    expect(bad).toHaveLength(0);
+  });
+});

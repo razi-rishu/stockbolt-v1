@@ -29,7 +29,8 @@ const PERM_GROUPS: { module: string; read: string; write: string | null }[] = [
   { module: 'Purchasing',          read: 'purchasing.read', write: 'purchasing.write' },
   { module: 'Inventory',           read: 'inventory.read',  write: 'inventory.write' },
   { module: 'Accounting & Banking', read: 'accounting.read', write: 'accounting.write' },
-  { module: 'Payroll',             read: 'payroll.read',    write: 'payroll.write' },
+  // Payroll is not grantable: it is admin-only (phase131 — salaries and bank
+  // details). has_perm() refuses payroll.* to every non-admin.
   { module: 'Reports',             read: 'reports.read',    write: null },
   { module: 'Settings',            read: 'settings.read',   write: 'settings.write' },
 ];
