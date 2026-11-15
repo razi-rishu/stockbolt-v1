@@ -5,6 +5,9 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { Modal } from '@/ui/modal';
 import { Button } from '@/ui/button';
+import { Input } from '@/ui/input';
+import { Select } from '@/ui/select';
+import { ReportFigures, Num } from '@/components/ocean-report';
 import type { BankAccountRow, RefundResult, RefundSourceDocType } from '@/data/adapter';
 
 /**
@@ -114,79 +117,61 @@ export function RefundAdvanceModal({
 
   return (
     <Modal open={open} onClose={onClose} title={title} width="md">
-      <div className="flex flex-col gap-3 text-sm">
-        <p className="text-ink-secondary">
+      {/* Ocean Teal (UI v1.1): look only — same refund engines and ceiling. */}
+      <div className="sb-ocean sb-modal-form flex flex-col gap-4">
+        <p className="sb-info-note" style={{ fontSize: 13, margin: 0 }}>
           {isVendorCredit   ? t('refund.intro_vendor_credit',   { name: contactName })
            : side === 'vendor' ? t('refund.intro_vendor',        { name: contactName })
            : isCustCredit    ? t('refund.intro_customer_credit', { name: contactName })
            :                   t('refund.intro_customer',        { name: contactName })}
         </p>
 
-        <div className="rounded-card bg-surface-subtle px-3 py-2">
-          <span className="text-xs uppercase tracking-wide text-ink-tertiary">
-            {isCredit ? t('refund.available_credit') : t('refund.available')}
-          </span>
-          <div className="font-mono text-base font-semibold text-ink-primary">
-            {currency} {fmt(available)}
-          </div>
+        <div className="sb-card sb-rpt-card sb-refund-avail" style={{ boxShadow: 'none' }}>
+          <ReportFigures figures={[{
+            label: isCredit ? t('refund.available_credit') : t('refund.available'),
+            value: <Num>{currency} {fmt(available)}</Num>,
+            tone: 'brand',
+          }]} />
         </div>
 
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-ink-secondary">{t('refund.amount')}</span>
-          <input
-            type="number" min="0" step="0.01" autoFocus
-            value={amount} onChange={e => setAmount(e.target.value)}
-            className="input-field h-9"
-            placeholder="0.00"
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input
+            label={t('refund.amount')} type="number" min="0" step="0.01" dir="ltr" autoFocus
+            value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00"
+            error={overAvailable
+              ? (isCredit
+                  ? t('refund.over_available_credit', { available: `${currency} ${fmt(available)}` })
+                  : t('refund.over_available',        { available: `${currency} ${fmt(available)}` }))
+              : undefined}
           />
-        </label>
-        {overAvailable && (
-          <p className="text-xs text-danger-600">
-            {isCredit
-              ? t('refund.over_available_credit', { available: `${currency} ${fmt(available)}` })
-              : t('refund.over_available',        { available: `${currency} ${fmt(available)}` })}
-          </p>
-        )}
+          <Input label={t('refund.date')} type="date" value={date} onChange={e => setDate(e.target.value)} />
+        </div>
 
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-ink-secondary">{t('refund.date')}</span>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="input-field h-9" />
-        </label>
+        <Select
+          label={side === 'customer' ? t('refund.paid_from') : t('refund.received_into')}
+          value={bankId} onChange={e => setBankId(e.target.value)}
+          options={[{ value: '', label: t('refund.choose_account') }, ...banks.map(b => ({ value: b.id, label: b.name }))]}
+        />
 
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-ink-secondary">
-            {side === 'customer' ? t('refund.paid_from') : t('refund.received_into')}
-          </span>
-          <select value={bankId} onChange={e => setBankId(e.target.value)} className="input-field h-9">
-            <option value="">{t('refund.choose_account')}</option>
-            {banks.map(b => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
-          </select>
-        </label>
+        <Input
+          label={t('refund.reference')} value={reference} onChange={e => setRef(e.target.value)}
+          placeholder={t('refund.reference_ph')}
+        />
 
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-ink-secondary">{t('refund.reference')}</span>
-          <input
-            value={reference} onChange={e => setRef(e.target.value)}
-            className="input-field h-9" placeholder={t('refund.reference_ph')}
-          />
-        </label>
-
-        <p className="text-xs text-ink-tertiary">
+        <p className="sb-form-hint" style={{ margin: 0 }}>
           {isVendorCredit   ? t('refund.gl_hint_vendor_credit')
            : side === 'vendor' ? t('refund.gl_hint_vendor')
            : isCustCredit    ? t('refund.gl_hint_customer_credit')
            :                   t('refund.gl_hint_customer')}
         </p>
 
-        {error && <p className="text-sm text-danger-600">{error}</p>}
+        {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
 
-        <div className="mt-1 flex justify-end gap-2">
-          <Button variant="secondary" size="sm" onClick={onClose} disabled={busy}>
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
             {t('common.cancel')}
           </Button>
-          <Button size="sm" onClick={submit} disabled={!canSubmit} loading={busy}>
+          <Button onClick={submit} disabled={!canSubmit} loading={busy}>
             {t('refund.confirm')}
           </Button>
         </div>

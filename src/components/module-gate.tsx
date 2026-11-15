@@ -10,7 +10,8 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Card } from '@/ui/card';
+import { Lock, PowerOff } from 'lucide-react';
+import { OceanNotice } from '@/components/ocean-notice';
 import { getModule, moduleForPath, pathAccess } from '@/core/global-config';
 import { useEnabledModules } from '@/hooks/use-enabled-modules';
 import { useBranchRestricted } from '@/hooks/use-branch-restricted';
@@ -28,30 +29,30 @@ export function ModuleGate({ children }: { children: ReactNode }) {
 
   if (branch.restricted && COMPANY_WIDE_FINANCE.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
     return (
-      <Card padding="md" data-testid="branch-restricted" className="mx-auto max-w-xl space-y-3">
-        <h1 className="text-lg font-semibold text-ink-primary">{t('global_config.branch_access.report_title')}</h1>
-        <p className="text-sm text-ink-secondary">{t('global_config.branch_access.report_body')}</p>
-        <Link to="/dashboard" className="inline-block rounded-pill bg-brand-500 px-4 py-2 text-sm text-white">
-          {t('global_config.gate.back')}
-        </Link>
-      </Card>
+      <OceanNotice
+        testid="branch-restricted" tone="warn" icon={<Lock size={22} />}
+        title={t('global_config.branch_access.report_title')}
+        actions={<Link to="/dashboard" className="sb-primary-btn sb-btn-inline">{t('global_config.gate.back')}</Link>}
+      >
+        {t('global_config.branch_access.report_body')}
+      </OceanNotice>
     );
   }
 
   // Unowned paths render at once; owned ones wait for the configuration so a
   // disabled page never flashes before it is refused.
   if (!owner) return <>{children}</>;
-  if (!ready) return <p className="p-4 text-sm text-ink-secondary">{t('global_config.gate.loading')}</p>;
+  if (!ready) return <div className="sb-ocean sb-notice-wrap"><p className="sb-notice-loading">{t('global_config.gate.loading')}</p></div>;
   if (pathAccess(pathname, modules) !== 'module_disabled') return <>{children}</>;
 
   const name = getModule(owner.module)[i18n.language === 'ar' ? 'name_ar' : 'name'];
   return (
-    <Card padding="md" data-testid="module-disabled" className="mx-auto max-w-xl space-y-3">
-      <h1 className="text-lg font-semibold text-ink-primary">{t('global_config.gate.title')}</h1>
-      <p className="text-sm text-ink-secondary">{t('global_config.gate.body', { module: name })}</p>
-      <Link to="/dashboard" className="inline-block rounded-pill bg-brand-500 px-4 py-2 text-sm text-white">
-        {t('global_config.gate.back')}
-      </Link>
-    </Card>
+    <OceanNotice
+      testid="module-disabled" icon={<PowerOff size={22} />}
+      title={t('global_config.gate.title')}
+      actions={<Link to="/dashboard" className="sb-primary-btn sb-btn-inline">{t('global_config.gate.back')}</Link>}
+    >
+      {t('global_config.gate.body', { module: name })}
+    </OceanNotice>
   );
 }

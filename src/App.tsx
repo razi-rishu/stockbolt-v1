@@ -16,6 +16,9 @@ import { isAppShell, isNative } from '@/lib/platform';
 import { UpdateBanner } from '@/components/update-banner';
 import { AppLayout } from '@/components/app-layout';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { OceanNotice } from '@/components/ocean-notice';
+import { useTranslation } from 'react-i18next';
+import { ChevronLeft, SearchX } from 'lucide-react';
 
 // Marketing — public landing page (Phase 14.14c)
 const LandingPage       = lazy(() => import('@/modules/marketing/landing-page'));
@@ -540,46 +543,21 @@ function AppRoutes() {
 // component-level navigate(), error-boundary fallback, etc.).
 function NotFoundPage() {
   const location = useLocation();
+  const { t } = useTranslation();
   return (
-    <div style={{
-      minHeight: '100vh', display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center', gap: '16px',
-      padding: '32px', background: '#F8FAFC', color: '#0F172A',
-      fontFamily: 'system-ui, -apple-system, sans-serif',
-    }}>
-      <div style={{
-        width: '56px', height: '56px', borderRadius: '999px',
-        background: '#FEF3C7', color: '#92400E',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: '24px', fontWeight: 700,
-      }}>404</div>
-      <h1 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>Page not found</h1>
-      <div style={{
-        padding: '12px 16px', background: '#FFF', border: '1px solid #E2E8F0',
-        borderRadius: '8px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-        fontSize: '13px', color: '#475569',
-      }}>
-        {location.pathname}{location.search}
-      </div>
-      <p style={{ fontSize: '13.5px', color: '#64748B', margin: 0, maxWidth: '420px', textAlign: 'center' }}>
-        No route is registered for this URL. If you arrived here after a refresh on a page that did exist, please share the URL above — it's a routing bug we should fix.
-      </p>
-      <div style={{ display: 'flex', gap: '8px' }}>
-        <a href="/dashboard" style={{
-          padding: '8px 14px', background: '#7c3aed', color: '#FFF',
-          borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-          textDecoration: 'none',
-        }}>Go to Dashboard</a>
-        <button
-          onClick={() => window.history.back()}
-          style={{
-            padding: '8px 14px', background: '#FFF', color: '#475569',
-            border: '1px solid #E2E8F0', borderRadius: '8px',
-            fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-          }}
-        >← Back</button>
-      </div>
-    </div>
+    <OceanNotice
+      fullPage testid="not-found" tone="warn" icon={<SearchX size={24} />}
+      title={t('notFound.title')}
+      actions={<>
+        <a href="/dashboard" className="sb-primary-btn sb-btn-inline">{t('notFound.go_dashboard')}</a>
+        <button type="button" className="sb-secondary-btn sb-btn-inline" onClick={() => window.history.back()}>
+          <ChevronLeft size={16} className="sb-rtl-flip" aria-hidden="true" /> {t('notFound.back')}
+        </button>
+      </>}
+    >
+      <bdi dir="ltr" className="sb-notice-url">{location.pathname}{location.search}</bdi>
+      <p style={{ margin: 0 }}>{t('notFound.body')}</p>
+    </OceanNotice>
   );
 }
 

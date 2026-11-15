@@ -4342,5 +4342,40 @@
     "fig_est_margin": "Estimated margin",
     "fig_budget_note": "Budget for open projects — actuals are in Project profitability",
     "required": "Required"
+  },
+  "notFound": {
+    "title": "Page not found",
+    "body": "There is no page at this address. If you got here by refreshing a page that worked, please send us the address above so we can fix it.",
+    "go_dashboard": "Go to dashboard",
+    "back": "Back"
+  },
+  "adminOcean": {
+    "title": "StockBolt Admin",
+    "badge": "Platform owner",
+    "subtitle": "Overview across all companies. Visible only to platform owners.",
+    "as_of": "as of {{time}}",
+    "back_to_app": "Back to app",
+    "loading": "Loading platform figures…",
+    "load_failed": "Failed to load the admin figures.",
+    "total_companies": "Total companies",
+    "active_companies": "Active companies",
+    "active_note": "Posted activity in the last 30 days",
+    "new_registrations": "New registrations",
+    "last_30": "Last 30 days",
+    "total_users": "Total users",
+    "total_invoices": "Total invoices",
+    "total_products": "Total products",
+    "db_usage": "Database usage",
+    "storage_usage": "Storage usage",
+    "failed_logins": "Failed logins",
+    "subscription": "Subscription status",
+    "error_logs": "Error logs",
+    "support_tickets": "Support tickets",
+    "not_set": "Not set up yet",
+    "recent": "Recent registrations",
+    "no_companies": "No companies yet.",
+    "col_company": "Company",
+    "col_registered": "Registered",
+    "col_users": "Users"
   }
 }

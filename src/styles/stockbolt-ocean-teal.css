@@ -2007,3 +2007,21 @@
 .sb-ocean .sb-pay-lines .sb-icon-btn svg { flex: none; width: 15px; height: 15px; }
 .sb-ocean.sb-modal-form .sb-rpt-figs > div { grid-column: auto !important; padding: 10px 12px; }
 .sb-ocean.sb-modal-form .sb-rpt-hint { display: block; }
+
+/* Leftovers — notice card (module off, branch access, not found) */
+.sb-ocean.sb-notice-wrap { display: flex; justify-content: center; padding: 32px 16px; background: transparent; min-height: 0; }
+.sb-ocean.sb-notice-wrap.is-full { min-height: 100vh; align-items: center; background: var(--sb-background); }
+.sb-ocean .sb-notice { width: 100%; max-width: 520px; padding: 28px 28px 24px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.sb-ocean .sb-notice-ico { width: 52px; height: 52px; border-radius: 16px; display: inline-flex; align-items: center; justify-content: center; }
+.sb-ocean .sb-notice-ico.is-brand { background: var(--sb-primary-light); color: var(--sb-primary-dark); }
+.sb-ocean .sb-notice-ico.is-warn { background: #FEF3C7; color: var(--sb-warning); }
+.sb-ocean .sb-notice-title { margin: 0; font-size: 20px; font-weight: 800; color: var(--sb-text); }
+.sb-ocean .sb-notice-body { display: flex; flex-direction: column; align-items: center; gap: 10px; font-size: 14px; line-height: 1.55; color: var(--sb-text-secondary); }
+.sb-ocean .sb-notice-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
+.sb-ocean .sb-notice-actions a { text-decoration: none; display: inline-flex; align-items: center; }
+.sb-ocean .sb-notice-actions .sb-secondary-btn { display: inline-flex; align-items: center; gap: 4px; }
+.sb-ocean .sb-notice-url { padding: 8px 12px; border-radius: var(--sb-radius-sm); background: var(--sb-background); border: 1px solid var(--sb-border); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: var(--sb-text); overflow-wrap: anywhere; }
+.sb-ocean .sb-notice-loading { margin: 0; font-size: 14px; color: var(--sb-text-secondary); }
+.sb-ocean .sb-refund-avail .sb-rpt-figs { grid-template-columns: minmax(0, 1fr) !important; }
+.sb-ocean.sb-admin-shell { min-height: 100vh; padding: 20px 0; }
+.sb-ocean.sb-admin-shell > .sb-olist { max-width: 1180px; margin-inline: auto; }
