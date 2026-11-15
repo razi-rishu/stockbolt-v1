@@ -1960,3 +1960,26 @@
   .sb-ocean .sb-rpt-flat tbody tr.sb-rpt-section td:first-child { background: var(--sb-primary-soft); }
   .sb-ocean .sb-rpt-flat tbody tr.sb-rpt-subtotal td:first-child { background: var(--sb-background); }
 }
+.sb-ocean .sb-rpt-clip { display: inline-block; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+
+/* Reports on paper: fit the page width instead of scrolling. On screen wide
+   tables keep a minimum width and scroll; a printout cannot scroll, so the
+   minimum is dropped and cells may wrap. */
+@media print {
+  .sb-ocean.sb-olist:has(.sb-rpt) .sb-hero { padding: 0 0 8px; background: none; box-shadow: none; }
+  .sb-ocean.sb-olist:has(.sb-rpt) .sb-body { padding: 0; }
+  .sb-ocean.sb-olist:has(.sb-rpt) { background: #fff; padding-bottom: 0 !important; }
+  .sb-ocean .sb-rpt-card { overflow: visible; box-shadow: none; }
+  .sb-ocean .sb-rpt-scroll { overflow: visible; }
+  .sb-ocean .sb-rpt-table { min-width: 0 !important; width: 100%; font-size: 8.5pt; }
+  .sb-ocean .sb-rpt-table th { white-space: normal; font-size: 7.5pt; letter-spacing: 0; padding: 5px 6px; }
+  .sb-ocean .sb-rpt-table td { padding: 4px 6px; }
+  .sb-ocean .sb-rpt-table .code { font-size: 8pt; }
+  .sb-ocean .sb-rpt-clip { max-width: none; white-space: normal; }
+  .sb-ocean .sb-rpt-table .sb-pill { padding: 0; border: 0; background: none; font-size: 8pt; white-space: normal; }
+  .sb-ocean .sb-rpt-fig-value { font-size: 12pt; }
+  .sb-ocean .sb-rpt-figs > div { padding: 6px 10px; }
+  .sb-ocean .sb-rpt-table tr { break-inside: avoid; }
+  .sb-ocean .sb-rpt-table thead { display: table-header-group; }
+  .sb-ocean .sb-rpt-table td bdi { white-space: nowrap; }
+}

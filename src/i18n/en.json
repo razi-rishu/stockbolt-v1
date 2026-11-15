@@ -4177,6 +4177,9 @@
     "side_purchase": "Purchase",
     "col_category": "Category",
     "col_tag": "Tag",
-    "status_posted": "posted"
+    "status_posted": "posted",
+    "fig_entries": "Entries",
+    "fig_reversals": "Reversals",
+    "fig_reversed_amount": "Reversed amount"
   }
 }

@@ -5,9 +5,8 @@ import { useAuthStore } from '@/store/auth';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
+import { OceanReport, ReportCard, ReportMessage, ReportTable, exportFromColumns, money as fmt, Num, type ReportColumn } from '@/components/ocean-report';
 import type { DailyCashLine } from '@/data/adapter';
-
-const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function DailyCashPage() {
   const { t } = useTranslation();
@@ -24,88 +23,40 @@ export default function DailyCashPage() {
   const totalIn  = lines.reduce((s, l) => s + l.total_in, 0);
   const totalOut = lines.reduce((s, l) => s + l.total_out, 0);
   const netFlow  = totalIn - totalOut;
+  const neg = (n: number) => (n < 0 ? `(${fmt(-n)})` : fmt(n));
 
-  const exportRows: Record<string, unknown>[] = lines.map(l => ({
-    'Account Code': l.account_code,
-    'Account Name': l.account_name,
-    'Opening Balance': l.opening_balance.toFixed(2),
-    'Total In': l.total_in.toFixed(2),
-    'Total Out': l.total_out.toFixed(2),
-    'Closing Balance': l.closing_balance.toFixed(2),
-  }));
-  const exportHeaders = ['Account Code', 'Account Name', 'Opening Balance', 'Total In', 'Total Out', 'Closing Balance'];
+  const columns: ReportColumn<DailyCashLine>[] = [
+    { key: 'code', header: t('reports.account_code'), cell: l => <span className="code">{l.account_code}</span>, exp: l => l.account_code },
+    { key: 'name', header: t('reports.account_name'), cls: 'strong', cell: l => l.account_name, exp: l => l.account_name },
+    { key: 'open', header: t('reports.opening_balance'), num: true, cls: 'muted', cell: l => neg(l.opening_balance), exp: l => l.opening_balance.toFixed(2) },
+    { key: 'in', header: t('reports.total_in'), num: true, cls: 'is-up', cell: l => fmt(l.total_in), foot: fmt(totalIn), exp: l => l.total_in.toFixed(2) },
+    { key: 'out', header: t('reports.total_out'), num: true, cls: 'is-down', cell: l => fmt(l.total_out), foot: fmt(totalOut), exp: l => l.total_out.toFixed(2) },
+    // The totals row shows the day's net flow under Closing, as before.
+    { key: 'close', header: t('reports.closing_balance'), num: true, cls: l => (l.closing_balance < 0 ? 'is-down strong' : 'strong'), cell: l => neg(l.closing_balance), foot: neg(netFlow), exp: l => l.closing_balance.toFixed(2) },
+  ];
+  const xl = exportFromColumns(columns, lines);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-ink-primary">{t('reports.daily_cash_title')}</h1>
-          <p className="text-sm text-ink-tertiary mt-1">{t('reports.daily_cash_desc')}</p>
-        </div>
-        <div data-print-hide className="flex flex-wrap items-center gap-2">
-          <PeriodPicker mode="asOf" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-          <ReportActions rows={exportRows} headers={exportHeaders} filename={`daily-cash-${reportDate}`} disabled={lines.length === 0} />
-        </div>
-      </div>
-
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-white border border-border-subtle rounded-lg p-4">
-          <p className="text-xs font-medium text-ink-tertiary uppercase tracking-wide">{t('reports.total_in')}</p>
-          <p className="text-2xl font-bold text-green-600 mt-1">{fmt(totalIn)}</p>
-        </div>
-        <div className="bg-white border border-border-subtle rounded-lg p-4">
-          <p className="text-xs font-medium text-ink-tertiary uppercase tracking-wide">{t('reports.total_out')}</p>
-          <p className="text-2xl font-bold text-red-600 mt-1">{fmt(totalOut)}</p>
-        </div>
-        <div className="bg-white border border-border-subtle rounded-lg p-4">
-          <p className="text-xs font-medium text-ink-tertiary uppercase tracking-wide">{t('reports.net_flow')}</p>
-          <p className={`text-2xl font-bold mt-1 ${netFlow >= 0 ? 'text-green-700' : 'text-red-600'}`}>{fmt(netFlow)}</p>
-        </div>
-      </div>
-
-      <div className="bg-white border border-border-subtle rounded-lg overflow-hidden">
-        {isFetching && lines.length === 0 ? (
-          <p className="p-8 text-center text-sm text-ink-tertiary">{t('common.loading')}</p>
-        ) : lines.length === 0 ? (
-          <p className="p-8 text-center text-ink-tertiary">{t('reports.no_data')}</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-surface-muted border-b border-border-subtle">
-                <tr>
-                  <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('reports.account_code')}</th>
-                  <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('reports.account_name')}</th>
-                  <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('reports.opening_balance')}</th>
-                  <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('reports.total_in')}</th>
-                  <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('reports.total_out')}</th>
-                  <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('reports.closing_balance')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border-subtle">
-                {lines.map(line => (
-                  <tr key={line.account_id} className="hover:bg-surface-muted transition-colors">
-                    <td className="px-4 py-3 font-mono text-ink-secondary">{line.account_code}</td>
-                    <td className="px-4 py-3 text-ink-secondary font-medium">{line.account_name}</td>
-                    <td className="px-4 py-3 text-right text-ink-secondary">{fmt(line.opening_balance)}</td>
-                    <td className="px-4 py-3 text-right text-green-600 font-semibold">{fmt(line.total_in)}</td>
-                    <td className="px-4 py-3 text-right text-red-600 font-semibold">{fmt(line.total_out)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-ink-primary">{fmt(line.closing_balance)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot className="bg-surface-muted border-t-2 border-border-subtle">
-                <tr>
-                  <td colSpan={3} className="px-4 py-3 text-sm font-semibold text-ink-secondary">{t('common.total')}</td>
-                  <td className="px-4 py-3 text-right font-bold text-green-600">{fmt(totalIn)}</td>
-                  <td className="px-4 py-3 text-right font-bold text-red-600">{fmt(totalOut)}</td>
-                  <td className="px-4 py-3 text-right font-bold text-ink-primary">{fmt(netFlow)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
+    <OceanReport
+      testid="daily-cash-ocean"
+      title={t('reports.daily_cash_title')}
+      subtitle={t('reports.daily_cash_desc')}
+      controls={<>
+        <PeriodPicker mode="asOf" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <ReportActions rows={xl.rows} headers={xl.headers} filename={`daily-cash-${reportDate}`} disabled={lines.length === 0} />
+      </>}
+    >
+      <ReportCard
+        figures={[
+          { label: t('reports.total_in'), value: <Num>{fmt(totalIn)}</Num>, tone: 'good' },
+          { label: t('reports.total_out'), value: <Num>{fmt(totalOut)}</Num>, tone: 'bad' },
+          { label: t('reports.net_flow'), value: <Num>{neg(netFlow)}</Num>, tone: netFlow >= 0 ? 'brand' : 'bad' },
+        ]}
+      >
+        {lines.length === 0
+          ? <ReportMessage>{isFetching ? t('common.loading') : t('reports.no_data')}</ReportMessage>
+          : <ReportTable columns={columns} rows={lines} rowKey={l => l.account_id} footLabel={t('rptOcean.total')} minWidth={720} />}
+      </ReportCard>
+    </OceanReport>
   );
 }

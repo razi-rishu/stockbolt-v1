@@ -28,14 +28,19 @@ export default function AuditLogPage() {
     return 'sb-pill-muted';
   };
 
+  // Excel columns follow the screen language.
+  const H = {
+    time: t('reports.timestamp'), user: t('reports.user'), action: t('reports.action'),
+    entity: t('reports.entity'), id: t('reports.entity_id'),
+  };
   const exportRows: Record<string, unknown>[] = rows.map(r => ({
-    Timestamp: new Date(r.created_at).toLocaleString(),
-    User: r.user_email,
-    Action: r.action,
-    Entity: r.entity_type,
-    'Entity ID': r.entity_id,
+    [H.time]: new Date(r.created_at).toLocaleString(),
+    [H.user]: r.user_email,
+    [H.action]: r.action,
+    [H.entity]: r.entity_type,
+    [H.id]: r.entity_id,
   }));
-  const exportHeaders = ['Timestamp', 'User', 'Action', 'Entity', 'Entity ID'];
+  const exportHeaders = [H.time, H.user, H.action, H.entity, H.id];
 
   return (
     // Ocean Teal (UI v1.1): look only — same period filter, export / print,

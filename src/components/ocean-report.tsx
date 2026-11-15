@@ -11,7 +11,10 @@
  * table scrolls sideways inside its card.
  */
 import type { ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Info } from 'lucide-react';
+import { getAdapter } from '@/data';
+import { useAuthStore } from '@/store/auth';
 import { OceanPage } from '@/components/ocean-list';
 import '@/styles/stockbolt-ocean-teal.css';
 
@@ -26,15 +29,28 @@ export interface OceanReportProps {
 }
 
 export function OceanReport({ title, subtitle, controls, testid, children }: OceanReportProps) {
+  // Company name for the printout only. Same query key the rest of the app
+  // uses, so this reads the cached company rather than fetching again.
+  const company_id = useAuthStore((s) => s.company_id);
+  const { data: company } = useQuery({
+    queryKey: ['company', company_id],
+    queryFn: () => getAdapter().companies.getById(company_id!),
+    enabled: !!company_id,
+  });
   return (
-    <OceanPage
-      testid={testid}
-      title={title}
-      subtitle={subtitle}
-      actions={controls ? <div data-print-hide className="sb-rpt-controls">{controls}</div> : undefined}
-    >
-      <div className="sb-rpt">{children}</div>
-    </OceanPage>
+    <>
+      {company?.name && (
+        <p data-print-only className="hidden" style={{ margin: '0 0 6px', fontSize: '13pt', fontWeight: 700 }}>{company.name}</p>
+      )}
+      <OceanPage
+        testid={testid}
+        title={title}
+        subtitle={subtitle}
+        actions={controls ? <div data-print-hide className="sb-rpt-controls">{controls}</div> : undefined}
+      >
+        <div className="sb-rpt">{children}</div>
+      </OceanPage>
+    </>
   );
 }
 

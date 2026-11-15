@@ -6,9 +6,8 @@ import { useAuthStore } from '@/store/auth';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
+import { OceanReport, ReportCard, ReportMessage, ReportTable, exportFromColumns, money as fmt, Num, ltr, type ReportColumn } from '@/components/ocean-report';
 import type { BankAccountRow, BankReconLine } from '@/data/adapter';
-
-const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function BankReconPage() {
   const { t } = useTranslation();
@@ -29,98 +28,53 @@ export default function BankReconPage() {
   });
 
   const closingBalance = lines.length > 0 ? lines[lines.length - 1].running_balance : 0;
+  const neg = (n: number) => (n < 0 ? `(${fmt(-n)})` : fmt(n));
+  const srcLabel = (src: string) => t(`jeOcean.src_${src}`, { defaultValue: src.replace(/_/g, ' ') });
 
-  const exportRows: Record<string, unknown>[] = lines.map(l => ({
-    Date: l.date,
-    'JE Number': l.je_number,
-    'Source Type': l.source_type.replace(/_/g, ' '),
-    Description: l.description,
-    Debit: l.debit.toFixed(2),
-    Credit: l.credit.toFixed(2),
-    'Running Balance': l.running_balance.toFixed(2),
-  }));
-  const exportHeaders = ['Date', 'JE Number', 'Source Type', 'Description', 'Debit', 'Credit', 'Running Balance'];
+  const columns: ReportColumn<BankReconLine>[] = [
+    { key: 'date', header: t('common.date'), cls: 'muted', cell: l => <Num>{l.date}</Num>, exp: l => l.date },
+    { key: 'je', header: t('reports.je_number'), cell: l => <span className="code">{l.je_number}</span>, exp: l => l.je_number },
+    { key: 'src', header: t('reports.source_type'), cell: l => <span className="sb-pill sb-pill-muted">{srcLabel(l.source_type)}</span>, exp: l => srcLabel(l.source_type) },
+    { key: 'desc', header: t('reports.description'), cls: 'muted', cell: l => <span className="sb-rpt-clip" title={l.description}>{l.description}</span>, exp: l => l.description },
+    { key: 'debit', header: t('reports.debit'), num: true, cls: l => (l.debit > 0 ? 'is-up' : 'muted'), cell: l => (l.debit > 0 ? fmt(l.debit) : '—'), exp: l => l.debit.toFixed(2) },
+    { key: 'credit', header: t('reports.credit'), num: true, cls: l => (l.credit > 0 ? 'is-down' : 'muted'), cell: l => (l.credit > 0 ? fmt(l.credit) : '—'), exp: l => l.credit.toFixed(2) },
+    { key: 'bal', header: t('reports.running_balance'), num: true, cls: l => (l.running_balance < 0 ? 'is-down strong' : 'strong'), cell: l => neg(l.running_balance), exp: l => l.running_balance.toFixed(2) },
+  ];
+  const xl = exportFromColumns(columns, lines);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-ink-primary">{t('reports.bank_recon_title')}</h1>
-          <p className="text-sm text-ink-tertiary mt-1">{t('reports.bank_recon_desc')}</p>
-        </div>
-        <div data-print-hide className="flex flex-wrap items-center gap-2">
-          <select value={accountId} onChange={e => setAccountId(e.target.value)}
-            className="h-[30px] rounded-lg border border-border-subtle bg-white px-2.5 text-xs font-semibold text-ink-secondary outline-none focus:border-brand-400">
-            <option value="">{t('banking.select_account')}</option>
-            {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
-          <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-          <ReportActions rows={exportRows} headers={exportHeaders} filename={`bank-recon-${from}_${to}`} disabled={!accountId || lines.length === 0} />
-        </div>
-      </div>
-
+    <OceanReport
+      testid="bank-recon-report-ocean"
+      title={t('reports.bank_recon_title')}
+      subtitle={t('reports.bank_recon_desc')}
+      controls={<>
+        <select value={accountId} onChange={e => setAccountId(e.target.value)} className="sb-rpt-select sb-rpt-select-wide" aria-label={t('banking.select_account')}>
+          <option value="">{t('banking.select_account')}</option>
+          {bankAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+        </select>
+        <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <ReportActions rows={xl.rows} headers={xl.headers} filename={`bank-recon-${from}_${to}`} disabled={!accountId || lines.length === 0} />
+      </>}
+    >
       {!accountId ? (
-        <p className="text-center text-sm text-ink-tertiary py-8">{t('reports.select_account_prompt')}</p>
+        <ReportCard><ReportMessage>{t('reports.select_account_prompt')}</ReportMessage></ReportCard>
       ) : (
-        <>
-          {/* Closing balance summary */}
-          {lines.length > 0 && (
-            <div className="bg-white border border-border-subtle rounded-lg p-4 flex items-center justify-between">
-              <span className="text-sm font-medium text-ink-secondary">{t('reports.closing_balance_as_of')} {to}</span>
-              <span className={`text-xl font-bold ${closingBalance >= 0 ? 'text-ink-primary' : 'text-red-600'}`}>
-                {fmt(closingBalance)}
-              </span>
-            </div>
-          )}
-
-          <div className="bg-white border border-border-subtle rounded-lg overflow-hidden">
-            {isFetching && lines.length === 0 ? (
-              <p className="p-8 text-center text-sm text-ink-tertiary">{t('common.loading')}</p>
-            ) : lines.length === 0 ? (
-              <p className="p-8 text-center text-ink-tertiary">{t('reports.no_data')}</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-surface-muted border-b border-border-subtle">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('common.date')}</th>
-                      <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('reports.je_number')}</th>
-                      <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('reports.source_type')}</th>
-                      <th className="px-4 py-3 text-left font-medium text-ink-secondary">{t('reports.description')}</th>
-                      <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('reports.debit')}</th>
-                      <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('reports.credit')}</th>
-                      <th className="px-4 py-3 text-right font-medium text-ink-secondary">{t('reports.running_balance')}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border-subtle">
-                    {lines.map((line, i) => (
-                      <tr key={i} className="hover:bg-surface-muted transition-colors">
-                        <td className="px-4 py-3 text-ink-secondary">{line.date}</td>
-                        <td className="px-4 py-3 font-mono text-brand-600">{line.je_number}</td>
-                        <td className="px-4 py-3">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-surface-muted text-ink-secondary">
-                            {line.source_type.replace(/_/g, ' ')}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-ink-secondary max-w-xs truncate">{line.description}</td>
-                        <td className="px-4 py-3 text-right text-green-600">
-                          {line.debit > 0 ? fmt(line.debit) : '—'}
-                        </td>
-                        <td className="px-4 py-3 text-right text-red-600">
-                          {line.credit > 0 ? fmt(line.credit) : '—'}
-                        </td>
-                        <td className={`px-4 py-3 text-right font-semibold ${line.running_balance < 0 ? 'text-red-600' : 'text-ink-primary'}`}>
-                          {fmt(line.running_balance)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </>
+        <ReportCard
+          meta={t('rptOcean.range', { from: ltr(from), to: ltr(to) })}
+          figures={lines.length > 0 ? [
+            { label: t('rptOcean.fig_entries'), value: <Num>{lines.length}</Num> },
+            {
+              label: `${t('reports.closing_balance_as_of')} ${ltr(to)}`,
+              value: <Num>{neg(closingBalance)}</Num>,
+              tone: closingBalance >= 0 ? 'brand' : 'bad',
+            },
+          ] : undefined}
+        >
+          {lines.length === 0
+            ? <ReportMessage>{isFetching ? t('common.loading') : t('reports.no_data')}</ReportMessage>
+            : <ReportTable columns={columns} rows={lines} rowKey={(_, i) => String(i)} minWidth={900} />}
+        </ReportCard>
       )}
-    </div>
+    </OceanReport>
   );
 }

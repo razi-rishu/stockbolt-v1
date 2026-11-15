@@ -4177,6 +4177,9 @@
     "side_purchase": "المشتريات",
     "col_category": "الفئة",
     "col_tag": "الرمز التعريفي",
-    "status_posted": "مرحّل"
+    "status_posted": "مرحّل",
+    "fig_entries": "القيود",
+    "fig_reversals": "القيود المعكوسة",
+    "fig_reversed_amount": "المبلغ المعكوس"
   }
 }

@@ -6,8 +6,7 @@ import { useAuthStore } from '@/store/auth';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
-
-function fmt(n: number) { return new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n); }
+import { OceanReport, ReportCard, ReportMessage, ReportTable, exportFromColumns, money as fmt, Num, ltr, type ReportColumn } from '@/components/ocean-report';
 
 export default function ReversalTrailPage() {
   const { t } = useTranslation();
@@ -20,63 +19,43 @@ export default function ReversalTrailPage() {
     enabled: !!company_id,
   });
   const rows = data ?? [];
+  type Row = typeof rows[number];
 
-  const exportRows: Record<string, unknown>[] = rows.map(r => ({
-    'Original Entry': r.original_entry_number,
-    Date: r.original_date,
-    'Reversal Entry': r.reversal_entry_number,
-    'Reversal Date': r.reversal_date,
-    Amount: r.amount.toFixed(2),
-    'Source Type': r.source_type,
-    'Reversed By': r.reversed_by || '',
-  }));
-  const exportHeaders = ['Original Entry', 'Date', 'Reversal Entry', 'Reversal Date', 'Amount', 'Source Type', 'Reversed By'];
+  // Figures strip only — the table has no totals row, as before.
+  const totAmount = rows.reduce((s, r) => s + r.amount, 0);
+  const srcLabel = (src: string) => t(`jeOcean.src_${src}`, { defaultValue: src.replace(/_/g, ' ') });
+
+  const columns: ReportColumn<Row>[] = [
+    { key: 'orig', header: t('reports.original_entry'), cell: r => <Link to="/accounting/journal-entries" className="code">{r.original_entry_number}</Link>, exp: r => r.original_entry_number },
+    { key: 'date', header: t('common.date'), cls: 'muted', cell: r => <Num>{r.original_date}</Num>, exp: r => r.original_date },
+    { key: 'rev', header: t('reports.reversal_entry'), cell: r => (r.reversal_entry_number ? <span className="code">{r.reversal_entry_number}</span> : '—'), exp: r => r.reversal_entry_number },
+    { key: 'rdate', header: t('reports.reversal_date'), cls: 'muted', cell: r => <Num>{r.reversal_date || '—'}</Num>, exp: r => r.reversal_date },
+    { key: 'amount', header: t('common.amount'), num: true, cls: 'strong', cell: r => fmt(r.amount), exp: r => r.amount.toFixed(2) },
+    { key: 'src', header: t('reports.source_type'), cell: r => <span className="sb-pill sb-pill-muted">{srcLabel(r.source_type)}</span>, exp: r => srcLabel(r.source_type) },
+    { key: 'by', header: t('reports.reversed_by'), cls: 'muted', cell: r => <Num>{r.reversed_by || '—'}</Num>, exp: r => r.reversed_by || '' },
+  ];
+  const xl = exportFromColumns(columns, rows);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink-primary">{t('reports.reversal_trail')}</h1>
-        <div data-print-hide className="flex flex-wrap items-center gap-2">
-          <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
-          <ReportActions rows={exportRows} headers={exportHeaders} filename={`reversal-trail-${from}_${to}`} disabled={rows.length === 0} />
-        </div>
-      </div>
-
-      {isFetching && rows.length === 0 && <p className="text-sm text-ink-secondary">{t('common.loading')}</p>}
-      {!isFetching && rows.length === 0 && <p className="text-sm text-ink-tertiary">{t('reports.no_data')}</p>}
-
-      {rows.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-border bg-surface-card shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-subtle">
-              <tr>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('reports.original_entry')}</th>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('common.date')}</th>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('reports.reversal_entry')}</th>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('reports.reversal_date')}</th>
-                <th className="px-4 py-2 text-right font-medium text-ink-secondary">{t('common.amount')}</th>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('reports.source_type')}</th>
-                <th className="px-4 py-2 text-left font-medium text-ink-secondary">{t('reports.reversed_by')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {rows.map((r, i) => (
-                <tr key={i} className="hover:bg-surface-subtle/50">
-                  <td className="px-4 py-2">
-                    <Link to="/accounting/journal-entries" className="font-medium text-brand-600 hover:underline font-mono text-xs">{r.original_entry_number}</Link>
-                  </td>
-                  <td className="px-4 py-2 text-ink-secondary">{r.original_date}</td>
-                  <td className="px-4 py-2 font-mono text-xs text-ink-secondary">{r.reversal_entry_number}</td>
-                  <td className="px-4 py-2 text-ink-secondary">{r.reversal_date}</td>
-                  <td className="px-4 py-2 text-right text-ink-primary font-medium">{fmt(r.amount)}</td>
-                  <td className="px-4 py-2 text-ink-secondary text-xs">{r.source_type}</td>
-                  <td className="px-4 py-2 text-ink-secondary text-xs">{r.reversed_by || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+    <OceanReport
+      testid="reversal-trail-ocean"
+      title={t('reports.reversal_trail')}
+      subtitle={t('rptOcean.range', { from: ltr(from), to: ltr(to) })}
+      controls={<>
+        <PeriodPicker mode="range" preset={preset} from={from} to={to} onPresetChange={setPreset} onCustomRange={setCustomRange} />
+        <ReportActions rows={xl.rows} headers={xl.headers} filename={`reversal-trail-${from}_${to}`} disabled={rows.length === 0} />
+      </>}
+    >
+      <ReportCard
+        figures={rows.length > 0 ? [
+          { label: t('rptOcean.fig_reversals'), value: <Num>{rows.length}</Num> },
+          { label: t('rptOcean.fig_reversed_amount'), value: <Num>{fmt(totAmount)}</Num>, tone: 'warn' },
+        ] : undefined}
+      >
+        {rows.length === 0
+          ? <ReportMessage>{isFetching ? t('common.loading') : t('reports.no_data')}</ReportMessage>
+          : <ReportTable columns={columns} rows={rows} rowKey={(_, i) => String(i)} minWidth={900} />}
+      </ReportCard>
+    </OceanReport>
   );
 }
