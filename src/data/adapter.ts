@@ -3448,6 +3448,7 @@ export interface DataAdapter {
   // Payroll P1 (owner override 2026-06-13)
   employees: EmployeesAPI;
   staff: StaffAPI;
+  support: SupportAPI;
   payroll: PayrollAPI;
   // Document numbering settings (2026-06-13)
   documentSequences: DocumentSequencesAPI;
@@ -3618,6 +3619,64 @@ export interface PayrollAPI {
   /** Posts Dr 6100 / Cr bank and marks the record paid. */
   payLeaveSalary(id: string): Promise<{ je_id: string; entry_number: string }>;
   removeLeaveSalary(id: string): Promise<void>;
+}
+
+// ── phase133 — Help & Support Center ───────────────────────────────────────
+export type SupportCategory = 'assistance' | 'bug' | 'feature' | 'feedback';
+export type SupportStatus = 'submitted' | 'in_progress' | 'waiting_for_user' | 'resolved' | 'closed';
+export type SupportPriority = 'low' | 'normal' | 'high' | 'urgent';
+export interface SupportTicketRow {
+  id: string; ticket_number: string; company_id: string; created_by: string;
+  category: SupportCategory; subject: string; description: string; module: string | null;
+  contact_preference: 'in_app' | 'email'; status: SupportStatus; priority: SupportPriority;
+  assigned_to: string | null; last_user_message_at: string; last_operator_message_at: string | null;
+  user_last_read_at: string; operator_last_read_at: string | null;
+  created_at: string; updated_at: string; resolved_at: string | null; closed_at: string | null;
+}
+export interface SupportMessageRow {
+  id: string; ticket_id: string; sender_id: string | null; sender_type: 'user' | 'operator';
+  message: string; created_at: string;
+}
+export interface SupportAttachmentRow {
+  id: string; ticket_id: string; message_id: string | null; storage_path: string;
+  original_filename: string; mime_type: string; file_size: number; uploaded_by: string | null; created_at: string;
+}
+export interface SupportActivityRow {
+  id: string; ticket_id: string; actor_id: string | null; actor_type: 'user' | 'operator';
+  action: string; previous_value: string | null; new_value: string | null; created_at: string;
+}
+export interface SupportInboxRow {
+  id: string; ticket_number: string; category: SupportCategory; subject: string; status: SupportStatus;
+  priority: SupportPriority; assigned_to: string | null; company_name: string; requester_name: string | null;
+  requester_email: string | null; created_at: string; updated_at: string; unread: boolean;
+}
+export interface SupportTicketContext {
+  company_name: string; country_code: string; requester_name: string | null; requester_email: string | null;
+  operators: { user_id: string; name: string }[];
+}
+export interface SupportCreateInput {
+  category: SupportCategory; subject: string; description: string;
+  module?: string | null; contact_preference?: 'in_app' | 'email'; client_request_id: string;
+}
+export interface SupportAPI {
+  createTicket(input: SupportCreateInput): Promise<{ id: string; ticket_number: string; duplicate: boolean }>;
+  listMyTickets(): Promise<SupportTicketRow[]>;
+  getTicket(id: string): Promise<SupportTicketRow | null>;
+  listMessages(ticket_id: string): Promise<SupportMessageRow[]>;
+  listAttachments(ticket_id: string): Promise<SupportAttachmentRow[]>;
+  listActivity(ticket_id: string): Promise<SupportActivityRow[]>;
+  addMessage(ticket_id: string, message: string): Promise<{ id: string; status: SupportStatus }>;
+  /** Upload to the private bucket, then register. File must already be checked (lib/support-files). */
+  uploadAttachment(ticket_id: string, message_id: string | null, file: File, mime: string): Promise<void>;
+  /** Short-lived signed URL; Storage refuses it unless the caller can access the ticket. */
+  attachmentUrl(storage_path: string): Promise<string>;
+  markRead(ticket_id: string): Promise<void>;
+  unreadCounts(): Promise<{ mine: number; inbox: number; is_operator: boolean }>;
+  userSetStatus(ticket_id: string, action: 'close' | 'reopen'): Promise<void>;
+  // Operators only (the server refuses everyone else)
+  inbox(filters: { status?: string; category?: string; priority?: string; search?: string; limit?: number; offset?: number }): Promise<SupportInboxRow[]>;
+  operatorUpdate(ticket_id: string, patch: { status?: SupportStatus; priority?: SupportPriority; assign?: boolean; assigned_to?: string | null }): Promise<void>;
+  ticketContext(ticket_id: string): Promise<SupportTicketContext>;
 }
 
 // ── Phase 14.09: Opening Balances ─────────────────────────────────────────

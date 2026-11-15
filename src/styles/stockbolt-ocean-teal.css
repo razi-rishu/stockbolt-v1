@@ -2098,3 +2098,34 @@
 .sb-ocean.sb-wiz.is-phone .sb-wiz-next { flex: 1; min-height: 52px; font-size: 15.5px; }
 .sb-ocean .sb-wiz-back.is-icon { width: 52px; height: 52px; padding: 0; flex: none; }
 .sb-ocean.sb-wiz .sb-wiz-card { padding: 0 !important; }
+
+/* ── phase133 — Help & Support ─────────────────────────────────────────── */
+.sb-ocean .sb-support-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.sb-ocean .sb-support-card {
+  display: flex; align-items: center; gap: 12px; padding: 16px; text-align: start; cursor: pointer;
+  border: 1px solid var(--sb-border); transition: border-color .15s, box-shadow .15s;
+}
+.sb-ocean .sb-support-card:hover, .sb-ocean .sb-support-card:focus-visible { border-color: var(--sb-primary); box-shadow: 0 0 0 3px var(--sb-primary-soft); outline: none; }
+.sb-ocean .sb-support-card .sb-side-ico { background: var(--sb-primary-light); color: var(--sb-primary-dark); }
+.sb-ocean .sb-support-card-txt { display: flex; flex-direction: column; min-width: 0; }
+.sb-ocean .sb-support-card-title { font-weight: 700; color: var(--sb-text); }
+.sb-ocean .sb-support-card-sub { font-size: 13px; color: var(--sb-text-secondary); }
+.sb-support-dot { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: var(--sb-primary); flex-shrink: 0; }
+.sb-support-count {
+  min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--sb-primary); color: #fff;
+  font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; margin-inline-start: auto;
+}
+.sb-ocean .sb-support-files { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; margin: 8px 0 0; }
+.sb-ocean .sb-support-files li {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+  background: var(--sb-primary-soft); font-size: 13px; max-width: 100%;
+}
+.sb-ocean .sb-support-files li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-ocean .sb-support-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+@media (min-width: 1024px) { .sb-ocean .sb-support-layout:has(aside) { grid-template-columns: minmax(0, 1fr) 320px; } }
+.sb-ocean .sb-support-msg { padding: 14px 16px; border-inline-start: 3px solid var(--sb-border); }
+.sb-ocean .sb-support-msg.is-operator { border-inline-start-color: var(--sb-primary); background: var(--sb-primary-soft); }
+.sb-ocean .sb-support-msg-head { margin: 0 0 6px; font-size: 13px; color: var(--sb-text-secondary); }
+.sb-ocean .sb-support-msg-body { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--sb-text); }
+.sb-ocean .sb-support-history { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.sb-ocean .sb-support-history li { display: flex; flex-direction: column; gap: 2px; border-bottom: 1px solid var(--sb-border); padding-bottom: 6px; }

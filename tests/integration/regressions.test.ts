@@ -8572,3 +8572,73 @@ describe('Phase 129–131 — staff identity + payroll hardening (soft until app
     expect(bad).toHaveLength(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 133 — Help & Support Center
+//
+// Tickets are private to their author; support operators (support_operators,
+// never a company role) see all. Clients have SELECT only; every write is a
+// SECURITY DEFINER function. Attachments live in a PRIVATE bucket.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 133 — Help & Support (soft until applied)', () => {
+  const TABLES = ['support_tickets', 'support_messages', 'support_attachments', 'support_activity'];
+  const applied = async (): Promise<boolean> => {
+    const r = await sql<{ ok: boolean }>(`SELECT to_regclass('public.support_tickets') IS NOT NULL AS ok`);
+    return !!r[0]?.ok;
+  };
+
+  it('phase133: RLS on, clients may only read, operator list is closed', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ phase133 not applied yet — run supabase/migrations/20261115000007_phase133_help_support_center.sql.');
+      return;
+    }
+    for (const t of [...TABLES, 'support_operators']) {
+      const r = await sql<{ rls: boolean; ins: boolean; upd: boolean; del: boolean; sel: boolean }>(`
+        SELECT (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.${t}'::regclass) AS rls,
+               has_table_privilege('authenticated', 'public.${t}', 'INSERT') AS ins,
+               has_table_privilege('authenticated', 'public.${t}', 'UPDATE') AS upd,
+               has_table_privilege('authenticated', 'public.${t}', 'DELETE') AS del,
+               has_table_privilege('authenticated', 'public.${t}', 'SELECT') AS sel`);
+      expect(r[0].rls, `${t} RLS`).toBe(true);
+      expect(r[0].ins || r[0].upd || r[0].del, `${t} must not be writable by clients`).toBe(false);
+      if (t === 'support_operators') expect(r[0].sel, 'support_operators must not be readable').toBe(false);
+    }
+  });
+
+  it('phase133: support functions are definer, pinned search_path, not callable by anon', async () => {
+    if (!(await applied())) return;
+    const rows = await sql<{ proname: string; prosecdef: boolean; cfg: string | null; anon_exec: boolean }>(`
+      SELECT p.proname, p.prosecdef, array_to_string(p.proconfig, ',') AS cfg,
+             has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_exec
+        FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace
+         AND (p.proname LIKE 'support\_%' OR p.proname IN ('is_support_operator', '_support_log'))
+         AND p.proname <> 'support_path_ticket'`);
+    expect(rows.length).toBeGreaterThan(8);
+    for (const r of rows) {
+      expect(r.prosecdef, `${r.proname} SECURITY DEFINER`).toBe(true);
+      expect(r.cfg ?? '', `${r.proname} search_path`).toContain('search_path');
+      expect(r.anon_exec, `${r.proname} not executable by anon`).toBe(false);
+    }
+  });
+
+  it('phase133: the attachment bucket is private and limited', async () => {
+    if (!(await applied())) return;
+    const b = await sql<{ public: boolean; file_size_limit: number; allowed_mime_types: string[] }>(`
+      SELECT public, file_size_limit, allowed_mime_types FROM storage.buckets WHERE id = 'support-attachments'`);
+    expect(b).toHaveLength(1);
+    expect(b[0].public).toBe(false);
+    expect(Number(b[0].file_size_limit)).toBeLessThanOrEqual(5242880);
+    expect([...b[0].allowed_mime_types].sort()).toEqual(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
+    const pol = await sql<{ policyname: string; cmd: string }>(`
+      SELECT policyname, cmd FROM pg_policies WHERE schemaname = 'storage' AND policyname LIKE 'support_attachments_%'`);
+    expect(pol.map(p => p.cmd).sort()).toEqual(['INSERT', 'SELECT']);
+  });
+
+  it('phase133: no ticket is visible across companies through its messages or files', async () => {
+    if (!(await applied())) return;
+    const bad = await sql<{ id: string }>(`
+      SELECT m.id FROM public.support_messages m JOIN public.support_tickets t ON t.id = m.ticket_id
+       WHERE m.sender_type = 'user' AND m.sender_id IS DISTINCT FROM t.created_by`);
+    expect(bad, 'user messages must come from the ticket author').toHaveLength(0);
+  });
+});

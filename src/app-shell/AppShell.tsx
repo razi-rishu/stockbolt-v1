@@ -22,7 +22,7 @@ import '@/styles/stockbolt-ocean-teal.css';
 
 export interface ShellNavItem { to: string; label: string }
 export interface ShellNavGroup { label?: string; items: ShellNavItem[] }
-export interface ShellNavSection { label: string; icon: ReactNode; to?: string; groups?: ShellNavGroup[] }
+export interface ShellNavSection { label: string; icon: ReactNode; to?: string; groups?: ShellNavGroup[]; badge?: number }
 export interface ShellShortcut { to: string; label: string; icon: ReactNode }
 
 interface AppShellProps {
@@ -276,7 +276,8 @@ function MenuSheet({
             if (s.to) {
               return (
                 <Link key={s.label} to={s.to} onClick={onClose} className={`sb-menu-row ${border}`}>
-                  <span className="sb-menu-icon">{s.icon}</span>{s.label}
+                  <span className="sb-menu-icon">{s.icon}</span><span className="flex-1">{s.label}</span>
+                  {!!s.badge && <span className="sb-support-count">{s.badge}</span>}
                 </Link>
               );
             }

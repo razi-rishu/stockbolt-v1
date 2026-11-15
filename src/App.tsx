@@ -212,6 +212,11 @@ const ResetDataPage                   = lazy(() => import('@/modules/settings/re
 const SalespeoplePage                 = lazy(() => import('@/modules/settings/salespeople'));
 const AdminDashboardPage              = lazy(() => import('@/modules/admin/admin-dashboard'));
 const RequirePlatformAdmin            = lazy(() => import('@/modules/admin/require-platform-admin'));
+// phase133 — Help & Support (every signed-in user; the inbox checks operator rights)
+const SupportHomePage                 = lazy(() => import('@/modules/support/support-home'));
+const SupportNewPage                  = lazy(() => import('@/modules/support/support-new'));
+const SupportTicketPage               = lazy(() => import('@/modules/support/support-ticket'));
+const SupportInboxPage                = lazy(() => import('@/modules/support/support-inbox'));
 
 function Loading() {
   return (
@@ -290,6 +295,12 @@ function AppRoutes() {
           <Route element={<RequireOnboarded />}>
             <Route element={<WithAppLayout />}>
               <Route path="/dashboard"                element={<DashboardPage />} />
+              {/* phase133 — Help & Support. No module permission: anyone can ask for help.
+                  Tickets are private to their author; the server enforces it. */}
+              <Route path="/support"                  element={<SupportHomePage />} />
+              <Route path="/support/new/:category"    element={<SupportNewPage />} />
+              <Route path="/support/tickets/:id"      element={<SupportTicketPage />} />
+              <Route path="/support/inbox"            element={<SupportInboxPage />} />
               <Route path="/design-system"            element={<DesignSystemPage />} />
               {GlobalSetupWizardPage && <Route path="/dev/global-setup" element={<GlobalSetupWizardPage />} />}
               <Route path="/print-templates"          element={<SignatureTemplateGalleryPage />} />

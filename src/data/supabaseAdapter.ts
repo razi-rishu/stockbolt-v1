@@ -7283,6 +7283,107 @@ export function createSupabaseAdapter(
     },
 
     // ── Payroll P1 (owner override 2026-06-13) ───────────────────────────
+    // phase133 — Help & Support. Reads go through RLS (own tickets, or every
+    // ticket for an operator); every write is a server function that takes
+    // the user and company from the session. Files live in a PRIVATE bucket.
+    support: {
+      async createTicket(input) {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('support_create_ticket', {
+          p_category: input.category, p_subject: input.subject, p_description: input.description,
+          p_module: input.module ?? null, p_contact_preference: input.contact_preference ?? 'in_app',
+          p_client_request_id: input.client_request_id,
+        });
+        if (error) throw new SupabaseDataError(error.message);
+        return data as { id: string; ticket_number: string; duplicate: boolean };
+      },
+      async listMyTickets() {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- table not in generated types yet
+        const { data, error } = await (client.from as unknown as (t: string) => any)('support_tickets').select('*').order('updated_at', { ascending: false }).limit(200);
+        assertNoError(error, 'support.listMyTickets');
+        return (data ?? []) as import('./adapter').SupportTicketRow[];
+      },
+      async getTicket(id) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- table not in generated types yet
+        const { data, error } = await (client.from as unknown as (t: string) => any)('support_tickets').select('*').eq('id', id).maybeSingle();
+        assertNoError(error, 'support.getTicket');
+        return (data ?? null) as import('./adapter').SupportTicketRow | null;
+      },
+      async listMessages(ticket_id) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- table not in generated types yet
+        const { data, error } = await (client.from as unknown as (t: string) => any)('support_messages').select('*').eq('ticket_id', ticket_id).order('created_at').limit(1000);
+        assertNoError(error, 'support.listMessages');
+        return (data ?? []) as import('./adapter').SupportMessageRow[];
+      },
+      async listAttachments(ticket_id) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- table not in generated types yet
+        const { data, error } = await (client.from as unknown as (t: string) => any)('support_attachments').select('*').eq('ticket_id', ticket_id).order('created_at');
+        assertNoError(error, 'support.listAttachments');
+        return (data ?? []) as import('./adapter').SupportAttachmentRow[];
+      },
+      async listActivity(ticket_id) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- table not in generated types yet
+        const { data, error } = await (client.from as unknown as (t: string) => any)('support_activity').select('*').eq('ticket_id', ticket_id).order('created_at');
+        assertNoError(error, 'support.listActivity');
+        return (data ?? []) as import('./adapter').SupportActivityRow[];
+      },
+      async addMessage(ticket_id, message) {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('support_add_message', { p_ticket_id: ticket_id, p_message: message });
+        if (error) throw new SupabaseDataError(error.message);
+        return data as { id: string; status: import('./adapter').SupportStatus };
+      },
+      async uploadAttachment(ticket_id, message_id, file, mime) {
+        const ext = mime === 'application/pdf' ? 'pdf' : mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
+        // The server accepts only '<ticket_id>/<uuid>.<ext>': no user-chosen names in paths.
+        const path = `${ticket_id}/${crypto.randomUUID()}.${ext}`;
+        const up = await client.storage.from('support-attachments').upload(path, file, { contentType: mime, upsert: false });
+        if (up.error) throw new SupabaseDataError(`support.upload: ${up.error.message}`);
+        const { error } = await (client.rpc as unknown as (fn: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('support_register_attachment', {
+          p_ticket_id: ticket_id, p_message_id: message_id, p_storage_path: path,
+          p_filename: file.name, p_mime_type: mime, p_file_size: file.size,
+        });
+        if (error) throw new SupabaseDataError(error.message);
+      },
+      async attachmentUrl(storage_path) {
+        const { data, error } = await client.storage.from('support-attachments').createSignedUrl(storage_path, 300);
+        if (error || !data?.signedUrl) throw new SupabaseDataError(`support.attachmentUrl: ${error?.message ?? 'no url'}`);
+        return data.signedUrl;
+      },
+      async markRead(ticket_id) {
+        const { error } = await (client.rpc as unknown as (fn: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('support_mark_read', { p_ticket_id: ticket_id });
+        if (error) throw new SupabaseDataError(error.message);
+      },
+      async unreadCounts() {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('support_unread_counts');
+        if (error) throw new SupabaseDataError(error.message);
+        const d = (data ?? {}) as { mine?: number; inbox?: number; is_operator?: boolean };
+        return { mine: Number(d.mine ?? 0), inbox: Number(d.inbox ?? 0), is_operator: !!d.is_operator };
+      },
+      async userSetStatus(ticket_id, action) {
+        const { error } = await (client.rpc as unknown as (fn: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('support_user_set_status', { p_ticket_id: ticket_id, p_action: action });
+        if (error) throw new SupabaseDataError(error.message);
+      },
+      async inbox(f) {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('support_inbox', {
+          p_status: f.status || null, p_category: f.category || null, p_priority: f.priority || null,
+          p_search: f.search || null, p_limit: f.limit ?? 50, p_offset: f.offset ?? 0,
+        });
+        if (error) throw new SupabaseDataError(error.message);
+        return (data ?? []) as import('./adapter').SupportInboxRow[];
+      },
+      async operatorUpdate(ticket_id, patch) {
+        const { error } = await (client.rpc as unknown as (fn: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('support_operator_update', {
+          p_ticket_id: ticket_id, p_status: patch.status ?? null, p_priority: patch.priority ?? null,
+          p_assign: !!patch.assign, p_assigned_to: patch.assigned_to ?? null,
+        });
+        if (error) throw new SupabaseDataError(error.message);
+      },
+      async ticketContext(ticket_id) {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('support_ticket_context', { p_ticket_id: ticket_id });
+        if (error) throw new SupabaseDataError(error.message);
+        return data as import('./adapter').SupportTicketContext;
+      },
+    },
+
     // phase129 — staff identity. Server functions only: they scope to the
     // caller's company, check the role permission, and never expose salary.
     staff: {

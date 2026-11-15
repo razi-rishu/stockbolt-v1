@@ -58,6 +58,8 @@ interface NavSection {
   groups?: NavGroup[];
   /** Phase 22 — hide this whole section unless the role has this permission */
   perm?: Permission;
+  /** phase133 — unread count shown on a direct link (Help & Support). */
+  badge?: number;
 }
 
 // ── Icons (18px stroke, Lucide-style) ───────────────────────────────────────
@@ -85,6 +87,7 @@ const InvoicePlusIcon= () => icn(<><rect x="5" y="3" width="14" height="18" rx="
 const BillIcon       = () => icn(<><path d="M6 2.5h12V21l-2.4-1.6L13.2 21l-2.4-1.6L8.4 21 6 19.4V2.5z" /><path d="M9.5 8h5M9.5 12h5" /></>);
 const ReceiptIcon    = () => icn(<><circle cx="12" cy="12" r="9" /><path d="M12 7.5v9M15 10a2 2 0 0 0-2-2h-2.2a1.8 1.8 0 0 0 0 3.6h2.4a1.8 1.8 0 0 1 0 3.6H9" /></>);
 const PaymentIcon    = () => icn(<><rect x="2.5" y="6" width="19" height="13" rx="2" /><path d="M2.5 10h19M6.5 15h4" /></>);
+const SupportIcon    = () => icn(<><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="3.5" /><path d="M5.6 5.6l3.9 3.9M14.5 14.5l3.9 3.9M18.4 5.6l-3.9 3.9M9.5 14.5l-3.9 3.9" /></>);
 const SearchIcon     = () => icn(<><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></>);
 const ChevronDownIcon = ({ className = '' }: { className?: string }) => (
   <svg viewBox="0 0 20 20" fill="currentColor" className={`h-3.5 w-3.5 shrink-0 transition-transform ${className}`}>
@@ -122,6 +125,14 @@ function useNavSections(t: (k: string) => string): NavSection[] {
   // flag, so a bookmarked URL cannot get in either. `perm` is filtered
   // separately below, so this is the module switch, not the permission check.
   const projectsEnabled = useProjectsEnabled();
+  // phase133 — replies waiting for this user (+ the inbox, for an operator).
+  const { data: support } = useQuery({
+    queryKey: ['support', 'unread'],
+    queryFn: () => getAdapter().support.unreadCounts(),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const supportBadge = (support?.mine ?? 0) + (support?.inbox ?? 0);
   return [
     { label: t('nav.dashboard'), to: '/dashboard', icon: <HomeIcon /> },
 
@@ -348,6 +359,9 @@ function useNavSections(t: (k: string) => string): NavSection[] {
         { items: [{ to: '/contacts/suppliers', label: t('nav.suppliers') }], perm: 'purchasing.read' },
       ],
     },
+
+    // phase133 — every signed-in user can reach the StockBolt team.
+    { label: t('support.nav'), to: '/support', icon: <SupportIcon />, badge: supportBadge },
   ];
 }
 
@@ -377,6 +391,7 @@ function SidebarSection({
       >
         <span className="sb-side-ico">{section.icon}</span>
         <span className="sb-side-label">{section.label}</span>
+        {!!section.badge && <span className="sb-support-count" aria-label={String(section.badge)}>{section.badge}</span>}
       </NavLink>
     );
   }
