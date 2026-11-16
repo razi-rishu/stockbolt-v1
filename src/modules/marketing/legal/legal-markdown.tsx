@@ -71,6 +71,11 @@ export function LegalMarkdown({ source }: { source: string }) {
     }
     const para: string[] = [];
     while (i < lines.length && lines[i].trim() && !/^(#|>|- |\||---)/.test(lines[i])) { para.push(lines[i]); i++; }
+    // A block of "**Field:** value" lines (the document header) keeps one field per line.
+    if (para.length > 1 && para.every((l) => /^\*\*[^*]+:\*\*/.test(l))) {
+      blocks.push(<p key={k}>{para.flatMap((l, n) => [...(n ? [<br key={`${k}br${n}`} />] : []), ...inline(l, `${k}-${n}`)])}</p>);
+      continue;
+    }
     blocks.push(<p key={k}>{inline(para.join(' '), k)}</p>);
   }
   return <>{blocks}</>;

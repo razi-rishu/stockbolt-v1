@@ -49,7 +49,9 @@ export function AgreementScreen() {
   const [showOptions, setShowOptions] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const owed: LegalDocumentStatus[] = (status?.documents ?? []).filter((d) => d.requires_acceptance && !d.accepted);
+  // Terms first, then Privacy — the order the checkboxes below follow.
+  const owed: LegalDocumentStatus[] = (status?.documents ?? []).filter((d) => d.requires_acceptance && !d.accepted)
+    .sort((a, b) => (a.doc_type === 'terms' ? -1 : b.doc_type === 'terms' ? 1 : 0));
   const needs = (d: LegalDocType) => owed.some((o) => o.doc_type === d);
   // This build must display exactly the text the server has published.
   const outdated = !!local && owed.some((o) => local[o.doc_type] !== o.sha256);
