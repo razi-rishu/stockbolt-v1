@@ -50,7 +50,7 @@ async function tenant(country: 'SA' | 'BH' | 'IN' | 'KW'): Promise<T> {
   const india = country === 'IN', currency = CURRENCY[country];
   const { company_id } = await runOnboarding({
     company_name: PREFIX + country, company_name_ar: '', address: '', full_name: 'TI Owner', country_code: country,
-    is_tax_registered: country !== 'KW', tax_id: india ? '32AAACB1234F1Z5' : country === 'KW' ? '' : '300000000000003',
+    is_tax_registered: country !== 'KW', tax_id: india ? '32AAACB1234F1ZI' : country === 'KW' ? '' : '300000000000003',
     currency, fiscal_year_start: india ? '2026-04-01' : '2026-01-01',
     warehouse_name: 'Main', warehouse_name_ar: 'رئيسي', warehouse_code: 'MAIN', load_sample_data: false,
   }, adapter);

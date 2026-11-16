@@ -38,6 +38,11 @@ const rates: Record<string, { name: string; rate: number; tax_type: string }[]> 
 const accounts: Record<string, string[]> = {};
 const registered: Record<string, { is_tax_registered: boolean | null; tax_id: string | null }> = {};
 let seq = 0;
+/** Format-valid sample registration numbers (not real businesses). KW / QA: none. */
+const SAMPLE_TAX_ID: Record<string, string> = {
+  AE: '100000000000003', SA: '300000000000003', BH: '200000000000003',
+  OM: 'OM1100000001', IN: '27AAPFU0939F1ZV',
+};
 
 async function onboard(country: string): Promise<void> {
   const email = `cr-${Date.now()}-${seq++}@stockbolt.test`, password = 'CountryRates!pass';
@@ -50,7 +55,8 @@ async function onboard(country: string): Promise<void> {
   const { company_id } = await runOnboarding({
     company_name: PREFIX + country, company_name_ar: '', address: '', full_name: 'CR Owner', country_code: country,
     // Ask for registration everywhere: KW / QA must refuse it (decision 1).
-    is_tax_registered: true, tax_id: 'TRN-TEST-' + country, currency: CURRENCY[country],
+    // A well-formed number per country (phase132 validates the format).
+    is_tax_registered: true, tax_id: SAMPLE_TAX_ID[country] ?? 'TRN-TEST-' + country, currency: CURRENCY[country],
     fiscal_year_start: country === 'IN' ? '2026-04-01' : '2026-01-01',
     warehouse_name: 'Main', warehouse_name_ar: 'رئيسي', warehouse_code: 'MAIN', load_sample_data: false,
   }, ad);

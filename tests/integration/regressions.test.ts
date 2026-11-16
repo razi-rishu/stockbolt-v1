@@ -8642,3 +8642,57 @@ describe('Phase 133 — Help & Support (soft until applied)', () => {
     expect(bad, 'user messages must come from the ticket author').toHaveLength(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 134 — write-permission gaps (2026-11-15 audit)
+//
+// Every client-writable table needs a permission rule on writes, not just
+// "same company". Posting functions run as ledger_writer (a member of
+// authenticated), so the direct-write rules test current_user.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 134 — write-permission gaps (soft until applied)', () => {
+  const applied = async (): Promise<boolean> => {
+    const r = await sql<{ ok: boolean }>(`SELECT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'document_sequences_guard') AS ok`);
+    return !!r[0]?.ok;
+  };
+
+  it('phase134: no client-writable table is guarded by "same company" alone', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ phase134 not applied yet — run supabase/migrations/20261115000008_phase134_write_permission_gaps.sql.');
+      return;
+    }
+    // A table a signed-in user can write, whose permissive write policy has no
+    // permission check, must carry a RESTRICTIVE write policy that does.
+    const open = await sql<{ relname: string }>(`
+      SELECT c.relname FROM pg_class c
+       WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r' AND c.relrowsecurity
+         AND (has_table_privilege('authenticated', c.oid, 'INSERT') OR has_table_privilege('authenticated', c.oid, 'UPDATE')
+              OR has_table_privilege('authenticated', c.oid, 'DELETE'))
+         AND EXISTS (SELECT 1 FROM pg_policies p WHERE p.schemaname = 'public' AND p.tablename = c.relname
+                      AND p.permissive = 'PERMISSIVE' AND p.cmd IN ('INSERT','UPDATE','DELETE','ALL')
+                      AND coalesce(p.qual,'') || coalesce(p.with_check,'') !~ 'has_perm|has_any_write|auth_require|is_platform_admin|is_support_operator|auth\.uid\(\)')
+         AND NOT EXISTS (SELECT 1 FROM pg_policies r WHERE r.schemaname = 'public' AND r.tablename = c.relname
+                          AND r.permissive = 'RESTRICTIVE' AND r.cmd IN ('INSERT','UPDATE','DELETE','ALL')
+                          AND coalesce(r.qual,'') || coalesce(r.with_check,'') ~ 'has_perm|has_any_write')
+         AND c.relname NOT IN ('audit_logs')   -- insert-only, as yourself (checked below)
+       ORDER BY 1`);
+    expect(open.map(r => r.relname), 'tables writable by any company user').toEqual([]);
+  });
+
+  it('phase134: audit entries can only be written as yourself', async () => {
+    if (!(await applied())) return;
+    const p = await sql<{ chk: string }>(`SELECT with_check AS chk FROM pg_policies WHERE tablename = 'audit_logs' AND policyname = 'audit_logs_insert'`);
+    expect(p[0]?.chk ?? '').toMatch(/auth\.uid\(\)/);
+  });
+
+  it('phase134: update_payment_draft checks the caller and is closed to anon', async () => {
+    if (!(await applied())) return;
+    const r = await sql<{ anon: boolean; guarded: boolean; helper: boolean }>(`
+      SELECT has_function_privilege('anon', 'public.update_payment_draft(uuid,jsonb,jsonb)', 'EXECUTE') AS anon,
+             pg_get_functiondef('public.update_payment_draft(uuid,jsonb,jsonb)'::regprocedure) ~ 'auth_require' AS guarded,
+             has_function_privilege('authenticated', 'public._recompute_payment_allocation_status(uuid)', 'EXECUTE') AS helper`);
+    expect(r[0].anon).toBe(false);
+    expect(r[0].guarded).toBe(true);
+    expect(r[0].helper).toBe(false);
+  });
+});

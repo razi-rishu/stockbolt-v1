@@ -61,7 +61,7 @@ async function tenant(name: string, country: 'IN' | 'AE'): Promise<T> {
   const { company_id } = await runOnboarding({
     company_name: PREFIX + name, company_name_ar: '', address: '', full_name: 'GST Owner', country_code: country,
     // Kerala GSTIN: the first two digits (32) are the supplier's state code.
-    is_tax_registered: true, tax_id: india ? '32AAACB1234F1Z5' : '100123456700003', currency,
+    is_tax_registered: true, tax_id: india ? '32AAACB1234F1ZI' : '100123456700003', currency,
     fiscal_year_start: india ? '2026-04-01' : '2026-01-01',
     warehouse_name: 'Main', warehouse_name_ar: 'رئيسي', warehouse_code: 'MAIN', load_sample_data: false,
   }, adapter);

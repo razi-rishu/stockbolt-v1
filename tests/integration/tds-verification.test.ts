@@ -96,7 +96,7 @@ async function createScratch(countryCode: 'IN' | 'AE' = 'IN'): Promise<Scratch> 
     address: countryCode === 'IN' ? 'Mumbai' : 'Dubai',
     country_code: countryCode,
     is_tax_registered: true,
-    tax_id: countryCode === 'IN' ? '27ABCDE1234F1Z5' : '100000000000003',
+    tax_id: countryCode === 'IN' ? '27ABCDE1234F1Z0' : '100000000000003',
     currency: countryCode === 'IN' ? 'INR' : 'AED',
     fiscal_year_start: '2025-04-01',
     warehouse_name: 'Main',
