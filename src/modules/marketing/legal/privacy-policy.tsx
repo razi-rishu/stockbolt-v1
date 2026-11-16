@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom';
+import { LEGAL_DOCS_PUBLISHED } from '@/lib/legal';
+import { LegalDocument } from './legal-document';
 import { OPERATOR_NAME, SUPPORT_EMAIL } from '@/lib/legal';
 import { LegalLayout } from './legal-layout';
 
@@ -9,6 +11,9 @@ import { LegalLayout } from './legal-layout';
  * provider), update this page and LEGAL_UPDATED in the same change.
  */
 export default function PrivacyPolicyPage() {
+  // phase135 — the corrected policy (docs/legal/privacy-policy.md) replaces
+  // this page once it is approved and published.
+  if (LEGAL_DOCS_PUBLISHED) return <LegalDocument doc="privacy" title="Privacy Policy" />;
   return (
     <LegalLayout title="Privacy Policy">
       <p>

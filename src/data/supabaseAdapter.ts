@@ -7283,6 +7283,29 @@ export function createSupabaseAdapter(
     },
 
     // ── Payroll P1 (owner override 2026-06-13) ───────────────────────────
+    // phase135 — Terms / Privacy agreement. The server decides what is owed
+    // and records acceptance only for the caller and the current versions.
+    legal: {
+      async status() {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('legal_status');
+        if (error) throw new SupabaseDataError(`legal.status: ${error.message}`);
+        return data as import('./adapter').LegalStatus;
+      },
+      async accept(items, opts) {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('accept_legal', {
+          p_items: items, p_on_behalf_of_company: opts.onBehalfOfCompany,
+          p_platform: opts.platform, p_app_version: opts.appVersion ?? null,
+        });
+        if (error) throw new SupabaseDataError(error.message);
+        return data as import('./adapter').LegalStatus;
+      },
+      async decline(opts) {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('decline_legal', { p_platform: opts.platform, p_app_version: opts.appVersion ?? null });
+        if (error) throw new SupabaseDataError(error.message);
+        return data as import('./adapter').LegalStatus;
+      },
+    },
+
     // phase133 — Help & Support. Reads go through RLS (own tickets, or every
     // ticket for an operator); every write is a server function that takes
     // the user and company from the session. Files live in a PRIVATE bucket.

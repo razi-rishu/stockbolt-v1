@@ -610,6 +610,11 @@ export function createSelfHostedAdapter(): DataAdapter {
       update:      () => notImplemented('employees.update'),
       getNextCode: () => notImplemented('employees.getNextCode'),
     },
+    legal: {
+      status:  () => notImplemented('legal.status'),
+      accept:  () => notImplemented('legal.accept'),
+      decline: () => notImplemented('legal.decline'),
+    },
     support: {
       createTicket: () => notImplemented('support.createTicket'),
       listMyTickets: () => notImplemented('support.listMyTickets'),

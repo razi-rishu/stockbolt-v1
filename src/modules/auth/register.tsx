@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { recordSignupAcceptance } from '@/modules/legal/record-signup-acceptance';
+import { LegalLink } from '@/components/legal-link';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -92,6 +94,9 @@ export default function RegisterPage() {
         last_name: values.last_name.trim(),
       });
       set_session({ user_id, email: values.email });
+      // phase135 — the ticked Terms box is recorded on the server when a
+      // session exists now; otherwise the agreement screen asks at first sign-in.
+      await recordSignupAcceptance();
       setEmailSent(true);
     } catch (err) {
       setServerError(err instanceof Error ? err.message : t('auth.error.generic'));
@@ -241,9 +246,10 @@ export default function RegisterPage() {
               <input type="checkbox" className="mt-0.5 h-4 w-4 rounded accent-[#008F87]" {...register('agree')} />
               <span>
                 {t('auth.register.agree_pre')}{' '}
-                <span className="font-medium text-[#008F87]">{t('auth.register.terms')}</span>{' '}
+                {/* phase135 — real links to the full documents (they open beside the form). */}
+                <LegalLink to="/terms" className="font-medium text-[#008F87] underline">{t('auth.register.terms')}</LegalLink>{' '}
                 {t('auth.register.and')}{' '}
-                <span className="font-medium text-[#008F87]">{t('auth.register.privacy')}</span>
+                <LegalLink to="/privacy" className="font-medium text-[#008F87] underline">{t('auth.register.privacy')}</LegalLink>
               </span>
             </label>
             {errors.agree && <p className="text-xs text-danger-600">{errors.agree.message}</p>}

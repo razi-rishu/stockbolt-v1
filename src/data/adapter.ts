@@ -3449,6 +3449,7 @@ export interface DataAdapter {
   employees: EmployeesAPI;
   staff: StaffAPI;
   support: SupportAPI;
+  legal: LegalAPI;
   payroll: PayrollAPI;
   // Document numbering settings (2026-06-13)
   documentSequences: DocumentSequencesAPI;
@@ -3619,6 +3620,23 @@ export interface PayrollAPI {
   /** Posts Dr 6100 / Cr bank and marks the record paid. */
   payLeaveSalary(id: string): Promise<{ je_id: string; entry_number: string }>;
   removeLeaveSalary(id: string): Promise<void>;
+}
+
+// ── phase135 — Terms / Privacy agreement ───────────────────────────────────
+export type LegalDocType = 'terms' | 'privacy';
+export interface LegalDocumentStatus {
+  doc_type: LegalDocType; version: string; sha256: string; effective_at: string;
+  requires_acceptance: boolean; change_summary_en: string | null; change_summary_ar: string | null;
+  accepted: boolean; declined: boolean;
+}
+export interface LegalStatus { enforcement: boolean; documents: LegalDocumentStatus[]; all_accepted: boolean }
+export interface LegalAPI {
+  /** What the signed-in user still owes (server-computed). */
+  status(): Promise<LegalStatus>;
+  /** Record acceptance of exactly these versions/fingerprints, for the caller only. */
+  accept(items: { doc_type: LegalDocType; version: string; sha256: string }[],
+         opts: { onBehalfOfCompany: boolean; platform: 'web' | 'android' | 'unknown'; appVersion?: string | null }): Promise<LegalStatus>;
+  decline(opts: { platform: 'web' | 'android' | 'unknown'; appVersion?: string | null }): Promise<LegalStatus>;
 }
 
 // ── phase133 — Help & Support Center ───────────────────────────────────────

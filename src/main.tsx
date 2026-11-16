@@ -5,6 +5,7 @@ import App from './App';
 import { setupI18n } from './i18n/config';
 import { installGlobalErrorHandlers } from './lib/error-reporting';
 import { installNativeOverrides } from './native/install';
+import './styles/fonts';
 import './index.css';
 
 const queryClient = new QueryClient({

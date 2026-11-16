@@ -331,6 +331,7 @@ function MenuSheet({
 
         {/* Google Play requires the privacy policy and account deletion to be reachable in the app. */}
         <div className="sb-menu-legal mt-3 flex flex-wrap justify-center gap-x-5 gap-y-1">
+          <Link to="/terms" onClick={onClose}>{tr('appNav.terms')}</Link>
           <Link to="/privacy" onClick={onClose}>{tr('appNav.privacy')}</Link>
           <Link to="/delete-account" onClick={onClose}>{tr('appNav.delete_account')}</Link>
         </div>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { LegalLink } from '@/components/legal-link';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -192,6 +193,12 @@ export default function LoginPage() {
         </div>
 
         <SafeNote text={t('auth.safe_note')} />
+
+        {/* phase135 — the documents are reachable before signing in. */}
+        <p className="flex justify-center gap-4 text-xs text-ink-secondary">
+          <LegalLink to="/terms" className="underline">{t('legal.terms')}</LegalLink>
+          <LegalLink to="/privacy" className="underline">{t('legal.privacy')}</LegalLink>
+        </p>
       </div>
     </AuthShell>
   );

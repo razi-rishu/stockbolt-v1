@@ -1,4 +1,38 @@
 {
+  "legal": {
+    "heading": "Updated Terms & Privacy Policy",
+    "intro": "Please review the documents below. To keep using StockBolt to create or change records, accept the updated Terms.",
+    "nothing_owed": "You're up to date — there is nothing to accept.",
+    "continue": "Continue",
+    "terms": "Terms of Service",
+    "privacy": "Privacy Policy",
+    "version_effective": "Version {{version}}, effective {{date}}",
+    "read_full": "Read the full {{doc}}",
+    "agree_terms": "I have read and agree to the Terms of Service.",
+    "ack_privacy": "I have read the Privacy Policy.",
+    "for_company": "I am authorised to accept these Terms on behalf of {{company}}.",
+    "agree_continue": "Agree & Continue",
+    "saving": "Saving…",
+    "other_options": "Decline / other options",
+    "logout": "Log out",
+    "options_intro": "If you don't accept, your account and records stay as they are. You can still:",
+    "opt_export": "Download a copy of your company's data",
+    "opt_support": "Contact StockBolt support",
+    "opt_delete": "Request account deletion",
+    "opt_privacy": "Read the Privacy Policy",
+    "decline": "Decline the updated Terms",
+    "confirm_decline": "Decline the updated Terms? Your account and records are not deleted, but you won't be able to create or change records until you accept.",
+    "declined_note": "You declined the updated Terms. Your account and records are unchanged. You can accept at any time to continue working.",
+    "outdated_app": "This version of the app shows an older copy of these documents. Update the app (or reload the page) to review the current version.",
+    "reload": "Reload",
+    "err_save": "Your choice couldn't be saved. Check your connection and try again.",
+    "err_stale": "The documents were just updated. Please review the current version.",
+    "signed_in_as": "Signed in as {{email}}",
+    "banner_review": "We've updated our Terms of Service and Privacy Policy. Please review them.",
+    "banner_required": "Accept the updated Terms of Service to keep creating or changing records.",
+    "review": "Review",
+    "dismiss": "Dismiss"
+  },
   "support": {
     "nav": "Help & Support",
     "title": "Help & Support",
@@ -2396,6 +2430,7 @@
     "docs_none_debit_notes": "No debit notes yet."
   },
   "appNav": {
+    "terms": "Terms",
     "main": "Main navigation",
     "home": "Home",
     "sales": "Sales",
@@ -3966,6 +4001,7 @@
       "button": "Get Started Free"
     },
     "footer": {
+      "terms": "Terms of Service",
       "about": "Accounting and business management for startups and small businesses.",
       "product": "Product",
       "account": "Account",

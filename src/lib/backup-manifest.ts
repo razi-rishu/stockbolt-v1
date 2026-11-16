@@ -124,6 +124,22 @@ export const BACKUP_TABLES: readonly string[] = [
   'subscription_history',
   'attachments',
   'audit_logs',
+
+  // ── Added 2026-11 (tables created after this list was last updated) ───
+  'branches',
+  'profile_branches',
+  'company_configurations',
+  'fixed_asset_purchases',
+
+  // ── Help & Support / agreements (phase133, phase135) ──────────────────
+  // RLS limits these to the EXPORTING user's own rows: an administrator's
+  // backup holds their own support requests and agreement history, never a
+  // colleague's private ticket.
+  'support_tickets',
+  'support_messages',
+  'support_attachments',
+  'support_activity',
+  'legal_events',
 ] as const;
 
 /**
@@ -157,6 +173,11 @@ export const BACKUP_UNSCOPED: ReadonlySet<string> = new Set([
   'expense_items',
   'stock_transfer_items',
   'inventory_adjustment_items',
+  // Scoped through their ticket / the user (RLS), no company_id column.
+  'support_messages',
+  'support_attachments',
+  'support_activity',
+  'legal_events',
 ]);
 
 /**
@@ -185,4 +206,12 @@ export const BACKUP_EXCLUSIONS: Readonly<Record<string, string>> = {
 
   // A request log, not a business record; can dwarf the real data.
   api_request_log:         'API access log, not business data',
+
+  // Platform-owned (phase133, phase135).
+  support_operators:       'StockBolt support staff list, not tenant data',
+  legal_documents:         'our published legal documents, identical for every tenant',
+  legal_settings:          'platform enforcement switch, not tenant data',
+
+  // A half-finished setup wizard, replaced as soon as setup completes.
+  setup_drafts:            'transient setup-wizard draft, not business records',
 } as const;

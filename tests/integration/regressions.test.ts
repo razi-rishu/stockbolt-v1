@@ -8696,3 +8696,40 @@ describe('Phase 134 — write-permission gaps (soft until applied)', () => {
     expect(r[0].helper).toBe(false);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 135 — Terms / Privacy agreement (enforcement OFF until approved)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 135 — legal agreements (soft until applied)', () => {
+  const applied = async (): Promise<boolean> => {
+    const r = await sql<{ ok: boolean }>(`SELECT to_regclass('public.legal_events') IS NOT NULL AS ok`);
+    return !!r[0]?.ok;
+  };
+
+  it('phase135: history is append-only and not client-writable; documents/settings read-only', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ phase135 not applied yet — run supabase/migrations/20261116000001_phase135_legal_agreements.sql.');
+      return;
+    }
+    for (const t of ['legal_events', 'legal_documents', 'legal_settings']) {
+      const r = await sql<{ w: boolean }>(`SELECT has_table_privilege('authenticated', 'public.${t}', 'INSERT')
+        OR has_table_privilege('authenticated', 'public.${t}', 'UPDATE') OR has_table_privilege('authenticated', 'public.${t}', 'DELETE') AS w`);
+      expect(r[0].w, `${t} must not be client-writable`).toBe(false);
+    }
+    const tg = await sql<{ n: number }>(`SELECT count(*)::int AS n FROM pg_trigger WHERE tgname IN ('legal_events_append_only','legal_posting_guard')`);
+    expect(tg[0].n).toBe(3);   // append-only + journal_entries + stock_ledger guards
+  });
+
+  it('phase135: has_perm consults legal_write_allowed for write permissions', async () => {
+    if (!(await applied())) return;
+    const r = await sql<{ ok: boolean }>(`SELECT pg_get_functiondef('public.has_perm(text)'::regprocedure) LIKE '%legal_write_allowed%' AS ok`);
+    expect(r[0].ok).toBe(true);
+  });
+
+  it('phase135: enforcement state is reported (never silently on)', async () => {
+    if (!(await applied())) return;
+    const r = await sql<{ enforcement: boolean; docs: number }>(`SELECT enforcement, (SELECT count(*)::int FROM legal_documents WHERE published) AS docs FROM legal_settings WHERE id = 1`);
+    if (r[0].enforcement) console.warn(`⚠ Terms enforcement is ON (${r[0].docs} published documents)`);
+    expect(r[0].enforcement && r[0].docs === 0, 'enforcement on with nothing published locks nobody but is a misconfiguration').toBe(false);
+  });
+});

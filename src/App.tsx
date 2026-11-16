@@ -24,6 +24,8 @@ import { ChevronLeft, SearchX } from 'lucide-react';
 const LandingPage       = lazy(() => import('@/modules/marketing/landing-page'));
 const PrivacyPolicyPage = lazy(() => import('@/modules/marketing/legal/privacy-policy'));
 const DeleteAccountPage = lazy(() => import('@/modules/marketing/legal/delete-account'));
+const TermsOfServicePage = lazy(() => import('@/modules/marketing/legal/terms-of-service'));
+const AgreementPage      = lazy(() => import('@/modules/legal/agreement-screen'));
 
 // Auth routes
 const LoginPage          = lazy(() => import('@/modules/auth/login'));
@@ -280,6 +282,8 @@ function AppRoutes() {
           <Route element={<RequireNotOnboarded />}>
             <Route path="/setup" element={<SetupWizardPage />} />
           </Route>
+          {/* phase135 — review / accept updated Terms: every signed-in user, before or after onboarding. */}
+          <Route path="/legal/accept" element={<AgreementPage />} />
 
           {/* Phase 22 — invited teammates accept here (no tenant chrome). */}
           <Route path="/accept-invite" element={<AcceptInvitePage />} />
@@ -532,6 +536,7 @@ function AppRoutes() {
         <Route path="/" element={<LandingGateway />} />
         <Route path="/landing" element={<LandingPage />} />
         {/* Public legal pages — no login; Google Play links to both. */}
+        <Route path="/terms" element={<TermsOfServicePage />} />
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
         <Route path="/delete-account" element={<DeleteAccountPage />} />
         {/* Phase 14.12 — catch-all now shows a visible 404 instead of

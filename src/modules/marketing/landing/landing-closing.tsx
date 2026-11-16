@@ -92,6 +92,7 @@ export function LandingFooter() {
       { label: t('landing.footer.sign_up'), to: '/register' },
     ] },
     { title: t('landing.footer.legal'), links: [
+      { label: t('landing.footer.terms'), to: '/terms' },
       { label: t('landing.footer.privacy'), to: '/privacy' },
       { label: t('landing.footer.delete_account'), to: '/delete-account' },
     ] },

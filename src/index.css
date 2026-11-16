@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* ── Inter font — Option B design system ──────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+/* Inter is self-hosted: src/styles/fonts.ts */
 
 /*
  * ── Glassmorphism container boxes ─────────────────────────────────────────
@@ -549,3 +549,17 @@ h1.text-xl.font-semibold.text-ink-primary + p.text-sm.text-ink-secondary {
   /* Floating buttons sit above the bottom tabs. */
   html.app-shell .app-fab { bottom: calc(84px + env(safe-area-inset-bottom)) !important; }
 }
+
+/* ── phase135 — public legal documents (/terms, /privacy) ─────────────────── */
+.legal-body h3 { margin-top: 1.25rem; font-weight: 600; color: #111827; }
+.legal-body ul { padding-inline-start: 0; }
+.legal-body blockquote {
+  border-inline-start: 4px solid #F59E0B; background: #FFFBEB; color: #111827;
+  padding: 0.75rem 1rem; border-radius: 8px;
+}
+.legal-body code { font-size: 0.85em; background: #F3F4F6; padding: 0 4px; border-radius: 4px; overflow-wrap: anywhere; }
+.legal-body .legal-table { overflow-x: auto; }
+.legal-body table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.legal-body th, .legal-body td { border: 1px solid #E5E7EB; padding: 6px 10px; text-align: start; vertical-align: top; }
+.legal-body th { background: #F9FAFB; font-weight: 600; }
+.legal-body :target { scroll-margin-top: 16px; }
