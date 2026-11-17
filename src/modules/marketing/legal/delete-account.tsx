@@ -38,14 +38,13 @@ export default function DeleteAccountPage() {
       <ul>
         <li>Your login: name, email address and password, and the link to Google sign-in if you used it.</li>
         <li>If you are the company owner: the company and all its records — customers, suppliers, products, stock, invoices, bills, payments, accounting entries, payroll data — and uploaded files such as logos and product images.</li>
-        <li>If you are a team member of someone else’s company: only your own login. The company’s records belong to its owner and stay with them.</li>
+        <li>If you are a team member of someone else’s company: your login, name and email address. The company’s records belong to its owner and stay with them, marked as created by a deleted user.</li>
       </ul>
 
-      <h2>What may be kept</h2>
+      <h2>What is kept</h2>
       <p>
-        Information the law requires us to keep (for example payment records needed for tax) may be kept for the period
-        the law requires. Copies in encrypted backups expire on their normal schedule. Nothing is kept for any other
-        purpose.
+        Nothing. When a company is deleted we keep no copy of its records. We do not currently keep separate backups,
+        so a deletion cannot be undone.
       </p>
 
       <h2>Before you delete</h2>

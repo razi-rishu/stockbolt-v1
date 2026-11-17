@@ -17,7 +17,7 @@ export default function PrivacyPolicyPage() {
   return (
     <LegalLayout title="Privacy Policy">
       <p>
-        StockBolt is an accounting and inventory system for auto-parts businesses, available at{' '}
+        StockBolt is an accounting and business management service for startups, entrepreneurs and small businesses, available at{' '}
         <a href="https://www.stockbolt.online">stockbolt.online</a> and as the StockBolt Android app. It is
         operated by {OPERATOR_NAME} (“we”, “us”). This policy explains what information StockBolt handles, why,
         and the choices you have. The website and the Android app use the same account and the same data.
@@ -28,6 +28,7 @@ export default function PrivacyPolicyPage() {
         <li><strong>Account information</strong> — your name, email address and password (stored only as a secure hash by our authentication provider). If you sign in with Google, we receive your name and email address from Google.</li>
         <li><strong>Business records you enter</strong> — your company profile, customers and suppliers (names, contact details, tax numbers), products and stock, quotes, invoices, bills, payments, bank accounts, accounting entries and, if you use payroll, employee details. You decide what you enter; we process it only to provide StockBolt to you.</li>
         <li><strong>Files you upload</strong> — company logos, product images and import files.</li>
+        <li><strong>Support requests</strong> — the subject, messages and any screenshots or files you send through Help &amp; Support.</li>
         <li><strong>Technical information</strong> — the sign-in session kept on your device so you stay logged in, and standard server logs (such as IP address and request time) kept by our hosting providers for security and reliability.</li>
       </ul>
       <p>We do not use advertising, we do not use third-party analytics or tracking, and we do not sell your information.</p>
@@ -45,8 +46,9 @@ export default function PrivacyPolicyPage() {
       <ul>
         <li><strong>Supabase</strong> — database, sign-in and file storage.</li>
         <li><strong>Vercel</strong> — website hosting.</li>
+        <li><strong>Cloudflare</strong> — delivering the website securely and receiving email sent to our addresses.</li>
         <li><strong>Google</strong> — “Sign in with Google”, if you choose it.</li>
-        <li><strong>PayPal</strong> — subscription payments made on the website. Card and bank details are entered with PayPal; we never see or store them.</li>
+        <li><strong>PayPal</strong> — subscription payments, when paid plans start. Card and bank details are entered with PayPal; we never see or store them.</li>
       </ul>
       <p>Documents you choose to share (for example an invoice PDF sent through WhatsApp or email) go to the app and the people you pick.</p>
 
@@ -65,10 +67,13 @@ export default function PrivacyPolicyPage() {
 
       <h2>How long we keep it</h2>
       <p>
-        We keep your information while your account is active. When an account is deleted we remove its information
-        within 30 days, except where the law requires us to keep something for longer (for example records needed to
-        resolve a dispute or for tax purposes), and except copies in encrypted backups, which expire on their normal
-        schedule.
+        We keep your information while your account is active. When a company is deleted at the owner’s request we
+        remove all of its information within 30 days and keep no copy.
+      </p>
+      <p>
+        We do not currently keep separate backups of the database, so records that are deleted — by you, or through
+        an error or a failure — may not be recoverable. Download a copy of your company’s records regularly
+        (Settings → Import / Export → Download my data).
       </p>
 
       <h2>Your choices and rights</h2>

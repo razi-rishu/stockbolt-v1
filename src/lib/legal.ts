@@ -15,7 +15,7 @@ export const SUPPORT_EMAIL = 'rashidpattaratil333@gmail.com';
 export const LEGAL_DOCS_PUBLISHED = false;
 
 /** Shown as "Last updated" on the legal pages; bump when their text changes. */
-export const LEGAL_UPDATED = '29 October 2026';
+export const LEGAL_UPDATED = '17 November 2026';
 
 /** Prefilled email for an account-deletion request. */
 export function deletionRequestMailto(accountEmail?: string | null): string {

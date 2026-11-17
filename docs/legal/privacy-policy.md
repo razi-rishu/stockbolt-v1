@@ -1,14 +1,15 @@
 # StockBolt Privacy Policy
 
-> **DRAFT — not for publication.** Corrected against the StockBolt codebase on 2026-11-15.
-> Every `[FOUNDER: …]` item must be confirmed by the founder, and the text must be
-> reviewed by a qualified lawyer (including which privacy laws apply) before it is
-> published. Nothing here is legal advice.
+> **DRAFT — not for publication.** Updated with the founder's details on 2026-11-17.
+> Before publication: the `[LAWYER: …]` items need legal advice, the remaining
+> `[FOUNDER: …]` items need an answer, linqora@stockbolt.online must be able to
+> receive email, and a qualified lawyer must review the whole text.
+> Nothing here is legal advice.
 
 **Version:** 1.0
-**Effective date:** [FOUNDER: date]
-**Operator and data controller:** [FOUNDER: full legal name of the individual], an individual. StockBolt is not currently incorporated as a company.
-**Privacy contact:** [FOUNDER: email address]
+**Effective date:** [FOUNDER: date — at least 30 days after publication]
+**Operator and data controller:** Linqora Technologies, the business name under which StockBolt's founder operates it from India. Registration of the business is in progress; until it is complete, StockBolt is run by the founder as an individual. [LAWYER: confirm how the operator must be identified under Indian law, including whether the founder's name must appear.]
+**Privacy contact:** linqora@stockbolt.online
 **Website:** https://www.stockbolt.online
 
 ---
@@ -32,8 +33,11 @@ StockBolt is an accounting and business management service for startups, entrepr
 
 These records often contain personal information about your customers, suppliers and employees. Your business decides what to enter and is responsible for having the right to do so.
 
-**Support requests** [FOUNDER: keep this paragraph only once Help & Support is live]
+**Support requests**
 - The subject, description, messages and any screenshots or files you send through Help & Support.
+
+**Your agreement to our Terms and this policy**
+- When you accept, acknowledge or decline our Terms of Service or this policy, we record who you are (your account), which document and version, a fingerprint of the exact text you were shown, the time, and whether you used the website or the Android app (with the app version). If a company administrator accepts on behalf of the company, we also record the company and their role.
 
 **Technical information**
 - Our hosting providers keep standard server logs, such as IP address, time and request details, for security and reliability.
@@ -44,10 +48,11 @@ These records often contain personal information about your customers, suppliers
 - To store and show your company's records, produce documents and reports, and apply the permissions your administrator sets.
 - To keep each company's records separate from every other company's.
 - To answer support requests.
+- To keep a record of which version of our Terms and this policy you agreed to.
 - To prevent abuse and keep the service running.
 - To meet legal obligations.
 
-[LAWYER: state the legal basis for each purpose under the laws that apply.]
+[LAWYER: state the legal basis for each purpose under the laws that apply, including India's Digital Personal Data Protection Act.]
 
 We do not use your information for advertising, we do not use third-party analytics or tracking, and we do not sell your information.
 
@@ -65,11 +70,13 @@ We use these providers only to run StockBolt:
 |---|---|---|
 | **Supabase** | Database, sign-in and file storage | All account and business data, files |
 | **Vercel** | Hosting the website and app | Requests to the site, server logs |
+| **Cloudflare** | Delivering the website securely (network and domain services) and receiving email sent to our addresses | Requests to the site, including IP address; emails you send us |
 | **Google** | “Sign in with Google” (optional) | Name, email |
-| **Google Fonts** [FOUNDER: remove if fonts are self-hosted before publication] | Loading the website's fonts | Your IP address and browser details, sent to Google when a page loads |
 | **Google Play** | Installing and updating the Android app | Handled by Google under its own terms |
 | [FOUNDER: email provider — Supabase's built-in email, or your own] | Sending sign-in, password-reset and invitation emails | Email address |
-| **PayPal** [FOUNDER: keep only once payments are live] | Processing payments | Payment details are entered with PayPal; we do not receive or store card or bank login details |
+| **PayPal** (when paid plans start) | Processing payments | Payment details are entered with PayPal; we do not receive or store card or bank login details |
+
+The website and app use their own copies of their fonts; your browser does not contact a font service when a page loads.
 
 **Integrations your business sets up.** A company administrator can create API keys that let another system read or send that company's records. Data shared that way goes where the administrator directs it.
 
@@ -77,7 +84,7 @@ We use these providers only to run StockBolt:
 
 ## 6. Where your data is stored
 
-Your data is stored and processed by the providers above in [FOUNDER: Supabase project region, e.g. from Supabase dashboard → Project settings] and [FOUNDER: Vercel region]. This may be outside your own country. [LAWYER: cross-border transfer wording and safeguards required by the applicable laws.]
+Your account and business data, and your files, are stored by Supabase in Asia. The website is delivered through Vercel and Cloudflare, whose networks operate in many countries; [FOUNDER: Vercel function region]. This may be outside your own country. We may move our hosting to another region in future; if we do, we will update this policy. [LAWYER: cross-border transfer wording and safeguards required by the applicable laws.]
 
 ## 7. Security
 
@@ -85,7 +92,7 @@ Your data is stored and processed by the providers above in [FOUNDER: Supabase p
 - Each company's records are separated at the database level: users only see the company they belong to, with access limited by the roles their administrator sets.
 - Payroll details are visible only to company administrators.
 - Support screenshots are kept in private storage, available only to the person who raised the request and the StockBolt support team, through short-lived links.
-- Our infrastructure provider encrypts stored data [FOUNDER: confirm with Supabase documentation for your plan].
+- Our database provider encrypts stored data.
 
 No system is perfectly secure. If a personal-data breach affects you, we will act as the law requires.
 
@@ -93,23 +100,25 @@ Access to customer data by the StockBolt operator or support team is limited to 
 
 ## 8. How long we keep it
 
-- We keep account and business records while the account is active.
-- When an account is closed, we delete the related information, except where the law requires us to keep something for longer (for example, records needed for tax or to resolve a dispute). [FOUNDER: add the time frame only once the deletion procedure has been tested — see section 9.]
-- Copies in our provider's backups are removed when those backups expire: [FOUNDER: backup retention from your Supabase plan].
+- We keep account and business records, support requests and records of your agreement while the account is active.
+- **We do not currently keep separate backups of the database.** Records that are deleted — by you, or through an error or a failure — may not be recoverable. Download a copy of your company's records regularly (see section 9).
+- When a company is deleted at the owner's request, we delete all of its records, its users' accounts, its uploaded files, its support requests and the records of its users' agreement to our Terms and this policy, within 30 days of confirming the request. We do not keep a copy. [LAWYER: confirm that no law requires us to keep any of this for longer.]
 - Server logs are kept by our providers for their standard periods.
 
 ## 9. Your choices and rights
 
 - **Export.** A company administrator can download all of the company's records at any time: Settings → Import / Export → Download my data.
 - **Correction.** You can correct most records directly in StockBolt.
-- **Access, correction or deletion requests.** Email [FOUNDER: privacy email]. We may need to confirm the request comes from you.
-- **Account closure.** See the Delete your account page on our website, or use the link in the app's menu. Closing the account of a company owner deletes the company's records; closing a team member's account deletes only that person's login.
+- **Access, correction or deletion requests.** Email linqora@stockbolt.online. We may need to confirm the request comes from you.
+- **Account closure.** See the Delete your account page on our website, or use the link in the app's menu. We complete closure within 30 days.
+  - Closing the account of a company owner deletes the company and all of its records, as described in section 8.
+  - Closing a team member's account removes their login and their name and email address. Records they created belong to the company and stay with it, marked as created by a deleted user.
 - **Records about you held by a business.** If a business using StockBolt holds information about you (for example as its customer or employee), contact that business first; we will help where we can.
-- **Complaints.** [LAWYER: supervisory authority or grievance contact required by the applicable law.]
+- **Complaints.** [LAWYER: grievance officer or contact and authority required by Indian law and any other applicable law.]
 
 ## 10. Children
 
-StockBolt is a business tool for adults. You must be at least [FOUNDER: 18] to create an account. Business records can incidentally contain information about children (for example an employee's dependants); it is protected in the same way.
+StockBolt is a business tool for adults. You must be at least 18 years old to create an account. Business records can incidentally contain information about children (for example an employee's dependants); it is protected in the same way.
 
 ## 11. Changes to this policy
 
@@ -117,4 +126,4 @@ We will update the date and version above when this policy changes. For signific
 
 ## 12. Contact
 
-[FOUNDER: full legal name] — [FOUNDER: privacy email] — [FOUNDER: contact address if required]
+Linqora Technologies — linqora@stockbolt.online
