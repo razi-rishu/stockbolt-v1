@@ -4623,5 +4623,30 @@
     "err_required": "Required",
     "err_tax_id": "A tax registration number is required when registered for VAT / GST.",
     "err_invalid": "Please check the form — one or more fields look invalid."
+  },
+  "gcOcean": {
+    "picked": "{{count}} selected",
+    "picked_one": "{{count}} selected",
+    "picked_other": "{{count}} selected"
+  },
+  "inviteOcean": {
+    "checking": "Checking your invitation…",
+    "title": "You've been invited",
+    "join_pre": "Join",
+    "join_mid": "on StockBolt as",
+    "join_post": ".",
+    "join_cta": "Join {{company}}",
+    "joining": "Joining…",
+    "none_title": "No pending invite",
+    "none_body": "We couldn't find an invitation for your email. If you're setting up a new business, create your company instead.",
+    "create_company": "Create a new company",
+    "sign_out": "Sign out",
+    "err_load": "Could not load your invite.",
+    "err_accept": "Failed to accept the invite.",
+    "desc_admin": "Full access, including settings, accounting and user management.",
+    "desc_accountant": "Books, banking, purchasing and reports. No user management.",
+    "desc_sales": "Quotes, invoices, customers, payments and POS. Read-only inventory.",
+    "desc_counter": "POS / counter sales only. Read-only products.",
+    "desc_viewer": "Read-only across all modules. Cannot create or edit anything."
   }
 }

@@ -8,10 +8,8 @@
  * the database, this only mirrors it.
  */
 import { useTranslation } from 'react-i18next';
-import { Badge } from '@/ui/badge';
 import { chartTemplateFor } from '@/core/seeds/seedCOA';
 
-const row = 'flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle py-2 text-sm';
 const MONTHS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
 
 interface AccountingStepProps {
@@ -37,43 +35,45 @@ export function AccountingStep(p: AccountingStepProps) {
   const tpl = chartTemplateFor(p.country_code);
   const monthName = (m: string) => new Date(2000, Number(m) - 1, 1).toLocaleString(i18n.language === 'ar' ? 'ar' : 'en', { month: 'long' });
 
+  // Ocean Teal (UI v1.1): look only — same values, same fy-month / save-fy hooks.
   return (
-    <div className="space-y-1">
-      <div className={row}><span className="text-ink-secondary">{t('global_config.accounting.base_currency')}</span><span dir="ltr" className="font-medium">{p.currency}</span></div>
-      <div className={row}>
-        <span className="text-ink-secondary">{t('global_config.accounting.financial_year')}</span>
-        {p.onFyMonth && !p.locked ? (
-          <span className="flex items-center gap-2">
-            <select aria-label={t('global_config.accounting.month')} value={p.fy_month} onChange={(e) => p.onFyMonth!(e.target.value)}
-              className="rounded-pill border border-border-subtle bg-surface-card px-3 py-1 text-sm" data-testid="fy-month">
-              {MONTHS.map((m) => <option key={m} value={m}>{monthName(m)}</option>)}
-            </select>
-            {p.onSaveFy && (
-              <button type="button" onClick={p.onSaveFy} disabled={p.saving} data-testid="save-fy"
-                className="rounded-pill bg-brand-500 px-3 py-1 text-xs text-white disabled:opacity-50">
-                {p.saved ? t('global_config.accounting.saved') : t('global_config.accounting.save_fy')}
-              </button>
-            )}
-          </span>
-        ) : <span className="font-medium">{monthName(p.fy_month)}</span>}
-      </div>
-      <div className={row}>
-        <span className="text-ink-secondary">{t('global_config.accounting.chart')}</span>
-        <span className="text-end">
-          <span className="font-medium">{tpl.key === 'india_gst' ? t('global_config.accounting.chart_india_gst') : t('global_config.accounting.chart_gcc_vat')}</span>
-          <span className="block text-xs text-ink-tertiary">
-            {p.existing_accounts !== undefined
-              ? t('global_config.accounting.existing_accounts', { count: p.existing_accounts })
-              : t('global_config.accounting.accounts_count', { count: tpl.account_count })}
-          </span>
-        </span>
-      </div>
-      <div className={row}><span className="text-ink-secondary">{t('global_config.accounting.costing')}</span><span>{t('global_config.accounting.costing_mac')}</span></div>
-      <p className="pt-2 text-xs text-ink-tertiary">{t('global_config.accounting.no_new_accounts')}</p>
+    <div className="sb-gc">
+      <dl className="sb-gc-rows">
+        <div className="sb-gc-row"><dt>{t('global_config.accounting.base_currency')}</dt><dd dir="ltr">{p.currency}</dd></div>
+        <div className="sb-gc-row">
+          <dt>{t('global_config.accounting.financial_year')}</dt>
+          {p.onFyMonth && !p.locked ? (
+            <dd className="sb-gc-inline">
+              <select aria-label={t('global_config.accounting.month')} value={p.fy_month} onChange={(e) => p.onFyMonth!(e.target.value)}
+                className="sb-gc-select is-sm" data-testid="fy-month">
+                {MONTHS.map((m) => <option key={m} value={m}>{monthName(m)}</option>)}
+              </select>
+              {p.onSaveFy && (
+                <button type="button" onClick={p.onSaveFy} disabled={p.saving} data-testid="save-fy" className="sb-gc-btn is-sm">
+                  {p.saved ? t('global_config.accounting.saved') : t('global_config.accounting.save_fy')}
+                </button>
+              )}
+            </dd>
+          ) : <dd>{monthName(p.fy_month)}</dd>}
+        </div>
+        <div className="sb-gc-row">
+          <dt>{t('global_config.accounting.chart')}</dt>
+          <dd>
+            {tpl.key === 'india_gst' ? t('global_config.accounting.chart_india_gst') : t('global_config.accounting.chart_gcc_vat')}
+            <span className="sb-gc-row-sub">
+              {p.existing_accounts !== undefined
+                ? t('global_config.accounting.existing_accounts', { count: p.existing_accounts })
+                : t('global_config.accounting.accounts_count', { count: tpl.account_count })}
+            </span>
+          </dd>
+        </div>
+        <div className="sb-gc-row"><dt>{t('global_config.accounting.costing')}</dt><dd>{t('global_config.accounting.costing_mac')}</dd></div>
+      </dl>
+      <p className="sb-gc-fine">{t('global_config.accounting.no_new_accounts')}</p>
       {p.locked
-        ? <p className="text-xs" data-testid="fin-locked"><Badge variant="warning">{t('global_config.accounting.locked')}</Badge></p>
-        : p.onFyMonth && <p className="text-xs text-ink-tertiary">{t('global_config.accounting.editable_hint')}</p>}
-      {p.error && <p className="text-xs text-danger-500">{p.error}</p>}
+        ? <p className="sb-gc-fine" data-testid="fin-locked"><span className="sb-gc-tag is-warn">{t('global_config.accounting.locked')}</span></p>
+        : p.onFyMonth && <p className="sb-gc-fine">{t('global_config.accounting.editable_hint')}</p>}
+      {p.error && <p className="sb-gc-err">{p.error}</p>}
     </div>
   );
 }

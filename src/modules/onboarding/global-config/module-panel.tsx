@@ -3,7 +3,6 @@
  * Shows why each module is recommended and why a switch was refused.
  */
 import { useTranslation } from 'react-i18next';
-import { Badge } from '@/ui/badge';
 import { MODULES, getActivity, getModule, isModuleKey, type ConfigIssue, type ModuleKey, type Recommendation } from '@/core/global-config';
 import { ISSUE_KEY } from './labels';
 
@@ -27,29 +26,30 @@ export function ModulePanel({ recommendations, enabled, rejected, onToggle }: Mo
     const a = getActivity(r);
     return a ? (ar ? a.name_ar : a.name) : r;
   };
+  // Ocean Teal (UI v1.1): look only — the switch is still the same checkbox.
   return (
-    <div className="space-y-2">
+    <div className="sb-gc-mods">
       {MODULES.map((m) => {
         const on = enabled.includes(m.key);
         const reasons = reasonsFor(m.key);
         const refusal = rejected.find((i) => i.subject === m.key);
         return (
-          <div key={m.key} data-module={m.key} data-enabled={on}
-            className={`flex items-start justify-between gap-3 rounded-card border p-3 ${on ? 'border-brand-200 bg-brand-50' : 'border-border-subtle'}`}>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink-primary">
+          <div key={m.key} data-module={m.key} data-enabled={on} className={`sb-gc-mod ${on ? 'is-on' : ''}`}>
+            <div className="sb-gc-mod-main">
+              <div className="sb-gc-mod-name">
                 {ar ? m.name_ar : m.name}
-                {m.essential && <Badge variant="muted">{t('global_config.essential')}</Badge>}
-                {reasons.length > 0 && !m.essential && <Badge variant="brand">{t('global_config.recommended')}</Badge>}
+                {m.essential && <span className="sb-gc-tag">{t('global_config.essential')}</span>}
+                {reasons.length > 0 && !m.essential && <span className="sb-gc-tag is-brand">{t('global_config.recommended')}</span>}
               </div>
               {reasons.length > 0 && (
-                <p className="mt-1 text-xs text-ink-secondary">{t('global_config.because')}: {reasons.map(reasonLabel).join(' · ')}</p>
+                <p className="sb-gc-mod-why">{t('global_config.because')}: {reasons.map(reasonLabel).join(' · ')}</p>
               )}
-              {refusal && <p className="mt-1 text-xs text-warning-500">{t(ISSUE_KEY[refusal.code], { detail: moduleName(refusal.detail) })}</p>}
+              {refusal && <p className="sb-gc-warn">{t(ISSUE_KEY[refusal.code], { detail: moduleName(refusal.detail) })}</p>}
             </div>
-            <label className="flex shrink-0 items-center gap-1 text-xs text-ink-secondary">
-              <input type="checkbox" checked={on} disabled={m.essential} onChange={(e) => onToggle(m.key, e.target.checked)} />
-              {on ? t('global_config.on') : t('global_config.off')}
+            <label className="sb-gc-switch">
+              <span>{on ? t('global_config.on') : t('global_config.off')}</span>
+              <input type="checkbox" role="switch" checked={on} disabled={m.essential}
+                aria-label={ar ? m.name_ar : m.name} onChange={(e) => onToggle(m.key, e.target.checked)} />
             </label>
           </div>
         );

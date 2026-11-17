@@ -15,32 +15,40 @@ interface ActivityPickerProps {
 export function ActivityPicker({ selected, primary, onToggle, onPrimary }: ActivityPickerProps) {
   const { t, i18n } = useTranslation();
   const ar = i18n.language === 'ar';
+  // Ocean Teal (UI v1.1): look only — same selection, same data-activity hooks.
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {INDUSTRY_FAMILIES.map((f) => (
-        <fieldset key={f.key} className="rounded-card border border-border-subtle p-3">
-          <legend className="px-1 text-sm font-semibold text-ink-primary">
-            {f.order}. {ar ? f.name_ar : f.name}
-          </legend>
-          {activitiesOf(f.key).map((a) => {
-            const on = selected.includes(a.key);
-            return (
-              <div key={a.key} className="flex items-center justify-between gap-2 py-1">
-                <label className="flex items-center gap-2 text-sm text-ink-primary">
-                  <input type="checkbox" checked={on} onChange={() => onToggle(a.key)} data-activity={a.key} />
-                  {ar ? a.name_ar : a.name}
-                </label>
-                {on && (
-                  <button type="button" onClick={() => onPrimary(a.key)}
-                    className={`rounded-pill px-2 py-0.5 text-xs ${primary === a.key ? 'bg-brand-500 text-white' : 'bg-surface-muted text-ink-secondary'}`}>
-                    {t('global_config.primary')}
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </fieldset>
-      ))}
+    <div className="sb-gc-families">
+      {INDUSTRY_FAMILIES.map((f) => {
+        const acts = activitiesOf(f.key);
+        const picked = acts.filter((a) => selected.includes(a.key)).length;
+        return (
+          <fieldset key={f.key} className={`sb-gc-family ${picked ? 'has-on' : ''}`}>
+            <legend className="sb-gc-family-head">
+              <bdi dir="ltr" className="sb-gc-family-no">{f.order}</bdi>
+              <span className="sb-gc-family-name">{ar ? f.name_ar : f.name}</span>
+              {picked > 0 && <span className="sb-gc-family-count">{t('gcOcean.picked', { count: picked })}</span>}
+            </legend>
+            {acts.map((a) => {
+              const on = selected.includes(a.key);
+              const isPrimary = primary === a.key;
+              return (
+                <div key={a.key} className={`sb-gc-act ${on ? 'is-on' : ''}`}>
+                  <label>
+                    <input type="checkbox" checked={on} onChange={() => onToggle(a.key)} data-activity={a.key} />
+                    <span>{ar ? a.name_ar : a.name}</span>
+                  </label>
+                  {on && (
+                    <button type="button" onClick={() => onPrimary(a.key)} aria-pressed={isPrimary}
+                      className={`sb-gc-primary ${isPrimary ? 'is-primary' : ''}`}>
+                      {t('global_config.primary')}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </fieldset>
+        );
+      })}
     </div>
   );
 }

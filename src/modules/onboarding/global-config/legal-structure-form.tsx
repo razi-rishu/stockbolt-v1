@@ -15,8 +15,9 @@ import {
   type LegalError, type LegalForm, type LegalStructure,
 } from '@/core/global-config';
 
-const input = 'w-full rounded-pill border border-border-subtle bg-surface-card px-3 py-1.5 text-sm';
-const label = 'mb-1 block text-xs font-medium text-ink-secondary';
+// Ocean Teal (UI v1.1): look only — same validation, same save path.
+const input = 'sb-gc-input';
+const label = 'sb-gc-label';
 
 export function LegalStructureForm({ company_id, country_code, initial, canWrite }: {
   company_id: string; country_code: string; initial: LegalStructure; canWrite: boolean;
@@ -73,15 +74,17 @@ export function LegalStructureForm({ company_id, country_code, initial, canWrite
     setV((p) => ({ ...p, [k]: e.target.value || null }));
   const err = (k: keyof LegalStructure) => {
     const m = shown ? errText(errors[k]) : null;
-    return m ? <p className="mt-1 text-xs text-danger-500" data-testid={`legal-error-${k}`}>{m}</p> : null;
+    return m ? <p className="sb-gc-err" data-testid={`legal-error-${k}`}>{m}</p> : null;
   };
 
   return (
-    <section className="mt-4 space-y-3 text-sm" data-testid="legal-structure">
-      <h3 className="font-semibold text-ink-primary">{t('global_config.legal.title')}</h3>
-      <p className="text-xs text-ink-tertiary">{t('global_config.legal.intro')}</p>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
+    <section className="sb-gc sb-gc-legal" data-testid="legal-structure">
+      <div>
+        <h3 className="sb-gc-h">{t('global_config.legal.title')}</h3>
+        <p className="sb-gc-fine">{t('global_config.legal.intro')}</p>
+      </div>
+      <div className="sb-gc-grid2">
+        <div className="sb-gc-field">
           <label className={label} htmlFor="legal_form">{t('global_config.legal.legal_form')}</label>
           <select id="legal_form" className={input} value={v.legal_form ?? ''} disabled={!canWrite}
             onChange={(e) => setV((p) => ({ ...p, legal_form: (e.target.value || null) as LegalForm | null }))}>
@@ -90,24 +93,24 @@ export function LegalStructureForm({ company_id, country_code, initial, canWrite
           </select>
           {err('legal_form')}
         </div>
-        <div>
+        <div className="sb-gc-field">
           <label className={label} htmlFor="legal_name">{t('global_config.legal.legal_name')}</label>
           <input id="legal_name" className={input} value={v.legal_name ?? ''} maxLength={200} disabled={!canWrite} onChange={set('legal_name')} />
           {err('legal_name')}
         </div>
-        <div>
+        <div className="sb-gc-field">
           <label className={label} htmlFor="registration_number">{regLabel()}</label>
           <input id="registration_number" dir="ltr" className={input} value={v.registration_number ?? ''} maxLength={50}
             disabled={!canWrite} onChange={set('registration_number')} />
           {err('registration_number')}
         </div>
-        <div>
+        <div className="sb-gc-field">
           <label className={label} htmlFor="registration_authority">{t('global_config.legal.registration_authority')}</label>
           <input id="registration_authority" className={input} value={v.registration_authority ?? ''} maxLength={120}
             disabled={!canWrite} onChange={set('registration_authority')} />
           {err('registration_authority')}
         </div>
-        <div>
+        <div className="sb-gc-field">
           <label className={label} htmlFor="incorporation_date">{t('global_config.legal.incorporation_date')}</label>
           <input id="incorporation_date" type="date" dir="ltr" className={input} value={v.incorporation_date ?? ''}
             disabled={!canWrite} onChange={set('incorporation_date')} />
@@ -115,20 +118,20 @@ export function LegalStructureForm({ company_id, country_code, initial, canWrite
         </div>
       </div>
       {canWrite ? (
-        <div className="flex items-center gap-3">
+        <div className="sb-gc-actions">
           <button type="button" data-testid="legal-save" disabled={!dirty || save.isPending}
-            className="rounded-pill bg-brand-500 px-4 py-1.5 text-sm text-white disabled:opacity-50"
+            className="sb-primary-btn"
             onClick={() => { setShown(true); if (Object.keys(errors).length === 0) save.mutate(); }}>
             {t('global_config.legal.save')}
           </button>
-          <button type="button" disabled={!dirty || save.isPending} className="rounded-pill px-4 py-1.5 text-sm text-ink-secondary disabled:opacity-50"
+          <button type="button" disabled={!dirty || save.isPending} className="sb-secondary-btn"
             onClick={() => { setV(initial); setShown(false); }}>
             {t('global_config.legal.cancel')}
           </button>
-          {save.isSuccess && !dirty && <span role="status" className="text-xs text-success-500">{t('global_config.legal.saved')}</span>}
-          {save.isError && <span className="text-xs text-danger-500">{(save.error as Error).message}</span>}
+          {save.isSuccess && !dirty && <span role="status" className="sb-gc-ok">{t('global_config.legal.saved')}</span>}
+          {save.isError && <span className="sb-gc-err">{(save.error as Error).message}</span>}
         </div>
-      ) : <p className="text-xs text-ink-tertiary">{t('global_config.legal.read_only')}</p>}
+      ): <p className="sb-gc-fine">{t('global_config.legal.read_only')}</p>}
     </section>
   );
 }

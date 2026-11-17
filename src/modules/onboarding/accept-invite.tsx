@@ -11,16 +11,33 @@
  */
 import { useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { MailCheck, MailQuestionMark } from 'lucide-react';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { ROLE_LABELS, ROLE_DESCRIPTIONS, type AppRole } from '@/lib/permissions';
-import { theme } from '@/ui/theme';
-import { Button } from '@/ui/button';
 import { LanguageToggle } from '@/components/language-toggle';
 import { BrandLogo } from '@/components/brand-logo';
 import type { PendingInvite } from '@/data/adapter';
 
+// Role names and descriptions, translated (lib/permissions holds English only).
+// Literal keys so the i18n key test can see every one.
+const ROLE_NAME_KEY: Record<string, string> = {
+  admin: 'global_config.branches.role.admin',
+  accountant: 'global_config.branches.role.accountant',
+  sales: 'global_config.branches.role.sales',
+  counter: 'global_config.branches.role.counter',
+  viewer: 'global_config.branches.role.viewer',
+};
+const ROLE_DESC_KEY: Record<string, string> = {
+  admin: 'inviteOcean.desc_admin',
+  accountant: 'inviteOcean.desc_accountant',
+  sales: 'inviteOcean.desc_sales',
+  counter: 'inviteOcean.desc_counter',
+  viewer: 'inviteOcean.desc_viewer',
+};
+
 export default function AcceptInvitePage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const storeInvite = useAuthStore((s) => s.pending_invite);
   const is_onboarded = useAuthStore((s) => s.is_onboarded);
@@ -40,13 +57,13 @@ export default function AcceptInvitePage() {
         const found = await getAdapter().users.myPendingInvite();
         if (!cancelled) { setInvite(found); set_pending_invite(found); }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Could not load your invite.');
+        if (!cancelled) setError(e instanceof Error ? e.message : t('inviteOcean.err_load'));
       } finally {
         if (!cancelled) setChecking(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [storeInvite, set_pending_invite]);
+  }, [storeInvite, set_pending_invite, t]);
 
   if (is_onboarded) return <Navigate to="/dashboard" replace />;
 
@@ -60,7 +77,7 @@ export default function AcceptInvitePage() {
       try { set_permissions(await getAdapter().users.myPermissions()); } catch { /* gating falls back to matrix */ }
       navigate('/dashboard', { replace: true });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to accept the invite.');
+      setError(e instanceof Error ? e.message : t('inviteOcean.err_accept'));
       setBusy(false);
     }
   }
@@ -71,46 +88,50 @@ export default function AcceptInvitePage() {
     navigate('/login', { replace: true });
   }
 
+  const roleName = (r: string) => (ROLE_NAME_KEY[r] ? t(ROLE_NAME_KEY[r]) : r);
+  const roleDesc = (r: string) => (ROLE_DESC_KEY[r] ? t(ROLE_DESC_KEY[r]) : '');
+
+  // Ocean Teal (UI v1.1): look only — same lookup, same accept_invite() call.
   return (
-    <div style={{ minHeight: '100vh', background: theme.page, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
-      <div style={{ position: 'absolute', top: '16px', insetInlineEnd: '16px' }}><LanguageToggle /></div>
-      <div style={{ width: '100%', maxWidth: '440px', background: '#fff', border: `1px solid ${theme.border}`, borderRadius: theme.radiusXl, boxShadow: theme.shadowLg, padding: '32px' }}>
-        <div style={{ marginBottom: '18px' }}>
-          <BrandLogo mark={32} text={15} />
-        </div>
+    <div className="sb-ocean sb-notice-wrap is-full sb-invite" data-testid="accept-invite">
+      <div className="sb-invite-lang"><LanguageToggle /></div>
+      <div className="sb-card sb-notice sb-invite-card">
+        <div className="sb-invite-logo"><BrandLogo mark={32} text={15} /></div>
 
         {checking ? (
-          <p style={{ color: theme.inkMuted, fontSize: '14px' }}>Checking your invitation…</p>
+          <p className="sb-notice-loading">{t('inviteOcean.checking')}</p>
         ) : invite ? (
           <>
-            <h1 style={{ fontSize: '20px', fontWeight: 800, color: theme.ink, margin: '0 0 6px' }}>You've been invited 🎉</h1>
-            <p style={{ fontSize: '14px', color: theme.inkMuted, lineHeight: 1.6, margin: '0 0 18px' }}>
-              Join <strong style={{ color: theme.ink }}>{invite.company_name}</strong> on StockBolt as{' '}
-              <strong style={{ color: theme.brandSoftText }}>{ROLE_LABELS[invite.role as AppRole] ?? invite.role}</strong>.
-            </p>
-            <div style={{ background: theme.brandSoft, border: `1px solid ${theme.purpleBorder}`, borderRadius: theme.radiusLg, padding: '12px 14px', marginBottom: '20px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: theme.brandSoftText }}>{ROLE_LABELS[invite.role as AppRole] ?? invite.role}</div>
-              <div style={{ fontSize: '12.5px', color: theme.inkMuted, marginTop: '3px' }}>{ROLE_DESCRIPTIONS[invite.role as AppRole] ?? ''}</div>
+            <span className="sb-notice-ico is-brand" aria-hidden="true"><MailCheck size={24} /></span>
+            <h1 className="sb-notice-title">{t('inviteOcean.title')}</h1>
+            <div className="sb-notice-body">
+              <p style={{ margin: 0 }}>
+                {t('inviteOcean.join_pre')} <strong className="sb-invite-strong">{invite.company_name}</strong>{' '}
+                {t('inviteOcean.join_mid')} <strong className="sb-invite-role">{roleName(invite.role)}</strong>{t('inviteOcean.join_post')}
+              </p>
             </div>
-            {error && <p style={{ color: theme.danger, fontSize: '13px', marginBottom: '12px' }}>{error}</p>}
-            <Button onClick={accept} disabled={busy} style={{ width: '100%' }}>
-              {busy ? 'Joining…' : `Join ${invite.company_name}`}
-            </Button>
+            <div className="sb-invite-rolebox">
+              <span className="sb-invite-rolebox-name">{roleName(invite.role)}</span>
+              {roleDesc(invite.role) && <span className="sb-invite-rolebox-desc">{roleDesc(invite.role)}</span>}
+            </div>
+            {error && <p className="sb-alert sb-alert-danger sb-invite-err" role="alert">{error}</p>}
+            <button type="button" className="sb-primary-btn sb-invite-cta" onClick={accept} disabled={busy} data-testid="accept-invite-btn">
+              {busy ? t('inviteOcean.joining') : t('inviteOcean.join_cta', { company: invite.company_name })}
+            </button>
           </>
         ) : (
           <>
-            <h1 style={{ fontSize: '20px', fontWeight: 800, color: theme.ink, margin: '0 0 6px' }}>No pending invite</h1>
-            <p style={{ fontSize: '14px', color: theme.inkMuted, lineHeight: 1.6, margin: '0 0 18px' }}>
-              We couldn't find an invitation for your email. If you're setting up a new business, create your company instead.
-            </p>
-            {error && <p style={{ color: theme.danger, fontSize: '13px', marginBottom: '12px' }}>{error}</p>}
-            <Button onClick={() => navigate('/setup', { replace: true })} style={{ width: '100%' }}>Create a new company</Button>
+            <span className="sb-notice-ico is-warn" aria-hidden="true"><MailQuestionMark size={24} /></span>
+            <h1 className="sb-notice-title">{t('inviteOcean.none_title')}</h1>
+            <div className="sb-notice-body"><p style={{ margin: 0 }}>{t('inviteOcean.none_body')}</p></div>
+            {error && <p className="sb-alert sb-alert-danger sb-invite-err" role="alert">{error}</p>}
+            <button type="button" className="sb-primary-btn sb-invite-cta" onClick={() => navigate('/setup', { replace: true })}>
+              {t('inviteOcean.create_company')}
+            </button>
           </>
         )}
 
-        <button onClick={signOut} style={{ marginTop: '16px', width: '100%', background: 'none', border: 'none', color: theme.inkFaint, fontSize: '12.5px', cursor: 'pointer' }}>
-          Sign out
-        </button>
+        <button type="button" onClick={signOut} className="sb-invite-signout">{t('inviteOcean.sign_out')}</button>
       </div>
     </div>
   );
