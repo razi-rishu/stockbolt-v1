@@ -8733,3 +8733,56 @@ describe('Phase 135 — legal agreements (soft until applied)', () => {
     expect(r[0].enforcement && r[0].docs === 0, 'enforcement on with nothing published locks nobody but is a misconfiguration').toBe(false);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 137 — an asset purchase's bill / expense changes only through the
+// purchase. Without the guard, Edit on the bill reversed the ledger but left
+// the asset on the register; a debit note credited 1300 instead of the asset.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 137 — asset purchase document guard (soft until applied)', () => {
+  const applied = async (): Promise<boolean> => {
+    const r = await sql<{ ok: boolean }>(`SELECT to_regprocedure('public.tg_asset_purchase_doc_guard()') IS NOT NULL AS ok`);
+    return !!r[0]?.ok;
+  };
+
+  it('phase137: all six guard triggers are installed', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ phase137 not applied yet — run supabase/migrations/20261117000001_phase137_asset_purchase_document_guard.sql.');
+      return;
+    }
+    const r = await sql<{ tgname: string }>(`SELECT tgname FROM pg_trigger WHERE tgname LIKE '%asset_purchase_guard%' AND NOT tgisinternal ORDER BY 1`);
+    expect(r.map(x => x.tgname)).toEqual([
+      'debit_note_items_asset_purchase_guard', 'debit_notes_asset_purchase_guard',
+      'expenses_asset_purchase_guard', 'expenses_asset_purchase_guard_del',
+      'vendor_bills_asset_purchase_guard', 'vendor_bills_asset_purchase_guard_del',
+    ]);
+  });
+
+  it('phase137: guard functions are not callable by any client role; purchase functions still run as the caller', async () => {
+    if (!(await applied())) return;
+    const g = await sql<{ proname: string; anon: boolean; auth: boolean }>(`
+      SELECT p.proname, has_function_privilege('anon', p.oid, 'EXECUTE') AS anon,
+             has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth
+        FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace
+         AND p.proname IN ('tg_asset_purchase_doc_guard', 'tg_asset_purchase_debit_note_guard')`);
+    expect(g).toHaveLength(2);
+    for (const r of g) expect(r.anon || r.auth, `${r.proname} must not be client-executable`).toBe(false);
+    const f = await sql<{ proname: string; prosecdef: boolean; marks: boolean }>(`
+      SELECT p.proname, p.prosecdef, p.prosrc LIKE '%stockbolt.asset_purchase_doc%' AS marks
+        FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace
+         AND p.proname IN ('post_fixed_asset_purchase', 'reopen_fixed_asset_purchase')`);
+    expect(f).toHaveLength(2);
+    for (const r of f) {
+      expect(r.prosecdef, `${r.proname} must stay SECURITY INVOKER`).toBe(false);
+      expect(r.marks, `${r.proname} must mark its document for the guard`).toBe(true);
+    }
+  });
+
+  it('phase137: no live debit note is linked to an asset purchase bill', async () => {
+    if (!(await applied())) return;
+    const r = await sql<{ n: number }>(`SELECT count(*)::int AS n FROM public.debit_notes dn
+      JOIN public.fixed_asset_purchases p ON p.doc_type = 'vendor_bill' AND p.doc_id = dn.linked_bill_id
+     WHERE dn.status <> 'void'`);
+    expect(r[0].n).toBe(0);
+  });
+});

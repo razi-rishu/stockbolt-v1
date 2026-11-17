@@ -3484,6 +3484,9 @@
     "record_receipt": "Record Receipt"
   },
   "billOcean": {
+    "asset_purchase_note": "This bill is a fixed-asset purchase. Reopen or reverse it from Accounting → Fixed Assets so the asset register stays in step. Payments are made here as usual.",
+    "asset_purchase_draft_note": "This draft belongs to a fixed-asset purchase. Finish, post or delete it from Accounting → Fixed Assets.",
+    "dn_asset_bills_hidden": "Bills from fixed-asset purchases aren't listed. To return an asset, reopen its purchase or dispose of the asset.",
     "err_landed_grn": "Landed cost isn't allowed on bills linked to a goods receipt. Post freight separately.",
     "err_landed_negative": "Landed cost can't be negative.",
     "err_landed_account": "Pick a \"paid from / owed to\" account for landed cost \"{{label}}\".",
@@ -3520,6 +3523,7 @@
     "unallocated_hint": "The unallocated part stays as a supplier advance and can be applied to future bills."
   },
   "expOcean": {
+    "asset_purchase_draft_note": "This draft belongs to a fixed-asset purchase. Finish, post or delete it from Accounting → Fixed Assets.",
     "err_paid_from": "Pick where the money was paid from.",
     "err_line": "Add at least one line.",
     "err_category": "Pick an expense category.",

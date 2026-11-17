@@ -572,7 +572,27 @@ export default function VendorBillEditorPage() {
     onError: (e: Error) => { setDeleteModal(false); setError(e.message); },
   });
 
-  const canEdit = isNew || existing?.status === 'draft';
+  // phase137 — a bill that carries a fixed-asset purchase is changed, reopened
+  // or deleted only from that purchase (which keeps the asset register in step);
+  // the database refuses it from here too. Paying it works as normal.
+  const { data: assetPurchases = [] } = useQuery({
+    queryKey: ['fixed_asset_purchases', company_id],
+    queryFn: () => getAdapter().fixedAssets.listPurchases(company_id!),
+    enabled: !!company_id && !!existing,
+  });
+  const assetPurchase = existing ? assetPurchases.find(p => p.doc_type === 'vendor_bill' && p.doc_id === existing.id) : undefined;
+  const openAssetPurchase = assetPurchase ? (
+    <Button size="sm" onClick={() => navigate(`/accounting/fixed-assets/purchase/${assetPurchase.id}`)} data-testid="bill-open-asset-purchase">
+      {t('expOcean.open_asset_purchase')}
+    </Button>
+  ) : null;
+  const assetNote = assetPurchase ? (
+    <p data-print-hide className="sb-info-note" data-testid="bill-asset-note">
+      {existing?.status === 'draft' ? t('billOcean.asset_purchase_draft_note') : t('billOcean.asset_purchase_note')}
+    </p>
+  ) : null;
+
+  const canEdit = isNew || (existing?.status === 'draft' && !assetPurchase);
 
   // Global keyboard actions (Phase 1) — Ctrl+S / Ctrl+Enter save, Ctrl+P print.
   useShortcutAction('save', () => { setError(null); saveMutation.mutate(); }, canEdit && !saveMutation.isPending);
@@ -613,7 +633,7 @@ export default function VendorBillEditorPage() {
   // bills show the read-only template view.
   // Verified payments / refunds / bank-cash lines for the Payment details section.
   const docPayments = useDocumentPayments('vendor_bill', existing?.id, !!existing && existing.status !== 'draft');
-  if (viewMode && !isNew && existing && existing.status !== 'draft') {
+  if (viewMode && !isNew && existing && (existing.status !== 'draft' || assetPurchase)) {
     const docBase = vendorBillToDocumentData({
       bill: existing,
       items: existingItems as Parameters<typeof vendorBillToDocumentData>[0]['items'],
@@ -639,13 +659,14 @@ export default function VendorBillEditorPage() {
                 <Pencil size={15} aria-hidden="true" /> {t('common.edit') || 'Edit'}
               </Button>
             )}
-            {existing.status === 'confirmed' && (
+            {openAssetPurchase}
+            {existing.status === 'confirmed' && !assetPurchase && (
               <Button size="sm" onClick={() => reopenMutation.mutate()} disabled={reopenMutation.isPending}
                 title={t('billOcean.reopen_title')}>
                 <Pencil size={15} aria-hidden="true" /> {reopenMutation.isPending ? t('billOcean.reopening') : t('billOcean.edit_bill')}
               </Button>
             )}
-            <Button
+            {!assetPurchase && <Button
               variant="ghost" size="sm"
               onClick={() => {
                 const cloneLines = (existingItems as VendorBillItemInsert[]).map((it) => ({
@@ -672,7 +693,7 @@ export default function VendorBillEditorPage() {
                   } },
                 });
               }}
-            ><Copy size={15} aria-hidden="true" /> {t('common.duplicate')}</Button>
+            ><Copy size={15} aria-hidden="true" /> {t('common.duplicate')}</Button>}
             {/* Mirror of the sales side: an advance already paid to this
                 supplier can settle this bill. */}
             {existing.status === 'confirmed' && (
@@ -692,13 +713,14 @@ export default function VendorBillEditorPage() {
             </Button>
             {/* Draft → Delete straight from the view page (confirmed bills use
                  'Edit bill' to reopen; full Void is a later migration). */}
-            {existing.status === 'draft' && (
+            {existing.status === 'draft' && !assetPurchase && (
               <Button variant="danger" size="sm" onClick={() => setDeleteModal(true)}>
                 {t('common.delete')}
               </Button>
             )}
           </div>
         </div>
+        {assetNote}
         {/* Phase 62 (AC-7B) — India TDS deduction panel (screen only, never
             printed). Self-hides when the tenant has no TDS sections. */}
         {existing.status === 'confirmed' && (
@@ -740,7 +762,8 @@ export default function VendorBillEditorPage() {
             </Button>
           )}
           <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/purchasing/bills'); }}>{t('common.cancel')}</Button>
-          {!isNew && existing?.status === 'confirmed' && (
+          {openAssetPurchase}
+          {!isNew && existing?.status === 'confirmed' && !assetPurchase && (
             <Button size="sm" onClick={() => { setError(null); reopenMutation.mutate(); }} disabled={reopenMutation.isPending}
               title={t('billOcean.reopen_title')}>
               <Pencil size={15} aria-hidden="true" /> {reopenMutation.isPending ? t('billOcean.reopening') : t('billOcean.edit_bill')}
@@ -760,6 +783,7 @@ export default function VendorBillEditorPage() {
       </div>
 
       {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+      {assetNote}
 
       {/* Supplier Insight Panel — appears once a supplier is picked.
            Shows payable, overdue, last payment so the buyer has full

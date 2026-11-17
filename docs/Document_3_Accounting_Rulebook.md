@@ -677,6 +677,16 @@ draft) and removes the register rows. Refused once depreciation or a disposal
 is posted on them. A credit purchase that has been paid must have its payment
 reversed first (the bill engine refuses otherwise).
 
+**The document is changed only through the purchase (phase137).** A bill or
+expense that carries a purchase cannot be confirmed, reopened, voided or
+deleted on its own: a database trigger refuses any status change or delete
+unless it comes from `post_` / `reopen_fixed_asset_purchase` (which mark the
+document for the length of their own call), and the Bills / Expenses screens
+show it read-only with a link to the purchase. A debit note may not be linked
+to such a bill (it would credit 1300, not the asset account, and leave the
+register untouched): returning an asset = reopen the purchase, or dispose of
+the asset (Part P). Paying the bill works as for any bill.
+
 **"Register only"** keeps the original behaviour: the register row is written
 and nothing posts — for assets already in the books.
 

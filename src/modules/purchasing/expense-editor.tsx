@@ -462,13 +462,15 @@ export default function ExpenseEditorPage() {
   const docPayments = useDocumentPayments('expense', expense?.id, !!expense && expense.status !== 'draft');
   // phase126 — an expense that carries a fixed-asset purchase is reopened from
   // that purchase (which also removes the register rows), never from here.
+  // phase137 — drafts too: posting or deleting one from here would skip the
+  // register, so a linked draft opens read-only (the database refuses it too).
   const { data: assetPurchases = [] } = useQuery({
     queryKey: ['fixed_asset_purchases', company_id],
     queryFn: () => getAdapter().fixedAssets.listPurchases(company_id!),
-    enabled: !!company_id && !!expense && expense.status === 'confirmed',
+    enabled: !!company_id && !!expense,
   });
   const assetPurchase = expense ? assetPurchases.find(p => p.doc_type === 'expense' && p.doc_id === expense.id) : undefined;
-  if (viewMode && !isNew && expense && expense.status !== 'draft') {
+  if (viewMode && !isNew && expense && (expense.status !== 'draft' || assetPurchase)) {
     const docBase = expenseToDocumentData({
       expense,
       items,
@@ -488,12 +490,12 @@ export default function ExpenseEditorPage() {
             {statusPill(expense.status)}
           </div>
           <div className="sb-doc-bar-actions">
-            {isDraft && (
+            {isDraft && !assetPurchase && (
               <Button size="sm" onClick={() => setViewMode(false)}>
                 <Pencil size={15} aria-hidden="true" /> {t('common.edit') || 'Edit'}
               </Button>
             )}
-            {isConfirmed && assetPurchase && (
+            {assetPurchase && (
               <Button size="sm" onClick={() => navigate(`/accounting/fixed-assets/purchase/${assetPurchase.id}`)}>
                 {t('expOcean.open_asset_purchase')}
               </Button>
@@ -524,8 +526,10 @@ export default function ExpenseEditorPage() {
           </div>
         </div>
         {error && <p data-print-hide className="sb-alert sb-alert-danger" role="alert">{error}</p>}
-        {isConfirmed && assetPurchase && (
-          <p data-print-hide className="sb-info-note">{t('expOcean.asset_purchase_note')}</p>
+        {assetPurchase && (
+          <p data-print-hide className="sb-info-note" data-testid="expense-asset-note">
+            {isDraft ? t('expOcean.asset_purchase_draft_note') : t('expOcean.asset_purchase_note')}
+          </p>
         )}
         {isVoid && expense.void_reason && (
           <p data-print-hide className="sb-alert sb-alert-warn"><strong>{t('expOcean.void_reason')}</strong> {expense.void_reason}</p>

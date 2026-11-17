@@ -103,6 +103,16 @@ export default function DebitNoteEditorPage() {
     queryFn:  () => getAdapter().vendorBills.list(company_id!, 'confirmed'),
     enabled:  !!company_id,
   });
+  // phase137 — a fixed-asset purchase's bill can't carry a debit note (it would
+  // credit 1300 Inventory and leave the asset register untouched); returning an
+  // asset = reopen the purchase or dispose of the asset. The database refuses
+  // it too.
+  const { data: assetPurchases = [] } = useQuery({
+    queryKey: ['fixed_asset_purchases', company_id],
+    queryFn:  () => getAdapter().fixedAssets.listPurchases(company_id!),
+    enabled:  !!company_id,
+  });
+  const assetBillIds = new Set(assetPurchases.filter(p => p.doc_type === 'vendor_bill').map(p => p.doc_id));
   const { data: existing } = useQuery<DebitNoteRow | null>({
     queryKey: ['debit_note', id],
     queryFn:  () => getAdapter().debitNotes.getById(id!),
@@ -429,14 +439,17 @@ export default function DebitNoteEditorPage() {
               className="min-w-0 flex-1 border border-border-strong rounded px-3 py-2 text-sm"
             >
               <option value="">— {t('returns.no_linked_bill')} —</option>
-              {bills.filter(b => !supplierId || b.supplier_id === supplierId).map(b => (
+              {bills.filter(b => (!supplierId || b.supplier_id === supplierId) && (!assetBillIds.has(b.id) || b.id === linkedBillId)).map(b => (
                 <option key={b.id} value={b.id}>{`${b.bill_number} (${b.date})`}</option>
               ))}
             </select>
-            {isDraft && linkedBillId && billItems.length > 0 && (
+            {isDraft && linkedBillId && billItems.length > 0 && !assetBillIds.has(linkedBillId) && (
               <Button variant="secondary" onClick={importFromBill}>{t('returns.import_lines')}</Button>
             )}
           </div>
+          {isDraft && bills.some(b => assetBillIds.has(b.id) && (!supplierId || b.supplier_id === supplierId)) && (
+            <p className="mt-1 text-xs text-ink-tertiary" data-testid="dn-asset-bills-hidden">{t('billOcean.dn_asset_bills_hidden')}</p>
+          )}
         </div>
 
         <div>
