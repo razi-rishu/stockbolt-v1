@@ -2,7 +2,7 @@
 
 > **DRAFT — not for publication.** Updated with the founder's details on 2026-11-17.
 > Before publication: the `[LAWYER: …]` items need legal advice, the effective
-> date must be set, linqora@stockbolt.online must be able to receive email, and
+> date must be set, and
 > a qualified lawyer must review the whole text before users are asked to accept
 > it. Nothing here is legal advice.
 

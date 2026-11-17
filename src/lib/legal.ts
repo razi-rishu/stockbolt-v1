@@ -4,7 +4,7 @@
  * Change the contact here and every page follows.
  */
 export const OPERATOR_NAME = 'Linqora Technologies';
-export const SUPPORT_EMAIL = 'rashidpattaratil333@gmail.com';
+export const SUPPORT_EMAIL = 'linqora@stockbolt.online';
 /**
  * phase135 — false while docs/legal/*.md are drafts (founder details and legal
  * review pending). While false, /privacy keeps the current page and /terms

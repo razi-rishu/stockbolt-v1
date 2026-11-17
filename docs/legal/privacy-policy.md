@@ -2,8 +2,7 @@
 
 > **DRAFT — not for publication.** Updated with the founder's details on 2026-11-17.
 > Before publication: the `[LAWYER: …]` items need legal advice, the remaining
-> `[FOUNDER: …]` items need an answer, linqora@stockbolt.online must be able to
-> receive email, and a qualified lawyer must review the whole text.
+> `[FOUNDER: …]` items need an answer, and a qualified lawyer must review the whole text.
 > Nothing here is legal advice.
 
 **Version:** 1.0
