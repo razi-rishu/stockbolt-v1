@@ -68,6 +68,7 @@ import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { useHasPermission } from '@/hooks/use-permissions';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
+import { DocumentActivity } from '@/components/document-activity';
 import { BackButton } from '@/ui/back-button';
 import { StatusBadge } from '@/ui/status-badge';
 import { Pencil, Printer, Eye, Plus, Minus, X, Tag, ReceiptText, UserRoundCheck, Ban } from 'lucide-react';
@@ -537,6 +538,8 @@ export default function ExpenseEditorPage() {
         <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
+        {/* phase138 — who did what, and what followed (screen only). */}
+        <DocumentActivity kind="expense" id={expense.id} />
       </div>
     );
   }

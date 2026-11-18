@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth';
 import { useInvalidateBooks } from '@/hooks/use-invalidate-books';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
+import { DocumentActivity } from '@/components/document-activity';
 import { BackButton } from '@/ui/back-button';
 import { StatusBadge } from '@/ui/status-badge';
 import { Pencil, Printer, Eye, Plus, X, PackageCheck } from 'lucide-react';
@@ -270,6 +271,8 @@ export default function GRNEditorPage() {
         <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
+        {/* phase138 — who did what, and what followed (screen only). */}
+        <DocumentActivity kind="goods_receipt" id={existing.id} />
       </div>
     );
   }

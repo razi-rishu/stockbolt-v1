@@ -14,6 +14,7 @@ import { eInvoiceReadiness } from '@/lib/einvoice-metadata';
 import { EInvoicePanel } from './einvoice-panel';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
+import { DocumentActivity } from '@/components/document-activity';
 import { BackButton } from '@/ui/back-button';
 import { StatusBadge } from '@/ui/status-badge';
 import { Pencil, Copy, Banknote, Printer, Eye, AlertTriangle, Plus, X } from 'lucide-react';
@@ -807,6 +808,8 @@ export default function InvoiceEditorPage() {
         <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
+        {/* phase138 — who did what, and what followed (screen only). */}
+        <DocumentActivity kind="invoice" id={existing.id} />
         {dangerModals}
       </div>
     );

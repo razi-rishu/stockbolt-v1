@@ -8786,3 +8786,43 @@ describe('Phase 137 — asset purchase document guard (soft until applied)', () 
     expect(r[0].n).toBe(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 138 — document activity: created_by is set by the database (never by
+// the client) and quote / PO status changes are logged.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 138 — document activity (soft until applied)', () => {
+  const TABLES = ['sales_quotes', 'invoices', 'payments', 'credit_notes', 'purchase_orders',
+                  'goods_receipts', 'vendor_bills', 'debit_notes', 'expenses'];
+  const applied = async (): Promise<boolean> => {
+    const r = await sql<{ ok: boolean }>(`SELECT to_regprocedure('public.tg_document_created_by()') IS NOT NULL AS ok`);
+    return !!r[0]?.ok;
+  };
+
+  it('phase138: every document table has created_by and its trigger', async () => {
+    if (!(await applied())) {
+      console.warn('⚠ phase138 not applied yet — run supabase/migrations/20261118000001_phase138_document_activity.sql.');
+      return;
+    }
+    const cols = await sql<{ table_name: string }>(`SELECT table_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND column_name = 'created_by' AND table_name = ANY (ARRAY['${TABLES.join("','")}'])`);
+    expect(cols.map(c => c.table_name).sort()).toEqual([...TABLES].sort());
+    const tg = await sql<{ n: number }>(`SELECT count(*)::int AS n FROM pg_trigger
+      WHERE NOT tgisinternal AND tgname = ANY (ARRAY['${TABLES.map(t => `${t}_created_by`).join("','")}'])`);
+    expect(tg[0].n).toBe(TABLES.length);
+  });
+
+  it('phase138: status logging is installed and the trigger functions are not client-executable', async () => {
+    if (!(await applied())) return;
+    const tg = await sql<{ n: number }>(`SELECT count(*)::int AS n FROM pg_trigger
+      WHERE tgname IN ('sales_quotes_status_log', 'purchase_orders_status_log')`);
+    expect(tg[0].n).toBe(2);
+    const f = await sql<{ proname: string; anon: boolean; auth: boolean }>(`
+      SELECT p.proname, has_function_privilege('anon', p.oid, 'EXECUTE') AS anon,
+             has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth
+        FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace
+         AND p.proname IN ('tg_document_created_by', 'tg_document_status_log')`);
+    expect(f).toHaveLength(2);
+    for (const r of f) expect(r.anon || r.auth, `${r.proname} must not be client-executable`).toBe(false);
+  });
+});

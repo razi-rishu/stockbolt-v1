@@ -10,6 +10,7 @@ import { useCompanyCurrency, useCompanyCountry, useCompanyRoundingStep, useVatAp
 import { applyRoundOff } from '@/core/sales/invoice-calc';
 import { defaultTaxRate } from '@/lib/locale';
 import { Button } from '@/ui/button';
+import { DocumentActivity } from '@/components/document-activity';
 import { BackButton } from '@/ui/back-button';
 import { SearchableSelect } from '@/ui/searchable-select';
 import { StatusBadge } from '@/ui/status-badge';
@@ -437,6 +438,8 @@ export default function CreditNoteEditorPage() {
         <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
+        {/* phase138 — who did what, and what followed (screen only). */}
+        <DocumentActivity kind="credit_note" id={existing.id} />
       </div>
     );
   }

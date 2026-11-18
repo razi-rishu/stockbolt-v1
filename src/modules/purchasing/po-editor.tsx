@@ -8,6 +8,7 @@ import { useCompanyCurrency, useCompanyCountry, useTaxName, useVatApplies } from
 import { defaultTaxRate } from '@/lib/locale';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
+import { DocumentActivity } from '@/components/document-activity';
 import { BackButton } from '@/ui/back-button';
 import { StatusBadge } from '@/ui/status-badge';
 import { Pencil, Printer, Eye, Plus, X, ArrowRightLeft } from 'lucide-react';
@@ -354,6 +355,8 @@ export default function POEditorPage() {
         <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
+        {/* phase138 — who did what, and what followed (screen only). */}
+        <DocumentActivity kind="purchase_order" id={existing.id} />
       </div>
     );
   }

@@ -10,6 +10,7 @@ import { postJournalEntry, reverseJournalEntry, JournalValidationError } from '@
 import { validateLines, assertMapping } from '@/core/gl/journal-validator';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Button } from '@/ui/button';
+import { DocumentActivity } from '@/components/document-activity';
 import { BackButton } from '@/ui/back-button';
 import { Input } from '@/ui/input';
 import { SearchableSelect } from '@/ui/searchable-select';
@@ -367,6 +368,8 @@ export default function JournalEntryEditorPage() {
           </table>
           </div>
         </div>
+        {/* phase138 — who posted / reversed it, and when (screen only). */}
+        <DocumentActivity kind="journal_entry" id={existingJE.id} />
       </div>
     );
   }

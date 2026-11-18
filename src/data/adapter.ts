@@ -1937,6 +1937,13 @@ export interface ReportsAPI {
    * Used by the per-document Activity tab on editors. Sorted newest first.
    */
   getEntityAuditLog(company_id: string, entity_type: string, entity_id: string, limit?: number): Promise<AuditLogLine[]>;
+  /**
+   * phase138 — everything the Activity panel shows for one document: when (and,
+   * for documents made after phase138, by whom) it was created, its audit
+   * history, and the documents that followed from it (payments applied, the
+   * invoice made from a quote, …). Read-only; nothing is stored.
+   */
+  getDocumentActivity(company_id: string, kind: ActivityDocKind, id: string): Promise<DocumentActivity>;
   getReversalTrail(company_id: string, from: string, to: string): Promise<ReversalTrailLine[]>;
   getCashFlow(company_id: string, from: string, to: string): Promise<CashFlowStatement>;
   /**
@@ -2131,6 +2138,32 @@ export interface AuditLogLine {
   entity_id: string | null;
   old_values: Record<string, unknown> | null;
   new_values: Record<string, unknown> | null;
+}
+
+/** phase138 — documents that carry an Activity panel. */
+export type ActivityDocKind =
+  | 'quote' | 'invoice' | 'customer_payment' | 'credit_note'
+  | 'purchase_order' | 'goods_receipt' | 'vendor_bill' | 'vendor_payment' | 'debit_note'
+  | 'expense' | 'journal_entry';
+
+/** A document that followed from this one (shown as a line in its Activity). */
+export interface ActivityFollowOn {
+  kind: 'invoice' | 'payment' | 'credit_note' | 'goods_receipt' | 'vendor_bill' | 'debit_note' | 'refund';
+  doc_type: string;          // DocLink type
+  doc_id: string;
+  number: string;
+  at: string;                // when it happened (ISO timestamp)
+  user_id: string | null;    // who, when known
+  amount: number | null;     // money moved by it, when it moves money
+  currency: string | null;
+  is_void: boolean;
+}
+
+export interface DocumentActivity {
+  created_at: string | null;
+  created_by: string | null;
+  audit: AuditLogLine[];
+  follow_ons: ActivityFollowOn[];
 }
 
 export interface ReversalTrailLine {

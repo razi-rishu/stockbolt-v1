@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth';
 import { useCompanyCurrency, useCompanyCountry, useCompanyRoundingStep, useTaxName, useVatApplies } from '@/hooks/use-company-currency';
 import { defaultTaxRate } from '@/lib/locale';
 import { Button } from '@/ui/button';
+import { DocumentActivity } from '@/components/document-activity';
 import { BackButton } from '@/ui/back-button';
 import { StatusBadge } from '@/ui/status-badge';
 import { Pencil, Printer, Eye, AlertTriangle, Plus, X, ArrowRightLeft } from 'lucide-react';
@@ -323,6 +324,8 @@ export default function QuoteEditorPage() {
         <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
+        {/* phase138 — who did what, and what followed (screen only). */}
+        <DocumentActivity kind="quote" id={existing.id} />
       </div>
     );
   }

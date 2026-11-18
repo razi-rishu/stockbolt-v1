@@ -89,7 +89,7 @@ import type {
   SalesByVehicleLine, SalesBySalespersonLine, SalesTrendLine,
   PurchasesBySupplierLine, PurchasesByProductLine, OutstandingPOLine,
   VATReturn, VATReturnBox, VATReturnRegionRow,
-  AuditLogLine, ReversalTrailLine,
+  AuditLogLine, ReversalTrailLine, ActivityDocKind, ActivityFollowOn, DocumentActivity,
   CashFlowStatement, CashFlowSection,
   OwnerDashboard,
   InvariantResult,
@@ -4815,6 +4815,99 @@ export function createSupabaseAdapter(
             new_values: r.new_data as Record<string, unknown> | null,
           };
         });
+      },
+
+      async getDocumentActivity(company_id, kind, id): Promise<DocumentActivity> {
+        // phase138 — created_by is newer than the generated database types.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const db = client as any;
+        type Row = Record<string, unknown>;
+        const TABLE: Record<ActivityDocKind, string> = {
+          quote: 'sales_quotes', invoice: 'invoices', customer_payment: 'payments', credit_note: 'credit_notes',
+          purchase_order: 'purchase_orders', goods_receipt: 'goods_receipts', vendor_bill: 'vendor_bills',
+          vendor_payment: 'payments', debit_note: 'debit_notes', expense: 'expenses', journal_entry: 'journal_entries',
+        };
+        // The posting functions log a few documents under more than one name
+        // (expense / expenses, payment / vendor_payment, refunds).
+        const AUDIT: Record<ActivityDocKind, string[]> = {
+          quote: ['sales_quote'], invoice: ['invoice'],
+          customer_payment: ['payment', 'customer_refund', 'customer_credit_refund'],
+          credit_note: ['credit_note'], purchase_order: ['purchase_order'], goods_receipt: ['goods_receipt'],
+          vendor_bill: ['vendor_bill'],
+          vendor_payment: ['vendor_payment', 'payment', 'vendor_refund', 'vendor_credit_refund'],
+          debit_note: ['debit_note'], expense: ['expense', 'expenses'], journal_entry: ['journal_entry'],
+        };
+        const run = async (q: PromiseLike<{ data: unknown; error: unknown }>, what: string): Promise<Row[]> => {
+          const { data, error } = await q;
+          assertNoError(error as Error | null, `getDocumentActivity ${what}`);
+          return (data ?? []) as Row[];
+        };
+        const str = (v: unknown) => (v == null ? null : String(v));
+        const num = (v: unknown) => (v == null ? null : Number(v));
+
+        const [head] = await run(db.from(TABLE[kind]).select('created_at, created_by').eq('id', id).limit(1), 'head');
+        const auditRows = await run(db.from('audit_logs')
+          .select('id, created_at, user_id, action, entity_type, entity_id, old_data, new_data, profiles(email)')
+          .eq('company_id', company_id).in('entity_type', AUDIT[kind]).eq('entity_id', id)
+          .order('created_at', { ascending: true }).limit(200), 'audit');
+        const audit: AuditLogLine[] = auditRows.map((r) => ({
+          id: String(r.id), created_at: String(r.created_at), user_id: str(r.user_id),
+          user_email: (r.profiles as { email?: string } | null)?.email ?? str(r.user_id),
+          action: String(r.action), entity_type: String(r.entity_type), entity_id: str(r.entity_id),
+          old_values: (r.old_data ?? null) as Record<string, unknown> | null,
+          new_values: (r.new_data ?? null) as Record<string, unknown> | null,
+        }));
+
+        const follow_ons: ActivityFollowOn[] = [];
+        const docs = async (k: ActivityFollowOn['kind'], docType: string, table: string, numberCol: string,
+                            amountCol: string | null, link: [string, string][]) => {
+          let q = db.from(table).select(['id', numberCol, 'created_at', 'created_by', 'status',
+            ...(amountCol ? [amountCol, 'currency'] : [])].join(', ')).eq('company_id', company_id);
+          for (const [c, v] of link) q = q.eq(c, v);
+          for (const r of await run(q.order('created_at', { ascending: true }).limit(100), table)) {
+            follow_ons.push({ kind: k, doc_type: docType, doc_id: String(r.id), number: String(r[numberCol] ?? ''),
+              at: String(r.created_at), user_id: str(r.created_by), amount: amountCol ? num(r[amountCol]) : null,
+              currency: amountCol ? str(r.currency) : null, is_void: r.status === 'void' });
+          }
+        };
+        // Payments applied to an invoice / bill: the allocation is the event.
+        const applied = async (docType: 'invoice' | 'vendor_bill', payDocType: string) => {
+          const allocs = await run(db.from('payment_allocations').select('payment_id, amount_applied, created_at')
+            .eq('company_id', company_id).eq('doc_type', docType).eq('doc_id', id).limit(200), 'allocations');
+          if (allocs.length === 0) return;
+          const pays = await run(db.from('payments').select('id, payment_number, created_by, currency, status')
+            .in('id', [...new Set(allocs.map((a) => String(a.payment_id)))]), 'payments');
+          const byId = new Map(pays.map((p) => [String(p.id), p]));
+          for (const a of allocs) {
+            const p = byId.get(String(a.payment_id));
+            if (!p) continue;
+            follow_ons.push({ kind: 'payment', doc_type: payDocType, doc_id: String(p.id), number: String(p.payment_number ?? ''),
+              at: String(a.created_at), user_id: str(p.created_by), amount: num(a.amount_applied),
+              currency: str(p.currency), is_void: p.status === 'void' });
+          }
+        };
+
+        switch (kind) {
+          case 'quote':
+            await docs('invoice', 'invoice', 'invoices', 'invoice_number', 'total_amount', [['source_quote_id', id]]); break;
+          case 'invoice':
+            await applied('invoice', 'customer_payment');
+            await docs('credit_note', 'credit_note', 'credit_notes', 'credit_note_number', 'total_amount', [['linked_invoice_id', id]]); break;
+          case 'credit_note':
+            await docs('refund', 'customer_payment', 'payments', 'payment_number', 'amount', [['source_doc_type', 'credit_note'], ['source_doc_id', id]]); break;
+          case 'purchase_order':
+            await docs('goods_receipt', 'goods_receipt', 'goods_receipts', 'grn_number', null, [['purchase_order_id', id]]); break;
+          case 'goods_receipt':
+            await docs('vendor_bill', 'vendor_bill', 'vendor_bills', 'bill_number', 'total_amount', [['linked_grn_id', id]]); break;
+          case 'vendor_bill':
+            await applied('vendor_bill', 'vendor_payment');
+            await docs('debit_note', 'debit_note', 'debit_notes', 'debit_note_number', 'total_amount', [['linked_bill_id', id]]); break;
+          case 'debit_note':
+            await docs('refund', 'vendor_payment', 'payments', 'payment_number', 'amount', [['source_doc_type', 'debit_note'], ['source_doc_id', id]]); break;
+          default: break;
+        }
+
+        return { created_at: str(head?.created_at), created_by: str(head?.created_by), audit, follow_ons };
       },
 
       async getReversalTrail(company_id, from, to): Promise<ReversalTrailLine[]> {

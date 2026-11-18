@@ -17,7 +17,7 @@ import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { ContactPicker } from '@/components/contact-picker';
 import { AccountingPreview, buildVendorPaymentPreview } from '@/components/accounting-preview';
-import { ActivityLog } from '@/components/activity-log';
+import { DocumentActivity } from '@/components/document-activity';
 // Phase 14.05 — Signature template view mode for saved vendor payments.
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
@@ -465,6 +465,8 @@ export default function VendorPaymentEditorPage() {
         <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
+        {/* phase138 — who did what, and what followed (screen only). */}
+        <DocumentActivity kind="vendor_payment" id={existing.id} />
         {/* Phase 18 — confirm before reversing a posted payment for editing. */}
         <Modal open={reopenModal} onClose={() => setReopenModal(false)} title={t('purchasing.edit_payment') || 'Edit payment'}>
             <div className="sb-ocean sb-form sb-modal-form">
@@ -875,7 +877,7 @@ export default function VendorPaymentEditorPage() {
 
       {/* Activity log — every confirm/void writes an audit_logs row.
            Hidden for new payments (nothing to show yet). */}
-      {!isNew && id && <ActivityLog entityType="payment" entityId={id} />}
+      {!isNew && id && <DocumentActivity kind="vendor_payment" id={id} />}
     </div>
   );
 }

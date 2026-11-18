@@ -4652,5 +4652,32 @@
     "desc_sales": "Quotes, invoices, customers, payments and POS. Read-only inventory.",
     "desc_counter": "POS / counter sales only. Read-only products.",
     "desc_viewer": "Read-only across all modules. Cannot create or edit anything."
+  },
+  "actOcean": {
+    "title": "Activity",
+    "show_earlier": "Show earlier activity ({{count}})",
+    "former_user": "Former user",
+    "a_created": "Created",
+    "a_confirmed": "Confirmed and posted",
+    "a_posted": "Posted",
+    "a_reopened": "Reopened for editing",
+    "a_voided": "Voided",
+    "a_reversed": "Reversed",
+    "a_deleted": "Deleted",
+    "a_advance": "Advance applied",
+    "a_fee": "Restocking fee posted",
+    "a_fee_rev": "Restocking fee reversed",
+    "a_writeoff": "Damaged stock written off",
+    "a_writeoff_rev": "Write-off reversed",
+    "a_repaired": "Corrected by the system",
+    "a_status": "Status changed",
+    "a_updated": "Updated",
+    "f_invoice": "Invoice created from this quote",
+    "f_payment": "Payment applied",
+    "f_credit_note": "Credit note raised",
+    "f_goods_receipt": "Goods received",
+    "f_vendor_bill": "Bill created",
+    "f_debit_note": "Debit note raised",
+    "f_refund": "Refund paid"
   }
 }

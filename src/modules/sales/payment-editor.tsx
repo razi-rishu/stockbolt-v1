@@ -17,7 +17,7 @@ import { Select } from '@/ui/select';
 import { ContactPicker } from '@/components/contact-picker';
 import { Modal } from '@/ui/modal';
 import { AccountingPreview, buildCustomerPaymentPreview } from '@/components/accounting-preview';
-import { ActivityLog } from '@/components/activity-log';
+import { DocumentActivity } from '@/components/document-activity';
 import { theme } from '@/ui/theme';
 // Phase 14.05 — Signature template view mode for saved payments.
 import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocTemplate';
@@ -639,6 +639,8 @@ export default function PaymentEditorPage() {
         <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
+        {/* phase138 — who did what, and what followed (screen only). */}
+        <DocumentActivity kind="customer_payment" id={existing.id} />
         {dangerModalsEl}
       </div>
     );
@@ -1143,7 +1145,7 @@ export default function PaymentEditorPage() {
 
       {/* Activity log — every confirm/void writes an audit_logs row.
            Hidden for new payments (nothing to show yet). */}
-      {!isNew && id && <ActivityLog entityType="payment" entityId={id} />}
+      {!isNew && id && <DocumentActivity kind="customer_payment" id={id} />}
     </div>
   );
 }
