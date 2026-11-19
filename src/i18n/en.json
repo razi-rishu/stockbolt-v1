@@ -195,7 +195,7 @@
   },
   "app": {
     "name": "StockBolt",
-    "tagline": "Auto Parts ERP"
+    "tagline": "Business management"
   },
   "common": {
     "show_voided": "Show {{count}} voided",
@@ -2485,11 +2485,11 @@
       },
       "categories": {
         "title": "Categories",
-        "desc": "Product categories such as Engine or Brakes."
+        "desc": "Group your products and services, such as Equipment or Services."
       },
       "brands": {
         "title": "Brands",
-        "desc": "Manufacturer brands such as Bosch, Denso or Genuine."
+        "desc": "Brands of the products you buy and sell."
       },
       "vehicles": {
         "title": "Vehicle makes",
@@ -2930,6 +2930,7 @@
       "scope_write_orders_desc": "Create orders (post as draft invoices)."
     },
     "coa": {
+      "transactions": "Transactions",
       "sub": {"current": "Current", "fixed": "Fixed", "long_term": "Long-term", "direct": "Direct", "indirect": "Indirect"},
       "show_inactive": "Show inactive",
       "activate": "Activate",
@@ -3058,7 +3059,7 @@
         },
         "brands": {
           "label": "Brands",
-          "desc": "Castrol, Bosch, NGK, etc. Used to tag products."
+          "desc": "Brand names used to tag products."
         },
         "categories": {
           "label": "Categories",
@@ -3626,7 +3627,7 @@
     "rg_inventory": "Inventory",
     "rg_banking": "Banking",
     "rg_audit": "Audit",
-    "tagline": "Auto Parts ERP",
+    "tagline": "Business management",
     "main_menu": "Main menu",
     "shortcuts": "Shortcuts",
     "open_search": "Open global search",
@@ -3723,7 +3724,7 @@
     "create_select": "Create & select",
     "qc_brand": "Quick add brand",
     "brand_name": "Brand name",
-    "brand_ph": "e.g. Toyota, Bosch",
+    "brand_ph": "e.g. the manufacturer or brand name",
     "err_brand_name": "Brand name is required",
     "qc_unit": "Quick add unit",
     "code": "Code",
@@ -4579,6 +4580,10 @@
     "col_users": "Users"
   },
   "wizOcean": {
+    "unsaved_title": "Your company is created, but your business choices weren't saved.",
+    "unsaved_body": "Until they're saved, StockBolt switches every module on. Try again, or continue and finish this later in Settings → Business configuration.",
+    "unsaved_retry": "Try again",
+    "unsaved_continue": "Continue without saving",
     "step_n": "Step {{n}}",
     "tagline": "StockBolt · Accounting & inventory for growing businesses",
     "basics_title": "Company basics",
@@ -4679,5 +4684,12 @@
     "f_vendor_bill": "Bill created",
     "f_debit_note": "Debit note raised",
     "f_refund": "Refund paid"
+  },
+  "setupPrompt": {
+    "title": "Tell StockBolt what your business does",
+    "body": "Your business setup isn't saved yet, so every module is switched on. Pick your activities and StockBolt keeps only what you need — you can switch anything back on later.",
+    "start": "Choose my activities",
+    "later": "Not now",
+    "page_note": "Your business setup isn't saved yet, so every module is currently on. Pick your activities, check the modules, then save on the Review step."
   }
 }

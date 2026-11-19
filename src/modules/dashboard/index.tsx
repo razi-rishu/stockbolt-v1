@@ -44,6 +44,7 @@ import {
   IncomeExpenseCard, TopExpensesCard, CashPositionCard, WatchlistCard, SummaryCardsState,
 } from './_summary-cards';
 import { useDashboardCards } from './_use-dashboard-cards';
+import { BusinessSetupPrompt } from '@/components/business-setup-prompt';
 import '@/styles/stockbolt-ocean-teal.css';
 
 // ── Formatters ───────────────────────────────────────────────────────────────
@@ -299,6 +300,8 @@ export default function DashboardPage() {
 
   return (
     <div className="sb-ocean sb-page sb-dash" data-testid="dashboard-ocean">
+      {/* No saved business setup → every module is on. Ask the owner to choose. */}
+      <BusinessSetupPrompt />
       {/* ── 1. Greeting band ─────────────────────────────────────────────── */}
       <section className="sb-dash-hero">
         <div className="sb-dash-hero-id">

@@ -4,6 +4,7 @@ import type { Column } from '@/ui/table';
 import { OceanPage, OceanTable } from '@/components/ocean-list';
 import { Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -460,6 +461,12 @@ export default function ChartOfAccountsPage() {
     grouped[ft.value] = out;
   }
 
+  // Click an account → its transactions in the General Ledger (which already
+  // filters by ?code=, with its own period picker).
+  const navigate = useNavigate();
+  const ledgerHref = (a: CoaRow) => `/accounting/general-ledger?code=${encodeURIComponent(a.code)}`;
+  const stop = (e: React.MouseEvent) => e.stopPropagation();
+
   const columns: Column<CoaRow>[] = [
     {
       key: 'code', header: t('accounting.code'), width: '120px',
@@ -494,7 +501,8 @@ export default function ChartOfAccountsPage() {
       render: (a) => {
         const inactive = a.is_active === false;
         return (
-          <span className="sb-users-actions">
+          <span className="sb-users-actions" onClick={stop}>
+            <Link to={ledgerHref(a)} className="sb-row-link text-brand-600" data-testid={`coa-ledger-${a.code}`}>{t('settingsPages.coa.transactions')}</Link>
             <button type="button" onClick={() => startEdit(a)} className="sb-row-link text-brand-600">{t('common.edit')}</button>
             {!a.is_system && (inactive ? (
               <button type="button" className="sb-row-link text-brand-600" disabled={activateMutation.isPending}
@@ -548,6 +556,7 @@ export default function ChartOfAccountsPage() {
               rows={grouped[ft.value]}
               keyFn={(a) => a.id}
               cardTitleKey="name"
+              onRowClick={(a) => navigate(ledgerHref(a))}
               rowMuted={(a) => a.is_active === false}
               emptyMessage={t('accounting.no_accounts')}
             />

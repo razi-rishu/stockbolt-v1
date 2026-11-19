@@ -39,7 +39,7 @@ export const MODULES: readonly ModuleDefinition[] = [
   { key: 'items', name: 'Products & Services', name_ar: 'المنتجات والخدمات', essential: false, depends_on: ['accounting'],
     areas: ['/products', '/products/categories', '/products/brands'] },
   { key: 'inventory', name: 'Inventory & Warehouses', name_ar: 'المخزون والمستودعات', essential: false, depends_on: ['items'],
-    areas: ['/inventory/transfers', '/inventory/adjustments', '/inventory/stock-ledger'] },
+    areas: ['/inventory/transfers', '/inventory/adjustments', '/inventory/stock-ledger', '/settings/brands', '/settings/maintenance'] },
   { key: 'sales', name: 'Sales & Invoicing', name_ar: 'المبيعات والفوترة', essential: false, depends_on: ['contacts', 'items', 'banking'],
     areas: ['/sales/invoices', '/sales/quotes', '/sales/payments', '/sales/credit-notes'] },
   { key: 'purchasing', name: 'Purchasing & Payables', name_ar: 'المشتريات والذمم الدائنة', essential: false, depends_on: ['contacts', 'items', 'banking'],

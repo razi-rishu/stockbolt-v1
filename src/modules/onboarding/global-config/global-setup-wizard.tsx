@@ -90,6 +90,9 @@ export default function GlobalSetupWizardPage() {
   const [step, setStep] = useState(0);
   const [choices, setChoices] = useState<WizardChoices | null>(null);
   const [unfinished, setUnfinished] = useState(false);
+  // No saved choices and nothing to resume: the company runs with every module
+  // on (legacy). Don't pre-tick the old auto-parts default — make the owner choose.
+  const [notSetUp, setNotSetUp] = useState(false);
 
   const { data: stored, isLoading } = useQuery({
     queryKey: ['company_configuration', company?.id],
@@ -121,8 +124,15 @@ export default function GlobalSetupWizardPage() {
     const leftover = onboarding.draft?.company_id === company.id && !stored
       ? choicesFromDraft((onboarding.draft.payload as { global?: unknown }).global) : null;
     const mine = own.draft?.company_id === company.id ? choicesFromDraft((own.draft.payload as { choices?: unknown }).choices) : null;
-    setChoices(leftover ?? mine ?? choicesFrom(current));
+    const blank = !stored && !leftover && !mine;
+    setChoices(leftover ?? mine ?? (blank
+      ? { activity_keys: [], primary_activity_key: '', enable: [], disable: [] }
+      : choicesFrom(current)));
     if (leftover) setUnfinished(true);
+    if (blank) {
+      setNotSetUp(true);
+      setStep(WIZARD_STEPS.findIndex((s) => s.key === 'business_activities'));
+    }
     if (!leftover && mine) {
       const at = WIZARD_STEPS.findIndex((s) => s.key === own.draft!.step);
       if (at >= 0) setStep(at);
@@ -136,6 +146,7 @@ export default function GlobalSetupWizardPage() {
   const hadDraft = useRef(false);
   useEffect(() => {
     if (!choices || !company || !canWrite || !started.current || !current) return;
+    if (choices.activity_keys.length === 0) return;   // nothing chosen yet: nothing to resume
     if (sameChoices(choices, choicesFrom(current))) {
       if (hadDraft.current || own.draft?.company_id === company.id) { hadDraft.current = false; void own.remove(); }
       return;
@@ -155,6 +166,8 @@ export default function GlobalSetupWizardPage() {
       qc.invalidateQueries({ queryKey: ['company_configuration', company?.id] });
       await own.remove();
       if (unfinished) { await onboarding.remove(); setUnfinished(false); }
+      setNotSetUp(false);
+      qc.invalidateQueries({ queryKey: ['company_configuration'] });
     },
   });
 
@@ -205,6 +218,7 @@ export default function GlobalSetupWizardPage() {
       }
     >
       {unfinished && <p className="sb-alert sb-alert-warn" data-testid="unfinished-activation">{t('global_config.draft.unfinished')}</p>}
+      {notSetUp && !save.isSuccess && <p className="sb-alert sb-alert-warn" data-testid="business-not-set-up">{t('setupPrompt.page_note')}</p>}
       <Card padding="md" data-testid={`step-${key}`} className="sb-card sb-wiz-card">
         {key === 'organization_identity' && (
           <>

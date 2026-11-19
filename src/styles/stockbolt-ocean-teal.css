@@ -2276,3 +2276,16 @@
 .sb-ocean .sb-act-who { font-weight: 600; color: var(--sb-text); }
 @media print { .sb-ocean.sb-act { display: none !important; } }
 
+/* ── Business setup prompt + wizard "choices not saved" (2026-11-19) ── */
+.sb-ocean .sb-setup-prompt { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-bottom: 16px; padding: 16px 18px; border: 1px solid var(--sb-primary-light); background: var(--sb-primary-soft); }
+.sb-ocean .sb-setup-prompt-ico { flex: none; width: 40px; height: 40px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; background: var(--sb-primary); color: #fff; }
+.sb-ocean .sb-setup-prompt-text { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 13.5px; line-height: 1.5; color: var(--sb-text-secondary); }
+.sb-ocean .sb-setup-prompt-text strong { font-size: 15px; color: var(--sb-text); }
+.sb-ocean .sb-setup-prompt-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sb-ocean .sb-setup-prompt-actions a { text-decoration: none; display: inline-flex; align-items: center; }
+.sb-ocean .sb-setup-prompt-later { padding: 8px 12px; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--sb-text-secondary); cursor: pointer; }
+.sb-ocean .sb-setup-prompt-later:hover { color: var(--sb-primary-dark); }
+.sb-ocean .sb-wiz-unsaved { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; font-weight: 400; line-height: 1.5; }
+.sb-ocean .sb-wiz-unsaved strong { font-weight: 700; }
+.sb-ocean .sb-wiz-skip { padding: 0; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 700; color: var(--sb-warning); text-decoration: underline; cursor: pointer; }
+

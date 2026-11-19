@@ -208,7 +208,44 @@ export default function SetupWizardPage() {
     setError(first?.message ? fieldError(first.message) ?? first.message : t('wizOcean.err_invalid'));
   }
 
+  // The company exists but its business choices are not saved yet. Never go on
+  // silently: an unsaved company runs with EVERY module on (legacy mode), which
+  // is exactly what the owner did not choose. Retry, or continue knowingly.
+  const [unsavedCompany, setUnsavedCompany] = useState<string | null>(null);
+
+  async function enterApp(company_id: string) {
+    const profile = await getAdapter().profiles.getCurrent();
+    if (profile) set_profile({ company_id, role: profile.role });
+    set_onboarded(true);
+    navigate('/dashboard', { replace: true });
+  }
+
+  /** Save the business choices and branches for a company that already exists. */
+  async function activate(company_id: string): Promise<boolean> {
+    let saved = await globalSetup.saveAfterCreate();
+    if (!saved) saved = await globalSetup.saveAfterCreate();   // one quiet retry
+    const located = await globalSetup.applyBranches(company_id);
+    // All done: the draft goes. Otherwise it stays, pointing at the new
+    // company, and Settings → Business Configuration offers to finish.
+    if (saved && located) await draft.remove();
+    return saved;
+  }
+
+  async function retryActivation() {
+    if (!unsavedCompany) return;
+    setSubmitting(true);
+    setError('');
+    if (await activate(unsavedCompany)) {
+      const id = unsavedCompany;
+      setUnsavedCompany(null);
+      await enterApp(id);
+      return;
+    }
+    setSubmitting(false);
+  }
+
   async function onSubmit(values: FormValues) {
+    if (unsavedCompany) { await retryActivation(); return; }
     // Issue 3 — never create the company before the user reaches and clicks
     // "Finish Setup" on the last step. A stray Enter keypress (or any submit
     // event) on an earlier step otherwise satisfied the whole schema and
@@ -250,19 +287,14 @@ export default function SetupWizardPage() {
       // Global v1 — only now does the company exist for the RPC to write to.
       if (GLOBAL_ONBOARDING) {
         await draft.saveNow('activating', draftPayload(), company_id);
-        const saved = await globalSetup.saveAfterCreate();
-        const located = await globalSetup.applyBranches(company_id);
-        // All done: the draft goes. Otherwise it stays, pointing at the new
-        // company, and Settings → Business Configuration offers to finish.
-        if (saved && located) await draft.remove();
+        if (!(await activate(company_id))) {
+          setUnsavedCompany(company_id);
+          setSubmitting(false);
+          return;
+        }
       }
 
-      const profile = await adapter.profiles.getCurrent();
-      if (profile) {
-        set_profile({ company_id, role: profile.role });
-      }
-      set_onboarded(true);
-      navigate('/dashboard', { replace: true });
+      await enterApp(company_id);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
       // phase111 — the session belongs to an Auth account that was deleted:
@@ -512,16 +544,25 @@ export default function SetupWizardPage() {
 
               {/* Form-level error banner */}
               {error && <p className="sb-alert sb-alert-danger" role="alert" style={{ margin: 0 }}>{error}</p>}
+              {unsavedCompany && (
+                <div className="sb-alert sb-alert-warn sb-wiz-unsaved" role="alert" data-testid="wizard-choices-unsaved">
+                  <strong>{t('wizOcean.unsaved_title')}</strong>
+                  <span>{t('wizOcean.unsaved_body')}</span>
+                  <button type="button" className="sb-wiz-skip" disabled={submitting} onClick={() => enterApp(unsavedCompany)}>
+                    {t('wizOcean.unsaved_continue')}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Actions */}
             <div className="sb-wiz-actions">
               {isPhone ? (step > 0 && (
-                <button type="button" onClick={goBack} disabled={submitting} aria-label={t('wizOcean.back')} className="sb-wiz-back is-icon">
+                <button type="button" onClick={goBack} disabled={submitting || !!unsavedCompany} aria-label={t('wizOcean.back')} className="sb-wiz-back is-icon">
                   <ArrowLeft size={20} className="sb-rtl-flip" aria-hidden="true" />
                 </button>
               )) : (
-                <button type="button" onClick={goBack} disabled={step === 0 || submitting} className="sb-wiz-back">
+                <button type="button" onClick={goBack} disabled={step === 0 || submitting || !!unsavedCompany} className="sb-wiz-back">
                   <ArrowLeft size={16} className="sb-rtl-flip" aria-hidden="true" /> {t('wizOcean.back')}
                 </button>
               )}
@@ -533,7 +574,8 @@ export default function SetupWizardPage() {
                   without the user ever pressing Create. */}
               {isLast ? (
                 <button key="create" type="submit" disabled={submitting} className="sb-primary-btn sb-wiz-next">
-                  {submitting ? t('wizOcean.creating') : t('wizOcean.create')} {!submitting && <ArrowRight size={17} className="sb-rtl-flip" aria-hidden="true" />}
+                  {submitting ? t('wizOcean.creating') : unsavedCompany ? t('wizOcean.unsaved_retry') : t('wizOcean.create')}
+                  {!submitting && <ArrowRight size={17} className="sb-rtl-flip" aria-hidden="true" />}
                 </button>
               ) : (
                 <button key="next" type="button" onClick={goNext} className="sb-primary-btn sb-wiz-next">
