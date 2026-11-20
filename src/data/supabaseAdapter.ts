@@ -322,6 +322,13 @@ export function createSupabaseAdapter(
         if (error) return [] as any;
         return (data ?? []) as any;
       },
+      async getActiveProvider() {
+        // phase139 — one row at most is active; set with set_billing_provider().
+        const { data, error } = await (client.from as any)('payment_provider_configs')
+          .select('provider').eq('is_active', true).limit(1).maybeSingle();
+        if (error) return null;
+        return ((data as { provider?: string } | null)?.provider ?? null);
+      },
     },
     // ── Auth ───────────────────────────────────────────────────────────────
     auth: {

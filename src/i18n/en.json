@@ -3160,6 +3160,10 @@
       "reload": "Reload page"
     },
     "billing": {
+      "approved_wait_any": "Payment confirmed — activating your subscription… this page updates automatically.",
+      "choose_hint_razorpay": "Pay securely by card with Razorpay. You can cancel any time.",
+      "no_provider": "Online payment isn't available yet. Your account keeps working as it does now.",
+      "card_saved": "Card saved. Your first charge is on {{date}}, when your free period ends.",
       "subtitle": "Your plan, trial, payments and billing details.",
       "no_approval": "No approval link returned",
       "approved_wait": "Payment approved on PayPal — activating your subscription… this page updates automatically.",

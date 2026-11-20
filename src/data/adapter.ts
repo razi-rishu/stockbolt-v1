@@ -3552,6 +3552,8 @@ export interface BillingAPI {
   upsertAddress(company_id: string, data: Partial<BillingAddressRow>): Promise<void>;
   /** Phase 35 — payment history (empty until the M3 migration is applied). */
   listPayments(company_id: string): Promise<SubscriptionPaymentRow[]>;
+  /** phase139 — the provider customers pay with ('razorpay' | 'paypal'), or null when none is switched on. */
+  getActiveProvider(): Promise<string | null>;
 }
 
 // ── Document numbering ──────────────────────────────────────────────────────

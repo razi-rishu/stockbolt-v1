@@ -650,6 +650,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       getAddress:      () => notImplemented('billing.getAddress'),
       upsertAddress:   () => notImplemented('billing.upsertAddress'),
       listPayments:    () => notImplemented('billing.listPayments'),
+      getActiveProvider: () => notImplemented('billing.getActiveProvider'),
     },
     payroll: {
       listRuns:         () => notImplemented('payroll.listRuns'),

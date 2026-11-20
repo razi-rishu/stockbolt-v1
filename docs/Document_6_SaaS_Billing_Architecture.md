@@ -371,3 +371,24 @@ gated · MFA on platform admin · HTTPS · audit log complete · RLS restrictive
    or charge in local currency? (Affects PayPal plan setup.)
 5. **Trial for existing tenants:** confirm grandfather-as-active-forever (recommended) vs put them
    on a trial too.
+
+---
+
+## Addendum — Razorpay provider and the provider switch (phase139, 2026-11-19)
+
+PayPal requires a registered business account, so customer payments move to **Razorpay**
+(individual / unregistered business onboarding with the owner's PAN). PayPal's code stays,
+hidden, so it can be switched back on.
+
+- **One switch:** `payment_provider_configs` — at most one row `is_active` (partial unique index).
+  `SELECT public.set_billing_provider('razorpay' | 'paypal' | NULL)` (database owner / service role only).
+  The Billing page shows only the active provider's Subscribe flow; `/api/<provider>/create-subscription`
+  refuses unless its provider is active. Cancel always goes to the provider the subscription was made with.
+- **Razorpay functions:** `api/razorpay/{create-subscription,cancel-subscription,webhook}.ts`, helpers
+  `api/_lib/razorpay.ts`. Checkout = Razorpay Checkout pop-up (card data never touches StockBolt).
+  Activation is webhook-only, signature-verified on the raw body (HMAC-SHA256, `RAZORPAY_WEBHOOK_SECRET`),
+  deduped on `x-razorpay-event-id`; a retry of an event that failed half-way is processed again.
+- **Free year:** `public_config.charge_after_trial` (default true) — the card is authorised at checkout
+  and first charged when the free period ends (`start_at` = `trial_end`).
+- **Currency:** USD plans ($21 / $105 / $200); needs Razorpay International Payments; settles in INR.
+- Setup: `docs/Razorpay_Setup_Steps.md`.

@@ -66,7 +66,30 @@ const ADDR_FIELDS: { key: keyof BillingAddressRow; label: string }[] = [
 ];
 
 /** Call a Vercel billing function with the caller's Supabase access token. */
-async function callBillingApi(path: string, body: Record<string, unknown>): Promise<{ approvalUrl?: string; error?: string }> {
+// Razorpay Checkout (phase139): loaded only when someone subscribes.
+interface RazorpayCheckout { open: () => void; on: (e: string, cb: (r: unknown) => void) => void }
+type RazorpayCtor = new (options: Record<string, unknown>) => RazorpayCheckout;
+function loadRazorpay(): Promise<RazorpayCtor> {
+  const w = window as unknown as { Razorpay?: RazorpayCtor };
+  if (w.Razorpay) return Promise.resolve(w.Razorpay);
+  return new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    el.async = true;
+    el.onload = () => (w.Razorpay ? resolve(w.Razorpay) : reject(new Error('Razorpay Checkout did not load')));
+    el.onerror = () => reject(new Error('Razorpay Checkout could not be loaded. Check your connection and try again.'));
+    document.body.appendChild(el);
+  });
+}
+
+interface BillingApiResult {
+  approvalUrl?: string;
+  error?: string;
+  provider?: string;
+  checkout?: Record<string, unknown>;
+  first_charge_at?: string | null;
+}
+async function callBillingApi(path: string, body: Record<string, unknown>): Promise<BillingApiResult> {
   const { data } = await getSupabaseClient().auth.getSession();
   const token = data.session?.access_token;
   if (!token) throw new Error('Not signed in');
@@ -89,7 +112,16 @@ export default function BillingPage() {
   const [saved, setSaved] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
 
-  const paypalReturn = searchParams.get('paypal');   // 'approved' | 'cancelled' | null
+  // Back from checkout: PayPal redirects with ?paypal=, Razorpay's pop-up sets ?paid=.
+  const paypalReturn = searchParams.get('paypal') ?? searchParams.get('paid');   // 'approved' | 'cancelled' | null
+  const [cardSavedUntil, setCardSavedUntil] = useState<string | null>(null);
+
+  // phase139 — which provider customers pay with (one switch in the database).
+  const { data: activeProvider = null, isLoading: providerLoading } = useQuery({
+    queryKey: ['billing_active_provider'],
+    queryFn: () => getAdapter().billing.getActiveProvider(),
+    staleTime: 5 * 60 * 1000,
+  });
 
   const { data: sub, isLoading } = useQuery({
     queryKey: ['my_subscription', company_id],
@@ -125,9 +157,36 @@ export default function BillingPage() {
   const subscribe = useMutation({
     mutationFn: async (cycle: 'monthly' | 'half_yearly' | 'yearly') => {
       setPayError(null);
-      const { approvalUrl } = await callBillingApi('/api/paypal/create-subscription', { cycle });
-      if (!approvalUrl) throw new Error(t('settingsPages.billing.no_approval'));
-      window.location.href = approvalUrl;   // → PayPal
+      if (activeProvider === 'razorpay') {
+        const res = await callBillingApi('/api/razorpay/create-subscription', { cycle });
+        if (!res.checkout) throw new Error(t('settingsPages.billing.no_approval'));
+        const Razorpay = await loadRazorpay();
+        await new Promise<void>((resolve) => {
+          const rzp = new Razorpay({
+            ...res.checkout,
+            theme: { color: '#008F87' },
+            // Card authorised / paid. The subscription turns active only when
+            // Razorpay's webhook confirms it; this just shows the right message.
+            handler: () => {
+              if (res.first_charge_at) setCardSavedUntil(res.first_charge_at);
+              else setSearchParams({ paid: 'approved' }, { replace: true });
+              qc.invalidateQueries({ queryKey: ['my_subscription', company_id] });
+              resolve();
+            },
+            modal: { ondismiss: () => { setSearchParams({ paid: 'cancelled' }, { replace: true }); resolve(); } },
+          });
+          rzp.on('payment.failed', () => resolve());
+          rzp.open();
+        });
+        return;
+      }
+      if (activeProvider === 'paypal') {
+        const { approvalUrl } = await callBillingApi('/api/paypal/create-subscription', { cycle });
+        if (!approvalUrl) throw new Error(t('settingsPages.billing.no_approval'));
+        window.location.href = approvalUrl;   // → PayPal
+        return;
+      }
+      throw new Error(t('settingsPages.billing.no_provider'));
     },
     onError: (e) => setPayError(e instanceof Error ? e.message : String(e)),
   });
@@ -135,7 +194,8 @@ export default function BillingPage() {
   const cancelSub = useMutation({
     mutationFn: async () => {
       setPayError(null);
-      await callBillingApi('/api/paypal/cancel-subscription', {});
+      // Cancel through the provider the subscription was made with.
+      await callBillingApi(`/api/${sub!.provider}/cancel-subscription`, {});
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['my_subscription', company_id] }),
     onError: (e) => setPayError(e instanceof Error ? e.message : String(e)),
@@ -151,14 +211,25 @@ export default function BillingPage() {
 
   const B = 'settingsPages.billing.';
   const cycleLabel = (c: string) => t(`${B}cycle.${c}`, { defaultValue: CYCLE_LABEL[c] ?? c });
-  const providerLabel = (p: string) => (p === 'paypal' ? 'PayPal' : p === 'manual' ? t(`${B}manual`) : p);
+  const providerLabel = (p: string) => (p === 'paypal' ? 'PayPal' : p === 'razorpay' ? 'Razorpay' : p === 'manual' ? t(`${B}manual`) : p);
+  const isProviderSub = !!sub && (sub.provider === 'paypal' || sub.provider === 'razorpay');
+  // A card saved during the free year (Razorpay) can be cancelled before it is ever charged.
+  const canCancel = isProviderSub && !!sub && (['active', 'past_due', 'payment_failed'].includes(sub.status)
+    || (sub.status === 'trialing' && sub.provider === 'razorpay' && !!sub.next_billing_date && !sub.cancel_at_period_end));
 
-  // Ocean Teal (UI v1.1): look only — same subscription, PayPal checkout and
+  // Ocean Teal (UI v1.1) + phase139: the active provider (Razorpay or PayPal) checkout and
   // cancel, return banners, billing address and payment history.
   return (
     <OceanPage narrow testid="billing-ocean" title={t('settingsNav.items.billing.title')} subtitle={t(`${B}subtitle`)}>
       {paypalReturn === 'approved' && sub?.status !== 'active' && (
-        <p className="sb-info-note sb-btn-inline" role="status"><Loader2 size={18} className="sb-spin" aria-hidden="true" />{t(`${B}approved_wait`)}</p>
+        <p className="sb-info-note sb-btn-inline" role="status"><Loader2 size={18} className="sb-spin" aria-hidden="true" />
+          {searchParams.get('paid') ? t(`${B}approved_wait_any`) : t(`${B}approved_wait`)}</p>
+      )}
+      {cardSavedUntil && (
+        <div className="sb-alert sb-alert-good sb-bill-banner" role="status" data-testid="billing-card-saved">
+          <span className="sb-btn-inline"><CheckCircle2 size={18} aria-hidden="true" />{t(`${B}card_saved`, { date: fmtDate(cardSavedUntil) })}</span>
+          <button type="button" className="sb-icon-btn" onClick={() => setCardSavedUntil(null)} aria-label={t('common.close')}><X size={16} aria-hidden="true" /></button>
+        </div>
       )}
       {paypalReturn === 'approved' && sub?.status === 'active' && (
         <div className="sb-alert sb-alert-good sb-bill-banner" role="status">
@@ -210,7 +281,7 @@ export default function BillingPage() {
               <Row label={t(`${B}next_billing`)} value={<bdi dir="ltr">{fmtDate(sub.next_billing_date)}</bdi>} />
               <Row label={t(`${B}period_end`)} value={<bdi dir="ltr">{fmtDate(sub.current_period_end)}</bdi>} />
             </div>
-            {sub.provider === 'paypal' && (sub.status === 'active' || sub.status === 'past_due' || sub.status === 'payment_failed') && (
+            {canCancel && (
               <div className="sb-form-actions" style={{ justifyContent: 'flex-start', marginTop: 14 }}>
                 <button
                   type="button"
@@ -229,14 +300,19 @@ export default function BillingPage() {
           {sub.plan && (
             <section className="sb-card">
               <h2 className="sb-form-title" style={{ lineHeight: 1.3 }}>{t(`${B}choose_plan`)}</h2>
-              <p className="sb-form-hint" style={{ margin: '4px 0 12px' }}>{t(`${B}choose_hint`)}</p>
+              <p className="sb-form-hint" style={{ margin: '4px 0 12px' }}>
+                {activeProvider === 'razorpay' ? t(`${B}choose_hint_razorpay`) : activeProvider === 'paypal' ? t(`${B}choose_hint`) : null}
+              </p>
+              {!providerLoading && !activeProvider && (
+                <p className="sb-info-note" data-testid="billing-no-provider" style={{ marginBottom: 12 }}>{t(`${B}no_provider`)}</p>
+              )}
               <div className="sb-bill-plans">
                 {([
                   { cycle: 'monthly' as const,     price: sub.plan.monthly_price,            note: null },
                   { cycle: 'half_yearly' as const, price: sub.plan.half_yearly_price ?? 0,   note: t(`${B}save_17`) },
                   { cycle: 'yearly' as const,      price: sub.plan.yearly_price,             note: t(`${B}save_21`) },
                 ]).filter(p => p.price > 0).map((p) => {
-                  const current = sub.provider === 'paypal' && sub.status === 'active' && sub.billing_cycle === p.cycle;
+                  const current = isProviderSub && sub.status === 'active' && sub.billing_cycle === p.cycle;
                   const busy = subscribe.isPending && subscribe.variables === p.cycle;
                   return (
                     <div key={p.cycle} className={`sb-bill-plan ${p.cycle === 'yearly' ? 'is-on' : ''}`}>
@@ -247,7 +323,7 @@ export default function BillingPage() {
                       <button
                         type="button"
                         className={`${p.cycle === 'yearly' ? 'sb-primary-btn' : 'sb-secondary-btn'} sb-btn-inline`}
-                        disabled={subscribe.isPending || current}
+                        disabled={subscribe.isPending || current || !activeProvider}
                         onClick={() => subscribe.mutate(p.cycle)}
                       >
                         {busy && <Loader2 size={18} className="sb-spin" aria-hidden="true" />}
