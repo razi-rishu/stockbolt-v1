@@ -643,6 +643,40 @@ export interface AdminCompanyDetail {
 }
 export interface AdminSignup { id: string; email: string; full_name: string; created_at: string }
 
+// phase142 — Control Center.
+export interface AdminBilling { configured: boolean; provider: string | null }
+export interface AdminOverviewRange extends Omit<AdminOverview, 'kpis' | 'days'> {
+  from: string; to: string; days: number; billing: AdminBilling;
+  kpis: {
+    signups_total: number; signups_range: number; signups_prev_range: number; signups_today: number;
+    active_7d: number; no_company: number; unverified: number;
+    companies_total: number; companies_range: number; companies_prev_range: number;
+    companies_active_30d: number; companies_not_configured: number;
+  };
+}
+export type AdminBusinessFilter = 'all' | 'active_30d' | 'dormant' | 'trial' | 'paying' | 'not_configured';
+export type AdminBusinessSort = 'name' | 'created_at' | 'users' | 'last_activity' | 'country_code';
+export interface AdminBusinessRow extends AdminCompanyRow { owner_name: string | null }
+export interface AdminBusinessesQuery {
+  search?: string; filter?: AdminBusinessFilter; country?: string | null; activities?: string[] | null;
+  from?: string | null; to?: string | null; sort?: AdminBusinessSort; dir?: 'asc' | 'desc'; limit?: number; offset?: number;
+}
+export interface AdminBusinessesPage extends AdminPage<AdminBusinessRow> {
+  summary: { total: number; active_30d: number; dormant: number; not_configured: number; trialing: number; countries: string[] };
+}
+export interface AdminBusinessDetail {
+  company: { id: string; name: string; country_code: string | null; currency: string | null; created_at: string; legal_form: string | null; city: string | null };
+  owner: { name: string; email: string; last_seen_at: string | null; provider: string } | null;
+  members: { name: string; email_masked: string; role: string | null; last_seen_at: string | null; is_active: boolean; is_owner: boolean }[];
+  counts: { users: number; invoices: number; quotes: number; bills: number; payments: number; products: number; contacts: number; journal_entries: number };
+  storage_bytes: number | null;
+  last_activity: string | null;
+  activity: { month: string; journal_entries: number; invoices: number }[];
+  config: { activities: string[]; primary: string; modules: string[]; configured_at: string } | null;
+  subscription: { status: string; provider: string; cycle: string | null; trial_end: string | null; next_billing_date: string | null; grandfathered: boolean } | null;
+  billing: { configured: boolean };
+}
+
 export interface ExchangeRate {
   id:            string;
   company_id:    string;
@@ -3987,4 +4021,8 @@ export interface AdminAPI {
   listCompanies(p: { search?: string; filter?: AdminCompanyFilter; country?: string | null; limit?: number; offset?: number }): Promise<AdminPage<AdminCompanyRow>>;
   companyDetail(id: string): Promise<AdminCompanyDetail | null>;
   recentSignups(since: string): Promise<AdminSignup[]>;
+  /** phase142 — Control Center. */
+  overviewRange(from: string, to: string): Promise<AdminOverviewRange>;
+  businesses(q: AdminBusinessesQuery): Promise<AdminBusinessesPage>;
+  businessDetail(id: string): Promise<AdminBusinessDetail | null>;
 }

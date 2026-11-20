@@ -213,7 +213,7 @@ const SystemHealthPage                = lazy(() => import('@/modules/settings/sy
 const MaintenancePage                 = lazy(() => import('@/modules/settings/maintenance'));
 const ResetDataPage                   = lazy(() => import('@/modules/settings/reset-data'));
 const SalespeoplePage                 = lazy(() => import('@/modules/settings/salespeople'));
-const AdminDashboardPage              = lazy(() => import('@/modules/admin/admin-dashboard'));
+const AdminControlCenter              = lazy(() => import('@/modules/admin/control-center'));
 const RequirePlatformAdmin            = lazy(() => import('@/modules/admin/require-platform-admin'));
 // phase133 — Help & Support (every signed-in user; the inbox checks operator rights)
 const SupportHomePage                 = lazy(() => import('@/modules/support/support-home'));
@@ -295,7 +295,7 @@ function AppRoutes() {
                Guarded client-side; the get_admin_dashboard RPC enforces it
                server-side regardless. Not in any tenant navigation. ───── */}
           <Route element={<RequirePlatformAdmin />}>
-            <Route path="/admin" element={<AdminDashboardPage />} />
+            <Route path="/admin/*" element={<AdminControlCenter />} />
           </Route>
 
           {/* ── Authenticated + onboarded (wrapped in AppLayout) ───── */}

@@ -590,6 +590,9 @@ export function createSelfHostedAdapter(): DataAdapter {
       listCompanies: () => notImplemented('admin.listCompanies'),
       companyDetail: () => notImplemented('admin.companyDetail'),
       recentSignups: async () => [],
+      overviewRange: () => notImplemented('admin.overviewRange'),
+      businesses: () => notImplemented('admin.businesses'),
+      businessDetail: () => notImplemented('admin.businessDetail'),
     },
     // Phase 12.16: Salespeople
     salespeople: {

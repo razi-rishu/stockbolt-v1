@@ -7069,6 +7069,26 @@ export function createSupabaseAdapter(
         if (error) return [];   // not an owner, or not applied yet: no alerts
         return (data ?? []) as import('./adapter').AdminSignup[];
       },
+      // phase142 — Control Center.
+      async overviewRange(from, to) {
+        const { data, error } = await rpcAny('admin_overview_range', { p_from: from, p_to: to });
+        assertNoError(error as Error | null, 'admin.overviewRange');
+        return data as import('./adapter').AdminOverviewRange;
+      },
+      async businesses(q) {
+        const { data, error } = await rpcAny('admin_businesses', {
+          p_search: q.search || null, p_filter: q.filter ?? 'all', p_country: q.country ?? null,
+          p_activities: q.activities && q.activities.length ? q.activities : null,
+          p_from: q.from || null, p_to: q.to || null, p_sort: q.sort ?? 'created_at', p_dir: q.dir ?? 'desc',
+          p_limit: q.limit ?? 50, p_offset: q.offset ?? 0 });
+        assertNoError(error as Error | null, 'admin.businesses');
+        return data as import('./adapter').AdminBusinessesPage;
+      },
+      async businessDetail(id) {
+        const { data, error } = await rpcAny('admin_business_detail', { p_company: id });
+        assertNoError(error as Error | null, 'admin.businessDetail');
+        return (data ?? null) as import('./adapter').AdminBusinessDetail | null;
+      },
     },
 
     // ── Phase 12.16: Salespeople master ───────────────────────────────────
