@@ -100,6 +100,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       setRole:             () => notImplemented('users.setRole'),
       setActive:           () => notImplemented('users.setActive'),
       myPendingInvite:     () => notImplemented('users.myPendingInvite'),
+      getInvitePreview:    () => notImplemented('users.getInvitePreview'),
       acceptInvite:        () => notImplemented('users.acceptInvite'),
       listRoles:           () => notImplemented('users.listRoles'),
       myPermissions:       () => notImplemented('users.myPermissions'),

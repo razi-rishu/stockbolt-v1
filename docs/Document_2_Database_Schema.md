@@ -1141,6 +1141,9 @@ RESTRICTIVE RLS policy `branch_scope` (reads and writes) on: invoices, credit_no
 `fixed_assets.purchase_id` — nullable FK to `fixed_asset_purchases` (ON DELETE RESTRICT); set on rows created by posting a purchase.
 Triggers (phase137): `vendor_bills` / `expenses` `*_asset_purchase_guard` (status change) and `*_asset_purchase_guard_del` (delete) refuse a document that carries a purchase unless the transaction-local setting `stockbolt.asset_purchase_doc` equals its id (set only by `post_` / `reopen_fixed_asset_purchase`); `debit_notes` / `debit_note_items` `*_asset_purchase_guard` refuse a link to such a bill.
 
+### Invite links (phase140)
+`company_invites.token` (phase22) is the secret in the shared link `/invite/<token>`. `get_invite_preview(p_token uuid)` — SECURITY DEFINER, STABLE, executable by `anon` and `authenticated` — returns `{company_name, role_key, role_name, email}` for a **pending** invite with that token, else NULL. Read-only; joining still goes through `accept_invite()` (signed-in email must match).
+
 ### Document activity (phase138)
 `created_by uuid` (nullable, no FK) on `sales_quotes`, `invoices`, `payments`, `credit_notes`, `purchase_orders`, `goods_receipts`, `vendor_bills`, `debit_notes`, `expenses` (`journal_entries` already had it). Trigger `<table>_created_by` sets it to `auth.uid()` on INSERT and keeps it unchanged on UPDATE; rows created before phase138 stay NULL. Triggers `sales_quotes_status_log` / `purchase_orders_status_log` write one `audit_logs` row per status change (`action 'update'`, `entity_type 'sales_quote' | 'purchase_order'`, `old_data`/`new_data` = `{"status": …}`). Read by the per-document Activity panel only; no money or stock logic reads them.
 Functions (SECURITY INVOKER): `post_fixed_asset_purchase(uuid)`, `reopen_fixed_asset_purchase(uuid)`, `delete_fixed_asset_purchase_draft(uuid)`. Posting rules: Doc 3 B4a.

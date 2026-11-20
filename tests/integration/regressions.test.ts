@@ -8826,3 +8826,24 @@ describe('Phase 138 — document activity (soft until applied)', () => {
     for (const r of f) expect(r.anon || r.auth, `${r.proname} must not be client-executable`).toBe(false);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 140 — invite links: the public preview is read-only and shows nothing
+// for an unknown token.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 140 — invite link preview (soft until applied)', () => {
+  it('phase140: get_invite_preview is read-only, public, and empty for unknown tokens', async () => {
+    const r = await sql<{ ok: boolean }>(`SELECT to_regprocedure('public.get_invite_preview(uuid)') IS NOT NULL AS ok`);
+    if (!r[0]?.ok) {
+      console.warn('⚠ phase140 not applied yet — run supabase/migrations/20261120000001_phase140_invite_link.sql.');
+      return;
+    }
+    const f = await sql<{ volatile: string; anon: boolean }>(`
+      SELECT p.provolatile AS volatile, has_function_privilege('anon', p.oid, 'EXECUTE') AS anon
+        FROM pg_proc p WHERE p.oid = 'public.get_invite_preview(uuid)'::regprocedure`);
+    expect(f[0].volatile, 'must be STABLE (read-only)').toBe('s');
+    expect(f[0].anon).toBe(true);
+    const v = await sql<{ v: unknown }>(`SELECT public.get_invite_preview(gen_random_uuid()) AS v`);
+    expect(v[0].v).toBeNull();
+  });
+});

@@ -54,7 +54,8 @@ export default function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { email: localStorage.getItem(REMEMBER_KEY) ?? '' },
+    // phase140 — an invite link passes the invited email (?email=).
+    defaultValues: { email: new URLSearchParams(location.search).get('email') ?? localStorage.getItem(REMEMBER_KEY) ?? '' },
   });
   const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('login');
 

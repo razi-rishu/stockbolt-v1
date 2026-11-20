@@ -77,7 +77,11 @@ export default function RegisterPage() {
     handleSubmit,
     watch,
     formState: { errors, isSubmitting },
-  } = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { agree: false } });
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    // phase140 — an invite link passes the invited email (?email=).
+    defaultValues: { agree: false, email: new URLSearchParams(window.location.search).get('email') ?? '' },
+  });
   const { onInvalid, bannerMessage, clearBanner } = useFormInvalidBanner('register');
 
   const password = watch('password') ?? '';

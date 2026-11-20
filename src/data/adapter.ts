@@ -216,12 +216,17 @@ export interface ProfilesAPI {
 // ── Users & Roles (Phase 22) ───────────────────────────────────────────────
 export type AppRole = 'admin' | 'accountant' | 'sales' | 'counter' | 'viewer';
 
+/** phase140 — what an invite link shows before sign-in. */
+export interface InvitePreview { company_name: string; role_key: string; role_name: string; email: string }
+
 export interface CompanyInviteRow {
   id:          string;
   company_id:  string;
   email:       string;
   role:        AppRole;
   status:      'pending' | 'accepted' | 'revoked';
+  /** phase140 — the secret in the invite link (/invite/<token>). */
+  token?:      string;
   invited_by:  string | null;
   created_at:  string;
   accepted_at: string | null;
@@ -259,6 +264,8 @@ export interface UsersAPI {
   setActive(user_id: string, active: boolean): Promise<void>;
   /** Pending invite for the signed-in user's email (drives self-signup join). */
   myPendingInvite(): Promise<PendingInvite | null>;
+  /** phase140 — public preview of an invite link (no sign-in needed); null when not pending. */
+  getInvitePreview(token: string): Promise<InvitePreview | null>;
   /** Accept the pending invite → attach this user's profile to the company. */
   acceptInvite(): Promise<{ company_id: string; role: AppRole }>;
 

@@ -703,6 +703,12 @@ export function createSupabaseAdapter(
         assertNoError(error as Error | null, 'users.myPendingInvite');
         return (data ?? null) as PendingInvite | null;
       },
+      async getInvitePreview(token) {
+        const { data, error } = await rpcAny('get_invite_preview', { p_token: token });
+        // A malformed token is just "not a valid invite".
+        if (error) return null;
+        return (data ?? null) as import('./adapter').InvitePreview | null;
+      },
       async acceptInvite() {
         const { data, error } = await rpcAny('accept_invite', {});
         assertNoError(error as Error | null, 'users.acceptInvite');

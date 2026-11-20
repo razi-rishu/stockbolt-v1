@@ -2289,3 +2289,14 @@
 .sb-ocean .sb-wiz-unsaved strong { font-weight: 700; }
 .sb-ocean .sb-wiz-skip { padding: 0; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 700; color: var(--sb-warning); text-decoration: underline; cursor: pointer; }
 
+/* ── Invite link page + Users share panel (phase140) ── */
+.sb-ocean a.sb-invite-cta { display: flex; align-items: center; justify-content: center; text-decoration: none; }
+.sb-ocean a.sb-invite-signout { display: block; text-align: center; }
+.sb-ocean .sb-share { display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; border: 1px solid var(--sb-primary-light); background: var(--sb-primary-soft); }
+.sb-ocean .sb-share-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.sb-ocean .sb-share-title { margin: 0; font-size: 15px; font-weight: 700; color: var(--sb-text); }
+.sb-ocean .sb-share-hint { margin: 2px 0 0; font-size: 13px; line-height: 1.5; color: var(--sb-text-secondary); }
+.sb-ocean .sb-share-link { width: 100%; min-width: 0; height: 42px; padding: 0 12px; border-radius: var(--sb-radius-sm); border: 1px solid var(--sb-border); background: #fff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: var(--sb-text); }
+.sb-ocean .sb-share-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.sb-ocean .sb-share-actions a { text-decoration: none; }
+

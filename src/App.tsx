@@ -39,6 +39,7 @@ const OAuthCallbackPage  = lazy(() => import('@/modules/auth/oauth-callback'));
 const SetupWizardPage    = lazy(() => import('@/modules/onboarding/setup-wizard'));
 const BillingPage        = lazy(() => import('@/modules/settings/billing'));
 const AcceptInvitePage   = lazy(() => import('@/modules/onboarding/accept-invite'));
+const InviteLinkPage     = lazy(() => import('@/modules/onboarding/invite-link'));
 const UsersRolesPage     = lazy(() => import('@/modules/settings/users/index'));
 
 // App shell pages
@@ -272,6 +273,8 @@ function AppRoutes() {
         <Route path="/reset-password"   element={<ResetPasswordPage />} />
         <Route path="/verify-email"     element={<EmailVerifyPage />} />
         <Route path="/auth/callback"    element={<OAuthCallbackPage />} />
+        {/* phase140 — shared invite link; opens before the invitee has an account. */}
+        <Route path="/invite/:token"    element={<InviteLinkPage />} />
 
         {/* ── Authenticated ────────────────────────────────────────── */}
         <Route element={<RequireAuth />}>

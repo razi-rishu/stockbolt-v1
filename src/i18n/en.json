@@ -2831,6 +2831,18 @@
       }
     },
     "users": {
+      "invited_share": "Invitation created for {{email}}. Share the link below so they can join.",
+      "share_link": "Share link",
+      "share_title": "Invite link for {{email}}",
+      "share_hint": "Send this link to them. It opens a page where they create their StockBolt account with this email and join your company.",
+      "copy_link": "Copy link",
+      "copied": "Copied",
+      "copy_failed": "Couldn't copy — select the link and copy it yourself.",
+      "share_whatsapp": "WhatsApp",
+      "share_email": "Email",
+      "share_more": "More…",
+      "share_subject": "Join {{company}} on StockBolt",
+      "share_message": "You're invited to join {{company}} on StockBolt as {{role}}. Open this link to join: {{link}}",
       "sys": {"admin": "Admin", "accountant": "Accountant", "sales": "Salesperson", "counter": "Counter / Cashier", "viewer": "Viewer"},
       "subtitle": "Invite teammates, assign roles, and define what each role can access.",
       "invited": "Invitation created for {{email}}. Ask them to sign up with this email.",
@@ -4695,5 +4707,19 @@
     "start": "Choose my activities",
     "later": "Not now",
     "page_note": "Your business setup isn't saved yet, so every module is currently on. Pick your activities, check the modules, then save on the Review step."
+  },
+  "inviteLink": {
+    "checking": "Checking your invitation…",
+    "invalid_title": "This invite link isn't valid any more",
+    "invalid_body": "It may have been revoked or already used. Ask the person who invited you for a new link.",
+    "signin": "Sign in",
+    "for_email": "Invitation for",
+    "use_this_email": "Create your account (or sign in) with this email address to join.",
+    "create": "Create my account",
+    "have_account": "I already have an account — sign in",
+    "other_user": "You're signed in as {{current}}, but this invite is for {{email}}. Sign out first, then open the link again.",
+    "sign_out_first": "Sign out",
+    "already_member": "You're already in a company with this account.",
+    "open_app": "Open StockBolt"
   }
 }

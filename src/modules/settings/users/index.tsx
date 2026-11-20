@@ -19,7 +19,9 @@ import type { TFunction } from 'i18next';
 import { Modal } from '@/ui/modal';
 import type { Column } from '@/ui/table';
 import { OceanPage, OceanTable } from '@/components/ocean-list';
-import { UserPlus, Users, MailOpen, ShieldCheck, Plus, Loader2 } from 'lucide-react';
+import { UserPlus, Users, MailOpen, ShieldCheck, Plus, Loader2, Copy, Check, Mail, MessageCircle, Share2, X } from 'lucide-react';
+import { authRedirectOrigin } from '@/lib/platform';
+import { useCompany } from '@/hooks/use-company-currency';
 import { type AppRole } from '@/lib/permissions';
 import type { Profile, CompanyInviteRow, RoleRow } from '@/data/adapter';
 
@@ -48,6 +50,10 @@ export default function UsersRolesPage() {
   const [inviteRole, setInviteRole] = useState<string>('sales');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // phase140 — the invite whose link is being shared (opens after "Send invite").
+  const [shareId, setShareId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const company = useCompany();
   const [roleModal, setRoleModal] = useState<
     | { open: false }
     | { open: true; mode: 'create' | 'edit' | 'view'; role: RoleRow | null; presetName?: string; presetPerms: string[] }
@@ -66,7 +72,11 @@ export default function UsersRolesPage() {
 
   const invite = useMutation({
     mutationFn: () => getAdapter().users.inviteUser(email.trim(), inviteRole as AppRole),
-    onSuccess: () => { setNotice(t('settingsPages.users.invited', { email: email.trim() })); setError(null); setEmail(''); refresh(); }, onError: fail,
+    onSuccess: (id) => {
+      setNotice(t('settingsPages.users.invited_share', { email: email.trim() }));
+      setError(null); setEmail(''); setShareId(String(id)); setCopied(false); refresh();
+    },
+    onError: fail,
   });
   const revoke = useMutation({ mutationFn: (id: string) => getAdapter().users.revokeInvite(id), onSuccess: () => { setError(null); refresh(); }, onError: fail });
   const setRole = useMutation({ mutationFn: (v: { id: string; role: string }) => getAdapter().users.setRole(v.id, v.role as AppRole), onSuccess: () => { setError(null); refresh(); }, onError: fail });
@@ -146,7 +156,15 @@ export default function UsersRolesPage() {
     { key: 'date', header: t('settingsPages.users.invited_on'), render: (inv) => <bdi dir="ltr">{formatDate(inv.created_at)}</bdi> },
     {
       key: 'revoke', header: '', align: 'end',
-      render: (inv) => <button type="button" className="sb-row-link text-danger-500" onClick={() => revoke.mutate(inv.id)} disabled={revoke.isPending}>{t('settingsPages.users.revoke')}</button>,
+      render: (inv) => (
+        <span className="sb-users-actions">
+          <button type="button" className="sb-row-link text-brand-600" data-testid={`invite-share-${inv.email}`}
+            onClick={() => { setShareId(inv.id); setCopied(false); }}>
+            {t('settingsPages.users.share_link')}
+          </button>
+          <button type="button" className="sb-row-link text-danger-500" onClick={() => revoke.mutate(inv.id)} disabled={revoke.isPending}>{t('settingsPages.users.revoke')}</button>
+        </span>
+      ),
     },
   ];
 
@@ -235,6 +253,50 @@ export default function UsersRolesPage() {
           </button>
         </form>
       </section>
+
+      {/* phase140 — share the invite link (the invite itself sends nothing). */}
+      {(() => {
+        const inv = invites.find((i) => i.id === shareId);
+        if (!inv?.token) return null;
+        const link = `${authRedirectOrigin()}/invite/${inv.token}`;
+        const message = t('settingsPages.users.share_message', { company: company?.name ?? 'StockBolt', role: roleName(inv.role), link });
+        const copy = async () => {
+          try { await navigator.clipboard.writeText(link); setCopied(true); }
+          catch { setError(t('settingsPages.users.copy_failed')); }
+        };
+        return (
+          <section className="sb-card sb-share" data-testid="invite-share-panel">
+            <div className="sb-share-head">
+              <div>
+                <h2 className="sb-share-title">{t('settingsPages.users.share_title', { email: inv.email })}</h2>
+                <p className="sb-share-hint">{t('settingsPages.users.share_hint')}</p>
+              </div>
+              <button type="button" className="sb-icon-btn" aria-label={t('common.close')} onClick={() => setShareId(null)}><X size={16} aria-hidden="true" /></button>
+            </div>
+            <input className="sb-share-link" dir="ltr" readOnly value={link} aria-label={t('settingsPages.users.share_link')}
+              onFocus={(e) => e.currentTarget.select()} data-testid="invite-link" />
+            <div className="sb-share-actions">
+              <button type="button" className="sb-primary-btn sb-btn-inline" onClick={copy}>
+                {copied ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
+                {copied ? t('settingsPages.users.copied') : t('settingsPages.users.copy_link')}
+              </button>
+              <a className="sb-secondary-btn sb-btn-inline" href={`https://wa.me/?text=${encodeURIComponent(message)}`} target="_blank" rel="noopener noreferrer">
+                <MessageCircle size={18} aria-hidden="true" />{t('settingsPages.users.share_whatsapp')}
+              </a>
+              <a className="sb-secondary-btn sb-btn-inline"
+                href={`mailto:${encodeURIComponent(inv.email)}?subject=${encodeURIComponent(t('settingsPages.users.share_subject', { company: company?.name ?? 'StockBolt' }))}&body=${encodeURIComponent(message)}`}>
+                <Mail size={18} aria-hidden="true" />{t('settingsPages.users.share_email')}
+              </a>
+              {typeof navigator !== 'undefined' && 'share' in navigator && (
+                <button type="button" className="sb-secondary-btn sb-btn-inline"
+                  onClick={() => { void navigator.share({ title: 'StockBolt', text: message }).catch(() => undefined); }}>
+                  <Share2 size={18} aria-hidden="true" />{t('settingsPages.users.share_more')}
+                </button>
+              )}
+            </div>
+          </section>
+        );
+      })()}
 
       {/* Members */}
       <section className="sb-section-card">
