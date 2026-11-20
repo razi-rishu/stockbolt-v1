@@ -8847,3 +8847,28 @@ describe('Phase 140 — invite link preview (soft until applied)', () => {
     expect(v[0].v).toBeNull();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 141 — platform-owner insights: gated, anon-closed, read-only.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 141 — admin insights (soft until applied)', () => {
+  const FNS = ['admin_overview', 'admin_list_users', 'admin_list_companies', 'admin_company_detail', 'admin_recent_signups'];
+  it('phase141: owner functions are closed to anon, read-only, and gated', async () => {
+    const r = await sql<{ proname: string; anon: boolean; volatile: string; gated: boolean }>(`
+      SELECT p.proname, has_function_privilege('anon', p.oid, 'EXECUTE') AS anon, p.provolatile AS volatile,
+             p.prosrc LIKE '%_admin_gate()%' AS gated
+        FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = ANY (ARRAY['${FNS.join("','")}'])`);
+    if (r.length === 0) {
+      console.warn('⚠ phase141 not applied yet — run supabase/migrations/20261120000002_phase141_admin_insights.sql.');
+      return;
+    }
+    expect(r.map(x => x.proname).sort()).toEqual([...FNS].sort());
+    for (const x of r) {
+      expect(x.anon, `${x.proname} must not be executable by anon`).toBe(false);
+      expect(x.volatile, `${x.proname} must be STABLE`).toBe('s');
+      expect(x.gated, `${x.proname} must call _admin_gate()`).toBe(true);
+    }
+    const v = await sql<{ sel: boolean }>(`SELECT has_table_privilege('authenticated', 'public._admin_accounts', 'SELECT') AS sel`);
+    expect(v[0].sel, '_admin_accounts must not be readable by clients').toBe(false);
+  });
+});

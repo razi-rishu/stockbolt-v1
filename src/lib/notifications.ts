@@ -14,9 +14,10 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
+import i18next from 'i18next';
 
 export type NotificationSeverity = 'info' | 'warning' | 'danger';
-export type NotificationKind = 'overdue_invoice' | 'low_stock' | 'payment_received';
+export type NotificationKind = 'overdue_invoice' | 'low_stock' | 'payment_received' | 'new_signup';
 
 export interface Notification {
   /** Stable per (kind + entity) — e.g. "overdue-invoice-<uuid>". Used for read-state. */
@@ -75,8 +76,16 @@ export function useNotifications() {
     if (company_id) setReadIds(loadReadIds(company_id));
   }, [company_id]);
 
+  // phase141 — platform owners also get a bell entry for every new sign-up.
+  const { data: isPlatformAdmin = false } = useQuery({
+    queryKey: ['is_platform_admin'],
+    queryFn: () => getAdapter().admin.isPlatformAdmin(),
+    enabled: !!company_id,
+    staleTime: 10 * 60 * 1000,
+  });
+
   const { data: raw = [], isLoading } = useQuery({
-    queryKey: ['notifications', company_id],
+    queryKey: ['notifications', company_id, isPlatformAdmin],
     enabled: !!company_id,
     refetchInterval: REFETCH_MS,
     refetchOnWindowFocus: true,
@@ -176,6 +185,27 @@ export function useNotifications() {
         }
       } catch {
         // ignore
+      }
+
+      // ── 4. New sign-ups (platform owners only; the RPC refuses anyone else) ─
+      if (isPlatformAdmin) {
+        try {
+          const since = new Date(Date.now() - 7 * 86400_000).toISOString();
+          const signups = await adapter.admin.recentSignups(since);
+          for (const s of signups.slice(0, 20)) {
+            out.push({
+              id: `new-signup-${s.id}`,
+              kind: 'new_signup',
+              severity: 'info',
+              title: i18next.t('adminOcean.bell_title'),
+              detail: s.full_name ? `${s.full_name} · ${s.email}` : s.email,
+              href: '/admin',
+              createdAt: s.created_at,
+            });
+          }
+        } catch {
+          // ignore — no alerts if the call fails
+        }
       }
 
       // Sort by createdAt descending (newest first), with danger > warning > info

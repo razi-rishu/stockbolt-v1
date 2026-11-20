@@ -1141,6 +1141,9 @@ RESTRICTIVE RLS policy `branch_scope` (reads and writes) on: invoices, credit_no
 `fixed_assets.purchase_id` — nullable FK to `fixed_asset_purchases` (ON DELETE RESTRICT); set on rows created by posting a purchase.
 Triggers (phase137): `vendor_bills` / `expenses` `*_asset_purchase_guard` (status change) and `*_asset_purchase_guard_del` (delete) refuse a document that carries a purchase unless the transaction-local setting `stockbolt.asset_purchase_doc` equals its id (set only by `post_` / `reopen_fixed_asset_purchase`); `debit_notes` / `debit_note_items` `*_asset_purchase_guard` refuse a link to such a bill.
 
+### Platform-owner insights (phase141)
+Read-only SECURITY DEFINER functions, each gated by `_admin_gate()` (signed in AND in `platform_admins`), EXECUTE revoked from `anon`: `admin_overview(p_days)` (KPIs, daily sign-up series, nested funnel, countries, business types, plan mix), `admin_list_users(search, filter, limit, offset)`, `admin_list_companies(search, filter, country, limit, offset)`, `admin_company_detail(uuid)`, `admin_recent_signups(since)` (bell alert, max 30 days back). Helper view `_admin_accounts` (auth.users + profiles, no anonymous/deleted) is revoked from every client role.
+
 ### Invite links (phase140)
 `company_invites.token` (phase22) is the secret in the shared link `/invite/<token>`. `get_invite_preview(p_token uuid)` — SECURITY DEFINER, STABLE, executable by `anon` and `authenticated` — returns `{company_name, role_key, role_name, email}` for a **pending** invite with that token, else NULL. Read-only; joining still goes through `accept_invite()` (signed-in email must match).
 

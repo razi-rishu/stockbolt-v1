@@ -606,6 +606,43 @@ export interface AdminDashboard {
   recent_companies:   { id: string; name: string; created_at: string; users: number }[];
   generated_at:       string;
 }
+// phase141 — platform-owner insights.
+export interface AdminOverview {
+  days: number;
+  kpis: {
+    signups_total: number; signups_today: number; signups_7d: number; signups_period: number; signups_prev_period: number;
+    active_7d: number; no_company: number; unverified: number;
+    companies_total: number; companies_period: number; companies_active_30d: number; companies_not_configured: number;
+  };
+  series: { day: string; signups: number; companies: number }[];
+  funnel: { signed_up: number; verified: number; in_company: number; configured: number; active_30d: number; paying: number };
+  countries: { code: string; n: number }[];
+  industries: { key: string; n: number }[];
+  plans: { trialing: number; paying: number; complimentary: number; at_risk: number; ended: number; none: number };
+  generated_at: string;
+}
+export type AdminUserFilter = 'all' | 'new_7d' | 'no_company' | 'unverified' | 'active_7d' | 'inactive_30d';
+export interface AdminUserRow {
+  id: string; email: string; full_name: string; created_at: string; last_seen_at: string | null; verified: boolean;
+  provider: string; company_id: string | null; company_name: string | null; role: string | null; is_active: boolean;
+}
+export type AdminCompanyFilter = 'all' | 'new_30d' | 'active_30d' | 'dormant' | 'trial' | 'paying' | 'not_configured';
+export interface AdminCompanyRow {
+  id: string; name: string; country_code: string | null; created_at: string; users: number; last_activity: string | null;
+  primary_activity_key: string | null; configured: boolean; sub_status: string | null; provider: string | null;
+  grandfathered: boolean; trial_end: string | null;
+}
+export interface AdminPage<T> { total: number; rows: T[] }
+export interface AdminCompanyDetail {
+  company: { id: string; name: string; country_code: string | null; currency: string | null; created_at: string };
+  users: { email: string; full_name: string; role: string | null; last_seen_at: string | null; is_active: boolean }[];
+  counts: { invoices: number; bills: number; products: number; contacts: number; journal_entries: number };
+  last_activity: string | null;
+  config: { activities: string[]; primary: string; modules: string[] } | null;
+  subscription: { status: string; provider: string; cycle: string | null; trial_end: string | null; next_billing_date: string | null; grandfathered: boolean } | null;
+}
+export interface AdminSignup { id: string; email: string; full_name: string; created_at: string }
+
 export interface ExchangeRate {
   id:            string;
   company_id:    string;
@@ -3944,4 +3981,10 @@ export interface AdminAPI {
   isPlatformAdmin(): Promise<boolean>;
   /** Cross-tenant platform metrics. Server-side refuses non-admins. */
   getDashboard(): Promise<AdminDashboard>;
+  /** phase141 — owner-only insights (each RPC refuses non-owners). */
+  overview(days: number): Promise<AdminOverview>;
+  listUsers(p: { search?: string; filter?: AdminUserFilter; limit?: number; offset?: number }): Promise<AdminPage<AdminUserRow>>;
+  listCompanies(p: { search?: string; filter?: AdminCompanyFilter; country?: string | null; limit?: number; offset?: number }): Promise<AdminPage<AdminCompanyRow>>;
+  companyDetail(id: string): Promise<AdminCompanyDetail | null>;
+  recentSignups(since: string): Promise<AdminSignup[]>;
 }

@@ -585,6 +585,11 @@ export function createSelfHostedAdapter(): DataAdapter {
       resetCompanyData: () => notImplemented('admin.resetCompanyData'),
       isPlatformAdmin: async () => false,
       getDashboard: () => notImplemented('admin.getDashboard'),
+      overview: () => notImplemented('admin.overview'),
+      listUsers: () => notImplemented('admin.listUsers'),
+      listCompanies: () => notImplemented('admin.listCompanies'),
+      companyDetail: () => notImplemented('admin.companyDetail'),
+      recentSignups: async () => [],
     },
     // Phase 12.16: Salespeople
     salespeople: {

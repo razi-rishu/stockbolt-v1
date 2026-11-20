@@ -7040,6 +7040,35 @@ export function createSupabaseAdapter(
         assertNoError(error as Error | null, 'admin.getDashboard');
         return data as import('./adapter').AdminDashboard;
       },
+      // phase141 — owner-only insights.
+      async overview(days) {
+        const { data, error } = await rpcAny('admin_overview', { p_days: days });
+        assertNoError(error as Error | null, 'admin.overview');
+        return data as import('./adapter').AdminOverview;
+      },
+      async listUsers(p) {
+        const { data, error } = await rpcAny('admin_list_users', {
+          p_search: p.search || null, p_filter: p.filter ?? 'all', p_limit: p.limit ?? 50, p_offset: p.offset ?? 0 });
+        assertNoError(error as Error | null, 'admin.listUsers');
+        return data as import('./adapter').AdminPage<import('./adapter').AdminUserRow>;
+      },
+      async listCompanies(p) {
+        const { data, error } = await rpcAny('admin_list_companies', {
+          p_search: p.search || null, p_filter: p.filter ?? 'all', p_country: p.country ?? null,
+          p_limit: p.limit ?? 50, p_offset: p.offset ?? 0 });
+        assertNoError(error as Error | null, 'admin.listCompanies');
+        return data as import('./adapter').AdminPage<import('./adapter').AdminCompanyRow>;
+      },
+      async companyDetail(id) {
+        const { data, error } = await rpcAny('admin_company_detail', { p_company: id });
+        assertNoError(error as Error | null, 'admin.companyDetail');
+        return (data ?? null) as import('./adapter').AdminCompanyDetail | null;
+      },
+      async recentSignups(since) {
+        const { data, error } = await rpcAny('admin_recent_signups', { p_since: since });
+        if (error) return [];   // not an owner, or not applied yet: no alerts
+        return (data ?? []) as import('./adapter').AdminSignup[];
+      },
     },
 
     // ── Phase 12.16: Salespeople master ───────────────────────────────────
