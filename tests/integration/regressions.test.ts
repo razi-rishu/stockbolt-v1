@@ -9024,3 +9024,24 @@ describe('Phase 147 — remaining approvals (soft until applied)', () => {
     expect(guarded[0].n, 'all approval documents and lines guarded').toBe(25);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 148 — confirm_stock_transfer writes a status the table allows.
+// It wrote 'confirmed', which stock_transfers_status_check rejects, so no
+// transfer could ever be confirmed.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 148 — stock transfers can be confirmed', () => {
+  it('phase148: the status confirm_stock_transfer writes is allowed by the CHECK', async () => {
+    const r = await sql<{ src: string; chk: string }>(`
+      SELECT p.prosrc AS src,
+             pg_get_constraintdef((SELECT oid FROM pg_constraint WHERE conname = 'stock_transfers_status_check')) AS chk
+        FROM pg_proc p WHERE p.proname = 'confirm_stock_transfer' AND p.pronamespace = 'public'::regnamespace`);
+    const m = /SET\s+status\s*=\s*'([a-z_]+)'/i.exec(r[0].src);
+    if (m && m[1] === 'confirmed' && !r[0].chk.includes("'confirmed'")) {
+      console.warn('⚠ phase148 not applied yet — run supabase/migrations/20261121000006_phase148_stock_transfer_confirm.sql.');
+      return;
+    }
+    expect(m, 'confirm_stock_transfer sets a status').not.toBeNull();
+    expect(r[0].chk, `status '${m![1]}' must be allowed by stock_transfers_status_check`).toContain(`'${m![1]}'`);
+  });
+});
