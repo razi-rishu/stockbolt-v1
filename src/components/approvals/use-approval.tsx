@@ -98,6 +98,8 @@ export function useDocApproval(docType: ApprovalDocType, docId: string | null | 
     pending: req?.status === 'pending',
     /** Its latest request was approved: void / reopen are admin-only. */
     approved: req?.status === 'approved',
+    /** The server's answer for the saved document (null when it can't say). */
+    needs: q.data?.needs ?? null,
     refetch: q.refetch,
   };
 }

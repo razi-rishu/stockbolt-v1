@@ -5008,6 +5008,7 @@
     "in_payroll_hint": "أوقفه لمن لا يُدفع له عبر الرواتب (مثل المالك)."
   },
   "apprOcean": {
+    "dt_stock_transfer": "تحويلات المخزون",
     "grp_other": "المخزون والبنوك والرواتب",
     "dt_inventory_adjustment": "تسويات المخزون",
     "dt_bank_transfer": "التحويلات البنكية",

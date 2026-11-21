@@ -69,7 +69,8 @@ export function ApprovalPanel({ docType, docId, isDraft, onChanged, confirmArgs,
   if (!req || req.status === 'cancelled' || (req.status === 'rejected' && isDraft) || (req.status === 'approved' && isDraft)) {
     const rejected = req?.status === 'rejected';
     if (!isDraft || (!appr.state.rule_enabled && !rejected)) return null;
-    if (!rejected && amountBase !== undefined && !gate.needs(amountBase)) return null;
+    // The server's answer for the saved document wins; the screen's amount is the fallback.
+    if (!rejected && (appr.needs === false || (appr.needs === null && amountBase !== undefined && !gate.needs(amountBase)))) return null;
     return (
       <section className={`sb-card sb-appr-panel ${rejected ? 'is-danger' : 'is-info'}`} data-print-hide data-testid="approval-panel">
         <span className="sb-appr-icon" aria-hidden="true">{rejected ? <XCircle size={20} /> : <ShieldAlert size={20} />}</span>

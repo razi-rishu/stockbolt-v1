@@ -3744,7 +3744,9 @@ export type ApprovalDocType =
   // phase146 — sales
   | 'sales_quote' | 'invoice' | 'credit_note' | 'customer_receipt' | 'customer_refund' | 'customer_credit_refund'
   // phase147 — inventory, accounting, banking, payroll
-  | 'inventory_adjustment' | 'bank_transfer' | 'fixed_asset_purchase' | 'payroll_run';
+  | 'inventory_adjustment' | 'bank_transfer' | 'fixed_asset_purchase' | 'payroll_run'
+  // phase149
+  | 'stock_transfer';
 export interface ApprovalRule { doc_type: ApprovalDocType; enabled: boolean; min_amount: number }
 /** Why someone can't approve: inactive | no_login | login_disabled | no_authority | no_permission. */
 export type ApproverProblem = string | null;
@@ -3765,6 +3767,9 @@ export interface DocApprovalRequest {
 }
 export interface DocApprovalState {
   rule_enabled: boolean; min_amount: number; is_admin: boolean; my_employee_id: string | null;
+  /** phase149 — for a saved document: its amount as the server values it, and
+   *  whether that needs approval (null before phase149 / for unsaved). */
+  amount_base?: number | null; needs?: boolean | null;
   request: DocApprovalRequest | null;
 }
 export interface ApprovalStepRow {

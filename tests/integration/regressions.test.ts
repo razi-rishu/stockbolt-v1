@@ -9021,7 +9021,7 @@ describe('Phase 147 — remaining approvals (soft until applied)', () => {
     }
     const guarded = await sql<{ n: number }>(`
       SELECT count(DISTINCT tgrelid)::int AS n FROM pg_trigger WHERE tgname LIKE '%\\_approval\\_guard' AND NOT tgisinternal`);
-    expect(guarded[0].n, 'all approval documents and lines guarded').toBe(25);
+    expect(guarded[0].n, 'all approval documents and lines guarded').toBeGreaterThanOrEqual(25);
   });
 });
 
@@ -9043,5 +9043,27 @@ describe('Phase 148 — stock transfers can be confirmed', () => {
     }
     expect(m, 'confirm_stock_transfer sets a status').not.toBeNull();
     expect(r[0].chk, `status '${m![1]}' must be allowed by stock_transfers_status_check`).toContain(`'${m![1]}'`);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 149 — Approvals: stock transfers.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 149 — stock transfer approvals (soft until applied)', () => {
+  it('phase149: stock_transfer accepted, transfers guarded, state reports needs', async () => {
+    const def = await sql<{ d: string | null }>(`
+      SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint WHERE conname = 'approval_rules_doc_type_check'`);
+    if (!def[0]?.d || !def[0].d.includes('stock_transfer')) {
+      console.warn('⚠ phase149 not applied yet — run supabase/migrations/20261121000007_phase149_approvals_stock_transfer.sql (after phase147 and phase148).');
+      return;
+    }
+    const g = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_trigger
+       WHERE tgname IN ('stock_transfers_approval_guard', 'stock_transfer_items_approval_guard') AND NOT tgisinternal`);
+    expect(g[0].n, 'stock transfers and their lines guarded').toBe(2);
+    const st = await sql<{ ok: boolean }>(`
+      SELECT p.prosrc LIKE '%''needs''%' AS ok FROM pg_proc p
+       WHERE p.proname = 'doc_approval_state' AND p.pronamespace = 'public'::regnamespace`);
+    expect(st[0].ok, 'doc_approval_state reports needs').toBe(true);
   });
 });

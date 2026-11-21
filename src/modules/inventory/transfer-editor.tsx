@@ -1,4 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
+import { ApprovalPanel } from '@/components/approvals/approval-panel';
+import { useDocApproval } from '@/components/approvals/use-approval';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -91,7 +93,10 @@ export default function TransferEditorPage() {
     setLines(prev => prev.map(l => l._key !== key ? l : { ...l, ...patch }));
   }, []);
 
-  const canEdit = isNew || existing?.status === 'draft';
+  // phase149 — approvals: Confirm becomes Submit for approval when the server
+  // says this transfer needs it (it values transfers at moving-average cost).
+  const appr = useDocApproval('stock_transfer', isNew ? null : id);
+  const canEdit = (isNew || existing?.status === 'draft') && !appr.pending;
 
   const warehouseOpts = [
     { value: '', label: t('inventory.select_warehouse') },
@@ -140,6 +145,7 @@ export default function TransferEditorPage() {
     onSuccess: async () => {
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['stock_transfers'] });
+      qc.invalidateQueries({ queryKey: ['approval_doc', 'stock_transfer'] });
       navigate('/inventory/transfers');
     },
     onError: (e: Error) => setError(e.message),
@@ -173,7 +179,7 @@ export default function TransferEditorPage() {
               {t('common.save')}
             </Button>
           )}
-          {!isNew && existing?.status === 'draft' && (
+          {!isNew && existing?.status === 'draft' && !appr.needs && !appr.pending && (
             <Button size="sm" variant="primary" onClick={() => setConfirmOpen(true)}>
               <CircleCheck size={15} aria-hidden="true" /> {t('inventory.confirm_transfer')}
             </Button>
@@ -182,6 +188,10 @@ export default function TransferEditorPage() {
       </div>
 
       {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+      {!isNew && id && (
+        <ApprovalPanel docType="stock_transfer" docId={id} isDraft={existing?.status === 'draft'}
+          onChanged={() => { qc.invalidateQueries({ queryKey: ['stock_transfer', id] }); qc.invalidateQueries({ queryKey: ['stock_transfers'] }); }} />
+      )}
 
       <div className="sb-card sb-form sb-doc-card space-y-4">
         <h2 className="sb-doc-card-title">{t('inventory.transfer_details')}</h2>
