@@ -127,8 +127,9 @@ export function DocumentActivity({ kind, id }: { kind: ActivityDocKind; id: stri
   });
 
   const events = useMemo<ActivityEvent[]>(() => {
-    if (!data) return [];
     const out: ActivityEvent[] = [];
+    // A journal waiting for approval has no record yet — only its approval steps (phase150).
+    if (data) {
     // The audit log may already hold a 'create' row; don't say it twice.
     if (data.created_at && !data.audit.some((r) => r.action === 'create')) {
       out.push({ key: 'created', at: data.created_at, user_id: data.created_by, tone: 'brand',
@@ -147,6 +148,7 @@ export function DocumentActivity({ kind, id }: { kind: ActivityDocKind; id: stri
         link: { type: f.doc_type, id: f.doc_id, number: f.number, isVoid: f.is_void },
         amount: f.amount != null && f.amount !== 0 ? { value: f.amount, currency: f.currency } : undefined,
       });
+    }
     }
     for (const st of steps) {
       const tone: Tone = st.action === 'approved' || st.action === 'override' ? 'success'

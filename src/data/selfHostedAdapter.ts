@@ -658,7 +658,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       approve: () => notImplemented('approvals.approve'), reject: () => notImplemented('approvals.reject'),
       forward: () => notImplemented('approvals.forward'), cancel: () => notImplemented('approvals.cancel'),
       docState: () => notImplemented('approvals.docState'), docSteps: () => notImplemented('approvals.docSteps'),
-      list: () => notImplemented('approvals.list'),
+      list: () => notImplemented('approvals.list'), pendingJournal: () => notImplemented('approvals.pendingJournal'),
     },
     team: {
       list:           () => notImplemented('team.list'),

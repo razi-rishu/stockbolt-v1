@@ -1,4 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { ApprovalPanel } from '@/components/approvals/approval-panel';
+import { useApprovalGate, useDocApproval } from '@/components/approvals/use-approval';
 import { formatDate } from '@/lib/locale';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -102,15 +104,19 @@ export default function JournalEntryEditorPage() {
   // out of the editor leaves the books exactly as they were.
   const seededKey = useRef<string | null>(null);
   const [editOf, setEditOf] = useState<{ id: string; entry_number: string } | null>(null);
+  // phase150 — resubmitting a rejected journal keeps its approval id.
+  const [resubmitId, setResubmitId] = useState<string | null>(null);
   useEffect(() => {
     const st = location.state as {
       cloneFrom?: { description?: string; date?: string; lines: { account_code: string; debit: number; credit: number; description?: string; contact_id?: string }[] };
       editOf?: { id: string; entry_number: string };
+      resubmitId?: string;
     } | null;
     const seed = st?.cloneFrom;
     if (!seed || seededKey.current === location.key) return;
     seededKey.current = location.key;
     setEditOf(st?.editOf ?? null);
+    setResubmitId(st?.resubmitId ?? null);
     if (st?.editOf) setRepeat(false);
     setDescription(seed.description ?? '');
     setLines(
@@ -119,7 +125,7 @@ export default function JournalEntryEditorPage() {
         : [newLine(), newLine()],
     );
     // An edit keeps the entry's own date; a duplicate starts from today.
-    setDate(st?.editOf && seed.date ? seed.date : new Date().toISOString().slice(0, 10));
+    setDate((st?.editOf || st?.resubmitId) && seed.date ? seed.date : new Date().toISOString().slice(0, 10));
     // A duplicate is unsaved data — warn if the user backs out. An untouched
     // edit is not: leaving it changes nothing.
     setDirty(!st?.editOf);
@@ -205,6 +211,19 @@ export default function JournalEntryEditorPage() {
         contact_id: l.contact_id || undefined,
       }));
       const adapter = getAdapter();
+      // phase150 — needs approval: nothing is posted or reversed now; the journal
+      // (all dates, and the entry it corrects) waits in its approval request.
+      if (gate.needs(totalDebit)) {
+        validateLines(cleanLines);
+        assertMapping('manual', cleanLines);
+        return {
+          submit: {
+            data: { source_type: 'manual', description: description || undefined, lines: cleanLines },
+            dates: scheduleDates,
+            ...(editOf ? { reverse_je_id: editOf.id } : {}),
+          },
+        };
+      }
       if (editOf) {
         // Check the correction before touching the original, so a typo in
         // the form cannot leave the original reversed with nothing in its place.
@@ -219,7 +238,7 @@ export default function JournalEntryEditorPage() {
         } catch (err) {
           throw new Error(t('jeOcean.edit_post_failed', { no: editOf.entry_number, msg: err instanceof Error ? err.message : String(err) }));
         }
-        return 1;
+        return { posted: 1 };
       }
       // Post one journal entry per scheduled date. Sequential so each gets
       // its own entry number and a mid-run failure stops cleanly.
@@ -235,9 +254,18 @@ export default function JournalEntryEditorPage() {
         }
         throw err;
       }
-      return posted;
+      return { posted };
     },
-    onSuccess: async () => {
+    onSuccess: async (res) => {
+      if ('submit' in res && res.submit) {
+        const docId = resubmitId ?? crypto.randomUUID();
+        gate.open({
+          docId,
+          confirmArgs: res.submit,
+          onSent: () => { setDirty(false); navigate(`/accounting/journal-entries/pending/${docId}`); },
+        });
+        return;
+      }
       setDirty(false);   // saved — drop the guard before navigating
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['journal_entries', company_id] });
@@ -259,6 +287,13 @@ export default function JournalEntryEditorPage() {
     onError: () => setError(t('common.error')),
   });
 
+  // phase150 — approvals: a journal whose total needs approval is sent, not posted;
+  // an approved journal is reversed or corrected only by an admin.
+  const gate = useApprovalGate('journal_entry');
+  const appr = useDocApproval('journal_entry', isNew ? null : id);
+  const approvalLocked = appr.approved && !appr.isAdmin;
+  const needsApproval = gate.needs(totalDebit);
+
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -272,7 +307,7 @@ export default function JournalEntryEditorPage() {
     // is itself a correction: reversing it puts the original back into the
     // books while the ledger still lists both as cancelled. A system entry is
     // voided from its own document, so the document and the books stay in step.
-    const canChange = je.source_type === 'manual' && !je.reversed_by_id && !je.reversal_of_id;
+    const canChange = je.source_type === 'manual' && !je.reversed_by_id && !je.reversal_of_id && !approvalLocked;
     const lineSeed = () => (glLines as GeneralLedgerRow[]).map((gl) => ({
       account_code: (gl as any).account_code as string,
       debit: Number(gl.debit) || 0,
@@ -329,6 +364,8 @@ export default function JournalEntryEditorPage() {
           </div>
         </div>
         {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+        {/* phase150 — a journal posted through approval says so; reversal is then admin-only. */}
+        <ApprovalPanel docType="journal_entry" docId={existingJE.id} isDraft={false} />
         <div className="sb-card sb-doc-card">
           <div className="sb-je-meta">
             <span className="sb-info-label">{t('accounting.date')}</span><bdi dir="ltr">{formatDate(existingJE.date)}</bdi>
@@ -593,13 +630,14 @@ export default function JournalEntryEditorPage() {
 
         </div>
         {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+        {gate.modal}
 
         <div className="sb-card flex flex-wrap justify-end gap-2" style={{ padding: '12px 16px' }}>
           <Button type="button" variant="ghost" onClick={() => { if (confirmLeave()) navigate('/accounting/journal-entries'); }}>
             {t('common.cancel')}
           </Button>
           <Button type="submit" disabled={postMutation.isPending}>
-            <Send size={15} aria-hidden="true" /> {repeat ? t('accounting.post_n_entries', { count: scheduleDates.length }) : t('accounting.post_je')}
+            <Send size={15} aria-hidden="true" /> {needsApproval ? t('apprOcean.submit') : repeat ? t('accounting.post_n_entries', { count: scheduleDates.length }) : t('accounting.post_je')}
           </Button>
         </div>
       </form>

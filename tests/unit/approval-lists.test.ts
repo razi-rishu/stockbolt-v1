@@ -29,6 +29,7 @@ describe('approvals lists', () => {
     expect(docRoute('fixed_asset_purchase', 'x')).toBe('/accounting/fixed-assets/purchase/x');
     expect(docRoute('payroll_run', 'x')).toBe('/payroll/runs/x');
     expect(docRoute('stock_transfer', 'x')).toBe('/inventory/transfers/x');
+    expect(docRoute('journal_entry', 'x')).toBe('/accounting/journal-entries/pending/x');
   });
   it('explains why someone can\'t approve, and names every step', () => {
     expect(problemLabel(t, null)).toBe('');

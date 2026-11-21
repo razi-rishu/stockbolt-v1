@@ -86,6 +86,7 @@ const SuppliersPage      = lazy(() => import('@/modules/contacts/suppliers'));
 // Accounting
 const CoAPage            = lazy(() => import('@/modules/accounting/chart-of-accounts'));
 const JournalEntriesPage = lazy(() => import('@/modules/accounting/journal-entries'));
+const PendingJournalPage = lazy(() => import('@/modules/accounting/pending-journal'));
 const JEEditorPage       = lazy(() => import('@/modules/accounting/journal-entry-editor'));
 const GeneralLedgerPage  = lazy(() => import('@/modules/accounting/general-ledger'));
 const PeriodLockPage     = lazy(() => import('@/modules/accounting/period-lock'));
@@ -385,6 +386,7 @@ function AppRoutes() {
               {/* Accounting — require accounting.read (Phase 22) */}
               <Route element={<RequirePermission perm="accounting.read" />}>
                 <Route path="/accounting/chart-of-accounts"        element={<CoAPage />} />
+                <Route path="/accounting/journal-entries/pending/:docId" element={<PendingJournalPage />} />
                 <Route path="/accounting/journal-entries/:id"      element={<JEEditorPage />} />
                 <Route path="/accounting/journal-entries"          element={<JournalEntriesPage />} />
                 <Route path="/accounting/general-ledger"           element={<GeneralLedgerPage />} />

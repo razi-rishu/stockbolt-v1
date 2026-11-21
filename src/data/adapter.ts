@@ -3746,7 +3746,9 @@ export type ApprovalDocType =
   // phase147 — inventory, accounting, banking, payroll
   | 'inventory_adjustment' | 'bank_transfer' | 'fixed_asset_purchase' | 'payroll_run'
   // phase149
-  | 'stock_transfer';
+  | 'stock_transfer'
+  // phase150 — manual journals wait in their request and post on approval
+  | 'journal_entry';
 export interface ApprovalRule { doc_type: ApprovalDocType; enabled: boolean; min_amount: number }
 /** Why someone can't approve: inactive | no_login | login_disabled | no_authority | no_permission. */
 export type ApproverProblem = string | null;
@@ -3784,6 +3786,20 @@ export interface ApprovalRequestRow {
   assignee_employee_id: string | null; created_at: string; decided_at: string | null;
   note: string | null; can_act: boolean;
 }
+/** phase150 — a manual journal sent for approval (it posts only when approved). */
+export interface PendingJournal {
+  doc_id: string;
+  status: DocApprovalRequest['status'];
+  amount_base: number;
+  data: { description?: string; currency?: string; lines: { account_code: string; debit: number; credit: number; description?: string; contact_id?: string }[] };
+  dates: string[];
+  reverse_je_id: string | null;
+  reverse_entry_number: string | null;
+  posted: { id: string; entry_number: string; date: string }[];
+  accounts: Record<string, string>;
+  contacts: Record<string, string>;
+  submitted_by_me: boolean;
+}
 export interface ApprovalsAPI {
   /** Rules for everyone; authorities only for admins. */
   config(): Promise<ApprovalConfig>;
@@ -3802,6 +3818,8 @@ export interface ApprovalsAPI {
   docState(doc_type: ApprovalDocType, doc_id: string | null): Promise<DocApprovalState>;
   docSteps(doc_id: string): Promise<ApprovalStepRow[]>;
   list(scope: 'waiting' | 'mine' | 'history', all?: boolean): Promise<ApprovalRequestRow[]>;
+  /** phase150 — a journal waiting for approval (or decided), for its review page. */
+  pendingJournal(doc_id: string): Promise<PendingJournal | null>;
 }
 
 export interface PayrollAPI {

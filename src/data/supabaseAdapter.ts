@@ -7669,6 +7669,7 @@ export function createSupabaseAdapter(
         async docState(doc_type, doc_id) { return (await call('doc_approval_state', { p_doc_type: doc_type, p_doc_id: doc_id }, 'docState')) as import('./adapter').DocApprovalState; },
         async docSteps(doc_id) { return ((await call('doc_approval_steps', { p_doc_id: doc_id }, 'docSteps')) ?? []) as import('./adapter').ApprovalStepRow[]; },
         async list(scope, all = false) { return ((await call('list_approval_requests', { p_scope: scope, p_all: all }, 'list')) ?? []) as import('./adapter').ApprovalRequestRow[]; },
+        async pendingJournal(doc_id) { return ((await call('pending_journal', { p_doc_id: doc_id }, 'pendingJournal')) ?? null) as import('./adapter').PendingJournal | null; },
       };
       return api;
     })(),

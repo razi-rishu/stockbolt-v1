@@ -9067,3 +9067,25 @@ describe('Phase 149 — stock transfer approvals (soft until applied)', () => {
     expect(st[0].ok, 'doc_approval_state reports needs').toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 150 — Approvals: manual journal entries.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 150 — journal approvals (soft until applied)', () => {
+  it('phase150: journal_entry accepted, journals guarded, pending reader closed to anon', async () => {
+    const def = await sql<{ d: string | null }>(`
+      SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint WHERE conname = 'approval_rules_doc_type_check'`);
+    if (!def[0]?.d || !def[0].d.includes('journal_entry')) {
+      console.warn('⚠ phase150 not applied yet — run supabase/migrations/20261121000008_phase150_approvals_journals.sql (after phase149).');
+      return;
+    }
+    const g = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_trigger WHERE tgname = 'journal_entries_approval_guard' AND NOT tgisinternal`);
+    expect(g[0].n, 'journal_entries guarded').toBe(1);
+    const f = await sql<{ anon: boolean; definer: boolean }>(`
+      SELECT has_function_privilege('anon', p.oid, 'EXECUTE') AS anon, p.prosecdef AS definer
+        FROM pg_proc p WHERE p.proname = 'pending_journal' AND p.pronamespace = 'public'::regnamespace`);
+    expect(f[0].anon, 'pending_journal must not be executable by anon').toBe(false);
+    expect(f[0].definer).toBe(true);
+  });
+});
