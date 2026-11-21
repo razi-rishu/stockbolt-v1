@@ -13,6 +13,7 @@
  * affected.
  */
 import { useTranslation } from 'react-i18next';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -57,7 +58,7 @@ function Money({ ccy, value, tone }: { ccy: string; value: string; tone?: string
     // The block follows the page direction (so it lines up with its label in
     // Arabic); <bdi dir="ltr"> keeps the digits themselves left-to-right.
     <div className={`sb-stat-value ${tone ?? ''}`}>
-      <span className="sb-ccy">{ccy}</span><bdi dir="ltr">{value}</bdi>
+      <span className="sb-ccy">{ccyLabel(ccy)}</span><bdi dir="ltr">{value}</bdi>
     </div>
   );
 }
@@ -209,7 +210,7 @@ export function CustomerOverviewOcean(p: CustomerOverviewOceanProps) {
                   with credit AVAILABLE (money we hold for them), shown below. */}
               <InfoRow icon={<Scale size={ICON} />} label={t('customer360.credit_limit')}>
                 {contact.credit_limit > 0
-                  ? <div className="sb-info-value"><bdi dir="ltr">{contact.currency} {fmt(contact.credit_limit)}</bdi></div>
+                  ? <div className="sb-info-value"><bdi dir="ltr">{ccyLabel(contact.currency)} {fmt(contact.credit_limit)}</bdi></div>
                   : <div className="sb-info-value sb-muted">{t('customer360.no_credit_limit')}</div>}
               </InfoRow>
               <InfoRow icon={<Coins size={ICON} />} label={t('contacts.currency')}>{val(contact.currency)}</InfoRow>
@@ -226,7 +227,7 @@ export function CustomerOverviewOcean(p: CustomerOverviewOceanProps) {
               <div className="sb-credit-title">{t('customer360.credit_title')}</div>
               <div className="sb-credit-text">
                 {t(hasOpenInvoice ? 'customer360.credit_text_open' : 'customer360.credit_text_future', {
-                  amount: `${ccy} ${fmt(p.advanceCredit)}`,
+                  amount: `${ccyLabel(ccy)} ${fmt(p.advanceCredit)}`,
                 })}{' '}
                 <span style={{ color: 'var(--sb-text-secondary)' }}>{t('customer360.credit_gl_note')}</span>
               </div>
@@ -318,7 +319,7 @@ export function CustomerOverviewOcean(p: CustomerOverviewOceanProps) {
         <section className="sb-card" aria-label={t('customer360.aging_title')}>
           <div className="sb-section-head">
             <span>{t('customer360.aging_title')}</span>
-            {p.outstandingTotal > 0.005 && <small>{t('customer360.aging_total')} <bdi dir="ltr">{ccy} {fmt(p.outstandingTotal)}</bdi></small>}
+            {p.outstandingTotal > 0.005 && <small>{t('customer360.aging_total')} <bdi dir="ltr">{ccyLabel(ccy)} {fmt(p.outstandingTotal)}</bdi></small>}
           </div>
           {p.outstandingTotal <= 0.005 ? (
             <div className="sb-note-empty" style={{ marginTop: 8 }}>{t('customer360.aging_none')}</div>

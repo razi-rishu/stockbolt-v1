@@ -2430,3 +2430,10 @@
 .sb-ocean .sb-adm-missing svg { flex: none; margin-top: 2px; color: var(--sb-warning); }
 @media (max-width: 560px) { .sb-ocean .sb-adm-wrap { padding: 0 12px; } .sb-ocean .sb-adm-title { font-size: 22px; } .sb-ocean .sb-adm-info-pop { width: 220px; } }
 .sb-ocean .sb-adm-back { align-self: flex-start; }
+
+/* ── Currency & display setting (phase143) ── */
+.sb-ocean .sb-cdisp-opt { cursor: pointer; align-items: center; }
+.sb-ocean .sb-cdisp-opt input { width: 18px; height: 18px; flex: none; accent-color: var(--sb-primary); }
+.sb-ocean .sb-cdisp-sample { display: block; width: fit-content; margin-top: 8px; font-size: 18px; font-weight: 800; color: var(--sb-text); }
+.sb-ocean .sb-cdisp-preview { display: flex; flex-direction: column; gap: 8px; }
+

@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 
 /**
  * One row in an accounting preview. Mirrors a general_ledger row but
@@ -72,17 +73,17 @@ export function AccountingPreview({ lines, currency }: { lines: PreviewLine[]; c
                 </td>
                 <td className="px-4 py-2 text-ink-secondary">{line.description ?? '—'}</td>
                 <td className="px-4 py-2 text-end font-mono text-green-700">
-                  {line.debit > 0 ? `${currency} ${fmt(line.debit)}` : '—'}
+                  {line.debit > 0 ? `${ccyLabel(currency)} ${fmt(line.debit)}` : '—'}
                 </td>
                 <td className="px-4 py-2 text-end font-mono text-red-700">
-                  {line.credit > 0 ? `${currency} ${fmt(line.credit)}` : '—'}
+                  {line.credit > 0 ? `${ccyLabel(currency)} ${fmt(line.credit)}` : '—'}
                 </td>
               </tr>
             ))}
             <tr className="bg-surface-muted/60 font-semibold">
               <td colSpan={2} className="px-4 py-2 text-end text-ink-secondary">Totals</td>
-              <td className="px-4 py-2 text-end font-mono text-green-800">{currency} {fmt(totalDr)}</td>
-              <td className="px-4 py-2 text-end font-mono text-red-800">{currency} {fmt(totalCr)}</td>
+              <td className="px-4 py-2 text-end font-mono text-green-800">{ccyLabel(currency)} {fmt(totalDr)}</td>
+              <td className="px-4 py-2 text-end font-mono text-red-800">{ccyLabel(currency)} {fmt(totalCr)}</td>
             </tr>
             {!balanced && (
               <tr className="bg-red-50">

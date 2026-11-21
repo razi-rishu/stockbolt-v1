@@ -13,6 +13,7 @@
  * stays at Reports → Audit log.
  */
 import { useMemo, useState, type ReactNode } from 'react';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
@@ -187,7 +188,7 @@ export function DocumentActivity({ kind, id }: { kind: ActivityDocKind; id: stri
                     </bdi>
                   )}
                   {e.amount && (
-                    <bdi dir="ltr" className="sb-act-amount">{e.amount.currency ? `${e.amount.currency} ` : ''}{money(e.amount.value)}</bdi>
+                    <bdi dir="ltr" className="sb-act-amount">{e.amount.currency ? `${ccyLabel(e.amount.currency)} ` : ''}{money(e.amount.value)}</bdi>
                   )}
                 </p>
                 {e.note && <p className="sb-act-note">{e.note}</p>}

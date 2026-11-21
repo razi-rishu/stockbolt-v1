@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useDocumentPayments } from '@/hooks/use-document-payments';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -909,7 +910,7 @@ export default function InvoiceEditorPage() {
             <div>
               <p className="sb-info-label">{t('invOcean.outstanding')}</p>
               <p className={`mt-0.5 text-lg font-mono font-semibold ${currentOutstanding > 0 ? 'text-amber-700' : 'text-ink-primary'}`}>
-                {header.currency} {fmt(currentOutstanding)}
+                {ccyLabel(header.currency)} {fmt(currentOutstanding)}
               </p>
               <p className="text-xs text-ink-tertiary mt-0.5">
                 {t('invOcean.open_invoices', { count: openCustomerInvoices.filter(inv => inv.id !== id).length })}
@@ -929,7 +930,7 @@ export default function InvoiceEditorPage() {
             <div>
               <p className="sb-info-label">{t('invOcean.credit_limit')}</p>
               <p className="mt-0.5 text-lg font-mono font-semibold text-ink-primary">
-                {creditLimit > 0 ? `${header.currency} ${fmt(creditLimit)}` : '—'}
+                {creditLimit > 0 ? `${ccyLabel(header.currency)} ${fmt(creditLimit)}` : '—'}
               </p>
               <p className="text-xs text-ink-tertiary mt-0.5">
                 {creditLimit > 0 ? t('invOcean.available', { amount: fmt(Math.max(0, creditLimit - currentOutstanding)) }) : t('invOcean.no_limit')}
@@ -940,7 +941,7 @@ export default function InvoiceEditorPage() {
               {lastPayment ? (
                 <>
                   <p className="mt-0.5 text-lg font-mono font-semibold text-ink-primary">
-                    {header.currency} {fmt(Number(lastPayment.amount))}
+                    {ccyLabel(header.currency)} {fmt(Number(lastPayment.amount))}
                   </p>
                   <p className="text-xs text-ink-tertiary mt-0.5">{lastPayment.date as string}</p>
                 </>
@@ -967,7 +968,7 @@ export default function InvoiceEditorPage() {
           <p style={{ margin: '4px 0 0' }}>
             {t('invOcean.over_limit_body', {
               name: selectedCustomer.name,
-              limit: `${header.currency} ${fmt(creditLimit)}`,
+              limit: `${ccyLabel(header.currency)} ${fmt(creditLimit)}`,
               current: fmt(currentOutstanding),
               total: fmt(roundedTotal),
               projected: fmt(projectedOutstanding),
@@ -1396,7 +1397,7 @@ export default function InvoiceEditorPage() {
             </div>
             <div className="sb-doc-grand">
               <span>{t('invOcean.grand_total')}</span>
-              <bdi dir="ltr">{header.currency} {fmt(roundedTotal)}</bdi>
+              <bdi dir="ltr">{ccyLabel(header.currency)} {fmt(roundedTotal)}</bdi>
             </div>
             {(() => {
               // Paid amount + balance: only meaningful for an existing
@@ -1419,7 +1420,7 @@ export default function InvoiceEditorPage() {
                   </div>
                   <div className={`flex justify-between font-semibold ${balanceDue > 0.005 ? 'text-amber-700' : 'text-emerald-700'}`}>
                     <span>{t('invOcean.balance_due')}</span>
-                    <span className="font-mono">{header.currency} {fmt(balanceDue)}</span>
+                    <span className="font-mono">{ccyLabel(header.currency)} {fmt(balanceDue)}</span>
                   </div>
                 </>
               );

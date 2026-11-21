@@ -6,6 +6,7 @@
  * document route as before. Header and tabs are shared with the Overview.
  */
 import { useTranslation } from 'react-i18next';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useNavigate } from 'react-router-dom';
 import { FileText, FileSpreadsheet, Receipt, FileMinus, Undo2 } from 'lucide-react';
 import { formatDate } from '@/lib/locale';
@@ -70,7 +71,7 @@ export function DocSection({ icon, title, rows, empty }: { icon: React.ReactNode
 
 export function CustomerDocumentsOcean(p: CustomerDocumentsOceanProps) {
   const { t } = useTranslation();
-  const money = (ccy: string | null | undefined, n: number) => `${ccy ?? ''} ${p.fmt(n)}`.trim();
+  const money = (ccy: string | null | undefined, n: number) => `${ccyLabel(ccy ?? '')} ${p.fmt(n)}`.trim();
   const d = (v: unknown) => v as unknown as string;
 
   const docsCount = p.invoices.length + p.quotes.length + p.receipts.length + p.creditNotes.length + p.salesReturns.length;

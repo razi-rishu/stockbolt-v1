@@ -23,6 +23,7 @@
  *   • Navigate to /products/<id> in read-only view.
  */
 import { useMemo, useState, type ReactNode } from 'react';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -597,7 +598,7 @@ function Step2({
       {margin !== null && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '10px' }}>
           {[
-            { label: t('pwOcean.selling_price'), value: `${companyCurrency} ${selling.toFixed(2)}`, color: 'var(--sb-primary-dark)' },
+            { label: t('pwOcean.selling_price'), value: `${ccyLabel(companyCurrency)} ${selling.toFixed(2)}`, color: 'var(--sb-primary-dark)' },
             { label: t('pwOcean.gross_margin'),  value: `${margin}%`, color: (margin as number) > 20 ? '#067647' : '#B45309' },
             { label: t('pwOcean.markup'),        value: `${markup}%`, color: '#0369A1' },
           ].map((s) => (
@@ -1094,13 +1095,13 @@ function ReviewModal({
     [t('products.name'),         form.name],
     [t('products.sku'),          form.sku],
     [t('products.brand'),        brandName],
-    [t('pwOcean.selling_price'), `${currency} ${(parseFloat(form.selling_price) || 0).toFixed(2)}`],
+    [t('pwOcean.selling_price'), `${ccyLabel(currency)} ${(parseFloat(form.selling_price) || 0).toFixed(2)}`],
     [t('common.tax'),            t(`products.tax_${form.tax_category}`)],
     [t('products.barcode'),      form.barcode || '—'],
     [t('pwOcean.hsn'),           form.hsn_code || '—'],
     [t('pwOcean.country'),       form.country_of_origin || '—'],
     [t('pwOcean.supplier'),      supplierName],
-    [t('pwOcean.opening_stock'), openingQty > 0 ? `${openingQty} × ${currency} ${openingRate.toFixed(2)} = ${currency} ${openingValue.toFixed(2)}` : '—'],
+    [t('pwOcean.opening_stock'), openingQty > 0 ? `${openingQty} × ${ccyLabel(currency)} ${openingRate.toFixed(2)} = ${ccyLabel(currency)} ${openingValue.toFixed(2)}` : '—'],
     [t('billOcean.warehouse'),   warehouseName],
     [t('common.active'),         form.is_active ? t('returns.yes') : t('returns.no')],
   ];
@@ -1126,7 +1127,7 @@ function ReviewModal({
           ))}
           {openingQty > 0 && form.type === 'goods' && (
             <p className="sb-alert sb-alert-warn" style={{ fontWeight: 400, marginTop: 12 }}>
-              {t('pwOcean.review_je', { amount: `${currency} ${openingValue.toFixed(2)}` })}
+              {t('pwOcean.review_je', { amount: `${ccyLabel(currency)} ${openingValue.toFixed(2)}` })}
             </p>
           )}
         </div>

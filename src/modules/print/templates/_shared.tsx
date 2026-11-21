@@ -3,12 +3,13 @@
  * Used by all templates; not exported from index.
  */
 import type { Company } from '@/data/adapter';
+import { ccy } from '@/lib/currency-display';
 import { getTaxLabels } from '@/lib/locale';
 
 // ── Number formatter ──────────────────────────────────────────────────────────
 export function fmt(n: number, currency = '') {
   const s = n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return currency ? `${currency} ${s}` : s;
+  return currency ? `${ccy(currency)} ${s}` : s;
 }
 
 // ── Company header ────────────────────────────────────────────────────────────
@@ -178,7 +179,7 @@ export function PrintTotals({ subtotal, discount, tax, total, currency, accentCo
         className="mt-1 flex justify-between rounded px-2 py-2 text-base font-bold text-white"
         style={{ backgroundColor: accentColor }}
       >
-        <span>TOTAL {currency}</span>
+        <span>TOTAL {ccy(currency)}</span>
         <span>{fmt(total)}</span>
       </div>
     </div>
@@ -207,7 +208,7 @@ export function PrintBilingualTotals({ subtotal, discount, tax, total, currency,
         className="mt-1 flex justify-between rounded px-2 py-2 text-base font-bold text-white"
         style={{ backgroundColor: accentColor }}
       >
-        <span>TOTAL / الإجمالي {currency}</span>
+        <span>TOTAL / الإجمالي {ccy(currency)}</span>
         <span>{fmt(total)}</span>
       </div>
     </div>

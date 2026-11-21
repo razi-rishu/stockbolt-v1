@@ -11,6 +11,7 @@
  * DocumentData payload drives every document type, payments included.
  */
 import type { CSSProperties, ReactNode } from 'react';
+import { currencyLabel, useCurrencyDisplayStore } from '@/lib/currency-display';
 import {
   User, Phone, MapPin, Mail, FileText, CalendarDays, Clock, Hash, Receipt,
   CreditCard, ClipboardList, Users, Globe, Building2,
@@ -85,7 +86,9 @@ export function ElegantDocTemplate({ data, template, settings: s }: Props) {
   // INR prints with Indian digit grouping (1,52,000.00) and the rupee sign.
   const locale = cur === 'INR' ? 'en-IN' : 'en-US';
   const num = (n: number) => (Number(n) || 0).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const symbol = cur === 'INR' ? '₹' : cur;
+  // phase143 — symbol mode uses the shared symbols; code mode keeps this
+  // template's long-standing look (₹ for INR, the ISO code otherwise).
+  const symbol = useCurrencyDisplayStore.getState().mode === 'symbol' ? currencyLabel(cur, 'symbol') : (cur === 'INR' ? '₹' : cur);
   const money = (n: number) => `${symbol} ${num(n)}`;
   const qty = (n: number) => Number.isInteger(n) ? String(n).padStart(2, '0') : String(+n.toFixed(3));
 

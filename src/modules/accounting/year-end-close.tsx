@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
@@ -82,7 +83,7 @@ export default function YearEndClosePage() {
 
   // ── formatters ───────────────────────────────────────────────────────────
   const fmt = (n: number) => Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const money = (n: number) => (currency ? `${currency} ${fmt(n)}` : fmt(n));
+  const money = (n: number) => (currency ? `${ccyLabel(currency)} ${fmt(n)}` : fmt(n));
   const signedMoney = (n: number) => (n < 0 ? `(${money(n)})` : money(n));
   const fmtDate = (iso: string | null | undefined) =>
     iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';

@@ -18,6 +18,7 @@
  * summed into it — adding AED to USD would be a meaningless number.
  */
 import { Link } from 'react-router-dom';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useTranslation } from 'react-i18next';
 import {
   XAxis, YAxis, ResponsiveContainer, CartesianGrid,
@@ -247,7 +248,7 @@ export function CashPositionCard({ data, currency }: { data: DashboardCards; cur
         </svg>
         <div style={{ minWidth: 0 }}>
           <div className="sb-info-label">{t('dashboardOcean.bank_and_cash', { currency })}</div>
-          <bdi dir="ltr" className={`sb-dash-cash-total ${total < 0 ? 'is-bad' : ''}`}>{currency} {fmt2(total)}</bdi>
+          <bdi dir="ltr" className={`sb-dash-cash-total ${total < 0 ? 'is-bad' : ''}`}>{ccyLabel(currency)} {fmt2(total)}</bdi>
         </div>
       </div>
       <ul className="sb-dash-cash-list">
@@ -260,7 +261,7 @@ export function CashPositionCard({ data, currency }: { data: DashboardCards; cur
                 <span className="sb-dash-ellipsis" style={{ display: 'block', fontWeight: 600 }}>{b.name}</span>
                 <span className="sb-fx-name">{b.account_type === 'bank' ? t('dashboardOcean.bank') : t('dashboardOcean.cash')}{other ? ` · ${t('dashboardOcean.not_in_total')}` : ''}</span>
               </span>
-              <bdi dir="ltr" className={`sb-dash-num ${b.balance < 0 ? 'is-bad' : ''}`}>{b.currency} {fmt2(b.balance)}</bdi>
+              <bdi dir="ltr" className={`sb-dash-num ${b.balance < 0 ? 'is-bad' : ''}`}>{ccyLabel(b.currency)} {fmt2(b.balance)}</bdi>
             </li>
           );
         })}

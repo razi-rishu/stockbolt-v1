@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useDocumentPayments } from '@/hooks/use-document-payments';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -797,7 +798,7 @@ export default function VendorBillEditorPage() {
             <div>
               <p className="sb-info-label">{t('billOcean.payable')}</p>
               <p className={`mt-0.5 text-lg font-mono font-semibold ${supplierOutstanding > 0 ? 'text-amber-700' : 'text-ink-primary'}`}>
-                {header.currency} {fmt(supplierOutstanding)}
+                {ccyLabel(header.currency)} {fmt(supplierOutstanding)}
               </p>
               <p className="text-xs text-ink-tertiary mt-0.5">
                 {t('billOcean.pending_bills', { count: openSupplierBills.filter(b => b.id !== id).length })}
@@ -819,7 +820,7 @@ export default function VendorBillEditorPage() {
               {lastVendorPayment ? (
                 <>
                   <p className="mt-0.5 text-lg font-mono font-semibold text-ink-primary">
-                    {header.currency} {fmt(Number(lastVendorPayment.amount))}
+                    {ccyLabel(header.currency)} {fmt(Number(lastVendorPayment.amount))}
                   </p>
                   <p className="text-xs text-ink-tertiary mt-0.5">{lastVendorPayment.date as string}</p>
                 </>
@@ -1163,7 +1164,7 @@ export default function VendorBillEditorPage() {
             </div>
             {/* Phase 47 — the supplier's bill total (what we owe THEM). Landed
                 costs are paid to other parties, so they sit below. */}
-            <div className="sb-doc-grand"><span>{t('purchasing.supplier_total')}</span><bdi dir="ltr">{header.currency} {fmt(grandTotal + roundOff)}</bdi></div>
+            <div className="sb-doc-grand"><span>{t('purchasing.supplier_total')}</span><bdi dir="ltr">{ccyLabel(header.currency)} {fmt(grandTotal + roundOff)}</bdi></div>
             {landedCost > 0 && (
               <>
                 <div className="flex justify-between text-ink-secondary">
@@ -1172,7 +1173,7 @@ export default function VendorBillEditorPage() {
                 </div>
                 <div className="flex justify-between text-xs text-ink-tertiary">
                   <span>{t('purchasing.total_landed_value')}</span>
-                  <span className="font-mono">{header.currency} {fmt(grandTotal + roundOff + landedCost)}</span>
+                  <span className="font-mono">{ccyLabel(header.currency)} {fmt(grandTotal + roundOff + landedCost)}</span>
                 </div>
               </>
             )}
@@ -1203,7 +1204,7 @@ export default function VendorBillEditorPage() {
                   )}
                   <div className={`flex justify-between font-semibold ${balanceDue > 0.005 ? 'text-amber-700' : 'text-emerald-700'}`}>
                     <span>{t('invOcean.balance_due')}</span>
-                    <span className="font-mono">{header.currency} {fmt(balanceDue)}</span>
+                    <span className="font-mono">{ccyLabel(header.currency)} {fmt(balanceDue)}</span>
                   </div>
                 </>
               );

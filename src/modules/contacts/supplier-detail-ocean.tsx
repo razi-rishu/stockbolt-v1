@@ -10,6 +10,7 @@
  * drill-downs and the tabs.
  */
 import { useTranslation } from 'react-i18next';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useNavigate } from 'react-router-dom';
 import {
   ChevronLeft, Pencil, CalendarDays, Link2, User, Mail, Layers, MapPin, Phone, Hash, Coins,
@@ -92,7 +93,7 @@ export interface SupplierOverviewOceanProps {
 }
 
 function Money({ ccy, value, tone }: { ccy: string; value: string; tone?: string }) {
-  return <div className={`sb-stat-value ${tone ?? ''}`}><span className="sb-ccy">{ccy}</span><bdi dir="ltr">{value}</bdi></div>;
+  return <div className={`sb-stat-value ${tone ?? ''}`}><span className="sb-ccy">{ccyLabel(ccy)}</span><bdi dir="ltr">{value}</bdi></div>;
 }
 function InfoRow({ icon, label, children, wide }: { icon: React.ReactNode; label: string; children: React.ReactNode; wide?: boolean }) {
   return (
@@ -159,7 +160,7 @@ export function SupplierOverviewOcean(p: SupplierOverviewOceanProps) {
             <div style={{ flex: '1 1 220px', minWidth: 0 }}>
               <div className="sb-credit-title">{t('supplier360.credit_title')}</div>
               <div className="sb-credit-text">
-                {t('supplier360.credit_text', { amount: `${ccy} ${fmt(p.vendorAdvance)}` })}{' '}
+                {t('supplier360.credit_text', { amount: `${ccyLabel(ccy)} ${fmt(p.vendorAdvance)}` })}{' '}
                 <span style={{ color: 'var(--sb-text-secondary)' }}>{t('supplier360.credit_gl_note')}</span>
               </div>
               {applyTarget && !hasOpenBill && (
@@ -246,7 +247,7 @@ export function SupplierOverviewOcean(p: SupplierOverviewOceanProps) {
         <section className="sb-card" aria-label={t('customer360.aging_title')}>
           <div className="sb-section-head">
             <span>{t('customer360.aging_title')}</span>
-            {p.outstandingTotal > 0.005 && <small>{t('customer360.aging_total')} <bdi dir="ltr">{ccy} {fmt(p.outstandingTotal)}</bdi></small>}
+            {p.outstandingTotal > 0.005 && <small>{t('customer360.aging_total')} <bdi dir="ltr">{ccyLabel(ccy)} {fmt(p.outstandingTotal)}</bdi></small>}
           </div>
           {p.outstandingTotal <= 0.005 ? (
             <div className="sb-note-empty" style={{ marginTop: 8 }}>{t('customer360.aging_none')}</div>
@@ -323,7 +324,7 @@ export function SupplierDocumentsOcean(p: {
   fmt: (n: number) => string;
 }) {
   const { t } = useTranslation();
-  const money = (ccy: string | null | undefined, n: number) => `${ccy ?? ''} ${p.fmt(n)}`.trim();
+  const money = (ccy: string | null | undefined, n: number) => `${ccyLabel(ccy ?? '')} ${p.fmt(n)}`.trim();
   const d = (v: unknown) => v as unknown as string;
   const docsCount = p.bills.length + p.pos.length + p.payments.length + p.debitNotes.length;
 

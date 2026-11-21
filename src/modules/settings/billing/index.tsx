@@ -11,6 +11,7 @@
  * payment history empty; subscribing shows the server's "not configured" error.
  */
 import { useEffect, useState } from 'react';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
@@ -203,7 +204,7 @@ export default function BillingPage() {
 
   const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString() : '—');
   const money = (n?: number | null, ccy?: string | null) =>
-    n == null ? '—' : `${ccy ?? 'USD'} ${Number(n).toFixed(2)}`;
+    n == null ? '—' : `${ccyLabel(ccy ?? 'USD')} ${Number(n).toFixed(2)}`;
 
   const canSubscribe = !!sub && !['active'].includes(sub.status) ||
     (!!sub && sub.status === 'active' && sub.provider !== 'paypal' && !sub.grandfathered);

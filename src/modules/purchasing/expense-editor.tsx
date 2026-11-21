@@ -55,6 +55,7 @@
  * legacy single-line.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useDocumentPayments } from '@/hooks/use-document-payments';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -828,7 +829,7 @@ export default function ExpenseEditorPage() {
           <div className="sb-card sb-doc-card sb-exp-summary" data-testid="expense-summary">
             <span className="sb-info-label">{t('expOcean.amount')}</span>
             {splitOpen ? (
-              <bdi dir="ltr" className="sb-exp-amount-static">{companyCurrency} {fmt(totals.total)}</bdi>
+              <bdi dir="ltr" className="sb-exp-amount-static">{ccyLabel(companyCurrency)} {fmt(totals.total)}</bdi>
             ) : (
               <div dir="ltr" className="sb-exp-amount">
                 <span className="sb-exp-amount-cur">{companyCurrency}</span>
@@ -889,7 +890,7 @@ export default function ExpenseEditorPage() {
               </div>
               <div className="sb-doc-grand">
                 <span>{t('expOcean.total_to_pay')}</span>
-                <bdi dir="ltr">{companyCurrency} {fmt(totals.total)}</bdi>
+                <bdi dir="ltr">{ccyLabel(companyCurrency)} {fmt(totals.total)}</bdi>
               </div>
             </div>
             {isDraft && (

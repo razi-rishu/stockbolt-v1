@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import type { DocumentRefund, RefundSourceDocType } from '@/data/adapter';
@@ -52,7 +53,7 @@ export function RefundedBadge({
     >
       {live.length > 0 ? (
         <span className="font-semibold">
-          {t('refund.refunded_badge', { amount: `${currency} ${fmt(total)}` })}
+          {t('refund.refunded_badge', { amount: `${ccyLabel(currency)} ${fmt(total)}` })}
         </span>
       ) : (
         // Every refund against this document was voided, so the money is back
@@ -63,7 +64,7 @@ export function RefundedBadge({
         {refunds.map(r => (
           <span key={r.id} className="me-2 font-mono text-xs">
             <span className={r.status === 'void' ? 'line-through opacity-60' : ''}>
-              {r.payment_number} · {r.currency} {fmt(Number(r.amount ?? 0))} · {r.date}
+              {r.payment_number} · {ccyLabel(r.currency)} {fmt(Number(r.amount ?? 0))} · {r.date}
             </span>
           </span>
         ))}

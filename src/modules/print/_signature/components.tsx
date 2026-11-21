@@ -7,6 +7,7 @@
  * react-pdf if we go down that path.
  */
 import { type ReactNode, type CSSProperties } from 'react';
+import { ccy } from '@/lib/currency-display';
 import { tokens, hairlineStyle, numericStyle } from './tokens';
 import type {
   CompanyInfo, PartyInfo, LineItem, DocumentStatus,
@@ -365,7 +366,7 @@ export function TotalLine({ label, amount, currency, muted = false }: {
     }}>
       <span>{label}</span>
       <span style={{ color: muted ? tokens.inkFaint : tokens.ink, fontWeight: tokens.wMedium, ...numericStyle }}>
-        {currency ? `${currency} ` : ''}{fmt(amount)}
+        {currency ? `${ccy(currency)} ` : ''}{fmt(amount)}
       </span>
     </div>
   );
@@ -395,7 +396,7 @@ export function AnchorTotal({ amount, currency, label = 'TOTAL' }: {
         display: 'flex', alignItems: 'baseline', gap: tokens.gap2,
       }}>
         <span style={{ fontSize: tokens.fsBodySmall, color: tokens.inkMuted, fontWeight: tokens.wSemi }}>
-          {currency}
+          {ccy(currency)}
         </span>
         <span style={{
           fontSize: tokens.fsAnchorAmount,

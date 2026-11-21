@@ -4905,5 +4905,24 @@
       "last_activity": "When the company last posted a journal entry.",
       "storage": "Total size of the files (logos, attachments, product images) stored under the company. Unavailable where file storage isn't present."
     }
+  },
+  "cdisp": {
+    "title": "Currency & display",
+    "intro": "How amounts are labelled across StockBolt and on printed documents. This only changes what you see. Amounts, exchange rates and your accounts stay exactly the same.",
+    "code": "Currency code",
+    "code_hint": "AED, INR, USD — clear when you deal in several currencies.",
+    "symbol": "Currency symbol",
+    "symbol_hint": "د.إ, ₹, $ — shorter. Currencies that share a sign stay distinct (US$ / CA$ / A$).",
+    "preview": "Preview",
+    "p_invoice": "Invoice in {{code}}",
+    "p_refund": "Refund (negative)",
+    "p_foreign": "Document in {{code}}",
+    "note": "Each amount always shows its own currency, so a USD invoice reads USD (or $) even when your base currency is different.",
+    "save": "Save display",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "saved": "Saved. Every page now uses this format.",
+    "save_failed": "Couldn't save.",
+    "read_only": "Only users with Business Settings permission can change this."
   }
 }

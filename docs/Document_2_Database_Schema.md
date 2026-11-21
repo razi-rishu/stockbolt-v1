@@ -1141,6 +1141,9 @@ RESTRICTIVE RLS policy `branch_scope` (reads and writes) on: invoices, credit_no
 `fixed_assets.purchase_id` — nullable FK to `fixed_asset_purchases` (ON DELETE RESTRICT); set on rows created by posting a purchase.
 Triggers (phase137): `vendor_bills` / `expenses` `*_asset_purchase_guard` (status change) and `*_asset_purchase_guard_del` (delete) refuse a document that carries a purchase unless the transaction-local setting `stockbolt.asset_purchase_doc` equals its id (set only by `post_` / `reopen_fixed_asset_purchase`); `debit_notes` / `debit_note_items` `*_asset_purchase_guard` refuse a link to such a bill.
 
+### Currency display (phase143)
+`companies.currency_display text` — nullable, CHECK `NULL | 'code' | 'symbol'`. NULL or `code` = amounts labelled with the ISO code (AED 1,234.00, the long-standing default); `symbol` = the currency symbol (د.إ 1,234.00, ₹, $, CA$…). Presentation only: no posting, tax, rounding or exchange-rate logic reads it. The label always comes from the amount's own currency (document / bank account), never the base currency by default. Written through the existing companies RLS (`tenant_isolation` + restrictive `rbac_w_upd_companies` = `settings.write`); no new policy or function. E-invoice XML, WPS files, Excel exports and currency pickers keep ISO codes.
+
 ### Platform-owner insights (phase141)
 Read-only SECURITY DEFINER functions, each gated by `_admin_gate()` (signed in AND in `platform_admins`), EXECUTE revoked from `anon`: `admin_overview(p_days)` (KPIs, daily sign-up series, nested funnel, countries, business types, plan mix), `admin_list_users(search, filter, limit, offset)`, `admin_list_companies(search, filter, country, limit, offset)`, `admin_company_detail(uuid)`, `admin_recent_signups(since)` (bell alert, max 30 days back). Helper view `_admin_accounts` (auth.users + profiles, no anonymous/deleted) is revoked from every client role.
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -554,7 +555,7 @@ export default function PaymentEditorPage() {
     { value: '', label: t('payments.select_invoice') },
     ...applyTargets.map(inv => ({
       value: inv.id,
-      label: t('rcptOcean.inv_option', { no: inv.invoice_number, amount: `${inv.currency} ${fmt(inv.outstanding)}` }),
+      label: t('rcptOcean.inv_option', { no: inv.invoice_number, amount: `${ccyLabel(inv.currency)} ${fmt(inv.outstanding)}` }),
     })),
   ];
 
@@ -1017,7 +1018,7 @@ export default function PaymentEditorPage() {
                 {t('rcptOcean.available_credit')}
               </div>
               <div style={{ marginTop: '2px', fontSize: '17px', fontWeight: 700, color: '#065f46', fontVariantNumeric: 'tabular-nums' }}>
-                {header.currency || 'AED'} {fmt(availableCredit)}
+                {ccyLabel(header.currency || 'AED')} {fmt(availableCredit)}
               </div>
               <div style={{ fontSize: '10.5px', color: '#059669' }}>
                 {alreadyApplied > 0.005
@@ -1031,7 +1032,7 @@ export default function PaymentEditorPage() {
               </div>
               <div style={{ marginTop: '2px', fontSize: '17px', fontWeight: 700, color: selectedInvoice ? '#065f46' : '#94a3b8', fontVariantNumeric: 'tabular-nums' }}>
                 {selectedInvoice
-                  ? `${selectedInvoice.currency} ${fmt(selectedInvoice.outstanding)}`
+                  ? `${ccyLabel(selectedInvoice.currency)} ${fmt(selectedInvoice.outstanding)}`
                   : '—'}
               </div>
               <div style={{ fontSize: '10.5px', color: '#059669' }}>
@@ -1076,14 +1077,14 @@ export default function PaymentEditorPage() {
               if (overCredit) {
                 return (
                   <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#b91c1c', fontWeight: 500 }}>
-                    {t('rcptOcean.over_credit', { amount: `${header.currency || 'AED'} ${fmt(availableCredit)}` })}
+                    {t('rcptOcean.over_credit', { amount: `${ccyLabel(header.currency || 'AED')} ${fmt(availableCredit)}` })}
                   </p>
                 );
               }
               if (overInvoice) {
                 return (
                   <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#b91c1c', fontWeight: 500 }}>
-                    {t('rcptOcean.over_invoice', { amount: `${selectedInvoice.currency} ${fmt(selectedInvoice.outstanding)}` })}
+                    {t('rcptOcean.over_invoice', { amount: `${ccyLabel(selectedInvoice.currency)} ${fmt(selectedInvoice.outstanding)}` })}
                   </p>
                 );
               }
@@ -1091,7 +1092,7 @@ export default function PaymentEditorPage() {
               if (remaining > 0.005) {
                 return (
                   <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#475569' }}>
-                    {t('rcptOcean.remaining', { amount: `${header.currency || 'AED'} ${fmt(remaining)}` })}
+                    {t('rcptOcean.remaining', { amount: `${ccyLabel(header.currency || 'AED')} ${fmt(remaining)}` })}
                   </p>
                 );
               }
@@ -1117,7 +1118,7 @@ export default function PaymentEditorPage() {
               }}
             >
               {selectedInvoice
-                ? t('rcptOcean.use_max', { amount: `${header.currency || 'AED'} ${fmt(suggestedApply)}` })
+                ? t('rcptOcean.use_max', { amount: `${ccyLabel(header.currency || 'AED')} ${fmt(suggestedApply)}` })
                 : t('rcptOcean.pick_for_suggest')}
             </button>
           </div>

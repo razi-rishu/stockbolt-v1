@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -565,7 +566,7 @@ export default function VendorPaymentEditorPage() {
                   {t('rcptOcean.available_credit')}
                 </div>
                 <div style={{ marginTop: '2px', fontSize: '17px', fontWeight: 700, color: '#065f46', fontVariantNumeric: 'tabular-nums' }}>
-                  {header.currency || 'AED'} {fmt(available)}
+                  {ccyLabel(header.currency || 'AED')} {fmt(available)}
                 </div>
                 <div style={{ fontSize: '10.5px', color: '#059669' }}>
                   {usedAmount > 0.005
@@ -578,7 +579,7 @@ export default function VendorPaymentEditorPage() {
                   {t('vpOcean.bill_outstanding')}
                 </div>
                 <div style={{ marginTop: '2px', fontSize: '17px', fontWeight: 700, color: selectedBill ? '#065f46' : '#94a3b8', fontVariantNumeric: 'tabular-nums' }}>
-                  {selectedBill ? `${header.currency || 'AED'} ${fmt(selectedBill.outstanding)}` : '—'}
+                  {selectedBill ? `${ccyLabel(header.currency || 'AED')} ${fmt(selectedBill.outstanding)}` : '—'}
                 </div>
                 <div style={{ fontSize: '10.5px', color: '#059669' }}>
                   {selectedBill ? selectedBill.bill_number : t('vpOcean.pick_bill')}
@@ -618,14 +619,14 @@ export default function VendorPaymentEditorPage() {
                 if (amt > available + 0.005) {
                   return (
                     <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#b91c1c', fontWeight: 500 }}>
-                      {t('rcptOcean.over_credit', { amount: `${header.currency || 'AED'} ${fmt(available)}` })}
+                      {t('rcptOcean.over_credit', { amount: `${ccyLabel(header.currency || 'AED')} ${fmt(available)}` })}
                     </p>
                   );
                 }
                 if (amt > selectedBill.outstanding + 0.005) {
                   return (
                     <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#b91c1c', fontWeight: 500 }}>
-                      {t('vpOcean.over_bill', { amount: `${header.currency || 'AED'} ${fmt(selectedBill.outstanding)}` })}
+                      {t('vpOcean.over_bill', { amount: `${ccyLabel(header.currency || 'AED')} ${fmt(selectedBill.outstanding)}` })}
                     </p>
                   );
                 }
@@ -633,7 +634,7 @@ export default function VendorPaymentEditorPage() {
                 if (remaining > 0.005) {
                   return (
                     <p style={{ marginTop: '6px', fontSize: '11.5px', color: '#475569' }}>
-                      {t('rcptOcean.remaining', { amount: `${header.currency || 'AED'} ${fmt(remaining)}` })}
+                      {t('rcptOcean.remaining', { amount: `${ccyLabel(header.currency || 'AED')} ${fmt(remaining)}` })}
                     </p>
                   );
                 }
@@ -659,7 +660,7 @@ export default function VendorPaymentEditorPage() {
                 }}
               >
                 {selectedBill
-                  ? t('rcptOcean.use_max', { amount: `${header.currency || 'AED'} ${fmt(suggestedVendorApply)}` })
+                  ? t('rcptOcean.use_max', { amount: `${ccyLabel(header.currency || 'AED')} ${fmt(suggestedVendorApply)}` })
                   : t('vpOcean.pick_bill_suggest')}
               </button>
             </div>

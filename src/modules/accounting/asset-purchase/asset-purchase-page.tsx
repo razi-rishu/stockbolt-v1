@@ -11,6 +11,7 @@
  * line in the same transaction. Layout follows New Bill (Ocean Teal).
  */
 import { useEffect, useMemo, useState } from 'react';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -350,7 +351,7 @@ export default function AssetPurchasePage() {
                 </Button>
                 {!isRegister && (
                   <Button size="sm" variant="primary" disabled={busy}
-                    onClick={() => { if (window.confirm(t('apOcean.confirm_post', { amount: `${currency} ${fmt(totals.total)}` }))) postMutation.mutate(); }}>
+                    onClick={() => { if (window.confirm(t('apOcean.confirm_post', { amount: `${ccyLabel(currency)} ${fmt(totals.total)}` }))) postMutation.mutate(); }}>
                     <CircleCheck size={15} aria-hidden="true" /> {t('apOcean.post')}
                   </Button>
                 )}
@@ -495,11 +496,11 @@ export default function AssetPurchasePage() {
             )}
             <div className="sb-doc-grand">
               <span>{isRegister ? t('apOcean.register_total') : t('apOcean.total')}</span>
-              <bdi dir="ltr">{currency} {fmt(totals.total)}</bdi>
+              <bdi dir="ltr">{ccyLabel(currency)} {fmt(totals.total)}</bdi>
             </div>
             {!isRegister && (
               <p className="sb-form-hint" style={{ margin: 0 }}>
-                {t('apOcean.asset_cost_note', { amount: `${currency} ${fmt(lines.reduce((s, l) => s + lineAssetCost(l, effInclusive), 0))}` })}
+                {t('apOcean.asset_cost_note', { amount: `${ccyLabel(currency)} ${fmt(lines.reduce((s, l) => s + lineAssetCost(l, effInclusive), 0))}` })}
               </p>
             )}
           </div>

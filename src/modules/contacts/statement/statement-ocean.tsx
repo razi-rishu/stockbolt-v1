@@ -17,6 +17,7 @@
  * opening + amount − payments = balance due, always.
  */
 import { useState } from 'react';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Printer, Download, Search, CalendarDays, TriangleAlert, MoreHorizontal } from 'lucide-react';
@@ -96,7 +97,7 @@ export function StatementOcean(p: StatementOceanProps) {
     { id: 'last_year', label: t('statementView.last_year') },
     { id: 'all',       label: t('statementView.all_time') },
   ];
-  const money = (n: number) => <bdi dir="ltr">{ccy} {fmt(n)}</bdi>;
+  const money = (n: number) => <bdi dir="ltr">{ccyLabel(ccy)} {fmt(n)}</bdi>;
   const num = (n: number) => <bdi dir="ltr">{fmt(n)}</bdi>;
   const amountLabel = supplier ? t('statementView.billed') : t('statementView.invoiced');
 

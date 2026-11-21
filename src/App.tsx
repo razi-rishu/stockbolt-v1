@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation, useParams 
 import { useAuthInit } from '@/hooks/use-auth-init';
 import { useAuthStore } from '@/store/auth';
 import { RequireAuth } from '@/components/require-auth';
+import { CurrencyDisplaySync } from '@/components/currency-display-sync';
 import { RequireOnboarded } from '@/components/require-onboarded';
 import { ModuleGate } from '@/components/module-gate';
 import { GLOBAL_ONBOARDING } from '@/core/global-config/flag';
@@ -260,6 +261,8 @@ function AppRoutes() {
     <Suspense fallback={<Loading />}>
       {/* Phase 27 — warn before navigating away from an editor with unsaved edits. */}
       <UnsavedNavGuard />
+      {/* phase143 — company currency display (code / symbol), app-wide incl. print. */}
+      <CurrencyDisplaySync />
       {/* Android app only — hardware Back closes dialogs, then navigates back. */}
       {isNative() && <BackButtonHandler />}
       {isNative() && <NativeBridge />}

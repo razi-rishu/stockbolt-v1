@@ -1,4 +1,5 @@
 import { formatDate } from '@/lib/locale';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useMatch, Outlet } from 'react-router-dom';
@@ -133,12 +134,12 @@ export default function InvoicesPage() {
           <div className="sb-inv-stats">
             <div className="sb-card sb-inv-stat">
               <span className="sb-info-label">{t('salesOcean.outstanding')}</span>
-              <bdi dir="ltr" className="sb-inv-stat-val">{currency} {fmt(totalOutstanding)}</bdi>
+              <bdi dir="ltr" className="sb-inv-stat-val">{ccyLabel(currency)} {fmt(totalOutstanding)}</bdi>
               <span className="sb-fx-name">{t('salesOcean.confirmed_count', { count: countConfirmed })}</span>
             </div>
             <div className="sb-card sb-inv-stat">
               <span className="sb-info-label">{t('salesOcean.overdue')}</span>
-              <bdi dir="ltr" className="sb-inv-stat-val is-bad">{currency} {fmt(totalOverdue)}</bdi>
+              <bdi dir="ltr" className="sb-inv-stat-val is-bad">{ccyLabel(currency)} {fmt(totalOverdue)}</bdi>
               <span className="sb-fx-name">{t('salesOcean.past_due_count', { count: countOverdue })}</span>
             </div>
           </div>
@@ -193,7 +194,7 @@ export default function InvoicesPage() {
                       </span>
                       <span className="sb-inv-row-mid">
                         <span className="sb-dash-ellipsis" style={{ fontWeight: 600 }}>{customerMap[inv.contact_id] ?? '—'}</span>
-                        <bdi dir="ltr" className="sb-inv-amt">{inv.currency} {fmt(Number(inv.total_amount))}</bdi>
+                        <bdi dir="ltr" className="sb-inv-amt">{ccyLabel(inv.currency)} {fmt(Number(inv.total_amount))}</bdi>
                       </span>
                       <bdi dir="ltr" className="sb-fx-name" style={{ fontSize: 12 }}>{formatDate(inv.date)}</bdi>
                     </button>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { formatDate } from '@/lib/locale';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -78,7 +79,7 @@ export default function PaymentsPage() {
     { key: 'cust', header: t('sales.customer'), render: (p) => <span style={{ fontWeight: 600 }}>{customerMap[p.contact_id] ?? '—'}</span> },
     { key: 'date', header: t('payments.date'), render: (p) => <bdi dir="ltr">{formatDate(p.date)}</bdi> },
     { key: 'class', header: t('payments.classification'), render: (p) => t(`salesOcean.class_${p.classification}`, { defaultValue: p.classification.replace('_', ' ') }) },
-    { key: 'amt', header: t('payments.amount'), align: 'end', render: (p) => <bdi dir="ltr" className="sb-dash-num">{p.currency} {fmt(Number(p.amount))}</bdi> },
+    { key: 'amt', header: t('payments.amount'), align: 'end', render: (p) => <bdi dir="ltr" className="sb-dash-num">{ccyLabel(p.currency)} {fmt(Number(p.amount))}</bdi> },
     {
       key: 'status', header: '',
       render: (p) => {

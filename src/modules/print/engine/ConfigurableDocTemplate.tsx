@@ -10,6 +10,7 @@
  * templates that ship today. The `classic` preset reproduces the current look.
  */
 import type { CSSProperties } from 'react';
+import { ccy } from '@/lib/currency-display';
 import type { DocumentData, LineItem } from '../_signature/types';
 import { getTaxLabels, formatDate } from '@/lib/locale';
 import { vatApplies } from '@/core/global-config/country-packs';
@@ -57,7 +58,7 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
   // unless the document itself carries tax (historical records stay as they were).
   const showTax = vatApplies(data.company.country) || !!data.tax_total;
   const cur = data.currency;
-  const money = (n: number) => `${cur} ${num(n)}`;
+  const money = (n: number) => `${ccy(cur)} ${num(n)}`;
   // Payment receipts/vouchers carry `allocations` instead of line items.
   const isPayment = !!data.allocations;
 
@@ -289,7 +290,7 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
         {!!data.round_off && data.round_off !== 0 && row('Round Off', `${data.round_off > 0 ? '+' : '−'}${num(Math.abs(data.round_off))}`)}
         {!!data.shipping_total && data.shipping_total > 0 && row('Shipping', money(data.shipping_total))}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, padding: '8px 12px', borderRadius: 6, background: C.accent, color: '#fff', fontWeight: 800, fontSize: baseFont * 1.05 }}>
-          <span>TOTAL {cur}</span>
+          <span>TOTAL {ccy(cur)}</span>
           <span style={{ fontVariantNumeric: 'tabular-nums' }}>{num(data.grand_total)}</span>
         </div>
         {/* Payments applied → show what's been paid and what's still owed. */}
@@ -297,7 +298,7 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
           <>
             {row('Amount paid', `(${num(Number(data.paid_amount))})`)}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, padding: '6px 12px', borderRadius: 6, border: `2px solid ${C.accent}`, color: C.text, fontWeight: 800, fontSize: baseFont * 0.95 }}>
-              <span>BALANCE DUE {cur}</span>
+              <span>BALANCE DUE {ccy(cur)}</span>
               <span style={{ fontVariantNumeric: 'tabular-nums', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 {num(Number(data.balance_due ?? 0))}
                 {Number(data.balance_due ?? 0) <= 0.005 && (
@@ -361,7 +362,7 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
           </div>
           <div style={{ width: '64mm' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderRadius: 6, background: C.accent, color: '#fff', fontWeight: 800, fontSize: baseFont * 1.05 }}>
-              <span>TOTAL PAID {cur}</span>
+              <span>TOTAL PAID {ccy(cur)}</span>
               <span style={{ fontVariantNumeric: 'tabular-nums' }}>{num(data.grand_total)}</span>
             </div>
           </div>

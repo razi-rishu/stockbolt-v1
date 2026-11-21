@@ -37,6 +37,7 @@ import { AccountingStep } from './accounting-step';
 import { BranchesManager } from './branches-step';
 import { useSetupDraft } from './use-setup-draft';
 import { LegalStructureForm } from './legal-structure-form';
+import { CurrencyDisplaySettings } from './currency-display-settings';
 import type { LegalForm, LegalStructure } from '@/core/global-config';
 
 const STEP_LABEL: Record<(typeof WIZARD_STEPS)[number]['key'], string> = {
@@ -239,6 +240,8 @@ export default function GlobalSetupWizardPage() {
             saving={saveFy.isPending} saved={saveFy.isSuccess}
             error={saveFy.error instanceof Error ? saveFy.error.message : ''} />
         )}
+        {/* phase143 — Currency & display (code / symbol), saved on its own. */}
+        {key === 'accounting_setup' && <CurrencyDisplaySettings key={company.id} company={company} canWrite={canWrite} />}
         {key === 'taxation_compliance' && <TaxStep pack={pack} />}
         {key === 'module_configuration' && <ModulePanel recommendations={config.recommendations} enabled={config.modules} rejected={config.issues} onToggle={toggleModule} />}
         {key === 'branches_team' && (

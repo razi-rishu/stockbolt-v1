@@ -11,6 +11,7 @@
  * timer and cache.
  */
 import { useEffect, useState, useMemo, useCallback } from 'react';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useQuery } from '@tanstack/react-query';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
@@ -134,7 +135,7 @@ export function useNotifications() {
               kind: 'overdue_invoice',
               severity: 'danger',
               title: `Invoice ${inv.invoice_number} is overdue`,
-              detail: `${inv.currency} ${fmtAmount(Number(inv.total_amount))} · due ${dueStr}`,
+              detail: `${ccyLabel(inv.currency)} ${fmtAmount(Number(inv.total_amount))} · due ${dueStr}`,
               href: `/sales/invoices/${inv.id}`,
               createdAt: dueStr || today,
             });
@@ -178,7 +179,7 @@ export function useNotifications() {
             kind: 'payment_received',
             severity: 'info',
             title: `Payment ${p.payment_number} received`,
-            detail: `${p.currency} ${fmtAmount(Number(p.amount))}`,
+            detail: `${ccyLabel(p.currency)} ${fmtAmount(Number(p.amount))}`,
             href: `/sales/payments/${p.id}`,
             createdAt: p.created_at ?? today,
           });

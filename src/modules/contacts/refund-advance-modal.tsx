@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
@@ -129,7 +130,7 @@ export function RefundAdvanceModal({
         <div className="sb-card sb-rpt-card sb-refund-avail" style={{ boxShadow: 'none' }}>
           <ReportFigures figures={[{
             label: isCredit ? t('refund.available_credit') : t('refund.available'),
-            value: <Num>{currency} {fmt(available)}</Num>,
+            value: <Num>{ccyLabel(currency)} {fmt(available)}</Num>,
             tone: 'brand',
           }]} />
         </div>
@@ -140,8 +141,8 @@ export function RefundAdvanceModal({
             value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00"
             error={overAvailable
               ? (isCredit
-                  ? t('refund.over_available_credit', { available: `${currency} ${fmt(available)}` })
-                  : t('refund.over_available',        { available: `${currency} ${fmt(available)}` }))
+                  ? t('refund.over_available_credit', { available: `${ccyLabel(currency)} ${fmt(available)}` })
+                  : t('refund.over_available',        { available: `${ccyLabel(currency)} ${fmt(available)}` }))
               : undefined}
           />
           <Input label={t('refund.date')} type="date" value={date} onChange={e => setDate(e.target.value)} />

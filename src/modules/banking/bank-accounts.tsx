@@ -14,6 +14,7 @@
  * Ocean Teal layout (2026-11): look only, same data and actions.
  */
 import { useState, useEffect } from 'react';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -311,7 +312,7 @@ export default function BankAccountsPage() {
   const combined     = sumBalances(accounts as BankAccountRow[]);
   const cashOnHand   = sumBalances((accounts as BankAccountRow[]).filter(a => a.account_type === 'cash'));
   // Until the aggregate lands, say nothing rather than claim zero.
-  const money = (n: number | null) => n === null ? '\u2014' : `${n < 0 ? '-' : ''}${companyCurrency} ${fmt(Math.abs(n))}`;
+  const money = (n: number | null) => n === null ? '\u2014' : `${n < 0 ? '-' : ''}${ccyLabel(companyCurrency)} ${fmt(Math.abs(n))}`;
 
   const AccountIcon = ({ kind }: { kind: string }) => (
     <span className={`sb-ba-ico ${kind === 'cash' ? 'is-cash' : ''}`} aria-hidden="true">

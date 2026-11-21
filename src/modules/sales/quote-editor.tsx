@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -379,7 +380,7 @@ export default function QuoteEditorPage() {
           <p style={{ margin: '4px 0 0' }}>
             {t('quoteOcean.over_limit_body', {
               name: selectedCustomer.name,
-              limit: `${header.currency} ${fmt(creditLimit)}`,
+              limit: `${ccyLabel(header.currency)} ${fmt(creditLimit)}`,
               current: fmt(currentOutstanding),
               total: fmt(roundedTotal),
               projected: fmt(projectedOutstanding),
@@ -508,7 +509,7 @@ export default function QuoteEditorPage() {
             {roundOff !== 0 && (
               <div className="flex justify-between text-ink-secondary"><span>{t('sales.round_off')}</span><span className="font-mono">{roundOff > 0 ? '+' : '−'}{fmt(Math.abs(roundOff))}</span></div>
             )}
-            <div className="sb-doc-grand"><span>{t('sales.total_amount')}</span><bdi dir="ltr">{header.currency} {fmt(roundedTotal)}</bdi></div>
+            <div className="sb-doc-grand"><span>{t('sales.total_amount')}</span><bdi dir="ltr">{ccyLabel(header.currency)} {fmt(roundedTotal)}</bdi></div>
           </div>
         </div>
       </div>

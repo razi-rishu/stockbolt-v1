@@ -31,6 +31,7 @@
  * 3100 Retained Earnings to close out the migration.
  */
 import { useMemo, useRef, useState } from 'react';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { getAdapter } from '@/data/index';
@@ -966,7 +967,7 @@ export default function OpeningBalancesPage() {
             <div className="mt-1 flex items-baseline gap-3">
               <span className="text-xs text-ink-secondary">Now:</span>
               <span className="font-mono text-sm font-medium text-ink-primary">
-                {companyCurrency} {fmt(live3010)}
+                {ccyLabel(companyCurrency)} {fmt(live3010)}
               </span>
               {(totals.batchNet3010 !== 0) && (
                 <>
@@ -975,7 +976,7 @@ export default function OpeningBalancesPage() {
                     className="font-mono text-sm font-semibold"
                     style={{ color: Math.abs(totals.projected3010) < 0.005 ? '#047857' : '#B45309' }}
                   >
-                    {companyCurrency} {fmt(totals.projected3010)}
+                    {ccyLabel(companyCurrency)} {fmt(totals.projected3010)}
                   </span>
                 </>
               )}
@@ -1048,7 +1049,7 @@ export default function OpeningBalancesPage() {
                 {meta.short}
               </div>
               <div style={{ marginTop: '4px', fontSize: '17px', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                {companyCurrency} {fmt(val)}
+                {ccyLabel(companyCurrency)} {fmt(val)}
               </div>
               <div style={{ marginTop: '2px', fontSize: '10.5px', opacity: 0.85 }}>
                 {meta.label}
@@ -1064,7 +1065,7 @@ export default function OpeningBalancesPage() {
             Subsidiary net (this batch)
           </div>
           <div style={{ marginTop: '4px', fontSize: '17px', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-            {-totals.subsidiaryNet3010 >= 0 ? '+' : '−'}{companyCurrency} {fmt(Math.abs(totals.subsidiaryNet3010))}
+            {-totals.subsidiaryNet3010 >= 0 ? '+' : '−'}{ccyLabel(companyCurrency)} {fmt(Math.abs(totals.subsidiaryNet3010))}
           </div>
           <div style={{ marginTop: '2px', fontSize: '10.5px', opacity: 0.85 }}>
             {-totals.subsidiaryNet3010 >= 0
@@ -1848,7 +1849,7 @@ export default function OpeningBalancesPage() {
                     <td className="px-3 py-2 font-mono text-xs text-brand-600">{p.doc_number}</td>
                     <td className="px-3 py-2 text-ink-secondary">{p.date}</td>
                     <td className="px-3 py-2 text-end font-mono text-ink-primary">
-                      {p.currency} {fmt(p.amount)}
+                      {ccyLabel(p.currency)} {fmt(p.amount)}
                     </td>
                     <td className="px-3 py-2 text-xs text-ink-tertiary capitalize">{p.status}</td>
                     <td className="px-3 py-2 text-end">
@@ -1928,7 +1929,7 @@ export default function OpeningBalancesPage() {
                     Original: <span className="font-mono">{p.doc_number}</span>
                     {direction && <> · <span>{direction}</span></>}
                     {' · '}
-                    <span className="font-mono">{p.currency} {p.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="font-mono">{ccyLabel(p.currency)} {p.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                   <div className="mt-1 text-ink-tertiary">
                     Saving voids the original and posts a replacement. Both stay in the audit trail.

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { formatDate } from '@/lib/locale';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -151,7 +152,7 @@ export default function PDCReceivedPage() {
     },
     {
       key: 'amount', header: t('banking.amount'), align: 'end',
-      render: (r) => <bdi dir="ltr" className="sb-dash-num">{r.currency} {fmt(r.amount)}</bdi>,
+      render: (r) => <bdi dir="ltr" className="sb-dash-num">{ccyLabel(r.currency)} {fmt(r.amount)}</bdi>,
     },
     { key: 'status', header: t('common.status'), render: (r) => <StatusBadge status={r.status} /> },
     {
@@ -206,7 +207,7 @@ export default function PDCReceivedPage() {
             <span className="sb-exp-kpi-ico" aria-hidden="true"><Hourglass size={17} /></span>
             <div className="sb-exp-kpi-txt">
               <span className="sb-exp-kpi-label">{t('pdcOcean.awaiting')}</span>
-              <bdi dir="ltr" className="sb-exp-kpi-val">{companyCurrency} {fmt(k.openAmount)}</bdi>
+              <bdi dir="ltr" className="sb-exp-kpi-val">{ccyLabel(companyCurrency)} {fmt(k.openAmount)}</bdi>
               <span className="sb-exp-kpi-sub" style={{ color: '#D7F4F1' }}>{t('pdcOcean.cheques', { count: k.openCount })}</span>
             </div>
           </div>

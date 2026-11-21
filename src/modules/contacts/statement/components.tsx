@@ -27,6 +27,7 @@
  * vocabulary in tooltips).
  */
 import { type ReactNode } from 'react';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { formatDate } from '@/lib/locale';
 import { DocLink } from '@/ui/doc-link';
 
@@ -157,7 +158,7 @@ export function RelationshipHeader({
         <div style={{ marginTop: '14px', display: 'flex', flexWrap: 'wrap', gap: '6px 18px', fontSize: '12px', color: stmt.inkMuted }}>
           {party.terms && <span>Terms <strong style={{ color: stmt.inkBody, fontWeight: 600 }}>{party.terms}</strong></span>}
           {typeof party.credit_limit === 'number' && party.credit_limit > 0 && (
-            <span>Credit limit <strong style={{ color: stmt.inkBody, fontWeight: 600 }}>{currency} {fmt(party.credit_limit)}</strong></span>
+            <span>Credit limit <strong style={{ color: stmt.inkBody, fontWeight: 600 }}>{ccyLabel(currency)} {fmt(party.credit_limit)}</strong></span>
           )}
           {party.since && <span>Since <strong style={{ color: stmt.inkBody, fontWeight: 600 }}>{party.since}</strong></span>}
         </div>
@@ -270,7 +271,7 @@ export function BalanceStrip({
           fontSize: '13px', fontWeight: 600, color: stmt.ink,
           fontVariantNumeric: 'tabular-nums',
         }}>
-          {currency} {fmt(totalPositive)}
+          {ccyLabel(currency)} {fmt(totalPositive)}
         </span>
       </div>
 
@@ -286,7 +287,7 @@ export function BalanceStrip({
             const pct = b.value / totalPositive;
             if (pct <= 0) return null;
             return (
-              <div key={i} title={`${b.label}: ${currency} ${fmt(b.value)}`}
+              <div key={i} title={`${b.label}: ${ccyLabel(currency)} ${fmt(b.value)}`}
                 style={{ flex: `${pct} 0 0`, background: b.color, transition: 'flex 0.3s ease' }}
               />
             );
@@ -604,7 +605,7 @@ export function TransactionSpine({
               borderLeft: `1px solid ${stmt.hairline}`,
               background: stmt.brandSoft,
             }}>
-              {currency} {fmt(Math.abs(closingBalance))}{closingBalance < 0 ? ' CR' : ''}
+              {ccyLabel(currency)} {fmt(Math.abs(closingBalance))}{closingBalance < 0 ? ' CR' : ''}
             </td>
           </tr>
         </tbody>

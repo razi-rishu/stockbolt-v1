@@ -1,3 +1,4 @@
+import { ccy } from '@/lib/currency-display';
 import { getCountryPack } from '@/core/global-config/country-packs';
 /**
  * Localization helpers — currency + tax terminology.
@@ -42,19 +43,11 @@ export function formatCurrency(
   currency: string = 'AED',
   locale: string = 'en',
 ): string {
+  // phase143 — the label follows the company's Currency display preference
+  // (ISO code by default, or symbol); the number keeps 2 decimals as before.
   const n = Number(amount) || 0;
   const code = (currency || 'AED').toUpperCase();
-  try {
-    return new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency: code,
-      currencyDisplay: 'narrowSymbol',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(n);
-  } catch {
-    return `${code} ${n.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  }
+  return `${ccy(code)} ${n.toLocaleString(locale === 'ar' ? 'en-US' : locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 /** Tax + registration terminology for a company's country. */

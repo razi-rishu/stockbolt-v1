@@ -8895,3 +8895,30 @@ describe('Phase 142 — admin control center (soft until applied)', () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 143 — currency display preference (presentation only).
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 143 — currency display (soft until applied)', () => {
+  it('phase143: companies.currency_display is NULL | code | symbol, written only through companies RLS', async () => {
+    const col = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'companies' AND column_name = 'currency_display'`);
+    if (col[0].n === 0) {
+      console.warn('⚠ phase143 not applied yet — run supabase/migrations/20261121000001_phase143_currency_display.sql.');
+      return;
+    }
+    const chk = await sql<{ def: string }>(`
+      SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+       WHERE conrelid = 'public.companies'::regclass AND conname = 'companies_currency_display_check'`);
+    expect(chk.length, 'CHECK constraint must exist').toBe(1);
+    expect(chk[0].def).toContain("'code'");
+    expect(chk[0].def).toContain("'symbol'");
+    // Updates stay gated by settings.write (restrictive policy from phase22).
+    const pol = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM pg_policies
+       WHERE schemaname = 'public' AND tablename = 'companies' AND policyname = 'rbac_w_upd_companies'
+         AND permissive = 'RESTRICTIVE' AND qual LIKE '%settings.write%'`);
+    expect(pol[0].n, 'companies updates must stay gated by settings.write').toBe(1);
+  });
+});

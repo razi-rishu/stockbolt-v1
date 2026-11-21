@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { formatDate } from '@/lib/locale';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -63,7 +64,7 @@ export default function QuotesPage() {
     { key: 'cust', header: t('sales.customer'), render: (q) => <span style={{ fontWeight: 600 }}>{customerMap[q.contact_id] ?? '—'}</span> },
     { key: 'date', header: t('sales.date'), render: (q) => <bdi dir="ltr">{formatDate(q.date)}</bdi> },
     { key: 'exp', header: t('sales.expiry_date'), render: (q) => <bdi dir="ltr">{q.expiry_date ?? '—'}</bdi> },
-    { key: 'amt', header: t('sales.total_amount'), align: 'end', render: (q) => <bdi dir="ltr" className="sb-dash-num">{q.currency} {fmt(Number(q.total_amount))}</bdi> },
+    { key: 'amt', header: t('sales.total_amount'), align: 'end', render: (q) => <bdi dir="ltr" className="sb-dash-num">{ccyLabel(q.currency)} {fmt(Number(q.total_amount))}</bdi> },
     { key: 'status', header: '', render: (q) => <StatusBadge status={q.status} /> },
     {
       key: 'convert', header: '', align: 'end',

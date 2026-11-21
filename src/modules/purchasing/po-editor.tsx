@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -553,7 +554,7 @@ export default function POEditorPage() {
             <div className="flex justify-between text-ink-secondary"><span>{t('purchasing.subtotal')}</span><span className="font-mono">{fmt(subtotal)}</span></div>
             {discountTotal > 0 && <div className="flex justify-between text-ink-secondary"><span>{t('purchasing.discount')}</span><span className="font-mono text-red-600">−{fmt(discountTotal)}</span></div>}
             {taxTotal > 0 && <div className="flex justify-between text-ink-secondary"><span>{taxName}</span><span className="font-mono">{fmt(taxTotal)}</span></div>}
-            <div className="sb-doc-grand"><span>{t('purchasing.total_amount')}</span><bdi dir="ltr">{header.currency} {fmt(grandTotal)}</bdi></div>
+            <div className="sb-doc-grand"><span>{t('purchasing.total_amount')}</span><bdi dir="ltr">{ccyLabel(header.currency)} {fmt(grandTotal)}</bdi></div>
           </div>
         </div>
       </div>
