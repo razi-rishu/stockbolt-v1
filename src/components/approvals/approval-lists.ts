@@ -11,7 +11,9 @@ export const APPROVAL_DOC_TYPES: ApprovalDocType[] = [
   'purchase_order', 'goods_receipt', 'vendor_bill', 'debit_note', 'expense',
   'vendor_payment', 'vendor_refund', 'vendor_credit_refund',
   'sales_quote', 'invoice', 'credit_note', 'customer_receipt', 'customer_refund', 'customer_credit_refund',
+  'inventory_adjustment', 'bank_transfer', 'fixed_asset_purchase', 'payroll_run',
 ];
+export const OTHER_APPROVAL_TYPES: ApprovalDocType[] = ['inventory_adjustment', 'bank_transfer', 'fixed_asset_purchase', 'payroll_run'];
 export const SALES_APPROVAL_TYPES: ApprovalDocType[] = [
   'sales_quote', 'invoice', 'credit_note', 'customer_receipt', 'customer_refund', 'customer_credit_refund',
 ];
@@ -33,6 +35,10 @@ export function docTypeLabel(t: TFunction, type: ApprovalDocType | '*'): string 
     case 'customer_receipt': return t('apprOcean.dt_customer_receipt');
     case 'customer_refund': return t('apprOcean.dt_customer_refund');
     case 'customer_credit_refund': return t('apprOcean.dt_customer_credit_refund');
+    case 'inventory_adjustment': return t('apprOcean.dt_inventory_adjustment');
+    case 'bank_transfer': return t('apprOcean.dt_bank_transfer');
+    case 'fixed_asset_purchase': return t('apprOcean.dt_fixed_asset_purchase');
+    case 'payroll_run': return t('apprOcean.dt_payroll_run');
   }
 }
 
@@ -74,6 +80,10 @@ export function docRoute(type: ApprovalDocType, id: string): string {
     case 'invoice': return `/sales/invoices/${id}`;
     case 'credit_note': return `/sales/credit-notes/${id}`;
     case 'customer_receipt': case 'customer_refund': case 'customer_credit_refund': return `/sales/payments/${id}`;
+    case 'inventory_adjustment': return `/inventory/adjustments/${id}`;
+    case 'bank_transfer': return `/banking/transfers/${id}`;
+    case 'fixed_asset_purchase': return `/accounting/fixed-assets/purchase/${id}`;
+    case 'payroll_run': return `/payroll/runs/${id}`;
     default: return `/purchasing/payments/${id}`;
   }
 }

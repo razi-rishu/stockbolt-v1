@@ -10,6 +10,8 @@
  * and post_fixed_asset_purchase confirms it and creates one register row per
  * line in the same transaction. Layout follows New Bill (Ocean Teal).
  */
+import { ApprovalPanel } from '@/components/approvals/approval-panel';
+import { useApprovalGate, useDocApproval } from '@/components/approvals/use-approval';
 import { useEffect, useMemo, useState } from 'react';
 import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -178,7 +180,13 @@ export default function AssetPurchasePage() {
   }, [stdTaxRate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isPosted = purchase?.status === 'posted';
-  const readOnly = isPosted || !canWrite;
+  // phase147 — approvals: Post becomes Save & submit for approval when a rule
+  // applies; an approved purchase is reopened only by an admin. Its bill /
+  // expense is not asked for approval a second time.
+  const gate = useApprovalGate('fixed_asset_purchase');
+  const appr = useDocApproval('fixed_asset_purchase', purchase?.id ?? null);
+  const approvalLocked = appr.approved && !appr.isAdmin;
+  const readOnly = isPosted || !canWrite || appr.pending;
   const isRegister = mode === 'register';
   const showTax = !isRegister && vatApplies;
   const effInclusive = !isRegister && inclusive;
@@ -296,11 +304,14 @@ export default function AssetPurchasePage() {
   const postMutation = useMutation({
     mutationFn: async () => {
       const pid = await persist();
-      return { pid, res: await getAdapter().fixedAssets.postPurchase(pid) };
+      if (gate.needs(totals.total)) return { pid, submit: true };
+      await getAdapter().fixedAssets.postPurchase(pid);
+      return { pid, submit: false };
     },
-    onSuccess: async ({ pid }) => {
+    onSuccess: async ({ pid, submit }) => {
       setError(null); setDirty(false); setLoadedId(null); await refresh();
       if (!id) navigate(`/accounting/fixed-assets/purchase/${pid}`, { replace: true });
+      if (submit) gate.open({ docId: pid, onSent: () => { void refresh(); } });
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -349,15 +360,15 @@ export default function AssetPurchasePage() {
                 <Button size="sm" disabled={busy} onClick={() => saveMutation.mutate()}>
                   <Save size={15} aria-hidden="true" /> {isRegister ? t('apOcean.save_register') : t('apOcean.save_draft')}
                 </Button>
-                {!isRegister && (
+                {!isRegister && !appr.pending && (
                   <Button size="sm" variant="primary" disabled={busy}
-                    onClick={() => { if (window.confirm(t('apOcean.confirm_post', { amount: `${ccyLabel(currency)} ${fmt(totals.total)}` }))) postMutation.mutate(); }}>
-                    <CircleCheck size={15} aria-hidden="true" /> {t('apOcean.post')}
+                    onClick={() => { if (gate.needs(totals.total) || window.confirm(t('apOcean.confirm_post', { amount: `${ccyLabel(currency)} ${fmt(totals.total)}` }))) postMutation.mutate(); }}>
+                    <CircleCheck size={15} aria-hidden="true" /> {gate.needs(totals.total) ? t('apprOcean.save_submit') : t('apOcean.post')}
                   </Button>
                 )}
               </>
             )}
-            {isPosted && (
+            {isPosted && !approvalLocked && (
               <Button size="sm" variant="ghost" disabled={busy}
                 onClick={() => { if (window.confirm(t('apOcean.confirm_reopen'))) reopenMutation.mutate(); }}>
                 <Pencil size={15} aria-hidden="true" /> {t('apOcean.reopen')}
@@ -368,6 +379,11 @@ export default function AssetPurchasePage() {
       </div>
 
       {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+      {purchase && !isRegister && (
+        <ApprovalPanel docType="fixed_asset_purchase" docId={purchase.id} isDraft={!isPosted} amountBase={totals.total}
+          onChanged={() => { setLoadedId(null); void refresh(); }} />
+      )}
+      {gate.modal}
 
       {isPosted && purchase && (
         <div className="sb-alert sb-alert-good sb-ap-posted">

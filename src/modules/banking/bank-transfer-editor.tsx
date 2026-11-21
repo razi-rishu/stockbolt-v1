@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { ApprovalPanel } from '@/components/approvals/approval-panel';
+import { useApprovalGate, useDocApproval } from '@/components/approvals/use-approval';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -126,6 +128,12 @@ export default function BankTransferEditorPage() {
 
   const isDraft = !transfer || transfer.status === 'draft';
   const isConfirmed = transfer?.status === 'confirmed';
+  // phase147 — approvals: Confirm becomes Submit for approval when a rule applies;
+  // an approved transfer is edited or voided only by an admin.
+  const gate = useApprovalGate('bank_transfer');
+  const appr = useDocApproval('bank_transfer', isNew ? null : id);
+  const approvalLocked = appr.approved && !appr.isAdmin;
+  const needsApproval = gate.needs(parseFloat(amount) || 0);
   const accountOpts = bankAccounts.map(a => ({ value: a.id, label: a.name }));
 
   return (
@@ -142,10 +150,10 @@ export default function BankTransferEditorPage() {
         <div className="sb-doc-bar-actions">
           {isDraft && (
             <>
-              <Button size="sm" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+              <Button size="sm" disabled={saveMutation.isPending || appr.pending} onClick={() => saveMutation.mutate()}>
                 {t('common.save')}
               </Button>
-              {!isNew && (
+              {!isNew && !needsApproval && !appr.pending && (
                 <Button size="sm" variant="primary" disabled={confirmMutation.isPending || !fromAccountId || !toAccountId}
                   onClick={() => { setError(null); confirmMutation.mutate(); }}>
                   <CircleCheck size={15} aria-hidden="true" /> {t('banking.confirm_transfer')}
@@ -153,7 +161,7 @@ export default function BankTransferEditorPage() {
               )}
             </>
           )}
-          {isConfirmed && (
+          {isConfirmed && !approvalLocked && (
             <>
               <Button size="sm" variant="ghost" disabled={reopenMutation.isPending}
                 onClick={() => { if (confirm(t('common.reopen_warn') || 'Edit this confirmed document? It reverses its posted entries and reopens it as a draft so you can change it and confirm again.')) { setError(null); reopenMutation.mutate(); } }}>
@@ -170,6 +178,10 @@ export default function BankTransferEditorPage() {
       </div>
 
       {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+      {!isNew && id && (
+        <ApprovalPanel docType="bank_transfer" docId={id} isDraft={isDraft} amountBase={parseFloat(amount) || 0}
+          onChanged={() => { qc.invalidateQueries({ queryKey: ['bank_transfers'] }); qc.invalidateQueries({ queryKey: ['bank_transfer', id] }); }} />
+      )}
 
       {/* Confirmed summary */}
       {isConfirmed && (

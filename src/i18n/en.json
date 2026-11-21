@@ -5008,6 +5008,11 @@
     "in_payroll_hint": "Turn off for people who aren't paid through payroll (for example the owner)."
   },
   "apprOcean": {
+    "grp_other": "Inventory, banking & payroll",
+    "dt_inventory_adjustment": "Stock adjustments",
+    "dt_bank_transfer": "Bank transfers",
+    "dt_fixed_asset_purchase": "Asset purchases",
+    "dt_payroll_run": "Payroll runs",
     "grp_purchasing": "Purchasing",
     "grp_sales": "Sales",
     "dt_sales_quote": "Quotes",

@@ -18,7 +18,7 @@ import { ApproverPickerModal } from './approver-picker-modal';
 import { useApprovalGate, useDocApproval } from './use-approval';
 import { approvalError, approvalKeys } from './approval-lists';
 
-export function ApprovalPanel({ docType, docId, isDraft, onChanged, confirmArgs }: {
+export function ApprovalPanel({ docType, docId, isDraft, onChanged, confirmArgs, amountBase }: {
   docType: ApprovalDocType;
   docId: string | null | undefined;
   /** The document is still a draft (Submit is possible). */
@@ -26,6 +26,9 @@ export function ApprovalPanel({ docType, docId, isDraft, onChanged, confirmArgs 
   /** Re-read the document after it was approved (it is confirmed now). */
   onChanged?: () => void;
   confirmArgs?: Record<string, unknown>;
+  /** The document's amount in base currency, when the screen knows it: below
+   *  the rule's threshold the "needs approval" note stays hidden. */
+  amountBase?: number;
 }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -66,6 +69,7 @@ export function ApprovalPanel({ docType, docId, isDraft, onChanged, confirmArgs 
   if (!req || req.status === 'cancelled' || (req.status === 'rejected' && isDraft) || (req.status === 'approved' && isDraft)) {
     const rejected = req?.status === 'rejected';
     if (!isDraft || (!appr.state.rule_enabled && !rejected)) return null;
+    if (!rejected && amountBase !== undefined && !gate.needs(amountBase)) return null;
     return (
       <section className={`sb-card sb-appr-panel ${rejected ? 'is-danger' : 'is-info'}`} data-print-hide data-testid="approval-panel">
         <span className="sb-appr-icon" aria-hidden="true">{rejected ? <XCircle size={20} /> : <ShieldAlert size={20} />}</span>

@@ -9001,6 +9001,26 @@ describe('Phase 146 — sales approvals (soft until applied)', () => {
     }
     const guarded = await sql<{ n: number }>(`
       SELECT count(DISTINCT tgrelid)::int AS n FROM pg_trigger WHERE tgname LIKE '%\\_approval\\_guard' AND NOT tgisinternal`);
-    expect(guarded[0].n, 'purchasing + sales documents and lines guarded').toBe(19);
+    expect(guarded[0].n, 'purchasing + sales documents and lines guarded').toBeGreaterThanOrEqual(19);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 147 — Approvals, inventory / banking / assets / payroll.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 147 — remaining approvals (soft until applied)', () => {
+  it('phase147: new types accepted and their documents guarded', async () => {
+    const def = await sql<{ d: string | null }>(`
+      SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint WHERE conname = 'approval_rules_doc_type_check'`);
+    if (!def[0]?.d || !def[0].d.includes('payroll_run')) {
+      console.warn('⚠ phase147 not applied yet — run supabase/migrations/20261121000005_phase147_approvals_rest.sql (after phase146).');
+      return;
+    }
+    for (const t of ['inventory_adjustment', 'bank_transfer', 'fixed_asset_purchase', 'payroll_run']) {
+      expect(def[0].d, t).toContain(`'${t}'`);
+    }
+    const guarded = await sql<{ n: number }>(`
+      SELECT count(DISTINCT tgrelid)::int AS n FROM pg_trigger WHERE tgname LIKE '%\\_approval\\_guard' AND NOT tgisinternal`);
+    expect(guarded[0].n, 'all approval documents and lines guarded').toBe(25);
   });
 });

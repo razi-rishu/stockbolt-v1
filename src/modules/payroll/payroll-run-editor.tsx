@@ -12,6 +12,8 @@
  *   expense = gross − deductions          (absence/fines reduce 6100)
  *   net     = expense − loan_repayment    (loans recover 1450)
  */
+import { ApprovalPanel } from '@/components/approvals/approval-panel';
+import { useApprovalGate, useDocApproval } from '@/components/approvals/use-approval';
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -113,6 +115,10 @@ export default function PayrollRunEditorPage() {
 
   const empMap = Object.fromEntries(employees.map(e => [e.id, e]));
   const isDraft = run?.status === 'draft';
+  // phase147 — approvals: Confirm becomes Submit for approval when a rule applies;
+  // an approved run is voided only by an admin (payroll is admin-only anyway).
+  const gate = useApprovalGate('payroll_run');
+  const appr = useDocApproval('payroll_run', id);
 
   useEffect(() => { setLines(items.map(toLine)); }, [items]);
 
@@ -226,12 +232,14 @@ export default function PayrollRunEditorPage() {
               <Button variant="ghost" size="sm" onClick={() => deleteMutation.mutate()} disabled={busy}>
                 <Trash2 size={15} aria-hidden="true" /> {t('payOcean.delete_draft')}
               </Button>
-              <Button variant="secondary" size="sm" onClick={() => saveMutation.mutate()} disabled={busy}>
+              <Button variant="secondary" size="sm" onClick={() => saveMutation.mutate()} disabled={busy || appr.pending}>
                 <Save size={15} aria-hidden="true" /> {saveMutation.isPending ? t('common.saving') : t('common.save')}
               </Button>
-              <Button size="sm" onClick={() => confirmMutation.mutate()} disabled={busy || lines.length === 0}>
-                <CheckCircle2 size={15} aria-hidden="true" /> {confirmMutation.isPending ? t('payOcean.confirming') : t('payOcean.confirm_post')}
-              </Button>
+              {!gate.needs(totals.net) && !appr.pending && (
+                <Button size="sm" onClick={() => confirmMutation.mutate()} disabled={busy || lines.length === 0}>
+                  <CheckCircle2 size={15} aria-hidden="true" /> {confirmMutation.isPending ? t('payOcean.confirming') : t('payOcean.confirm_post')}
+                </Button>
+              )}
             </>
           )}
           {(run.status === 'confirmed' || run.status === 'paid') && (
@@ -258,6 +266,10 @@ export default function PayrollRunEditorPage() {
       </div>
 
       {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+      {id && (
+        <ApprovalPanel docType="payroll_run" docId={id} isDraft={isDraft} amountBase={totals.net}
+          onChanged={() => { qc.invalidateQueries({ queryKey: ['payroll_run', id] }); qc.invalidateQueries({ queryKey: ['payroll_runs', company_id] }); }} />
+      )}
 
       {/* ── Totals strip ── */}
       <div className="sb-card sb-rpt-card">

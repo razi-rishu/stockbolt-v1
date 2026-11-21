@@ -1,4 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
+import { ApprovalPanel } from '@/components/approvals/approval-panel';
+import { useApprovalGate, useDocApproval } from '@/components/approvals/use-approval';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -99,7 +101,10 @@ export default function AdjustmentEditorPage() {
     setLines(prev => prev.map(l => l._key !== key ? l : { ...l, ...patch }));
   }, []);
 
-  const canEdit = isNew || existing?.status === 'draft';
+  // phase147 — approvals: when a rule applies, Confirm becomes Submit for approval.
+  const gate = useApprovalGate('inventory_adjustment');
+  const appr = useDocApproval('inventory_adjustment', isNew ? null : id);
+  const canEdit = (isNew || existing?.status === 'draft') && !appr.pending;
 
   const warehouseOpts = [
     { value: '', label: t('inventory.select_warehouse') },
@@ -181,6 +186,8 @@ export default function AdjustmentEditorPage() {
     acc.net += difference;
     return acc;
   }, { gain: 0, loss: 0, net: 0 });
+  const adjAmount = Math.abs(totals.gain) + Math.abs(totals.loss);
+  const needsApproval = gate.needs(adjAmount);
 
   return (
     // Ocean Teal (UI v1.1): look only — same fields, lines, save and confirm.
@@ -199,7 +206,7 @@ export default function AdjustmentEditorPage() {
               {t('common.save')}
             </Button>
           )}
-          {!isNew && existing?.status === 'draft' && (
+          {!isNew && existing?.status === 'draft' && !needsApproval && !appr.pending && (
             <Button size="sm" variant="primary" onClick={() => setConfirmOpen(true)}>
               <CircleCheck size={15} aria-hidden="true" /> {t('inventory.confirm_adjustment')}
             </Button>
@@ -208,6 +215,10 @@ export default function AdjustmentEditorPage() {
       </div>
 
       {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+      {!isNew && id && (
+        <ApprovalPanel docType="inventory_adjustment" docId={id} isDraft={existing?.status === 'draft'} amountBase={adjAmount}
+          onChanged={() => { qc.invalidateQueries({ queryKey: ['inventory_adjustment', id] }); qc.invalidateQueries({ queryKey: ['inventory_adjustments'] }); }} />
+      )}
 
       {/* Summary cards */}
       <div className="sb-adj-kpis">

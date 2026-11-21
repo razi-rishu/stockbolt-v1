@@ -23,6 +23,11 @@ describe('approvals lists', () => {
     expect(docRoute('credit_note', 'x')).toBe('/sales/credit-notes/x');
     expect(docRoute('customer_receipt', 'x')).toBe('/sales/payments/x');
     expect(docRoute('customer_credit_refund', 'x')).toBe('/sales/payments/x');
+    // phase147 — inventory, banking, assets, payroll
+    expect(docRoute('inventory_adjustment', 'x')).toBe('/inventory/adjustments/x');
+    expect(docRoute('bank_transfer', 'x')).toBe('/banking/transfers/x');
+    expect(docRoute('fixed_asset_purchase', 'x')).toBe('/accounting/fixed-assets/purchase/x');
+    expect(docRoute('payroll_run', 'x')).toBe('/payroll/runs/x');
   });
   it('explains why someone can\'t approve, and names every step', () => {
     expect(problemLabel(t, null)).toBe('');
