@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { ApprovalPanel } from '@/components/approvals/approval-panel';
+import { useApprovalGate, useDocApproval } from '@/components/approvals/use-approval';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -207,18 +209,27 @@ export default function GRNEditorPage() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       const savedId = await persistDraft();
+      // phase145 — needs approval: keep it a draft and send it to an approver.
+      if (gate.needs(grnTotal)) return { savedId, submit: true };
       try {
         await getAdapter().goodsReceipts.confirm(savedId);
       } catch (e) {
         if (isNew) navigate(`/purchasing/grns/${savedId}`);
         throw e;
       }
-      return savedId;
+      return { savedId, submit: false };
     },
-    onSuccess: async (savedId) => {
+    onSuccess: async ({ savedId, submit }) => {
       setDirty(false);
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['goods_receipts', company_id] });
+      if (submit) {
+        qc.invalidateQueries({ queryKey: ['goods_receipt', savedId] });
+        qc.invalidateQueries({ queryKey: ['goods_receipt_items', savedId] });
+        const toRecord = () => { if (isNew) navigate(`/purchasing/grns/${savedId}`); };
+        gate.open({ docId: savedId, onSent: toRecord, onClosed: toRecord });
+        return;
+      }
       if (isNew) navigate('/purchasing/grns');
       else {
         qc.invalidateQueries({ queryKey: ['goods_receipt', savedId] });
@@ -229,7 +240,16 @@ export default function GRNEditorPage() {
     onError: (e: Error) => setError(e.message),
   });
 
-  const canEdit = isNew || existing?.status === 'draft';
+  // phase145 — approvals: Save submits instead of confirming when a rule applies.
+  const grnTotal = lines.reduce((sum, l) => sum + (Number(l.qty_received) || 0) * (Number(l.unit_cost) || 0), 0);
+  const gate = useApprovalGate('goods_receipt');
+  const appr = useDocApproval('goods_receipt', isNew ? null : id);
+  const refreshGrn = () => {
+    void invalidateBooks();
+    qc.invalidateQueries({ queryKey: ['goods_receipts', company_id] });
+    qc.invalidateQueries({ queryKey: ['goods_receipt', id] });
+  };
+  const canEdit = (isNew || existing?.status === 'draft') && !appr.pending;
   const supplierOpts = suppliers.map(s => ({ value: s.id, label: s.name }));
   const warehouseOpts = [{ value: '', label: t('purchasing.select_warehouse') }, ...warehouses.map(w => ({ value: w.id, label: w.name }))];
   const productOpts = products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }));
@@ -271,6 +291,7 @@ export default function GRNEditorPage() {
         <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
+        <ApprovalPanel docType="goods_receipt" docId={existing.id} isDraft={false} onChanged={refreshGrn} />
         {/* phase138 — who did what, and what followed (screen only). */}
         <DocumentActivity kind="goods_receipt" id={existing.id} />
       </div>
@@ -298,7 +319,7 @@ export default function GRNEditorPage() {
           {canEdit && (
             <>
               <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
-                {saveMutation.isPending ? t('common.saving') : t('common.save')}
+                {saveMutation.isPending ? t('common.saving') : gate.needs(grnTotal) ? t('apprOcean.save_submit') : t('common.save')}
               </Button>
             </>
           )}
@@ -311,6 +332,8 @@ export default function GRNEditorPage() {
       </div>
 
       {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+      {!isNew && id && <ApprovalPanel docType="goods_receipt" docId={id} isDraft={existing?.status === 'draft'} onChanged={refreshGrn} />}
+      {gate.modal}
 
 
       <div className="sb-card sb-form sb-doc-card">

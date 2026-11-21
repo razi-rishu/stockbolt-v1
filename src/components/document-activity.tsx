@@ -23,7 +23,9 @@ import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { DocLink } from '@/ui/doc-link';
 import { StatusBadge } from '@/ui/status-badge';
-import type { ActivityDocKind, ActivityFollowOn, AuditLogLine, DocumentActivity as Activity } from '@/data/adapter';
+import type { ActivityDocKind, ActivityFollowOn, ApprovalStepRow, AuditLogLine, DocumentActivity as Activity } from '@/data/adapter';
+import { stepLabel } from '@/components/approvals/approval-lists';
+import { BadgeCheck, Send, XCircle } from 'lucide-react';
 
 type Tone = 'brand' | 'success' | 'warn' | 'danger' | 'muted';
 
@@ -38,6 +40,8 @@ interface ActivityEvent {
   link?: { type: string; id: string; number: string; isVoid: boolean };
   amount?: { value: number; currency: string | null };
   note?: string | null;
+  /** phase145 — a name the step already carries (approval steps). */
+  whoName?: string | null;
 }
 
 const VISIBLE = 6;
@@ -110,6 +114,12 @@ export function DocumentActivity({ kind, id }: { kind: ActivityDocKind; id: stri
     queryFn: () => getAdapter().reports.getDocumentActivity(company_id!, kind, id),
     enabled: !!company_id && !!id,
   });
+  // phase145 — approval steps (submitted / approved / rejected / admin void…).
+  const { data: steps = [] } = useQuery<ApprovalStepRow[]>({
+    queryKey: ['approval_steps', id],
+    queryFn: () => getAdapter().approvals.docSteps(id),
+    enabled: !!company_id && !!id,
+  });
   const { data: users = [] } = useQuery({
     queryKey: ['company_users', company_id],
     queryFn: () => getAdapter().users.listUsers(company_id!),
@@ -138,10 +148,22 @@ export function DocumentActivity({ kind, id }: { kind: ActivityDocKind; id: stri
         amount: f.amount != null && f.amount !== 0 ? { value: f.amount, currency: f.currency } : undefined,
       });
     }
+    for (const st of steps) {
+      const tone: Tone = st.action === 'approved' || st.action === 'override' ? 'success'
+        : st.action === 'rejected' || st.action === 'admin_void' ? 'danger'
+        : st.action === 'cancelled' || st.action === 'admin_reopen' ? 'warn' : 'brand';
+      const icon = st.action === 'approved' || st.action === 'override' ? <BadgeCheck {...ICON} />
+        : st.action === 'rejected' || st.action === 'admin_void' ? <XCircle {...ICON} /> : <Send {...ICON} />;
+      out.push({
+        key: `appr-${st.created_at}-${st.action}`, at: st.created_at, user_id: st.by_user, tone, icon,
+        what: st.to_name ? `${stepLabel(t, st.action)} → ${st.to_name}` : stepLabel(t, st.action),
+        note: st.note, whoName: st.by_name,
+      });
+    }
     return out.sort((a, b) => a.at.localeCompare(b.at));
-  }, [data, t]);
+  }, [data, steps, t]);
 
-  if (!data || events.length === 0) return null;
+  if ((!data && steps.length === 0) || events.length === 0) return null;
 
   const nameOf = (uid: string | null): string | null => {
     if (!uid) return null;
@@ -169,7 +191,7 @@ export function DocumentActivity({ kind, id }: { kind: ActivityDocKind; id: stri
       )}
       <ol className="sb-act-list">
         {shown.map((e) => {
-          const who = nameOf(e.user_id);
+          const who = e.whoName ?? nameOf(e.user_id);
           return (
             <li key={e.key} className={`sb-act-item is-${e.tone}`}>
               <span className="sb-act-dot">{e.icon}</span>

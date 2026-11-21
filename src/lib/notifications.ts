@@ -11,14 +11,15 @@
  * timer and cache.
  */
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { ccy as ccyLabel } from '@/lib/currency-display';
+import { ccy as ccyLabel, moneyLabel } from '@/lib/currency-display';
+import { docRoute } from '@/components/approvals/approval-lists';
 import { useQuery } from '@tanstack/react-query';
 import { getAdapter } from '@/data';
 import { useAuthStore } from '@/store/auth';
 import i18next from 'i18next';
 
 export type NotificationSeverity = 'info' | 'warning' | 'danger';
-export type NotificationKind = 'overdue_invoice' | 'low_stock' | 'payment_received' | 'new_signup';
+export type NotificationKind = 'overdue_invoice' | 'low_stock' | 'payment_received' | 'new_signup' | 'approval_waiting' | 'approval_decided';
 
 export interface Notification {
   /** Stable per (kind + entity) — e.g. "overdue-invoice-<uuid>". Used for read-state. */
@@ -207,6 +208,38 @@ export function useNotifications() {
         } catch {
           // ignore — no alerts if the call fails
         }
+      }
+
+      // ── 5. Approvals (phase145): waiting for me, and my requests decided this week ─
+      try {
+        const waiting = await adapter.approvals.list('waiting');
+        for (const r of waiting.slice(0, 20)) {
+          out.push({
+            id: `approval-waiting-${r.id}-${r.assignee_employee_id ?? ''}`,
+            kind: 'approval_waiting',
+            severity: 'warning',
+            title: i18next.t('apprOcean.bell_waiting'),
+            detail: `${r.doc_number ?? ''} · ${moneyLabel(r.amount_doc ?? r.amount_base, r.currency ?? undefined)} · ${r.submitted_by ?? ''}`,
+            href: docRoute(r.doc_type, r.doc_id),
+            createdAt: r.created_at,
+          });
+        }
+        const weekAgo = Date.now() - 7 * 86400_000;
+        const mine = await adapter.approvals.list('mine');
+        for (const r of mine.filter((x) => (x.status === 'approved' || x.status === 'rejected')
+                                       && x.decided_at && new Date(x.decided_at).getTime() >= weekAgo).slice(0, 20)) {
+          out.push({
+            id: `approval-decided-${r.id}`,
+            kind: 'approval_decided',
+            severity: r.status === 'rejected' ? 'danger' : 'info',
+            title: r.status === 'rejected' ? i18next.t('apprOcean.bell_rejected') : i18next.t('apprOcean.bell_approved'),
+            detail: `${r.doc_number ?? ''} · ${moneyLabel(r.amount_doc ?? r.amount_base, r.currency ?? undefined)}`,
+            href: docRoute(r.doc_type, r.doc_id),
+            createdAt: r.decided_at!,
+          });
+        }
+      } catch {
+        // ignore — no approval alerts if the call fails
       }
 
       // Sort by createdAt descending (newest first), with danger > warning > info

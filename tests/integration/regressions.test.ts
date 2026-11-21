@@ -8952,3 +8952,35 @@ describe('Phase 144 — team hierarchy (soft until applied)', () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 145 — Approvals engine (batch 1: purchasing documents).
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 145 — approvals engine (soft until applied)', () => {
+  const FNS = ['approval_config', 'save_approval_rule', 'set_approval_authority', 'remove_approval_authority',
+    'list_approvers', 'submit_for_approval', 'approve_request', 'reject_request', 'forward_request',
+    'cancel_approval_request', 'doc_approval_state', 'doc_approval_steps', 'list_approval_requests'];
+  it('phase145: tables closed to clients, functions closed to anon, documents guarded', async () => {
+    const t = await sql<{ n: number }>(`SELECT count(*)::int AS n FROM pg_tables WHERE schemaname = 'public' AND tablename = 'approval_requests'`);
+    if (t[0].n === 0) {
+      console.warn('⚠ phase145 not applied yet — run supabase/migrations/20261121000003_phase145_approvals_engine.sql (after phase144).');
+      return;
+    }
+    const grants = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM information_schema.role_table_grants
+       WHERE table_schema = 'public' AND grantee IN ('anon', 'authenticated')
+         AND table_name IN ('approval_rules', 'approval_authorities', 'approval_requests', 'approval_steps')`);
+    expect(grants[0].n, 'approval tables must have no client grants').toBe(0);
+    const r = await sql<{ proname: string; anon: boolean; definer: boolean }>(`
+      SELECT p.proname, has_function_privilege('anon', p.oid, 'EXECUTE') AS anon, p.prosecdef AS definer
+        FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = ANY (ARRAY['${FNS.join("','")}'])`);
+    expect(r.map(x => x.proname).sort()).toEqual([...FNS].sort());
+    for (const x of r) {
+      expect(x.anon, `${x.proname} must not be executable by anon`).toBe(false);
+      expect(x.definer, `${x.proname} must be SECURITY DEFINER`).toBe(true);
+    }
+    const guarded = await sql<{ n: number }>(`
+      SELECT count(DISTINCT tgrelid)::int AS n FROM pg_trigger WHERE tgname LIKE '%\\_approval\\_guard' AND NOT tgisinternal`);
+    expect(guarded[0].n, 'documents and lines guarded').toBe(13);
+  });
+});

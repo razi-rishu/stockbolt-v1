@@ -12,7 +12,7 @@ import type { TFunction } from 'i18next';
 import {
   Building2, CreditCard, Warehouse, Compass, Ruler, FolderTree, Tag, Car, Coins, UserRound, Percent,
   ArrowLeftRight, Hash, BookOpen, Lock, ArrowDownToLine, FileUp, Printer, ScanBarcode, Users, Plug,
-  ShieldCheck, Wrench, ClipboardList, Eraser, Settings, Network,
+  ShieldCheck, Wrench, ClipboardList, Eraser, Settings, Network, BadgeCheck,
 } from 'lucide-react';
 import type { SettingsNavItem, SettingsNavSection } from './_nav';
 
@@ -29,7 +29,7 @@ const ICONS: Record<string, (size: number) => ReactNode> = {
   tax_rates: (z) => <Percent size={z} />, exchange_rates: (z) => <ArrowLeftRight size={z} />, numbering: (z) => <Hash size={z} />,
   chart_of_accounts: (z) => <BookOpen size={z} />, period_lock: (z) => <Lock size={z} />,
   opening_balances: (z) => <ArrowDownToLine size={z} />, import_export: (z) => <FileUp size={z} />,
-  print: (z) => <Printer size={z} />, hardware: (z) => <ScanBarcode size={z} />, users: (z) => <Users size={z} />, team: (z) => <Network size={z} />,
+  print: (z) => <Printer size={z} />, hardware: (z) => <ScanBarcode size={z} />, users: (z) => <Users size={z} />, team: (z) => <Network size={z} />, approvals: (z) => <BadgeCheck size={z} />,
   developer: (z) => <Plug size={z} />, system_health: (z) => <ShieldCheck size={z} />, maintenance: (z) => <Wrench size={z} />,
   audit_log: (z) => <ClipboardList size={z} />, reset_data: (z) => <Eraser size={z} />,
 };

@@ -2494,3 +2494,44 @@
   .sb-ocean .sb-team-row-main { flex: 1 1 150px; }
   .sb-ocean .sb-team-badges { flex-basis: 100%; padding-inline-start: 4px; }
 }
+
+/* ── Approvals (phase145) — document strip, person picker, settings, inbox ─ */
+.sb-ocean .sb-appr-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 14px; padding: 14px 16px; margin: 12px 0;
+  border-inline-start: 4px solid var(--sb-primary); }
+.sb-ocean .sb-appr-panel.is-info   { border-inline-start-color: var(--sb-primary); background: var(--sb-primary-soft); }
+.sb-ocean .sb-appr-panel.is-warn   { border-inline-start-color: #F59E0B; background: #FFFBEB; }
+.sb-ocean .sb-appr-panel.is-good   { border-inline-start-color: var(--sb-success); background: #F0FDF4; }
+.sb-ocean .sb-appr-panel.is-danger { border-inline-start-color: var(--sb-danger); background: #FEF2F2; }
+.sb-ocean .sb-appr-icon { flex: none; display: inline-flex; color: var(--sb-primary-dark); }
+.sb-ocean .sb-appr-panel.is-warn .sb-appr-icon { color: var(--sb-warning); }
+.sb-ocean .sb-appr-panel.is-good .sb-appr-icon { color: var(--sb-success); }
+.sb-ocean .sb-appr-panel.is-danger .sb-appr-icon { color: var(--sb-danger); }
+.sb-ocean .sb-appr-body { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sb-ocean .sb-appr-title { margin: 0; font-weight: 800; color: var(--sb-text); }
+.sb-ocean .sb-appr-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.sb-ocean.sb-appr-pick { display: flex; flex-direction: column; gap: 12px; }
+.sb-ocean .sb-appr-people { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+.sb-ocean .sb-appr-person { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--sb-border);
+  border-radius: 12px; cursor: pointer; background: var(--sb-surface); }
+.sb-ocean .sb-appr-person input { accent-color: var(--sb-primary); width: 16px; height: 16px; flex: none; }
+.sb-ocean .sb-appr-person.is-on { border-color: var(--sb-primary); background: var(--sb-primary-soft); }
+.sb-ocean .sb-appr-person.is-off { opacity: 0.55; cursor: not-allowed; }
+.sb-ocean .sb-appr-person .sb-team-tag { margin-inline-start: 8px; }
+.sb-ocean .sb-appr-note { width: 100%; padding: 10px 14px; border: 1px solid var(--sb-border); border-radius: 14px; font: inherit; color: var(--sb-text); resize: vertical; }
+.sb-ocean .sb-appr-note:focus { outline: none; border-color: var(--sb-primary); box-shadow: 0 0 0 3px var(--sb-primary-light); }
+.sb-ocean .sb-appr-rules { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.sb-ocean .sb-appr-rule { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(150px, 220px) minmax(150px, auto); gap: 10px 14px; align-items: center;
+  padding: 10px 12px; border: 1px solid var(--sb-border); border-radius: 12px; }
+.sb-ocean .sb-appr-rule.is-on { border-color: var(--sb-primary-light); background: var(--sb-primary-soft); }
+.sb-ocean .sb-appr-rule-min { display: flex; flex-direction: column; gap: 4px; }
+.sb-ocean .sb-appr-rule-act { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 640px) { .sb-ocean .sb-appr-rule { grid-template-columns: 1fr; } }
+.sb-ocean .sb-appr-auth { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--sb-border); }
+.sb-ocean .sb-appr-add { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items: end; margin-top: 8px; }
+.sb-ocean .sb-appr-row { align-items: flex-start; }
+.sb-ocean .sb-appr-row-end { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.sb-ocean .sb-appr-amount { font-weight: 800; }
+.sb-ocean .sb-team-tag.is-warn, .sb-ocean .sb-team-tag.is-pending { background: #FEF3C7; color: var(--sb-warning); }
+.sb-ocean .sb-team-tag.is-approved { background: var(--sb-success-bg); color: var(--sb-success); }
+.sb-ocean .sb-team-tag.is-rejected { background: var(--sb-danger-bg); color: var(--sb-danger); }
+.sb-ocean.sb-appr-pick .sb-team-search { flex: none; }

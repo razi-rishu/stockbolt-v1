@@ -215,6 +215,8 @@ const MaintenancePage                 = lazy(() => import('@/modules/settings/ma
 const ResetDataPage                   = lazy(() => import('@/modules/settings/reset-data'));
 const SalespeoplePage                 = lazy(() => import('@/modules/settings/salespeople'));
 const TeamPage                        = lazy(() => import('@/modules/settings/team/index'));
+const ApprovalsSettingsPage           = lazy(() => import('@/modules/settings/approvals/index'));
+const ApprovalsInboxPage              = lazy(() => import('@/modules/approvals/inbox'));
 const AdminControlCenter              = lazy(() => import('@/modules/admin/control-center'));
 const RequirePlatformAdmin            = lazy(() => import('@/modules/admin/require-platform-admin'));
 // phase133 — Help & Support (every signed-in user; the inbox checks operator rights)
@@ -309,6 +311,7 @@ function AppRoutes() {
               {/* phase133 — Help & Support. No module permission: anyone can ask for help.
                   Tickets are private to their author; the server enforces it. */}
               <Route path="/support"                  element={<SupportHomePage />} />
+              <Route path="/approvals"                element={<ApprovalsInboxPage />} />
               <Route path="/support/new/:category"    element={<SupportNewPage />} />
               <Route path="/support/tickets/:id"      element={<SupportTicketPage />} />
               <Route path="/support/inbox"            element={<SupportInboxPage />} />
@@ -336,6 +339,9 @@ function AppRoutes() {
                   )}
                   <Route path="users" element={<RequirePermission perm="users.manage" />}>
                     <Route index element={<UsersRolesPage />} />
+                  </Route>
+                  <Route path="approvals" element={<RequirePermission perm="users.manage" />}>
+                    <Route index element={<ApprovalsSettingsPage />} />
                   </Route>
                   <Route path="developer" element={<RequirePermission perm="settings.write" />}>
                     <Route index element={<DeveloperSettingsPage />} />

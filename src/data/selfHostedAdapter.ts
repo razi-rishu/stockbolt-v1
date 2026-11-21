@@ -357,6 +357,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       listRefundedDocIds:    () => notImplemented('payments.listRefundedDocIds'),
       refundCustomerCredit:  () => notImplemented('payments.refundCustomerCredit'),
       refundVendorCredit:    () => notImplemented('payments.refundVendorCredit'),
+      discardRefundDraft:    () => notImplemented('payments.discardRefundDraft'),
       voidVendorCreditRefund: () => notImplemented('payments.voidVendorCreditRefund'),
       voidCustomerCreditRefund: () => notImplemented('payments.voidCustomerCreditRefund'),
       voidCustomerRefund:    () => notImplemented('payments.voidCustomerRefund'),
@@ -649,6 +650,15 @@ export function createSelfHostedAdapter(): DataAdapter {
       assignRole:     () => notImplemented('staff.assignRole'),
       updateBasic:    () => notImplemented('staff.updateBasic'),
       deleteEmployee: () => notImplemented('staff.deleteEmployee'),
+    },
+    approvals: {
+      config: () => notImplemented('approvals.config'), saveRule: () => notImplemented('approvals.saveRule'),
+      setAuthority: () => notImplemented('approvals.setAuthority'), removeAuthority: () => notImplemented('approvals.removeAuthority'),
+      listApprovers: () => notImplemented('approvals.listApprovers'), submit: () => notImplemented('approvals.submit'),
+      approve: () => notImplemented('approvals.approve'), reject: () => notImplemented('approvals.reject'),
+      forward: () => notImplemented('approvals.forward'), cancel: () => notImplemented('approvals.cancel'),
+      docState: () => notImplemented('approvals.docState'), docSteps: () => notImplemented('approvals.docSteps'),
+      list: () => notImplemented('approvals.list'),
     },
     team: {
       list:           () => notImplemented('team.list'),

@@ -54,6 +54,8 @@
  * by the RPC reading expense_items — if items exist, multi-line; else,
  * legacy single-line.
  */
+import { ApprovalPanel } from '@/components/approvals/approval-panel';
+import { useApprovalGate, useDocApproval } from '@/components/approvals/use-approval';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useDocumentPayments } from '@/hooks/use-document-payments';
@@ -318,6 +320,10 @@ export default function ExpenseEditorPage() {
   // Reference options
   const isDraft = isNew || expense?.status === 'draft';
   const isConfirmed = expense?.status === 'confirmed';
+  // phase145 — approvals: Save submits instead of confirming when a rule applies.
+  const gate = useApprovalGate('expense');
+  const appr = useDocApproval('expense', isNew ? null : id);
+  const approvalLocked = appr.approved && !appr.isAdmin;
   const isVoid  = expense?.status === 'void';
 
   const bankOpts = bankAccounts.map(b => ({ value: b.id, label: `${b.name} · ${b.account_type === 'cash' ? t('rcptOcean.cash') : t('rcptOcean.bank')}` }));
@@ -394,6 +400,8 @@ export default function ExpenseEditorPage() {
         header,
         items: itemInserts,
       });
+      // phase145 — needs approval: keep it a draft and send it to an approver.
+      if (gate.needs(totals.total)) return { expenseId, submit: true };
       // Save = persist then immediately post (single-step). Failed post leaves
       // a saved draft; a new doc routes to its record so retry won't duplicate.
       try {
@@ -402,14 +410,19 @@ export default function ExpenseEditorPage() {
         if (isNew) navigate(`/purchasing/expenses/${expenseId}`);
         throw e;
       }
-      return expenseId;
+      return { expenseId, submit: false };
     },
-    onSuccess: async (expenseId) => {
+    onSuccess: async ({ expenseId, submit }) => {
       setDirty(false);
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['expenses', company_id] });
       qc.invalidateQueries({ queryKey: ['expense', expenseId] });
       qc.invalidateQueries({ queryKey: ['expense_items', expenseId] });
+      if (submit) {
+        const toRecord = () => { if (isNew) navigate(`/purchasing/expenses/${expenseId}`); };
+        gate.open({ docId: expenseId, onSent: toRecord, onClosed: toRecord });
+        return;
+      }
       if (isNew) navigate('/purchasing/expenses');
     },
     onError: (e: Error) => setError(e.message),
@@ -502,7 +515,7 @@ export default function ExpenseEditorPage() {
                 {t('expOcean.open_asset_purchase')}
               </Button>
             )}
-            {isConfirmed && !assetPurchase && canEditExpenses && (
+            {isConfirmed && !assetPurchase && canEditExpenses && !approvalLocked && (
               <Button size="sm" disabled={reopenMutation.isPending} onClick={() => {
                 if (window.confirm(t('expOcean.reopen_confirm'))) reopenMutation.mutate();
               }}>
@@ -511,7 +524,7 @@ export default function ExpenseEditorPage() {
             )}
             {/* Void lives here: a confirmed expense always opens in this view, and
                 Edit reopens it as a draft, so the editor's own Void was never reached. */}
-            {isConfirmed && !assetPurchase && canEditExpenses && (
+            {isConfirmed && !assetPurchase && canEditExpenses && !approvalLocked && (
               <Button variant="danger" size="sm" disabled={voidMutation.isPending} data-testid="expense-void" onClick={() => {
                 const r = prompt(t('expOcean.void_prompt'));
                 setVoidReason(r ?? '');
@@ -528,6 +541,8 @@ export default function ExpenseEditorPage() {
           </div>
         </div>
         {error && <p data-print-hide className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+        <ApprovalPanel docType="expense" docId={expense.id} isDraft={isDraft}
+          onChanged={() => { void invalidateBooks(); qc.invalidateQueries({ queryKey: ['expense', expense.id] }); qc.invalidateQueries({ queryKey: ['expenses', company_id] }); }} />
         {assetPurchase && (
           <p data-print-hide className="sb-info-note" data-testid="expense-asset-note">
             {isDraft ? t('expOcean.asset_purchase_draft_note') : t('expOcean.asset_purchase_note')}
@@ -568,11 +583,11 @@ export default function ExpenseEditorPage() {
             {t('common.cancel')}
           </Button>
           {isDraft && (
-            <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
-              {saveMutation.isPending ? t('common.saving') : t('common.save')}
+            <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending || appr.pending}>
+              {saveMutation.isPending ? t('common.saving') : gate.needs(totals.total) ? t('apprOcean.save_submit') : t('common.save')}
             </Button>
           )}
-          {isConfirmed && (
+          {isConfirmed && !approvalLocked && (
             <Button variant="danger" size="sm" onClick={() => {
               const r = prompt(t('expOcean.void_prompt'));
               setVoidReason(r ?? '');
@@ -583,6 +598,11 @@ export default function ExpenseEditorPage() {
       </div>
 
       {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+      {!isNew && id && (
+        <ApprovalPanel docType="expense" docId={id} isDraft={isDraft}
+          onChanged={() => { void invalidateBooks(); qc.invalidateQueries({ queryKey: ['expense', id] }); qc.invalidateQueries({ queryKey: ['expenses', company_id] }); }} />
+      )}
+      {gate.modal}
 
       {/* ── Option E: form cards on the start side, live summary on the end side ── */}
       <div className="sb-exp-layout">
@@ -895,8 +915,8 @@ export default function ExpenseEditorPage() {
             </div>
             {isDraft && (
               <button type="button" className="sb-primary-btn" style={{ width: '100%', marginTop: 4 }}
-                onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
-                {saveMutation.isPending ? t('common.saving') : t('expOcean.save_expense')}
+                onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending || appr.pending}>
+                {saveMutation.isPending ? t('common.saving') : gate.needs(totals.total) ? t('apprOcean.save_submit') : t('expOcean.save_expense')}
               </button>
             )}
           </div>

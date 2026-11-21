@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { ApprovalPanel } from '@/components/approvals/approval-panel';
+import { useApprovalGate, useDocApproval } from '@/components/approvals/use-approval';
 import { staffLabel } from '@/hooks/use-staff-codes';
 import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -298,14 +300,23 @@ export default function POEditorPage() {
     onError: (e: Error) => setError(e.message),
   });
 
-  const canEdit = isNew || existing?.status === 'draft';
+  // phase145 — approvals: an approved PO is "sent"; until then it can't become a bill.
+  const gate = useApprovalGate('purchase_order');
+  const appr = useDocApproval('purchase_order', isNew ? null : id);
+  const awaitingApproval = !!existing && existing.status === 'draft' && gate.needs(Number(existing.total_amount ?? 0));
+  const refreshPo = () => {
+    qc.invalidateQueries({ queryKey: ['purchase_orders', company_id] });
+    qc.invalidateQueries({ queryKey: ['purchase_order', id] });
+  };
+  const canEdit = (isNew || existing?.status === 'draft') && !appr.pending;
   // Phase 12.47 → 12.48 — converting a draft PO is fine. The UI has no
   // explicit "Send" button so POs stay in 'draft' for the entire SME
   // workflow (write → bill arrives → convert). Only block terminal
   // states (closed / void) and the brand-new unsaved screen.
   const canConvertToBill = !isNew
     && !!existing
-    && !['closed', 'void'].includes(existing.status);
+    && !['closed', 'void'].includes(existing.status)
+    && !awaitingApproval;
   const supplierOpts = suppliers.map(s => ({ value: s.id, label: s.name }));
   const warehouseOpts = [{ value: '', label: t('purchasing.select_warehouse') }, ...warehouses.map(w => ({ value: w.id, label: w.name }))];
   const productOpts = products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }));
@@ -354,6 +365,7 @@ export default function POEditorPage() {
             )}
           </div>
         </div>
+        <ApprovalPanel docType="purchase_order" docId={existing.id} isDraft={existing.status === 'draft'} onChanged={refreshPo} />
         <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
@@ -411,6 +423,7 @@ export default function POEditorPage() {
       </div>
 
       {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+      {!isNew && id && <ApprovalPanel docType="purchase_order" docId={id} isDraft={existing?.status === 'draft'} onChanged={refreshPo} />}
 
       <div className="sb-card sb-form sb-doc-card">
         <h2 className="sb-doc-card-title">{t('purchasing.po_details')}</h2>

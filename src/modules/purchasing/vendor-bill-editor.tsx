@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { ApprovalPanel } from '@/components/approvals/approval-panel';
+import { useApprovalGate, useDocApproval } from '@/components/approvals/use-approval';
 import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useDocumentPayments } from '@/hooks/use-document-payments';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -527,18 +529,27 @@ export default function VendorBillEditorPage() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       const savedId = await persistDraft();
+      // phase145 — needs approval: keep it a draft and send it to an approver.
+      if (gate.needs(grandTotal + roundOff)) return { savedId, submit: true };
       try {
         await getAdapter().vendorBills.confirm(savedId);
       } catch (e) {
         if (isNew) navigate(`/purchasing/bills/${savedId}`);
         throw e;
       }
-      return savedId;
+      return { savedId, submit: false };
     },
-    onSuccess: async (savedId) => {
+    onSuccess: async ({ savedId, submit }) => {
       setDirty(false);
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['vendor_bills', company_id] });
+      if (submit) {
+        qc.invalidateQueries({ queryKey: ['vendor_bill', savedId] });
+        qc.invalidateQueries({ queryKey: ['vendor_bill_items', savedId] });
+        const toRecord = () => { if (isNew) navigate(`/purchasing/bills/${savedId}`); else setViewMode(true); };
+        gate.open({ docId: savedId, onSent: toRecord, onClosed: toRecord });
+        return;
+      }
       if (isNew) navigate('/purchasing/bills');
       else {
         qc.invalidateQueries({ queryKey: ['vendor_bill', savedId] });
@@ -594,7 +605,16 @@ export default function VendorBillEditorPage() {
     </p>
   ) : null;
 
-  const canEdit = isNew || (existing?.status === 'draft' && !assetPurchase);
+  // phase145 — approvals: Save submits instead of confirming when a rule applies.
+  const gate = useApprovalGate('vendor_bill');
+  const appr = useDocApproval('vendor_bill', isNew ? null : id);
+  const approvalLocked = appr.approved && !appr.isAdmin;
+  const refreshBill = () => {
+    void invalidateBooks();
+    qc.invalidateQueries({ queryKey: ['vendor_bills', company_id] });
+    qc.invalidateQueries({ queryKey: ['vendor_bill', id] });
+  };
+  const canEdit = (isNew || (existing?.status === 'draft' && !assetPurchase)) && !appr.pending;
 
   // Global keyboard actions (Phase 1) — Ctrl+S / Ctrl+Enter save, Ctrl+P print.
   useShortcutAction('save', () => { setError(null); saveMutation.mutate(); }, canEdit && !saveMutation.isPending);
@@ -662,7 +682,7 @@ export default function VendorBillEditorPage() {
               </Button>
             )}
             {openAssetPurchase}
-            {existing.status === 'confirmed' && !assetPurchase && (
+            {existing.status === 'confirmed' && !assetPurchase && !approvalLocked && (
               <Button size="sm" onClick={() => reopenMutation.mutate()} disabled={reopenMutation.isPending}
                 title={t('billOcean.reopen_title')}>
                 <Pencil size={15} aria-hidden="true" /> {reopenMutation.isPending ? t('billOcean.reopening') : t('billOcean.edit_bill')}
@@ -723,6 +743,7 @@ export default function VendorBillEditorPage() {
           </div>
         </div>
         {assetNote}
+        <ApprovalPanel docType="vendor_bill" docId={existing.id} isDraft={existing.status === 'draft'} onChanged={refreshBill} />
         {/* Phase 62 (AC-7B) — India TDS deduction panel (screen only, never
             printed). Self-hides when the tenant has no TDS sections. */}
         {existing.status === 'confirmed' && (
@@ -767,7 +788,7 @@ export default function VendorBillEditorPage() {
           )}
           <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/purchasing/bills'); }}>{t('common.cancel')}</Button>
           {openAssetPurchase}
-          {!isNew && existing?.status === 'confirmed' && !assetPurchase && (
+          {!isNew && existing?.status === 'confirmed' && !assetPurchase && !approvalLocked && (
             <Button size="sm" onClick={() => { setError(null); reopenMutation.mutate(); }} disabled={reopenMutation.isPending}
               title={t('billOcean.reopen_title')}>
               <Pencil size={15} aria-hidden="true" /> {reopenMutation.isPending ? t('billOcean.reopening') : t('billOcean.edit_bill')}
@@ -776,7 +797,7 @@ export default function VendorBillEditorPage() {
           {canEdit && (
             <>
               <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
-                {saveMutation.isPending ? t('common.saving') : t('common.save')}
+                {saveMutation.isPending ? t('common.saving') : gate.needs(grandTotal + roundOff) ? t('apprOcean.save_submit') : t('common.save')}
               </Button>
               {!isNew && (
                 <Button variant="danger" size="sm" onClick={() => setDeleteModal(true)}>{t('common.delete')}</Button>
@@ -787,6 +808,8 @@ export default function VendorBillEditorPage() {
       </div>
 
       {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+      {!isNew && id && <ApprovalPanel docType="vendor_bill" docId={id} isDraft={existing?.status === 'draft'} onChanged={refreshBill} />}
+      {gate.modal}
       {assetNote}
 
       {/* Supplier Insight Panel — appears once a supplier is picked.

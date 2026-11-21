@@ -220,6 +220,11 @@ async function postRefund(
     .single();
   assertNoError(createErr as Error | null, `${context}.draft`);
   const draftId = (draft as { id: string }).id;
+  // phase145 — approval needed: leave the draft for the approver to post.
+  if (input.draft_only) {
+    return { payment_id: draftId, payment_number: num as string, journal_entry_id: '', entry_number: '',
+             amount: input.amount, advance_after: Number.NaN };
+  }
 
   const { data, error } = await rpcCall(rpc, { p_payment_id: draftId });
   if (error) {
@@ -3227,6 +3232,10 @@ export function createSupabaseAdapter(
         // it to the 1200 engine instead of the 2400 one.
         return postRefund(client, input, 'outbound', 'confirm_customer_credit_refund',
                           'CCR', 'payments.refundCustomerCredit', 'on_account');
+      },
+      async discardRefundDraft(payment_id): Promise<void> {
+        const { error } = await client.from('payments').delete().eq('id', payment_id).eq('status', 'draft');
+        assertNoError(error as Error | null, 'payments.discardRefundDraft');
       },
       async refundVendorCredit(input): Promise<import('./adapter').RefundResult> {
         // P4 — INBOUND: the money is coming back to us. classification
@@ -7631,6 +7640,37 @@ export function createSupabaseAdapter(
           await call('link_employee_user', { p_employee_id: employee_id, p_user_id: user_id }, 'linkUser');
         },
       };
+    })(),
+
+    approvals: (() => {
+      // bind: a detached client.rpc loses `this`.
+      const rpc = client.rpc.bind(client) as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
+      const call = async (fn: string, args: Record<string, unknown>, label: string) => {
+        const { data, error } = await rpc(fn, args);
+        if (error) throw new SupabaseDataError(`approvals.${label}: ${error.message}`);
+        return data;
+      };
+      type A = import('./adapter').ApprovalsAPI;
+      const api: A = {
+        async config() { return (await call('approval_config', {}, 'config')) as import('./adapter').ApprovalConfig; },
+        async saveRule(doc_type, enabled, min_amount) { await call('save_approval_rule', { p_doc_type: doc_type, p_enabled: enabled, p_min_amount: min_amount }, 'saveRule'); },
+        async setAuthority(employee_id, doc_type, max_amount) { await call('set_approval_authority', { p_employee_id: employee_id, p_doc_type: doc_type, p_max_amount: max_amount }, 'setAuthority'); },
+        async removeAuthority(id) { await call('remove_approval_authority', { p_id: id }, 'removeAuthority'); },
+        async listApprovers(doc_type) { return ((await call('list_approvers', { p_doc_type: doc_type }, 'listApprovers')) ?? []) as import('./adapter').ApproverRow[]; },
+        async submit(doc_type, doc_id, assignee, note, confirm_args) {
+          return String(await call('submit_for_approval', { p_doc_type: doc_type, p_doc_id: doc_id, p_assignee: assignee, p_note: note ?? null, p_confirm_args: confirm_args ?? {} }, 'submit'));
+        },
+        async approve(request_id, next_employee_id, note) {
+          return (await call('approve_request', { p_request_id: request_id, p_next: next_employee_id ?? null, p_note: note ?? null }, 'approve')) as { status: 'approved' | 'pending'; next_employee_id?: string };
+        },
+        async reject(request_id, reason) { await call('reject_request', { p_request_id: request_id, p_reason: reason }, 'reject'); },
+        async forward(request_id, to, note) { await call('forward_request', { p_request_id: request_id, p_to: to, p_note: note ?? null }, 'forward'); },
+        async cancel(request_id) { await call('cancel_approval_request', { p_request_id: request_id }, 'cancel'); },
+        async docState(doc_type, doc_id) { return (await call('doc_approval_state', { p_doc_type: doc_type, p_doc_id: doc_id }, 'docState')) as import('./adapter').DocApprovalState; },
+        async docSteps(doc_id) { return ((await call('doc_approval_steps', { p_doc_id: doc_id }, 'docSteps')) ?? []) as import('./adapter').ApprovalStepRow[]; },
+        async list(scope, all = false) { return ((await call('list_approval_requests', { p_scope: scope, p_all: all }, 'list')) ?? []) as import('./adapter').ApprovalRequestRow[]; },
+      };
+      return api;
     })(),
 
     employees: {

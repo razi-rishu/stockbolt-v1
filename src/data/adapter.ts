@@ -1728,6 +1728,8 @@ export interface PaymentsAPI {
    * owe more to cannot refund us at all.
    */
   refundVendorCredit(input: RefundAdvanceInput): Promise<RefundResult>;
+  /** phase145 — remove a refund draft that was never sent for approval (drafts only). */
+  discardRefundDraft(payment_id: string): Promise<void>;
   /** Reverses the refund at its VOUCHER date and marks the payment void. */
   voidCustomerRefund(payment_id: string, reason?: string): Promise<void>;
   voidVendorRefund(payment_id: string, reason?: string): Promise<void>;
@@ -1738,6 +1740,8 @@ export interface PaymentsAPI {
 }
 
 export interface RefundAdvanceInput {
+  /** phase145 — create the draft only (it goes for approval); nothing is posted. */
+  draft_only?:     boolean;
   company_id:      string;
   contact_id:      string;
   date:            string;
@@ -3560,6 +3564,7 @@ export interface DataAdapter {
   employees: EmployeesAPI;
   staff: StaffAPI;
   team: TeamAPI;
+  approvals: ApprovalsAPI;
   support: SupportAPI;
   legal: LegalAPI;
   payroll: PayrollAPI;
@@ -3730,6 +3735,64 @@ export interface TeamAPI {
   updatePosition(employee_id: string, designation: string | null, department: string | null): Promise<void>;
   /** Admin: the login this employee signs in with (null to unlink). */
   linkUser(employee_id: string, user_id: string | null): Promise<void>;
+}
+
+// ── phase145 — Approvals (batch 1: purchasing documents)
+export type ApprovalDocType =
+  | 'purchase_order' | 'goods_receipt' | 'vendor_bill' | 'debit_note' | 'expense'
+  | 'vendor_payment' | 'vendor_refund' | 'vendor_credit_refund';
+export interface ApprovalRule { doc_type: ApprovalDocType; enabled: boolean; min_amount: number }
+/** Why someone can't approve: inactive | no_login | login_disabled | no_authority | no_permission. */
+export type ApproverProblem = string | null;
+export interface ApprovalAuthority {
+  id: string; employee_id: string; code: string | null; name: string; designation: string | null;
+  doc_type: ApprovalDocType | '*'; max_amount: number | null; problem: ApproverProblem;
+}
+export interface ApprovalConfig { rules: ApprovalRule[]; authorities: ApprovalAuthority[] }
+export interface ApproverRow {
+  employee_id: string; code: string | null; name: string; designation: string | null;
+  max_amount: number | null; problem: ApproverProblem; is_default: boolean;
+}
+export interface DocApprovalRequest {
+  id: string; status: 'pending' | 'approved' | 'rejected' | 'cancelled'; amount_base: number;
+  assignee_employee_id: string | null; assignee: string | null; submitted_by: string | null;
+  submitted_by_me: boolean; can_act: boolean; assigned_to_me: boolean;
+  decided_by: string | null; decided_at: string | null; created_at: string; reason: string | null;
+}
+export interface DocApprovalState {
+  rule_enabled: boolean; min_amount: number; is_admin: boolean; my_employee_id: string | null;
+  request: DocApprovalRequest | null;
+}
+export interface ApprovalStepRow {
+  action: 'submitted' | 'passed_on' | 'approved' | 'override' | 'forwarded' | 'rejected' | 'cancelled' | 'admin_reopen' | 'admin_void';
+  created_at: string; by_user: string | null; by_name: string | null; to_name: string | null;
+  note: string | null; amount_base: number | null;
+}
+export interface ApprovalRequestRow {
+  id: string; doc_type: ApprovalDocType; doc_id: string; doc_number: string | null;
+  amount_base: number; currency: string | null; amount_doc: number | null;
+  status: DocApprovalRequest['status']; submitted_by: string | null; assignee: string | null;
+  assignee_employee_id: string | null; created_at: string; decided_at: string | null;
+  note: string | null; can_act: boolean;
+}
+export interface ApprovalsAPI {
+  /** Rules for everyone; authorities only for admins. */
+  config(): Promise<ApprovalConfig>;
+  saveRule(doc_type: ApprovalDocType, enabled: boolean, min_amount: number): Promise<void>;
+  setAuthority(employee_id: string, doc_type: ApprovalDocType | '*', max_amount: number | null): Promise<void>;
+  removeAuthority(id: string): Promise<void>;
+  /** People who may approve this document type (the default first). */
+  listApprovers(doc_type: ApprovalDocType): Promise<ApproverRow[]>;
+  submit(doc_type: ApprovalDocType, doc_id: string, assignee: string, note?: string | null,
+         confirm_args?: Record<string, unknown>): Promise<string>;
+  /** Final approval confirms the document; above the approver's limit it passes on. */
+  approve(request_id: string, next_employee_id?: string | null, note?: string | null): Promise<{ status: 'approved' | 'pending'; next_employee_id?: string }>;
+  reject(request_id: string, reason: string): Promise<void>;
+  forward(request_id: string, to_employee_id: string, note?: string | null): Promise<void>;
+  cancel(request_id: string): Promise<void>;
+  docState(doc_type: ApprovalDocType, doc_id: string | null): Promise<DocApprovalState>;
+  docSteps(doc_id: string): Promise<ApprovalStepRow[]>;
+  list(scope: 'waiting' | 'mine' | 'history', all?: boolean): Promise<ApprovalRequestRow[]>;
 }
 
 export interface PayrollAPI {

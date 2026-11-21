@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useApprovalGate } from '@/components/approvals/use-approval';
 import { formatDate } from '@/lib/locale';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -53,6 +54,7 @@ export default function PurchaseOrdersPage() {
   const supplierName = (id: string) => suppliers.find(s => s.id === id)?.name ?? `${id.slice(0, 8)}…`;
 
   // Phase 12.47 — quick convert from the row, no need to open the PO first.
+  const poGate = useApprovalGate('purchase_order');
   const convertMutation = useMutation({
     mutationFn: (po_id: string) => getAdapter().purchaseOrders.convertToBill(po_id),
     onSuccess: (bill) => {
@@ -77,6 +79,8 @@ export default function PurchaseOrdersPage() {
         // Phase 12.48 — POs stay in 'draft' for the whole flow (no UI "Send"
         // step) so converting from draft is fine. Only block terminal states.
         if (['closed', 'void'].includes(po.status)) return null;
+        // phase145 — a PO that needs approval becomes a bill only once approved.
+        if (po.status === 'draft' && poGate.needs(Number(po.total_amount))) return null;
         const busy = converting === po.id && convertMutation.isPending;
         return (
           <button type="button" className="sb-row-link text-brand-600" disabled={busy}

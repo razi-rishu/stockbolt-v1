@@ -10,6 +10,8 @@
  * Mobile: sidebar collapses into a drawer (hamburger in the top bar) that
  * renders the exact same sidebar content.
  */
+import { useApprovalConfig } from '@/components/approvals/use-approval';
+import { approvalKeys } from '@/components/approvals/approval-lists';
 import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -87,6 +89,7 @@ const InvoicePlusIcon= () => icn(<><rect x="5" y="3" width="14" height="18" rx="
 const BillIcon       = () => icn(<><path d="M6 2.5h12V21l-2.4-1.6L13.2 21l-2.4-1.6L8.4 21 6 19.4V2.5z" /><path d="M9.5 8h5M9.5 12h5" /></>);
 const ReceiptIcon    = () => icn(<><circle cx="12" cy="12" r="9" /><path d="M12 7.5v9M15 10a2 2 0 0 0-2-2h-2.2a1.8 1.8 0 0 0 0 3.6h2.4a1.8 1.8 0 0 1 0 3.6H9" /></>);
 const PaymentIcon    = () => icn(<><rect x="2.5" y="6" width="19" height="13" rx="2" /><path d="M2.5 10h19M6.5 15h4" /></>);
+const ApprovalsIcon  = () => icn(<><path d="M9 11.5l2 2 4-4" /><path d="M12 3l7 3v5c0 4.4-3 8.3-7 9.5-4-1.2-7-5.1-7-9.5V6l7-3z" /></>);
 const SupportIcon    = () => icn(<><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="3.5" /><path d="M5.6 5.6l3.9 3.9M14.5 14.5l3.9 3.9M18.4 5.6l-3.9 3.9M9.5 14.5l-3.9 3.9" /></>);
 const SearchIcon     = () => icn(<><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></>);
 const ChevronDownIcon = ({ className = '' }: { className?: string }) => (
@@ -133,6 +136,15 @@ function useNavSections(t: (k: string) => string): NavSection[] {
     staleTime: 30_000,
   });
   const supportBadge = (support?.mine ?? 0) + (support?.inbox ?? 0);
+  // phase145 — Approvals appear once a rule is on (or something is waiting).
+  const { data: apprCfg } = useApprovalConfig();
+  const { data: apprWaiting = [] } = useQuery({
+    queryKey: [...approvalKeys.inbox, 'waiting', false],
+    queryFn: () => getAdapter().approvals.list('waiting'),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const approvalsOn = (apprCfg?.rules ?? []).some((r) => r.enabled) || apprWaiting.length > 0;
   return [
     { label: t('nav.dashboard'), to: '/dashboard', icon: <HomeIcon /> },
 
@@ -359,6 +371,10 @@ function useNavSections(t: (k: string) => string): NavSection[] {
         { items: [{ to: '/contacts/suppliers', label: t('nav.suppliers') }], perm: 'purchasing.read' },
       ],
     },
+
+    ...(approvalsOn
+      ? [{ label: t('apprOcean.nav'), to: '/approvals', icon: <ApprovalsIcon />, badge: apprWaiting.length } as NavSection]
+      : []),
 
     // phase133 — every signed-in user can reach the StockBolt team.
     { label: t('support.nav'), to: '/support', icon: <SupportIcon />, badge: supportBadge },

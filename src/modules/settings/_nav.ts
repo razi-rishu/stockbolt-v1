@@ -81,6 +81,7 @@ export const SETTINGS_SECTIONS: SettingsNavSection[] = [
     items: [
       { to: '/settings/users', icon: '👥', title: 'Users & Roles', desc: 'Invite teammates, assign Admin / Accountant / Sales / Counter / Viewer roles.' },
       { to: '/settings/team',  icon: '🧭', title: 'Team',          desc: 'Employee codes, who reports to whom, and which login each person uses.' },
+      { to: '/settings/approvals', icon: '✅', title: 'Approvals',  desc: 'Which documents need approval, from what amount, and who may approve them.' },
     ],
   },
   {

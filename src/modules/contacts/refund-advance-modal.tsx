@@ -10,6 +10,7 @@ import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import { ReportFigures, Num } from '@/components/ocean-report';
 import type { BankAccountRow, RefundResult, RefundSourceDocType } from '@/data/adapter';
+import { useApprovalGate } from '@/components/approvals/use-approval';
 
 /**
  * S4 — refund part or all of a contact's advance balance.
@@ -64,6 +65,8 @@ export function RefundAdvanceModal({
   const [reference, setRef]   = useState('');
   const [busy, setBusy]       = useState(false);
   const [error, setError]     = useState<string | null>(null);
+  // phase145 — a supplier refund that needs approval is sent, not posted.
+  const gate = useApprovalGate(source === 'credit' ? 'vendor_credit_refund' : 'vendor_refund');
 
   const { data: banks = [] } = useQuery<BankAccountRow[]>({
     queryKey: ['bank_accounts', company_id],
@@ -92,12 +95,22 @@ export function RefundAdvanceModal({
         notes:           null,
         source_doc_type: sourceDoc?.type ?? null,
         source_doc_id:   sourceDoc?.id ?? null,
+        draft_only:      side === 'vendor' && gate.needs(parsed),
       };
       const res = side === 'vendor'
         ? (source === 'credit' ? await api.refundVendorCredit(input)
                                : await api.refundVendorAdvance(input))
         : (source === 'credit' ? await api.refundCustomerCredit(input)
                                : await api.refundCustomerAdvance(input));
+      if (input.draft_only) {
+        // Nothing posted yet: choose the approver; closing without sending drops the draft.
+        gate.open({
+          docId: res.payment_id,
+          onSent: () => { onClose(); setAmount(''); setRef(''); },
+          onClosed: () => { void getAdapter().payments.discardRefundDraft(res.payment_id).catch((e: unknown) => setError(e instanceof Error ? e.message : String(e))); },
+        });
+        return;
+      }
       onDone(res);
       onClose();
       setAmount(''); setRef('');
@@ -173,10 +186,11 @@ export function RefundAdvanceModal({
             {t('common.cancel')}
           </Button>
           <Button onClick={submit} disabled={!canSubmit} loading={busy}>
-            {t('refund.confirm')}
+            {side === 'vendor' && gate.needs(parsed) ? t('apprOcean.submit') : t('refund.confirm')}
           </Button>
         </div>
       </div>
+      {gate.modal}
     </Modal>
   );
 }
