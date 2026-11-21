@@ -3559,6 +3559,7 @@ export interface DataAdapter {
   // Payroll P1 (owner override 2026-06-13)
   employees: EmployeesAPI;
   staff: StaffAPI;
+  team: TeamAPI;
   support: SupportAPI;
   legal: LegalAPI;
   payroll: PayrollAPI;
@@ -3703,6 +3704,32 @@ export interface StaffAPI {
   updateBasic(employee_id: string, input: { name: string; name_ar?: string | null; phone?: string | null; email?: string | null; commission_pct?: number | null }): Promise<void>;
   /** Only an employee with no payroll or document history. */
   deleteEmployee(employee_id: string): Promise<void>;
+}
+
+// ── phase144 — Team: who reports to whom, and which login each employee uses
+/** Org-chart view of a person: never salary, bank or ID data. */
+export interface TeamMember {
+  employee_id: string; code: string | null; name: string; name_ar: string | null;
+  designation: string | null; department: string | null;
+  /** The manager; null only for the company's top person. */
+  reports_to_id: string | null;
+  is_active: boolean; has_sales: boolean; is_purchaser: boolean;
+  /** Login details — only returned to admins (users.manage); null for everyone else. */
+  user_id: string | null; user_name: string | null; user_email: string | null;
+}
+export interface TeamAPI {
+  /** Everyone in the company (the top person is always included). */
+  list(includeInactive?: boolean): Promise<TeamMember[]>;
+  /** Preview of the code the next new employee gets. */
+  nextCode(): Promise<string>;
+  /** Admin: change who an employee reports to (loops are refused). */
+  setManager(employee_id: string, manager_id: string): Promise<void>;
+  /** Admin: make this employee the top person; the old top reports to them. */
+  setTop(employee_id: string): Promise<void>;
+  /** Admin: job title and department. */
+  updatePosition(employee_id: string, designation: string | null, department: string | null): Promise<void>;
+  /** Admin: the login this employee signs in with (null to unlink). */
+  linkUser(employee_id: string, user_id: string | null): Promise<void>;
 }
 
 export interface PayrollAPI {

@@ -7603,6 +7603,36 @@ export function createSupabaseAdapter(
       },
     },
 
+    team: (() => {
+      // bind: a detached client.rpc loses `this` ("reading 'rest'").
+      const rpc = client.rpc.bind(client) as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
+      const call = async (fn: string, args: Record<string, unknown>, label: string) => {
+        const { data, error } = await rpc(fn, args);
+        if (error) throw new SupabaseDataError(`team.${label}: ${error.message}`);
+        return data;
+      };
+      return {
+        async list(includeInactive = false) {
+          return ((await call('list_team', { p_include_inactive: includeInactive }, 'list')) ?? []) as import('./adapter').TeamMember[];
+        },
+        async nextCode() {
+          return String((await call('next_employee_code', {}, 'nextCode')) ?? '');
+        },
+        async setManager(employee_id, manager_id) {
+          await call('set_employee_manager', { p_employee_id: employee_id, p_manager_id: manager_id }, 'setManager');
+        },
+        async setTop(employee_id) {
+          await call('set_team_top', { p_employee_id: employee_id }, 'setTop');
+        },
+        async updatePosition(employee_id, designation, department) {
+          await call('update_employee_position', { p_employee_id: employee_id, p_designation: designation, p_department: department }, 'updatePosition');
+        },
+        async linkUser(employee_id, user_id) {
+          await call('link_employee_user', { p_employee_id: employee_id, p_user_id: user_id }, 'linkUser');
+        },
+      };
+    })(),
+
     employees: {
       async list(company_id, opts) {
         let q = client.from('employees').select('*')
@@ -7624,14 +7654,11 @@ export function createSupabaseAdapter(
           .eq('id', id);
         assertNoError(error, 'employees.update');
       },
-      async getNextCode(company_id) {
-        const { data, error } = await client.from('employees')
-          .select('code').eq('company_id', company_id)
-          .order('code', { ascending: false }).limit(1);
-        assertNoError(error, 'employees.getNextCode');
-        const last = data?.[0]?.code ?? 'EMP-0000';
-        const n = parseInt(String(last).replace(/\D/g, ''), 10) || 0;
-        return `EMP-${String(n + 1).padStart(4, '0')}`;
+      // phase144 — the server follows the company's code format (Settings → Team).
+      async getNextCode(_company_id) {
+        const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('next_employee_code', {});
+        if (error) throw new SupabaseDataError(`employees.getNextCode: ${error.message}`);
+        return String(data ?? '');
       },
     },
     payroll: {

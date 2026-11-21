@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { staffLabel, useStaffCodes } from '@/hooks/use-staff-codes';
 import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -82,6 +83,7 @@ export default function QuoteEditorPage() {
     queryFn: () => getAdapter().salespeople.list(company_id!),
     enabled: !!company_id,
   });
+  const salesCodes = useStaffCodes('sales', !!company_id);
   const { data: products = [] } = useQuery<ProductRow[]>({
     queryKey: ['products', company_id],
     queryFn: () => getAdapter().products.list(company_id!),
@@ -425,7 +427,7 @@ export default function QuoteEditorPage() {
             {/* phase129 — "+ Add new salesperson" creates or links an employee. */}
             <StaffPicker
               role="sales"
-              options={salespeople.map(p => ({ value: p.id, label: p.name }))}
+              options={salespeople.map(p => ({ value: p.id, label: staffLabel(p.employee_id ? salesCodes.get(p.employee_id) : null, p.name) }))}
               value={header.salesperson_id}
               disabled={!canEdit}
               onChange={(v) => { setHeader(h => ({ ...h, salesperson_id: v })); setDirty(true); }}

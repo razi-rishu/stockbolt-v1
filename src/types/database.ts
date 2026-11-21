@@ -457,6 +457,10 @@ export type Database = {
           created_at: string
           currency: string
           email: string | null
+          employee_code_prefix: string
+          employee_code_digits: number
+          employee_code_start: number
+          currency_display: string | null
           fiscal_year_start: string
           id: string
           is_tax_registered: boolean
@@ -486,6 +490,10 @@ export type Database = {
           created_at?: string
           currency: string
           email?: string | null
+          employee_code_prefix?: string
+          employee_code_digits?: number
+          employee_code_start?: number
+          currency_display?: string | null
           fiscal_year_start?: string
           id?: string
           is_tax_registered?: boolean
@@ -515,6 +523,10 @@ export type Database = {
           created_at?: string
           currency?: string
           email?: string | null
+          employee_code_prefix?: string
+          employee_code_digits?: number
+          employee_code_start?: number
+          currency_display?: string | null
           fiscal_year_start?: string
           id?: string
           is_tax_registered?: boolean
@@ -1153,6 +1165,9 @@ export type Database = {
         Row: {
           department: string | null
           is_purchaser: boolean
+          reports_to_id: string | null
+          user_id: string | null
+          include_in_payroll: boolean
           basic_salary: number
           bank_name: string | null
           code: string | null
@@ -1180,6 +1195,9 @@ export type Database = {
         Insert: {
           department?: string | null
           is_purchaser?: boolean
+          reports_to_id?: string | null
+          user_id?: string | null
+          include_in_payroll?: boolean
           basic_salary?: number
           bank_name?: string | null
           code?: string | null
@@ -1207,6 +1225,9 @@ export type Database = {
         Update: {
           department?: string | null
           is_purchaser?: boolean
+          reports_to_id?: string | null
+          user_id?: string | null
+          include_in_payroll?: boolean
           basic_salary?: number
           bank_name?: string | null
           code?: string | null

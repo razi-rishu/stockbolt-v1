@@ -23,7 +23,8 @@ import { UserPlus, Users, MailOpen, ShieldCheck, Plus, Loader2, Copy, Check, Mai
 import { authRedirectOrigin } from '@/lib/platform';
 import { useCompany } from '@/hooks/use-company-currency';
 import { type AppRole } from '@/lib/permissions';
-import type { Profile, CompanyInviteRow, RoleRow } from '@/data/adapter';
+import type { Profile, CompanyInviteRow, RoleRow, TeamMember } from '@/data/adapter';
+import { Link } from 'react-router-dom';
 
 // Permissions an admin may grant to a custom role (users.manage excluded).
 const PERM_GROUPS: { module: string; read: string; write: string | null }[] = [
@@ -64,6 +65,8 @@ export default function UsersRolesPage() {
   const invitesQ = useQuery<CompanyInviteRow[]>({ queryKey: ['user_invites', company_id], queryFn: () => getAdapter().users.listInvites(company_id!), enabled: !!company_id });
   const rolesQ = useQuery<RoleRow[]>({ queryKey: ['roles', company_id], queryFn: () => getAdapter().users.listRoles(), enabled: !!company_id });
   const rolePermsQ = useQuery({ queryKey: ['role_perms', company_id], queryFn: () => getAdapter().users.listRolePermissions(), enabled: !!company_id });
+  // phase144 — which employee each login is (Settings → Team).
+  const teamQ = useQuery<TeamMember[]>({ queryKey: ['team', company_id], queryFn: () => getAdapter().team.list(true), enabled: !!company_id });
 
   const refresh = () => {
     ['users', 'user_invites', 'roles', 'role_perms'].forEach(k => qc.invalidateQueries({ queryKey: [k, company_id] }));
@@ -81,6 +84,11 @@ export default function UsersRolesPage() {
   const revoke = useMutation({ mutationFn: (id: string) => getAdapter().users.revokeInvite(id), onSuccess: () => { setError(null); refresh(); }, onError: fail });
   const setRole = useMutation({ mutationFn: (v: { id: string; role: string }) => getAdapter().users.setRole(v.id, v.role as AppRole), onSuccess: () => { setError(null); refresh(); }, onError: fail });
   const setActive = useMutation({ mutationFn: (v: { id: string; active: boolean }) => getAdapter().users.setActive(v.id, v.active), onSuccess: () => { setError(null); refresh(); }, onError: fail });
+  const linkEmp = useMutation({
+    mutationFn: (v: { employee_id: string; user_id: string }) => getAdapter().team.linkUser(v.employee_id, v.user_id),
+    onSuccess: () => { setError(null); qc.invalidateQueries({ queryKey: ['team', company_id] }); },
+    onError: fail,
+  });
   const delRole = useMutation({ mutationFn: (key: string) => getAdapter().users.deleteRole(key), onSuccess: () => { setError(null); refresh(); }, onError: fail });
 
   const users = usersQ.data ?? [];
@@ -119,6 +127,26 @@ export default function UsersRolesPage() {
             {/* ensure the member's current role is selectable even if it's an unknown key */}
             {!roleOptions.some(o => o.value === u.role) && <option value={u.role}>{roleName(u.role)}</option>}
             {roleOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        );
+      },
+    },
+    {
+      key: 'employee', header: t('teamOcean.user_employee'),
+      render: (u) => {
+        const team = teamQ.data ?? [];
+        const emp = team.find(m => m.user_id === u.id);
+        if (emp) {
+          return <Link className="sb-row-link text-brand-600 sb-users-emp" to={`/settings/team?e=${emp.employee_id}`} data-testid={`user-emp-${u.email}`}>
+            <bdi dir="ltr">{emp.code}</bdi> · {emp.name}</Link>;
+        }
+        const free = team.filter(m => !m.user_id && m.is_active);
+        return (
+          <select className="sb-field sb-users-select" value="" disabled={linkEmp.isPending || free.length === 0}
+            aria-label={`${t('teamOcean.user_link')} — ${u.full_name}`} data-testid={`user-emp-link-${u.email}`}
+            onChange={(e) => e.target.value && linkEmp.mutate({ employee_id: e.target.value, user_id: u.id })}>
+            <option value="">{t('teamOcean.user_not_linked')}</option>
+            {free.map(m => <option key={m.employee_id} value={m.employee_id}>{`${m.code ?? ''} · ${m.name}`}</option>)}
           </select>
         );
       },

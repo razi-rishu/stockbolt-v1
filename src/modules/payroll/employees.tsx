@@ -38,6 +38,8 @@ interface Draft {
   bank_name: string; iban: string; bank_routing_code: string; joining_date: string;
   basic_salary: string; housing_allowance: string; transport_allowance: string; other_allowance: string;
   is_active: boolean;
+  /** phase144 — false keeps the person out of new payroll runs. */
+  include_in_payroll: boolean;
   department: string;
   /** phase129 roles */
   is_sales: boolean; commission_pct: string; is_purchaser: boolean;
@@ -48,6 +50,7 @@ const emptyDraft = (code = ''): Draft => ({
   emirates_id: '', mol_id: '', bank_name: '', iban: '', bank_routing_code: '', joining_date: '',
   basic_salary: '0', housing_allowance: '0', transport_allowance: '0', other_allowance: '0',
   is_active: true,
+  include_in_payroll: true,
   department: '', is_sales: false, commission_pct: '0', is_purchaser: false,
 });
 
@@ -63,6 +66,7 @@ function toDraft(e: EmployeeRow, sp: SalespersonRow | undefined): Draft {
     basic_salary: String(e.basic_salary), housing_allowance: String(e.housing_allowance),
     transport_allowance: String(e.transport_allowance), other_allowance: String(e.other_allowance),
     is_active: e.is_active,
+    include_in_payroll: e.include_in_payroll !== false,
   };
 }
 
@@ -148,6 +152,7 @@ export default function EmployeesPage() {
         transport_allowance: parseFloat(draft.transport_allowance) || 0,
         other_allowance: parseFloat(draft.other_allowance) || 0,
         is_active: draft.is_active,
+        include_in_payroll: draft.include_in_payroll,
         department: draft.department.trim() || null,
       };
       let empId = editingId;
@@ -356,6 +361,11 @@ export default function EmployeesPage() {
             <input type="checkbox" className="h-4 w-4" style={{ accentColor: 'var(--sb-primary)' }}
               checked={draft.is_active} onChange={e => setDraft(d => ({ ...d, is_active: e.target.checked }))} />
             <span style={{ fontSize: 14 }}>{t('payOcean.f_active')}</span>
+          </label>
+          <label className="flex cursor-pointer items-center gap-2.5" title={t('teamOcean.in_payroll_hint')}>
+            <input type="checkbox" className="h-4 w-4" style={{ accentColor: 'var(--sb-primary)' }} data-testid="emp-in-payroll"
+              checked={draft.include_in_payroll} onChange={e => setDraft(d => ({ ...d, include_in_payroll: e.target.checked }))} />
+            <span style={{ fontSize: 14 }}>{t('teamOcean.in_payroll')}</span>
           </label>
 
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2">

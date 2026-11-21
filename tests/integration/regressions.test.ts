@@ -8922,3 +8922,33 @@ describe('Phase 143 — currency display (soft until applied)', () => {
     expect(pol[0].n, 'companies updates must stay gated by settings.write').toBe(1);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 144 — Team: who reports to whom (Approvals part 1).
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 144 — team hierarchy (soft until applied)', () => {
+  const FNS = ['list_team', 'next_employee_code', 'set_employee_manager', 'set_team_top', 'update_employee_position', 'link_employee_user'];
+  it('phase144: one top per company, no self-reporting, functions closed to anon', async () => {
+    const col = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'employees' AND column_name = 'reports_to_id'`);
+    if (col[0].n === 0) {
+      console.warn('⚠ phase144 not applied yet — run supabase/migrations/20261121000002_phase144_team_hierarchy.sql.');
+      return;
+    }
+    const tops = await sql<{ n: number }>(`
+      SELECT count(*)::int AS n FROM (SELECT company_id FROM public.employees WHERE reports_to_id IS NULL
+                                       GROUP BY company_id HAVING count(*) > 1) x`);
+    expect(tops[0].n, 'companies with more than one top person').toBe(0);
+    const self = await sql<{ n: number }>(`SELECT count(*)::int AS n FROM public.employees WHERE reports_to_id = id`);
+    expect(self[0].n, 'employees reporting to themselves').toBe(0);
+    const r = await sql<{ proname: string; anon: boolean; definer: boolean }>(`
+      SELECT p.proname, has_function_privilege('anon', p.oid, 'EXECUTE') AS anon, p.prosecdef AS definer
+        FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = ANY (ARRAY['${FNS.join("','")}'])`);
+    expect(r.map(x => x.proname).sort()).toEqual([...FNS].sort());
+    for (const x of r) {
+      expect(x.anon, `${x.proname} must not be executable by anon`).toBe(false);
+      expect(x.definer, `${x.proname} must be SECURITY DEFINER`).toBe(true);
+    }
+  });
+});

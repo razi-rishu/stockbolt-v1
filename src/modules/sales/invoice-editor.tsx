@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { staffLabel, useStaffCodes } from '@/hooks/use-staff-codes';
 import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useDocumentPayments } from '@/hooks/use-document-payments';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -164,6 +165,7 @@ export default function InvoiceEditorPage() {
     queryFn: () => getAdapter().salespeople.list(company_id!),
     enabled: !!company_id,
   });
+  const salesCodes = useStaffCodes('sales', !!company_id);
 
   // ── Existing invoice ─────────────────────────────────────────────────────
   const { data: existing } = useQuery<InvoiceRow | null>({
@@ -1003,7 +1005,7 @@ export default function InvoiceEditorPage() {
             {/* phase129 — "+ Add new salesperson" creates or links an employee. */}
             <StaffPicker
               role="sales"
-              options={salespeople.map(p => ({ value: p.id, label: p.name }))}
+              options={salespeople.map(p => ({ value: p.id, label: staffLabel(p.employee_id ? salesCodes.get(p.employee_id) : null, p.name) }))}
               value={header.salesperson_id}
               disabled={!canEdit || isVoid}
               onChange={(v) => { setHeader(h => ({ ...h, salesperson_id: v })); setDirty(true); }}

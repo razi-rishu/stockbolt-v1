@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { staffLabel } from '@/hooks/use-staff-codes';
 import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -433,7 +434,7 @@ export default function POEditorPage() {
               role="purchasing"
               options={purchasers
                 .filter(p => p.is_active || p.employee_id === header.purchaser_id)
-                .map(p => ({ value: p.employee_id, label: p.name }))}
+                .map(p => ({ value: p.employee_id, label: staffLabel(p.code, p.name) }))}
               value={header.purchaser_id}
               disabled={!canEdit}
               onChange={(v) => { setHeader(h => ({ ...h, purchaser_id: v })); setDirty(true); }}

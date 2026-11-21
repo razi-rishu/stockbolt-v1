@@ -80,6 +80,7 @@ export const SETTINGS_SECTIONS: SettingsNavSection[] = [
     title: 'Users & Permissions',
     items: [
       { to: '/settings/users', icon: '👥', title: 'Users & Roles', desc: 'Invite teammates, assign Admin / Accountant / Sales / Counter / Viewer roles.' },
+      { to: '/settings/team',  icon: '🧭', title: 'Team',          desc: 'Employee codes, who reports to whom, and which login each person uses.' },
     ],
   },
   {

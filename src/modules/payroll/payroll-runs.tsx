@@ -68,12 +68,14 @@ export default function PayrollRunsPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      if (employees.length === 0) throw new Error(t('payOcean.err_no_employees'));
+      // phase144 — people kept out of payroll (e.g. the owner record) get no line.
+      const payees = employees.filter(e => e.include_in_payroll !== false);
+      if (payees.length === 0) throw new Error(t('payOcean.err_no_employees'));
       const run_number = await getAdapter().payroll.getNextRunNumber(company_id!);
       // Posting date = last day of the period month.
       const lastDay = new Date(year, month, 0).getDate();
       const date = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-      const items: PayrollRunItemInsert[] = employees.map(e => ({
+      const items: PayrollRunItemInsert[] = payees.map(e => ({
         company_id: company_id!,
         run_id: '',   // filled by adapter.createRun
         employee_id: e.id,
@@ -161,7 +163,7 @@ export default function PayrollRunsPage() {
             <Select label={t('payOcean.f_year')} value={String(year)} onChange={e => setYear(parseInt(e.target.value))}
               options={[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(y => ({ value: String(y), label: String(y) }))} />
           </div>
-          <p className="sb-info-note" style={{ fontSize: 13 }}>{t('payOcean.new_run_body', { count: employees.length })}</p>
+          <p className="sb-info-note" style={{ fontSize: 13 }}>{t('payOcean.new_run_body', { count: employees.filter(e => e.include_in_payroll !== false).length })}</p>
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" onClick={() => setNewOpen(false)} disabled={createMutation.isPending}>{t('common.cancel')}</Button>
             <Button onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>

@@ -650,6 +650,14 @@ export function createSelfHostedAdapter(): DataAdapter {
       updateBasic:    () => notImplemented('staff.updateBasic'),
       deleteEmployee: () => notImplemented('staff.deleteEmployee'),
     },
+    team: {
+      list:           () => notImplemented('team.list'),
+      nextCode:       () => notImplemented('team.nextCode'),
+      setManager:     () => notImplemented('team.setManager'),
+      setTop:         () => notImplemented('team.setTop'),
+      updatePosition: () => notImplemented('team.updatePosition'),
+      linkUser:       () => notImplemented('team.linkUser'),
+    },
     documentSequences: {
       list: () => notImplemented('documentSequences.list'),
       save: () => notImplemented('documentSequences.save'),

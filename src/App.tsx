@@ -214,6 +214,7 @@ const SystemHealthPage                = lazy(() => import('@/modules/settings/sy
 const MaintenancePage                 = lazy(() => import('@/modules/settings/maintenance'));
 const ResetDataPage                   = lazy(() => import('@/modules/settings/reset-data'));
 const SalespeoplePage                 = lazy(() => import('@/modules/settings/salespeople'));
+const TeamPage                        = lazy(() => import('@/modules/settings/team/index'));
 const AdminControlCenter              = lazy(() => import('@/modules/admin/control-center'));
 const RequirePlatformAdmin            = lazy(() => import('@/modules/admin/require-platform-admin'));
 // phase133 — Help & Support (every signed-in user; the inbox checks operator rights)
@@ -345,6 +346,7 @@ function AppRoutes() {
                 <Route path="brands"        element={<BrandsPage />} />
                 <Route path="vehicles"      element={<VehicleMakesPage />} />
                 <Route path="salespeople"   element={<SalespeoplePage />} />
+                <Route path="team"          element={<TeamPage />} />
                 <Route path="print"         element={<PrintSettingsPage />} />
                 <Route path="hardware"      element={<HardwareSettingsPage />} />
                 <Route path="system-health" element={<SystemHealthPage />} />
