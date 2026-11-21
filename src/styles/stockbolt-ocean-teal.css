@@ -32,7 +32,7 @@
     0 3px 12px rgba(13, 25, 53, 0.06),
     0 1px 3px rgba(13, 25, 53, 0.04);
 
-  --sb-font: Inter, system-ui, sans-serif;
+  --sb-font: 'SB Currency', Inter, system-ui, sans-serif;
 }
 
 /* Scope to redesigned screens only */
@@ -1002,7 +1002,7 @@
 .sb-ocean .sb-olist .sb-search, .sb-ocean.sb-olist .sb-search { max-width: 520px; }
 
 /* Codes, rates and other monospace values. */
-.sb-ocean .sb-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
+.sb-ocean .sb-mono { font-family: 'SB Currency', ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
 .sb-ocean .sb-section-card { display: flex; flex-direction: column; gap: 14px; }
 .sb-ocean .sb-info-note {
   margin: 0; padding: 12px 14px; border-radius: var(--sb-radius-sm); font-size: 14px; line-height: 1.5;
@@ -1087,7 +1087,7 @@
 
 /* Document numbering */
 .sb-ocean .sb-num-help { display: flex; flex-direction: column; gap: 8px; }
-.sb-ocean .sb-num-help code { padding: 1px 6px; border-radius: 6px; background: #fff; border: 1px solid var(--sb-primary-light); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+.sb-ocean .sb-num-help code { padding: 1px 6px; border-radius: 6px; background: #fff; border: 1px solid var(--sb-primary-light); font-family: 'SB Currency', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
 .sb-ocean .sb-num-warn { margin: 0; color: var(--sb-warning); }
 .sb-ocean .sb-num-ico { display: inline; vertical-align: -3px; margin-inline-end: 6px; }
 .sb-ocean .sb-num-doc { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
@@ -1105,7 +1105,7 @@
 /* Barcode & printer */
 .sb-ocean .sb-hw-fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 .sb-ocean .sb-hw-fieldset legend { margin-bottom: 8px; padding: 0; }
-.sb-ocean .sb-hw-num { color: var(--sb-text-secondary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+.sb-ocean .sb-hw-num { color: var(--sb-text-secondary); font-family: 'SB Currency', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
 .sb-ocean .sb-hw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
 .sb-ocean .sb-hw-grid .sb-field, .sb-ocean .sb-select-field input.sb-field { border-radius: var(--sb-radius-sm); padding: 0 12px; font-size: 15px; }
 .sb-ocean .sb-hw-test { border: 1px dashed var(--sb-primary-light); background: var(--sb-primary-soft); border-radius: var(--sb-radius-md); padding: 14px; display: flex; flex-direction: column; gap: 8px; }
@@ -1362,7 +1362,7 @@
 .sb-ocean .sb-dash-allclear { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 18px 0; color: var(--sb-success); text-align: center; }
 
 /* ── Sales lists (invoices master-detail; quotes/receipts/credit notes use the list kit) ── */
-.sb-ocean .sb-inv-no { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; font-weight: 700; color: var(--sb-primary-dark); }
+.sb-ocean .sb-inv-no { font-family: 'SB Currency', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; font-weight: 700; color: var(--sb-primary-dark); }
 .sb-ocean .sb-inv-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
 .sb-ocean .sb-inv-stat { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; min-width: 0; }
 .sb-ocean .sb-inv-stat-val { font-size: 18px; font-weight: 800; color: var(--sb-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
@@ -1521,7 +1521,7 @@
 
 /* ── Product detail ─────────────────────────────────────────────────────── */
 .sb-ocean.sb-prod { max-width: 1040px; }
-.sb-ocean .sb-prod-sku { font-size: 12px; font-family: ui-monospace, monospace; color: var(--sb-text-secondary); background: var(--sb-background); padding: 3px 9px; border-radius: 8px; border: 1px solid var(--sb-border); }
+.sb-ocean .sb-prod-sku { font-size: 12px; font-family: 'SB Currency', ui-monospace, monospace; color: var(--sb-text-secondary); background: var(--sb-background); padding: 3px 9px; border-radius: 8px; border: 1px solid var(--sb-border); }
 .sb-ocean .sb-prod-tabs-card { padding: 0 6px; }
 .sb-ocean .sb-prod-tabs { margin-top: 0; border-bottom: 0; overflow-x: auto; scrollbar-width: none; }
 .sb-ocean .sb-prod-tabs::-webkit-scrollbar { display: none; }
@@ -1589,7 +1589,7 @@
 .sb-ocean .sb-pw-stat-label { font-size: 12px; color: var(--sb-text-secondary); margin-bottom: 4px; }
 .sb-ocean .sb-pw-stat-val { display: block; font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; text-align: start; }
 .sb-ocean .sb-pw-barcode { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 12px; background: var(--sb-primary-soft); border: 1px solid var(--sb-primary-light); }
-.sb-ocean .sb-pw-barcode-val { display: block; font-family: ui-monospace, monospace; font-size: 18px; font-weight: 700; letter-spacing: 3px; color: var(--sb-text); overflow-wrap: anywhere; text-align: start; }
+.sb-ocean .sb-pw-barcode-val { display: block; font-family: 'SB Currency', ui-monospace, monospace; font-size: 18px; font-weight: 700; letter-spacing: 3px; color: var(--sb-text); overflow-wrap: anywhere; text-align: start; }
 .sb-ocean .sb-pw-dashed { border: 1px dashed var(--sb-primary-light); border-radius: 12px; padding: 18px; text-align: center; color: var(--sb-text-secondary); font-size: 14px; background: var(--sb-primary-soft); }
 .sb-ocean .sb-pw-code { background: var(--sb-background); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
 .sb-ocean.sb-pw-overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(13, 25, 53, .45); }
@@ -1677,7 +1677,7 @@
 @media (min-width: 720px) { .sb-ocean .sb-acct-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .sb-ocean .sb-acct-field { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; padding: 8px 0; border-bottom: 1px dashed var(--sb-border); min-width: 0; }
 .sb-ocean .sb-acct-field dd { margin: 0; text-align: end; font-size: 14px; }
-.sb-ocean .sb-acct-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; font-size: 12.5px; color: var(--sb-primary-dark); }
+.sb-ocean .sb-acct-code { font-family: 'SB Currency', ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; font-size: 12.5px; color: var(--sb-primary-dark); }
 .sb-ocean .sb-acct-re-row { background: var(--sb-primary-soft); font-weight: 700; }
 .sb-ocean .sb-acct-total-row { background: var(--sb-primary-light); color: var(--sb-primary-dark); font-weight: 700; }
 .sb-ocean .sb-acct-total-row .sb-dash-num { color: var(--sb-primary-dark); }
@@ -1839,7 +1839,7 @@
 .sb-ocean .sb-rpt-table td { padding: 9px 16px; border-top: 1px solid var(--sb-border); vertical-align: middle; }
 .sb-ocean .sb-rpt-table .num { text-align: end; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .sb-ocean .sb-rpt-table .muted { color: var(--sb-text-secondary); }
-.sb-ocean .sb-rpt-table .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; font-weight: 700; color: var(--sb-primary-dark); white-space: nowrap; }
+.sb-ocean .sb-rpt-table .code { font-family: 'SB Currency', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; font-weight: 700; color: var(--sb-primary-dark); white-space: nowrap; }
 .sb-ocean .sb-rpt-table button.code { background: none; border: 0; padding: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
 .sb-ocean .sb-rpt-table button.code:hover { text-decoration: underline; }
 .sb-ocean .sb-rpt-table .chev { display: inline-flex; color: var(--sb-text-secondary); transition: transform .15s; }
@@ -2020,7 +2020,7 @@
 .sb-ocean .sb-notice-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
 .sb-ocean .sb-notice-actions a { text-decoration: none; display: inline-flex; align-items: center; }
 .sb-ocean .sb-notice-actions .sb-secondary-btn { display: inline-flex; align-items: center; gap: 4px; }
-.sb-ocean .sb-notice-url { padding: 8px 12px; border-radius: var(--sb-radius-sm); background: var(--sb-background); border: 1px solid var(--sb-border); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: var(--sb-text); overflow-wrap: anywhere; }
+.sb-ocean .sb-notice-url { padding: 8px 12px; border-radius: var(--sb-radius-sm); background: var(--sb-background); border: 1px solid var(--sb-border); font-family: 'SB Currency', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: var(--sb-text); overflow-wrap: anywhere; }
 .sb-ocean .sb-notice-loading { margin: 0; font-size: 14px; color: var(--sb-text-secondary); }
 .sb-ocean .sb-refund-avail .sb-rpt-figs { grid-template-columns: minmax(0, 1fr) !important; }
 .sb-ocean.sb-admin-shell { min-height: 100vh; padding: 20px 0; }
@@ -2144,7 +2144,7 @@
 .sb-ocean .sb-gc-tag.is-warn { background: #FEF3C7; color: var(--sb-warning); }
 .sb-ocean .sb-gc-tag.is-danger { background: var(--sb-danger-bg); color: var(--sb-danger); }
 .sb-ocean .sb-gc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.sb-ocean .sb-gc-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; padding: 2px 7px; border-radius: 6px; background: #EEF2F5; color: var(--sb-text-secondary); }
+.sb-ocean .sb-gc-code { font-family: 'SB Currency', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; padding: 2px 7px; border-radius: 6px; background: #EEF2F5; color: var(--sb-text-secondary); }
 
 /* fields */
 .sb-ocean .sb-gc-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
@@ -2296,7 +2296,7 @@
 .sb-ocean .sb-share-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .sb-ocean .sb-share-title { margin: 0; font-size: 15px; font-weight: 700; color: var(--sb-text); }
 .sb-ocean .sb-share-hint { margin: 2px 0 0; font-size: 13px; line-height: 1.5; color: var(--sb-text-secondary); }
-.sb-ocean .sb-share-link { width: 100%; min-width: 0; height: 42px; padding: 0 12px; border-radius: var(--sb-radius-sm); border: 1px solid var(--sb-border); background: #fff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: var(--sb-text); }
+.sb-ocean .sb-share-link { width: 100%; min-width: 0; height: 42px; padding: 0 12px; border-radius: var(--sb-radius-sm); border: 1px solid var(--sb-border); background: #fff; font-family: 'SB Currency', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: var(--sb-text); }
 .sb-ocean .sb-share-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .sb-ocean .sb-share-actions a { text-decoration: none; }
 

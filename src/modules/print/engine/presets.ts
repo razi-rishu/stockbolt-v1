@@ -124,8 +124,8 @@ export const LOGO_SIZE_PX: Record<'small' | 'medium' | 'large', number> = {
 
 /** CSS font-family stack for each selectable font (with safe fallbacks). */
 export const FONT_STACK: Record<string, string> = {
-  Inter:       `'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif`,
-  Roboto:      `'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif`,
-  Poppins:     `'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif`,
-  'Open Sans': `'Open Sans', system-ui, -apple-system, 'Segoe UI', sans-serif`,
+  Inter:       `'SB Currency', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif`,
+  Roboto:      `'SB Currency', 'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif`,
+  Poppins:     `'SB Currency', 'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif`,
+  'Open Sans': `'SB Currency', 'Open Sans', system-ui, -apple-system, 'Segoe UI', sans-serif`,
 };

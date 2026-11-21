@@ -13,7 +13,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle2 } from 'lucide-react';
 import { getAdapter } from '@/data/index';
-import { currencyLabel, displayOf, useCurrencyDisplayStore, type CurrencyDisplay } from '@/lib/currency-display';
+import { DIRHAM_SIGN, currencyLabel, displayOf, useCurrencyDisplayStore, type CurrencyDisplay } from '@/lib/currency-display';
 
 const num = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -59,7 +59,7 @@ export function CurrencyDisplaySettings({ company, canWrite }: {
       </div>
       <div className="sb-gc-grid2">
         {option('code', t('cdisp.code'), t('cdisp.code_hint'))}
-        {option('symbol', t('cdisp.symbol'), t('cdisp.symbol_hint'))}
+        {option('symbol', t('cdisp.symbol'), t('cdisp.symbol_hint', { aed: DIRHAM_SIGN }))}
       </div>
 
       <div className="sb-cdisp-preview" data-testid="cdisp-preview">

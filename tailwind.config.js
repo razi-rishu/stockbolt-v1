@@ -67,8 +67,8 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['"Inter"', 'system-ui', 'sans-serif'],
-        arabic: ['Tajawal', 'system-ui', 'sans-serif'],
+        sans: ['"SB Currency"', '"Inter"', 'system-ui', 'sans-serif'],
+        arabic: ['"SB Currency"', 'Tajawal', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         pill: '9999px',

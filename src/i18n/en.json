@@ -4912,7 +4912,7 @@
     "code": "Currency code",
     "code_hint": "AED, INR, USD — clear when you deal in several currencies.",
     "symbol": "Currency symbol",
-    "symbol_hint": "د.إ, ₹, $ — shorter. Currencies that share a sign stay distinct (US$ / CA$ / A$).",
+    "symbol_hint": "{{aed}}, ₹, $, SR — shorter. Arabic screens keep Arabic signs (د.إ). Currencies that share a sign stay distinct ($ / CA$ / A$).",
     "preview": "Preview",
     "p_invoice": "Invoice in {{code}}",
     "p_refund": "Refund (negative)",

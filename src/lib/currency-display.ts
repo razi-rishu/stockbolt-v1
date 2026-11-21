@@ -18,6 +18,7 @@
  * loaded by <CurrencyDisplaySync/> and editable in Settings → Business
  * configuration → Accounting → Currency & display (settings.write only, RLS).
  */
+import i18next from 'i18next';
 import { create } from 'zustand';
 
 export type CurrencyDisplay = 'code' | 'symbol';
@@ -44,22 +45,46 @@ export function displayOf(company: unknown): CurrencyDisplay {
   return (company as { currency_display?: string | null } | null)?.currency_display === 'symbol' ? 'symbol' : 'code';
 }
 
-// Symbols Intl doesn't provide in English, chosen so no two currencies share one.
-const SYMBOLS: Record<string, string> = {
-  AED: 'د.إ', SAR: 'ر.س', QAR: 'ر.ق', KWD: 'د.ك', BHD: 'د.ب', OMR: 'ر.ع.',
-  INR: '₹', EGP: 'E£', JOD: 'د.أ',
+/**
+ * The UAE dirham sign (official symbol, public-domain drawing from Wikimedia
+ * Commons "UAE Dirham Symbol.svg"). Phones and our fonts don't have it yet, so
+ * it lives at a private-use code point drawn by the one-glyph font
+ * "SB Currency" (src/assets/fonts), which sits first in every font stack. If
+ * Unicode assigns the sign a code point, swap it here and in the font.
+ */
+export const DIRHAM_SIGN = '';
+
+// Symbols Intl doesn't provide, chosen so no two currencies share one.
+// The screen language picks the set: English readers get Latin forms (and the
+// dirham sign), Arabic readers keep the Arabic forms.
+const SYMBOLS_EN: Record<string, string> = {
+  AED: DIRHAM_SIGN, SAR: 'SR', QAR: 'QR', KWD: 'KD', BHD: 'BD', OMR: 'RO', JOD: 'JD',
+  INR: '₹', EGP: 'E£',
 };
+const SYMBOLS_AR: Record<string, string> = {
+  AED: 'د.إ', SAR: 'ر.س', QAR: 'ر.ق', KWD: 'د.ك', BHD: 'د.ب', OMR: 'ر.ع.', JOD: 'د.أ',
+  INR: '₹', EGP: 'E£',
+};
+
+export type SymbolLanguage = 'en' | 'ar';
+
+/** The screen language that picks the symbol set (Arabic UI → 'ar', anything else → 'en'). */
+function screenLanguage(): SymbolLanguage {
+  return (i18next.language ?? '').startsWith('ar') ? 'ar' : 'en';
+}
 
 const symbolCache = new Map<string, string>();
 
 /**
- * The currency's display symbol. Shared signs stay distinct (USD $, CAD CA$,
- * AUD A$). Falls back to the ISO code when a currency has no distinct symbol.
+ * The currency's display symbol for a screen language (default: the current
+ * one). Shared signs stay distinct (USD $, CAD CA$, AUD A$). Falls back to the
+ * ISO code when a currency has no distinct symbol.
  */
-export function currencySymbol(code: string | null | undefined): string {
+export function currencySymbol(code: string | null | undefined, lang: SymbolLanguage = screenLanguage()): string {
   const c = (code ?? '').toUpperCase();
   if (!c) return '';
-  if (SYMBOLS[c]) return SYMBOLS[c];
+  const own = (lang === 'ar' ? SYMBOLS_AR : SYMBOLS_EN)[c];
+  if (own) return own;
   const hit = symbolCache.get(c);
   if (hit) return hit;
   let s = c;
@@ -80,11 +105,11 @@ export function currencySymbol(code: string | null | undefined): string {
 const RTL = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
 const LRM = '\u200E';
 
-/** Label for a currency under a display mode. */
-export function currencyLabel(code: string | null | undefined, mode: CurrencyDisplay): string {
+/** Label for a currency under a display mode (symbols follow the screen language unless `lang` is given). */
+export function currencyLabel(code: string | null | undefined, mode: CurrencyDisplay, lang?: SymbolLanguage): string {
   const c = (code ?? '').toUpperCase();
   if (mode !== 'symbol') return c;
-  const s = currencySymbol(c);
+  const s = currencySymbol(c, lang);
   return RTL.test(s) ? s + LRM : s;
 }
 

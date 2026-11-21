@@ -60,8 +60,8 @@ export const theme = {
   shadowLg:   '0 10px 30px rgba(15,23,42,.10)',
 
   // Typography
-  font:       '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
-  fontMono:   '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+  font:       '"SB Currency", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
+  fontMono:   '"SB Currency", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
   fontXs:     '11px',
   fontSm:     '12px',
   fontBase:   '13px',

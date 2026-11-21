@@ -138,7 +138,7 @@ export function RelationshipHeader({
           {party.name}
         </h1>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px', alignItems: 'center', fontSize: '12.5px', color: stmt.inkMuted }}>
-          {party.code && <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontWeight: 500 }}>{party.code}</span>}
+          {party.code && <span style={{ fontFamily: "'SB Currency', ui-monospace, SFMono-Regular, Menlo, monospace", fontWeight: 500 }}>{party.code}</span>}
           {party.trn && <><span style={{ color: stmt.inkFaint }}>·</span><span>TRN {party.trn}</span></>}
           {statusLabel && <>
             <span style={{ color: stmt.inkFaint }}>·</span>
@@ -652,7 +652,7 @@ function SpineRow({ line }: { line: SpineLine }) {
       <td style={{ padding: '10px 14px', color: stmt.inkBody, fontSize: '12.5px' }}>{line.doc_type}</td>
       <td style={{
         padding: '10px 14px',
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        fontFamily: "'SB Currency', ui-monospace, SFMono-Regular, Menlo, monospace",
         fontSize: '12px',
         color: stmt.brand,
         fontWeight: 500,
