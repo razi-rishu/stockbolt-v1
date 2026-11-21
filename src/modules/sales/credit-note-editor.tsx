@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { ApprovalPanel } from '@/components/approvals/approval-panel';
+import { useApprovalGate, useDocApproval } from '@/components/approvals/use-approval';
 import { useDocumentPayments } from '@/hooks/use-document-payments';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -336,17 +338,25 @@ export default function CreditNoteEditorPage() {
         await getAdapter().creditNotes.update(id!, header, buildItems());
         noteId = id!;
       }
+      // phase146 — needs approval: keep it a draft and send it to an approver.
+      if (gate.needs(roundedTotal)) return { noteId, submit: true };
       try {
         await getAdapter().creditNotes.confirm(noteId);
       } catch (e) {
         if (isNew) navigate(`/sales/credit-notes/${noteId}`);
         throw e;
       }
-      return noteId;
+      return { noteId, submit: false };
     },
-    onSuccess: async () => {
+    onSuccess: async ({ noteId, submit }) => {
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['credit_notes'] });
+      if (submit) {
+        qc.invalidateQueries({ queryKey: ['credit_note', noteId] });
+        const toRecord = () => { if (isNew) navigate(`/sales/credit-notes/${noteId}`); };
+        gate.open({ docId: noteId, onSent: toRecord, onClosed: toRecord });
+        return;
+      }
       navigate('/sales/credit-notes');
     },
   });
@@ -374,6 +384,11 @@ export default function CreditNoteEditorPage() {
 
   const isDraft     = !existing || existing.status === 'draft';
   const isConfirmed = existing?.status === 'confirmed';
+  // phase146 — approvals: Save submits instead of confirming when a rule applies.
+  const gate = useApprovalGate('credit_note');
+  const appr = useDocApproval('credit_note', isNew ? null : id);
+  const approvalLocked = appr.approved && !appr.isAdmin;
+  const refreshNote = () => { void invalidateBooks(); qc.invalidateQueries({ queryKey: ['credit_notes'] }); qc.invalidateQueries({ queryKey: ['credit_note', id] }); };
 
   // Phase 14.04 — view-mode renderer (Signature template).
   // Drafts open in the editable form (single Save posts them); only posted
@@ -407,7 +422,7 @@ export default function CreditNoteEditorPage() {
           <RefundedPill docType="credit_note" docId={existing.id} />
           </div>
           <div className="sb-doc-bar-actions">
-            {isConfirmed && (
+            {isConfirmed && !approvalLocked && (
               <Button variant="primary" loading={reopenMutation.isPending} onClick={() => { if (window.confirm(t('common.reopen_warn') || 'Edit this confirmed document? It reverses its posted entries and reopens it as a draft so you can change it and confirm again.')) reopenMutation.mutate(); }}>
                 <Pencil size={15} aria-hidden="true" /> {t('common.edit') || 'Edit'}
               </Button>
@@ -435,6 +450,7 @@ export default function CreditNoteEditorPage() {
             itself rather than guessed from the contact and the date. */}
         <RefundedBadge docType="credit_note" docId={existing.id}
           currency={existing.currency ?? companyCurrency} />
+        <ApprovalPanel docType="credit_note" docId={existing.id} isDraft={isDraft} onChanged={refreshNote} />
         <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
@@ -471,16 +487,18 @@ export default function CreditNoteEditorPage() {
               <Printer size={15} aria-hidden="true" /> {t('print.print')}
             </Button>
           )}
-          {!isNew && isConfirmed && (
+          {!isNew && isConfirmed && !approvalLocked && (
             <Button variant="secondary" onClick={() => setShowVoidDlg(true)}>{t('common.void')}</Button>
           )}
           {isDraft && (
-            <Button variant="primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-              {saveMutation.isPending ? t('common.saving') : t('common.save')}
+            <Button variant="primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || appr.pending}>
+              {saveMutation.isPending ? t('common.saving') : gate.needs(roundedTotal) ? t('apprOcean.save_submit') : t('common.save')}
             </Button>
           )}
         </div>
       </div>
+      {!isNew && id && <ApprovalPanel docType="credit_note" docId={id} isDraft={isDraft} onChanged={refreshNote} />}
+      {gate.modal}
 
       {/* Header fields */}
       <div className="sb-card sb-form sb-doc-card grid grid-cols-1 gap-4 sm:grid-cols-2">

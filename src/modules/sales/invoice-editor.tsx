@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { ApprovalPanel } from '@/components/approvals/approval-panel';
+import { useApprovalGate, useDocApproval } from '@/components/approvals/use-approval';
 import { staffLabel, useStaffCodes } from '@/hooks/use-staff-codes';
 import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useDocumentPayments } from '@/hooks/use-document-payments';
@@ -527,18 +529,27 @@ export default function InvoiceEditorPage() {
         await getAdapter().invoices.update(id!, row, buildItems());
         invId = id!;
       }
+      // phase146 — needs approval: keep it a draft and send it to an approver.
+      if (gate.needs(roundedTotal)) return { invId, submit: true };
       try {
         await getAdapter().invoices.confirm(invId);
       } catch (e) {
         if (isNew) navigate(`/sales/invoices/${invId}`);
         throw e;
       }
-      return invId;
+      return { invId, submit: false };
     },
-    onSuccess: async () => {
+    onSuccess: async ({ invId, submit }) => {
       setDirty(false);
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['invoices', company_id] });
+      if (submit) {
+        qc.invalidateQueries({ queryKey: ['invoice', invId] });
+        qc.invalidateQueries({ queryKey: ['invoice_items', invId] });
+        const toRecord = () => { setEditMode(false); navigate(`/sales/invoices/${invId}`); };
+        gate.open({ docId: invId, onSent: toRecord, onClosed: toRecord });
+        return;
+      }
       if (!isNew) {
         qc.invalidateQueries({ queryKey: ['invoice', id] });
         qc.invalidateQueries({ queryKey: ['invoice_items', id] });
@@ -629,7 +640,16 @@ export default function InvoiceEditorPage() {
 
   // ── Status & mode ────────────────────────────────────────────────────────
   const status = existing?.status ?? 'draft';
-  const canEdit = isNew || status === 'draft' || editMode;
+  // phase146 — approvals: Save submits instead of confirming when a rule applies.
+  const gate = useApprovalGate('invoice');
+  const appr = useDocApproval('invoice', isNew ? null : id);
+  const approvalLocked = appr.approved && !appr.isAdmin;
+  const refreshInvoice = () => {
+    void invalidateBooks();
+    qc.invalidateQueries({ queryKey: ['invoices', company_id] });
+    qc.invalidateQueries({ queryKey: ['invoice', id] });
+  };
+  const canEdit = (isNew || status === 'draft' || editMode) && !appr.pending;
   const isConfirmed = status === 'confirmed';
   const isVoid = status === 'void';
 
@@ -727,7 +747,7 @@ export default function InvoiceEditorPage() {
                 <Pencil size={15} aria-hidden="true" /> {t('common.edit') || 'Edit'}
               </Button>
             )}
-            {isConfirmed && !editMode && (
+            {isConfirmed && !editMode && !approvalLocked && (
               <Button
                 variant="ghost" size="sm"
                 onClick={() => navigate(`/sales/invoices/${existing.id}/edit`)}
@@ -788,13 +808,14 @@ export default function InvoiceEditorPage() {
                 {t('common.delete')}
               </Button>
             )}
-            {isConfirmed && (
+            {isConfirmed && !approvalLocked && (
               <Button variant="danger" size="sm" onClick={() => setVoidModal(true)}>
                 {t('sales.void_invoice')}
               </Button>
             )}
           </div>
         </div>
+        <ApprovalPanel docType="invoice" docId={existing.id} isDraft={existing.status === 'draft'} onChanged={refreshInvoice} />
 
         {/* Phase 59 (AC-4D) — e-invoice status panel (screen only, never printed) */}
         {isConfirmed && (
@@ -845,8 +866,8 @@ export default function InvoiceEditorPage() {
               <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/sales/invoices'); }}>
                 {t('common.cancel')}
               </Button>
-              <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
-                {saveMutation.isPending ? t('common.saving') : t('common.save')}
+              <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending || appr.pending}>
+                {saveMutation.isPending ? t('common.saving') : gate.needs(roundedTotal) ? t('apprOcean.save_submit') : t('common.save')}
               </Button>
             </>
           )}
@@ -856,8 +877,8 @@ export default function InvoiceEditorPage() {
               <Button variant="ghost" size="sm" onClick={() => { if (editMode) { setEditMode(false); setError(null); } else if (confirmLeave()) navigate('/sales/invoices'); }}>
                 {t('common.cancel')}
               </Button>
-              <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
-                {saveMutation.isPending ? t('common.saving') : t('common.save')}
+              <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending || appr.pending}>
+                {saveMutation.isPending ? t('common.saving') : gate.needs(roundedTotal) ? t('apprOcean.save_submit') : t('common.save')}
               </Button>
               {!editMode && (
                 <Button variant="danger" size="sm" onClick={() => setDeleteModal(true)}>
@@ -873,7 +894,7 @@ export default function InvoiceEditorPage() {
             </Button>
           )}
           {/* Edit & Void (confirmed only) */}
-          {isConfirmed && !editMode && (
+          {isConfirmed && !editMode && !approvalLocked && (
             <>
               <Button variant="ghost" size="sm" onClick={() => setEditMode(true)}>
                 {t('sales.edit_invoice')}
@@ -901,6 +922,8 @@ export default function InvoiceEditorPage() {
       </div>
 
       {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+      {!isNew && id && <ApprovalPanel docType="invoice" docId={id} isDraft={status === 'draft'} onChanged={refreshInvoice} />}
+      {gate.modal}
 
       {/* Customer Insight Panel — appears once a customer is picked.
            Shows outstanding, overdue, credit limit, last payment in a

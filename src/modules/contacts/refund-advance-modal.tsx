@@ -65,8 +65,10 @@ export function RefundAdvanceModal({
   const [reference, setRef]   = useState('');
   const [busy, setBusy]       = useState(false);
   const [error, setError]     = useState<string | null>(null);
-  // phase145 — a supplier refund that needs approval is sent, not posted.
-  const gate = useApprovalGate(source === 'credit' ? 'vendor_credit_refund' : 'vendor_refund');
+  // phase145/146 — a refund that needs approval is sent, not posted.
+  const gate = useApprovalGate(side === 'vendor'
+    ? (source === 'credit' ? 'vendor_credit_refund' : 'vendor_refund')
+    : (source === 'credit' ? 'customer_credit_refund' : 'customer_refund'));
 
   const { data: banks = [] } = useQuery<BankAccountRow[]>({
     queryKey: ['bank_accounts', company_id],
@@ -95,7 +97,7 @@ export function RefundAdvanceModal({
         notes:           null,
         source_doc_type: sourceDoc?.type ?? null,
         source_doc_id:   sourceDoc?.id ?? null,
-        draft_only:      side === 'vendor' && gate.needs(parsed),
+        draft_only:      gate.needs(parsed),
       };
       const res = side === 'vendor'
         ? (source === 'credit' ? await api.refundVendorCredit(input)
@@ -186,7 +188,7 @@ export function RefundAdvanceModal({
             {t('common.cancel')}
           </Button>
           <Button onClick={submit} disabled={!canSubmit} loading={busy}>
-            {side === 'vendor' && gate.needs(parsed) ? t('apprOcean.submit') : t('refund.confirm')}
+            {gate.needs(parsed) ? t('apprOcean.submit') : t('refund.confirm')}
           </Button>
         </div>
       </div>

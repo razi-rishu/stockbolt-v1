@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { ApprovalPanel } from '@/components/approvals/approval-panel';
+import { useApprovalGate, useDocApproval } from '@/components/approvals/use-approval';
 import { staffLabel, useStaffCodes } from '@/hooks/use-staff-codes';
 import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -274,7 +276,17 @@ export default function QuoteEditorPage() {
   // Quotes are non-GL proposals — editable in any status (draft/sent/accepted/
   // fully_invoiced). The existing status is preserved on save so a fully-invoiced
   // quote can't be silently reset to draft and re-converted.
-  const canEdit = isNew || !!existing;
+  // phase146 — approvals: an approved quote is "sent"; until then it can't be
+  // invoiced, and once approved only an admin changes its content.
+  const gate = useApprovalGate('sales_quote');
+  const appr = useDocApproval('sales_quote', isNew ? null : id);
+  const awaitingApproval = !!existing && existing.status === 'draft' && gate.needs(Number(existing.total_amount ?? 0));
+  const approvedLocked = appr.approved && !appr.isAdmin && !!existing && existing.status !== 'draft';
+  const refreshQuote = () => {
+    qc.invalidateQueries({ queryKey: ['sales_quotes', company_id] });
+    qc.invalidateQueries({ queryKey: ['sales_quote', id] });
+  };
+  const canEdit = (isNew || !!existing) && !appr.pending && !approvedLocked;
   // contactOpts removed — customer picker uses ContactPicker (D3).
   const productOpts = products.map(p => ({ value: p.id, label: `${p.sku}  ${p.name}` }));
   const taxOpts = [
@@ -307,7 +319,7 @@ export default function QuoteEditorPage() {
                 <Pencil size={15} aria-hidden="true" /> {t('common.edit') || 'Edit'}
               </Button>
             )}
-            {existing?.id && ['draft', 'sent', 'accepted'].includes(existing.status) && (
+            {existing?.id && ['draft', 'sent', 'accepted'].includes(existing.status) && !awaitingApproval && !appr.pending && (
               <Button
                 size="sm"
                 onClick={() => { setError(null); convertMutation.mutate(); }}
@@ -324,6 +336,7 @@ export default function QuoteEditorPage() {
             )}
           </div>
         </div>
+        <ApprovalPanel docType="sales_quote" docId={existing.id} isDraft={existing.status === 'draft'} onChanged={refreshQuote} />
         <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
@@ -358,7 +371,7 @@ export default function QuoteEditorPage() {
           )}
           <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/sales/quotes'); }}>{t('common.cancel')}</Button>
           {canEdit && <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>{saveMutation.isPending ? t('common.saving') : t('common.save')}</Button>}
-          {!isNew && existing && ['draft', 'sent', 'accepted'].includes(existing.status) && (
+          {!isNew && existing && ['draft', 'sent', 'accepted'].includes(existing.status) && !awaitingApproval && !appr.pending && (
             <Button
               size="sm"
               onClick={() => { setError(null); convertMutation.mutate(); }}
@@ -371,6 +384,7 @@ export default function QuoteEditorPage() {
         </div>
       </div>
       {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+      {!isNew && id && <ApprovalPanel docType="sales_quote" docId={id} isDraft={existing?.status === 'draft'} onChanged={refreshQuote} />}
 
       {/* Credit-limit warning — non-blocking. Quotes don't post AR, but
            it's better to surface this NOW than after conversion to invoice. */}

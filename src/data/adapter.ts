@@ -3740,7 +3740,9 @@ export interface TeamAPI {
 // ── phase145 — Approvals (batch 1: purchasing documents)
 export type ApprovalDocType =
   | 'purchase_order' | 'goods_receipt' | 'vendor_bill' | 'debit_note' | 'expense'
-  | 'vendor_payment' | 'vendor_refund' | 'vendor_credit_refund';
+  | 'vendor_payment' | 'vendor_refund' | 'vendor_credit_refund'
+  // phase146 — sales
+  | 'sales_quote' | 'invoice' | 'credit_note' | 'customer_receipt' | 'customer_refund' | 'customer_credit_refund';
 export interface ApprovalRule { doc_type: ApprovalDocType; enabled: boolean; min_amount: number }
 /** Why someone can't approve: inactive | no_login | login_disabled | no_authority | no_permission. */
 export type ApproverProblem = string | null;

@@ -8981,6 +8981,26 @@ describe('Phase 145 — approvals engine (soft until applied)', () => {
     }
     const guarded = await sql<{ n: number }>(`
       SELECT count(DISTINCT tgrelid)::int AS n FROM pg_trigger WHERE tgname LIKE '%\\_approval\\_guard' AND NOT tgisinternal`);
-    expect(guarded[0].n, 'documents and lines guarded').toBe(13);
+    expect(guarded[0].n, 'documents and lines guarded').toBeGreaterThanOrEqual(13);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 146 — Approvals, sales documents.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Phase 146 — sales approvals (soft until applied)', () => {
+  it('phase146: sales types accepted and sales documents guarded', async () => {
+    const def = await sql<{ d: string | null }>(`
+      SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint WHERE conname = 'approval_rules_doc_type_check'`);
+    if (!def[0]?.d || !def[0].d.includes('customer_receipt')) {
+      console.warn('⚠ phase146 not applied yet — run supabase/migrations/20261121000004_phase146_approvals_sales.sql (after phase145).');
+      return;
+    }
+    for (const t of ['sales_quote', 'invoice', 'credit_note', 'customer_refund', 'customer_credit_refund']) {
+      expect(def[0].d, t).toContain(`'${t}'`);
+    }
+    const guarded = await sql<{ n: number }>(`
+      SELECT count(DISTINCT tgrelid)::int AS n FROM pg_trigger WHERE tgname LIKE '%\\_approval\\_guard' AND NOT tgisinternal`);
+    expect(guarded[0].n, 'purchasing + sales documents and lines guarded').toBe(19);
   });
 });

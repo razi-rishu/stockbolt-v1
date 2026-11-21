@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
+import { ApprovalPanel } from '@/components/approvals/approval-panel';
+import { useApprovalGate, useDocApproval } from '@/components/approvals/use-approval';
 import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -391,16 +393,25 @@ export default function PaymentEditorPage() {
     mutationFn: async () => {
       const saved = await persistDraft();
       const pid = isNew ? saved.id : id!;
+      // phase146 — needs approval: keep it a draft and send it to an approver.
+      if (gate.needs(parseFloat(header.amount) || 0)) return { saved, pid, submit: true };
       try {
         await getAdapter().payments.confirm(pid);
       } catch (e) {
         if (isNew) navigate(`/sales/payments/${pid}`);
         throw e;
       }
-      return saved;
+      return { saved, pid, submit: false };
     },
-    onSuccess: async (data) => {
+    onSuccess: async ({ saved: data, pid, submit }) => {
       setDirty(false);
+      if (submit) {
+        qc.invalidateQueries({ queryKey: ['payments', company_id] });
+        qc.invalidateQueries({ queryKey: ['payment', pid] });
+        const toRecord = () => { if (isNew) navigate(`/sales/payments/${pid}`); };
+        gate.open({ docId: pid, onSent: toRecord, onClosed: toRecord });
+        return;
+      }
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['payments', company_id] });
       qc.invalidateQueries({ queryKey: ['payment', id] });
@@ -419,14 +430,21 @@ export default function PaymentEditorPage() {
       if (!chequeDueDate) throw new Error(t('rcptOcean.err_cheque_due'));
       const saved = await persistDraft();
       const pid = isNew ? saved.id : id!;
-      return getAdapter().payments.confirmAsPdc(pid, {
-        cheque_number: chequeNumber.trim(),
-        bank_name: chequeBank.trim(),
-        due_date: chequeDueDate,
-      });
+      const cheque = { cheque_number: chequeNumber.trim(), bank_name: chequeBank.trim(), due_date: chequeDueDate };
+      // phase146 — the approver's Approve records the cheque with these details.
+      if (gate.needs(parseFloat(header.amount) || 0)) return { pid, cheque, submit: true };
+      await getAdapter().payments.confirmAsPdc(pid, cheque);
+      return { pid, cheque, submit: false };
     },
-    onSuccess: async () => {
+    onSuccess: async ({ pid, cheque, submit }) => {
       setDirty(false);
+      if (submit) {
+        qc.invalidateQueries({ queryKey: ['payments', company_id] });
+        qc.invalidateQueries({ queryKey: ['payment', pid] });
+        const toRecord = () => { if (isNew) navigate(`/sales/payments/${pid}`); };
+        gate.open({ docId: pid, confirmArgs: cheque, onSent: toRecord, onClosed: toRecord });
+        return;
+      }
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['payments', company_id] });
       navigate('/banking/pdc-received');
@@ -486,7 +504,17 @@ export default function PaymentEditorPage() {
   const status = existing?.status ?? 'draft';
   const isConfirmed = status === 'confirmed';
   const isVoid = status === 'void';
-  const canEdit = isNew || status === 'draft';
+  // phase146 — approvals: Save submits instead of confirming when a rule applies.
+  const gate = useApprovalGate('customer_receipt');
+  const appr = useDocApproval('customer_receipt', isNew ? null : id);
+  const approvalLocked = appr.approved && !appr.isAdmin;
+  const refreshReceipt = () => {
+    void invalidateBooks();
+    qc.invalidateQueries({ queryKey: ['payments', company_id] });
+    qc.invalidateQueries({ queryKey: ['payment', id] });
+    qc.invalidateQueries({ queryKey: ['payment_allocations', id] });
+  };
+  const canEdit = (isNew || status === 'draft') && !appr.pending;
 
   // Delete-draft + Void confirmations — shared between the view template and
   // the editor form so a receipt can be removed/reversed from either place.
@@ -607,7 +635,7 @@ export default function PaymentEditorPage() {
             )}
             {/* Phase 18 — a confirmed receipt can be edited by reversing its
                 posting and reopening it as a draft (un-reconcile first). */}
-            {isConfirmed && !isReconciled && (
+            {isConfirmed && !isReconciled && !approvalLocked && (
               <Button variant="ghost" size="sm" onClick={() => setReopenModal(true)}>
                 <Pencil size={15} aria-hidden="true" /> {t('common.edit') || 'Edit'}
               </Button>
@@ -624,7 +652,7 @@ export default function PaymentEditorPage() {
                 <Printer size={15} aria-hidden="true" /> {t('print.print') || 'Print'}
               </Button>
             )}
-            {isConfirmed && !isReconciled && (
+            {isConfirmed && !isReconciled && !approvalLocked && (
               <Button variant="danger" size="sm" onClick={() => setVoidModal(true)}>
                 {t('payments.void_payment')}
               </Button>
@@ -637,6 +665,7 @@ export default function PaymentEditorPage() {
           </div>
         </div>
         {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+        <ApprovalPanel docType="customer_receipt" docId={existing.id} isDraft={existing.status === 'draft'} onChanged={refreshReceipt} />
         <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
@@ -686,11 +715,11 @@ export default function PaymentEditorPage() {
               </Button>
               {isPdc ? (
                 <Button size="sm" onClick={() => { setError(null); pdcMutation.mutate(); }} disabled={pdcMutation.isPending}>
-                  {pdcMutation.isPending ? '…' : (t('payments.confirm_as_pdc') || 'Confirm as PDC')}
+                  {pdcMutation.isPending ? '…' : gate.needs(parseFloat(header.amount) || 0) ? t('apprOcean.save_submit') : (t('payments.confirm_as_pdc') || 'Confirm as PDC')}
                 </Button>
               ) : (
                 <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
-                  {saveMutation.isPending ? t('common.saving') : t('common.save')}
+                  {saveMutation.isPending ? t('common.saving') : gate.needs(parseFloat(header.amount) || 0) ? t('apprOcean.save_submit') : t('common.save')}
                 </Button>
               )}
             </>
@@ -705,7 +734,7 @@ export default function PaymentEditorPage() {
               {t('payments.apply_advance')}
             </Button>
           )}
-          {isConfirmed && !isReconciled && (
+          {isConfirmed && !isReconciled && !approvalLocked && (
             <Button variant="danger" size="sm" onClick={() => setVoidModal(true)}>
               {t('payments.void_payment')}
             </Button>
@@ -714,6 +743,9 @@ export default function PaymentEditorPage() {
       </div>
 
       {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
+      {!isNew && id && <ApprovalPanel docType="customer_receipt" docId={id} isDraft={status === 'draft'} onChanged={refreshReceipt}
+        confirmArgs={isPdc ? { cheque_number: chequeNumber.trim(), bank_name: chequeBank.trim(), due_date: chequeDueDate } : undefined} />}
+      {gate.modal}
 
       {staleAllocations.length > 0 && (
         <p className="sb-alert sb-alert-warn" style={{ fontWeight: 400 }} role="status">

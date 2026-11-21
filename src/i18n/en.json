@@ -5008,6 +5008,14 @@
     "in_payroll_hint": "Turn off for people who aren't paid through payroll (for example the owner)."
   },
   "apprOcean": {
+    "grp_purchasing": "Purchasing",
+    "grp_sales": "Sales",
+    "dt_sales_quote": "Quotes",
+    "dt_invoice": "Invoices",
+    "dt_credit_note": "Credit notes",
+    "dt_customer_receipt": "Customer receipts",
+    "dt_customer_refund": "Customer advance refunds",
+    "dt_customer_credit_refund": "Customer credit refunds",
     "nav": "Approvals",
     "inbox_title": "Approvals",
     "inbox_sub": "Documents waiting for approval, and what happened to the ones you sent.",

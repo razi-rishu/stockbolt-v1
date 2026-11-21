@@ -16,7 +16,7 @@ import { useAuthStore } from '@/store/auth';
 import { moneyLabel } from '@/lib/currency-display';
 import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { useApprovalConfig } from '@/components/approvals/use-approval';
-import { APPROVAL_DOC_TYPES, approvalError, approvalKeys, docTypeLabel, problemLabel } from '@/components/approvals/approval-lists';
+import { APPROVAL_DOC_TYPES, SALES_APPROVAL_TYPES, approvalError, approvalKeys, docTypeLabel, problemLabel } from '@/components/approvals/approval-lists';
 import { personLabel } from '@/modules/settings/team/team-lists';
 
 function RuleRow({ type, rule }: { type: ApprovalDocType; rule: ApprovalRule | undefined }) {
@@ -86,14 +86,20 @@ export default function ApprovalsSettingsPage() {
             <p className="sb-team-muted">{t('apprOcean.rules_intro')}</p>
           </div>
         </div>
-        {cfg.data && (
-          <ul className="sb-appr-rules">
-            {APPROVAL_DOC_TYPES.map((type) => {
-              const r = rules.find((x) => x.doc_type === type);
-              return <RuleRow key={type} type={type} rule={r} />;
-            })}
-          </ul>
-        )}
+        {cfg.data && ([
+          [t('apprOcean.grp_purchasing'), APPROVAL_DOC_TYPES.filter((d) => !SALES_APPROVAL_TYPES.includes(d))],
+          [t('apprOcean.grp_sales'), SALES_APPROVAL_TYPES],
+        ] as const).map(([group, types]) => (
+          <div key={group} className="sb-appr-group">
+            <h3 className="sb-gc-label">{group}</h3>
+            <ul className="sb-appr-rules">
+              {types.map((type) => {
+                const r = rules.find((x) => x.doc_type === type);
+                return <RuleRow key={type} type={type} rule={r} />;
+              })}
+            </ul>
+          </div>
+        ))}
         <p className="sb-team-muted">{t('apprOcean.rules_note')}</p>
       </section>
 

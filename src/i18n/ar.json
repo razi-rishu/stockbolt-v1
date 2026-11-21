@@ -5008,6 +5008,14 @@
     "in_payroll_hint": "أوقفه لمن لا يُدفع له عبر الرواتب (مثل المالك)."
   },
   "apprOcean": {
+    "grp_purchasing": "المشتريات",
+    "grp_sales": "المبيعات",
+    "dt_sales_quote": "عروض الأسعار",
+    "dt_invoice": "الفواتير",
+    "dt_credit_note": "إشعارات الدائن",
+    "dt_customer_receipt": "مقبوضات العملاء",
+    "dt_customer_refund": "استرداد دفعات مقدمة للعملاء",
+    "dt_customer_credit_refund": "استرداد أرصدة دائنة للعملاء",
     "nav": "الموافقات",
     "inbox_title": "الموافقات",
     "inbox_sub": "المستندات التي تنتظر الموافقة، وما حدث لما أرسلته.",

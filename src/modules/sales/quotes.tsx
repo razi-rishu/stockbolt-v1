@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useApprovalGate } from '@/components/approvals/use-approval';
 import { ccy as ccyLabel } from '@/lib/currency-display';
 import { formatDate } from '@/lib/locale';
 import { useTranslation } from 'react-i18next';
@@ -50,6 +51,7 @@ export default function QuotesPage() {
   });
   const customerMap = Object.fromEntries(customers.map(c => [c.id, c.name]));
 
+  const quoteGate = useApprovalGate('sales_quote');
   const convertMutation = useMutation({
     mutationFn: (quote_id: string) => getAdapter().salesQuotes.convertToInvoice(quote_id),
     onSuccess: (inv) => {
@@ -68,7 +70,9 @@ export default function QuotesPage() {
     { key: 'status', header: '', render: (q) => <StatusBadge status={q.status} /> },
     {
       key: 'convert', header: '', align: 'end',
-      render: (q) => ['draft', 'sent', 'accepted'].includes(q.status) && (
+      // phase146 — a quote that needs approval is invoiced only once approved.
+      render: (q) => ['draft', 'sent', 'accepted'].includes(q.status)
+        && !(q.status === 'draft' && quoteGate.needs(Number(q.total_amount))) && (
         <button type="button" className="sb-row-link text-brand-600" disabled={convertMutation.isPending}
           onClick={(e) => { e.stopPropagation(); convertMutation.mutate(q.id); }}>
           <ArrowRightLeft size={15} aria-hidden="true" />{t('sales.convert_to_invoice')}

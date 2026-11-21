@@ -2535,3 +2535,5 @@
 .sb-ocean .sb-team-tag.is-approved { background: var(--sb-success-bg); color: var(--sb-success); }
 .sb-ocean .sb-team-tag.is-rejected { background: var(--sb-danger-bg); color: var(--sb-danger); }
 .sb-ocean.sb-appr-pick .sb-team-search { flex: none; }
+.sb-ocean .sb-appr-group { display: flex; flex-direction: column; gap: 8px; }
+.sb-ocean .sb-appr-group + .sb-appr-group { margin-top: 10px; }

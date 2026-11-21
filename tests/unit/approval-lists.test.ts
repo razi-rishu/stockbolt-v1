@@ -17,6 +17,12 @@ describe('approvals lists', () => {
     expect(docRoute('goods_receipt', 'x')).toBe('/purchasing/grns/x');
     expect(docRoute('vendor_refund', 'x')).toBe('/purchasing/payments/x');
     expect(docRoute('vendor_credit_refund', 'x')).toBe('/purchasing/payments/x');
+    // phase146 — sales
+    expect(docRoute('invoice', 'x')).toBe('/sales/invoices/x');
+    expect(docRoute('sales_quote', 'x')).toBe('/sales/quotes/x');
+    expect(docRoute('credit_note', 'x')).toBe('/sales/credit-notes/x');
+    expect(docRoute('customer_receipt', 'x')).toBe('/sales/payments/x');
+    expect(docRoute('customer_credit_refund', 'x')).toBe('/sales/payments/x');
   });
   it('explains why someone can\'t approve, and names every step', () => {
     expect(problemLabel(t, null)).toBe('');
