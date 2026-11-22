@@ -46,7 +46,7 @@ StockBolt is actively developed. We may add, change or remove features. If we re
 
 ## 6. Price
 
-Each new company receives its first 12 months of StockBolt free, with every module included. No payment card is needed to sign up. After the free period, StockBolt Professional is offered at the price shown on our website at that time (currently USD 21 per month, USD 105 for six months or USD 200 per year). We may change the offer and prices for the future; a change never applies to a period you have already paid for.
+Each new company receives its first 12 months of StockBolt free, with every module included. No payment card is needed to sign up. After the free period, StockBolt Professional is offered at the price shown on our website at that time (currently ₹1,999 per month, ₹9,999 for six months or ₹17,999 per year). Prices are charged in Indian rupees (INR); if your card is issued outside India, your card issuer may add currency conversion fees. We may change the offer and prices for the future; a change never applies to a period you have already paid for.
 
 - We will never charge you without your explicit authorisation. You will see the price, what is included, how often you are billed, renewal and cancellation terms before you agree to pay.
 - If free access is going to end or change for your company, we will tell you in advance and you will be able to export your records.

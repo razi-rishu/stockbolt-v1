@@ -3,8 +3,9 @@
  *
  * The free offer mirrors the live plan configuration (phase35): every new
  * company's subscription starts as a 365-day trial of the single
- * "StockBolt Professional" plan, then USD 21 / 105 / 200 per month / six
- * months / year. If those numbers change, change this copy with them.
+ * "StockBolt Professional" plan, then INR 1,999 / 9,999 / 17,999 per month /
+ * six months / year (subscription_plans, INR since 2026-11-22). If those
+ * numbers change, change this copy, the Refund policy and Terms §6 with them.
  */
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';

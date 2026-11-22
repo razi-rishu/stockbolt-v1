@@ -204,7 +204,7 @@ export default function BillingPage() {
 
   const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString() : '—');
   const money = (n?: number | null, ccy?: string | null) =>
-    n == null ? '—' : `${ccyLabel(ccy ?? 'USD')} ${Number(n).toFixed(2)}`;
+    n == null ? '—' : `${ccyLabel(ccy ?? 'USD')} ${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const canSubscribe = !!sub && !['active'].includes(sub.status) ||
     (!!sub && sub.status === 'active' && sub.provider !== 'paypal' && !sub.grandfathered);

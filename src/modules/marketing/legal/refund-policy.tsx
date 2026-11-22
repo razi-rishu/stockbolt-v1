@@ -31,10 +31,14 @@ export default function RefundPolicyPage() {
       <h2>Paid plans</h2>
       <p>After the free year, StockBolt Professional is available at:</p>
       <ul>
-        <li><strong>US$21</strong> per month,</li>
-        <li><strong>US$105</strong> every 6 months, or</li>
-        <li><strong>US$200</strong> per year.</li>
+        <li><strong>₹1,999</strong> per month,</li>
+        <li><strong>₹9,999</strong> every 6 months, or</li>
+        <li><strong>₹17,999</strong> per year.</li>
       </ul>
+      <p>
+        Prices are charged in Indian rupees (INR). If your card is issued outside India, your card issuer may
+        add currency conversion fees.
+      </p>
       <p>
         Payments are processed by <strong>Razorpay</strong>. Your card details are entered with Razorpay; we never
         see or store them. If you subscribe while your free year is still running, your card is saved now and
