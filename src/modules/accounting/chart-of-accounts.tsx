@@ -375,6 +375,10 @@ export default function ChartOfAccountsPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['coa', company_id] });
+      // phase152 — a rename carries over to bank / cash accounts that had
+      // the same name, so their cached lists must refresh too.
+      qc.invalidateQueries({ queryKey: ['bankAccounts', company_id] });
+      qc.invalidateQueries({ queryKey: ['bank_accounts', company_id] });
       setEditing(null);
       setOpen(false);
       reset();
