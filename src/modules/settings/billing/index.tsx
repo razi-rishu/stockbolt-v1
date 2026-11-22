@@ -23,6 +23,7 @@ import { Input } from '@/ui/input';
 import { OceanPage } from '@/components/ocean-list';
 import { CreditCard, Receipt, MapPin, CheckCircle2, Gift, X, Loader2 } from 'lucide-react';
 import type { BillingAddressRow } from '@/data/adapter';
+import { accessLabel, useCompanyAccess } from './access-banner';
 
 // English labels stay as the fallback; translated in the page by key.
 const STATUS_STYLE: Record<string, { label: string; tone: string }> = {
@@ -138,6 +139,7 @@ export default function BillingPage() {
     enabled: !!company_id,
   });
 
+  const { data: access } = useCompanyAccess();
   const { data: payments = [] } = useQuery({
     queryKey: ['subscription_payments', company_id],
     queryFn: () => getAdapter().billing.listPayments(company_id!),
@@ -171,7 +173,7 @@ export default function BillingPage() {
             handler: () => {
               if (res.first_charge_at) setCardSavedUntil(res.first_charge_at);
               else setSearchParams({ paid: 'approved' }, { replace: true });
-              qc.invalidateQueries({ queryKey: ['my_subscription', company_id] });
+              qc.invalidateQueries({ queryKey: ['my_subscription', company_id] }); qc.invalidateQueries({ queryKey: ['company_access'] });
               resolve();
             },
             modal: { ondismiss: () => { setSearchParams({ paid: 'cancelled' }, { replace: true }); resolve(); } },
@@ -198,7 +200,7 @@ export default function BillingPage() {
       // Cancel through the provider the subscription was made with.
       await callBillingApi(`/api/${sub!.provider}/cancel-subscription`, {});
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['my_subscription', company_id] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['my_subscription', company_id] }); qc.invalidateQueries({ queryKey: ['company_access'] }); },
     onError: (e) => setPayError(e instanceof Error ? e.message : String(e)),
   });
 
@@ -281,6 +283,8 @@ export default function BillingPage() {
               <Row label={t(`${B}method`)} value={providerLabel(sub.provider)} />
               <Row label={t(`${B}next_billing`)} value={<bdi dir="ltr">{fmtDate(sub.next_billing_date)}</bdi>} />
               <Row label={t(`${B}period_end`)} value={<bdi dir="ltr">{fmtDate(sub.current_period_end)}</bdi>} />
+              {access && <Row label={t('billingAccess.state_label')} value={accessLabel(access, t, fmtDate)} />}
+              {access?.ends_on && !access.exempt && <Row label={t('billingAccess.covered_until')} value={<bdi dir="ltr">{fmtDate(access.ends_on)}</bdi>} />}
             </div>
             {canCancel && (
               <div className="sb-form-actions" style={{ justifyContent: 'flex-start', marginTop: 14 }}>

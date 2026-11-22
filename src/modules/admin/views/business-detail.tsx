@@ -1,8 +1,9 @@
 /**
- * Control Center — one business (phase142). Read-only: owner, members (emails
- * masked except the owner's), usage, 12-month activity, business setup and
- * plan. No tenant data beyond counts is shown, and nothing here can change
- * the company.
+ * Control Center — one business (phase142). Owner, members (emails masked
+ * except the owner's), usage, 12-month activity, business setup and plan. No
+ * tenant data beyond counts is shown. The only changes possible here are the
+ * phase151 billing actions (extend free period, mark exempt) in
+ * BusinessAccessPanel — owner-only on the server and logged.
  */
 import { useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -16,6 +17,7 @@ import type { AdminBusinessDetail } from '@/data/adapter';
 import { fmtInt } from '../admin-charts';
 import { useAdminFormat } from '../admin-explorers';
 import { MetricInfo } from '../admin-ui';
+import { BusinessAccessPanel } from './business-access';
 
 function fmtBytes(b: number): string {
   if (b <= 0) return '0 B';
@@ -169,6 +171,8 @@ export function BusinessDetailView() {
           </dl>
         </section>
       </div>
+
+      {sub && <BusinessAccessPanel companyId={id} />}
     </div>
   );
 }

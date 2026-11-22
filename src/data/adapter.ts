@@ -3638,6 +3638,23 @@ export interface BillingAPI {
   listPayments(company_id: string): Promise<SubscriptionPaymentRow[]>;
   /** phase139 — the provider customers pay with ('razorpay' | 'paypal'), or null when none is switched on. */
   getActiveProvider(): Promise<string | null>;
+  /** phase151 — the caller's company access (full / grace / read_only). Null if unknown. */
+  getAccess(): Promise<CompanyAccess | null>;
+}
+
+/** phase151 — company_access(): derived from the subscription and today's date. */
+export interface CompanyAccess {
+  state: 'full' | 'grace' | 'read_only';
+  reason: 'no_subscription' | 'exempt' | 'active' | 'free_period' | 'paid_period' | 'ended' | 'payment_failed';
+  status: string | null;
+  ends_on: string | null;
+  read_only_from: string | null;
+  days_left: number | null;
+  auto_renews: boolean;
+  warn: boolean;
+  exempt: boolean;
+  /** Whether read-only is actually applied (billing_settings.enforcement). */
+  enforcement: boolean;
 }
 
 // ── Document numbering ──────────────────────────────────────────────────────
@@ -4142,4 +4159,8 @@ export interface AdminAPI {
   overviewRange(from: string, to: string): Promise<AdminOverviewRange>;
   businesses(q: AdminBusinessesQuery): Promise<AdminBusinessesPage>;
   businessDetail(id: string): Promise<AdminBusinessDetail | null>;
+  /** phase151 — a company's access state, and the owner's two billing actions. */
+  companyAccess(id: string): Promise<CompanyAccess | null>;
+  extendFreePeriod(id: string, until: string, reason?: string): Promise<CompanyAccess>;
+  setBillingExempt(id: string, exempt: boolean, reason?: string): Promise<CompanyAccess>;
 }

@@ -594,6 +594,9 @@ export function createSelfHostedAdapter(): DataAdapter {
       overviewRange: () => notImplemented('admin.overviewRange'),
       businesses: () => notImplemented('admin.businesses'),
       businessDetail: () => notImplemented('admin.businessDetail'),
+      companyAccess: async () => null,
+      extendFreePeriod: () => notImplemented('admin.extendFreePeriod'),
+      setBillingExempt: () => notImplemented('admin.setBillingExempt'),
     },
     // Phase 12.16: Salespeople
     salespeople: {
@@ -678,6 +681,8 @@ export function createSelfHostedAdapter(): DataAdapter {
       upsertAddress:   () => notImplemented('billing.upsertAddress'),
       listPayments:    () => notImplemented('billing.listPayments'),
       getActiveProvider: () => notImplemented('billing.getActiveProvider'),
+      // Self-hosted installs are never billed: always full access.
+      getAccess: async () => null,
     },
     payroll: {
       listRuns:         () => notImplemented('payroll.listRuns'),

@@ -7,6 +7,7 @@ import { sha256Hex } from '@/lib/einvoice';   // AC-4C — content hash for e-in
 // started understating silently once a company outgrew that.
 import { fetchAllPages } from '@/lib/paging';
 import { authRedirectOrigin, isNative } from '@/lib/platform';
+import { isCompanyReadOnly, readOnlyErrorMessage } from '@/lib/company-access';
 // R6a — the Returns Analysis fold lives in a pure module so it can be unit
 // tested without a database; the whole risk in a report is the arithmetic.
 import {
@@ -107,7 +108,9 @@ class SupabaseAuthError extends Error {
 }
 
 class SupabaseDataError extends Error {
-  constructor(message: string) { super(message); this.name = 'SupabaseDataError'; }
+  // phase151 — a save refused because the company is read-only reads as one
+  // clear sentence instead of a database error.
+  constructor(message: string) { super(readOnlyErrorMessage(message) ?? message); this.name = 'SupabaseDataError'; }
 }
 
 function assertNoError(error: { message: string } | null, context: string): void {
@@ -235,9 +238,50 @@ async function postRefund(
   return data as import('./adapter').RefundResult;
 }
 
+// phase151 — tables a read-only company may still write: team management,
+// billing details, the user's own profile and their setup draft. Everything
+// else is the company's books.
+const WRITABLE_WHEN_READ_ONLY = new Set([
+  'billing_addresses', 'profiles', 'company_invites', 'user_permission_overrides',
+  'roles', 'role_permissions', 'setup_drafts',
+]);
+
+/**
+ * phase151 — while the company is read-only, refuse direct table writes before
+ * they leave the browser. The server refuses them too, but a refused UPDATE or
+ * DELETE under row-level security matches zero rows WITHOUT an error, so the
+ * screen would say "Saved" when nothing was saved. RPCs are left alone: they
+ * raise on the server and the error is translated in SupabaseDataError.
+ */
+function guardReadOnlyWrites(c: SupabaseClient<Database>): SupabaseClient<Database> {
+  const WRITES = new Set(['insert', 'update', 'upsert', 'delete']);
+  return new Proxy(c, {
+    get(target, prop, receiver) {
+      if (prop === 'from') {
+        return (table: string) => {
+          const qb = (target.from as unknown as (t: string) => object)(table);
+          if (WRITABLE_WHEN_READ_ONLY.has(table)) return qb;
+          return new Proxy(qb, {
+            get(t, p, r) {
+              if (typeof p === 'string' && WRITES.has(p) && isCompanyReadOnly()) {
+                return () => { throw new SupabaseDataError('subscription_read_only'); };
+              }
+              const v = Reflect.get(t, p, r);
+              return typeof v === 'function' ? v.bind(t) : v;
+            },
+          });
+        };
+      }
+      const v = Reflect.get(target, prop, receiver);
+      return typeof v === 'function' ? v.bind(target) : v;
+    },
+  });
+}
+
 export function createSupabaseAdapter(
-  client: SupabaseClient<Database> = getSupabaseClient(),
+  rawClient: SupabaseClient<Database> = getSupabaseClient(),
 ): DataAdapter {
+  const client = guardReadOnlyWrites(rawClient);
   // Call an RPC that isn't in the generated DB types yet (Phase 22 invite/role
   // functions). Mirrors the cast used for save_expense_with_items.
   const rpcAny = (fn: string, args: Record<string, unknown>) =>
@@ -333,6 +377,12 @@ export function createSupabaseAdapter(
           .select('provider').eq('is_active', true).limit(1).maybeSingle();
         if (error) return null;
         return ((data as { provider?: string } | null)?.provider ?? null);
+      },
+      async getAccess() {
+        // phase151 — null (→ full access, no banner) until the migration exists.
+        const { data, error } = await rpcAny('my_company_access', {});
+        if (error) return null;
+        return (data ?? null) as import('./adapter').CompanyAccess | null;
       },
     },
     // ── Auth ───────────────────────────────────────────────────────────────
@@ -7097,6 +7147,22 @@ export function createSupabaseAdapter(
         const { data, error } = await rpcAny('admin_business_detail', { p_company: id });
         assertNoError(error as Error | null, 'admin.businessDetail');
         return (data ?? null) as import('./adapter').AdminBusinessDetail | null;
+      },
+      async companyAccess(id) {
+        const { data, error } = await rpcAny('platform_company_access', { p_company: id });
+        // Before phase151 is applied the panel simply hides.
+        if (error) return null;
+        return (data ?? null) as import('./adapter').CompanyAccess | null;
+      },
+      async extendFreePeriod(id, until, reason) {
+        const { data, error } = await rpcAny('platform_extend_free_period', { p_company: id, p_until: until, p_reason: reason ?? null });
+        assertNoError(error as Error | null, 'admin.extendFreePeriod');
+        return data as import('./adapter').CompanyAccess;
+      },
+      async setBillingExempt(id, exempt, reason) {
+        const { data, error } = await rpcAny('platform_set_billing_exempt', { p_company: id, p_exempt: exempt, p_reason: reason ?? null });
+        assertNoError(error as Error | null, 'admin.setBillingExempt');
+        return data as import('./adapter').CompanyAccess;
       },
     },
 

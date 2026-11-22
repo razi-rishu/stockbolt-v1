@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth';
 import { LegalGate } from '@/modules/legal/legal-gate';
+import { AccessBanner } from '@/modules/settings/billing/access-banner';
 
 /** Wraps routes that require authentication. Redirects to /login if no session. */
 export function RequireAuth() {
@@ -13,5 +14,6 @@ export function RequireAuth() {
 
   // phase135 — every signed-in screen (setup wizard included) passes the
   // Terms gate; it is inert until documents are published.
-  return <LegalGate><Outlet /></LegalGate>;
+  // phase151 — the subscription banner (ending soon / grace / read-only).
+  return <LegalGate><AccessBanner /><Outlet /></LegalGate>;
 }
