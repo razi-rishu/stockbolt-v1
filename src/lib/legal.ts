@@ -6,8 +6,8 @@
 export const OPERATOR_NAME = 'Linqora Technologies';
 export const SUPPORT_EMAIL = 'linqora@stockbolt.online';
 /** Public Contact page (/contact). Empty = not shown. Set by the founder. */
-export const CONTACT_PHONE: string = '';
-export const CONTACT_CITY: string = '';
+export const CONTACT_PHONE: string = '+91 75610 79636';
+export const CONTACT_CITY: string = 'Kerala, India';
 /**
  * phase135 — false while docs/legal/*.md are drafts (founder details and legal
  * review pending). While false, /privacy keeps the current page and /terms
