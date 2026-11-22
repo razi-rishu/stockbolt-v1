@@ -205,6 +205,13 @@ export default function BillingPage() {
   });
 
   const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString() : '—');
+  // The saving against paying monthly, worked out from the live prices so the
+  // badge can never drift from them (it was hard-coded 17% / 21%).
+  const saveNote = (price: number, months: number) => {
+    const full = Number(sub?.plan?.monthly_price ?? 0) * months;
+    const pct = full > 0 && price > 0 ? Math.round((1 - Number(price) / full) * 100) : 0;
+    return pct > 0 ? t(`${B}save_pct`, { pct }) : null;
+  };
   const money = (n?: number | null, ccy?: string | null) =>
     n == null ? '—' : `${ccyLabel(ccy ?? 'USD')} ${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -314,8 +321,8 @@ export default function BillingPage() {
               <div className="sb-bill-plans">
                 {([
                   { cycle: 'monthly' as const,     price: sub.plan.monthly_price,            note: null },
-                  { cycle: 'half_yearly' as const, price: sub.plan.half_yearly_price ?? 0,   note: t(`${B}save_17`) },
-                  { cycle: 'yearly' as const,      price: sub.plan.yearly_price,             note: t(`${B}save_21`) },
+                  { cycle: 'half_yearly' as const, price: sub.plan.half_yearly_price ?? 0,   note: saveNote(sub.plan.half_yearly_price ?? 0, 6) },
+                  { cycle: 'yearly' as const,      price: sub.plan.yearly_price,             note: saveNote(sub.plan.yearly_price, 12) },
                 ]).filter(p => p.price > 0).map((p) => {
                   const current = isProviderSub && sub.status === 'active' && sub.billing_cycle === p.cycle;
                   const busy = subscribe.isPending && subscribe.variables === p.cycle;
