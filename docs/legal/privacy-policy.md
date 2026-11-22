@@ -1,13 +1,8 @@
 # StockBolt Privacy Policy
 
-> **DRAFT — not for publication.** Updated with the founder's details on 2026-11-17.
-> Before publication: the `[LAWYER: …]` items need legal advice, the remaining
-> `[FOUNDER: …]` items need an answer, and a qualified lawyer must review the whole text.
-> Nothing here is legal advice.
-
 **Version:** 1.0
-**Effective date:** [FOUNDER: date — at least 30 days after publication]
-**Operator and data controller:** Linqora Technologies, the business name under which StockBolt's founder operates it from India. Registration of the business is in progress; until it is complete, StockBolt is run by the founder as an individual. [LAWYER: confirm how the operator must be identified under Indian law, including whether the founder's name must appear.]
+**Effective date:** 22 November 2026
+**Operator and data controller:** Linqora Technologies, the business name under which StockBolt's founder operates it from India. Registration of the business is in progress; until it is complete, StockBolt is run by the founder as an individual.
 **Privacy contact:** linqora@stockbolt.online
 **Website:** https://www.stockbolt.online
 
@@ -51,7 +46,9 @@ These records often contain personal information about your customers, suppliers
 - To prevent abuse and keep the service running.
 - To meet legal obligations.
 
-[LAWYER: state the legal basis for each purpose under the laws that apply, including India's Digital Personal Data Protection Act.]
+We use your account information because you asked us to provide StockBolt to you and gave it to us for that purpose, to meet our legal obligations, and with your consent where the law requires it (including under India's Digital Personal Data Protection Act, 2023). You can withdraw a consent at any time by writing to us; this does not affect what was done before, and some features may stop working without the information they need.
+
+For information about other people that your business enters (for example its customers, suppliers or employees), your business decides what is entered and why, and is responsible for having a lawful basis for it under the laws that apply to it. We process that information only to provide StockBolt to your business.
 
 We do not use your information for advertising, we do not use third-party analytics or tracking, and we do not sell your information.
 
@@ -67,12 +64,11 @@ We use these providers only to run StockBolt:
 
 | Provider | What for | Data involved |
 |---|---|---|
-| **Supabase** | Database, sign-in and file storage | All account and business data, files |
+| **Supabase** | Database, sign-in, file storage, and sending sign-in, password-reset and invitation emails | All account and business data, files; email address |
 | **Vercel** | Hosting the website and app | Requests to the site, server logs |
 | **Cloudflare** | Delivering the website securely (network and domain services) and receiving email sent to our addresses | Requests to the site, including IP address; emails you send us |
 | **Google** | “Sign in with Google” (optional) | Name, email |
 | **Google Play** | Installing and updating the Android app | Handled by Google under its own terms |
-| [FOUNDER: email provider — Supabase's built-in email, or your own] | Sending sign-in, password-reset and invitation emails | Email address |
 | **Razorpay** | Processing subscription payments | Payment details are entered with Razorpay; we do not receive or store card or bank login details. We receive the payment status, amount and date |
 
 The website and app use their own copies of their fonts; your browser does not contact a font service when a page loads.
@@ -83,7 +79,9 @@ The website and app use their own copies of their fonts; your browser does not c
 
 ## 6. Where your data is stored
 
-Your account and business data, and your files, are stored by Supabase in Asia. The website is delivered through Vercel and Cloudflare, whose networks operate in many countries; [FOUNDER: Vercel function region]. This may be outside your own country. We may move our hosting to another region in future; if we do, we will update this policy. [LAWYER: cross-border transfer wording and safeguards required by the applicable laws.]
+Your account and business data, and your files, are stored by Supabase in Asia. The website is delivered through Vercel and Cloudflare, whose networks operate in many countries, and the server functions that handle subscriptions and payments run in the United States. Card payments are handled by Razorpay in India.
+
+This may be outside your own country. We transfer information to these providers only to run StockBolt, only as the law that applies allows, and only to providers that protect it under their own security and privacy commitments. We may move our hosting to another region in future; if we do, we will update this policy.
 
 ## 7. Security
 
@@ -101,7 +99,8 @@ Access to customer data by the StockBolt operator or support team is limited to 
 
 - We keep account and business records, support requests and records of your agreement while the account is active.
 - **We do not currently keep separate backups of the database.** Records that are deleted — by you, or through an error or a failure — may not be recoverable. Download a copy of your company's records regularly (see section 9).
-- When a company is deleted at the owner's request, we delete all of its records, its users' accounts, its uploaded files, its support requests and the records of its users' agreement to our Terms and this policy, within 30 days of confirming the request. We do not keep a copy. [LAWYER: confirm that no law requires us to keep any of this for longer.]
+- When a company is deleted at the owner's request, we delete all of its records, its users' accounts, its uploaded files, its support requests and the records of its users' agreement to our Terms and this policy, within 30 days of confirming the request. We do not keep a copy, unless a law requires us to keep a specific record for longer; we then keep only that record, only for as long as required.
+- Razorpay keeps its own records of payments made through it, under its own policies and the law that applies to it.
 - Server logs are kept by our providers for their standard periods.
 
 ## 9. Your choices and rights
@@ -113,7 +112,7 @@ Access to customer data by the StockBolt operator or support team is limited to 
   - Closing the account of a company owner deletes the company and all of its records, as described in section 8.
   - Closing a team member's account removes their login and their name and email address. Records they created belong to the company and stay with it, marked as created by a deleted user.
 - **Records about you held by a business.** If a business using StockBolt holds information about you (for example as its customer or employee), contact that business first; we will help where we can.
-- **Complaints.** [LAWYER: grievance officer or contact and authority required by Indian law and any other applicable law.]
+- **Questions and complaints.** Our grievance contact is the founder of StockBolt, Linqora Technologies, at linqora@stockbolt.online. We will respond within 30 days. If you are in India and are not satisfied with our response, you may complain to the Data Protection Board of India. If you are elsewhere, you may contact the data protection authority of your country.
 
 ## 10. Children
 

@@ -15,7 +15,7 @@ export const CONTACT_CITY: string = 'Kerala, India';
  * if it were in force. Set to true in the same release that publishes the
  * documents in public.legal_documents.
  */
-export const LEGAL_DOCS_PUBLISHED = false;
+export const LEGAL_DOCS_PUBLISHED = true;
 
 /** Shown as "Last updated" on the legal pages; bump when their text changes. */
 export const LEGAL_UPDATED = '22 November 2026';

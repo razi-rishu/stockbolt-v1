@@ -1,13 +1,7 @@
 # StockBolt Terms of Service
 
-> **DRAFT — not for publication.** Updated with the founder's details on 2026-11-17.
-> Before publication: the `[LAWYER: …]` items need legal advice, the effective
-> date must be set, and
-> a qualified lawyer must review the whole text before users are asked to accept
-> it. Nothing here is legal advice.
-
 **Version:** 1.0
-**Effective date:** [FOUNDER: date — at least 30 days after publication]
+**Effective date:** 22 November 2026
 **Website:** https://www.stockbolt.online
 **Operator:** Linqora Technologies (business name; registration in progress)
 **Contact:** linqora@stockbolt.online
@@ -18,7 +12,7 @@
 
 StockBolt is an accounting and business management service for startups, entrepreneurs and small businesses, available on the website above and as an Android app. It is developed and operated from India by its founder under the business name Linqora Technologies (“we”, “us”).
 
-Registration of Linqora Technologies is in progress and not yet complete. Until it is, StockBolt is run by the founder as an individual and is not incorporated or registered as a company in India, the United Arab Emirates or any other country. This describes how StockBolt is run today; it does not mean that laws, registration requirements or other legal obligations do not apply to us. [LAWYER: confirm how the operator must be identified until registration is complete.]
+Registration of Linqora Technologies is in progress and not yet complete. Until it is, StockBolt is run by the founder as an individual and is not incorporated or registered as a company in India, the United Arab Emirates or any other country. This describes how StockBolt is run today; it does not mean that laws, registration requirements or other legal obligations do not apply to us. If you need our full details for a legal notice, write to the contact address below.
 
 When StockBolt is operated by a registered business or company, we will tell you who the operator is before the change takes effect and, where the law requires, ask for your agreement.
 
@@ -108,9 +102,11 @@ We may close accounts that seriously or repeatedly breach these Terms, with noti
 
 ## 13. Liability
 
-[FOUNDER / LAWYER: liability wording depends on the governing law and on whether users are consumers or businesses. The text below is a placeholder for legal review, not final wording.]
+To the extent the law allows, we are not liable for indirect or consequential loss, for loss caused by inaccurate information entered by users or by figures that were not checked as described in section 4, or for loss of records that you did not download as described in section 9.
 
-To the extent the law allows, we are not liable for indirect or consequential loss, for loss caused by inaccurate information entered by users or by figures that were not checked as described in section 4, or for loss of records that you did not download as described in section 9. Nothing in these Terms limits liability that cannot be limited by law, or removes rights you have under mandatory law.
+To the extent the law allows, our total liability to you for all claims connected with StockBolt is limited to the amount you paid us for StockBolt in the 12 months before the event that gave rise to the claim.
+
+Nothing in these Terms limits liability that cannot be limited by law, or removes rights you have under mandatory law.
 
 ## 14. Changes to these Terms
 
@@ -122,6 +118,8 @@ Agreeing to these Terms is separate from any optional consent (for example to ma
 
 ## 15. Governing law and contact
 
-These Terms are governed by the laws of India. [LAWYER: confirm, and name the courts with jurisdiction.] Mandatory rights you have under the law of your own country are not affected.
+These Terms are governed by the laws of India, and the courts in Kerala, India, have jurisdiction over disputes about them. This does not take away mandatory rights you have under the law of your own country, including any right to bring a claim in the courts where you live.
+
+Before going to court, please write to us first so we can try to resolve the matter.
 
 Contact: Linqora Technologies — linqora@stockbolt.online
