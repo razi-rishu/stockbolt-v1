@@ -3,8 +3,8 @@
  * Auth: Supabase access token. Cancels the caller's PayPal subscription.
  * Our status flips to 'cancelled' when PayPal's CANCELLED webhook confirms.
  */
-import { paypalFetch } from '../_lib/paypal';
-import { getAdminClient, getCaller } from '../_lib/supa';
+import { paypalFetch } from '../_lib/paypal.js';
+import { getAdminClient, getCaller } from '../_lib/supa.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default async function handler(req: any, res: any) {

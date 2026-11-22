@@ -12,8 +12,8 @@
  * the day that period ends (public_config.charge_after_trial, default on):
  * Razorpay authorises the card now and charges on that date.
  */
-import { activeProvider, razorpayFetch, razorpayKeyId } from '../_lib/razorpay';
-import { getAdminClient, getCaller } from '../_lib/supa';
+import { activeProvider, razorpayFetch, razorpayKeyId } from '../_lib/razorpay.js';
+import { getAdminClient, getCaller } from '../_lib/supa.js';
 
 type Cycle = 'monthly' | 'half_yearly' | 'yearly';
 

@@ -17,8 +17,8 @@
  *   subscription.cancelled      cancelled          subscription.completed expired
  *   refund.processed            refund recorded against the original payment
  */
-import { dayOf, readRawBody, verifyRazorpayWebhook } from '../_lib/razorpay';
-import { getAdminClient } from '../_lib/supa';
+import { dayOf, readRawBody, verifyRazorpayWebhook } from '../_lib/razorpay.js';
+import { getAdminClient } from '../_lib/supa.js';
 
 // Razorpay signs the exact bytes it sent: Vercel must not parse the body.
 export const config = { api: { bodyParser: false } };

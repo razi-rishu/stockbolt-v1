@@ -7,8 +7,8 @@
  *   3. processed with the service role (clients can never write billing state).
  * Unhandled event types are logged + acknowledged (200) so PayPal stops retrying.
  */
-import { verifyPayPalWebhook } from '../_lib/paypal';
-import { getAdminClient } from '../_lib/supa';
+import { verifyPayPalWebhook } from '../_lib/paypal.js';
+import { getAdminClient } from '../_lib/supa.js';
 
 interface PayPalEvent {
   id: string;

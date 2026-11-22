@@ -8,8 +8,8 @@
  * 'cancelled' when Razorpay's subscription.cancelled webhook confirms it.
  * Works even after the active provider was switched away from Razorpay.
  */
-import { razorpayFetch } from '../_lib/razorpay';
-import { getAdminClient, getCaller } from '../_lib/supa';
+import { razorpayFetch } from '../_lib/razorpay.js';
+import { getAdminClient, getCaller } from '../_lib/supa.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default async function handler(req: any, res: any) {

@@ -8,8 +8,8 @@
  * subscription only becomes 'active' when the BILLING.SUBSCRIPTION.ACTIVATED
  * webhook confirms it — this endpoint never grants access by itself.
  */
-import { paypalFetch } from '../_lib/paypal';
-import { getAdminClient, getCaller } from '../_lib/supa';
+import { paypalFetch } from '../_lib/paypal.js';
+import { getAdminClient, getCaller } from '../_lib/supa.js';
 
 type Cycle = 'monthly' | 'half_yearly' | 'yearly';
 
