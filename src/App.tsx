@@ -25,6 +25,8 @@ import { ChevronLeft, SearchX } from 'lucide-react';
 const LandingPage       = lazy(() => import('@/modules/marketing/landing-page'));
 const PrivacyPolicyPage = lazy(() => import('@/modules/marketing/legal/privacy-policy'));
 const DeleteAccountPage = lazy(() => import('@/modules/marketing/legal/delete-account'));
+const RefundPolicyPage = lazy(() => import('@/modules/marketing/legal/refund-policy'));
+const ContactPage = lazy(() => import('@/modules/marketing/legal/contact'));
 const TermsOfServicePage = lazy(() => import('@/modules/marketing/legal/terms-of-service'));
 const AgreementPage      = lazy(() => import('@/modules/legal/agreement-screen'));
 
@@ -555,6 +557,9 @@ function AppRoutes() {
         <Route path="/terms" element={<TermsOfServicePage />} />
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
         <Route path="/delete-account" element={<DeleteAccountPage />} />
+        {/* Razorpay checks these before activating payments. */}
+        <Route path="/refund-policy" element={<RefundPolicyPage />} />
+        <Route path="/contact" element={<ContactPage />} />
         {/* Phase 14.12 — catch-all now shows a visible 404 instead of
              silently bouncing to /dashboard. The previous redirect
              masked routing bugs ("refresh always goes to dashboard"

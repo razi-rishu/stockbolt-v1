@@ -94,9 +94,11 @@ export function LandingFooter() {
     { title: t('landing.footer.legal'), links: [
       { label: t('landing.footer.terms'), to: '/terms' },
       { label: t('landing.footer.privacy'), to: '/privacy' },
+      { label: t('landing.footer.refund'), to: '/refund-policy' },
       { label: t('landing.footer.delete_account'), to: '/delete-account' },
     ] },
     { title: t('landing.footer.help'), links: [
+      { label: t('landing.footer.contact'), to: '/contact' },
       { label: t('landing.footer.support'), href: `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('StockBolt support')}` },
     ] },
   ];

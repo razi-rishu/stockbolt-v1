@@ -73,7 +73,7 @@ We use these providers only to run StockBolt:
 | **Google** | “Sign in with Google” (optional) | Name, email |
 | **Google Play** | Installing and updating the Android app | Handled by Google under its own terms |
 | [FOUNDER: email provider — Supabase's built-in email, or your own] | Sending sign-in, password-reset and invitation emails | Email address |
-| **PayPal** (when paid plans start) | Processing payments | Payment details are entered with PayPal; we do not receive or store card or bank login details |
+| **Razorpay** | Processing subscription payments | Payment details are entered with Razorpay; we do not receive or store card or bank login details. We receive the payment status, amount and date |
 
 The website and app use their own copies of their fonts; your browser does not contact a font service when a page loads.
 

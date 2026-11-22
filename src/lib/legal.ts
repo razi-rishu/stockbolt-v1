@@ -5,6 +5,9 @@
  */
 export const OPERATOR_NAME = 'Linqora Technologies';
 export const SUPPORT_EMAIL = 'linqora@stockbolt.online';
+/** Public Contact page (/contact). Empty = not shown. Set by the founder. */
+export const CONTACT_PHONE: string = '';
+export const CONTACT_CITY: string = '';
 /**
  * phase135 — false while docs/legal/*.md are drafts (founder details and legal
  * review pending). While false, /privacy keeps the current page and /terms
@@ -15,7 +18,7 @@ export const SUPPORT_EMAIL = 'linqora@stockbolt.online';
 export const LEGAL_DOCS_PUBLISHED = false;
 
 /** Shown as "Last updated" on the legal pages; bump when their text changes. */
-export const LEGAL_UPDATED = '17 November 2026';
+export const LEGAL_UPDATED = '22 November 2026';
 
 /** Prefilled email for an account-deletion request. */
 export function deletionRequestMailto(accountEmail?: string | null): string {

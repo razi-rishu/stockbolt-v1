@@ -56,7 +56,11 @@ Each new company receives its first 12 months of StockBolt free, with every modu
 
 - We will never charge you without your explicit authorisation. You will see the price, what is included, how often you are billed, renewal and cancellation terms before you agree to pay.
 - If free access is going to end or change for your company, we will tell you in advance and you will be able to export your records.
-- Payments, when available, will be processed by a payment provider (currently planned: PayPal). We do not receive or store your card or bank login details.
+- Payments are processed by Razorpay. We do not receive or store your card or bank login details. If you subscribe during your free year, your card is authorised then and first charged when the free year ends.
+- A paid plan renews automatically at the end of each billing period until you cancel it.
+- **Cancelling.** You can cancel at any time in Settings → Billing & Subscription, or by emailing us. A cancelled paid plan is not renewed; your company keeps access until the end of the period already paid for. Cancelling during the free year means your card is never charged.
+- **Refunds.** We do not refund the unused part of a billing period. We refund any payment charged in error (for example a duplicate charge, or a charge after you cancelled), and any refund the law that applies to you requires. Our Refund & Cancellation Policy (stockbolt.online/refund-policy) gives the details.
+- **Failed payments.** If a renewal payment fails, the payment provider retries it; if it is still unpaid after 7 days, your subscription may be suspended until it is paid.
 
 ## 7. Your account
 

@@ -48,7 +48,7 @@ export default function PrivacyPolicyPage() {
         <li><strong>Vercel</strong> — website hosting.</li>
         <li><strong>Cloudflare</strong> — delivering the website securely and receiving email sent to our addresses.</li>
         <li><strong>Google</strong> — “Sign in with Google”, if you choose it.</li>
-        <li><strong>PayPal</strong> — subscription payments, when paid plans start. Card and bank details are entered with PayPal; we never see or store them.</li>
+        <li><strong>Razorpay</strong> — subscription payments. Card details are entered with Razorpay; we never see or store them. We receive the payment status, amount and date.</li>
       </ul>
       <p>Documents you choose to share (for example an invoice PDF sent through WhatsApp or email) go to the app and the people you pick.</p>
 
