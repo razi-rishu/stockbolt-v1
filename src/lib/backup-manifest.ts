@@ -129,6 +129,7 @@ export const BACKUP_TABLES: readonly string[] = [
   'branches',
   'profile_branches',
   'company_configurations',
+  'inventory_settings',
   'fixed_asset_purchases',
 
   // ── Help & Support / agreements (phase133, phase135) ──────────────────

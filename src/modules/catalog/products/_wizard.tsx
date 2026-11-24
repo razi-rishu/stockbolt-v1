@@ -35,6 +35,8 @@ import '@/styles/stockbolt-ocean-teal.css';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
+import { useInventorySettings } from '@/hooks/use-inventory-settings';
+import type { InventorySettings } from '@/lib/inventory-settings';
 import { DuplicateWarning } from '@/ui/duplicate-warning';
 import { findProductDuplicates } from '@/lib/duplicate-check';
 import { useCompanyCurrency, useCompanyCountry } from '@/hooks/use-company-currency';
@@ -142,6 +144,7 @@ export function ProductWizard() {
   const { company_id } = useAuthStore();
   const companyCurrency = useCompanyCurrency();   // Issue 1 — localize money to tenant currency
 
+  const inv = useInventorySettings();
   const [step, setStep]           = useState(1);
   const [completed, setCompleted] = useState<Set<number>>(new Set());
   const [form, setForm]           = useState<WizardForm>(initialForm);
@@ -179,7 +182,7 @@ export function ProductWizard() {
     if (s === 1) {
       if (!form.name.trim()) return t('pwOcean.err_name');
       if (!form.sku.trim())  return t('pwOcean.err_sku');
-      if (!form.brand_id)    return t('pwOcean.err_brand');
+      if (inv.brands_enabled && !form.brand_id) return t('pwOcean.err_brand');
     }
     if (s === 2) {
       if (!form.selling_price) return t('pwOcean.err_price');
@@ -417,6 +420,7 @@ export function ProductWizard() {
               </div>
             )}
             {step === 1 && <Step1
+              inv={inv}
               form={form} set={set}
               brands={brands} categories={categories} units={units}
               openBrandQC={() => setOpenQcFor('brand')}
@@ -424,12 +428,13 @@ export function ProductWizard() {
               openCategoryQC={() => setOpenQcFor('category')}
             />}
             {step === 2 && <Step2 form={form} set={set} coa={coa} />}
-            {step === 3 && <Step3 form={form} set={set} />}
+            {step === 3 && <Step3 form={form} set={set} inv={inv} />}
             {step === 4 && <Step4
               form={form} set={set} suppliers={suppliers}
               openSupplierQC={() => setOpenQcFor('supplier')}
             />}
             {step === 5 && <Step5
+              inv={inv}
               form={form} set={set} warehouses={warehouses}
               openWarehouseQC={() => setOpenQcFor('warehouse')}
             />}
@@ -458,11 +463,12 @@ export function ProductWizard() {
 
 // ── Step 1 ──────────────────────────────────────────────────────────────
 function Step1({
-  form, set, brands, categories, units,
+  form, set, inv, brands, categories, units,
   openBrandQC, openUnitQC, openCategoryQC,
 }: {
   form: WizardForm;
   set: <K extends keyof WizardForm>(k: K, v: WizardForm[K]) => void;
+  inv: InventorySettings;
   brands: BrandRow[];
   categories: CategoryRow[];
   units: UnitRow[];
@@ -522,7 +528,7 @@ function Step1({
               <QcBtn onClick={openUnitQC} label={t('pwOcean.add_unit')} />
             </div>
           </Field>
-          <Field label={t('products.brand')} required>
+          {inv.brands_enabled && <Field label={t('products.brand')} required>
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <Select value={form.brand_id} onChange={(e) => set('brand_id', e.target.value)}>
@@ -532,11 +538,11 @@ function Step1({
               </div>
               <QcBtn onClick={openBrandQC} label={t('pwOcean.add_brand')} />
             </div>
-          </Field>
+          </Field>}
         </Grid>
 
         <Grid cols={2}>
-          <Field label={t('products.category')}>
+          {inv.brands_enabled && <Field label={t('products.category')}>
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <Select value={form.category_id} onChange={(e) => set('category_id', e.target.value)}>
@@ -546,7 +552,7 @@ function Step1({
               </div>
               <QcBtn onClick={openCategoryQC} label={t('pwOcean.add_category')} />
             </div>
-          </Field>
+          </Field>}
           <Field label={t('pwOcean.oe')}>
             <Input value={form.oe_number} onChange={(e) => set('oe_number', e.target.value)} placeholder={t('pwOcean.oe_ph')} />
           </Field>
@@ -672,27 +678,21 @@ function Step2({
 
 // ── Step 3 — Identifiers ────────────────────────────────────────────────
 function Step3({
-  form, set,
+  form, set, inv,
 }: {
   form: WizardForm;
   set: <K extends keyof WizardForm>(k: K, v: WizardForm[K]) => void;
+  inv: InventorySettings;
 }) {
   const { t } = useTranslation();
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <Panel icon={<Barcode size={17} />} title={t('pwOcean.sec_barcode')}>
+      {/* phase153 — the serial-number choice is hidden until selling and
+          buying check it; nothing enforces it today. */}
+      {inv.barcodes_enabled && <Panel icon={<Barcode size={17} />} title={t('pwOcean.sec_barcode')}>
         <Grid cols={2}>
           <Field label={t('pwOcean.barcode')}>
             <Input value={form.barcode} onChange={(e) => set('barcode', e.target.value)} placeholder={t('pwOcean.barcode_ph')} />
-          </Field>
-          <Field label={t('pwOcean.serial')}>
-            <Select
-              value={form.requires_serial ? 'serial' : 'none'}
-              onChange={(e) => set('requires_serial', e.target.value === 'serial')}
-            >
-              <option value="none">{t('common.none')}</option>
-              <option value="serial">{t('pwOcean.serial_number')}</option>
-            </Select>
           </Field>
         </Grid>
         {form.barcode && (
@@ -705,7 +705,7 @@ function Step3({
             <span className="sb-pill sb-pill-good" style={{ marginTop: 0, marginInlineStart: 'auto' }}>{t('pwOcean.valid')}</span>
           </div>
         )}
-      </Panel>
+      </Panel>}
 
       <Panel icon={<Landmark size={17} />} title={t('pwOcean.sec_customs')}>
         <Grid cols={2}>
@@ -787,10 +787,11 @@ function Step4({
 
 // ── Step 5 — Stock & location ───────────────────────────────────────────
 function Step5({
-  form, set, warehouses, openWarehouseQC,
+  form, set, inv, warehouses, openWarehouseQC,
 }: {
   form: WizardForm;
   set: <K extends keyof WizardForm>(k: K, v: WizardForm[K]) => void;
+  inv: InventorySettings;
   warehouses: WarehouseRow[];
   openWarehouseQC: () => void;
 }) {
@@ -804,7 +805,7 @@ function Step5({
         <span>{t('pwOcean.tracking_warn')}</span>
       </p>
 
-      <Panel icon={<Package size={17} />} title={t('pwOcean.sec_thresholds')}>
+      {inv.reorder_enabled && <Panel icon={<Package size={17} />} title={t('pwOcean.sec_thresholds')}>
         <Grid cols={2}>
           <Field label={t('pwOcean.reorder')}>
             <Input type="number" min="0" step="0.001" value={form.min_stock_level} onChange={(e) => set('min_stock_level', e.target.value)} placeholder="0" />
@@ -813,7 +814,7 @@ function Step5({
             <Input type="number" min="0" step="0.001" value={form.max_stock_level} onChange={(e) => set('max_stock_level', e.target.value)} placeholder="—" />
           </Field>
         </Grid>
-      </Panel>
+      </Panel>}
 
       {!isService && (
         <Panel icon={<PackagePlus size={17} />} title={t('pwOcean.sec_opening')}>
@@ -840,14 +841,14 @@ function Step5({
               </div>
             </Field>
           </Grid>
-          <Grid cols={2}>
+          {inv.shelf_enabled && <Grid cols={2}>
             <Field label={t('pwOcean.aisle')}>
               <Input value={form.default_aisle} onChange={(e) => set('default_aisle', e.target.value)} placeholder={t('pwOcean.eg', { v: 'A3-R2' })} />
             </Field>
             <Field label={t('pwOcean.bin')}>
               <Input value={form.default_bin} onChange={(e) => set('default_bin', e.target.value)} placeholder={t('pwOcean.bin_ph')} />
             </Field>
-          </Grid>
+          </Grid>}
         </Panel>
       )}
 

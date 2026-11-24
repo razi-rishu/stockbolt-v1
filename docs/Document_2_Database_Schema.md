@@ -159,6 +159,21 @@ PCS, SET, KG, LITRE, BOX.
 
 UNIQUE (company_id, code)
 
+### `inventory_settings`
+phase153 — the optional inventory features a company shows (menus and product fields). Presentation only: no posting, report or trigger reads it, and switching a feature off deletes nothing. **No row = every feature on** (all companies that existed before phase153). New companies get a row with transfers and shelf locations off.
+
+| Column | Type | Notes |
+|---|---|---|
+| company_id | UUID PK, FK → companies | ON DELETE CASCADE |
+| transfers_enabled | boolean NOT NULL DEFAULT true | Stock transfers menu |
+| reorder_enabled | boolean NOT NULL DEFAULT true | Minimum / maximum stock, Reorder report |
+| barcodes_enabled | boolean NOT NULL DEFAULT true | Barcode field |
+| brands_enabled | boolean NOT NULL DEFAULT true | Brands and categories |
+| shelf_enabled | boolean NOT NULL DEFAULT true | Aisle / bin |
+| updated_by, created_at, updated_at | | |
+
+RLS: read by the company; insert / update need `settings.write`; no client delete.
+
 ### `vehicle_makes`, `vehicle_models`
 Auto-parts-specific. Lookup tables for fitment data.
 

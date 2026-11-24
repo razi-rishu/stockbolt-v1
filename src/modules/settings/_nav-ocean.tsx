@@ -12,7 +12,7 @@ import type { TFunction } from 'i18next';
 import {
   Building2, CreditCard, Warehouse, Compass, Ruler, FolderTree, Tag, Car, Coins, UserRound, Percent,
   ArrowLeftRight, Hash, BookOpen, Lock, ArrowDownToLine, FileUp, Printer, ScanBarcode, Users, Plug,
-  ShieldCheck, Wrench, ClipboardList, Eraser, Settings, Network, BadgeCheck,
+  ShieldCheck, Wrench, ClipboardList, Eraser, Settings, Network, BadgeCheck, Boxes,
 } from 'lucide-react';
 import type { SettingsNavItem, SettingsNavSection } from './_nav';
 
@@ -24,7 +24,7 @@ export const sectionKey = (s: SettingsNavSection) => s.title.toLowerCase().repla
 const ICONS: Record<string, (size: number) => ReactNode> = {
   company: (z) => <Building2 size={z} />, billing: (z) => <CreditCard size={z} />,
   warehouses: (z) => <Warehouse size={z} />, business_configuration: (z) => <Compass size={z} />,
-  units: (z) => <Ruler size={z} />, categories: (z) => <FolderTree size={z} />, brands: (z) => <Tag size={z} />,
+  inventory: (z) => <Boxes size={z} />, units: (z) => <Ruler size={z} />, categories: (z) => <FolderTree size={z} />, brands: (z) => <Tag size={z} />,
   vehicles: (z) => <Car size={z} />, price_levels: (z) => <Coins size={z} />, salespeople: (z) => <UserRound size={z} />,
   tax_rates: (z) => <Percent size={z} />, exchange_rates: (z) => <ArrowLeftRight size={z} />, numbering: (z) => <Hash size={z} />,
   chart_of_accounts: (z) => <BookOpen size={z} />, period_lock: (z) => <Lock size={z} />,

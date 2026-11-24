@@ -1,4 +1,23 @@
 {
+  "inventorySettings": {
+    "title": "Inventory settings",
+    "subtitle": "Choose the inventory features your company uses. Switching one off only hides it; nothing is deleted.",
+    "features": "Features",
+    "features_hint": "Turn on what you need. You can change this at any time.",
+    "transfers": "Stock transfers between warehouses",
+    "transfers_hint": "Shows Stock Transfers in the Inventory menu.",
+    "transfers_locked": "You have {{count}} active warehouses, so transfers stay on.",
+    "reorder": "Minimum stock and reorder report",
+    "reorder_hint": "Shows the minimum and maximum stock fields on products, and the Reorder report.",
+    "barcodes": "Barcodes",
+    "barcodes_hint": "Shows the barcode field on products. Barcodes already saved keep working in POS.",
+    "brands": "Brands and categories",
+    "brands_hint": "Shows brands and categories in the menus and on products. A brand is required on new products while this is on.",
+    "shelf": "Shelf location",
+    "shelf_hint": "Shows the aisle and bin fields on new products.",
+    "rules": "Stock rules",
+    "read_only": "Only users who can change settings can edit these."
+  },
   "billingAccess": {
     "ending_free": "Your free year of StockBolt ends on {{date}} ({{count}} days left).",
     "ending_paid": "Your StockBolt plan ends on {{date}} and will not renew ({{count}} days left).",
@@ -2505,6 +2524,10 @@
       "business_configuration": {
         "title": "Business configuration",
         "desc": "Your business activities and the modules your company uses."
+      },
+      "inventory": {
+        "title": "Inventory settings",
+        "desc": "Choose the inventory features your company uses."
       },
       "units": {
         "title": "Units of measure",

@@ -22,6 +22,8 @@ import { LanguageToggle } from '@/components/language-toggle';
 import { hasPerm, type Permission } from '@/lib/permissions';
 import { navLinkEnabled } from '@/core/global-config';
 import { useEnabledModules } from '@/hooks/use-enabled-modules';
+import { useInventorySettings } from '@/hooks/use-inventory-settings';
+import { inventoryLinkVisible } from '@/lib/inventory-settings';
 import { CompanyAvatar } from '@/components/company-avatar';
 import { useShortcutContext } from '@/keyboard/shortcut-registry';
 import { NotificationsBell } from '@/components/notifications-bell';
@@ -662,7 +664,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   // Global v1 — links into a module the company has switched off are hidden;
   // ModuleGate refuses the same URLs. A legacy company has every module on.
   const { modules } = useEnabledModules();
-  const linkOn = (to: string) => navLinkEnabled(to, modules);
+  // phase153 — and links of an inventory feature the company switched off.
+  const inventory = useInventorySettings();
+  const linkOn = (to: string) => navLinkEnabled(to, modules) && inventoryLinkVisible(to, inventory);
 
   // Phase 22 — hide nav sections/groups the role can't read (admin sees all).
   const sections = useNavSections(t)

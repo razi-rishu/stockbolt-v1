@@ -870,6 +870,22 @@ export function createSupabaseAdapter(
        The five casts below exist only because `projects` is missing from the
        generated database types; they are removed wholesale when those are
        regenerated. Disabled narrowly so they do not hide anything else. */
+    inventorySettings: {
+      // phase153: not in the generated types yet — same cast as below. A
+      // database without it has no settings: every feature on, as today.
+      async get(company_id) {
+        const { data, error } = await (client as any).from('inventory_settings').select('*')
+          .eq('company_id', company_id).maybeSingle();
+        if (error && isMissingRelation(error)) return null;
+        assertNoError(error, 'inventorySettings.get');
+        return data ?? null;
+      },
+      async save(company_id, settings): Promise<void> {
+        const { error } = await (client as any).from('inventory_settings')
+          .upsert({ company_id, ...settings }, { onConflict: 'company_id' });
+        assertNoError(error, 'inventorySettings.save');
+      },
+    },
     companyConfiguration: {
       // Global v1 (draft migration global01): not in the generated types yet, so
       // the table name goes through the same cast as projects. Results are

@@ -65,6 +65,7 @@ const SettingsLayout     = lazy(() => import('@/modules/settings/_layout'));
 const HardwareSettingsPage = lazy(() => import('@/modules/settings/hardware'));
 const CompanySettingsPage = lazy(() => import('@/modules/settings/company-settings'));
 const WarehousesPage     = lazy(() => import('@/modules/settings/warehouses'));
+const InventorySettingsPage = lazy(() => import('@/modules/settings/inventory-settings'));
 const UnitsPage          = lazy(() => import('@/modules/settings/units-of-measure'));
 const PriceLevelsPage    = lazy(() => import('@/modules/settings/price-levels'));
 const BankAccountsPage   = lazy(() => import('@/modules/banking/bank-accounts'));
@@ -330,6 +331,7 @@ function AppRoutes() {
                   {/* Website only: the Android app never shows billing (Google Play payments policy). */}
                   <Route path="billing"          element={isAppShell() ? <Navigate to="/settings" replace /> : <BillingPage />} />
                   <Route path="warehouses"       element={<WarehousesPage />} />
+                  <Route path="inventory"        element={<InventorySettingsPage />} />
                   <Route path="units"            element={<UnitsPage />} />
                   <Route path="price-levels"     element={<PriceLevelsPage />} />
                   <Route path="tax-rates"        element={<TaxRatesPage />} />

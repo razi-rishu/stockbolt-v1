@@ -15,6 +15,7 @@ import { useAuthStore } from '@/store/auth';
 import { visibleSettingsSections } from './_nav';
 import { itemIcon, itemTitle, itemDesc, sectionTitle, itemKey } from './_nav-ocean';
 import { useEnabledModules } from '@/hooks/use-enabled-modules';
+import { useInventorySettings } from '@/hooks/use-inventory-settings';
 import '@/styles/stockbolt-ocean-teal.css';
 
 // ── Page ───────────────────────────────────────────────────────────────
@@ -47,13 +48,14 @@ export default function SettingsHubPage() {
   };
 
   const { modules } = useEnabledModules();
+  const inventory = useInventorySettings();
   const { t } = useTranslation();
   const [q, setQ] = useState('');
   const query = q.trim().toLowerCase();
 
   // Same entries and visibility rules as before (./_nav); the search box only
   // filters what is shown, by the translated title and description.
-  const sections = visibleSettingsSections(modules)
+  const sections = visibleSettingsSections(modules, inventory)
     .map((sec) => ({
       key: sec.title,
       title: sectionTitle(t, sec),

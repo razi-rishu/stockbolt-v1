@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { getAdapter } from '@/data/index';
 import { TAX_TREATMENTS } from '@/lib/einvoice-metadata';
 import { useAuthStore } from '@/store/auth';
+import { useInventorySettings } from '@/hooks/use-inventory-settings';
 import { Button } from '@/ui/button';
 import { BackButton } from '@/ui/back-button';
 import { Input } from '@/ui/input';
@@ -168,6 +169,10 @@ export default function ProductDetailPage() {
     { sku: watch('sku'), oe_number: watch('oe_number'), barcode: watch('barcode') },
     isNew ? undefined : id,
   );
+
+  // phase153 — hidden fields keep their saved values: the form still holds
+  // them and sends them back unchanged.
+  const inv = useInventorySettings();
 
   const saveMutation = useMutation({
     mutationFn: async (values: FormValues) => {
@@ -376,7 +381,7 @@ export default function ProductDetailPage() {
                     products really can both be called "Brake Pad Front". */}
                 <DuplicateWarning hits={duplicateHits} docType="product" />
                 <Input label={t('products.sku')} required error={errors.sku ? t('prodOcean.required') : undefined} {...register('sku')} />
-                <Input label={t('products.barcode')} {...register('barcode')} />
+                {inv.barcodes_enabled && <Input label={t('products.barcode')} {...register('barcode')} />}
                 <Input label={t('products.oe_number')} {...register('oe_number')} />
                 <Input label={t('products.replacement_numbers')} hint={t('products.replacement_hint')} {...register('replacement_numbers')} />
               </div>
@@ -385,8 +390,8 @@ export default function ProductDetailPage() {
             <div style={S.card}>
               <div style={S.head}>{t('prodOcean.sec_classification')}</div>
               <div style={S.body}>
-                <Select label={t('products.brand')} options={[{ value: '', label: t('common.none') }, ...brands.map((b) => ({ value: b.id, label: b.name }))]} {...register('brand_id')} />
-                <Select label={t('products.category')} options={[{ value: '', label: t('common.none') }, ...categories.map((c) => ({ value: c.id, label: c.name }))]} {...register('category_id')} />
+                {inv.brands_enabled && <Select label={t('products.brand')} options={[{ value: '', label: t('common.none') }, ...brands.map((b) => ({ value: b.id, label: b.name }))]} {...register('brand_id')} />}
+                {inv.brands_enabled && <Select label={t('products.category')} options={[{ value: '', label: t('common.none') }, ...categories.map((c) => ({ value: c.id, label: c.name }))]} {...register('category_id')} />}
                 <Select label={t('products.unit')} options={[{ value: '', label: t('common.none') }, ...units.map((u) => ({ value: u.id, label: u.code }))]} {...register('unit_id')} />
                 <Select label={t('products.quality_tier')} options={QUALITY_OPTIONS.map((q) => ({ value: q, label: q ? t(`products.quality_${q}`) : t('common.none') }))} {...register('quality_tier')} />
                 <Select
@@ -434,6 +439,9 @@ export default function ProductDetailPage() {
                   {...register('hsn_code')}
                 />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingTop: '2px' }}>
+                  {/* phase153 — hidden until selling and buying check it; a product
+                      already ticked keeps showing it so it can be unticked. */}
+                  {product?.requires_serial && (
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', color: 'var(--sb-text)', userSelect: 'none' }}>
                     <input
                       type="checkbox"
@@ -442,6 +450,7 @@ export default function ProductDetailPage() {
                     />
                     {t('products.requires_serial')}
                   </label>
+                  )}
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', color: 'var(--sb-text)', userSelect: 'none' }}>
                     <input
                       type="checkbox"
@@ -475,7 +484,7 @@ export default function ProductDetailPage() {
                     {t('prodOcean.purchase_account_hint')}
                   </p>
                 </div>
-                <Input label={t('products.min_stock')} type="number" step="0.001" {...register('min_stock_level')} />
+                {inv.reorder_enabled && <Input label={t('products.min_stock')} type="number" step="0.001" {...register('min_stock_level')} />}
               </div>
             </div>
 

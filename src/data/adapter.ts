@@ -1,4 +1,5 @@
 import type { Database } from '@/types/database';
+import type { InventorySettings } from '@/lib/inventory-settings';
 import type { TaxReturn, TaxFiling, TaxFileResult, TaxReopenResult, TaxJurisdiction, FilingFrequency } from '@/lib/tax-return';
 
 type Tables = Database['public']['Tables'];
@@ -3421,6 +3422,14 @@ export interface CompanyConfigurationSave {
   primary_activity_key: string;
   enabled_modules: string[];
 }
+/** phase153 — which optional inventory features the company shows. */
+export interface InventorySettingsAPI {
+  /** The company's saved switches, or null (every feature on). */
+  get(company_id: string): Promise<InventorySettings | null>;
+  /** Needs settings.write (RLS). */
+  save(company_id: string, settings: InventorySettings): Promise<void>;
+}
+
 export interface CompanyConfigurationAPI {
   /** The caller's company configuration, or null for a legacy company (read it with legacyConfiguration()). */
   get(company_id: string): Promise<CompanyConfigurationRow | null>;
@@ -3502,6 +3511,7 @@ export interface DataAdapter {
   // Phase 2
   categories: CategoriesAPI;
   projects: ProjectsAPI;          // phase104 — projects / jobs
+  inventorySettings: InventorySettingsAPI; // phase153 — optional inventory features
   companyConfiguration: CompanyConfigurationAPI; // Global v1 — activities + enabled modules
   branches: BranchesAPI;         // Global v1 Phase 6 — branches, warehouse links, user assignments
   setupDrafts: SetupDraftsAPI;   // Global v1 Phase 7 — wizard save and resume

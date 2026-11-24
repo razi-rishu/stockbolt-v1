@@ -10,6 +10,7 @@
 import { isAppShell } from '@/lib/platform';
 import { navLinkEnabled, type ModuleKey } from '@/core/global-config';
 import { GLOBAL_ONBOARDING } from '@/core/global-config/flag';
+import { ALL_ON, inventoryLinkVisible, type InventorySettings } from '@/lib/inventory-settings';
 
 export interface SettingsNavItem {
   to: string;
@@ -41,6 +42,7 @@ export const SETTINGS_SECTIONS: SettingsNavSection[] = [
   {
     title: 'Inventory & Catalog',
     items: [
+      { to: '/settings/inventory',    icon: '📦', title: 'Inventory Settings', desc: 'Choose the inventory features your company uses.' },
       { to: '/settings/units',        icon: '📏', title: 'Units of Measure', desc: 'pcs, kg, m, box — used on product cards and invoices.' },
       { to: '/settings/categories',   icon: '🗂️', title: 'Categories',       desc: 'Hierarchical product categories (Engine, Brakes…).' },
       { to: '/settings/brands',       icon: '🏷️', title: 'Brands',           desc: 'Manufacturer brands (Bosch, Denso, Genuine…).' },
@@ -107,12 +109,14 @@ export const SETTINGS_SECTIONS: SettingsNavSection[] = [
  * allow an app to sell them through another payment system. Global v1: items
  * that belong to a module the company switched off are dropped (the route is
  * refused by ModuleGate anyway), and the Business Configuration entry only
- * appears while the Global flag is on.
+ * appears while the Global flag is on. phase153: entries of an inventory
+ * feature the company switched off are dropped (their pages still open).
  */
-export function visibleSettingsSections(enabled?: readonly ModuleKey[]): SettingsNavSection[] {
+export function visibleSettingsSections(enabled?: readonly ModuleKey[], inventory: InventorySettings = ALL_ON): SettingsNavSection[] {
   const app = isAppShell();
   return SETTINGS_SECTIONS
     .map((s) => ({ ...s, items: s.items.filter((it) =>
-      !(app && it.webOnly) && !(it.globalOnly && !GLOBAL_ONBOARDING) && (!enabled || navLinkEnabled(it.to, enabled))) }))
+      !(app && it.webOnly) && !(it.globalOnly && !GLOBAL_ONBOARDING) && (!enabled || navLinkEnabled(it.to, enabled))
+      && inventoryLinkVisible(it.to, inventory)) }))
     .filter((s) => s.items.length > 0);
 }

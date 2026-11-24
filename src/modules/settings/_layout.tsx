@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { visibleSettingsSections } from './_nav';
 import { useEnabledModules } from '@/hooks/use-enabled-modules';
+import { useInventorySettings } from '@/hooks/use-inventory-settings';
 import { useTranslation } from 'react-i18next';
 import { itemIcon, itemTitle, sectionTitle } from './_nav-ocean';
 import '@/styles/stockbolt-ocean-teal.css';
@@ -18,6 +19,7 @@ import { useInnerNav } from '@/hooks/use-inner-nav';
 export default function SettingsLayout() {
   const { pathname } = useLocation();
   const { modules } = useEnabledModules();
+  const inventory = useInventorySettings();
   const { t } = useTranslation();
   // The hub (/settings) shows the cards full-width; the pinned nav rail appears
   // only once you drill into a specific setting.
@@ -32,7 +34,7 @@ export default function SettingsLayout() {
       {/* Ocean Teal (UI v1.1) rail: same entries, routes and visibility. */}
       <aside className="sb-srail hidden lg:sticky lg:block lg:top-4 lg:max-h-[calc(100vh-5rem)] lg:w-64 lg:shrink-0 lg:overflow-y-auto lg:pe-1">
         <nav className="flex flex-col gap-5" aria-label={t('settingsNav.title')}>
-          {visibleSettingsSections(modules).map((section) => (
+          {visibleSettingsSections(modules, inventory).map((section) => (
             <div key={section.title}>
               <div className="sb-srail-section">{sectionTitle(t, section)}</div>
               <div className="flex flex-col gap-0.5">
