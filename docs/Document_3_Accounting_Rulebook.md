@@ -181,6 +181,7 @@ unit_cost=product.current_MAC, warehouse_id=invoice.warehouse_id
 - It is the **MAC (Moving Average Cost)** of the product at the moment of sale.
 - MAC is computed from the `stock_ledger` history: `(sum of purchase costs) / (sum of purchase quantities)` excluding sales.
 - Stored on `invoice_items.cost_at_sale` as a snapshot for audit purposes.
+- **Exact cost (phase154):** the MAC is **company-wide**, and the cost that leaves is `company value on hand × quantity out ÷ company quantity on hand`, rounded to 2 decimals, so the last unit takes the value that is left. `cost_at_sale` keeps the 2-decimal unit average for display; `invoice_items.cost_total` holds the exact amount posted. It applies to sales, POS, transfers (same value out and in) and stock decreases without a cost typed by the user. A return restores its share of `cost_total`. Lines sold before phase154 have no `cost_total` and use `cost_at_sale × quantity`. With no stock or no value on hand, the last known average is used, and with none the sale is deferred, as below.
 
 **Edge case — selling before purchasing (no MAC available):**
 If a product has never been purchased and has no cost basis at the moment of sale, the system follows ONE behavior (no setting, no choice):

@@ -454,7 +454,8 @@ INDEX (contact_id, date), INDEX (warehouse_id, date), INDEX (status, date)
 Same shape as `sales_quote_items` PLUS:
 | Column | Type | Notes |
 |---|---|---|
-| cost_at_sale | numeric(15,2) | Snapshot of MAC at time of sale; used for COGS posting |
+| cost_at_sale | numeric(15,2) | Snapshot of the unit MAC at time of sale (display) |
+| cost_total | numeric(15,2) NULL | phase154: exact cost posted for the line. NULL (older lines) = cost_at_sale × quantity |
 | serial_id | UUID FK → product_serials | NULLABLE; for serial-tracked items |
 
 ### `credit_notes`, `credit_note_items`
