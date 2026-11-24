@@ -4410,16 +4410,16 @@ export function createSupabaseAdapter(
         const costCol = await getCostCol();
         const { data, error } = await client
           .from('invoice_items')
-          .select(`product_id, quantity, unit_price, discount_percent, cost_at_sale${costCol}, products(code, name, brands(name)), invoices!inner(company_id, status, date)` as 'product_id, quantity, unit_price, discount_percent, cost_at_sale, products(code, name, brands(name)), invoices!inner(company_id, status, date)')
+          .select(`product_id, quantity, unit_price, discount_percent, cost_at_sale${costCol}, products(sku, name, brands(name)), invoices!inner(company_id, status, date)` as 'product_id, quantity, unit_price, discount_percent, cost_at_sale, products(sku, name, brands(name)), invoices!inner(company_id, status, date)')
           .eq('invoices.company_id', company_id)
           .eq('invoices.status', 'confirmed')
           .gte('invoices.date', from).lte('invoices.date', to);
         assertNoError(error, 'getSalesByProduct');
         const byProduct: Record<string, { sku: string; name: string; brand: string; qty: number; sales: number; cogs: number }> = {};
         for (const row of data ?? []) {
-          const p = row.products as unknown as { code: string; name: string; brands: { name: string } | null } | null;
+          const p = row.products as unknown as { sku: string; name: string; brands: { name: string } | null } | null;
           const id = row.product_id ?? 'none';
-          if (!byProduct[id]) byProduct[id] = { sku: p?.code ?? '', name: p?.name ?? '', brand: p?.brands?.name ?? '', qty: 0, sales: 0, cogs: 0 };
+          if (!byProduct[id]) byProduct[id] = { sku: p?.sku ?? '', name: p?.name ?? '', brand: p?.brands?.name ?? '', qty: 0, sales: 0, cogs: 0 };
           const qty = Number(row.quantity);
           const net = qty * Number(row.unit_price) * (1 - Number(row.discount_percent ?? 0) / 100);
           byProduct[id].qty += qty;
@@ -4645,21 +4645,29 @@ export function createSupabaseAdapter(
       },
 
       async getPurchasesByProduct(company_id, from, to): Promise<PurchasesByProductLine[]> {
-        const { data, error } = await client
-          .from('goods_receipt_items')
-          .select('product_id, qty_received, unit_cost, products(code, name), goods_receipts!inner(company_id, status, date)')
-          .eq('goods_receipts.company_id', company_id)
-          .eq('goods_receipts.status', 'received')
-          .gte('goods_receipts.date', from).lte('goods_receipts.date', to);
-        assertNoError(error, 'getPurchasesByProduct');
+        // Every purchase into stock, from the stock ledger: goods receipts and
+        // direct bills alike, landed cost included, voided and edited documents
+        // already out. (It used to read receipts still waiting for a bill only,
+        // so a purchase vanished once billed and direct bills never appeared.)
+        type Row = { product_id: string; quantity: number; total_cost: number; products: { sku: string; name: string } | null };
+        const rows = await fetchAllPages<Row>(
+          'getPurchasesByProduct',
+          (f, t) => client.from('stock_active' as 'stock_ledger')
+            .select('product_id, quantity, total_cost, products(sku, name)')
+            .eq('company_id', company_id)
+            .eq('type', 'purchase')
+            .eq('direction', 1)
+            .gte('date', from).lte('date', to)
+            .order('id')
+            .range(f, t),
+          assertNoError,
+        );
         const by: Record<string, { sku: string; name: string; qty: number; cost: number }> = {};
-        for (const row of data ?? []) {
-          const p = row.products as unknown as { code: string; name: string } | null;
+        for (const row of rows) {
           const id = row.product_id ?? 'none';
-          if (!by[id]) by[id] = { sku: p?.code ?? '', name: p?.name ?? '', qty: 0, cost: 0 };
-          const qty = Number(row.qty_received);
-          by[id].qty += qty;
-          by[id].cost += qty * Number(row.unit_cost ?? 0);
+          if (!by[id]) by[id] = { sku: row.products?.sku ?? '', name: row.products?.name ?? '', qty: 0, cost: 0 };
+          by[id].qty += Number(row.quantity);
+          by[id].cost += Number(row.total_cost ?? 0);
         }
         return Object.entries(by).map(([id, b]) => ({
           product_id: id, sku: b.sku, product_name: b.name, qty_purchased: b.qty, total_cost: b.cost, avg_unit_cost: b.qty > 0 ? Math.round(b.cost / b.qty * 100) / 100 : 0,
@@ -4667,17 +4675,20 @@ export function createSupabaseAdapter(
       },
 
       async getOutstandingPOs(company_id): Promise<OutstandingPOLine[]> {
+        // A goods receipt has no stored total: its value is the sum of its lines.
         const { data, error } = await client
           .from('purchase_orders')
-          .select('id, po_number, supplier_id, date, expected_delivery_date, total_amount, contacts(name), goods_receipts(total_amount, status)')
+          .select('id, po_number, supplier_id, date, expected_delivery_date, total_amount, contacts(name), goods_receipts(status, goods_receipt_items(total_cost))')
           .eq('company_id', company_id)
-          .in('status', ['draft', 'sent', 'partial'])
+          .in('status', ['draft', 'sent', 'partially_received'])
           .order('date', { ascending: false });
         assertNoError(error, 'getOutstandingPOs');
         return (data ?? []).map(po => {
           const contact = po.contacts as unknown as { name: string } | null;
-          const grns = (po.goods_receipts as unknown as { total_amount: number; status: string }[] | null) ?? [];
-          const received = grns.filter(g => g.status === 'received').reduce((s, g) => s + Number(g.total_amount), 0);
+          const grns = (po.goods_receipts as unknown as { status: string; goods_receipt_items: { total_cost: number | null }[] | null }[] | null) ?? [];
+          const received = grns
+            .filter(g => g.status === 'received' || g.status === 'billed')
+            .reduce((s, g) => s + (g.goods_receipt_items ?? []).reduce((x, it) => x + Number(it.total_cost ?? 0), 0), 0);
           const total = Number(po.total_amount ?? 0);
           return { po_id: po.id, po_number: po.po_number, supplier_name: contact?.name ?? '', date: po.date as string, expected_delivery: po.expected_delivery_date as string | null, total, received_value: received, pending_value: Math.max(0, total - received) };
         });
