@@ -69,7 +69,7 @@ export interface CreditNoteRaw {
   reason:            string | null;
   restocking_fee:    number | null;
   total_amount:      number | null;
-  credit_note_items: { quantity: number; condition: string | null; cost_at_sale: number | null }[] | null;
+  credit_note_items: { quantity: number; base_quantity?: number | null; condition: string | null; cost_at_sale: number | null }[] | null;
 }
 
 export function foldCreditNotesByReason(rows: CreditNoteRaw[]): SalesReturnReasonLine[] {
@@ -88,7 +88,8 @@ export function foldCreditNotesByReason(rows: CreditNoteRaw[]): SalesReturnReaso
     // Per LINE. cost_at_sale is the credit note's own cost column, the one
     // phase89's write-off reads.
     for (const it of r.credit_note_items ?? []) {
-      const qty  = Number(it.quantity ?? 0);
+      // phase155 — in base units, like the cost (1 BOX returned = 12 pieces).
+      const qty  = Number(it.base_quantity ?? it.quantity ?? 0);
       const cost = qty * Number(it.cost_at_sale ?? 0);
       a.qty += qty;
       if (it.condition === 'damaged') a.written_off     += cost;
@@ -134,7 +135,7 @@ export function mergeReasonLines(
 export interface DebitNoteRaw {
   reason:           string | null;
   total_amount:     number | null;
-  debit_note_items: { quantity: number; unit_cost: number | null }[] | null;
+  debit_note_items: { quantity: number; base_quantity?: number | null; unit_cost: number | null }[] | null;
 }
 
 export function foldDebitNotesByReason(rows: DebitNoteRaw[]): PurchaseReturnReasonLine[] {
@@ -150,7 +151,8 @@ export function foldDebitNotesByReason(rows: DebitNoteRaw[]): PurchaseReturnReas
 
     for (const it of r.debit_note_items ?? []) {
       const qty = Number(it.quantity ?? 0);
-      a.qty  += qty;
+      // Quantity in base units; the cost is per unit as written on the line.
+      a.qty  += Number(it.base_quantity ?? qty);
       a.cost += qty * Number(it.unit_cost ?? 0);
     }
   }

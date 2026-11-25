@@ -35,6 +35,8 @@ import {
 import { categoriesAdapter, buildCategoryLookups, serializeCategoriesForExport } from './_adapters/categories';
 import { coaAdapter, buildCoaLookups } from './_adapters/coa';
 import { openingBalancesAdapter, buildOBLookups } from './_adapters/opening-balances';
+import { packsAdapter, buildPackLookups, packKey, serializePacksForExport } from './_adapters/packs';
+import { useInventorySettings } from '@/hooks/use-inventory-settings';
 import type { ModuleAdapter, ImportContext, ApplyResult, DuplicatePolicy } from './_adapters/types';
 
 // Registry — each entry is the same ModuleAdapter contract. Adding a
@@ -135,6 +137,13 @@ const MODULES: Record<string, ModuleEntry> = {
     exportSerialize: (rows) => plainExportSerialize(rows, priceLevelsAdapter),
     naturalKey: (r) => `name:${(r.name as string).toLowerCase()}`,
   },
+  // phase155 — selling units; shown only while the company has packs on.
+  packs: {
+    adapter: packsAdapter,
+    buildLookups: async (cid) => buildPackLookups(cid) as unknown as Record<string, unknown>,
+    exportSerialize: (rows, cid) => serializePacksForExport(rows, cid),
+    naturalKey: (r) => (r.product_id ? packKey(r.product_id, r.name) : ''),
+  },
   // Phase 14.11d — bulk import of opening balances. No exportable rows
   // (openings live in invoices/bills/payments via the 14.09 wizard),
   // so "Export current" is a no-op for this module. The point is the
@@ -164,6 +173,7 @@ interface PreviewRow {
 export default function ImportExportHub() {
   const { company_id } = useAuthStore();
   const company_currency = useCompanyCurrency();
+  const { packs_enabled } = useInventorySettings();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [searchParams] = useSearchParams();
@@ -258,13 +268,15 @@ export default function ImportExportHub() {
 
     const preview: PreviewRow[] = result.rows.map(raw => {
       const v = adapter.validate(raw, ctx);
-      const key = entry.naturalKey({ sku: raw.sku });   // approximation; per-module
+      // A file row has only its own columns: a key that needs more is no key.
+      let key = '';
+      try { key = entry.naturalKey(raw); } catch { /* not a known record */ }
       return {
         raw,
         ok: v.ok,
         row: v.ok ? v.row : undefined,
         errors: v.ok ? [] : v.errors,
-        isDuplicate: existingMap.has(key),
+        isDuplicate: (v.ok && !!(v.row as { __existingId?: string }).__existingId) || (key !== '' && existingMap.has(key)),
       };
     });
     setPreviewRows(preview);
@@ -289,6 +301,7 @@ export default function ImportExportHub() {
       setStep('done');
       // Invalidate the relevant caches so the list pages pick up new rows.
       await qc.invalidateQueries({ queryKey: ['products', company_id] });
+      await qc.invalidateQueries({ queryKey: ['product_units', company_id] });
       await qc.invalidateQueries({ queryKey: ['import_existing', moduleKey, company_id] });
     } catch (e) {
       setParseError(e instanceof Error ? e.message : t('settingsPages.io.err_apply'));
@@ -338,7 +351,7 @@ export default function ImportExportHub() {
       <section className="sb-card">
         <h2 className="sb-form-title" style={{ lineHeight: 1.3, marginBottom: 12 }}>{t('settingsPages.io.pick')}</h2>
         <div className="sb-io-grid">
-          {Object.entries(MODULES).map(([key, entry]) => {
+          {Object.entries(MODULES).filter(([key]) => key !== 'packs' || packs_enabled).map(([key, entry]) => {
             const isActive = moduleKey === key;
             return (
               <button

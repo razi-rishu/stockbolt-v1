@@ -23,6 +23,9 @@
     "packs_in_use": "Open documents still use packs. Finish or delete them before turning this off."
   },
   "packs": {
+    "count_in": "Count in",
+    "count_in_unit": "Count in {{unit}}",
+    "count_in_pack": "Count in {{pack}} + {{unit}}",
     "to_payment": "Go to payment",
     "unit": "Unit",
     "piece": "PCS",
@@ -3171,6 +3174,10 @@
         "products": {
           "label": "Products",
           "desc": "SKU catalog. Required: SKU and name. Brand, category and unit resolved by name."
+        },
+        "packs": {
+          "label": "Selling units",
+          "desc": "BOX = 12 of a product, 200 g = 0.2 KG. Required: SKU, unit name and value."
         },
         "contacts": {
           "label": "Contacts",

@@ -8,7 +8,7 @@ import { sha256Hex } from '@/lib/einvoice';   // AC-4C — content hash for e-in
 import { fetchAllPages } from '@/lib/paging';
 import { authRedirectOrigin, isNative } from '@/lib/platform';
 import { isCompanyReadOnly, readOnlyErrorMessage } from '@/lib/company-access';
-import { lineCogs } from '@/lib/line-cost';
+import { lineBaseQty, lineCogs } from '@/lib/line-cost';
 // R6a — the Returns Analysis fold lives in a pure module so it can be unit
 // tested without a database; the whole risk in a report is the arithmetic.
 import {
@@ -284,18 +284,25 @@ export function createSupabaseAdapter(
 ): DataAdapter {
   const client = guardReadOnlyWrites(rawClient);
 
-  // phase154 — ', cost_total' once the database has it, '' before. Reports must
-  // not break if the website is published before the migration.
+  // phase154/155 — ', cost_total' and ', base_quantity' once the database has
+  // them, '' before. Reports must not break if the website is published before
+  // the migrations.
   let costColKnown: string | null = null;
   const getCostCol = async (): Promise<string> => {
     if (costColKnown !== null) return costColKnown;
-    const { error } = await (client.from('invoice_items') as unknown as {
+    const probe = async (col: string) => (await (client.from('invoice_items') as unknown as {
       select: (c: string) => { limit: (n: number) => Promise<{ error: { code?: string } | null }> };
-    }).select('cost_total').limit(1);
-    if (!error) return (costColKnown = ', cost_total');
-    if (error.code === '42703' || error.code === 'PGRST204') costColKnown = '';
+    }).select(col).limit(1)).error;
+    const e155 = await probe('cost_total, base_quantity');
+    if (!e155) return (costColKnown = ', cost_total, base_quantity');
+    if (e155.code !== '42703' && e155.code !== 'PGRST204') return '';
+    const e154 = await probe('cost_total');
+    if (!e154) return (costColKnown = ', cost_total');
+    if (e154.code === '42703' || e154.code === 'PGRST204') costColKnown = '';
     return '';
   };
+  /** phase155 — ', base_quantity' for the note lines (added by the same migration). */
+  const getBaseCol = async (): Promise<string> => ((await getCostCol()).includes('base_quantity') ? ', base_quantity' : '');
   // Call an RPC that isn't in the generated DB types yet (Phase 22 invite/role
   // functions). Mirrors the cast used for save_expense_with_items.
   const rpcAny = (fn: string, args: Record<string, unknown>) =>
@@ -303,6 +310,11 @@ export function createSupabaseAdapter(
   // Tables newer than the generated types (phase155 packs).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rest = (table: string) => (client as any).from(table);
+  /** A stock row as the reorder, slow-moving and aging reports read it. */
+  type StockRow = { product_id: string; warehouse_id: string; running_qty: number; running_avg_cost: number | null; date: string; products: unknown; warehouses: unknown };
+  /** An invoice line as the sales reports read it. */
+  type SalesLine = { product_id: string | null; quantity: number; unit_price: number; discount_percent: number | null;
+    cost_at_sale: number | null; cost_total?: number | null; base_quantity?: number | null; products?: unknown };
   // phase114 — TDS withheld per bill. A posted deduction settles part of the
   // bill (Dr 2100) exactly like a payment; a reversed one never counts. The
   // same rule as verify_invariants B2 and record_tds_deduction's ceiling.
@@ -2075,13 +2087,13 @@ export function createSupabaseAdapter(
         return data!;
       },
       async getBalance(company_id, product_id, warehouse_id): Promise<StockBalance> {
-        const { data, error } = await client
-          .from('stock_ledger')
-          .select('warehouse_id, direction, quantity, running_avg_cost')
-          .eq('company_id', company_id)
-          .eq('product_id', product_id)
-          .order('seq' as never);
-        assertNoError(error, 'stockLedger.getBalance');
+        const data = await fetchAllPages<{ warehouse_id: string | null; direction: number | null; quantity: number | null; running_avg_cost: number | null }>(
+          'stockLedger.getBalance',
+          (f, t) => client.from('stock_ledger')
+            .select('warehouse_id, direction, quantity, running_avg_cost')
+            .eq('company_id', company_id).eq('product_id', product_id)
+            .order('seq' as never).range(f, t),
+          assertNoError);
         // Sum direction × quantity over ALL rows (including reversals).
         // Previously we picked latest row by created_at + excluded
         // reversals — wrong because (a) reversal rows are legitimate
@@ -2175,12 +2187,16 @@ export function createSupabaseAdapter(
         // all warehouses + take latest non-zero running_avg_cost as MAC.
         // Matches the dashboard / valuation approach so numbers stay
         // consistent app-wide.
-        const { data, error } = await client.from('stock_ledger')
-          .select('product_id, direction, quantity, running_avg_cost')
-          .eq('company_id', company_id)
-          .order('seq' as never)   // "latest" below means latest by seq
-          .limit(10000);
-        assertNoError(error, 'stockLedger.getCurrentStockMap');
+        // Paged: the server returns at most 1,000 rows per request, so a single
+        // query silently lost every newer movement once there were more.
+        const data = await fetchAllPages<{ product_id: string | null; direction: number | null; quantity: number | null; running_avg_cost: number | null }>(
+          'stockLedger.getCurrentStockMap',
+          (f, t) => client.from('stock_ledger')
+            .select('product_id, direction, quantity, running_avg_cost')
+            .eq('company_id', company_id)
+            .order('seq' as never)   // "latest" below means latest by seq
+            .range(f, t),
+          assertNoError);
         const map: Record<string, { qty: number; mac: number }> = {};
         for (const r of (data ?? []) as { product_id: string | null; direction: number | null; quantity: number | null; running_avg_cost: number | null }[]) {
           if (!r.product_id) continue;
@@ -4034,13 +4050,15 @@ export function createSupabaseAdapter(
         // created_at" but rows from the same transaction (e.g. void
         // reversing multiple sales at once) share identical created_at
         // and Postgres's tiebreaker is undefined — leading to wrong qty.
-        const { data, error } = await client
-          .from('stock_ledger')
-          .select('product_id, warehouse_id, direction, quantity, running_avg_cost, products(sku, name), warehouses(name)')
-          .eq('company_id', company_id)
-          .lte('date', as_of_date)
-          .order('seq' as never);
-        assertNoError(error, 'reports.getStockValuation');
+        const data = await fetchAllPages<unknown>(
+          'reports.getStockValuation',
+          (f, t) => client.from('stock_ledger')
+            .select('product_id, warehouse_id, direction, quantity, running_avg_cost, products(sku, name, unit_id), warehouses(name)')
+            .eq('company_id', company_id)
+            .lte('date', as_of_date)
+            .order('seq' as never)
+            .range(f, t),
+          assertNoError);
 
         type Row = {
           product_id: string;
@@ -4048,7 +4066,7 @@ export function createSupabaseAdapter(
           direction: number | null;
           quantity: number | null;
           running_avg_cost: number | null;
-          products: { sku: string; name: string } | null;
+          products: { sku: string; name: string; unit_id: string | null } | null;
           warehouses: { name: string } | null;
         };
         const agg: Record<string, {
@@ -4057,12 +4075,13 @@ export function createSupabaseAdapter(
           product_code: string;
           product_name: string;
           warehouse_name: string;
+          unit_id: string | null;
           qty: number;
         }> = {};
         // One company-wide average per product (Document 3), as E1 uses.
         const average: Record<string, number> = {};
 
-        for (const row of (data ?? []) as Row[]) {
+        for (const row of data as Row[]) {
           if (!row.product_id || !row.warehouse_id) continue;
           const key = `${row.product_id}::${row.warehouse_id}`;
           if (!agg[key]) {
@@ -4072,6 +4091,7 @@ export function createSupabaseAdapter(
               product_code:   row.products?.sku ?? '',
               product_name:   row.products?.name ?? '',
               warehouse_name: row.warehouses?.name ?? '',
+              unit_id:        row.products?.unit_id ?? null,
               qty:            0,
             };
           }
@@ -4085,6 +4105,7 @@ export function createSupabaseAdapter(
           .filter(a => a.qty > 0)
           .map(a => ({
             product_id:     a.product_id,
+            unit_id:        a.unit_id,
             product_code:   a.product_code,
             product_name:   a.product_name,
             warehouse_id:   a.warehouse_id,
@@ -4110,16 +4131,18 @@ export function createSupabaseAdapter(
         // is true we drop BOTH halves of each cancelled pair so the user
         // sees only the entries that actually contribute to the current
         // on-hand quantity.
-        let q = client
-          .from('stock_ledger')
-          .select('id, reversal_of_id, product_id, warehouse_id, date, type, direction, quantity, unit_cost, running_qty, running_avg_cost, related_doc_type, related_doc_id, products(name, sku), warehouses(name)')
-          .eq('company_id', company_id)
-          .gte('date', params.date_from)
-          .lte('date', params.date_to);
-        if (params.product_id)   q = q.eq('product_id',   params.product_id);
-        if (params.warehouse_id) q = q.eq('warehouse_id', params.warehouse_id);
-        const { data, error } = await q.order('created_at');
-        assertNoError(error, 'reports.getStockMovement');
+        const data = await fetchAllPages<unknown>('reports.getStockMovement', (f, t) => {
+          let q = client
+            .from('stock_ledger')
+            .select('id, reversal_of_id, product_id, warehouse_id, date, type, direction, quantity, unit_cost, running_qty, running_avg_cost, related_doc_type, related_doc_id, products(name, sku), warehouses(name)')
+            .eq('company_id', company_id)
+            .gte('date', params.date_from)
+            .lte('date', params.date_to);
+          if (params.product_id)   q = q.eq('product_id',   params.product_id);
+          if (params.warehouse_id) q = q.eq('warehouse_id', params.warehouse_id);
+          // seq breaks ties: rows of one transaction share created_at.
+          return q.order('created_at').order('seq' as never).range(f, t);
+        }, assertNoError);
 
         type Row = {
           id: string;
@@ -4138,7 +4161,7 @@ export function createSupabaseAdapter(
           products: { name: string; sku: string } | null;
           warehouses: { name: string } | null;
         };
-        let rows = (data ?? []) as unknown as Row[];
+        let rows = data as Row[];
 
         if (params.hide_reversed) {
           // Step 1: collect ids of original rows that have been reversed.
@@ -4170,12 +4193,10 @@ export function createSupabaseAdapter(
 
       async getSlowMoving(company_id, params): Promise<SlowMovingLine[]> {
         const today = new Date().toISOString().slice(0, 10);
-        const { data, error } = await client
-          .from('stock_ledger')
+        const data = await fetchAllPages<StockRow>('reports.getSlowMoving', (f, t) => rest('stock_ledger')
           .select('product_id, warehouse_id, running_qty, running_avg_cost, date, products(name, sku), warehouses(name)')
           .eq('company_id', company_id)
-          .order('seq' as never, { ascending: false });
-        assertNoError(error, 'reports.getSlowMoving');
+          .order('seq', { ascending: false }).range(f, t), assertNoError);
 
         const seen = new Set<string>();
         // Newest row first: its average is the product's, company-wide (Document 3).
@@ -4205,12 +4226,10 @@ export function createSupabaseAdapter(
       },
 
       async getReorderReport(company_id): Promise<ReorderLine[]> {
-        const { data, error } = await client
-          .from('stock_ledger')
+        const data = await fetchAllPages<StockRow>('reports.getReorderReport', (f, t) => rest('stock_ledger')
           .select('product_id, warehouse_id, running_qty, running_avg_cost, products(name, sku, min_stock_level), warehouses(name)')
           .eq('company_id', company_id)
-          .order('seq' as never, { ascending: false });
-        assertNoError(error, 'reports.getReorderReport');
+          .order('seq', { ascending: false }).range(f, t), assertNoError);
 
         const seen = new Set<string>();
         // Newest row first: its average is the product's, company-wide (Document 3).
@@ -4238,12 +4257,10 @@ export function createSupabaseAdapter(
 
       async getStockAging(company_id): Promise<StockAgingLine[]> {
         const today = new Date().toISOString().slice(0, 10);
-        const { data, error } = await client
-          .from('stock_ledger')
+        const data = await fetchAllPages<StockRow>('reports.getStockAging', (f, t) => rest('stock_ledger')
           .select('product_id, warehouse_id, running_qty, running_avg_cost, date, products(name, sku), warehouses(name)')
           .eq('company_id', company_id)
-          .order('seq' as never, { ascending: false });
-        assertNoError(error, 'reports.getStockAging');
+          .order('seq', { ascending: false }).range(f, t), assertNoError);
 
         const seen = new Set<string>();
         // Newest row first: its average is the product's, company-wide (Document 3).
@@ -4400,7 +4417,7 @@ export function createSupabaseAdapter(
         const returns = (data ?? []) as (SalesReturnRaw & { credit_note_id: string | null })[];
 
         const { data: cnData, error: cnErr } = await (client.from('credit_notes') as any)
-          .select('id, reason, restocking_fee, total_amount, credit_note_items(quantity, condition, cost_at_sale)')
+          .select(`id, reason, restocking_fee, total_amount, credit_note_items(quantity, condition, cost_at_sale${await getBaseCol()})`)
           .eq('company_id', company_id)
           .eq('status', 'confirmed')
           .gte('date', from).lte('date', to);
@@ -4434,7 +4451,7 @@ export function createSupabaseAdapter(
         const returns = (data ?? []) as (PurchaseReturnRaw & { debit_note_id: string | null })[];
 
         const { data: dnData, error: dnErr } = await (client.from('debit_notes') as any)
-          .select('id, reason, total_amount, debit_note_items(quantity, unit_cost)')
+          .select(`id, reason, total_amount, debit_note_items(quantity, unit_cost${await getBaseCol()})`)
           .eq('company_id', company_id)
           .eq('status', 'confirmed')
           .gte('date', from).lte('date', to);
@@ -4454,13 +4471,12 @@ export function createSupabaseAdapter(
 
       async getSalesByProduct(company_id, from, to): Promise<SalesByProductLine[]> {
         const costCol = await getCostCol();
-        const { data, error } = await client
-          .from('invoice_items')
-          .select(`product_id, quantity, unit_price, discount_percent, cost_at_sale${costCol}, products(sku, name, brands(name)), invoices!inner(company_id, status, date)` as 'product_id, quantity, unit_price, discount_percent, cost_at_sale, products(sku, name, brands(name)), invoices!inner(company_id, status, date)')
+        const data = await fetchAllPages<SalesLine>('getSalesByProduct', (f, t) => rest('invoice_items')
+          .select(`product_id, quantity, unit_price, discount_percent, cost_at_sale${costCol}, products(sku, name, brands(name)), invoices!inner(company_id, status, date)`)
           .eq('invoices.company_id', company_id)
           .eq('invoices.status', 'confirmed')
-          .gte('invoices.date', from).lte('invoices.date', to);
-        assertNoError(error, 'getSalesByProduct');
+          .gte('invoices.date', from).lte('invoices.date', to)
+          .order('id').range(f, t), assertNoError);
         const byProduct: Record<string, { sku: string; name: string; brand: string; qty: number; sales: number; cogs: number }> = {};
         for (const row of data ?? []) {
           const p = row.products as unknown as { sku: string; name: string; brands: { name: string } | null } | null;
@@ -4468,7 +4484,7 @@ export function createSupabaseAdapter(
           if (!byProduct[id]) byProduct[id] = { sku: p?.sku ?? '', name: p?.name ?? '', brand: p?.brands?.name ?? '', qty: 0, sales: 0, cogs: 0 };
           const qty = Number(row.quantity);
           const net = qty * Number(row.unit_price) * (1 - Number(row.discount_percent ?? 0) / 100);
-          byProduct[id].qty += qty;
+          byProduct[id].qty += lineBaseQty(row);
           byProduct[id].sales += net;
           byProduct[id].cogs += lineCogs(row);
         }
@@ -4480,13 +4496,12 @@ export function createSupabaseAdapter(
 
       async getSalesByBrand(company_id, from, to): Promise<SalesByBrandLine[]> {
         const costCol = await getCostCol();
-        const { data, error } = await client
-          .from('invoice_items')
-          .select(`quantity, unit_price, discount_percent, cost_at_sale${costCol}, products(brand_id, brands(name)), invoices!inner(company_id, status, date)` as 'quantity, unit_price, discount_percent, cost_at_sale, products(brand_id, brands(name)), invoices!inner(company_id, status, date)')
+        const data = await fetchAllPages<SalesLine>('getSalesByBrand', (f, t) => rest('invoice_items')
+          .select(`quantity, unit_price, discount_percent, cost_at_sale${costCol}, products(brand_id, brands(name)), invoices!inner(company_id, status, date)`)
           .eq('invoices.company_id', company_id)
           .eq('invoices.status', 'confirmed')
-          .gte('invoices.date', from).lte('invoices.date', to);
-        assertNoError(error, 'getSalesByBrand');
+          .gte('invoices.date', from).lte('invoices.date', to)
+          .order('id').range(f, t), assertNoError);
         const byBrand: Record<string, { name: string; qty: number; revenue: number; cogs: number }> = {};
         for (const row of data ?? []) {
           const p = row.products as unknown as { brand_id: string | null; brands: { name: string } | null } | null;
@@ -4494,7 +4509,7 @@ export function createSupabaseAdapter(
           if (!byBrand[id]) byBrand[id] = { name: p?.brands?.name ?? 'No Brand', qty: 0, revenue: 0, cogs: 0 };
           const qty = Number(row.quantity);
           const net = qty * Number(row.unit_price) * (1 - Number(row.discount_percent ?? 0) / 100);
-          byBrand[id].qty += qty;
+          byBrand[id].qty += lineBaseQty(row);
           byBrand[id].revenue += net;
           byBrand[id].cogs += lineCogs(row);
         }
@@ -4506,13 +4521,12 @@ export function createSupabaseAdapter(
 
       async getSalesByVehicle(company_id, from, to): Promise<SalesByVehicleLine[]> {
         const costCol = await getCostCol();
-        const { data, error } = await client
-          .from('invoice_items')
-          .select(`quantity, unit_price, discount_percent, cost_at_sale${costCol}, product_id, invoices!inner(company_id, status, date)` as 'quantity, unit_price, discount_percent, cost_at_sale, product_id, invoices!inner(company_id, status, date)')
+        const data = await fetchAllPages<SalesLine>('getSalesByVehicle inv_items', (f, t) => rest('invoice_items')
+          .select(`quantity, unit_price, discount_percent, cost_at_sale${costCol}, product_id, invoices!inner(company_id, status, date)`)
           .eq('invoices.company_id', company_id)
           .eq('invoices.status', 'confirmed')
-          .gte('invoices.date', from).lte('invoices.date', to);
-        assertNoError(error, 'getSalesByVehicle inv_items');
+          .gte('invoices.date', from).lte('invoices.date', to)
+          .order('id').range(f, t), assertNoError);
 
         const productIds = [...new Set((data ?? []).map(r => r.product_id).filter(Boolean) as string[])];
         if (productIds.length === 0) return [];
@@ -4528,7 +4542,7 @@ export function createSupabaseAdapter(
           if (!row.product_id) continue;
           if (!itemMap[row.product_id]) itemMap[row.product_id] = { qty: 0, sales: 0, cogs: 0 };
           const qty = Number(row.quantity);
-          itemMap[row.product_id].qty += qty;
+          itemMap[row.product_id].qty += lineBaseQty(row);
           itemMap[row.product_id].sales += qty * Number(row.unit_price) * (1 - Number(row.discount_percent ?? 0) / 100);
           itemMap[row.product_id].cogs += lineCogs(row);
         }
@@ -5323,6 +5337,7 @@ export function createSupabaseAdapter(
       },
 
       async getOwnerDashboard(company_id, range): Promise<OwnerDashboard> {
+        const baseCol = await getBaseCol();
         // Date helpers
         const todayDate = new Date();
         const today = todayDate.toISOString().slice(0, 10);
@@ -5462,7 +5477,7 @@ export function createSupabaseAdapter(
             .eq('company_id', company_id).eq('is_active', true)
             .lt('created_at', last30 + 'T00:00:00'),
 
-          client.from('invoice_items').select('product_id, quantity, unit_price, discount_percent, products(name), invoices!inner(company_id, status, date)').eq('invoices.company_id', company_id).eq('invoices.status', 'confirmed').gte('invoices.date', monthStart).lte('invoices.date', today).limit(500),
+          rest('invoice_items').select(`product_id, quantity, unit_price, discount_percent, products(name), invoices!inner(company_id, status, date)${baseCol}`).eq('invoices.company_id', company_id).eq('invoices.status', 'confirmed').gte('invoices.date', monthStart).lte('invoices.date', today).limit(500),
 
           // Current stock per (product, warehouse) — pulled directly from
           // stock_ledger via SUM(direction × quantity). We used to read
@@ -5472,7 +5487,9 @@ export function createSupabaseAdapter(
           // undefined order and the dedup could pick an intermediate row.
           // SUM is deterministic and self-corrects against any historical
           // chaos in the ledger.
-          client.from('stock_ledger').select('product_id, warehouse_id, direction, quantity, products(min_stock_level)').eq('company_id', company_id).limit(5000),
+          fetchAllPages<Record<string, unknown>>('getOwnerDashboard stock', (f, t) =>
+            client.from('stock_ledger').select('product_id, warehouse_id, direction, quantity, products(min_stock_level)').eq('company_id', company_id).order('seq' as never).range(f, t) as never,
+          assertNoError).then((data) => ({ data, error: null })),
 
           client.from('invoices').select('id, total_amount').eq('company_id', company_id).eq('status', 'confirmed').lt('due_date', today).limit(500),
 
@@ -5581,7 +5598,7 @@ export function createSupabaseAdapter(
         for (const r of (topProds ?? []) as unknown as { product_id: string | null; quantity: number; unit_price: number; discount_percent: number; products: { name: string } | null }[]) {
           const id = r.product_id ?? 'none';
           if (!prodRevenue[id]) prodRevenue[id] = { name: r.products?.name ?? '', qty: 0, rev: 0 };
-          prodRevenue[id].qty += Number(r.quantity);
+          prodRevenue[id].qty += lineBaseQty(r);
           prodRevenue[id].rev += Number(r.quantity) * Number(r.unit_price) * (1 - Number(r.discount_percent ?? 0) / 100);
         }
         const topProducts = Object.entries(prodRevenue).sort(([, a], [, b]) => b.rev - a.rev).slice(0, 5).map(([id, v]) => ({ product_id: id, name: v.name, qty: v.qty, revenue: v.rev }));
@@ -6177,7 +6194,8 @@ export function createSupabaseAdapter(
       async update(id, row, items) {
         const { error } = await client.from('stock_transfers').update(row).eq('id', id);
         assertNoError(error, 'stockTransfers.update');
-        await client.from('stock_transfer_items').delete().eq('transfer_id', id);
+        const { error: dErr } = await client.from('stock_transfer_items').delete().eq('transfer_id', id);
+        assertNoError(dErr, 'stockTransfers.update delete items');
         if (items.length > 0) {
           const { error: iErr } = await client.from('stock_transfer_items').insert(items.map(i => ({ ...i, transfer_id: id })));
           assertNoError(iErr, 'stockTransfers.update items');
@@ -6224,6 +6242,18 @@ export function createSupabaseAdapter(
           assertNoError(iErr, 'inventoryAdjustments.create items');
         }
         return adj;
+      },
+      // Saving an edited draft used to create a second adjustment with the same
+      // number, which the database refuses.
+      async update(id, row, items) {
+        const { error } = await client.from('inventory_adjustments').update(row).eq('id', id).eq('status', 'draft');
+        assertNoError(error, 'inventoryAdjustments.update');
+        const { error: dErr } = await client.from('inventory_adjustment_items').delete().eq('adjustment_id', id);
+        assertNoError(dErr, 'inventoryAdjustments.update delete items');
+        if (items.length > 0) {
+          const { error: iErr } = await client.from('inventory_adjustment_items').insert(items.map(i => ({ ...i, adjustment_id: id })));
+          assertNoError(iErr, 'inventoryAdjustments.update items');
+        }
       },
       async confirm(adjustment_id) {
         const { data, error } = await client.rpc('confirm_inventory_adjustment', { p_adjustment_id: adjustment_id });

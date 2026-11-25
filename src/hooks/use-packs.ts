@@ -17,8 +17,8 @@ export interface Packs {
   /** Still loading: a document must not be saved on half the facts. */
   loading: boolean;
   byId: (id: string | null | undefined) => ProductUnitRow | undefined;
-  /** Active packs of a product, for selling or buying. */
-  forProduct: (product_id: string | null | undefined, side: 'sales' | 'purchases') => ProductUnitRow[];
+  /** Active packs of a product, for selling or buying ('all': counting, showing stock). */
+  forProduct: (product_id: string | null | undefined, side: 'sales' | 'purchases' | 'all') => ProductUnitRow[];
   byBarcode: (code: string) => ProductUnitRow | undefined;
   /** PCS, KG… or '' when the product has no unit. */
   unitCode: (unit_id: string | null | undefined) => string;
@@ -48,7 +48,7 @@ export function usePacks(): Packs {
       on,
       loading: !ready || (on && (l1 || l2)),
       byId: (id) => (id ? byId.get(id) : undefined),
-      forProduct: (pid, side) => (pid ? (byProduct.get(pid) ?? NONE).filter((r) => (side === 'sales' ? r.for_sales : r.for_purchases)) : NONE),
+      forProduct: (pid, side) => (pid ? (byProduct.get(pid) ?? NONE).filter((r) => (side === 'sales' ? r.for_sales : side === 'purchases' ? r.for_purchases : true)) : NONE),
       byBarcode: (code) => {
         const c = code.trim().toLowerCase();
         return c ? all.find((r) => r.is_active && r.barcode?.trim().toLowerCase() === c) : undefined;

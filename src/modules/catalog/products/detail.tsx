@@ -518,7 +518,7 @@ export default function ProductDetailPage() {
 
       {/* ── Stock tab ────────────────────────────────────────────────────── */}
       {activeTab === 'stock' && !isNew && id && company_id && (
-        <ProductStockTab companyId={company_id} productId={id} />
+        <ProductStockTab companyId={company_id} productId={id} unitId={product?.unit_id ?? null} />
       )}
 
       {/* ── Compatibility tab ────────────────────────────────────────────── */}

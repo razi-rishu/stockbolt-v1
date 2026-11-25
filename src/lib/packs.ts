@@ -97,6 +97,8 @@ export interface PackLineInput {
   on_hand: number | null;
   /** Buying: net_price is a cost, compared with the average cost. */
   buying?: boolean;
+  /** Counted as packs and loose units: 7 BOX + 7 PCS. */
+  loose?: number;
 }
 
 export interface PackCheckLine {
@@ -123,16 +125,16 @@ export function checkPacks(input: PackLineInput[]): PackCheck {
   const out: PackCheck = { lines: [], warnings: [], problems: [] };
   const need = new Map<string, number>();
   for (const l of input) {
-    const base = baseQuantity(l.quantity, l.factor);
+    const base = baseQuantity(l.quantity, l.factor) + (l.loose ?? 0);
     need.set(l.product_id, (need.get(l.product_id) ?? 0) + base);
-    const problem = packProblem(l.quantity, l.factor, l.allows_decimals);
+    const problem = packProblem(l.quantity, l.factor, l.allows_decimals) ?? (l.loose ? packProblem(l.loose, 1, l.allows_decimals) : null);
     if (problem) {
       out.problems.push({ kind: problem, label: l.label, base_unit: l.base_unit,
         text: l.pack_name ? `${fmtQty(l.quantity)} × ${l.pack_name}` : fmtQty(l.quantity) });
       continue;
     }
     if (!l.pack_name) continue;
-    out.lines.push({ text_qty: fmtQty(l.quantity), pack_name: l.pack_name, text_base: fmtQty(base), label: l.label, base_unit: l.base_unit });
+    out.lines.push({ text_qty: fmtQty(l.quantity), pack_name: l.loose ? `${l.pack_name} + ${fmtQty(l.loose)} ${l.base_unit || 'PCS'}` : l.pack_name, text_base: fmtQty(base), label: l.label, base_unit: l.base_unit });
     if (l.net_price !== null && l.buying) {
       // A box at the cost of one piece (or a piece at the cost of a box).
       const each = l.net_price / l.factor;
@@ -217,4 +219,14 @@ export function packInput(
 export function packCost(next: ProductUnitRow | null, typed: number, from: LinePack): number {
   if (next?.purchase_price != null) return next.purchase_price;
   return Math.round(typed * (next?.factor ?? 1) / lineFactor(from) * 100) / 100;
+}
+
+/** 91 → "7 BOX + 7 PCS", in the product's biggest whole pack; null when it has
+ *  none, or the quantity does not reach one. */
+export function packBreakdown(qty: number, packs: ProductUnitRow[], unit: string): string | null {
+  const biggest = packs.filter((p) => p.factor > 1).sort((a, b) => b.factor - a.factor)[0];
+  if (!biggest || qty < biggest.factor) return null;
+  const n = Math.floor(qty / biggest.factor + 1e-9);
+  const rest = Math.round((qty - n * biggest.factor) * 1000) / 1000;
+  return rest > 0 ? `${fmtQty(n)} ${biggest.name} + ${fmtQty(rest)} ${unit}`.trim() : `${fmtQty(n)} ${biggest.name}`;
 }

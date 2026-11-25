@@ -473,6 +473,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       getById:       () => notImplemented('inventoryAdjustments.getById'),
       getItems:      () => notImplemented('inventoryAdjustments.getItems'),
       create:        () => notImplemented('inventoryAdjustments.create'),
+      update:        () => notImplemented('inventoryAdjustments.update'),
       confirm:       () => notImplemented('inventoryAdjustments.confirm'),
       getNextNumber: () => notImplemented('inventoryAdjustments.getNextNumber'),
     },

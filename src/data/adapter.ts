@@ -1254,6 +1254,8 @@ export interface CustomerStatement {
 
 export interface StockValuationLine {
   product_id: string;
+  /** The product's base unit (to show the quantity in packs). */
+  unit_id: string | null;
   product_code: string;
   product_name: string;
   warehouse_id: string;
@@ -2819,6 +2821,8 @@ export interface InventoryAdjustmentsAPI {
   getById(id: string): Promise<InventoryAdjustmentRow | null>;
   getItems(adjustment_id: string): Promise<AdjustmentItemRow[]>;
   create(row: InventoryAdjustmentInsert, items: AdjustmentItemInsert[]): Promise<InventoryAdjustmentRow>;
+  /** A draft's header and lines; a posted one is not changed. */
+  update(id: string, row: InventoryAdjustmentInsert, items: AdjustmentItemInsert[]): Promise<void>;
   confirm(adjustment_id: string): Promise<AdjustmentConfirmResult>;
   getNextNumber(company_id: string): Promise<string>;
 }

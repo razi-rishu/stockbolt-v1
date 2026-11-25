@@ -258,7 +258,7 @@ async function getInvoice(key: ApiKey, id: string): Promise<Response> {
 
   // Line items — cost_at_sale (margin data) is deliberately NOT exposed.
   const { data: items, error: ierror } = await supabase.from('invoice_items')
-    .select('id, description, quantity, unit_price, discount_amount, tax_amount, line_total, sort_order, products(sku, name)')
+    .select('*, products(sku, name)')   // '*': unit_label / base_quantity are newer than some databases
     .eq('invoice_id', id)
     .order('sort_order');
   if (ierror) return err(500, 'internal', 'Query failed.');
@@ -274,6 +274,10 @@ async function getInvoice(key: ApiKey, id: string): Promise<Response> {
         name: (it.products as { name?: string } | null)?.name ?? null,
         description: it.description,
         quantity: Number(it.quantity),
+        // Additive: the unit the line was sold in (null = the product's own) and
+        // how many of the product's own units that is. 2 BOX of 12 = 24.
+        unit: it.unit_label ?? null,
+        base_quantity: Number(it.base_quantity ?? it.quantity),
         unit_price: Number(it.unit_price),
         discount_amount: Number(it.discount_amount),
         tax_amount: Number(it.tax_amount),
@@ -609,6 +613,9 @@ async function createOrder(key: ApiKey, req: Request): Promise<Response> {
     // No cross-request transactions over PostgREST — roll back the draft
     // header by hand (safe: a draft has no GL/stock footprint).
     await supabase.from('invoices').delete().eq('id', inv.id);
+    if (/whole_units_only/.test(liErr.message ?? '')) {
+      return err(400, 'bad_request', 'An item is counted in whole units, so its quantity must be a whole number. The draft was not created.');
+    }
     return err(500, 'internal', 'Order lines could not be saved; the draft was rolled back.');
   }
 

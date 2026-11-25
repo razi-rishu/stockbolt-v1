@@ -19,6 +19,8 @@
  * same adapter call the main stock-ledger page uses, so behaviour stays
  * consistent across pages.
  */
+import { usePacks } from '@/hooks/use-packs';
+import { packBreakdown } from '@/lib/packs';
 import { useState, useMemo } from 'react';
 import { formatDate } from '@/lib/locale';
 import { useTranslation } from 'react-i18next';
@@ -39,8 +41,8 @@ function fmt(n: number) {
 
 
 export function ProductStockTab({
-  companyId, productId,
-}: { companyId: string; productId: string }) {
+  companyId, productId, unitId,
+}: { companyId: string; productId: string; unitId: string | null }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   // Phase 47c — preset period picker (replaces raw From/To). This feeds a
@@ -76,6 +78,8 @@ export function ProductStockTab({
   });
   const onHand = stockMap[productId]?.qty ?? 0;
   const mac    = stockMap[productId]?.mac ?? 0;
+  const packs = usePacks();
+  const packText = packs.on ? packBreakdown(onHand, packs.forProduct(productId, 'all'), packs.unitCode(unitId) || t('packs.piece')) : null;
 
   // Summary stats over the visible (filtered) rows.
   const stats = useMemo(() => {
@@ -104,6 +108,7 @@ export function ProductStockTab({
           <div className="sb-exp-kpi-txt">
             <span className="sb-exp-kpi-label">{t('prodOcean.on_hand')}</span>
             <bdi dir="ltr" className="sb-exp-kpi-val" style={{ color: onHand < 0 ? 'var(--sb-danger)' : onHand === 0 ? 'var(--sb-text-secondary)' : undefined }}>{fmt(onHand)}</bdi>
+            {packText && <bdi dir="ltr" className="sb-pack-sub" data-testid="stock-in-packs">{packText}</bdi>}
             <span className="sb-exp-kpi-sub">{t('prodOcean.on_hand_sub')}</span>
           </div>
         </div>

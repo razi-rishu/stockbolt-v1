@@ -13,6 +13,7 @@
  *    prefix. Per-line HSN / is_service / default treatment come from the product.
  */
 import type { CanonicalBuildInput } from './canonical';
+import { packUnitCode } from './unit-codes';
 
 export type Jurisdiction = 'IN_GST' | 'AE_VAT';
 export type EInvoiceFormat = 'india_gst_json' | 'pint_ae_ubl';
@@ -54,6 +55,8 @@ export interface AssembleInput {
     quantity: number; unit_id: string | null; unit_price: number;
     discount_amount: number; line_subtotal: number;
     tax_rate: number | null; tax_amount: number; line_total: number;
+    /** phase155 — the pack the line was written in (BOX); null = none. */
+    unit_label?: string | null;
   }>;
   products: Array<{ id: string; name: string; hsn_code?: string | null; default_tax_treatment?: string | null; type?: string | null }>;
   unitCodeById?: Record<string, string>;
@@ -99,7 +102,7 @@ export function assembleCanonicalFromInvoice(input: AssembleInput): CanonicalBui
         hsn_code: p?.hsn_code ?? null,
         is_service: p?.type === 'service',
         quantity: it.quantity,
-        unit: (it.unit_id ? input.unitCodeById?.[it.unit_id] : null) ?? null,
+        unit: it.unit_label ? packUnitCode(it.unit_label, isIndia) : (it.unit_id ? input.unitCodeById?.[it.unit_id] : null) ?? null,
         unit_price: it.unit_price,
         discount_amount: it.discount_amount,
         taxable_value: it.line_subtotal,

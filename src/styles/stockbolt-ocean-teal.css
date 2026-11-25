@@ -2550,3 +2550,6 @@
 .sb-ocean .sb-pack-line-name { flex: 1 1 160px; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
 .sb-ocean .sb-pack-line-qty { font-weight: 700; color: var(--sb-primary-dark); }
 .sb-ocean .sb-pack-line-act { display: inline-flex; gap: 6px; }
+.sb-pack-count { display: flex; align-items: center; gap: 4px; }
+.sb-pack-count input { width: 100%; min-width: 0; min-height: 26px; padding: 2px 4px; font-size: 11px; text-align: end; border: 1px solid var(--sb-border, #E5E7EB); border-radius: 6px; background: #fff; }
+.sb-pack-sub { display: block; font-size: 11px; font-weight: 500; color: var(--sb-text-secondary, #6B7280); }

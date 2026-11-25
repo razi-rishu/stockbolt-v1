@@ -1,3 +1,5 @@
+import { usePacks } from '@/hooks/use-packs';
+import { packBreakdown } from '@/lib/packs';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -48,6 +50,9 @@ export default function ProductsListPage() {
     enabled: !!company_id,
   });
 
+  const packs = usePacks();
+  const packText = (r: ProductRow, qty: number) => packBreakdown(qty, packs.forProduct(r.id, 'all'), packs.unitCode(r.unit_id) || t('packs.piece'));
+
   const rows = search.trim().length >= 2 ? results : all;
   const loading = isLoading || searching;
 
@@ -96,6 +101,7 @@ export default function ProductsListPage() {
             title={t('prodOcean.stock_link_title')}
           >
             <bdi dir="ltr">{qty.toFixed(qty % 1 === 0 ? 0 : 2)}</bdi>
+            {packs.on && packText(r, qty) && <bdi dir="ltr" className="sb-pack-sub">{packText(r, qty)}</bdi>}
           </button>
         );
       },

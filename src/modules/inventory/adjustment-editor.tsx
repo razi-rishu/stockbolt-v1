@@ -17,6 +17,10 @@ import { StatusBadge } from '@/ui/status-badge';
 import { Plus, X, CircleCheck } from 'lucide-react';
 import '@/styles/stockbolt-ocean-teal.css';
 import { calcAdjustmentLine } from '@/core/inventory/inventory-calc';
+import { usePacks } from '@/hooks/use-packs';
+import { PackCounter, type PackCount } from '@/components/packs/pack-count';
+import { usePackGate } from '@/components/packs/use-pack-gate';
+import { NO_PACK, packInput, type PackLineInput } from '@/lib/packs';
 import type { ProductRow, WarehouseRow, AdjustmentItemInsert } from '@/data/adapter';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -30,6 +34,8 @@ interface LineRow {
   actual_qty: string;
   unit_cost: string;
   notes: string;
+  /** phase155 — how it was counted; the quantity itself is in base units. */
+  count?: PackCount | null;
 }
 
 const newLine = (): LineRow => ({
@@ -113,6 +119,19 @@ export default function AdjustmentEditorPage() {
   const productOpts = products.map(p => ({ value: p.id, label: `${p.sku} — ${p.name}` }));
   const reasonOpts = REASONS.map(r => ({ value: r, label: t(`inventory.reason_${r}`) }));
 
+  // phase155 — counted in packs; the line keeps base units. Off: nothing runs.
+  const packs = usePacks();
+  const packGate = usePackGate({ loading: packs.loading });
+  const packsOf = (pid: string | null) => packs.forProduct(pid, 'all');
+  const unitOf = (pid: string | null) => packs.unitCode(products.find(p => p.id === pid)?.unit_id);
+  const packLines: PackLineInput[] = !packs.on ? [] : lines.flatMap(l => {
+    const base = packInput({ ...NO_PACK, quantity: parseFloat(l.actual_qty) || 0, net_price: null }, products.find(p => p.id === l.product_id), packs, null, null);
+    if (!base) return [];
+    const p = l.count ? packsOf(l.product_id).find(x => x.id === l.count!.pack_id) : undefined;
+    return [p ? { ...base, quantity: parseFloat(l.count!.packs) || 0, factor: p.factor, pack_name: p.name, loose: parseFloat(l.count!.loose) || 0 } : base];
+  });
+  const askSave = () => { setError(null); packGate.ask(packLines, () => saveMutation.mutate()); };
+
   function buildItems(): AdjustmentItemInsert[] {
     return lines
       .filter(l => l.product_id)
@@ -151,8 +170,7 @@ export default function AdjustmentEditorPage() {
         const adj = await getAdapter().inventoryAdjustments.create(row, items);
         return adj.id;
       } else {
-        // For drafts we re-create (delete+insert via adapter)
-        await getAdapter().inventoryAdjustments.create(row, items);
+        await getAdapter().inventoryAdjustments.update(id!, row, items);
         return id!;
       }
     },
@@ -202,7 +220,7 @@ export default function AdjustmentEditorPage() {
         </div>
         <div className="sb-doc-bar-actions">
           {canEdit && (
-            <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
+            <Button size="sm" onClick={askSave} disabled={saveMutation.isPending}>
               {t('common.save')}
             </Button>
           )}
@@ -214,6 +232,7 @@ export default function AdjustmentEditorPage() {
         </div>
       </div>
 
+      {packGate.modal}
       {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
       {!isNew && id && (
         <ApprovalPanel docType="inventory_adjustment" docId={id} isDraft={existing?.status === 'draft'} amountBase={adjAmount}
@@ -273,7 +292,7 @@ export default function AdjustmentEditorPage() {
             <tr>
               <th className="px-4 py-2 text-start font-medium">{t('inventory.product')}</th>
               <th className="px-4 py-2 text-end font-medium w-28">{t('inventory.system_qty')}</th>
-              <th className="px-4 py-2 text-end font-medium w-28">{t('inventory.actual_qty')}</th>
+              <th className={`px-4 py-2 text-end font-medium ${packs.on ? 'w-44' : 'w-28'}`}>{t('inventory.actual_qty')}</th>
               <th className="px-4 py-2 text-end font-medium w-24">{t('inventory.difference')}</th>
               <th className="px-4 py-2 text-end font-medium w-28">{t('inventory.unit_cost')}</th>
               <th className="px-4 py-2 text-end font-medium w-28">{t('inventory.value')}</th>
@@ -293,7 +312,7 @@ export default function AdjustmentEditorPage() {
                     <SearchableSelect
                       options={productOpts}
                       value={line.product_id ?? ''}
-                      onChange={(v) => updateLine(line._key, { product_id: v || null })}
+                      onChange={(v) => updateLine(line._key, { product_id: v || null, count: null })}
                       disabled={!canEdit}
                       placeholder={t('inventory.select_product')}
                       panelWidth={360}
@@ -306,8 +325,11 @@ export default function AdjustmentEditorPage() {
                   </td>
                   <td className="px-4 py-2">
                     <Input type="number" value={line.actual_qty}
-                      onChange={e => updateLine(line._key, { actual_qty: e.target.value })}
+                      onChange={e => updateLine(line._key, { actual_qty: e.target.value, count: null })}
                       className="text-end" disabled={!canEdit} />
+                    {packs.on && <PackCounter packs={packsOf(line.product_id)} value={line.count ?? null} quantity={a}
+                      baseUnit={unitOf(line.product_id)} disabled={!canEdit}
+                      onChange={(count, q) => updateLine(line._key, q === null ? { count } : { count, actual_qty: String(q) })} />}
                   </td>
                   <td className={`px-4 py-2 text-end font-mono font-semibold ${diffColor}`}>
                     {difference > 0 ? '+' : ''}{difference}

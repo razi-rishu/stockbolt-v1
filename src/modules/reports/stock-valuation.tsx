@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { DocLink } from '@/ui/doc-link';
+import { usePacks } from '@/hooks/use-packs';
+import { packBreakdown } from '@/lib/packs';
 import { usePeriodPicker } from '@/hooks/use-period-picker';
 import { PeriodPicker } from '@/ui/period-picker';
 import { ReportActions } from '@/ui/report-actions';
@@ -22,11 +24,14 @@ export default function StockValuationPage() {
   const lines = sv?.lines ?? [];
   type Row = typeof lines[number];
 
+  const packs = usePacks();
+  const packText = (l: Row) => (packs.on ? packBreakdown(l.quantity, packs.forProduct(l.product_id, 'all'), packs.unitCode(l.unit_id) || t('packs.piece')) : null);
+
   const columns: ReportColumn<Row>[] = [
     { key: 'code', header: t('products.code'), cell: l => <span className="code">{l.product_code}</span>, exp: l => l.product_code },
     { key: 'name', header: t('products.name'), cell: l => <DocLink type="product" id={l.product_id} label={l.product_name} />, exp: l => l.product_name },
     { key: 'wh', header: t('reports.warehouse'), cls: 'muted', cell: l => l.warehouse_name, exp: l => l.warehouse_name },
-    { key: 'qty', header: t('reports.qty'), num: true, cell: l => l.quantity.toLocaleString('en-US'), exp: l => l.quantity },
+    { key: 'qty', header: t('reports.qty'), num: true, cell: l => <>{l.quantity.toLocaleString('en-US')}{packText(l) && <bdi dir="ltr" className="sb-pack-sub">{packText(l)}</bdi>}</>, exp: l => l.quantity },
     { key: 'cost', header: t('reports.unit_cost'), num: true, cls: 'muted', cell: l => fmt(l.unit_cost), exp: l => l.unit_cost.toFixed(2) },
     { key: 'value', header: t('reports.total_value'), num: true, cls: 'strong', cell: l => fmt(l.total_value), foot: sv ? fmt(sv.total_value) : '', exp: l => l.total_value.toFixed(2) },
   ];
