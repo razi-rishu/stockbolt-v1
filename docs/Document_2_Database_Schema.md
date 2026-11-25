@@ -155,12 +155,13 @@ PCS, SET, KG, LITRE, BOX.
 | code | text NOT NULL | 'PCS' |
 | name | text NOT NULL | 'Pieces' |
 | name_ar | text | |
+| allows_decimals | boolean | phase155. NULL = guessed from the code (PCS, NOS, SET, BOX… whole; KG, LTR… decimals). Checked only while packs are on |
 | created_at, updated_at | | |
 
 UNIQUE (company_id, code)
 
 ### `inventory_settings`
-phase153 — the optional inventory features a company shows (menus and product fields). Presentation only: no posting, report or trigger reads it, and switching a feature off deletes nothing. **No row = every feature on** (all companies that existed before phase153). New companies get a row with transfers and shelf locations off.
+phase153 — the optional inventory features a company shows (menus and product fields). Presentation only (except packs_enabled, phase155): no posting or report reads it, and switching a feature off deletes nothing. **No row = every feature on** (all companies that existed before phase153). New companies get a row with transfers and shelf locations off.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -170,9 +171,31 @@ phase153 — the optional inventory features a company shows (menus and product 
 | barcodes_enabled | boolean NOT NULL DEFAULT true | Barcode field |
 | brands_enabled | boolean NOT NULL DEFAULT true | Brands and categories |
 | shelf_enabled | boolean NOT NULL DEFAULT true | Aisle / bin |
+| packs_enabled | boolean NOT NULL DEFAULT **false** | phase155. Buying and selling in packs. Off for every company until it turns it on; cannot be turned off while open documents use packs |
 | updated_by, created_at, updated_at | | |
 
 RLS: read by the company; insert / update need `settings.write`; no client delete.
+
+### `product_units`
+phase155 — packs: a named value of a product's base unit (BOX = 12 PCS, "200 g" = 0.2 KG). Optional (`inventory_settings.packs_enabled`). Stock, cost and returnable quantities are always in the base unit; a pack only says how a document line was written.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID PK | |
+| company_id, product_id | UUID NOT NULL FK | |
+| name, name_ar | text | BOX, 200 g |
+| unit_id | UUID FK → units_of_measure | Optional |
+| factor | numeric(18,6) NOT NULL > 0 | Base units in one pack. Locked once a document used it |
+| selling_price, purchase_price | numeric | Price of one pack; NULL = none set |
+| barcode | text | Unique with product barcodes in the company |
+| for_sales, for_purchases, is_active, sort_order | | |
+| created_at, updated_at | | |
+
+RLS: read by the company; write needs `inventory.write`. Stocked goods without serial numbers only. A product's base unit is locked once stock moved and it has packs.
+
+**Line columns** (phase155, all nullable) on `sales_quote_items`, `invoice_items`, `credit_note_items`, `purchase_order_items`, `goods_receipt_items`, `vendor_bill_items`, `debit_note_items`: `product_unit_id`, `unit_factor`, `base_quantity`, `unit_label`. Filled by the `a_pack_line` trigger from the pack; what a client sends is ignored. **NULL = no pack: base quantity is the line quantity.** Quantity and price on the line stay as sold (2 BOX × 100.00); posting functions move `COALESCE(base_quantity, quantity)`.
+
+Old apps: a direct change to a pack line (or a new line for a product with active packs) without the request header `x-stockbolt-units` is refused (`app_update_required`).
 
 ### `vehicle_makes`, `vehicle_models`
 Auto-parts-specific. Lookup tables for fitment data.

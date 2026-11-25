@@ -54,6 +54,7 @@ export const BACKUP_TABLES: readonly string[] = [
 
   // ── Catalogue ─────────────────────────────────────────────────────────
   'products',
+  'product_units',
   'product_price_levels',
   'product_compatibility',
   'product_serials',
