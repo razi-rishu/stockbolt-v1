@@ -5746,7 +5746,7 @@ export function createSupabaseAdapter(
         assertNoError(error, 'purchaseOrders.create');
         const po = data as PurchaseOrderRow;
         if (items.length > 0) {
-          const { error: iErr } = await client.from('purchase_order_items').insert(items.map(i => ({ ...i, po_id: po.id })));
+          const { error: iErr } = await client.from('purchase_order_items').insert(items.map(i => ({ ...i, po_id: po.id })) as Database['public']['Tables']['purchase_order_items']['Insert'][]);
           assertNoError(iErr, 'purchaseOrders.create items');
         }
         return po;
@@ -5754,9 +5754,11 @@ export function createSupabaseAdapter(
       async update(id, row, items) {
         const { error } = await client.from('purchase_orders').update(row).eq('id', id);
         assertNoError(error, 'purchaseOrders.update');
-        await client.from('purchase_order_items').delete().eq('po_id', id);
+        // A refused delete must stop here: inserting anyway would double the lines.
+        const { error: dErr } = await client.from('purchase_order_items').delete().eq('po_id', id);
+        assertNoError(dErr, 'purchaseOrders.update delete items');
         if (items.length > 0) {
-          const { error: iErr } = await client.from('purchase_order_items').insert(items.map(i => ({ ...i, po_id: id })));
+          const { error: iErr } = await client.from('purchase_order_items').insert(items.map(i => ({ ...i, po_id: id })) as Database['public']['Tables']['purchase_order_items']['Insert'][]);
           assertNoError(iErr, 'purchaseOrders.update items');
         }
       },
@@ -5839,9 +5841,14 @@ export function createSupabaseAdapter(
           sort_order:       i,
           coa_account_id:   null,
           linked_grn_item_id: null,
+          // phase155 — the pack comes along; 10 BOX must not become 10 PCS.
+          ...((pi as { product_unit_id?: string | null }).product_unit_id
+            ? { product_unit_id: (pi as { product_unit_id?: string | null }).product_unit_id } : {}),
         }));
         if (billItems.length > 0) {
-          const { error: biErr } = await client.from('vendor_bill_items').insert(billItems);
+          const { error: biErr } = await client.from('vendor_bill_items').insert(billItems as Database['public']['Tables']['vendor_bill_items']['Insert'][]);
+          // Nothing points at the new draft yet: do not leave it behind without lines.
+          if (biErr) await client.from('vendor_bills').delete().eq('id', bill!.id).eq('status', 'draft');
           assertNoError(biErr, 'purchaseOrders.convertToBill insert items');
         }
 
@@ -5882,7 +5889,7 @@ export function createSupabaseAdapter(
         assertNoError(error, 'goodsReceipts.create');
         const grn = data as GoodsReceiptRow;
         if (items.length > 0) {
-          const { error: iErr } = await client.from('goods_receipt_items').insert(items.map(i => ({ ...i, grn_id: grn.id })));
+          const { error: iErr } = await client.from('goods_receipt_items').insert(items.map(i => ({ ...i, grn_id: grn.id })) as Database['public']['Tables']['goods_receipt_items']['Insert'][]);
           assertNoError(iErr, 'goodsReceipts.create items');
         }
         return grn;
@@ -5890,9 +5897,11 @@ export function createSupabaseAdapter(
       async update(id, row, items) {
         const { error } = await client.from('goods_receipts').update(row).eq('id', id);
         assertNoError(error, 'goodsReceipts.update');
-        await client.from('goods_receipt_items').delete().eq('grn_id', id);
+        // A refused delete must stop here: inserting anyway would double the lines.
+        const { error: dErr } = await client.from('goods_receipt_items').delete().eq('grn_id', id);
+        assertNoError(dErr, 'goodsReceipts.update delete items');
         if (items.length > 0) {
-          const { error: iErr } = await client.from('goods_receipt_items').insert(items.map(i => ({ ...i, grn_id: id })));
+          const { error: iErr } = await client.from('goods_receipt_items').insert(items.map(i => ({ ...i, grn_id: id })) as Database['public']['Tables']['goods_receipt_items']['Insert'][]);
           assertNoError(iErr, 'goodsReceipts.update items');
         }
       },
@@ -5940,7 +5949,7 @@ export function createSupabaseAdapter(
         assertNoError(error, 'vendorBills.create');
         const bill = data as VendorBillRow;
         if (items.length > 0) {
-          const { error: iErr } = await client.from('vendor_bill_items').insert(items.map(i => ({ ...i, bill_id: bill.id })));
+          const { error: iErr } = await client.from('vendor_bill_items').insert(items.map(i => ({ ...i, bill_id: bill.id })) as Database['public']['Tables']['vendor_bill_items']['Insert'][]);
           assertNoError(iErr, 'vendorBills.create items');
         }
         if (landedCosts && landedCosts.length > 0) {
@@ -5953,9 +5962,11 @@ export function createSupabaseAdapter(
       async update(id, row, items, landedCosts) {
         const { error } = await client.from('vendor_bills').update(row).eq('id', id);
         assertNoError(error, 'vendorBills.update');
-        await client.from('vendor_bill_items').delete().eq('bill_id', id);
+        // A refused delete must stop here: inserting anyway would double the lines.
+        const { error: dErr } = await client.from('vendor_bill_items').delete().eq('bill_id', id);
+        assertNoError(dErr, 'vendorBills.update delete items');
         if (items.length > 0) {
-          const { error: iErr } = await client.from('vendor_bill_items').insert(items.map(i => ({ ...i, bill_id: id })));
+          const { error: iErr } = await client.from('vendor_bill_items').insert(items.map(i => ({ ...i, bill_id: id })) as Database['public']['Tables']['vendor_bill_items']['Insert'][]);
           assertNoError(iErr, 'vendorBills.update items');
         }
         // Landed costs: replace wholesale (same pattern as items).
@@ -5983,7 +5994,9 @@ export function createSupabaseAdapter(
         if ((bill as { status?: string } | null)?.status !== 'draft') {
           throw new Error('Only draft bills can be deleted. Re-open a confirmed bill to a draft first.');
         }
-        await client.from('vendor_bill_items').delete().eq('bill_id', bill_id);
+        // A refused delete must stop here: inserting anyway would double the lines.
+        const { error: dErr } = await client.from('vendor_bill_items').delete().eq('bill_id', bill_id);
+        assertNoError(dErr, 'vendorBills.deleteDraft items');
         const { error } = await client.from('vendor_bills').delete().eq('id', bill_id).eq('status', 'draft');
         assertNoError(error, 'vendorBills.deleteDraft');
       },
@@ -6646,7 +6659,9 @@ export function createSupabaseAdapter(
         const { error: hErr } = await client.from('credit_notes')
           .update(row as Database['public']['Tables']['credit_notes']['Update']).eq('id', id);
         assertNoError(hErr, 'creditNotes.update header');
-        await client.from('credit_note_items').delete().eq('credit_note_id', id);
+        // A refused delete must stop here: inserting anyway would double the lines.
+        const { error: dErr } = await client.from('credit_note_items').delete().eq('credit_note_id', id);
+        assertNoError(dErr, 'creditNotes.update delete items');
         const itemsWithId = items.map((it, i) => ({ ...it, credit_note_id: id, sort_order: i }));
         const { error: iErr } = await client.from('credit_note_items')
           .insert(itemsWithId as Database['public']['Tables']['credit_note_items']['Insert'][]);
@@ -6914,7 +6929,9 @@ export function createSupabaseAdapter(
       async update(id, row: DebitNoteUpdate, items: DebitNoteItemInsert[]): Promise<void> {
         const { error: hErr } = await client.from('debit_notes').update(row).eq('id', id);
         assertNoError(hErr, 'debitNotes.update header');
-        await client.from('debit_note_items').delete().eq('debit_note_id', id);
+        // A refused delete must stop here: inserting anyway would double the lines.
+        const { error: dErr } = await client.from('debit_note_items').delete().eq('debit_note_id', id);
+        assertNoError(dErr, 'debitNotes.update delete items');
         const itemsWithId = items.map((it, i) => ({ ...it, debit_note_id: id, sort_order: i }));
         // R2c — vendor_bill_item_id is a phase-72 column; the generated
         // database.ts predates it and RejectExcessProperties refuses unknown

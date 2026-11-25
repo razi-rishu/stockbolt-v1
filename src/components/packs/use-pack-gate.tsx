@@ -64,6 +64,7 @@ export function usePackGate(opts: { loading?: boolean; continueLabel?: string } 
                 <p key={i} className="sb-alert sb-alert-warn" role="status" style={{ fontWeight: 400, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                   <AlertTriangle size={16} aria-hidden="true" style={{ flex: 'none', marginTop: 2 }} />
                   <span>{w.kind === 'price_is_base' ? t('packs.w_price', { product: w.label, pack: w.pack_name, unit: w.base_unit || t('packs.piece') })
+                    : w.kind === 'cost_odd' ? t('packs.w_cost_odd', { product: w.label, unit: w.base_unit || t('packs.piece'), cost: money(w.cost), usual: money(w.usual) })
                     : w.kind === 'below_cost' ? t('packs.w_cost', { product: w.label, pack: w.pack_name, price: money(w.price), cost: money(w.cost) })
                     : t('packs.w_stock', { product: w.label, have: w.have, need: w.need, unit: w.base_unit || t('packs.piece') })}</span>
                 </p>

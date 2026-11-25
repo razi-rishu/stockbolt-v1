@@ -1042,7 +1042,7 @@ export function grnToDocumentData({
       description: prod?.name ?? '—',
       description_ar: prod?.name_ar ?? null,
       quantity:    qty,
-      unit_code:   null,
+      unit_code:   unitOf(it),
       unit_price:  cost,
       discount_percent: 0,
       discount_amount:  0,

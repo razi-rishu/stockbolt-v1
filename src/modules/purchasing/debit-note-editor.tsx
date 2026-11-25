@@ -25,17 +25,24 @@ import { debitNoteToDocumentData, withPaymentDetails } from '@/modules/print/_si
 import { RefundDueBanner } from '@/components/refund-due-banner';
 import { RefundedBadge, RefundedPill } from '@/components/refunded-badge';
 import '@/modules/print/_signature/print.css';
+import { usePacks } from '@/hooks/use-packs';
+import { PackSelect } from '@/components/packs/pack-select';
+import { recordPackAcceptance, usePackGate } from '@/components/packs/use-pack-gate';
+import { packError } from '@/lib/pack-errors';
+import { fmtQty, lineFactor, linePackOf, NO_PACK, packColumn, packInput, type LinePack } from '@/lib/packs';
 import type { DebitNoteRow, DebitNoteItemInsert, DebitNoteItemRow, ContactRow, VendorBillRow, VendorBillItemRow, Company, ProductRow, ReturnableBillLine, WarehouseRow } from '@/data/adapter';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt   = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-interface LineItem {
+interface LineItem extends LinePack {
+  /** phase155 — the pack the bill line was bought in. */
+  bought_pack: LinePack;
   /** R2c — the bill line this returns, when there is one. Null is legitimate:
    *  a debit note may carry a charge that was never on the bill, or have no
    *  linked bill at all. Only linked lines are capped at what remains. */
   vendor_bill_item_id: string | null;
-  /** Remaining returnable on that bill line; null when unlinked. */
+  /** Remaining returnable on that bill line, in BASE units; null when unlinked. */
   qty_returnable:   number | null;
   /** Z6 (P3 mirror) — which warehouse these goods physically leave from.
    *  Null means the note's own warehouse, which is what every debit note
@@ -160,7 +167,9 @@ export default function DebitNoteEditorPage() {
         vendor_bill_item_id: (it as { vendor_bill_item_id?: string | null }).vendor_bill_item_id ?? null,
         // Already-saved lines consumed their own quantity, so add it back to
         // show what this note may still claim.
-        qty_returnable:   Number(it.quantity),
+        qty_returnable:   Number(it.base_quantity ?? it.quantity),
+        ...linePackOf(it),
+        bought_pack:      linePackOf(it),
         product_id:       it.product_id ?? null,
         description:      it.description ?? '',
         quantity:         Number(it.quantity),
@@ -199,23 +208,33 @@ export default function DebitNoteEditorPage() {
   // the full billed quantity, and skipping lines already fully returned.
   function importFromBill() {
     if (billItems.length === 0) return;
-    setLines(billItems.map(it => ({
-      vendor_bill_item_id: it.id,
-      restock_warehouse_id: null,
-      qty_returnable:   Number(billReturnableById.get(it.id)?.qty_returnable ?? it.quantity),
-      product_id:       it.product_id ?? null,
-      description:      it.description ?? '',
-      quantity:         Number(billReturnableById.get(it.id)?.qty_returnable ?? it.quantity),
-      unit_cost:        Number(it.unit_cost),
-      discount_percent: Number(it.discount_percent),
-      tax_rate:         Number(it.tax_rate ?? 0),
-    })).filter(l => (l.qty_returnable ?? 0) > 0));
+    setLines(billItems.map(it => {
+      const left = Number(billReturnableById.get(it.id)?.qty_returnable ?? it.base_quantity ?? it.quantity);
+      // phase155 — bought in a pack: returned in it while what is left fills
+      // whole packs, else in single units at the cost of one.
+      const bought = linePackOf(it);
+      const whole = bought.product_unit_id && Number.isInteger(+(left / lineFactor(bought)).toFixed(6));
+      const pack = whole && packs.on ? bought : NO_PACK;
+      return {
+        vendor_bill_item_id: it.id,
+        restock_warehouse_id: null,
+        ...pack,
+        bought_pack:      bought,
+        qty_returnable:   left,
+        product_id:       it.product_id ?? null,
+        description:      it.description ?? '',
+        quantity:         +(left / lineFactor(pack)).toFixed(3),
+        unit_cost:        pack === bought || !bought.product_unit_id ? Number(it.unit_cost) : +(Number(it.unit_cost) / lineFactor(bought)).toFixed(2),
+        discount_percent: Number(it.discount_percent),
+        tax_rate:         Number(it.tax_rate ?? 0),
+      };
+    }).filter(l => (l.qty_returnable ?? 0) > 0));
   }
 
   // Unlike the sales side, a hand-added line is still valid here — it just
   // carries no bill link, so no returnable cap applies to it.
   function addLine() {
-    setLines(prev => [...prev, { vendor_bill_item_id: null, qty_returnable: null, product_id: null, description: '', quantity: 1, unit_cost: 0, discount_percent: 0, tax_rate: defaultTaxRate(companyCountry), restock_warehouse_id: null }]);
+    setLines(prev => [...prev, { ...NO_PACK, bought_pack: NO_PACK, vendor_bill_item_id: null, qty_returnable: null, product_id: null, description: '', quantity: 1, unit_cost: 0, discount_percent: 0, tax_rate: defaultTaxRate(companyCountry), restock_warehouse_id: null }]);
   }
   function removeLine(i: number) {
     setLines(prev => prev.filter((_, idx) => idx !== i));
@@ -223,6 +242,33 @@ export default function DebitNoteEditorPage() {
   function updateLine<K extends keyof LineItem>(i: number, key: K, val: LineItem[K]) {
     setLines(prev => prev.map((l, idx) => idx === i ? { ...l, [key]: val } : l));
   }
+
+  // phase155 — packs. Nothing here runs while the company has them off.
+  const packs = usePacks();
+  const packGate = usePackGate({ loading: packs.loading });
+  const { data: stockMap = {} } = useQuery({
+    queryKey: ['current_stock_map', company_id],
+    queryFn: () => getAdapter().stockLedger.getCurrentStockMap(company_id!),
+    enabled: !!company_id && packs.on,
+  });
+  const unitOf = (pid: string | null) => packs.unitCode(products.find(p => p.id === pid)?.unit_id) || t('packs.piece');
+  /** Same goods, other unit: quantity and cost are converted together. */
+  function switchPack(i: number, toPack: boolean) {
+    setLines(prev => prev.map((l, idx) => {
+      if (idx !== i) return l;
+      const next = toPack ? l.bought_pack : NO_PACK;
+      const k = lineFactor(l) / lineFactor(next);
+      const bought = Number(billItems.find(it => it.id === l.vendor_bill_item_id)?.unit_cost);
+      const untouched = toPack && Math.abs(l.unit_cost - +(bought / lineFactor(next)).toFixed(2)) < 0.005;
+      return { ...l, ...next, quantity: +(l.quantity * k).toFixed(3), unit_cost: untouched ? bought : +(l.unit_cost / k).toFixed(2) };
+    }));
+  }
+  // Goods leave here, so stock is checked; the cost is the bill's own.
+  const packLines = !packs.on ? [] : lines.flatMap(l => {
+    const product = products.find(p => p.id === l.product_id);
+    return packInput({ ...l, net_price: null }, product, packs, product ? stockMap[product.id] : null, 0) ?? [];
+  });
+  const askSave = () => packGate.ask(packLines, () => saveMutation.mutate());
 
   const totals = lines.reduce((acc, l) => {
     const c = calcLine(l);
@@ -250,6 +296,7 @@ export default function DebitNoteEditorPage() {
         line_total:       c.line_total,
         sort_order:       i,
         tax_category:     'standard',
+        ...packColumn(l),
       } as DebitNoteItemInsert;
     });
   }
@@ -282,6 +329,7 @@ export default function DebitNoteEditorPage() {
         await getAdapter().debitNotes.update(id!, header, buildItems());
         noteId = id!;
       }
+      await recordPackAcceptance('debit_note', noteId, packLines);
       // phase145 — needs approval: keep it a draft and send it to an approver.
       if (gate.needs(roundedTotal)) return { noteId, submit: true };
       try {
@@ -428,14 +476,15 @@ export default function DebitNoteEditorPage() {
             <Button variant="secondary" onClick={() => setShowVoidDlg(true)}>{t('common.void')}</Button>
           )}
           {isDraft && (
-            <Button variant="primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || appr.pending}>
+            <Button variant="primary" onClick={askSave} disabled={saveMutation.isPending || appr.pending}>
               {saveMutation.isPending ? t('common.saving') : gate.needs(roundedTotal) ? t('apprOcean.save_submit') : t('common.save')}
             </Button>
           )}
         </div>
       </div>
-      {!isNew && id && <ApprovalPanel docType="debit_note" docId={id} isDraft={isDraft} onChanged={refreshNote} />}
+      {!isNew && id && <ApprovalPanel docType="debit_note" docId={id} isDraft={isDraft} onChanged={refreshNote} packLines={packLines} />}
       {gate.modal}
+      {packGate.modal}
 
       <div className="sb-card sb-form sb-doc-card grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
@@ -528,18 +577,24 @@ export default function DebitNoteEditorPage() {
                     </td>
                     <td className="px-3 py-2">
                       <input type="number" min="1" step="1"
-                        max={l.qty_returnable ?? undefined}
+                        max={l.qty_returnable !== null ? l.qty_returnable / lineFactor(l) : undefined}
                         value={l.quantity}
                         onChange={e => updateLine(i, 'quantity', Number(e.target.value))}
                         disabled={!isDraft}
                         title={l.qty_returnable !== null
-                          ? t('dnOcean.returnable_title', { qty: l.qty_returnable })
+                          ? t('dnOcean.returnable_title', { qty: packs.on && l.bought_pack.product_unit_id ? `${fmtQty(l.qty_returnable)} ${unitOf(l.product_id)}` : l.qty_returnable })
                           : undefined}
                         dir="ltr"
                         className={`w-24 border rounded px-2 py-1 text-sm text-end ${
-                          l.qty_returnable !== null && l.quantity > l.qty_returnable
+                          l.qty_returnable !== null && l.quantity * lineFactor(l) > l.qty_returnable + 1e-9
                             ? 'border-danger-500 text-danger-600'
                             : 'border-border-strong'}`} />
+                      {packs.on && l.bought_pack.product_unit_id && (
+                        <PackSelect value={l.product_unit_id} packs={[{
+                          id: l.bought_pack.product_unit_id, name: l.bought_pack.unit_label ?? '', name_ar: null, factor: lineFactor(l.bought_pack),
+                        }]} baseUnit={unitOf(l.product_id)} quantity={l.quantity} disabled={!isDraft}
+                          onChange={(p) => switchPack(i, !!p)} />
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <input type="number" min="0" step="0.01" value={l.unit_cost}
@@ -602,7 +657,7 @@ export default function DebitNoteEditorPage() {
       </div>
 
       {saveMutation.isError && (
-        <p className="sb-alert sb-alert-danger" role="alert">{String((saveMutation.error as Error).message)}</p>
+        <p className="sb-alert sb-alert-danger" role="alert">{packError(t, saveMutation.error)}</p>
       )}
 
       {/* Void dialog */}

@@ -23,10 +23,17 @@ import { ConfigurableDocTemplate } from '@/modules/print/engine/ConfigurableDocT
 import { useResolvedPrintTemplate } from '@/hooks/use-resolved-print-template';
 import { grnToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
+import { usePacks } from '@/hooks/use-packs';
+import { PackSelect } from '@/components/packs/pack-select';
+import { recordPackAcceptance, usePackGate } from '@/components/packs/use-pack-gate';
+import { packError } from '@/lib/pack-errors';
+import { lineFactor, linePackFrom, linePackOf, NO_PACK, packColumn, packCost, packInput, type LinePack, type ProductUnitRow } from '@/lib/packs';
 import type { GoodsReceiptRow, GoodsReceiptItemRow, GoodsReceiptItemInsert, ContactRow, ProductRow, WarehouseRow, Company } from '@/data/adapter';
 
-interface LineRow {
+interface LineRow extends LinePack {
   _key: string;
+  /** Came from the purchase order: changing the unit keeps the same goods. */
+  ordered?: boolean;
   product_id: string;
   qty_received: string;
   unit_cost: string;
@@ -35,7 +42,7 @@ interface LineRow {
 
 let _k = 0;
 const newKey = () => `k${++_k}`;
-const emptyLine = (): LineRow => ({ _key: newKey(), product_id: '', qty_received: '1', unit_cost: '0', total_cost: 0 });
+const emptyLine = (): LineRow => ({ ...NO_PACK, _key: newKey(), product_id: '', qty_received: '1', unit_cost: '0', total_cost: 0 });
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -127,9 +134,11 @@ export default function GRNEditorPage() {
   useEffect(() => {
     if (existingItems.length > 0) {
       setLines(existingItems.map(item => ({
+        ...linePackOf(item),
         _key: newKey(), product_id: item.product_id,
         qty_received: String(item.qty_received), unit_cost: String(item.unit_cost),
-        total_cost: Number(item.qty_received) * Number(item.unit_cost),
+        // phase155 — the saved value: 120 PCS of a 1,000.00 order is not 120 × 8.33.
+        total_cost: Number(item.total_cost ?? Number(item.qty_received) * Number(item.unit_cost)),
       })));
     }
   }, [existingItems]);
@@ -149,6 +158,7 @@ export default function GRNEditorPage() {
   useEffect(() => {
     if (isNew && poItems.length > 0) {
       setLines(poItems.map(item => ({
+        ...linePackOf(item), ordered: true,
         _key: newKey(), product_id: item.product_id ?? '',
         qty_received: String(item.quantity), unit_cost: String(item.unit_cost),
         total_cost: Number(item.quantity) * Number(item.unit_cost),
@@ -167,6 +177,39 @@ export default function GRNEditorPage() {
     setDirty(true);
   };
 
+  // phase155 — packs. Nothing here runs while the company has them off.
+  const packs = usePacks();
+  const packGate = usePackGate({ loading: packs.loading });
+  const { data: stockMap = {} } = useQuery({
+    queryKey: ['current_stock_map', company_id],
+    queryFn: () => getAdapter().stockLedger.getCurrentStockMap(company_id!),
+    enabled: !!company_id && packs.on,
+  });
+  // Ordered in boxes, counted in pieces: the same goods for the same money, so
+  // quantity and cost are converted and the line keeps its exact value.
+  const changePack = (line: LineRow, pack: ProductUnitRow | null) => {
+    const next = linePackFrom(pack);
+    if (!line.ordered) {
+      updateLine(line._key, { ...next, unit_cost: String(packCost(pack, parseFloat(line.unit_cost) || 0, line)) });
+      return;
+    }
+    const k = lineFactor(line) / lineFactor(next);
+    const qty = +((parseFloat(line.qty_received) || 0) * k).toFixed(3);
+    setLines(prev => prev.map(l => (l._key === line._key
+      ? { ...l, ...next, qty_received: String(qty), unit_cost: String(qty > 0 ? +(l.total_cost / qty).toFixed(2) : l.unit_cost) } : l)));
+    setDirty(true);
+  };
+  const packLines = !packs.on ? [] : lines.flatMap(l => {
+    const product = products.find(p => p.id === l.product_id);
+    return packInput({ ...l, quantity: parseFloat(l.qty_received) || 0, net_price: parseFloat(l.unit_cost) || 0, buying: true },
+      product, packs, product ? stockMap[product.id] : null, null) ?? [];
+  });
+  const askSave = () => {
+    setError(null);
+    if (!header.supplier_id) { saveMutation.mutate(); return; }
+    packGate.ask(packLines, () => saveMutation.mutate());
+  };
+
   const grandTotal = lines.reduce((s, l) => s + l.total_cost, 0);
 
   function buildItems(): GoodsReceiptItemInsert[] {
@@ -178,6 +221,7 @@ export default function GRNEditorPage() {
       total_cost: l.total_cost,
       serial_numbers: null,
       notes: null,
+      ...packColumn(l),
     }));
   }
 
@@ -209,6 +253,7 @@ export default function GRNEditorPage() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       const savedId = await persistDraft();
+      await recordPackAcceptance('goods_receipt', savedId, packLines);
       // phase145 — needs approval: keep it a draft and send it to an approver.
       if (gate.needs(grnTotal)) return { savedId, submit: true };
       try {
@@ -237,7 +282,7 @@ export default function GRNEditorPage() {
         setViewMode(true);
       }
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => setError(packError(t, e)),
   });
 
   // phase145 — approvals: Save submits instead of confirming when a rule applies.
@@ -318,7 +363,7 @@ export default function GRNEditorPage() {
           <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/purchasing/grns'); }}>{t('common.cancel')}</Button>
           {canEdit && (
             <>
-              <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
+              <Button size="sm" onClick={askSave} disabled={saveMutation.isPending}>
                 {saveMutation.isPending ? t('common.saving') : gate.needs(grnTotal) ? t('apprOcean.save_submit') : t('common.save')}
               </Button>
             </>
@@ -332,8 +377,9 @@ export default function GRNEditorPage() {
       </div>
 
       {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
-      {!isNew && id && <ApprovalPanel docType="goods_receipt" docId={id} isDraft={existing?.status === 'draft'} onChanged={refreshGrn} />}
+      {!isNew && id && <ApprovalPanel docType="goods_receipt" docId={id} isDraft={existing?.status === 'draft'} onChanged={refreshGrn} packLines={packLines} />}
       {gate.modal}
+      {packGate.modal}
 
 
       <div className="sb-card sb-form sb-doc-card">
@@ -384,7 +430,7 @@ export default function GRNEditorPage() {
                       options={productOpts}
                       value={line.product_id}
                       disabled={!canEdit}
-                      onChange={(v) => updateLine(line._key, { product_id: v })}
+                      onChange={(v) => updateLine(line._key, { ...NO_PACK, ordered: false, product_id: v })}
                       placeholder={t('purchasing.select_product')}
                       panelWidth={360}
                       addNew={canEdit ? {
@@ -402,6 +448,13 @@ export default function GRNEditorPage() {
                       className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60"
                       value={line.qty_received} disabled={!canEdit}
                       onChange={e => updateLine(line._key, { qty_received: e.target.value })} />
+                    {packs.on && (
+                      <PackSelect packs={packs.forProduct(line.product_id, 'purchases')} value={line.product_unit_id}
+                        savedLabel={line.unit_label} savedFactor={line.unit_factor}
+                        baseUnit={packs.unitCode(products.find(p => p.id === line.product_id)?.unit_id)}
+                        quantity={parseFloat(line.qty_received) || 0} disabled={!canEdit}
+                        onChange={(pack) => changePack(line, pack)} />
+                    )}
                   </td>
                   <td className="px-3 py-1.5">
                     <input type="number" min="0" step="0.01"
@@ -444,7 +497,7 @@ export default function GRNEditorPage() {
         onClose={() => setProductQcOpen(false)}
         onCreated={(productId) => {
           setProductQcOpen(false);
-          if (productQcLineKey) updateLine(productQcLineKey, { product_id: productId });
+          if (productQcLineKey) updateLine(productQcLineKey, { ...NO_PACK, ordered: false, product_id: productId });
           setProductQcLineKey(null);
         }}
       />

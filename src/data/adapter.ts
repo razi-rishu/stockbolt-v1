@@ -2470,23 +2470,23 @@ export interface SystemHealthAPI {
 
 // ── Phase 5 row types ─────────────────────────────────────────────────────────
 export type PurchaseOrderRow = Tables['purchase_orders']['Row'];
-export type PurchaseOrderItemRow = Tables['purchase_order_items']['Row'];
+export type PurchaseOrderItemRow = Tables['purchase_order_items']['Row'] & PackLineFields;
 export type GoodsReceiptRow = Tables['goods_receipts']['Row'];
-export type GoodsReceiptItemRow = Tables['goods_receipt_items']['Row'];
+export type GoodsReceiptItemRow = Tables['goods_receipt_items']['Row'] & PackLineFields;
 export type VendorBillRow = Tables['vendor_bills']['Row'];
-export type VendorBillItemRow = Tables['vendor_bill_items']['Row'] & { coa_account_id?: string | null };
+export type VendorBillItemRow = Tables['vendor_bill_items']['Row'] & PackLineFields & { coa_account_id?: string | null };
 export type DebitNoteRow = Tables['debit_notes']['Row'];
 
 // Phase 5 insert / update types
 export type PurchaseOrderInsert = Omit<Tables['purchase_orders']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type PurchaseOrderUpdate = Tables['purchase_orders']['Update'];
-export type PurchaseOrderItemInsert = Omit<Tables['purchase_order_items']['Insert'], 'id' | 'created_at'>;
+export type PurchaseOrderItemInsert = Omit<Tables['purchase_order_items']['Insert'], 'id' | 'created_at'> & PackLineFields;
 export type GoodsReceiptInsert = Omit<Tables['goods_receipts']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type GoodsReceiptUpdate = Tables['goods_receipts']['Update'];
-export type GoodsReceiptItemInsert = Omit<Tables['goods_receipt_items']['Insert'], 'id' | 'created_at'>;
+export type GoodsReceiptItemInsert = Omit<Tables['goods_receipt_items']['Insert'], 'id' | 'created_at'> & PackLineFields;
 export type VendorBillInsert = Omit<Tables['vendor_bills']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type VendorBillUpdate = Tables['vendor_bills']['Update'];
-export type VendorBillItemInsert = Omit<Tables['vendor_bill_items']['Insert'], 'id' | 'created_at'> & { coa_account_id?: string | null };
+export type VendorBillItemInsert = Omit<Tables['vendor_bill_items']['Insert'], 'id' | 'created_at'> & PackLineFields & { coa_account_id?: string | null };
 
 // Phase 47 — itemized landed costs (freight, customs, insurance…). Standalone
 // types (table not yet in generated database types).
@@ -3014,7 +3014,7 @@ export interface ReturnableBillLine {
   qty_returnable:      number;
 }
 
-export type DebitNoteItemRow = Tables['debit_note_items']['Row'] & {
+export type DebitNoteItemRow = Tables['debit_note_items']['Row'] & PackLineFields & {
   /** R2c — the bill line this returns. v_bill_line_returnable counts
    *  these, so it is what caps a return at what was actually billed. */
   vendor_bill_item_id?:  string | null;
@@ -3024,7 +3024,7 @@ export type DebitNoteItemRow = Tables['debit_note_items']['Row'] & {
 };
 export type DebitNoteInsert     = Omit<Tables['debit_notes']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type DebitNoteUpdate     = Tables['debit_notes']['Update'];
-export type DebitNoteItemInsert = Omit<Tables['debit_note_items']['Insert'], 'id' | 'created_at'> & {
+export type DebitNoteItemInsert = Omit<Tables['debit_note_items']['Insert'], 'id' | 'created_at'> & PackLineFields & {
   /** R2c — the bill line this returns, when there is one. OPTIONAL by design:
    *  a debit note legitimately carries lines that were never on the bill (a
    *  freight adjustment, a short-shipment claim) and may have no linked bill at

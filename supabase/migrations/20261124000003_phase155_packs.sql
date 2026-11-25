@@ -24,8 +24,8 @@
 --   * packs are for stocked goods without serial numbers;
 --   * packs cannot be switched off while open documents use them;
 --   * an app too old to know packs is stopped BEFORE it deletes or rewrites a
---     pack line (it would turn 1 BOX into 1 PCS), and, while packs are on,
---     before it rewrites any document (its lines could be lost half way). New apps send the header
+--     pack line (it would turn 1 BOX into 1 PCS); while packs are on it can
+--     not write any document line (lines could be lost or doubled half way). New apps send the header
 --     x-stockbolt-units; only direct table writes by users are checked.
 --
 -- FUNCTIONS: confirm_invoice, edit_invoice, confirm_pos_sale, confirm_grn,
@@ -191,8 +191,9 @@ BEGIN
     END IF;
   END IF;
   -- Saving a draft deletes its lines and inserts them again. An old app must
-  -- be stopped here, not at the insert: by then the old lines are gone.
-  IF TG_OP = 'DELETE' AND v_direct AND NOT public._units_aware()
+  -- be stopped at the delete (later the lines are gone) AND at the insert:
+  -- some old screens ignore a refused delete and would add the lines twice.
+  IF TG_OP IN ('DELETE', 'INSERT') AND v_direct AND NOT public._units_aware()
      AND public._packs_on(public.current_user_company_id()) THEN
     RAISE EXCEPTION 'app_update_required: your company uses packs. Update the app, or refresh the page, to change this document.' USING ERRCODE = 'P0001';
   END IF;
@@ -233,11 +234,6 @@ BEGIN
 
   IF NEW.product_unit_id IS NULL THEN
     IF v_on AND v_prod.type IS DISTINCT FROM 'service' THEN
-      -- An old app on a product sold in packs: it cannot show or ask for the unit.
-      IF TG_OP = 'INSERT' AND v_direct AND NOT public._units_aware()
-         AND EXISTS (SELECT 1 FROM public.product_units u WHERE u.product_id = NEW.product_id AND u.is_active) THEN
-        RAISE EXCEPTION 'app_update_required: % is sold in packs. Update the app, or refresh the page, to use it.', v_prod.sku USING ERRCODE = 'P0001';
-      END IF;
       IF v_qty <> trunc(v_qty) AND NOT public._unit_allows_decimals(v_prod.unit_id) THEN
         RAISE EXCEPTION 'whole_units_only: % is counted in whole units (%).', v_prod.sku, v_qty USING ERRCODE = 'P0001';
       END IF;

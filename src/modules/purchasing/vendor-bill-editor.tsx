@@ -35,6 +35,11 @@ import { vendorBillToDocumentData, withPaymentDetails } from '@/modules/print/_s
 import '@/modules/print/_signature/print.css';
 import type { VendorBillRow, VendorBillItemInsert, VendorBillLandedCostInsert, ContactRow, ProductRow, TaxRateRow, CoaRow } from '@/data/adapter';
 import { calcPurchaseLine as _calc } from '@/core/purchasing/purchase-calc';
+import { usePacks } from '@/hooks/use-packs';
+import { PackSelect } from '@/components/packs/pack-select';
+import { recordPackAcceptance, usePackGate } from '@/components/packs/use-pack-gate';
+import { packError } from '@/lib/pack-errors';
+import { lineFactor, linePackFrom, linePackOf, NO_PACK, packColumn, packCost, packInput, type LinePack, type ProductUnitRow } from '@/lib/packs';
 
 // Phase 47 — an itemized landed-cost line (freight, customs, insurance…).
 interface LandedCostLine {
@@ -44,7 +49,9 @@ interface LandedCostLine {
   credit_account_id: string;   // bank / cash / liability / a party's AP
 }
 
-interface LineRow {
+interface LineRow extends LinePack {
+  /** Came from the goods receipt: changing the unit keeps the same goods. */
+  received?: boolean;
   _key: string;
   product_id: string | null;
   coa_account_id: string | null;
@@ -74,7 +81,7 @@ function calcLine(l: LineRow, inclusive = false) {
 }
 
 const emptyLine = (): LineRow => ({
-  _key: newKey(), product_id: null, coa_account_id: null, warehouse_id: null, description: '',
+  ...NO_PACK, _key: newKey(), product_id: null, coa_account_id: null, warehouse_id: null, description: '',
   quantity: '1', unit_cost: '0', discount_percent: '0', tax_rate: '0',
   line_subtotal: 0, discount_amount: 0, tax_amount: 0, line_total: 0,
 });
@@ -289,7 +296,7 @@ export default function VendorBillEditorPage() {
     setLines(
       seed.lines.length
         ? seed.lines.map(l => {
-            const base: LineRow = { _key: newKey(), ...l, line_subtotal: 0, discount_amount: 0, tax_amount: 0, line_total: 0 };
+            const base: LineRow = { ...NO_PACK, _key: newKey(), ...l, line_subtotal: 0, discount_amount: 0, tax_amount: 0, line_total: 0 };
             return { ...base, ...calcLine(base, seed.prices_inclusive ?? false) };
           })
         : [emptyLine()],
@@ -307,6 +314,7 @@ export default function VendorBillEditorPage() {
     if (existingItems.length > 0) {
       setLines(existingItems.map(item => {
         const base: LineRow = {
+          ...linePackOf(item),
           _key: newKey(), product_id: item.product_id ?? null,
           coa_account_id: (item as { coa_account_id?: string | null }).coa_account_id ?? null,
           warehouse_id: (item as { warehouse_id?: string | null }).warehouse_id ?? null,
@@ -344,6 +352,7 @@ export default function VendorBillEditorPage() {
     if (isNew && grnItems.length > 0) {
       setLines(grnItems.map(item => {
         const base: LineRow = {
+          ...linePackOf(item), received: true,
           _key: newKey(), product_id: item.product_id, coa_account_id: null,
           warehouse_id: (item as { warehouse_id?: string | null }).warehouse_id ?? null,
           description: '',
@@ -419,18 +428,40 @@ export default function VendorBillEditorPage() {
         : l));
   }, [isNew, stdTaxRate, pricesInclusive]);
 
+  // phase155 — packs. Nothing here runs while the company has them off.
+  const packs = usePacks();
+  const packGate = usePackGate({ loading: packs.loading });
+  const changePack = (line: LineRow, pack: ProductUnitRow | null) => {
+    const next = linePackFrom(pack);
+    const k = lineFactor(line) / lineFactor(next);
+    // Goods already received keep their quantity in the new unit.
+    const qty = line.received ? { quantity: String(+((parseFloat(line.quantity) || 0) * k).toFixed(3)) } : {};
+    updateLine(line._key, { ...next, ...qty, unit_cost: String(packCost(line.received && pack ? { ...pack, purchase_price: null } : pack, parseFloat(line.unit_cost) || 0, line)) });
+  };
+  const packLines = !packs.on ? [] : lines.flatMap(l => {
+    const product = products.find(p => p.id === l.product_id);
+    const net = (parseFloat(l.unit_cost) || 0) * (1 - (parseFloat(l.discount_percent) || 0) / 100);
+    return packInput({ ...l, quantity: parseFloat(l.quantity) || 0, net_price: net, buying: true }, product, packs, product ? stockMap[product.id] : null, null) ?? [];
+  });
+  const askSave = () => {
+    setError(null);
+    if (!header.supplier_id) { saveMutation.mutate(); return; }
+    packGate.ask(packLines, () => saveMutation.mutate());
+  };
+
   const handleProductChange = (key: string, productId: string) => {
     const product = products.find(p => p.id === productId);
     if (product) {
       const matchedRate = taxRates.find(r => r.is_active && r.tax_type === product.tax_category);
       updateLine(key, {
+        ...NO_PACK, received: false,
         product_id:    productId,
         description:   product.name,
         coa_account_id: null,
         tax_rate:      String(matchedRate?.rate ?? 0),
       });
     } else {
-      updateLine(key, { product_id: null, description: '' });
+      updateLine(key, { ...NO_PACK, received: false, product_id: null, description: '' });
     }
   };
 
@@ -454,6 +485,7 @@ export default function VendorBillEditorPage() {
       line_total: l.line_total,
       linked_grn_item_id: null,
       sort_order: i,
+      ...packColumn(l),
     // VendorBillItemInsert type is regenerated from Supabase types; until
     // those refresh post-migration, allow the unknown warehouse_id field.
     } as unknown as VendorBillItemInsert));
@@ -529,6 +561,7 @@ export default function VendorBillEditorPage() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       const savedId = await persistDraft();
+      await recordPackAcceptance('vendor_bill', savedId, packLines);
       // phase145 — needs approval: keep it a draft and send it to an approver.
       if (gate.needs(grandTotal + roundOff)) return { savedId, submit: true };
       try {
@@ -557,7 +590,7 @@ export default function VendorBillEditorPage() {
         setViewMode(true);
       }
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => setError(packError(t, e)),
   });
 
   // Re-open a CONFIRMED bill: edit_vendor_bill RPC reverses the JE + stock
@@ -617,7 +650,7 @@ export default function VendorBillEditorPage() {
   const canEdit = (isNew || (existing?.status === 'draft' && !assetPurchase)) && !appr.pending;
 
   // Global keyboard actions (Phase 1) — Ctrl+S / Ctrl+Enter save, Ctrl+P print.
-  useShortcutAction('save', () => { setError(null); saveMutation.mutate(); }, canEdit && !saveMutation.isPending);
+  useShortcutAction('save', askSave, canEdit && !saveMutation.isPending);
   useShortcutAction('print', () => window.print(), !isNew && !!existing?.id);
 
   // supplierOpts removed — supplier picker uses ContactPicker (D3).
@@ -700,6 +733,7 @@ export default function VendorBillEditorPage() {
                   unit_cost:        String(it.unit_cost ?? 0),
                   discount_percent: String(it.discount_percent ?? 0),
                   tax_rate:         String(it.tax_rate ?? 0),
+                  ...linePackOf(it),
                 }));
                 navigate('/purchasing/bills/new', {
                   state: { cloneFrom: {
@@ -743,7 +777,7 @@ export default function VendorBillEditorPage() {
           </div>
         </div>
         {assetNote}
-        <ApprovalPanel docType="vendor_bill" docId={existing.id} isDraft={existing.status === 'draft'} onChanged={refreshBill} />
+        <ApprovalPanel docType="vendor_bill" docId={existing.id} isDraft={existing.status === 'draft'} onChanged={refreshBill} packLines={packLines} />
         {/* Phase 62 (AC-7B) — India TDS deduction panel (screen only, never
             printed). Self-hides when the tenant has no TDS sections. */}
         {existing.status === 'confirmed' && (
@@ -796,7 +830,7 @@ export default function VendorBillEditorPage() {
           )}
           {canEdit && (
             <>
-              <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
+              <Button size="sm" onClick={askSave} disabled={saveMutation.isPending}>
                 {saveMutation.isPending ? t('common.saving') : gate.needs(grandTotal + roundOff) ? t('apprOcean.save_submit') : t('common.save')}
               </Button>
               {!isNew && (
@@ -808,8 +842,9 @@ export default function VendorBillEditorPage() {
       </div>
 
       {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
-      {!isNew && id && <ApprovalPanel docType="vendor_bill" docId={id} isDraft={existing?.status === 'draft'} onChanged={refreshBill} />}
+      {!isNew && id && <ApprovalPanel docType="vendor_bill" docId={id} isDraft={existing?.status === 'draft'} onChanged={refreshBill} packLines={packLines} />}
       {gate.modal}
+      {packGate.modal}
       {assetNote}
 
       {/* Supplier Insight Panel — appears once a supplier is picked.
@@ -982,12 +1017,12 @@ export default function VendorBillEditorPage() {
           )}
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full table-fixed text-xs" style={{ minWidth: '1180px' }}>
+          <table className="w-full table-fixed text-xs" style={{ minWidth: packs.on ? '1256px' : '1180px' }}>
             <thead>
               <tr>
                 <th className="px-3 py-2 text-start font-medium" style={{ minWidth: '200px' }}>{t('purchasing.product')}</th>
                 <th className="px-3 py-2 text-start font-medium" style={{ width: '168px' }}>{t('purchasing.account')}</th>
-                <th className="px-3 py-2 text-end font-medium" style={{ width: '72px' }}>{t('purchasing.qty')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: packs.on ? '148px' : '72px' }}>{t('purchasing.qty')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('purchasing.unit_cost')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '84px' }}>{t('purchasing.disc_pct')}</th>
                 {showTax && <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('purchasing.tax')}</th>}
@@ -1051,6 +1086,13 @@ export default function VendorBillEditorPage() {
                       className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60"
                       value={line.quantity} disabled={!canEdit}
                       onChange={e => updateLine(line._key, { quantity: e.target.value })} />
+                    {packs.on && (
+                      <PackSelect packs={packs.forProduct(line.product_id, 'purchases')} value={line.product_unit_id}
+                        savedLabel={line.unit_label} savedFactor={line.unit_factor}
+                        baseUnit={packs.unitCode(products.find(p => p.id === line.product_id)?.unit_id)}
+                        quantity={parseFloat(line.quantity) || 0} disabled={!canEdit}
+                        onChange={(pack) => changePack(line, pack)} />
+                    )}
                   </td>
                   <td className="px-3 py-1.5 align-top">
                     <input type="number" min="0" step="0.01"
@@ -1105,8 +1147,9 @@ export default function VendorBillEditorPage() {
                     const s = stockMap[pid];
                     const curQty = s?.qty ?? 0;
                     const curMac = s?.mac ?? 0;
-                    const addQty = parseFloat(line.quantity) || 0;
-                    const addCost = parseFloat(line.unit_cost) || 0;
+                    // In packs: what arrives, and its cost, per base unit.
+                    const addQty = (parseFloat(line.quantity) || 0) * lineFactor(line);
+                    const addCost = (parseFloat(line.unit_cost) || 0) / lineFactor(line);
                     const disc   = parseFloat(line.discount_percent) || 0;
                     const effUnit = addCost * (1 - disc / 100);
                     // MAC after = (existing value + incoming value) / (existing qty + incoming qty)

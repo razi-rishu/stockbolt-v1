@@ -29,8 +29,13 @@ import { purchaseOrderToDocumentData } from '@/modules/print/_signature/adapters
 import '@/modules/print/_signature/print.css';
 import type { PurchaseOrderRow, PurchaseOrderItemRow, PurchaseOrderItemInsert, ContactRow, ProductRow, TaxRateRow, WarehouseRow, Company, StaffListRow } from '@/data/adapter';
 import { calcPurchaseLine as _calc } from '@/core/purchasing/purchase-calc';
+import { usePacks } from '@/hooks/use-packs';
+import { PackSelect } from '@/components/packs/pack-select';
+import { recordPackAcceptance, usePackGate } from '@/components/packs/use-pack-gate';
+import { packError } from '@/lib/pack-errors';
+import { linePackFrom, linePackOf, NO_PACK, packColumn, packCost, packInput, type LinePack, type ProductUnitRow } from '@/lib/packs';
 
-interface LineRow {
+interface LineRow extends LinePack {
   _key: string;
   product_id: string | null;
   description: string;
@@ -57,7 +62,7 @@ function calcLine(l: LineRow) {
 }
 
 const emptyLine = (): LineRow => ({
-  _key: newKey(), product_id: null, description: '',
+  ...NO_PACK, _key: newKey(), product_id: null, description: '',
   quantity: '1', unit_cost: '0', discount_percent: '0', tax_rate: '0',
   line_subtotal: 0, discount_amount: 0, tax_amount: 0, line_total: 0,
 });
@@ -178,6 +183,7 @@ export default function POEditorPage() {
     if (existingItems.length > 0) {
       setLines(existingItems.map(item => {
         const base: LineRow = {
+          ...linePackOf(item),
           _key: newKey(), product_id: item.product_id ?? null,
           description: item.description ?? '',
           quantity: String(item.quantity), unit_cost: String(item.unit_cost),
@@ -216,18 +222,41 @@ export default function POEditorPage() {
         : l));
   }, [isNew, stdTaxRate]);
 
+  // phase155 — packs. Nothing here runs while the company has them off. An
+  // order moves no stock, so only quantities and costs are checked.
+  const packs = usePacks();
+  const packGate = usePackGate({ loading: packs.loading });
+  const { data: stockMap = {} } = useQuery({
+    queryKey: ['current_stock_map', company_id],
+    queryFn: () => getAdapter().stockLedger.getCurrentStockMap(company_id!),
+    enabled: !!company_id && packs.on,
+  });
+  const changePack = (line: LineRow, pack: ProductUnitRow | null) =>
+    updateLine(line._key, { ...linePackFrom(pack), unit_cost: String(packCost(pack, parseFloat(line.unit_cost) || 0, line)) });
+  const packLines = !packs.on ? [] : lines.flatMap(l => {
+    const product = products.find(p => p.id === l.product_id);
+    const net = (parseFloat(l.unit_cost) || 0) * (1 - (parseFloat(l.discount_percent) || 0) / 100);
+    return packInput({ ...l, quantity: parseFloat(l.quantity) || 0, net_price: net, buying: true }, product, packs, product ? stockMap[product.id] : null, null) ?? [];
+  });
+  const askSave = () => {
+    setError(null);
+    if (!header.supplier_id) { saveMutation.mutate(); return; }
+    packGate.ask(packLines, () => saveMutation.mutate());
+  };
+
   const handleProductChange = (key: string, productId: string) => {
     const product = products.find(p => p.id === productId);
     if (product) {
       const matchedRate = taxRates.find(r => r.is_active && r.tax_type === product.tax_category);
       updateLine(key, {
+        ...NO_PACK,
         product_id:  productId,
         description: product.name,
         unit_cost:   '0',
         tax_rate:    String(matchedRate?.rate ?? 0),
       });
     } else {
-      updateLine(key, { product_id: null, description: '' });
+      updateLine(key, { ...NO_PACK, product_id: null, description: '' });
     }
   };
 
@@ -248,6 +277,7 @@ export default function POEditorPage() {
       line_subtotal: l.line_subtotal,
       line_total: l.line_total,
       sort_order: i,
+      ...packColumn(l),
     }));
   }
 
@@ -270,8 +300,13 @@ export default function POEditorPage() {
         status: 'draft' as const,
         terms: null, terms_ar: null, notes: header.notes || null,
       };
-      if (isNew) return getAdapter().purchaseOrders.create(row, buildItems());
+      if (isNew) {
+        const created = await getAdapter().purchaseOrders.create(row, buildItems());
+        await recordPackAcceptance('purchase_order', created.id, packLines);
+        return created;
+      }
       await getAdapter().purchaseOrders.update(id!, row, buildItems());
+      await recordPackAcceptance('purchase_order', id!, packLines);
       return null;
     },
     onSuccess: (data) => {
@@ -283,7 +318,7 @@ export default function POEditorPage() {
         qc.invalidateQueries({ queryKey: ['purchase_order_items', id] });
       }
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => setError(packError(t, e)),
   });
 
   // Phase 12.47 — Convert this PO into a draft vendor bill. After
@@ -297,7 +332,7 @@ export default function POEditorPage() {
       qc.invalidateQueries({ queryKey: ['purchase_order',   id] });
       navigate(`/purchasing/bills/${bill.id}`);
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => setError(packError(t, e)),
   });
 
   // phase145 — approvals: an approved PO is "sent"; until then it can't become a bill.
@@ -365,7 +400,7 @@ export default function POEditorPage() {
             )}
           </div>
         </div>
-        <ApprovalPanel docType="purchase_order" docId={existing.id} isDraft={existing.status === 'draft'} onChanged={refreshPo} />
+        <ApprovalPanel docType="purchase_order" docId={existing.id} isDraft={existing.status === 'draft'} onChanged={refreshPo} packLines={packLines} />
         <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
@@ -399,7 +434,7 @@ export default function POEditorPage() {
           )}
           <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/purchasing/orders'); }}>{t('common.cancel')}</Button>
           {canEdit && (
-            <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
+            <Button size="sm" onClick={askSave} disabled={saveMutation.isPending}>
               {saveMutation.isPending ? t('common.saving') : t('common.save')}
             </Button>
           )}
@@ -422,8 +457,9 @@ export default function POEditorPage() {
         </div>
       </div>
 
+      {packGate.modal}
       {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
-      {!isNew && id && <ApprovalPanel docType="purchase_order" docId={id} isDraft={existing?.status === 'draft'} onChanged={refreshPo} />}
+      {!isNew && id && <ApprovalPanel docType="purchase_order" docId={id} isDraft={existing?.status === 'draft'} onChanged={refreshPo} packLines={packLines} />}
 
       <div className="sb-card sb-form sb-doc-card">
         <h2 className="sb-doc-card-title">{t('purchasing.po_details')}</h2>
@@ -477,11 +513,11 @@ export default function POEditorPage() {
           <h2 className="sb-doc-card-title" style={{ margin: 0 }}>{t('purchasing.line_items')}</h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full table-fixed text-xs" style={{ minWidth: '760px' }}>
+          <table className="w-full table-fixed text-xs" style={{ minWidth: packs.on ? '836px' : '760px' }}>
             <thead>
               <tr>
                 <th className="px-3 py-2 text-start font-medium" style={{ minWidth: '220px' }}>{t('purchasing.product')}</th>
-                <th className="px-3 py-2 text-end font-medium" style={{ width: '72px' }}>{t('purchasing.qty')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: packs.on ? '148px' : '72px' }}>{t('purchasing.qty')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('purchasing.unit_cost')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '84px' }}>{t('purchasing.disc_pct')}</th>
                 {showTax && <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('purchasing.tax')}</th>}
@@ -520,6 +556,13 @@ export default function POEditorPage() {
                       className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60"
                       value={line.quantity} disabled={!canEdit}
                       onChange={e => updateLine(line._key, { quantity: e.target.value })} />
+                    {packs.on && (
+                      <PackSelect packs={packs.forProduct(line.product_id, 'purchases')} value={line.product_unit_id}
+                        savedLabel={line.unit_label} savedFactor={line.unit_factor}
+                        baseUnit={packs.unitCode(products.find(p => p.id === line.product_id)?.unit_id)}
+                        quantity={parseFloat(line.quantity) || 0} disabled={!canEdit}
+                        onChange={(pack) => changePack(line, pack)} />
+                    )}
                   </td>
                   <td className="px-3 py-1.5 align-top">
                     <input type="number" min="0" step="0.01"

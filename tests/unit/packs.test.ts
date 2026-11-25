@@ -1,7 +1,7 @@
 /** Packs: the screen's rules must be the database's (phase155). */
 import { describe, expect, it } from 'vitest';
 import {
-  baseQuantity, checkPacks, linePackFrom, linePackOf, NO_PACK, packColumn, packInput, packPrice, packProblem, unitAllowsDecimals,
+  baseQuantity, checkPacks, linePackFrom, linePackOf, NO_PACK, packColumn, packCost, packInput, packPrice, packProblem, unitAllowsDecimals,
   type PackLineInput, type ProductUnitRow,
 } from '@/lib/packs';
 import { ALL_ON, inventorySettingsFrom } from '@/lib/inventory-settings';
@@ -57,6 +57,22 @@ describe('the warning before saving', () => {
   it('blocks what cannot be saved, plain lines included', () => {
     expect(checkPacks([line({ quantity: 0.3 })]).problems).toEqual([{ kind: 'whole_units', label: 'SKU', text: '0.3 × BOX', base_unit: 'PCS' }]);
     expect(checkPacks([line({ pack_name: null, factor: 1, quantity: 1.5 })]).problems[0].kind).toBe('whole_units');
+  });
+});
+
+describe('buying', () => {
+  const buy = (x: Partial<PackLineInput>) => checkPacks([line({ buying: true, on_hand: null, ...x })]).warnings;
+  it('a box at the cost of a piece, or a piece at the cost of a box', () => {
+    expect(buy({ net_price: 60 })).toEqual([]);
+    expect(buy({ net_price: 5 })).toEqual([{ kind: 'cost_odd', label: 'SKU', base_unit: 'PCS', cost: 5 / 12, usual: 5 }]);
+    expect(buy({ net_price: 720 })[0].kind).toBe('cost_odd');
+    expect(buy({ net_price: 5, base_cost: 0 })).toEqual([]);
+    expect(buy({ net_price: 0 })).toEqual([]);
+  });
+  it('starts from the purchase price, else converts what was typed', () => {
+    expect(packCost({ ...box, purchase_price: 55 }, 5, NO_PACK)).toBe(55);
+    expect(packCost(box, 5, NO_PACK)).toBe(60);
+    expect(packCost(null, 60, linePackFrom(box))).toBe(5);
   });
 });
 

@@ -95,6 +95,8 @@ export interface PackLineInput {
   base_cost: number;
   /** On hand in base units; null = do not check (services, nothing leaves). */
   on_hand: number | null;
+  /** Buying: net_price is a cost, compared with the average cost. */
+  buying?: boolean;
 }
 
 export interface PackCheckLine {
@@ -106,6 +108,7 @@ export interface PackCheckLine {
 }
 export type PackWarning =
   | { kind: 'price_is_base'; label: string; pack_name: string; base_unit: string }
+  | { kind: 'cost_odd'; label: string; base_unit: string; cost: number; usual: number }
   | { kind: 'below_cost'; label: string; pack_name: string; price: number; cost: number }
   | { kind: 'negative'; label: string; have: string; need: string; base_unit: string };
 export interface PackCheck {
@@ -130,7 +133,13 @@ export function checkPacks(input: PackLineInput[]): PackCheck {
     }
     if (!l.pack_name) continue;
     out.lines.push({ text_qty: fmtQty(l.quantity), pack_name: l.pack_name, text_base: fmtQty(base), label: l.label, base_unit: l.base_unit });
-    if (l.net_price !== null) {
+    if (l.net_price !== null && l.buying) {
+      // A box at the cost of one piece (or a piece at the cost of a box).
+      const each = l.net_price / l.factor;
+      if (l.factor !== 1 && l.base_cost > 0 && l.net_price > 0 && (each > l.base_cost * 2 || each < l.base_cost / 2)) {
+        out.warnings.push({ kind: 'cost_odd', label: l.label, base_unit: l.base_unit, cost: each, usual: l.base_cost });
+      }
+    } else if (l.net_price !== null) {
       // A box at the price of one piece: the usual slip.
       if (l.factor !== 1 && l.base_price > 0 && Math.abs(l.net_price - l.base_price) < 0.005) {
         out.warnings.push({ kind: 'price_is_base', label: l.label, pack_name: l.pack_name, base_unit: l.base_unit });
@@ -179,7 +188,7 @@ export function packColumn(l: LinePack): { product_unit_id?: string } {
 }
 
 export function packInput(
-  l: LinePack & { quantity: number; net_price: number | null },
+  l: LinePack & { quantity: number; net_price: number | null; buying?: boolean },
   product: { id: string; sku: string; name: string; type?: string | null; unit_id: string | null; selling_price?: number | null } | undefined,
   facts: { unitCode: (id: string | null) => string; allowsDecimals: (id: string | null) => boolean },
   stock: { qty: number; mac: number } | undefined | null,
@@ -199,5 +208,13 @@ export function packInput(
     base_price: Number(product.selling_price ?? 0),
     base_cost: stock?.mac ?? 0,
     on_hand: alreadyOut === null ? null : (stock?.qty ?? 0) + alreadyOut,
+    ...(l.buying ? { buying: true } : {}),
   };
+}
+
+/** The cost to start from when a pack is picked while buying: its own purchase
+ *  price, else the cost already typed, converted to the new unit. */
+export function packCost(next: ProductUnitRow | null, typed: number, from: LinePack): number {
+  if (next?.purchase_price != null) return next.purchase_price;
+  return Math.round(typed * (next?.factor ?? 1) / lineFactor(from) * 100) / 100;
 }
