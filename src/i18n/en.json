@@ -2601,6 +2601,18 @@
     "privacy": "Privacy Policy",
     "delete_account": "Delete account"
   },
+  "moduleGear": {
+    "sales": "Sales quick settings",
+    "pos": "Counter sales quick settings",
+    "purchasing": "Purchasing quick settings",
+    "inventory": "Inventory quick settings",
+    "accounting": "Accounting quick settings",
+    "banking": "Banking quick settings",
+    "payroll": "Payroll quick settings",
+    "contacts": "Contacts quick settings",
+    "reports": "Reports quick settings",
+    "all": "All settings"
+  },
   "settingsNav": {
     "title": "Settings",
     "subtitle": "Configure every area of StockBolt from one place — company, inventory, accounting, printing and users.",
@@ -2608,14 +2620,12 @@
     "no_match": "No settings match your search.",
     "coming_soon": "Coming soon",
     "sections": {
-      "company_location": "Company and location",
-      "inventory_catalog": "Inventory and catalog",
-      "sales_customers_tax": "Sales, customers and tax",
-      "accounting_banking": "Accounting and banking",
-      "printing_hardware": "Printing and hardware",
-      "users_permissions": "Users and permissions",
-      "developer": "Developer",
-      "system_admin": "System and admin"
+      "company": "Company",
+      "users_approvals": "Users and approvals",
+      "sales_printing": "Sales and printing",
+      "inventory": "Inventory",
+      "accounting_tax": "Accounting and tax",
+      "data_system": "Data and system"
     },
     "items": {
       "company": {

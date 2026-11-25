@@ -11,6 +11,7 @@
  * settings rail). It uses a container query, so the switch follows the space
  * the list actually has rather than the window width.
  */
+import { ModuleGear } from '@/components/module-gear';
 import type { ReactNode } from 'react';
 import type { Column } from '@/ui/table';
 import '@/styles/stockbolt-ocean-teal.css';
@@ -41,7 +42,7 @@ export function OceanPage({ title, subtitle, actions, below, children, testid, n
             <h1 className="sb-title" style={{ marginTop: 0 }}>{title}</h1>
             {subtitle && <div className="sb-clist-count">{subtitle}</div>}
           </div>
-          {actions && <div className="sb-actions sb-olist-actions" style={{ marginTop: 0 }}>{actions}</div>}
+          <div className="sb-actions sb-olist-actions" style={{ marginTop: 0 }}>{actions}<ModuleGear /></div>
         </div>
         {below}
       </div>

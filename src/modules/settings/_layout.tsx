@@ -1,7 +1,7 @@
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { visibleSettingsSections } from './_nav';
-import { useEnabledModules } from '@/hooks/use-enabled-modules';
-import { useInventorySettings } from '@/hooks/use-inventory-settings';
+import { ChevronDown } from 'lucide-react';
+import { useSettingsSections } from '@/hooks/use-settings-sections';
 import { useTranslation } from 'react-i18next';
 import { itemIcon, itemTitle, sectionTitle } from './_nav-ocean';
 import '@/styles/stockbolt-ocean-teal.css';
@@ -14,13 +14,17 @@ import { useInnerNav } from '@/hooks/use-inner-nav';
  * setting opens beside it (no more bouncing back to the hub). Below lg the
  * rail is hidden: stacked above the content it filled a phone screen and the
  * opened setting landed out of sight underneath. There, the hub (/settings)
- * is the menu and Back returns to it.
+ * is the menu and Back returns to it. The rail opens one group at a time,
+ * starting with the group of the page on screen.
  */
 export default function SettingsLayout() {
   const { pathname } = useLocation();
-  const { modules } = useEnabledModules();
-  const inventory = useInventorySettings();
+  const sections = useSettingsSections();
   const { t } = useTranslation();
+  const current = sections.find((s) => s.items.some((i) => pathname === i.to || pathname.startsWith(`${i.to}/`)))?.title ?? null;
+  const [openGroup, setOpenGroup] = useState<string | null>(current);
+  // Following a link to another group (or a late permission load) opens it.
+  useEffect(() => { if (current) setOpenGroup(current); }, [current]);
   // The hub (/settings) shows the cards full-width; the pinned nav rail appears
   // only once you drill into a specific setting.
   const isHub = pathname === '/settings' || pathname === '/settings/';
@@ -33,11 +37,16 @@ export default function SettingsLayout() {
       {/* Left rail */}
       {/* Ocean Teal (UI v1.1) rail: same entries, routes and visibility. */}
       <aside className="sb-srail hidden lg:sticky lg:block lg:top-4 lg:max-h-[calc(100vh-5rem)] lg:w-64 lg:shrink-0 lg:overflow-y-auto lg:pe-1">
-        <nav className="flex flex-col gap-5" aria-label={t('settingsNav.title')}>
-          {visibleSettingsSections(modules, inventory).map((section) => (
+        <nav className="flex flex-col gap-1" aria-label={t('settingsNav.title')}>
+          {sections.map((section) => {
+            const open = openGroup === section.title;
+            return (
             <div key={section.title}>
-              <div className="sb-srail-section">{sectionTitle(t, section)}</div>
-              <div className="flex flex-col gap-0.5">
+              <button type="button" className="sb-srail-toggle" aria-expanded={open} data-testid="settings-group"
+                onClick={() => setOpenGroup(open ? null : section.title)}>
+                {sectionTitle(t, section)}<ChevronDown size={16} aria-hidden="true" />
+              </button>
+              {open && <div className="flex flex-col gap-0.5">
                 {section.items.map((item) =>
                   item.comingSoon ? (
                     <span
@@ -59,9 +68,10 @@ export default function SettingsLayout() {
                     </NavLink>
                   ),
                 )}
-              </div>
+              </div>}
             </div>
-          ))}
+            );
+          })}
         </nav>
       </aside>
 

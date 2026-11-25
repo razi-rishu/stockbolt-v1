@@ -1,7 +1,7 @@
 /**
  * Settings hub — Phase 12.45, two-paned in Phase 32.x.
  *
- * Renders the card grid (right pane of the SettingsLayout). The section/item
+ * Renders one card per group (right pane of the SettingsLayout). The section/item
  * spec lives in ./_nav so the hub cards and the pinned left rail stay in sync;
  * this file only layers the live row-counts onto each tile.
  */
@@ -9,13 +9,11 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Search, ChevronRight } from 'lucide-react';
+import { Search, ChevronDown } from 'lucide-react';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
-import { visibleSettingsSections } from './_nav';
+import { useSettingsSections } from '@/hooks/use-settings-sections';
 import { itemIcon, itemTitle, itemDesc, sectionTitle, itemKey } from './_nav-ocean';
-import { useEnabledModules } from '@/hooks/use-enabled-modules';
-import { useInventorySettings } from '@/hooks/use-inventory-settings';
 import '@/styles/stockbolt-ocean-teal.css';
 
 // ── Page ───────────────────────────────────────────────────────────────
@@ -47,15 +45,17 @@ export default function SettingsHubPage() {
     '/settings/chart-of-accounts': coa?.length,
   };
 
-  const { modules } = useEnabledModules();
-  const inventory = useInventorySettings();
+  const visible = useSettingsSections();
   const { t } = useTranslation();
   const [q, setQ] = useState('');
+  /** Phones show one group at a time; wider screens show all (as the CSS does). */
+  const wide = typeof window !== 'undefined' && !!window.matchMedia?.('(min-width: 768px)').matches;
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
   const query = q.trim().toLowerCase();
 
   // Same entries and visibility rules as before (./_nav); the search box only
   // filters what is shown, by the translated title and description.
-  const sections = visibleSettingsSections(modules, inventory)
+  const sections = visible
     .map((sec) => ({
       key: sec.title,
       title: sectionTitle(t, sec),
@@ -77,33 +77,41 @@ export default function SettingsHubPage() {
       </div>
       <div className="sb-body" style={{ gap: 22 }}>
         {sections.length === 0 && <div className="sb-card sb-empty">{t('settingsNav.no_match')}</div>}
-        {sections.map((sec) => (
-          <section key={sec.key} aria-label={sec.title}>
-            <h2 className="sb-set-section">{sec.title}</h2>
-            <div className="sb-set-grid">
-              {sec.tiles.map((it) => {
-                const count = countByPath[it.to];
-                const body = (
-                  <>
-                    <span className="sb-set-icon" aria-hidden="true">{itemIcon(it, 22)}</span>
-                    <span className="sb-set-text">
-                      <span className="sb-set-title">
-                        {itemTitle(t, it)}
-                        {count !== undefined && <span className="sb-tab-count">{count}</span>}
-                        {it.comingSoon && <span className="sb-pill sb-pill-muted">{t('settingsNav.coming_soon')}</span>}
-                      </span>
-                      <span className="sb-set-desc">{itemDesc(t, it)}</span>
-                    </span>
-                    {!it.comingSoon && <ChevronRight size={18} className="sb-set-chevron sb-flip" aria-hidden="true" />}
-                  </>
-                );
-                return it.comingSoon
-                  ? <div key={it.to} className="sb-card sb-set-tile is-disabled" data-key={itemKey(it)}>{body}</div>
-                  : <Link key={it.to} to={it.to} className="sb-card sb-set-tile" data-key={itemKey(it)}>{body}</Link>;
-              })}
-            </div>
-          </section>
-        ))}
+        <div className="sb-setg-grid">
+          {sections.map((sec) => {
+            const open = wide || !!query || openGroup === sec.key;
+            return (
+              <section key={sec.key} className={`sb-card sb-setg ${open ? 'is-open' : ''}`} aria-label={sec.title}>
+                <h2 style={{ margin: 0 }}>
+                  <button type="button" className="sb-setg-head" aria-expanded={open} disabled={wide} onClick={() => setOpenGroup(open ? null : sec.key)}>
+                    {sec.title}<ChevronDown size={18} aria-hidden="true" />
+                  </button>
+                </h2>
+                <div className="sb-setg-list">
+                  {sec.tiles.map((it) => {
+                    const count = countByPath[it.to];
+                    const body = (
+                      <>
+                        <span aria-hidden="true">{itemIcon(it, 20)}</span>
+                        <span style={{ minWidth: 0 }}>
+                          <span className="sb-setg-item-title">
+                            {itemTitle(t, it)}
+                            {count !== undefined && <span className="sb-tab-count">{count}</span>}
+                            {it.comingSoon && <span className="sb-pill sb-pill-muted">{t('settingsNav.coming_soon')}</span>}
+                          </span>
+                          <span className="sb-setg-item-desc">{itemDesc(t, it)}</span>
+                        </span>
+                      </>
+                    );
+                    return it.comingSoon
+                      ? <div key={it.to} className="sb-setg-item" data-key={itemKey(it)}>{body}</div>
+                      : <Link key={it.to} to={it.to} className="sb-setg-item" data-key={itemKey(it)}>{body}</Link>;
+                  })}
+                </div>
+              </section>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

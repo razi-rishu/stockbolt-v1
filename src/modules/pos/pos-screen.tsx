@@ -1,3 +1,4 @@
+import { ModuleGear } from '@/components/module-gear';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -392,9 +393,13 @@ export default function POSScreen() {
             <span className="text-ink-tertiary">·</span>
             <span className="text-ink-secondary">{fmt(session.total_sales_amount ?? 0)} {t('pos.total_today')}</span>
           </div>
-          <Button size="sm" variant="ghost" onClick={() => setCloseDialog(true)}>
-            {t('pos.close_session')}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setCloseDialog(true)}>
+              {t('pos.close_session')}
+            </Button>
+            {/* Opening a setting leaves the till, so never with a sale in progress. */}
+            {cart.length === 0 && <ModuleGear />}
+          </div>
         </div>
 
         {/* Search */}

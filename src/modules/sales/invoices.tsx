@@ -1,3 +1,4 @@
+import { ModuleGear } from '@/components/module-gear';
 import { formatDate } from '@/lib/locale';
 import { ccy as ccyLabel } from '@/lib/currency-display';
 import { useQuery } from '@tanstack/react-query';
@@ -128,6 +129,7 @@ export default function InvoicesPage() {
             <button type="button" className="sb-primary-btn sb-btn-inline" onClick={() => navigate('/sales/invoices/new')}>
               <Plus size={18} aria-hidden="true" />{t('sales.new_invoice')}
             </button>
+            <ModuleGear />
           </div>
         </div>
         {!isLoading && allRows.length > 0 && (

@@ -11,6 +11,7 @@
  * The one addition is the All / COD / Credit terms chips, which filter the
  * already-loaded rows by payment_terms_days — no new query.
  */
+import { ModuleGear } from '@/components/module-gear';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -77,6 +78,7 @@ export function CustomerListOcean(p: CustomerListOceanProps) {
             <button type="button" className="sb-primary-btn" onClick={p.onAdd}>
               <Plus size={18} aria-hidden="true" />{t('common.add')} {t(L.one)}
             </button>
+            <ModuleGear />
           </div>
         </div>
 
