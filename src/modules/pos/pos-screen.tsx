@@ -12,8 +12,16 @@ import { Select } from '@/ui/select';
 import { Button } from '@/ui/button';
 import { Modal } from '@/ui/modal';
 import { calcPOSLine, calcPOSTotals, type POSCartLine, type POSCartLineResult } from '@/core/pos/pos-calc';
-import { loadHardwareConfig, resolveScan } from '@/lib/hardware-config';
+import { loadHardwareConfig, normalizeScan, resolveScan } from '@/lib/hardware-config';
+import { usePacks } from '@/hooks/use-packs';
+import { PackSelect } from '@/components/packs/pack-select';
+import { recordPackAcceptance, usePackGate } from '@/components/packs/use-pack-gate';
+import { packError } from '@/lib/pack-errors';
+import { linePackFrom, linePackOf, NO_PACK, packColumn, packInput, packPrice, type ProductUnitRow } from '@/lib/packs';
 import type { ProductRow, WarehouseRow, TaxRateRow, ContactRow, PosSessionRow } from '@/data/adapter';
+
+/** One cart row per product and pack: 2 BOX and 5 PCS are two rows. */
+const rowKey = (l: { product_id: string; product_unit_id?: string | null }) => `${l.product_id}|${l.product_unit_id ?? ''}`;
 
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -87,6 +95,27 @@ function CloseSessionDialog({ session, onClose, onCancel }: {
   );
 }
 
+/** A quantity that can be typed (0.5 KG); an empty or zero entry goes back to what it was. */
+function PosQty({ value, onChange, label }: { value: number; onChange: (q: number) => void; label: string }) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => { setText(String(value)); }, [value]);
+  const commit = () => {
+    const n = Math.round(parseFloat(text) * 1000) / 1000;
+    if (Number.isFinite(n) && n > 0) onChange(n); else setText(String(value));
+  };
+  return (
+    <input type="number" min="0" step="any" inputMode="decimal" aria-label={label} value={text} data-testid="pos-qty"
+      onChange={e => {
+        setText(e.target.value);
+        // The total follows while typing, so it is right even before leaving the box.
+        const n = Math.round(parseFloat(e.target.value) * 1000) / 1000;
+        if (Number.isFinite(n) && n > 0 && String(n) === e.target.value) onChange(n);
+      }}
+      onBlur={commit} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+      className="w-16 rounded border border-border-subtle px-1 py-0.5 text-center text-sm font-semibold" dir="ltr" />
+  );
+}
+
 // ── Main POS Screen ────────────────────────────────────────────────────────────
 export default function POSScreen() {
   const taxName = useTaxName();   // GST for India, VAT for the GCC
@@ -143,12 +172,12 @@ export default function POSScreen() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'F2') { e.preventDefault(); searchRef.current?.focus(); }
-      if (e.key === 'F4') { e.preventDefault(); if (cart.length > 0) setPaymentModal('cash'); }
+      if (e.key === 'F4') { e.preventDefault(); if (cart.length > 0) askPay('cash'); }
       if (e.key === 'Escape') { setSearch(''); searchRef.current?.blur(); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [cart]);
+  });
 
   // ── Session mutations ─────────────────────────────────────────────────────────
   const openSessionMutation = useMutation({
@@ -178,6 +207,7 @@ export default function POSScreen() {
         unit_price:       c.unit_price,
         discount_percent: c.discount_percent,
         tax_rate:         c.tax_rate || defaultRate,
+        ...packColumn(linePackOf(c)),
       }));
       return getAdapter().pos.confirmSale(
         session.id, items, method,
@@ -185,6 +215,7 @@ export default function POSScreen() {
       );
     },
     onSuccess: async (result) => {
+      if (result.invoice_id) void recordPackAcceptance('invoice', result.invoice_id, packLines);
       setLastSale(result.invoice_number);
       setCart([]);
       setCustomerId('');
@@ -197,7 +228,7 @@ export default function POSScreen() {
       await invalidateBooks();
       qc.invalidateQueries({ queryKey: ['pos_session'] });
     },
-    onError: (e: Error) => { setError(e.message); setPaymentModal(null); },
+    onError: (e: Error) => { setError(packError(t, e)); setPaymentModal(null); },
   });
 
   // ── Product search (local filter) ─────────────────────────────────────────────
@@ -217,24 +248,68 @@ export default function POSScreen() {
   const stdRate = countryStdTaxRate(companyCountry);
   const defaultTaxRate = taxRates.find(r => Number(r.rate) === stdRate)?.rate ?? (taxRates[0]?.rate ?? 0);
 
-  const addToCart = useCallback((product: ProductRow) => {
+  // phase155 — packs. Off: one row per product in its own unit, as always.
+  const packs = usePacks();
+  const packGate = usePackGate({ loading: packs.loading, continueLabel: t('packs.to_payment') });
+  const { data: stockMap = {} } = useQuery({
+    queryKey: ['current_stock_map', company_id],
+    queryFn: () => getAdapter().stockLedger.getCurrentStockMap(company_id!),
+    enabled: !!company_id && packs.on,
+  });
+  const packLines = !packs.on ? [] : cart.flatMap(c => {
+    const product = products.find(p => p.id === c.product_id);
+    return packInput({ ...linePackOf(c), quantity: c.quantity, net_price: c.unit_price * (1 - c.discount_percent / 100) },
+      product, packs, product ? stockMap[product.id] : null, 0) ?? [];
+  });
+  /** Pack quantities are accepted before any payment is taken. */
+  const askPay = (method: PaymentMethod) => { setError(null); packGate.ask(packLines, () => setPaymentModal(method)); };
+
+  const addToCart = useCallback((product: ProductRow, pack: ProductUnitRow | null = null) => {
+    const key = rowKey({ product_id: product.id, product_unit_id: pack?.id });
     setCart(prev => {
-      const existing = prev.find(l => l.product_id === product.id);
+      const existing = prev.find(l => rowKey(l) === key);
       if (existing) {
-        return prev.map(l => l.product_id === product.id ? { ...l, quantity: l.quantity + 1 } : l);
+        return prev.map(l => rowKey(l) === key ? { ...l, quantity: l.quantity + 1 } : l);
       }
+      const price = product.selling_price ?? 0;
       return [...prev, {
         product_id:       product.id,
         product_name:     product.name ?? '',
         sku:              product.sku ?? '',
         quantity:         1,
-        unit_price:       product.selling_price ?? 0,
+        unit_price:       pack ? packPrice(pack, Number(price)) : price,
         discount_percent: 0,
         tax_rate:         defaultTaxRate,
+        ...(pack ? linePackFrom(pack) : {}),
       }];
     });
     setSearch('');
   }, [defaultTaxRate]);
+
+  /** A scanned code: the product fields first, as always, then a pack's own barcode. */
+  const addScanned = useCallback((code: string): boolean => {
+    const hit = resolveScan(code, products, hwCfg);
+    if (hit) { addToCart(hit); return true; }
+    const pack = packs.byBarcode(normalizeScan(code, hwCfg));
+    const product = pack?.for_sales ? products.find(p => p.id === pack.product_id) : undefined;
+    if (!product) return false;
+    addToCart(product, pack!);
+    return true;
+  }, [products, hwCfg, addToCart, packs]);
+
+  const changePack = (line: POSCartLine, pack: ProductUnitRow | null) => {
+    const price = Number(products.find(p => p.id === line.product_id)?.selling_price ?? 0);
+    const from = rowKey(line);
+    const next = { ...line, ...(pack ? linePackFrom(pack) : NO_PACK), unit_price: pack ? packPrice(pack, price) : price };
+    const to = rowKey(next);
+    setCart(prev => {
+      // Already a row in that unit: add to it instead of making a second one.
+      if (prev.some(l => rowKey(l) === to)) {
+        return prev.filter(l => rowKey(l) !== from).map(l => rowKey(l) === to ? { ...l, quantity: +(l.quantity + line.quantity).toFixed(3) } : l);
+      }
+      return prev.map(l => rowKey(l) === from ? next : l);
+    });
+  };
 
   // ── Barcode scanner (keyboard-wedge burst capture) ────────────────────────────
   // Scanners "type" the code very fast and finish with Enter. When the user isn't
@@ -254,8 +329,7 @@ export default function POSScreen() {
         const code = scanBuf.current.chars;
         scanBuf.current.chars = '';
         if (code.length >= hwCfg.scanner.minLength) {
-          const hit = resolveScan(code, products, hwCfg);
-          if (hit) { addToCart(hit); setError(null); }
+          if (addScanned(code)) setError(null);
           else setError(`${t('pos.no_results')} — "${code}"`);
         }
       } else if (e.key.length === 1) {
@@ -264,13 +338,13 @@ export default function POSScreen() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [products, addToCart, hwCfg, t]);
+  }, [addScanned, hwCfg, t]);
 
-  const updateQty = (product_id: string, qty: number) => {
+  const updateQty = (key: string, qty: number) => {
     if (qty <= 0) {
-      setCart(prev => prev.filter(l => l.product_id !== product_id));
+      setCart(prev => prev.filter(l => rowKey(l) !== key));
     } else {
-      setCart(prev => prev.map(l => l.product_id === product_id ? { ...l, quantity: qty } : l));
+      setCart(prev => prev.map(l => rowKey(l) === key ? { ...l, quantity: qty } : l));
     }
   };
 
@@ -335,8 +409,7 @@ export default function POSScreen() {
               e.preventDefault();
               // Scanner (or typed code) into the search box: exact mapping first,
               // then a single filtered result — either way straight into the cart.
-              const hit = resolveScan(search, products, hwCfg);
-              if (hit) { addToCart(hit); setError(null); return; }
+              if (addScanned(search)) { setError(null); return; }
               if (filtered.length === 1) addToCart(filtered[0]);
             }}
             placeholder={`${t('pos.search_placeholder')} (F2)`}
@@ -377,25 +450,33 @@ export default function POSScreen() {
           {cart.length === 0 ? (
             <p className="py-8 text-center text-sm text-ink-tertiary">{t('pos.cart_empty')}</p>
           ) : cartLines.map((line, i) => (
-            <div key={line.product_id + i} className="rounded-card border border-border-subtle p-2.5">
+            <div key={rowKey(line) + i} className="rounded-card border border-border-subtle p-2.5">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-ink-tertiary font-mono truncate">{line.sku}</p>
                   <p className="text-sm font-medium text-ink-primary leading-tight">{line.product_name}</p>
                 </div>
-                <button onClick={() => updateQty(line.product_id, 0)}
+                <button onClick={() => updateQty(rowKey(line), 0)}
                   className="text-ink-tertiary hover:text-red-500 text-lg leading-none shrink-0">×</button>
               </div>
               <div className="flex items-center justify-between mt-2">
                 <div className="flex items-center gap-1">
-                  <button onClick={() => updateQty(line.product_id, line.quantity - 1)}
+                  <button onClick={() => updateQty(rowKey(line), +(line.quantity - 1).toFixed(3))}
                     className="w-6 h-6 rounded border border-border-subtle text-ink-secondary text-sm hover:bg-surface-muted">−</button>
-                  <span className="w-8 text-center text-sm font-semibold">{line.quantity}</span>
-                  <button onClick={() => updateQty(line.product_id, line.quantity + 1)}
+                  {packs.on
+                    ? <PosQty value={line.quantity} onChange={(q) => updateQty(rowKey(line), q)} label={t('sales.qty')} />
+                    : <span className="w-8 text-center text-sm font-semibold">{line.quantity}</span>}
+                  <button onClick={() => updateQty(rowKey(line), +(line.quantity + 1).toFixed(3))}
                     className="w-6 h-6 rounded border border-border-subtle text-ink-secondary text-sm hover:bg-surface-muted">+</button>
                 </div>
                 <p className="text-sm font-semibold text-ink-primary">{fmt(line.line_total)}</p>
               </div>
+              {packs.on && (
+                <PackSelect packs={packs.forProduct(line.product_id, 'sales')} value={line.product_unit_id ?? null}
+                  savedLabel={line.unit_label} savedFactor={line.unit_factor}
+                  baseUnit={packs.unitCode(products.find(p => p.id === line.product_id)?.unit_id)}
+                  quantity={line.quantity} onChange={(pack) => changePack(line, pack)} />
+              )}
             </div>
           ))}
         </div>
@@ -440,25 +521,26 @@ export default function POSScreen() {
         <div className="p-3 pt-0 grid grid-cols-2 gap-2">
           <button
             disabled={cart.length === 0 || saleMutation.isPending}
-            onClick={() => setPaymentModal('cash')}
+            onClick={() => askPay('cash')}
             className="rounded-card border-2 border-green-500 bg-green-50 py-3 text-sm font-bold text-green-700 hover:bg-green-100 disabled:opacity-40 transition-colors">
             💵 {t('pos.cash')}
           </button>
           <button
             disabled={cart.length === 0 || saleMutation.isPending}
-            onClick={() => setPaymentModal('card')}
+            onClick={() => askPay('card')}
             className="rounded-card border-2 border-blue-500 bg-blue-50 py-3 text-sm font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-40 transition-colors">
             💳 {t('pos.card')}
           </button>
           <button
             disabled={cart.length === 0 || saleMutation.isPending}
-            onClick={() => setPaymentModal('credit')}
+            onClick={() => askPay('credit')}
             className="col-span-2 rounded-card border-2 border-orange-500 bg-orange-50 py-3 text-sm font-bold text-orange-700 hover:bg-orange-100 disabled:opacity-40 transition-colors">
             📋 {t('pos.credit')} (F4)
           </button>
         </div>
       </div>
 
+      {packGate.modal}
       {/* ── Payment Confirm Modal ─────────────────────────────────────────── */}
       {paymentModal && (
         <Modal open onClose={() => setPaymentModal(null)}

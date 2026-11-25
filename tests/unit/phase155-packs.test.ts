@@ -46,6 +46,20 @@ describe('phase155 packs — migration', () => {
   });
 });
 
+describe('phase156 acceptance record', () => {
+  const s156 = readFileSync('supabase/migrations/20261125000001_phase156_pack_acceptance.sql', 'utf8').replace(/--.*/g, '');
+  it('is a pinned definer, closed to anon, limited to the caller’s company and permission', () => {
+    expect(s156).toMatch(/SECURITY DEFINER\s+SET search_path TO 'public', 'pg_temp'/);
+    expect(s156).toMatch(/REVOKE ALL ON FUNCTION public\.record_pack_acceptance\(text, uuid\) FROM PUBLIC, anon/);
+    expect(s156).toMatch(/company_id = \$2/);
+    expect(s156).toMatch(/NOT public\.has_perm\(v_perm\)/);
+  });
+  it('takes no text from the client and only adds a function', () => {
+    expect(s156).toMatch(/record_pack_acceptance\(p_doc_type text, p_doc_id uuid\)/);
+    expect(s156).not.toMatch(/ALTER TABLE|DROP |UPDATE public|DELETE FROM/);
+  });
+});
+
 describe('phase155 packs — client header', () => {
   afterEach(() => vi.unstubAllGlobals());
   const sent = async (url: string, init?: RequestInit) => {

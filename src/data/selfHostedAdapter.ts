@@ -15,6 +15,14 @@ export function createSelfHostedAdapter(): DataAdapter {
       create:       () => notImplemented('apiKeys.create'),
       revoke:       () => notImplemented('apiKeys.revoke'),
     },
+    productUnits: {
+      list:             async () => [],
+      listForProduct:   async () => [],
+      create:           () => notImplemented('productUnits.create'),
+      update:           () => notImplemented('productUnits.update'),
+      remove:           () => notImplemented('productUnits.remove'),
+      recordAcceptance: () => notImplemented('productUnits.recordAcceptance'),
+    },
     inventorySettings: {
       get:  async () => null,
       save: () => notImplemented('inventorySettings.save'),

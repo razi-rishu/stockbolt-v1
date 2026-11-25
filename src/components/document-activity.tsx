@@ -25,7 +25,7 @@ import { DocLink } from '@/ui/doc-link';
 import { StatusBadge } from '@/ui/status-badge';
 import type { ActivityDocKind, ActivityFollowOn, ApprovalStepRow, AuditLogLine, DocumentActivity as Activity } from '@/data/adapter';
 import { stepLabel } from '@/components/approvals/approval-lists';
-import { BadgeCheck, Send, XCircle } from 'lucide-react';
+import { BadgeCheck, Package, Send, XCircle } from 'lucide-react';
 
 type Tone = 'brand' | 'success' | 'warn' | 'danger' | 'muted';
 
@@ -89,6 +89,11 @@ function auditEvent(r: AuditLogLine): Omit<ActivityEvent, 'what'> & { whatKey: s
     const from = r.old_values?.status;
     return { ...base, tone: 'brand', icon: <ArrowRightLeft {...ICON} />, whatKey: 'actOcean.a_status',
              status: { from: typeof from === 'string' ? from : null, to } };
+  }
+  // phase156 — the pack quantities were shown and accepted before saving.
+  const packs = r.new_values?.packs_accepted;
+  if (r.action === 'update' && Array.isArray(packs)) {
+    return { ...base, tone: 'brand', icon: <Package {...ICON} />, whatKey: 'packs.accepted', note: packs.map(String).join(' · ') };
   }
   // reopen_expense logs itself as an 'update' on 'expenses'.
   if (r.action === 'update' && r.entity_type === 'expenses') {

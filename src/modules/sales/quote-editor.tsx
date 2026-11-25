@@ -30,8 +30,13 @@ import { quoteToDocumentData } from '@/modules/print/_signature/adapters';
 import '@/modules/print/_signature/print.css';
 import type { SalesQuoteRow, SalesQuoteItemInsert, SalesQuoteItemRow, ContactRow, ProductRow, TaxRateRow, Company } from '@/data/adapter';
 import { calcLine as _calcLine, applyRoundOff } from '@/core/sales/invoice-calc';
+import { usePacks } from '@/hooks/use-packs';
+import { PackSelect } from '@/components/packs/pack-select';
+import { recordPackAcceptance, usePackGate } from '@/components/packs/use-pack-gate';
+import { packError } from '@/lib/pack-errors';
+import { linePackFrom, linePackOf, NO_PACK, packColumn, packInput, packPrice, type LinePack, type ProductUnitRow } from '@/lib/packs';
 
-interface LineRow {
+interface LineRow extends LinePack {
   _key: string;
   product_id: string | null;
   description: string;
@@ -57,7 +62,7 @@ function calcLine(l: LineRow) {
   });
 }
 
-const emptyLine = (): LineRow => ({ _key: newKey(), product_id: null, description: '', quantity: '1', unit_price: '0', discount_percent: '0', tax_rate: '0', line_subtotal: 0, discount_amount: 0, tax_amount: 0, line_total: 0 });
+const emptyLine = (): LineRow => ({ ...NO_PACK, _key: newKey(), product_id: null, description: '', quantity: '1', unit_price: '0', discount_percent: '0', tax_rate: '0', line_subtotal: 0, discount_amount: 0, tax_amount: 0, line_total: 0 });
 const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -158,7 +163,7 @@ export default function QuoteEditorPage() {
   useEffect(() => {
     if (existingItems.length > 0) {
       setLines(existingItems.map(item => {
-        const base: LineRow = { _key: newKey(), product_id: item.product_id, description: item.description ?? '', quantity: String(item.quantity), unit_price: String(item.unit_price), discount_percent: String(item.discount_percent ?? 0), tax_rate: String(item.tax_rate ?? 0), line_subtotal: 0, discount_amount: 0, tax_amount: 0, line_total: 0 };
+        const base: LineRow = { ...linePackOf(item), _key: newKey(), product_id: item.product_id, description: item.description ?? '', quantity: String(item.quantity), unit_price: String(item.unit_price), discount_percent: String(item.discount_percent ?? 0), tax_rate: String(item.tax_rate ?? 0), line_subtotal: 0, discount_amount: 0, tax_amount: 0, line_total: 0 };
         return { ...base, ...calcLine(base) };
       }));
     }
@@ -207,18 +212,38 @@ export default function QuoteEditorPage() {
     setDirty(true);
   }, []);
 
+  // phase155 — packs. Nothing here runs while the company has them off. A quote
+  // moves no stock, so only quantities and prices are checked.
+  const packs = usePacks();
+  const packGate = usePackGate({ loading: packs.loading });
+  const { data: stockMap = {} } = useQuery({
+    queryKey: ['current_stock_map', company_id],
+    queryFn:  () => getAdapter().stockLedger.getCurrentStockMap(company_id!),
+    enabled:  !!company_id && packs.on,
+  });
+  const changePack = (line: LineRow, pack: ProductUnitRow | null) => {
+    const price = Number(products.find(p => p.id === line.product_id)?.selling_price ?? 0);
+    updateLine(line._key, { ...linePackFrom(pack), unit_price: String(pack ? packPrice(pack, price) : price) });
+  };
+  const packLines = !packs.on ? [] : lines.flatMap(l => {
+    const product = products.find(p => p.id === l.product_id);
+    const net = (parseFloat(l.unit_price) || 0) * (1 - (parseFloat(l.discount_percent) || 0) / 100);
+    return packInput({ ...l, quantity: parseFloat(l.quantity) || 0, net_price: net }, product, packs, product ? stockMap[product.id] : null, null) ?? [];
+  });
+
   const handleProductChange = (key: string, productId: string) => {
     const product = products.find(p => p.id === productId);
     if (product) {
       const matchedRate = taxRates.find(r => r.is_active && r.tax_type === product.tax_category);
       updateLine(key, {
+        ...NO_PACK,
         product_id:  productId,
         description: product.name,
         unit_price:  String(product.selling_price ?? 0),
         tax_rate:    String(matchedRate?.rate ?? 0),
       });
     } else {
-      updateLine(key, { product_id: null, description: '' });
+      updateLine(key, { ...NO_PACK, product_id: null, description: '' });
     }
   };
 
@@ -239,6 +264,7 @@ export default function QuoteEditorPage() {
       line_subtotal: l.line_subtotal,
       line_total: l.line_total,
       sort_order: i,
+      ...packColumn(l),
     }));
   }
 
@@ -248,8 +274,13 @@ export default function QuoteEditorPage() {
       if (!header.salesperson_id) throw new Error(t('quoteOcean.salesperson_required'));
       const quoteNum = isNew ? await getAdapter().salesQuotes.getNextNumber(company_id!) : existing!.quote_number;
       const row = { company_id: company_id!, quote_number: quoteNum, contact_id: header.contact_id, salesperson_id: header.salesperson_id, project_id: header.project_id || null, date: header.date, expiry_date: header.expiry_date || null, reference: header.reference || null, price_level_id: null, currency: header.currency, exchange_rate: 1, prices_inclusive: false, subtotal: +subtotal.toFixed(2), discount_amount: +discountTotal.toFixed(2), tax_amount: +taxTotal.toFixed(2), ...(roundOff !== 0 ? { round_off_amount: +roundOff.toFixed(2) } : {}), total_amount: +roundedTotal.toFixed(2), status: isNew ? 'draft' : existing!.status, invoiced_amount: existing?.invoiced_amount ?? 0, terms: null, terms_ar: null, notes: header.notes || null };
-      if (isNew) return getAdapter().salesQuotes.create(row, buildItems());
+      if (isNew) {
+        const created = await getAdapter().salesQuotes.create(row, buildItems());
+        await recordPackAcceptance('sales_quote', created.id, packLines);
+        return created;
+      }
       await getAdapter().salesQuotes.update(id!, row, buildItems());
+      await recordPackAcceptance('sales_quote', id!, packLines);
       return null;
     },
     onSuccess: (data) => {
@@ -258,11 +289,16 @@ export default function QuoteEditorPage() {
       if (isNew && data) navigate('/sales/quotes');
       else { qc.invalidateQueries({ queryKey: ['sales_quote', id] }); qc.invalidateQueries({ queryKey: ['sales_quote_items', id] }); }
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => setError(packError(t, e)),
   });
 
   // Convert this quote to an invoice. Mirrors the action available on the
   // Quotes list page; available here so the user can act from the editor too.
+  const askSave = () => {
+    setError(null);
+    if (!header.contact_id || !header.salesperson_id) { saveMutation.mutate(); return; }
+    packGate.ask(packLines, () => saveMutation.mutate());
+  };
   const convertMutation = useMutation({
     mutationFn: () => getAdapter().salesQuotes.convertToInvoice(id!),
     onSuccess: (inv) => {
@@ -270,7 +306,7 @@ export default function QuoteEditorPage() {
       qc.invalidateQueries({ queryKey: ['invoices', company_id] });
       navigate(`/sales/invoices/${inv.id}`);
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => setError(packError(t, e)),
   });
 
   // Quotes are non-GL proposals — editable in any status (draft/sent/accepted/
@@ -336,7 +372,7 @@ export default function QuoteEditorPage() {
             )}
           </div>
         </div>
-        <ApprovalPanel docType="sales_quote" docId={existing.id} isDraft={existing.status === 'draft'} onChanged={refreshQuote} />
+        <ApprovalPanel docType="sales_quote" docId={existing.id} isDraft={existing.status === 'draft'} onChanged={refreshQuote} packLines={packLines} />
         <div className="signature-canvas sb-doc-canvas">
           <ConfigurableDocTemplate data={doc} template={printTemplate} />
         </div>
@@ -370,7 +406,7 @@ export default function QuoteEditorPage() {
             </Button>
           )}
           <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/sales/quotes'); }}>{t('common.cancel')}</Button>
-          {canEdit && <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending}>{saveMutation.isPending ? t('common.saving') : t('common.save')}</Button>}
+          {canEdit && <Button size="sm" onClick={askSave} disabled={saveMutation.isPending}>{saveMutation.isPending ? t('common.saving') : t('common.save')}</Button>}
           {!isNew && existing && ['draft', 'sent', 'accepted'].includes(existing.status) && !awaitingApproval && !appr.pending && (
             <Button
               size="sm"
@@ -383,8 +419,9 @@ export default function QuoteEditorPage() {
           )}
         </div>
       </div>
+      {packGate.modal}
       {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
-      {!isNew && id && <ApprovalPanel docType="sales_quote" docId={id} isDraft={existing?.status === 'draft'} onChanged={refreshQuote} />}
+      {!isNew && id && <ApprovalPanel docType="sales_quote" docId={id} isDraft={existing?.status === 'draft'} onChanged={refreshQuote} packLines={packLines} />}
 
       {/* Credit-limit warning — non-blocking. Quotes don't post AR, but
            it's better to surface this NOW than after conversion to invoice. */}
@@ -471,11 +508,11 @@ export default function QuoteEditorPage() {
           <h2 className="sb-doc-card-title" style={{ margin: 0 }}>{t('sales.line_items')}</h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full table-fixed text-xs" style={{ minWidth: '760px' }}>
+          <table className="w-full table-fixed text-xs" style={{ minWidth: packs.on ? '836px' : '760px' }}>
             <thead>
               <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary">
                 <th className="px-3 py-2 text-start font-medium" style={{ minWidth: '220px' }}>{t('sales.product')}</th>
-                <th className="px-3 py-2 text-end font-medium" style={{ width: '72px' }}>{t('sales.qty')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: packs.on ? '148px' : '72px' }}>{t('sales.qty')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('sales.unit_price')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '84px' }}>{t('sales.disc_pct')}</th>
                 {showTax && <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('sales.tax')}</th>}
@@ -505,7 +542,15 @@ export default function QuoteEditorPage() {
                     />
                     <input className="mt-1 w-full rounded border border-transparent bg-transparent px-2 py-0.5 text-[11px] text-ink-tertiary placeholder:text-ink-tertiary hover:border-border-subtle focus:border-border-strong focus:bg-surface-subtle focus:text-ink-secondary disabled:opacity-60" value={line.description} disabled={!canEdit} placeholder={t('invOcean.description_optional', { label: t('sales.description') })} onChange={e => updateLine(line._key, { description: e.target.value })} />
                   </td>
-                  <td className="px-3 py-1.5 align-top"><input type="number" min="0" step="1" className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60" value={line.quantity} disabled={!canEdit} onChange={e => updateLine(line._key, { quantity: e.target.value })} /></td>
+                  <td className="px-3 py-1.5 align-top"><input type="number" min="0" step="1" className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60" value={line.quantity} disabled={!canEdit} onChange={e => updateLine(line._key, { quantity: e.target.value })} />
+                    {packs.on && (
+                      <PackSelect packs={packs.forProduct(line.product_id, 'sales')} value={line.product_unit_id}
+                        savedLabel={line.unit_label} savedFactor={line.unit_factor}
+                        baseUnit={packs.unitCode(products.find(p => p.id === line.product_id)?.unit_id)}
+                        quantity={parseFloat(line.quantity) || 0} disabled={!canEdit}
+                        onChange={(pack) => changePack(line, pack)} />
+                    )}
+                  </td>
                   <td className="px-3 py-1.5 align-top"><input type="number" min="0" step="0.01" className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60" value={line.unit_price} disabled={!canEdit} onChange={e => updateLine(line._key, { unit_price: e.target.value })} /></td>
                   <td className="px-3 py-1.5 align-top"><input type="number" min="0" max="100" step="0.01" className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60" value={line.discount_percent} disabled={!canEdit} onChange={e => updateLine(line._key, { discount_percent: e.target.value })} /></td>
                   {showTax && <td className="px-3 py-1.5 align-top"><select className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs disabled:opacity-60" value={line.tax_rate} disabled={!canEdit} onChange={e => updateLine(line._key, { tax_rate: e.target.value })}>{taxOpts.map(o => <option key={o.key} value={o.value}>{o.label}</option>)}</select></td>}

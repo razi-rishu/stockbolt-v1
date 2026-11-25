@@ -26,12 +26,19 @@ import { creditNoteToDocumentData, withPaymentDetails } from '@/modules/print/_s
 import { RefundDueBanner } from '@/components/refund-due-banner';
 import { RefundedBadge, RefundedPill } from '@/components/refunded-badge';
 import '@/modules/print/_signature/print.css';
+import { usePacks } from '@/hooks/use-packs';
+import { PackSelect } from '@/components/packs/pack-select';
+import { recordPackAcceptance, usePackGate } from '@/components/packs/use-pack-gate';
+import { packError } from '@/lib/pack-errors';
+import { fmtQty, lineFactor, linePackOf, NO_PACK, packColumn, packInput, type LinePack } from '@/lib/packs';
 import type { CreditNoteRow, CreditNoteItemInsert, CreditNoteItemRow, ContactRow, InvoiceRow, InvoiceItemRow, Company, ProductRow, ReturnableLine, WarehouseRow } from '@/data/adapter';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const fmt   = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-interface LineItem {
+interface LineItem extends LinePack {
+  /** phase155 — the pack the invoice line was sold in, to credit in it or in single units. */
+  sold_pack: LinePack;
   product_id:       string | null;
   description:      string;
   quantity:         number;
@@ -44,8 +51,9 @@ interface LineItem {
    *  no source line and leaves it null. v_invoice_line_returnable counts
    *  these, so it is what stops the same goods being credited twice. */
   invoice_item_id:  string | null;
-  /** How much of that invoice line is still returnable — display + input
-   *  cap. 0 when there is no source line, which means uncapped. */
+  /** How much of that invoice line is still returnable, in BASE units (PCS,
+   *  KG) — display + input cap. 0 when there is no source line, which means
+   *  uncapped. */
   qty_returnable:   number;
   /** R4a — damaged goods come back into stock and are then written off.
    *  Only meaningful when the note restocks. */
@@ -56,6 +64,8 @@ interface LineItem {
 
 /** Every new line starts here, so a field added above cannot be forgotten. */
 const BLANK_RETURN_FIELDS = {
+  ...NO_PACK,
+  sold_pack: NO_PACK,
   invoice_item_id: null,
   qty_returnable: 0,
   condition: 'resellable' as const,
@@ -175,7 +185,9 @@ export default function CreditNoteEditorPage() {
         invoice_item_id:  it.invoice_item_id ?? null,
         // A saved line has already consumed its own quantity, so add it back
         // to show what this note may still claim.
-        qty_returnable:   Number(it.quantity),
+        qty_returnable:   Number(it.base_quantity ?? it.quantity),
+        ...linePackOf(it),
+        sold_pack:        linePackOf(it),
         condition:        (it.condition ?? 'resellable') as 'resellable' | 'damaged',
         restock_warehouse_id: it.restock_warehouse_id ?? null,
       })));
@@ -238,16 +250,23 @@ export default function CreditNoteEditorPage() {
   function importFromInvoice() {
     if (invItems.length === 0) return;
     setLines(invItems.map(it => {
-      const left = Number(returnableById.get(it.id)?.qty_returnable ?? it.quantity);
+      const left = Number(returnableById.get(it.id)?.qty_returnable ?? it.base_quantity ?? it.quantity);
+      // phase155 — sold in a pack: credited in it while what is left fills whole
+      // packs, else in single units at the price of one (3 pieces of a box of 12).
+      const sold = linePackOf(it);
+      const whole = sold.product_unit_id && Number.isInteger(+(left / lineFactor(sold)).toFixed(6));
+      const pack = whole && packs.on ? sold : NO_PACK;
       return {
         product_id:       it.product_id ?? null,
         description:      it.description ?? '',
-        quantity:         left,
-        unit_price:       Number(it.unit_price),
+        quantity:         +(left / lineFactor(pack)).toFixed(3),
+        unit_price:       pack === sold || !sold.product_unit_id ? Number(it.unit_price) : +(Number(it.unit_price) / lineFactor(sold)).toFixed(2),
         discount_percent: Number(it.discount_percent),
         tax_rate:         Number(it.tax_rate ?? 0),
         cost_at_sale:     it.cost_at_sale !== undefined ? Number(it.cost_at_sale) : null,
         ...BLANK_RETURN_FIELDS,
+        ...pack,
+        sold_pack:        sold,
         invoice_item_id:  it.id,
         qty_returnable:   left,
       };
@@ -266,6 +285,26 @@ export default function CreditNoteEditorPage() {
   function updateLine<K extends keyof LineItem>(i: number, key: K, val: LineItem[K]) {
     setLines(prev => prev.map((l, idx) => idx === i ? { ...l, [key]: val } : l));
   }
+
+  // phase155 — packs. Nothing here runs while the company has them off.
+  const packs = usePacks();
+  const packGate = usePackGate({ loading: packs.loading });
+  const unitOf = (pid: string | null) => packs.unitCode(products.find(p => p.id === pid)?.unit_id) || t('packs.piece');
+  /** Same goods, other unit: quantity and price are converted together. */
+  function switchPack(i: number, toPack: boolean) {
+    setLines(prev => prev.map((l, idx) => {
+      if (idx !== i) return l;
+      const next = toPack ? l.sold_pack : NO_PACK;
+      const k = lineFactor(l) / lineFactor(next);
+      // Back to the pack: the invoice's own price, not 12 × a rounded piece price.
+      const sold = Number(invItems.find(it => it.id === l.invoice_item_id)?.unit_price);
+      const untouched = toPack && Math.abs(l.unit_price - +(sold / lineFactor(next)).toFixed(2)) < 0.005;
+      return { ...l, ...next, quantity: +(l.quantity * k).toFixed(3), unit_price: untouched ? sold : +(l.unit_price / k).toFixed(2) };
+    }));
+  }
+  const packLines = !packs.on ? [] : lines.flatMap(l => packInput(
+    { ...l, net_price: null }, products.find(p => p.id === l.product_id), packs, null, null) ?? []);
+  const askSave = () => packGate.ask(packLines, () => saveMutation.mutate());
 
   const totals = lines.reduce((acc, l) => {
     const c = calcLine(l);
@@ -301,6 +340,7 @@ export default function CreditNoteEditorPage() {
         invoice_item_id: l.invoice_item_id,
         condition:       l.condition,
         restock_warehouse_id: l.restock_warehouse_id,
+        ...packColumn(l),
       } as CreditNoteItemInsert;
     });
   }
@@ -338,6 +378,7 @@ export default function CreditNoteEditorPage() {
         await getAdapter().creditNotes.update(id!, header, buildItems());
         noteId = id!;
       }
+      await recordPackAcceptance('credit_note', noteId, packLines);
       // phase146 — needs approval: keep it a draft and send it to an approver.
       if (gate.needs(roundedTotal)) return { noteId, submit: true };
       try {
@@ -491,14 +532,15 @@ export default function CreditNoteEditorPage() {
             <Button variant="secondary" onClick={() => setShowVoidDlg(true)}>{t('common.void')}</Button>
           )}
           {isDraft && (
-            <Button variant="primary" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || appr.pending}>
+            <Button variant="primary" onClick={askSave} disabled={saveMutation.isPending || appr.pending}>
               {saveMutation.isPending ? t('common.saving') : gate.needs(roundedTotal) ? t('apprOcean.save_submit') : t('common.save')}
             </Button>
           )}
         </div>
       </div>
-      {!isNew && id && <ApprovalPanel docType="credit_note" docId={id} isDraft={isDraft} onChanged={refreshNote} />}
+      {!isNew && id && <ApprovalPanel docType="credit_note" docId={id} isDraft={isDraft} onChanged={refreshNote} packLines={packLines} />}
       {gate.modal}
+      {packGate.modal}
 
       {/* Header fields */}
       <div className="sb-card sb-form sb-doc-card grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -644,17 +686,23 @@ export default function CreditNoteEditorPage() {
                           server enforces the same ceiling, so a stale figure
                           here cannot over-credit. */}
                       <input type="number" min="0" step="0.001" value={l.quantity}
-                        max={l.invoice_item_id ? l.qty_returnable : undefined}
+                        max={l.invoice_item_id ? l.qty_returnable / lineFactor(l) : undefined}
                         onChange={e => {
                           const v = Number(e.target.value);
                           updateLine(i, 'quantity', l.invoice_item_id
-                            ? Math.min(Math.max(v, 0), l.qty_returnable) : v);
+                            ? Math.min(Math.max(v, 0), l.qty_returnable / lineFactor(l)) : v);
                         }}
                         disabled={!isDraft} className="w-24 border border-border-strong rounded px-2 py-1 text-sm text-end" dir="ltr" />
                       {l.invoice_item_id && (
                         <span className="mt-0.5 block text-[10px] text-ink-tertiary">
-                          {t('returns.of_returnable', { qty: l.qty_returnable })}
+                          {t('returns.of_returnable', { qty: packs.on && l.sold_pack.product_unit_id ? `${fmtQty(l.qty_returnable)} ${unitOf(l.product_id)}` : l.qty_returnable })}
                         </span>
+                      )}
+                      {packs.on && l.sold_pack.product_unit_id && (
+                        <PackSelect value={l.product_unit_id} packs={[{
+                          id: l.sold_pack.product_unit_id, name: l.sold_pack.unit_label ?? '', name_ar: null, factor: lineFactor(l.sold_pack),
+                        }]} baseUnit={unitOf(l.product_id)} quantity={l.quantity} disabled={!isDraft}
+                          onChange={(p) => switchPack(i, !!p)} />
                       )}
                     </td>
                     <td className="px-3 py-2">
@@ -738,7 +786,7 @@ export default function CreditNoteEditorPage() {
       </div>
 
       {saveMutation.isError && (
-        <p className="sb-alert sb-alert-danger" role="alert">{String((saveMutation.error as Error).message)}</p>
+        <p className="sb-alert sb-alert-danger" role="alert">{packError(t, saveMutation.error)}</p>
       )}
 
       {/* Void dialog */}

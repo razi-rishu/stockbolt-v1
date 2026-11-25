@@ -56,7 +56,10 @@ export default function InventorySettingsPage() {
       if (draft.sell_without_stock !== sellWithoutStock) {
         await getAdapter().companies.update(company_id!, { allow_negative_stock: draft.sell_without_stock } as never);
       }
-      const row = Object.fromEntries(INVENTORY_SWITCHES.map((k) => [k, draft[k]])) as unknown as InventorySettings;
+      // packs_enabled is sent only when it changes (its column is newer than the row).
+      const row = Object.fromEntries(INVENTORY_SWITCHES
+        .filter((k) => k !== 'packs_enabled' || draft[k] !== current[k])
+        .map((k) => [k, draft[k]])) as unknown as InventorySettings;
       await getAdapter().inventorySettings.save(company_id!, row);
     },
     onSuccess: async () => {
@@ -81,6 +84,7 @@ export default function InventorySettingsPage() {
     barcodes_enabled:  [t('inventorySettings.barcodes'),  t('inventorySettings.barcodes_hint')],
     brands_enabled:    [t('inventorySettings.brands'),    t('inventorySettings.brands_hint')],
     shelf_enabled:     [t('inventorySettings.shelf'),     t('inventorySettings.shelf_hint')],
+    packs_enabled:     [t('inventorySettings.packs'),     t('inventorySettings.packs_hint')],
   };
 
   return (
@@ -95,7 +99,9 @@ export default function InventorySettingsPage() {
               <label key={k} className="sb-check-row">
                 <input type="checkbox" checked={draft[k]} disabled={!canEdit || !loaded || !!reason}
                   data-testid={`inv-${k}`} onChange={(e) => set(k, e.target.checked)} />
-                <span className="sb-check-text">{label[k][0]}<span className="sb-form-hint">{reason ?? label[k][1]}</span></span>
+                <span className="sb-check-text">{label[k][0]}<span className="sb-form-hint">{reason ?? label[k][1]}</span>
+                  {k === 'packs_enabled' && draft[k] && !current[k] && <span className="sb-form-hint" data-testid="packs-first">{t('inventorySettings.packs_on')}</span>}
+                </span>
               </label>
             );
           })}
@@ -112,7 +118,7 @@ export default function InventorySettingsPage() {
       </section>
 
       {!canEdit && <p className="sb-info-note">{t('inventorySettings.read_only')}</p>}
-      {save.error && <p className="sb-alert sb-alert-danger" role="alert">{save.error instanceof Error ? save.error.message : String(save.error)}</p>}
+      {save.error && <p className="sb-alert sb-alert-danger" role="alert">{/packs_in_use/.test(String(save.error)) ? t('inventorySettings.packs_in_use') : save.error instanceof Error ? save.error.message : String(save.error)}</p>}
       {saved && <p className="sb-alert sb-alert-good" role="status">{t('common.saved')}</p>}
       {canEdit && (
         <div className="sb-form-actions">

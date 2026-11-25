@@ -9,7 +9,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { BadgeCheck, Clock, CornerUpRight, Send, ShieldAlert, XCircle } from 'lucide-react';
 import { getAdapter } from '@/data/index';
-import type { ApprovalDocType } from '@/data/adapter';
+import type { ApprovalDocType, PackDocType } from '@/data/adapter';
 import { Modal } from '@/ui/modal';
 import { formatDate } from '@/lib/locale';
 import { moneyLabel } from '@/lib/currency-display';
@@ -17,8 +17,10 @@ import { useCompanyCurrency } from '@/hooks/use-company-currency';
 import { ApproverPickerModal } from './approver-picker-modal';
 import { useApprovalGate, useDocApproval } from './use-approval';
 import { approvalError, approvalKeys } from './approval-lists';
+import { recordPackAcceptance, usePackGate } from '@/components/packs/use-pack-gate';
+import type { PackLineInput } from '@/lib/packs';
 
-export function ApprovalPanel({ docType, docId, isDraft, onChanged, confirmArgs, amountBase }: {
+export function ApprovalPanel({ docType, docId, isDraft, onChanged, confirmArgs, amountBase, packLines }: {
   docType: ApprovalDocType;
   docId: string | null | undefined;
   /** The document is still a draft (Submit is possible). */
@@ -29,12 +31,15 @@ export function ApprovalPanel({ docType, docId, isDraft, onChanged, confirmArgs,
   /** The document's amount in base currency, when the screen knows it: below
    *  the rule's threshold the "needs approval" note stays hidden. */
   amountBase?: number;
+  /** phase155 — approving posts the document, so its pack quantities are shown again. */
+  packLines?: PackLineInput[];
 }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const base = useCompanyCurrency();
   const appr = useDocApproval(docType, docId);
   const gate = useApprovalGate(docType);
+  const packGate = usePackGate({ continueLabel: t('apprOcean.approve') });
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
   const [forwarding, setForwarding] = useState<'forward' | 'pass_on' | null>(null);
@@ -49,7 +54,10 @@ export function ApprovalPanel({ docType, docId, isDraft, onChanged, confirmArgs,
   const act = useMutation({
     mutationFn: async (v: { kind: 'approve' | 'reject' | 'forward' | 'cancel'; to?: string; note?: string }) => {
       const api = getAdapter().approvals;
-      if (v.kind === 'approve') return api.approve(req!.id, v.to ?? null, v.note ?? null);
+      if (v.kind === 'approve') {
+        if (docId && packLines) await recordPackAcceptance(docType as PackDocType, docId, packLines);
+        return api.approve(req!.id, v.to ?? null, v.note ?? null);
+      }
       if (v.kind === 'reject') { await api.reject(req!.id, v.note ?? ''); return null; }
       if (v.kind === 'forward') { await api.forward(req!.id, v.to!, v.note ?? null); return null; }
       await api.cancel(req!.id); return null;
@@ -116,7 +124,7 @@ export function ApprovalPanel({ docType, docId, isDraft, onChanged, confirmArgs,
       <div className="sb-appr-actions">
         {req.can_act && <>
           <button type="button" className="sb-primary-btn sb-btn-inline" disabled={act.isPending}
-            onClick={() => act.mutate({ kind: 'approve' })} data-testid="approval-approve">
+            onClick={() => packGate.ask(packLines ?? [], () => act.mutate({ kind: 'approve' }))} data-testid="approval-approve">
             <BadgeCheck size={16} aria-hidden="true" />{act.isPending ? t('apprOcean.working') : t('apprOcean.approve')}
           </button>
           <button type="button" className="sb-secondary-btn sb-btn-inline" disabled={act.isPending} onClick={() => setRejecting(true)} data-testid="approval-reject">
@@ -134,6 +142,7 @@ export function ApprovalPanel({ docType, docId, isDraft, onChanged, confirmArgs,
         )}
       </div>
 
+      {packGate.modal}
       <Modal open={rejecting} onClose={() => setRejecting(false)} title={t('apprOcean.reject_title')}>
         <div className="sb-ocean sb-appr-pick">
           <label className="sb-gc-field">

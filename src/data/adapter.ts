@@ -1,5 +1,6 @@
 import type { Database } from '@/types/database';
 import type { InventorySettings } from '@/lib/inventory-settings';
+import type { PackLineFields, ProductUnitRow } from '@/lib/packs';
 import type { TaxReturn, TaxFiling, TaxFileResult, TaxReopenResult, TaxJurisdiction, FilingFrequency } from '@/lib/tax-return';
 
 type Tables = Database['public']['Tables'];
@@ -976,19 +977,19 @@ export interface StockLedgerAPI {
 
 // ── Phase 4 row types ─────────────────────────────────────────────────────────
 export type InvoiceRow = Tables['invoices']['Row'] & InvoiceEInvoiceFields;
-export type InvoiceItemRow = Tables['invoice_items']['Row'] & InvoiceItemEInvoiceFields;
+export type InvoiceItemRow = Tables['invoice_items']['Row'] & InvoiceItemEInvoiceFields & PackLineFields;
 export type SalesQuoteRow = Tables['sales_quotes']['Row'];
-export type SalesQuoteItemRow = Tables['sales_quote_items']['Row'];
+export type SalesQuoteItemRow = Tables['sales_quote_items']['Row'] & PackLineFields;
 export type PaymentRow = Tables['payments']['Row'];
 export type PaymentAllocationRow = Tables['payment_allocations']['Row'];
 
 // Phase 4 insert / update types
 export type InvoiceInsert = Omit<Tables['invoices']['Insert'], 'id' | 'created_at' | 'updated_at'> & InvoiceEInvoiceFields;
 export type InvoiceUpdate = Tables['invoices']['Update'] & InvoiceEInvoiceFields;
-export type InvoiceItemInsert = Omit<Tables['invoice_items']['Insert'], 'id' | 'created_at'> & InvoiceItemEInvoiceFields;
+export type InvoiceItemInsert = Omit<Tables['invoice_items']['Insert'], 'id' | 'created_at'> & InvoiceItemEInvoiceFields & PackLineFields;
 export type SalesQuoteInsert = Omit<Tables['sales_quotes']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type SalesQuoteUpdate = Tables['sales_quotes']['Update'];
-export type SalesQuoteItemInsert = Omit<Tables['sales_quote_items']['Insert'], 'id' | 'created_at'>;
+export type SalesQuoteItemInsert = Omit<Tables['sales_quote_items']['Insert'], 'id' | 'created_at'> & PackLineFields;
 export type PaymentInsert = Omit<Tables['payments']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 export type PaymentUpdate = Tables['payments']['Update'];
 export type PaymentAllocationInsert = Omit<Tables['payment_allocations']['Insert'], 'id' | 'created_at'>;
@@ -2893,6 +2894,8 @@ export interface POSSaleItem {
   unit_price:       number;
   discount_percent: number;
   tax_rate:         number;
+  /** phase155 — sold in this pack; the server checks it and moves the base quantity. */
+  product_unit_id?: string;
 }
 
 // Phase 7 API
@@ -2919,7 +2922,7 @@ export type CreditNoteRow     = Tables['credit_notes']['Row'] & {
    *  of tax. Optional: the generated types predate the column. */
   restocking_fee?: number | null;
 };
-export type CreditNoteItemRow = Tables['credit_note_items']['Row'] & {
+export type CreditNoteItemRow = Tables['credit_note_items']['Row'] & PackLineFields & {
   /** R2b — the invoice line this came from. The over-return guard
    *  (v_invoice_line_returnable) counts these, so a credit note against an
    *  invoice cannot give back more than was sold. Null on a standalone note:
@@ -2941,7 +2944,7 @@ export type CreditNoteUpdate  = Tables['credit_notes']['Update'] & {
   /** As on CreditNoteInsert. 0 clears a fee an earlier save had entered. */
   restocking_fee?: number | null;
 };
-export type CreditNoteItemInsert = Omit<Tables['credit_note_items']['Insert'], 'id' | 'created_at'> & {
+export type CreditNoteItemInsert = Omit<Tables['credit_note_items']['Insert'], 'id' | 'created_at'> & PackLineFields & {
   /** R2b — the invoice line this came from. The over-return guard
    *  (v_invoice_line_returnable) counts these, so a credit note against an
    *  invoice cannot give back more than was sold. Null on a standalone note:
@@ -3422,6 +3425,22 @@ export interface CompanyConfigurationSave {
   primary_activity_key: string;
   enabled_modules: string[];
 }
+/** phase155 — packs of a product (BOX = 12 PCS). Empty while the feature is off. */
+export type PackDocType = 'sales_quote' | 'invoice' | 'credit_note' | 'purchase_order' | 'goods_receipt' | 'vendor_bill' | 'debit_note';
+export type ProductUnitInput = Pick<ProductUnitRow,
+  'name' | 'name_ar' | 'factor' | 'selling_price' | 'purchase_price' | 'barcode' | 'for_sales' | 'for_purchases' | 'is_active' | 'sort_order'>;
+export interface ProductUnitsAPI {
+  list(company_id: string): Promise<ProductUnitRow[]>;
+  listForProduct(product_id: string): Promise<ProductUnitRow[]>;
+  /** Needs inventory.write (RLS); the database checks every rule again. */
+  create(row: ProductUnitInput & { company_id: string; product_id: string }): Promise<ProductUnitRow>;
+  update(id: string, row: Partial<ProductUnitInput>): Promise<void>;
+  /** Only a pack no document has used; otherwise switch it off. */
+  remove(id: string): Promise<void>;
+  /** Activity: the signed-in user accepted this document's pack quantities. */
+  recordAcceptance(doc_type: PackDocType, doc_id: string): Promise<void>;
+}
+
 /** phase153 — which optional inventory features the company shows. */
 export interface InventorySettingsAPI {
   /** The company's saved switches, or null (every feature on). */
@@ -3511,6 +3530,7 @@ export interface DataAdapter {
   // Phase 2
   categories: CategoriesAPI;
   projects: ProjectsAPI;          // phase104 — projects / jobs
+  productUnits: ProductUnitsAPI; // phase155 — packs
   inventorySettings: InventorySettingsAPI; // phase153 — optional inventory features
   companyConfiguration: CompanyConfigurationAPI; // Global v1 — activities + enabled modules
   branches: BranchesAPI;         // Global v1 Phase 6 — branches, warehouse links, user assignments

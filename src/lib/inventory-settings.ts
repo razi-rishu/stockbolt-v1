@@ -8,6 +8,9 @@
  *
  * A company without a saved row — every company that existed before phase153,
  * and any company on a database without it — has every feature on.
+ *
+ * packs_enabled (phase155) is the exception: it changes how documents are
+ * written, so it is OFF until a company turns it on.
  */
 export interface InventorySettings {
   transfers_enabled: boolean;
@@ -17,22 +20,28 @@ export interface InventorySettings {
   brands_enabled: boolean;
   /** Aisle / bin. */
   shelf_enabled: boolean;
+  /** phase155 — buy and sell in packs (BOX = 12 PCS). Off unless turned on. */
+  packs_enabled: boolean;
 }
 
 export type InventorySwitch = keyof InventorySettings;
 
 export const INVENTORY_SWITCHES: readonly InventorySwitch[] = [
-  'transfers_enabled', 'reorder_enabled', 'barcodes_enabled', 'brands_enabled', 'shelf_enabled',
+  'transfers_enabled', 'reorder_enabled', 'barcodes_enabled', 'brands_enabled', 'shelf_enabled', 'packs_enabled',
 ];
 
 export const ALL_ON: InventorySettings = {
   transfers_enabled: true, reorder_enabled: true, barcodes_enabled: true, brands_enabled: true, shelf_enabled: true,
+  packs_enabled: false,
 };
 
-/** A stored row (or none) as settings: anything missing counts as on. */
+/** A stored row (or none) as settings: anything missing counts as on (packs: off). */
 export function inventorySettingsFrom(row: Partial<InventorySettings> | null | undefined): InventorySettings {
   const out = { ...ALL_ON };
-  if (row) for (const k of INVENTORY_SWITCHES) if (row[k] === false) out[k] = false;
+  if (row) for (const k of INVENTORY_SWITCHES) {
+    if (k === 'packs_enabled') out[k] = row[k] === true;
+    else if (row[k] === false) out[k] = false;
+  }
   return out;
 }
 

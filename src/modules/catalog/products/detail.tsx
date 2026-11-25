@@ -18,6 +18,8 @@ import { Modal } from '@/ui/modal';
 import type { ProductCompatibilityRow, ProductSupplierCodeRow, ContactRow, VehicleMakeRow, VehicleModelRow, VehicleGenerationRow, VehicleVariantRow, VehicleEngineRow, CoaRow } from '@/data/adapter';
 import { ProductStockTab } from './_stock-tab';
 import { ProductWizard } from './_wizard';
+import { ProductPacksCard } from './_packs-card';
+import { packError } from '@/lib/pack-errors';
 import { useFormInvalidBanner } from '@/hooks/use-form-invalid-banner';
 import { DuplicateWarning } from '@/ui/duplicate-warning';
 import { findProductDuplicates } from '@/lib/duplicate-check';
@@ -493,7 +495,7 @@ export default function ProductDetailPage() {
 
           {saveMutation.error && (
             <p className="sb-alert sb-alert-danger" role="alert">
-              {String(saveMutation.error)}
+              {packError(t, saveMutation.error)}
             </p>
           )}
 
@@ -511,6 +513,8 @@ export default function ProductDetailPage() {
           )}
         </form>
       )}
+      {/* phase155 — renders nothing unless the company uses packs. */}
+      {activeTab === 'details' && product && <ProductPacksCard product={product} />}
 
       {/* ── Stock tab ────────────────────────────────────────────────────── */}
       {activeTab === 'stock' && !isNew && id && company_id && (

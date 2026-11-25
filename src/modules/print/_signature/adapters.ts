@@ -12,6 +12,7 @@
  * sensible blanks. The Signature components themselves render every
  * optional slot only when content exists.
  */
+import { packLabel } from '@/lib/packs';
 import type {
   InvoiceRow, InvoiceItemRow, VendorBillRow, VendorBillItemRow,
   ContactRow, ProductRow, Company,
@@ -118,6 +119,12 @@ export interface InvoiceToDocInput {
   salespersonName?: string | null;
 }
 
+/** phase155 — the pack a line was written in (2 BOX). Lines without one print as before. */
+const unitOf = (it: unknown): string | null => {
+  const label = (it as { unit_label?: string | null }).unit_label;
+  return label ? packLabel(label) : null;
+};
+
 export function invoiceToDocumentData({
   invoice, items, contact, company, products, paidAmount, warehouseName, salespersonName,
 }: InvoiceToDocInput): DocumentData {
@@ -132,7 +139,7 @@ export function invoiceToDocumentData({
       description:  it.description ?? prod?.name ?? '—',
       description_ar: prod?.name_ar ?? null,
       quantity:     Number(it.quantity ?? 0),
-      unit_code:    null,                       // unit lookup deferred
+      unit_code:    unitOf(it),
       unit_price:   Number(it.unit_price ?? 0),
       discount_percent: Number(it.discount_percent ?? 0),
       discount_amount:  Number(it.discount_amount ?? 0),
@@ -240,7 +247,7 @@ export function vendorBillToDocumentData({
       description:  it.description ?? prod?.name ?? '—',
       description_ar: prod?.name_ar ?? null,
       quantity:     Number(it.quantity ?? 0),
-      unit_code:    null,
+      unit_code:    unitOf(it),
       unit_price:   Number(it.unit_cost ?? 0),
       discount_percent: Number(it.discount_percent ?? 0),
       discount_amount:  Number(it.discount_amount ?? 0),
@@ -334,7 +341,7 @@ export function quoteToDocumentData({
       description: it.description ?? prod?.name ?? '—',
       description_ar: prod?.name_ar ?? null,
       quantity:    Number(it.quantity ?? 0),
-      unit_code:   null,
+      unit_code:   unitOf(it),
       unit_price:  Number(it.unit_price ?? 0),
       discount_percent: Number(it.discount_percent ?? 0),
       discount_amount:  Number(it.discount_amount ?? 0),
@@ -421,7 +428,7 @@ export function purchaseOrderToDocumentData({
       description: it.description ?? prod?.name ?? '—',
       description_ar: prod?.name_ar ?? null,
       quantity:    Number(it.quantity ?? 0),
-      unit_code:   null,
+      unit_code:   unitOf(it),
       unit_price:  Number(it.unit_cost ?? 0),
       discount_percent: Number(it.discount_percent ?? 0),
       discount_amount:  Number(it.discount_amount ?? 0),
@@ -505,7 +512,7 @@ export function creditNoteToDocumentData({
       description: it.description ?? prod?.name ?? '—',
       description_ar: prod?.name_ar ?? null,
       quantity:    Number(it.quantity ?? 0),
-      unit_code:   null,
+      unit_code:   unitOf(it),
       unit_price:  Number(it.unit_price ?? 0),
       discount_percent: Number(it.discount_percent ?? 0),
       discount_amount:  Number(it.discount_amount ?? 0),
@@ -597,7 +604,7 @@ export function debitNoteToDocumentData({
       description: it.description ?? prod?.name ?? '—',
       description_ar: prod?.name_ar ?? null,
       quantity:    Number(it.quantity ?? 0),
-      unit_code:   null,
+      unit_code:   unitOf(it),
       unit_price:  Number(it.unit_cost ?? 0),
       discount_percent: Number(it.discount_percent ?? 0),
       discount_amount:  Number(it.discount_amount ?? 0),

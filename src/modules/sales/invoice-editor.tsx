@@ -41,10 +41,15 @@ import { invoiceToDocumentData, withPaymentDetails } from '@/modules/print/_sign
 import '@/modules/print/_signature/print.css';
 import type { InvoiceRow, InvoiceItemInsert, ContactRow, ProductRow, WarehouseRow, TaxRateRow, ProductSearchRow } from '@/data/adapter';
 import { calcLine as _calcLine } from '@/core/sales/invoice-calc';
+import { usePacks } from '@/hooks/use-packs';
+import { PackSelect } from '@/components/packs/pack-select';
+import { recordPackAcceptance, usePackGate } from '@/components/packs/use-pack-gate';
+import { packError } from '@/lib/pack-errors';
+import { lineFactor, linePackFrom, linePackOf, NO_PACK, packColumn, packInput, packPrice, type LinePack, type ProductUnitRow } from '@/lib/packs';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
-interface LineRow {
+interface LineRow extends LinePack {
   _key: string;
   product_id: string | null;
   description: string;
@@ -90,7 +95,7 @@ function calcLine(l: LineRow, inclusive = false) {
 }
 
 function emptyLine(): LineRow {
-  return { _key: newKey(), product_id: null, description: '', quantity: '1', unit_price: '0', discount_percent: '0', tax_rate: '0', line_subtotal: 0, discount_amount: 0, tax_amount: 0, line_total: 0 };
+  return { ...NO_PACK, _key: newKey(), product_id: null, description: '', quantity: '1', unit_price: '0', discount_percent: '0', tax_rate: '0', line_subtotal: 0, discount_amount: 0, tax_amount: 0, line_total: 0 };
 }
 
 function fmt(n: number) {
@@ -99,6 +104,22 @@ function fmt(n: number) {
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
+}
+
+/** A product from the cached list as a search row. */
+function productRow(p: ProductRow, match_rank: number): ProductSearchRow {
+  return {
+    id: p.id, sku: p.sku, name: p.name,
+    name_ar: p.name_ar ?? null,
+    oe_number: p.oe_number ?? null,
+    barcode: p.barcode ?? null,
+    brand_id: p.brand_id ?? null, brand_name: null,
+    category_id: p.category_id ?? null, category_name: null,
+    unit_id: p.unit_id ?? null, unit_code: null,
+    selling_price: Number(p.selling_price ?? 0),
+    is_active: p.is_active,
+    match_rank,
+  };
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -255,7 +276,7 @@ export default function InvoiceEditorPage() {
     setLines(
       seed.lines.length
         ? seed.lines.map(l => {
-            const base: LineRow = { _key: newKey(), ...l, line_subtotal: 0, discount_amount: 0, tax_amount: 0, line_total: 0 };
+            const base: LineRow = { ...NO_PACK, _key: newKey(), ...l, line_subtotal: 0, discount_amount: 0, tax_amount: 0, line_total: 0 };
             return { ...base, ...calcLine(base, seed.prices_inclusive ?? false) };
           })
         : [emptyLine()],
@@ -307,6 +328,7 @@ export default function InvoiceEditorPage() {
     if (existingItems.length > 0) {
       setLines(existingItems.map(item => {
         const base: LineRow = {
+          ...linePackOf(item),
           _key: newKey(),
           product_id:       item.product_id,
           description:      item.description ?? '',
@@ -431,19 +453,38 @@ export default function InvoiceEditorPage() {
         : l));
   }, [isNew, stdTaxRate, pricesInclusive]);
 
-  const handleProductChange = (key: string, productId: string) => {
+  // phase155 — packs. Nothing here runs while the company has them off.
+  const packs = usePacks();
+  const packGate = usePackGate({ loading: packs.loading });
+  const scannedPack = useRef<ProductUnitRow | null>(null);
+  const changePack = (line: LineRow, pack: ProductUnitRow | null) => {
+    const price = Number(products.find(p => p.id === line.product_id)?.selling_price ?? 0);
+    updateLine(line._key, { ...linePackFrom(pack), unit_price: String(pack ? packPrice(pack, price) : price) });
+  };
+  // What this posted invoice already took, so editing it does not look like a shortage.
+  const alreadyOut = (pid: string) => (existing?.status === 'confirmed'
+    ? existingItems.filter(i => i.product_id === pid).reduce((n, i) => n + Number(i.base_quantity ?? i.quantity), 0) : 0);
+  const packLines = !packs.on ? [] : lines.flatMap(l => {
+    const product = products.find(p => p.id === l.product_id);
+    const net = (parseFloat(l.unit_price) || 0) * (1 - (parseFloat(l.discount_percent) || 0) / 100);
+    return packInput({ ...l, quantity: parseFloat(l.quantity) || 0, net_price: net }, product, packs,
+      product ? stockMap[product.id] : null, product ? alreadyOut(product.id) : null) ?? [];
+  });
+
+  const handleProductChange = (key: string, productId: string, pack: ProductUnitRow | null = null) => {
     const product = products.find(p => p.id === productId);
     if (product) {
       // Auto-fill tax rate from product's tax_category → matching tax rate.
       const matchedRate = taxRates.find(r => r.is_active && r.tax_type === product.tax_category);
       updateLine(key, {
+        ...linePackFrom(pack),
         product_id:  productId,
         description: product.name,
-        unit_price:  String(product.selling_price ?? 0),
+        unit_price:  String(pack ? packPrice(pack, Number(product.selling_price ?? 0)) : product.selling_price ?? 0),
         tax_rate:    String(matchedRate?.rate ?? 0),
       });
     } else {
-      updateLine(key, { product_id: null, description: '' });
+      updateLine(key, { ...NO_PACK, product_id: null, description: '' });
     }
   };
 
@@ -467,6 +508,7 @@ export default function InvoiceEditorPage() {
       sort_order:       i,
       cost_at_sale:     null,
       serial_id:        null,
+      ...packColumn(l),
     }));
   }
 
@@ -529,6 +571,7 @@ export default function InvoiceEditorPage() {
         await getAdapter().invoices.update(id!, row, buildItems());
         invId = id!;
       }
+      await recordPackAcceptance('invoice', invId, packLines);
       // phase146 — needs approval: keep it a draft and send it to an approver.
       if (gate.needs(roundedTotal)) return { invId, submit: true };
       try {
@@ -559,7 +602,7 @@ export default function InvoiceEditorPage() {
       // (the split workspace). A brand-new invoice goes to the list.
       navigate(isNew ? '/sales/invoices' : `/sales/invoices/${id}`);
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => setError(packError(t, e)),
   });
 
   const voidMutation = useMutation({
@@ -623,6 +666,7 @@ export default function InvoiceEditorPage() {
         voided_by:       null,
       };
       await getAdapter().invoices.update(id!, row, buildItems());
+      await recordPackAcceptance('invoice', id!, packLines);
       await getAdapter().invoices.edit(id!);
     },
     onSuccess: async () => {
@@ -635,7 +679,7 @@ export default function InvoiceEditorPage() {
       // Return to the read-only view after a reverse-&-repost edit.
       navigate(`/sales/invoices/${id}`);
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => setError(packError(t, e)),
   });
 
   // ── Status & mode ────────────────────────────────────────────────────────
@@ -653,8 +697,17 @@ export default function InvoiceEditorPage() {
   const isConfirmed = status === 'confirmed';
   const isVoid = status === 'void';
 
+  // Every save goes through the pack warning (phase155); without pack lines it
+  // saves at once, as before. A missing customer is reported first.
+  const askSave = () => {
+    setError(null);
+    if (!header.contact_id || !header.salesperson_id) { saveMutation.mutate(); return; }
+    packGate.ask(packLines, () => saveMutation.mutate());
+  };
+  const askRepost = () => { setError(null); packGate.ask(packLines, () => editRepostMutation.mutate()); };
+
   // Global keyboard actions (Phase 1) — Ctrl+S / Ctrl+Enter save, Ctrl+P print.
-  useShortcutAction('save', () => { setError(null); saveMutation.mutate(); }, canEdit && !saveMutation.isPending);
+  useShortcutAction('save', () => { if (editMode && isConfirmed) askRepost(); else askSave(); }, canEdit && !saveMutation.isPending && !editRepostMutation.isPending);
   useShortcutAction('print', () => window.print(), !!existing?.id);
 
   // ── Contact / warehouse options ──────────────────────────────────────────
@@ -763,6 +816,7 @@ export default function InvoiceEditorPage() {
                   unit_price:       String(it.unit_price ?? 0),
                   discount_percent: String(it.discount_percent ?? 0),
                   tax_rate:         String(it.tax_rate ?? 0),
+                  ...linePackOf(it),
                 }));
                 navigate('/sales/invoices/new', {
                   state: { cloneFrom: {
@@ -866,7 +920,7 @@ export default function InvoiceEditorPage() {
               <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate('/sales/invoices'); }}>
                 {t('common.cancel')}
               </Button>
-              <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending || appr.pending}>
+              <Button size="sm" onClick={askSave} disabled={saveMutation.isPending || appr.pending}>
                 {saveMutation.isPending ? t('common.saving') : gate.needs(roundedTotal) ? t('apprOcean.save_submit') : t('common.save')}
               </Button>
             </>
@@ -877,7 +931,7 @@ export default function InvoiceEditorPage() {
               <Button variant="ghost" size="sm" onClick={() => { if (editMode) { setEditMode(false); setError(null); } else if (confirmLeave()) navigate('/sales/invoices'); }}>
                 {t('common.cancel')}
               </Button>
-              <Button size="sm" onClick={() => { setError(null); saveMutation.mutate(); }} disabled={saveMutation.isPending || appr.pending}>
+              <Button size="sm" onClick={askSave} disabled={saveMutation.isPending || appr.pending}>
                 {saveMutation.isPending ? t('common.saving') : gate.needs(roundedTotal) ? t('apprOcean.save_submit') : t('common.save')}
               </Button>
               {!editMode && (
@@ -913,7 +967,7 @@ export default function InvoiceEditorPage() {
               <Button variant="ghost" size="sm" onClick={() => { if (confirmLeave()) navigate(`/sales/invoices/${id}`); }}>
                 {t('common.cancel')}
               </Button>
-              <Button size="sm" onClick={() => { setError(null); editRepostMutation.mutate(); }} disabled={editRepostMutation.isPending}>
+              <Button size="sm" onClick={askRepost} disabled={editRepostMutation.isPending}>
                 {editRepostMutation.isPending ? t('common.saving') : t('common.save')}
               </Button>
             </>
@@ -922,8 +976,9 @@ export default function InvoiceEditorPage() {
       </div>
 
       {error && <p className="sb-alert sb-alert-danger" role="alert">{error}</p>}
-      {!isNew && id && <ApprovalPanel docType="invoice" docId={id} isDraft={status === 'draft'} onChanged={refreshInvoice} />}
+      {!isNew && id && <ApprovalPanel docType="invoice" docId={id} isDraft={status === 'draft'} onChanged={refreshInvoice} packLines={packLines} />}
       {gate.modal}
+      {packGate.modal}
 
       {/* Customer Insight Panel — appears once a customer is picked.
            Shows outstanding, overdue, credit limit, last payment in a
@@ -1141,11 +1196,11 @@ export default function InvoiceEditorPage() {
           )}
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full table-fixed text-xs" style={{ minWidth: '900px' }}>
+          <table className="w-full table-fixed text-xs" style={{ minWidth: packs.on ? '976px' : '900px' }}>
             <thead>
               <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary">
                 <th className="px-3 py-2 text-start font-medium" style={{ minWidth: '200px' }}>{t('sales.product')}</th>
-                <th className="px-3 py-2 text-end font-medium" style={{ width: '72px' }}>{t('sales.qty')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: packs.on ? '148px' : '72px' }}>{t('sales.qty')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('sales.unit_price')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '84px' }}>{t('sales.disc_pct')}</th>
                 {showTax && <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('sales.tax')}</th>}
@@ -1169,9 +1224,16 @@ export default function InvoiceEditorPage() {
                       placeholder={t('sales.select_product')}
                       panelWidth={520}
                       recentKey={company_id ? `recent_products::${company_id}` : undefined}
-                      search={(q) => getAdapter().products.smartSearch({
-                        company_id: company_id!, q, limit: 20,
-                      })}
+                      search={async (q) => {
+                        // phase155 — a pack's own barcode picks the product in that pack.
+                        const pack = packs.byBarcode(q);
+                        const p = pack?.for_sales ? products.find(x => x.id === pack.product_id) : undefined;
+                        scannedPack.current = p ? pack! : null;
+                        if (p) return [productRow(p, 3)];
+                        return getAdapter().products.smartSearch({
+                          company_id: company_id!, q, limit: 20,
+                        });
+                      }}
                       // Barcode auto-pick: if a query of ≥6 chars returns
                       // exactly one row with match_rank ≥ 2 (set by RPC on
                       // exact barcode hit), pick it instantly and close.
@@ -1184,23 +1246,15 @@ export default function InvoiceEditorPage() {
                       resolveById={async (pid) => {
                         // Try cached list first (cheap), fallback to fetch.
                         const fromList = products.find(p => p.id === pid);
-                        if (fromList) {
-                          return {
-                            id: fromList.id, sku: fromList.sku, name: fromList.name,
-                            name_ar: fromList.name_ar ?? null,
-                            oe_number: fromList.oe_number ?? null,
-                            barcode: fromList.barcode ?? null,
-                            brand_id: fromList.brand_id ?? null, brand_name: null,
-                            category_id: fromList.category_id ?? null, category_name: null,
-                            unit_id: fromList.unit_id ?? null, unit_code: null,
-                            selling_price: Number(fromList.selling_price ?? 0),
-                            is_active: fromList.is_active,
-                            match_rank: 0,
-                          };
-                        }
+                        if (fromList) return productRow(fromList, 0);
                         return null;
                       }}
-                      onChange={(id) => { if (id) handleProductChange(line._key, id); }}
+                      onChange={(id) => {
+                        if (!id) return;
+                        const pack = scannedPack.current;
+                        scannedPack.current = null;
+                        handleProductChange(line._key, id, pack?.product_id === id ? pack : null);
+                      }}
                       getDisplayLabel={(row) => `${row.sku}  ${row.name}`}
                       getKey={(row) => row.id}
                       emptyState={(query) => (
@@ -1274,6 +1328,13 @@ export default function InvoiceEditorPage() {
                       disabled={!canEdit || isVoid}
                       onChange={e => updateLine(line._key, { quantity: e.target.value })}
                     />
+                    {packs.on && (
+                      <PackSelect packs={packs.forProduct(line.product_id, 'sales')} value={line.product_unit_id}
+                        savedLabel={line.unit_label} savedFactor={line.unit_factor}
+                        baseUnit={packs.unitCode(products.find(p => p.id === line.product_id)?.unit_id)}
+                        quantity={parseFloat(line.quantity) || 0} disabled={!canEdit || isVoid}
+                        onChange={(pack) => changePack(line, pack)} />
+                    )}
                   </td>
                   <td className="px-3 py-1.5 align-top">
                     <input
@@ -1310,8 +1371,9 @@ export default function InvoiceEditorPage() {
                     const pid = line.product_id ?? '';
                     const s = pid ? stockMap[pid] : undefined;
                     const stock = s?.qty ?? 0;
-                    const mac   = s?.mac ?? 0;
-                    const qty   = parseFloat(line.quantity) || 0;
+                    // In packs: the cost of one pack, and the base units that leave.
+                    const mac   = (s?.mac ?? 0) * lineFactor(line);
+                    const qty   = (parseFloat(line.quantity) || 0) * lineFactor(line);
                     const price = parseFloat(line.unit_price) || 0;
                     const disc  = parseFloat(line.discount_percent) || 0;
                     const netPrice = price * (1 - disc / 100);
@@ -1464,7 +1526,7 @@ export default function InvoiceEditorPage() {
               unit_price:        parseFloat(l.unit_price) || 0,
               discount_percent:  parseFloat(l.discount_percent) || 0,
               tax_amount:        l.tax_amount,
-              mac:               (l.product_id && stockMap[l.product_id]?.mac) || 0,
+              mac:               ((l.product_id && stockMap[l.product_id]?.mac) || 0) * lineFactor(l),
             })),
           });
           if (preview.length === 0) return null;

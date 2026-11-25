@@ -197,6 +197,8 @@ RLS: read by the company; write needs `inventory.write`. Stocked goods without s
 
 Old apps: a direct change to a pack line (or a new line for a product with active packs) without the request header `x-stockbolt-units` is refused (`app_update_required`).
 
+phase156 — `record_pack_acceptance(doc_type, doc_id)` writes one `audit_logs` row (`update`, `new_data.packs_accepted`) saying who accepted the document's pack quantities. The text is built from the saved lines, never from the client; needs the document's write permission.
+
 ### `vehicle_makes`, `vehicle_models`
 Auto-parts-specific. Lookup tables for fitment data.
 

@@ -300,6 +300,9 @@ export function createSupabaseAdapter(
   // functions). Mirrors the cast used for save_expense_with_items.
   const rpcAny = (fn: string, args: Record<string, unknown>) =>
     (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)(fn, args);
+  // Tables newer than the generated types (phase155 packs).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rest = (table: string) => (client as any).from(table);
   // phase114 — TDS withheld per bill. A posted deduction settles part of the
   // bill (Dr 2100) exactly like a payment; a reversed one never counts. The
   // same rule as verify_invariants B2 and record_tds_deduction's ceiling.
@@ -884,6 +887,44 @@ export function createSupabaseAdapter(
        The five casts below exist only because `projects` is missing from the
        generated database types; they are removed wholesale when those are
        regenerated. Disabled narrowly so they do not hide anything else. */
+    productUnits: {
+      // phase155: not in the generated types yet — same cast as below. A
+      // database without it has no packs.
+      async list(company_id) {
+        const out: import('@/lib/packs').ProductUnitRow[] = [];
+        for (let from = 0; ; from += 1000) {
+          const { data, error } = await rest('product_units').select('*').eq('company_id', company_id)
+            .order('product_id').order('sort_order').order('id').range(from, from + 999);
+          if (error && isMissingRelation(error)) return [];
+          assertNoError(error, 'productUnits.list');
+          out.push(...(data ?? []));
+          if ((data ?? []).length < 1000) return out;
+        }
+      },
+      async listForProduct(product_id) {
+        const { data, error } = await rest('product_units').select('*').eq('product_id', product_id).order('sort_order').order('created_at');
+        if (error && isMissingRelation(error)) return [];
+        assertNoError(error, 'productUnits.listForProduct');
+        return data ?? [];
+      },
+      async create(row) {
+        const { data, error } = await rest('product_units').insert(row).select().single();
+        assertNoError(error, 'productUnits.create');
+        return data;
+      },
+      async update(id, row) {
+        const { error } = await rest('product_units').update(row).eq('id', id);
+        assertNoError(error, 'productUnits.update');
+      },
+      async remove(id) {
+        const { error } = await rest('product_units').delete().eq('id', id);
+        assertNoError(error, 'productUnits.remove');
+      },
+      async recordAcceptance(doc_type, doc_id) {
+        const { error } = await rpcAny('record_pack_acceptance', { p_doc_type: doc_type, p_doc_id: doc_id });
+        assertNoError(error as Error | null, 'productUnits.recordAcceptance');
+      },
+    },
     inventorySettings: {
       // phase153: not in the generated types yet — same cast as below. A
       // database without it has no settings: every feature on, as today.
@@ -3038,7 +3079,7 @@ export function createSupabaseAdapter(
         const { data: q, error: qErr } = await client.from('sales_quotes').insert(row).select().single();
         assertNoError(qErr, 'salesQuotes.create header');
         const itemsWithId = items.map((it, i) => ({ ...it, quote_id: q!.id, sort_order: i }));
-        const { error: iErr } = await client.from('sales_quote_items').insert(itemsWithId);
+        const { error: iErr } = await client.from('sales_quote_items').insert(itemsWithId as Database['public']['Tables']['sales_quote_items']['Insert'][]);
         assertNoError(iErr, 'salesQuotes.create items');
         return q!;
       },
@@ -3048,7 +3089,7 @@ export function createSupabaseAdapter(
         const { error: dErr } = await client.from('sales_quote_items').delete().eq('quote_id', id);
         assertNoError(dErr, 'salesQuotes.update delete items');
         const itemsWithId = items.map((it, i) => ({ ...it, quote_id: id, sort_order: i }));
-        const { error: iErr } = await client.from('sales_quote_items').insert(itemsWithId);
+        const { error: iErr } = await client.from('sales_quote_items').insert(itemsWithId as Database['public']['Tables']['sales_quote_items']['Insert'][]);
         assertNoError(iErr, 'salesQuotes.update insert items');
       },
       async convertToInvoice(quote_id): Promise<InvoiceRow> {
@@ -3112,8 +3153,13 @@ export function createSupabaseAdapter(
           sort_order: i,
           cost_at_sale: null,
           serial_id: null,
+          // phase155 — the pack comes along; 2 BOX must not become 2 PCS.
+          ...((qi as { product_unit_id?: string | null }).product_unit_id
+            ? { product_unit_id: (qi as { product_unit_id?: string | null }).product_unit_id } : {}),
         }));
-        const { error: iiErr } = await client.from('invoice_items').insert(invItems);
+        const { error: iiErr } = await client.from('invoice_items').insert(invItems as Database['public']['Tables']['invoice_items']['Insert'][]);
+        // Nothing points at the new draft yet: do not leave it behind without lines.
+        if (iiErr) await client.from('invoices').delete().eq('id', inv!.id).eq('status', 'draft');
         assertNoError(iiErr, 'salesQuotes.convertToInvoice insert invoice items');
 
         const { error: updErr } = await client.from('sales_quotes')

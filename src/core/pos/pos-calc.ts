@@ -9,6 +9,10 @@ export interface POSCartLine {
   unit_price:       number;
   discount_percent: number;  // 0–100
   tax_rate:         number;  // e.g. 5 for 5%
+  /** phase155 — sold in this pack (BOX = 12); absent = the base unit. */
+  product_unit_id?: string | null;
+  unit_factor?:     number | null;
+  unit_label?:      string | null;
 }
 
 export interface POSCartLineResult extends POSCartLine {
