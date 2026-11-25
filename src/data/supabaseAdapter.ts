@@ -5017,7 +5017,7 @@ export function createSupabaseAdapter(
         const TABLE: Record<ActivityDocKind, string> = {
           quote: 'sales_quotes', invoice: 'invoices', customer_payment: 'payments', credit_note: 'credit_notes',
           purchase_order: 'purchase_orders', goods_receipt: 'goods_receipts', vendor_bill: 'vendor_bills',
-          vendor_payment: 'payments', debit_note: 'debit_notes', expense: 'expenses', journal_entry: 'journal_entries',
+          vendor_payment: 'payments', debit_note: 'debit_notes', expense: 'expenses', journal_entry: 'journal_entries', stock_repack: 'stock_repacks',
         };
         // The posting functions log a few documents under more than one name
         // (expense / expenses, payment / vendor_payment, refunds).
@@ -5027,7 +5027,7 @@ export function createSupabaseAdapter(
           credit_note: ['credit_note'], purchase_order: ['purchase_order'], goods_receipt: ['goods_receipt'],
           vendor_bill: ['vendor_bill'],
           vendor_payment: ['vendor_payment', 'payment', 'vendor_refund', 'vendor_credit_refund'],
-          debit_note: ['debit_note'], expense: ['expense', 'expenses'], journal_entry: ['journal_entry'],
+          debit_note: ['debit_note'], expense: ['expense', 'expenses'], journal_entry: ['journal_entry'], stock_repack: ['stock_repack'],
         };
         const run = async (q: PromiseLike<{ data: unknown; error: unknown }>, what: string): Promise<Row[]> => {
           const { data, error } = await q;
@@ -6162,6 +6162,69 @@ export function createSupabaseAdapter(
     },
 
     // ── Stock Transfers ───────────────────────────────────────────────────────
+    stockRepacks: {
+      async list(company_id) {
+        const { data, error } = await rest('stock_repacks').select('*').eq('company_id', company_id)
+          .order('date', { ascending: false }).order('created_at', { ascending: false });
+        if (error && isMissingRelation(error)) return [];
+        assertNoError(error, 'stockRepacks.list');
+        return data ?? [];
+      },
+      async getById(id) {
+        const { data, error } = await rest('stock_repacks').select('*').eq('id', id).maybeSingle();
+        assertNoError(error, 'stockRepacks.getById');
+        return data ?? null;
+      },
+      async getItems(repack_id) {
+        const { data, error } = await rest('stock_repack_items').select('*').eq('repack_id', repack_id).order('sort_order');
+        assertNoError(error, 'stockRepacks.getItems');
+        return data ?? [];
+      },
+      async getMovements(repack_id) {
+        const { data, error } = await rest('stock_ledger')
+          .select('product_id, type, direction, quantity, total_cost, reversal_of_id')
+          .eq('related_doc_type', 'stock_repack').eq('related_doc_id', repack_id).order('seq');
+        assertNoError(error, 'stockRepacks.getMovements');
+        return data ?? [];
+      },
+      async create(row, items) {
+        const { data, error } = await rest('stock_repacks').insert(row).select().single();
+        assertNoError(error, 'stockRepacks.create');
+        if (items.length > 0) {
+          const { error: iErr } = await rest('stock_repack_items').insert(items.map(i => ({ ...i, company_id: row.company_id, repack_id: data.id })));
+          if (iErr) await rest('stock_repacks').delete().eq('id', data.id);   // a draft nothing points at
+          assertNoError(iErr, 'stockRepacks.create items');
+        }
+        return data;
+      },
+      async update(id, row, items) {
+        const { error } = await rest('stock_repacks').update(row).eq('id', id);
+        assertNoError(error, 'stockRepacks.update');
+        const { error: dErr } = await rest('stock_repack_items').delete().eq('repack_id', id);
+        assertNoError(dErr, 'stockRepacks.update delete items');
+        if (items.length > 0) {
+          const { error: iErr } = await rest('stock_repack_items').insert(items.map(i => ({ ...i, company_id: row.company_id, repack_id: id })));
+          assertNoError(iErr, 'stockRepacks.update items');
+        }
+      },
+      async deleteDraft(id) {
+        const { error } = await rest('stock_repacks').delete().eq('id', id).eq('status', 'draft');
+        assertNoError(error, 'stockRepacks.deleteDraft');
+      },
+      async confirm(id) {
+        const { error } = await rpcAny('confirm_stock_repack', { p_repack_id: id });
+        assertNoError(error as Error | null, 'stockRepacks.confirm');
+      },
+      async void(id, reason) {
+        const { error } = await rpcAny('void_stock_repack', { p_repack_id: id, p_reason: reason ?? null });
+        assertNoError(error as Error | null, 'stockRepacks.void');
+      },
+      async getNextNumber(company_id) {
+        const { data, error } = await client.rpc('get_next_document_number', { p_company_id: company_id, p_prefix: 'RPK' });
+        assertNoError(error, 'stockRepacks.getNextNumber');
+        return data as string;
+      },
+    },
     stockTransfers: {
       async list(company_id, status) {
         let q = client.from('stock_transfers').select('*').eq('company_id', company_id).order('date', { ascending: false });

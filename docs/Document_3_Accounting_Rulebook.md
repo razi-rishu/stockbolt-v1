@@ -932,6 +932,39 @@ unit_cost=opening_cost, warehouse_id=specified_warehouse
 
 ---
 
+## C5. Repack (approved 2026-11-25, phase157)
+
+**Trigger:** User confirms a Repack: one stocked product is made from others (48 KG loose sugar → 240 packets, with packing material if it is a stock item). Unpacking is the same document the other way round. Optional (`inventory_settings.repack_enabled`).
+
+**Source type:** `stock_repack`
+
+**Journal entry for the goods used and made:** **NONE.** Value moves inside 1300, like a transfer (C1).
+
+**Journal entry for wastage (C3), only when entered:**
+
+```
+Dr  6700 Inventory Loss           [exact cost of the goods wasted]
+    Cr  1300 Inventory Asset            [same]
+```
+
+**Stock ledger entries:**
+```
+Per product used:   type='repack_out',     direction=-1, total_cost = exact company-wide cost
+Per product wasted: type='adjustment_out', direction=-1, total_cost = exact company-wide cost
+Product made:       type='repack_in',      direction=+1, total_cost = SUM(total_cost of the goods used)
+related_doc_type='stock_repack' on every row
+```
+
+**Rules:**
+- One product is made per document, so its cost is the total of what was used: nothing is shared out.
+- The goods used must be in stock in that warehouse (even where backorders are allowed) and must have a cost.
+- A product with pending deferred COGS cannot be made by a repack: only a purchase bill settles those.
+- Wastage that an approval rule covers as an inventory adjustment is refused here.
+- No labour or overhead is added.
+- Void reverses stock and wastage on the document's own date at the original values, and is refused when the goods made are no longer in the warehouse (unless backorders are allowed).
+
+---
+
 # PART D — BANKING
 
 ## D1. Bank Transfer (Own Account to Own Account)

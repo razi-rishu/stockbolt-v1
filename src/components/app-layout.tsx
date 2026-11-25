@@ -216,6 +216,7 @@ function useNavSections(t: (k: string) => string): NavSection[] {
           label: t('navOcean.stock'),
           items: [
             { to: '/inventory/transfers', label: t('inventory.transfers_title') },
+            { to: '/inventory/repack', label: t('repack.title') },
             { to: '/inventory/adjustments', label: t('inventory.adjustments_title') },
             { to: '/inventory/stock-ledger', label: t('inventory.stock_ledger_title') },
           ],

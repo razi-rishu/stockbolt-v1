@@ -459,6 +459,18 @@ export function createSelfHostedAdapter(): DataAdapter {
       reopen:        () => notImplemented('vendorPayments.reopen'),
       getNextNumber: () => notImplemented('vendorPayments.getNextNumber'),
     },
+    stockRepacks: {
+      list: () => notImplemented('stockRepacks.list'),
+      getById: () => notImplemented('stockRepacks.getById'),
+      getItems: () => notImplemented('stockRepacks.getItems'),
+      getMovements: () => notImplemented('stockRepacks.getMovements'),
+      create: () => notImplemented('stockRepacks.create'),
+      update: () => notImplemented('stockRepacks.update'),
+      deleteDraft: () => notImplemented('stockRepacks.deleteDraft'),
+      confirm: () => notImplemented('stockRepacks.confirm'),
+      void: () => notImplemented('stockRepacks.void'),
+      getNextNumber: () => notImplemented('stockRepacks.getNextNumber'),
+    },
     stockTransfers: {
       list:          () => notImplemented('stockTransfers.list'),
       getById:       () => notImplemented('stockTransfers.getById'),

@@ -16,3 +16,19 @@ export function packError(t: TFunction, e: unknown): string {
   if (/pack_invalid/.test(msg)) return t('packs.e_invalid');
   return msg;
 }
+
+/** The database's repack refusals (phase157). */
+export function repackError(t: TFunction, e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  const detail = msg.slice(msg.indexOf(': ', msg.indexOf('repack_')) + 2);
+  if (/repack_off/.test(msg)) return t('repack.off');
+  if (/repack_not_enough/.test(msg)) return t('repack.e_not_enough', { detail });
+  if (/repack_no_cost/.test(msg)) return t('repack.e_no_cost', { detail });
+  if (/repack_pending_cost/.test(msg)) return t('repack.e_pending');
+  if (/repack_waste_approval/.test(msg)) return t('repack.e_waste_approval');
+  if (/repack_output_gone/.test(msg)) return t('repack.e_gone');
+  if (/repack_same_product/.test(msg)) return t('repack.e_same');
+  if (/repack_no_input/.test(msg)) return t('repack.p_no_input');
+  if (/repack_locked/.test(msg)) return t('repack.e_locked');
+  return packError(t, e);
+}

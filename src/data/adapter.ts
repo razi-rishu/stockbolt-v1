@@ -2230,7 +2230,7 @@ export interface AuditLogLine {
 export type ActivityDocKind =
   | 'quote' | 'invoice' | 'customer_payment' | 'credit_note'
   | 'purchase_order' | 'goods_receipt' | 'vendor_bill' | 'vendor_payment' | 'debit_note'
-  | 'expense' | 'journal_entry';
+  | 'expense' | 'journal_entry' | 'stock_repack';
 
 /** A document that followed from this one (shown as a line in its Activity). */
 export interface ActivityFollowOn {
@@ -2805,6 +2805,30 @@ export interface InventoryAdjustmentReportLine {
 }
 
 // ── Phase 6 APIs ──────────────────────────────────────────────────────────────
+
+/** phase157 — one product made from others; newer than the generated types. */
+export interface StockRepackRow {
+  id: string; company_id: string; repack_number: string; date: string; warehouse_id: string;
+  status: 'draft' | 'confirmed' | 'void'; output_product_id: string; output_quantity: number; notes: string | null;
+  void_reason: string | null; voided_at: string | null; voided_by: string | null; created_by: string | null; created_at: string; updated_at: string;
+}
+export type StockRepackInput = Pick<StockRepackRow, 'company_id' | 'repack_number' | 'date' | 'warehouse_id' | 'output_product_id' | 'output_quantity' | 'notes'>;
+export interface StockRepackItemRow { id: string; repack_id: string; kind: 'input' | 'waste'; product_id: string; quantity: number; sort_order: number }
+export type StockRepackItemInput = Omit<StockRepackItemRow, 'id' | 'repack_id'>;
+export interface StockRepackMovement { product_id: string; type: string; direction: number; quantity: number; total_cost: number; reversal_of_id: string | null }
+export interface StockRepacksAPI {
+  list(company_id: string): Promise<StockRepackRow[]>;
+  getById(id: string): Promise<StockRepackRow | null>;
+  getItems(repack_id: string): Promise<StockRepackItemRow[]>;
+  /** What it moved, at the actual cost (the stock ledger's own rows). */
+  getMovements(repack_id: string): Promise<StockRepackMovement[]>;
+  create(row: StockRepackInput, items: StockRepackItemInput[]): Promise<StockRepackRow>;
+  update(id: string, row: StockRepackInput, items: StockRepackItemInput[]): Promise<void>;
+  deleteDraft(id: string): Promise<void>;
+  confirm(id: string): Promise<void>;
+  void(id: string, reason?: string): Promise<void>;
+  getNextNumber(company_id: string): Promise<string>;
+}
 
 export interface StockTransfersAPI {
   list(company_id: string, status?: string): Promise<StockTransferRow[]>;
@@ -3571,6 +3595,7 @@ export interface DataAdapter {
   vendorPayments: VendorPaymentsAPI;
   // Phase 6
   stockTransfers: StockTransfersAPI;
+  stockRepacks: StockRepacksAPI;         // phase157
   inventoryAdjustments: InventoryAdjustmentsAPI;
   productSerials: ProductSerialsAPI;
   // Phase 7

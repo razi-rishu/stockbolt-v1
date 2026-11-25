@@ -13,7 +13,7 @@ export type DocType =
   | 'journal_entry' | 'invoice' | 'quote' | 'customer_payment' | 'credit_note' | 'sales_return'
   | 'purchase_return'
   | 'vendor_bill' | 'vendor_payment' | 'purchase_order' | 'goods_receipt' | 'expense' | 'debit_note'
-  | 'stock_transfer' | 'inventory_adjustment' | 'bank_transfer' | 'payroll_run'
+  | 'stock_transfer' | 'stock_repack' | 'inventory_adjustment' | 'bank_transfer' | 'payroll_run'
   | 'customer' | 'supplier' | 'product';
 
 export interface DocMeta {
@@ -37,6 +37,7 @@ export const DOC_REGISTRY: Record<DocType, DocMeta> = {
   expense:              { route: (id) => `/purchasing/expenses/${id}`,        label: 'Expense',        perm: 'purchasing.read' },
   debit_note:           { route: (id) => `/purchasing/debit-notes/${id}`,     label: 'Debit Note',     perm: 'purchasing.read' },
   stock_transfer:       { route: (id) => `/inventory/transfers/${id}`,        label: 'Stock Transfer', perm: 'inventory.read' },
+  stock_repack:         { route: (id) => `/inventory/repack/${id}`,           label: 'Repack',         perm: 'inventory.read' },
   inventory_adjustment: { route: (id) => `/inventory/adjustments/${id}`,      label: 'Adjustment',     perm: 'inventory.read' },
   bank_transfer:        { route: (id) => `/banking/transfers/${id}`,          label: 'Bank Transfer',  perm: 'accounting.read' },
   payroll_run:          { route: (id) => `/payroll/runs/${id}`,               label: 'Payroll Run',    perm: 'payroll.read' },

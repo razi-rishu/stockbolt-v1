@@ -155,6 +155,8 @@ const GRNReconciliationPage  = lazy(() => import('@/modules/reports/grn-reconcil
 
 // Phase 6 — Inventory Operations
 const StockTransfersPage       = lazy(() => import('@/modules/inventory/stock-transfers'));
+const RepacksPage              = lazy(() => import('@/modules/inventory/repacks'));
+const RepackEditorPage         = lazy(() => import('@/modules/inventory/repack-editor'));
 const TransferEditorPage       = lazy(() => import('@/modules/inventory/transfer-editor'));
 const InventoryAdjustmentsPage = lazy(() => import('@/modules/inventory/inventory-adjustments'));
 const AdjustmentEditorPage     = lazy(() => import('@/modules/inventory/adjustment-editor'));
@@ -462,6 +464,8 @@ function AppRoutes() {
               <Route path="/reports/grn-reconciliation"         element={<GRNReconciliationPage />} />
 
               {/* Phase 6 — Inventory Operations */}
+              <Route path="/inventory/repack/:id"               element={<RepackEditorPage />} />
+              <Route path="/inventory/repack"                   element={<RepacksPage />} />
               <Route path="/inventory/transfers/:id"            element={<TransferEditorPage />} />
               <Route path="/inventory/transfers"                element={<StockTransfersPage />} />
               <Route path="/inventory/adjustments/:id"          element={<AdjustmentEditorPage />} />

@@ -90,6 +90,7 @@ export const BACKUP_TABLES: readonly string[] = [
   // ── Inventory ─────────────────────────────────────────────────────────
   'stock_ledger',
   'stock_transfers',     'stock_transfer_items',
+  'stock_repacks',       'stock_repack_items',
   'inventory_adjustments', 'inventory_adjustment_items',
   'deferred_cogs_queue',
 

@@ -22,7 +22,7 @@ function fmt(n: number) {
 const SOURCE_TONE: Record<string, string> = {
   invoice: '', vendor_bill: 'sb-pill-good', payment: '', expense: 'sb-pill-warn',
   goods_receipt: 'sb-pill-good', credit_note: 'sb-pill-bad', debit_note: 'sb-pill-bad',
-  sales_return: 'sb-pill-bad', inventory_adjustment: 'sb-pill-muted', stock_transfer: 'sb-pill-muted',
+  sales_return: 'sb-pill-bad', inventory_adjustment: 'sb-pill-muted', stock_transfer: 'sb-pill-muted', stock_repack: 'sb-pill-muted',
   bank_transfer: '', opening_balance: 'sb-pill-muted', inventory_cogs: 'sb-pill-warn',
 };
 

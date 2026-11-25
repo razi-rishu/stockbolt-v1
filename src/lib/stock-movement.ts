@@ -24,6 +24,8 @@ export const STOCK_MOVEMENT_TYPES = [
   'opening_balance',
   'void',
   'edit_reversal',
+  'repack_in',   // phase157
+  'repack_out',
 ] as const;
 
 export type StockMovementType = (typeof STOCK_MOVEMENT_TYPES)[number];
@@ -49,6 +51,8 @@ const TONE: Record<string, string> = {
   transfer_out:    'bg-purple-50 text-purple-700',
   adjustment_in:   'bg-amber-50 text-amber-700',
   adjustment_out:  'bg-amber-50 text-amber-700',
+  repack_in:       'bg-purple-50 text-purple-700',
+  repack_out:      'bg-purple-50 text-purple-700',
   opening_balance: 'bg-gray-100 text-gray-700',
   void:            'bg-gray-100 text-gray-500',
   edit_reversal:   'bg-gray-100 text-gray-500',

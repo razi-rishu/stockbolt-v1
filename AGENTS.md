@@ -267,6 +267,7 @@ export type SourceType =
   | 'vendor_advance'
   | 'vendor_debit_note'
   | 'stock_transfer'      // Stock ledger only, no GL — but tagged for completeness
+  | 'stock_repack'        // phase157 — wastage only: Dr 6700 / Cr 1300 (Doc 3 C5)
   | 'inventory_adjustment'
   | 'opening_balance'
   | 'bank_transfer'

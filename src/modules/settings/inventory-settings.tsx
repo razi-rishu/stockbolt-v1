@@ -14,7 +14,7 @@ import { useAuthStore } from '@/store/auth';
 import { useHasPermission } from '@/hooks/use-permissions';
 import { useInventorySettings } from '@/hooks/use-inventory-settings';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
-import { ALL_ON, INVENTORY_SWITCHES, type InventorySettings, type InventorySwitch } from '@/lib/inventory-settings';
+import { ALL_ON, INVENTORY_SWITCHES, OFF_BY_DEFAULT, type InventorySettings, type InventorySwitch } from '@/lib/inventory-settings';
 import { OceanPage } from '@/components/ocean-list';
 
 type Draft = InventorySettings & { sell_without_stock: boolean };
@@ -56,9 +56,9 @@ export default function InventorySettingsPage() {
       if (draft.sell_without_stock !== sellWithoutStock) {
         await getAdapter().companies.update(company_id!, { allow_negative_stock: draft.sell_without_stock } as never);
       }
-      // packs_enabled is sent only when it changes (its column is newer than the row).
+      // These are sent only when they change (their columns are newer than the row).
       const row = Object.fromEntries(INVENTORY_SWITCHES
-        .filter((k) => k !== 'packs_enabled' || draft[k] !== current[k])
+        .filter((k) => !OFF_BY_DEFAULT.has(k) || draft[k] !== current[k])
         .map((k) => [k, draft[k]])) as unknown as InventorySettings;
       await getAdapter().inventorySettings.save(company_id!, row);
     },
@@ -85,6 +85,7 @@ export default function InventorySettingsPage() {
     brands_enabled:    [t('inventorySettings.brands'),    t('inventorySettings.brands_hint')],
     shelf_enabled:     [t('inventorySettings.shelf'),     t('inventorySettings.shelf_hint')],
     packs_enabled:     [t('inventorySettings.packs'),     t('inventorySettings.packs_hint')],
+    repack_enabled:    [t('inventorySettings.repack'),    t('inventorySettings.repack_hint')],
   };
 
   return (

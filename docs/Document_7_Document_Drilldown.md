@@ -32,7 +32,7 @@ click a customer / supplier / product → its profile.
 type DocType =
   | 'journal_entry' | 'invoice' | 'vendor_bill' | 'customer_payment' | 'vendor_payment'
   | 'quote' | 'credit_note' | 'debit_note' | 'sales_return' | 'purchase_order'
-  | 'goods_receipt' | 'expense' | 'stock_transfer' | 'inventory_adjustment'
+  | 'goods_receipt' | 'expense' | 'stock_transfer' | 'stock_repack' | 'inventory_adjustment'
   | 'bank_transfer' | 'payroll_run' | 'customer' | 'supplier' | 'product';
 
 interface DocMeta { route: (id: string) => string; label: string; perm: string; }

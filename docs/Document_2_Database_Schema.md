@@ -172,9 +172,15 @@ phase153 — the optional inventory features a company shows (menus and product 
 | brands_enabled | boolean NOT NULL DEFAULT true | Brands and categories |
 | shelf_enabled | boolean NOT NULL DEFAULT true | Aisle / bin |
 | packs_enabled | boolean NOT NULL DEFAULT **false** | phase155. Buying and selling in packs. Off for every company until it turns it on; cannot be turned off while open documents use packs |
+| repack_enabled | boolean NOT NULL DEFAULT **false** | phase157. Repack documents |
 | updated_by, created_at, updated_at | | |
 
 RLS: read by the company; insert / update need `settings.write`; no client delete.
+
+### `stock_repacks` / `stock_repack_items`
+phase157 — one stocked product made from others (Document 3 C5). Header: company_id, repack_number (unique per company, `RPK-`), date, warehouse_id, status `draft|confirmed|void`, output_product_id, output_quantity (base units), notes, void fields, created_by. Items: company_id, repack_id, kind `input|waste`, product_id, quantity (base units), sort_order. Costs are not stored here: they are the stock ledger rows (`related_doc_type = 'stock_repack'`).
+
+RLS: company, `inventory.write` to write, branch by warehouse. Clients write drafts only (guard triggers); `confirm_stock_repack` / `void_stock_repack` run as ledger_writer.
 
 ### `product_units`
 phase155 — packs: a named value of a product's base unit (BOX = 12 PCS, "200 g" = 0.2 KG). Optional (`inventory_settings.packs_enabled`). Stock, cost and returnable quantities are always in the base unit; a pack only says how a document line was written.

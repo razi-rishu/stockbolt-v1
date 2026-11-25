@@ -9,8 +9,9 @@
  * A company without a saved row — every company that existed before phase153,
  * and any company on a database without it — has every feature on.
  *
- * packs_enabled (phase155) is the exception: it changes how documents are
- * written, so it is OFF until a company turns it on.
+ * packs_enabled (phase155) and repack_enabled (phase157) are the exceptions:
+ * they change how stock is handled, so they are OFF until a company turns
+ * them on.
  */
 export interface InventorySettings {
   transfers_enabled: boolean;
@@ -22,24 +23,29 @@ export interface InventorySettings {
   shelf_enabled: boolean;
   /** phase155 — buy and sell in packs (BOX = 12 PCS). Off unless turned on. */
   packs_enabled: boolean;
+  /** phase157 — make one stocked product from others. Off unless turned on. */
+  repack_enabled: boolean;
 }
 
 export type InventorySwitch = keyof InventorySettings;
 
 export const INVENTORY_SWITCHES: readonly InventorySwitch[] = [
-  'transfers_enabled', 'reorder_enabled', 'barcodes_enabled', 'brands_enabled', 'shelf_enabled', 'packs_enabled',
+  'transfers_enabled', 'reorder_enabled', 'barcodes_enabled', 'brands_enabled', 'shelf_enabled', 'packs_enabled', 'repack_enabled',
 ];
+
+/** Off unless a company turned it on; its column is newer than older rows. */
+export const OFF_BY_DEFAULT: ReadonlySet<InventorySwitch> = new Set(['packs_enabled', 'repack_enabled']);
 
 export const ALL_ON: InventorySettings = {
   transfers_enabled: true, reorder_enabled: true, barcodes_enabled: true, brands_enabled: true, shelf_enabled: true,
-  packs_enabled: false,
+  packs_enabled: false, repack_enabled: false,
 };
 
-/** A stored row (or none) as settings: anything missing counts as on (packs: off). */
+/** A stored row (or none) as settings: anything missing counts as on (packs and repack: off). */
 export function inventorySettingsFrom(row: Partial<InventorySettings> | null | undefined): InventorySettings {
   const out = { ...ALL_ON };
   if (row) for (const k of INVENTORY_SWITCHES) {
-    if (k === 'packs_enabled') out[k] = row[k] === true;
+    if (OFF_BY_DEFAULT.has(k)) out[k] = row[k] === true;
     else if (row[k] === false) out[k] = false;
   }
   return out;
@@ -48,6 +54,7 @@ export function inventorySettingsFrom(row: Partial<InventorySettings> | null | u
 /** Menu links that belong to a switch. */
 const LINK_SWITCH: Record<string, InventorySwitch> = {
   '/inventory/transfers': 'transfers_enabled',
+  '/inventory/repack': 'repack_enabled',
   '/reports/reorder': 'reorder_enabled',
   '/products/categories': 'brands_enabled',
   '/products/brands': 'brands_enabled',
