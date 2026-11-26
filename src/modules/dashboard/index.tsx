@@ -21,6 +21,7 @@
  * get_dashboard_cards); the low-stock lines reuse getReorderReport and are
  * read only when the dashboard's own low-stock count is above zero.
  */
+import { fmtQty } from '@/lib/packs';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -411,7 +412,7 @@ export default function DashboardPage() {
                       <li key={`${l.product_id}-${l.warehouse_id}`}>
                         <span className="sb-dash-low-row">
                           <Link to={`/products/${l.product_id}`} className="sb-dash-ellipsis" style={{ flex: 1, fontWeight: 600, color: 'var(--sb-text)', textDecoration: 'none' }}>{l.product_name}</Link>
-                          <bdi dir="ltr" className="sb-fx-name">{fmtInt(l.qty_on_hand)} / {fmtInt(l.min_stock_level)}</bdi>
+                          <bdi dir="ltr" className="sb-fx-name">{fmtQty(l.qty_on_hand)} / {fmtQty(l.min_stock_level)}</bdi>
                         </span>
                         {l.warehouse_name && <span className="sb-fx-name" style={{ fontSize: 12 }}>{l.warehouse_name}</span>}
                         <span className={`sb-dash-bar ${critical ? 'is-bad' : 'is-warn'}`}><i style={{ width: `${pct}%` }} /></span>
@@ -445,7 +446,7 @@ export default function DashboardPage() {
                         <span className="sb-dash-ellipsis" style={{ display: 'block', fontWeight: 600 }}>{it.name}</span>
                         {it.oe_number && <span className="sb-fx-name" style={{ fontSize: 12 }}>OE <bdi dir="ltr">{it.oe_number}</bdi></span>}
                       </Link>
-                      <bdi dir="ltr" className="sb-dash-num">{fmtInt(it.quantity)} {(it.unit_code || 'PCS').toUpperCase()}</bdi>
+                      <bdi dir="ltr" className="sb-dash-num">{fmtQty(it.quantity)} {(it.unit_code || 'PCS').toUpperCase()}</bdi>
                     </li>
                   ))}
                 </ul>

@@ -1,3 +1,4 @@
+import { fmtQty } from '@/lib/packs';
 import { usePacks } from '@/hooks/use-packs';
 import { packBreakdown } from '@/lib/packs';
 import { useState } from 'react';
@@ -100,7 +101,7 @@ export default function ProductsListPage() {
             style={{ color, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}
             title={t('prodOcean.stock_link_title')}
           >
-            <bdi dir="ltr">{qty.toFixed(qty % 1 === 0 ? 0 : 2)}</bdi>
+            <bdi dir="ltr">{fmtQty(qty)}</bdi>
             {packs.on && packText(r, qty) && <bdi dir="ltr" className="sb-pack-sub">{packText(r, qty)}</bdi>}
           </button>
         );

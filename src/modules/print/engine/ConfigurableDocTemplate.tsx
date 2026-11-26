@@ -9,6 +9,7 @@
  * primitives, so refining it can never destabilise the Tax-Invoice / Bolt
  * templates that ship today. The `classic` preset reproduces the current look.
  */
+import { fmtQty, fmtQty2 } from '@/lib/packs';
 import type { CSSProperties } from 'react';
 import { ccy } from '@/lib/currency-display';
 import type { DocumentData, LineItem } from '../_signature/types';
@@ -231,7 +232,7 @@ export function ConfigurableDocTemplate({ data, template }: Props) {
       </div>
     ),
   });
-  cols.push({ key: 'qty', head: 'Qty', align: 'end', render: (it) => `${num(it.quantity)}${it.unit_code ? ' ' + it.unit_code : ''}` });
+  cols.push({ key: 'qty', head: 'Qty', align: 'end', render: (it) => `${it.unit_code ? fmtQty(it.quantity) : fmtQty2(it.quantity)}${it.unit_code ? ' ' + it.unit_code : ''}` });
   if (s.showUnitPrice) cols.push({ key: 'price', head: 'Unit price', align: 'end', render: (it) => num(it.unit_price) });
   if (s.showDiscount) cols.push({ key: 'disc', head: 'Disc', align: 'end', render: (it) => it.discount_amount ? num(it.discount_amount) : '—' });
   if (s.showTaxBreakdown && showTax) cols.push({ key: 'tax', head: tax.taxName, align: 'end', render: (it) => it.tax_amount != null ? num(it.tax_amount) : '—' });

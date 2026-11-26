@@ -1,3 +1,4 @@
+import { fmtQty2 } from '@/lib/packs';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -28,7 +29,7 @@ export default function SlowMovingReportPage() {
   const columns: ReportColumn<Row>[] = [
     { key: 'product', header: t('inventory.product'), cell: r => <NameSku name={r.product_name} sku={r.sku} />, exp: r => r.product_name },
     { key: 'wh', header: t('inventory.warehouse'), cls: 'muted', cell: r => r.warehouse_name, exp: r => r.warehouse_name },
-    { key: 'qty', header: t('inventory.qty_on_hand'), num: true, cell: r => fmt(r.qty_on_hand), exp: r => r.qty_on_hand },
+    { key: 'qty', header: t('inventory.qty_on_hand'), num: true, cell: r => fmtQty2(r.qty_on_hand), exp: r => r.qty_on_hand },
     { key: 'cost', header: t('inventory.unit_cost'), num: true, cls: 'muted', cell: r => (r.unit_cost != null ? fmt(r.unit_cost) : '—'), exp: r => (r.unit_cost != null ? r.unit_cost.toFixed(2) : '') },
     { key: 'value', header: t('inventory.stock_value'), num: true, cls: 'strong', cell: r => (r.stock_value != null ? fmt(r.stock_value) : '—'), exp: r => (r.stock_value != null ? r.stock_value.toFixed(2) : '') },
     { key: 'last', header: t('reports.last_movement'), cls: 'muted', cell: r => (r.last_movement_date ? <Num>{r.last_movement_date as string}</Num> : t('inventory.never')), exp: r => (r.last_movement_date ? (r.last_movement_date as string) : '') },

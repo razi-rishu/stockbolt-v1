@@ -644,7 +644,7 @@ export default function SalesReturnEditorPage() {
                   {l.qty_returnable}
                 </td>
                 <td className="px-3 py-2">
-                  <input type="number" min="1" step="1" max={l.qty_returnable || undefined}
+                  <input type="number" min="0" step="any" max={l.qty_returnable || undefined}
                     value={l.qty_returned}
                     onChange={e => updateLine(i, 'qty_returned', Number(e.target.value))}
                     disabled={!isDraft}

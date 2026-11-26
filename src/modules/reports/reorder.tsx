@@ -1,3 +1,4 @@
+import { fmtQty2 } from '@/lib/packs';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data/index';
@@ -24,7 +25,7 @@ export default function ReorderReportPage() {
   const columns: ReportColumn<Row>[] = [
     { key: 'product', header: t('inventory.product'), cell: r => <NameSku name={r.product_name} sku={r.sku} />, exp: r => r.product_name },
     { key: 'wh', header: t('inventory.warehouse'), cls: 'muted', cell: r => r.warehouse_name, exp: r => r.warehouse_name },
-    { key: 'qty', header: t('inventory.qty_on_hand'), num: true, cls: 'is-down strong', cell: r => fmt(r.qty_on_hand), exp: r => r.qty_on_hand },
+    { key: 'qty', header: t('inventory.qty_on_hand'), num: true, cls: 'is-down strong', cell: r => fmtQty2(r.qty_on_hand), exp: r => r.qty_on_hand },
     { key: 'min', header: t('reports.min_stock_level'), num: true, cls: 'muted', cell: r => fmt(r.min_stock_level), exp: r => r.min_stock_level },
     { key: 'short', header: t('reports.shortage'), num: true, cls: 'is-warn strong', cell: r => fmt(shortageOf(r)), exp: r => shortageOf(r) },
     { key: 'cost', header: t('inventory.unit_cost'), num: true, cls: 'muted', cell: r => (r.unit_cost != null ? fmt(r.unit_cost) : '—'), exp: r => (r.unit_cost != null ? r.unit_cost.toFixed(2) : '') },

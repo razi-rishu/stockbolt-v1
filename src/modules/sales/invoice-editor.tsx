@@ -1,3 +1,4 @@
+import { fmtQty2 } from '@/lib/packs';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ApprovalPanel } from '@/components/approvals/approval-panel';
 import { useApprovalGate, useDocApproval } from '@/components/approvals/use-approval';
@@ -1200,7 +1201,7 @@ export default function InvoiceEditorPage() {
             <thead>
               <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary">
                 <th className="px-3 py-2 text-start font-medium" style={{ minWidth: '200px' }}>{t('sales.product')}</th>
-                <th className="px-3 py-2 text-end font-medium" style={{ width: packs.on ? '148px' : '72px' }}>{t('sales.qty')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: packs.on ? '148px' : '104px' }}>{t('sales.qty')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('sales.unit_price')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '84px' }}>{t('sales.disc_pct')}</th>
                 {showTax && <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('sales.tax')}</th>}
@@ -1305,7 +1306,7 @@ export default function InvoiceEditorPage() {
                                 {t('invOcean.stock_on_hand')}
                               </div>
                               <div className={`text-sm ${stockNumCls}`}>
-                                {qty.toFixed(2)} {row.unit_code ?? 'pcs'}
+                                {fmtQty2(qty)} {row.unit_code ?? 'pcs'}
                               </div>
                             </div>
                           </div>
@@ -1322,7 +1323,7 @@ export default function InvoiceEditorPage() {
                   </td>
                   <td className="px-3 py-1.5 align-top">
                     <input
-                      type="number" min="0" step="1"
+                      type="number" min="0" step="any"
                       className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end text-ink-primary disabled:opacity-60"
                       value={line.quantity}
                       disabled={!canEdit || isVoid}

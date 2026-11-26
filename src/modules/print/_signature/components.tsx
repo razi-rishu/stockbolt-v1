@@ -6,6 +6,7 @@
  * component renders identically on screen, in print, and (later) inside
  * react-pdf if we go down that path.
  */
+import { fmtQty, fmtQty2 } from '@/lib/packs';
 import { type ReactNode, type CSSProperties } from 'react';
 import { ccy } from '@/lib/currency-display';
 import { tokens, hairlineStyle, numericStyle } from './tokens';
@@ -331,7 +332,7 @@ export function ItemsTable({
                 case 'qty':
                   return (
                     <td key={c} style={cellStyle}>
-                      <span style={{ color: tokens.ink }}>{fmt(it.quantity)}</span>
+                      <span style={{ color: tokens.ink }}>{it.unit_code ? fmtQty(it.quantity) : fmtQty2(it.quantity)}</span>
                       {it.unit_code && <span style={{ color: tokens.inkFaint, marginInlineStart: '4px', fontSize: tokens.fsBodySmall }}>{it.unit_code}</span>}
                     </td>
                   );

@@ -576,7 +576,7 @@ export default function DebitNoteEditorPage() {
                         disabled={!isDraft} className="w-full border border-border-strong rounded px-2 py-1 text-sm" />
                     </td>
                     <td className="px-3 py-2">
-                      <input type="number" min="1" step="1"
+                      <input type="number" min="0" step="any"
                         max={l.qty_returnable !== null ? l.qty_returnable / lineFactor(l) : undefined}
                         value={l.quantity}
                         onChange={e => updateLine(i, 'quantity', Number(e.target.value))}

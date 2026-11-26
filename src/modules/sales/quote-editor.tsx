@@ -512,7 +512,7 @@ export default function QuoteEditorPage() {
             <thead>
               <tr className="border-b border-border-subtle bg-surface-muted text-ink-tertiary">
                 <th className="px-3 py-2 text-start font-medium" style={{ minWidth: '220px' }}>{t('sales.product')}</th>
-                <th className="px-3 py-2 text-end font-medium" style={{ width: packs.on ? '148px' : '72px' }}>{t('sales.qty')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: packs.on ? '148px' : '104px' }}>{t('sales.qty')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('sales.unit_price')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '84px' }}>{t('sales.disc_pct')}</th>
                 {showTax && <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('sales.tax')}</th>}
@@ -542,7 +542,7 @@ export default function QuoteEditorPage() {
                     />
                     <input className="mt-1 w-full rounded border border-transparent bg-transparent px-2 py-0.5 text-[11px] text-ink-tertiary placeholder:text-ink-tertiary hover:border-border-subtle focus:border-border-strong focus:bg-surface-subtle focus:text-ink-secondary disabled:opacity-60" value={line.description} disabled={!canEdit} placeholder={t('invOcean.description_optional', { label: t('sales.description') })} onChange={e => updateLine(line._key, { description: e.target.value })} />
                   </td>
-                  <td className="px-3 py-1.5 align-top"><input type="number" min="0" step="1" className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60" value={line.quantity} disabled={!canEdit} onChange={e => updateLine(line._key, { quantity: e.target.value })} />
+                  <td className="px-3 py-1.5 align-top"><input type="number" min="0" step="any" className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60" value={line.quantity} disabled={!canEdit} onChange={e => updateLine(line._key, { quantity: e.target.value })} />
                     {packs.on && (
                       <PackSelect packs={packs.forProduct(line.product_id, 'sales')} value={line.product_unit_id}
                         savedLabel={line.unit_label} savedFactor={line.unit_factor}

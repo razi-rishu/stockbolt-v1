@@ -1,3 +1,5 @@
+import { fmtQty2 } from '@/lib/packs';
+import { stockMovementKey } from '@/lib/stock-movement';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -43,16 +45,16 @@ export default function StockMovementReportPage() {
 
   const totalIn  = rows.filter(r => r.direction === 1).reduce((s, r) => s + r.quantity, 0);
   const totalOut = rows.filter(r => r.direction === -1).reduce((s, r) => s + r.quantity, 0);
-  const typeLabel = (type: string) => t(`rptOcean.mv_${type}`, { defaultValue: type });
+  const typeLabel = (type: string) => t(stockMovementKey(type), { defaultValue: type });
 
   const columns: ReportColumn<Row>[] = [
     { key: 'date', header: t('inventory.date'), cls: 'muted', cell: r => <Num>{r.date as string}</Num>, exp: r => r.date as string },
     { key: 'product', header: t('inventory.product'), cell: r => <NameSku name={r.product_name} sku={r.sku} />, exp: r => r.product_name },
     { key: 'wh', header: t('inventory.warehouse'), cls: 'muted', cell: r => r.warehouse_name, exp: r => r.warehouse_name },
     { key: 'type', header: t('inventory.type'), cls: 'muted', cell: r => typeLabel(r.movement_type), exp: r => typeLabel(r.movement_type) },
-    { key: 'in', header: t('inventory.qty_in'), num: true, cls: r => (r.direction === 1 ? 'is-up' : 'muted'), cell: r => (r.direction === 1 ? fmt(r.quantity) : '—'), exp: r => (r.direction === 1 ? r.quantity : 0) },
-    { key: 'out', header: t('inventory.qty_out'), num: true, cls: r => (r.direction === -1 ? 'is-down' : 'muted'), cell: r => (r.direction === -1 ? fmt(r.quantity) : '—'), exp: r => (r.direction === -1 ? r.quantity : 0) },
-    { key: 'run', header: t('inventory.running_qty'), num: true, cls: 'strong', cell: r => fmt(r.running_qty), exp: r => r.running_qty },
+    { key: 'in', header: t('inventory.qty_in'), num: true, cls: r => (r.direction === 1 ? 'is-up' : 'muted'), cell: r => (r.direction === 1 ? fmtQty2(r.quantity) : '—'), exp: r => (r.direction === 1 ? r.quantity : 0) },
+    { key: 'out', header: t('inventory.qty_out'), num: true, cls: r => (r.direction === -1 ? 'is-down' : 'muted'), cell: r => (r.direction === -1 ? fmtQty2(r.quantity) : '—'), exp: r => (r.direction === -1 ? r.quantity : 0) },
+    { key: 'run', header: t('inventory.running_qty'), num: true, cls: 'strong', cell: r => fmtQty2(r.running_qty), exp: r => r.running_qty },
     { key: 'cost', header: t('inventory.unit_cost'), num: true, cls: 'muted', cell: r => (r.unit_cost != null ? fmt(r.unit_cost) : '—'), exp: r => (r.unit_cost != null ? r.unit_cost.toFixed(2) : '') },
   ];
   // SKU is shown beside the name on screen but keeps its own Excel column.
@@ -83,8 +85,8 @@ export default function StockMovementReportPage() {
       <ReportCard
         figures={rows.length > 0 ? [
           { label: t('rptOcean.fig_movements'), value: <Num>{rows.length}</Num> },
-          { label: t('inventory.total_in'), value: <Num>{fmt(totalIn)}</Num>, tone: 'good' },
-          { label: t('inventory.total_out'), value: <Num>{fmt(totalOut)}</Num>, tone: 'bad' },
+          { label: t('inventory.total_in'), value: <Num>{fmtQty2(totalIn)}</Num>, tone: 'good' },
+          { label: t('inventory.total_out'), value: <Num>{fmtQty2(totalOut)}</Num>, tone: 'bad' },
         ] : undefined}
       >
         {rows.length === 0

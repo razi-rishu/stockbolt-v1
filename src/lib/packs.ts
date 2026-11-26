@@ -66,6 +66,11 @@ export function fmtQty(n: number): string {
   return n.toLocaleString('en-US', { maximumFractionDigits: 3 });
 }
 
+/** A quantity with the usual two decimals, or three when it has three (18.335 KG). */
+export function fmtQty2(n: number): string {
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+}
+
 /** BOX → "BOX", "200 g" → "× 200 g", so 3 of them never read as "3 200 g". */
 export function packLabel(name: string): string {
   return /^\d/.test(name) ? `× ${name}` : name;

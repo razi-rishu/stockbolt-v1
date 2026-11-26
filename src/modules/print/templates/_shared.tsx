@@ -2,6 +2,7 @@
  * Shared print template primitives
  * Used by all templates; not exported from index.
  */
+import { fmtQty2 } from '@/lib/packs';
 import type { Company } from '@/data/adapter';
 import { ccy } from '@/lib/currency-display';
 import { getTaxLabels } from '@/lib/locale';
@@ -134,7 +135,7 @@ export function PrintLineTable({ items, accentColor, type }: LineTableProps) {
             <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
               <td className="px-3 py-2 text-gray-500">{i + 1}</td>
               <td className="px-3 py-2">{item.description ?? '—'}</td>
-              <td className="px-3 py-2 text-right">{fmt(item.quantity ?? 0)}</td>
+              <td className="px-3 py-2 text-right">{fmtQty2(item.quantity ?? 0)}</td>
               <td className="px-3 py-2 text-right">{fmt(price)}</td>
               <td className="px-3 py-2 text-right">{fmt(item.discount_percent ?? 0)}%</td>
               <td className="px-3 py-2 text-right">{fmt(item.tax_rate ?? 0)}%</td>

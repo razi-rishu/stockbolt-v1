@@ -1022,7 +1022,7 @@ export default function VendorBillEditorPage() {
               <tr>
                 <th className="px-3 py-2 text-start font-medium" style={{ minWidth: '200px' }}>{t('purchasing.product')}</th>
                 <th className="px-3 py-2 text-start font-medium" style={{ width: '168px' }}>{t('purchasing.account')}</th>
-                <th className="px-3 py-2 text-end font-medium" style={{ width: packs.on ? '148px' : '72px' }}>{t('purchasing.qty')}</th>
+                <th className="px-3 py-2 text-end font-medium" style={{ width: packs.on ? '148px' : '104px' }}>{t('purchasing.qty')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '112px' }}>{t('purchasing.unit_cost')}</th>
                 <th className="px-3 py-2 text-end font-medium" style={{ width: '84px' }}>{t('purchasing.disc_pct')}</th>
                 {showTax && <th className="px-3 py-2 text-end font-medium" style={{ width: '100px' }}>{t('purchasing.tax')}</th>}
@@ -1082,7 +1082,7 @@ export default function VendorBillEditorPage() {
                     )}
                   </td>
                   <td className="px-3 py-1.5 align-top">
-                    <input type="number" min="0" step="1"
+                    <input type="number" min="0" step="any"
                       className="w-full rounded border border-border-strong bg-surface-subtle px-2 py-1 text-xs text-end disabled:opacity-60"
                       value={line.quantity} disabled={!canEdit}
                       onChange={e => updateLine(line._key, { quantity: e.target.value })} />

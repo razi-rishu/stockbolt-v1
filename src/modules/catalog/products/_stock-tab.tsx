@@ -19,6 +19,7 @@
  * same adapter call the main stock-ledger page uses, so behaviour stays
  * consistent across pages.
  */
+import { fmtQty2 } from '@/lib/packs';
 import { usePacks } from '@/hooks/use-packs';
 import { packBreakdown } from '@/lib/packs';
 import { useState, useMemo } from 'react';
@@ -107,7 +108,7 @@ export function ProductStockTab({
         <div className="sb-exp-kpi">
           <div className="sb-exp-kpi-txt">
             <span className="sb-exp-kpi-label">{t('prodOcean.on_hand')}</span>
-            <bdi dir="ltr" className="sb-exp-kpi-val" style={{ color: onHand < 0 ? 'var(--sb-danger)' : onHand === 0 ? 'var(--sb-text-secondary)' : undefined }}>{fmt(onHand)}</bdi>
+            <bdi dir="ltr" className="sb-exp-kpi-val" style={{ color: onHand < 0 ? 'var(--sb-danger)' : onHand === 0 ? 'var(--sb-text-secondary)' : undefined }}>{fmtQty2(onHand)}</bdi>
             {packText && <bdi dir="ltr" className="sb-pack-sub" data-testid="stock-in-packs">{packText}</bdi>}
             <span className="sb-exp-kpi-sub">{t('prodOcean.on_hand_sub')}</span>
           </div>
@@ -122,14 +123,14 @@ export function ProductStockTab({
         <div className="sb-exp-kpi">
           <div className="sb-exp-kpi-txt">
             <span className="sb-exp-kpi-label">{t('prodOcean.received')}</span>
-            <bdi dir="ltr" className="sb-exp-kpi-val" style={{ color: '#067647' }}>+{fmt(stats.totalIn)}</bdi>
+            <bdi dir="ltr" className="sb-exp-kpi-val" style={{ color: '#067647' }}>+{fmtQty2(stats.totalIn)}</bdi>
             <span className="sb-exp-kpi-sub">{t('prodOcean.received_sub')}</span>
           </div>
         </div>
         <div className="sb-exp-kpi">
           <div className="sb-exp-kpi-txt">
             <span className="sb-exp-kpi-label">{t('prodOcean.issued')}</span>
-            <bdi dir="ltr" className="sb-exp-kpi-val" style={{ color: 'var(--sb-danger)' }}>−{fmt(stats.totalOut)}</bdi>
+            <bdi dir="ltr" className="sb-exp-kpi-val" style={{ color: 'var(--sb-danger)' }}>−{fmtQty2(stats.totalOut)}</bdi>
             <span className="sb-exp-kpi-sub">{t('prodOcean.issued_sub')}</span>
           </div>
         </div>
@@ -210,15 +211,15 @@ export function ProductStockTab({
                     </td>
                     <td className="px-4 py-2 text-ink-secondary text-xs">{row.warehouse_name || row.warehouse_id}</td>
                     <td className="px-4 py-2 text-end font-mono text-green-700">
-                      {isIn ? fmt(row.quantity) : '—'}
+                      {isIn ? fmtQty2(row.quantity) : '—'}
                     </td>
                     <td className="px-4 py-2 text-end font-mono text-red-700">
-                      {isOut ? fmt(row.quantity) : '—'}
+                      {isOut ? fmtQty2(row.quantity) : '—'}
                     </td>
                     <td className={`px-4 py-2 text-end font-mono font-semibold ${
                       row.running_qty < 0 ? 'text-red-600' : 'text-ink-primary'
                     }`}>
-                      {fmt(row.running_qty)}
+                      {fmtQty2(row.running_qty)}
                     </td>
                     <td className="px-4 py-2 text-end font-mono text-ink-secondary">
                       {row.unit_cost != null ? fmt(row.unit_cost) : '—'}

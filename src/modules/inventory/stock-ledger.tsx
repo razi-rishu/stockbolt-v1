@@ -1,3 +1,4 @@
+import { fmtQty2 } from '@/lib/packs';
 import { useState } from 'react';
 import { formatDate } from '@/lib/locale';
 import { useSearchParams } from 'react-router-dom';
@@ -180,13 +181,13 @@ export default function StockLedgerPage() {
                               : <span style={{ color: 'var(--sb-text-secondary)' }}>{'—'}</span>}
                           </td>
                           <td className="px-4 py-2 font-mono" dir="ltr" style={{ textAlign: 'end', color: '#067647' }}>
-                            {isIn ? fmt(row.quantity) : '—'}
+                            {isIn ? fmtQty2(row.quantity) : '—'}
                           </td>
                           <td className="px-4 py-2 font-mono" dir="ltr" style={{ textAlign: 'end', color: 'var(--sb-danger)' }}>
-                            {isOut ? fmt(row.quantity) : '—'}
+                            {isOut ? fmtQty2(row.quantity) : '—'}
                           </td>
                           <td className="px-4 py-2 font-mono" dir="ltr" style={{ textAlign: 'end', color: 'var(--sb-text)', fontWeight: 700 }}>
-                            {fmt(row.running_qty)}
+                            {fmtQty2(row.running_qty)}
                           </td>
                           <td className="px-4 py-2 font-mono" dir="ltr" style={{ textAlign: 'end', color: 'var(--sb-text-secondary)' }}>
                             {row.unit_cost != null ? fmt(row.unit_cost) : '—'}

@@ -1,3 +1,4 @@
+import { fmtQty } from '@/lib/packs';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getAdapter } from '@/data';
@@ -26,7 +27,7 @@ export default function SalesByBrandPage() {
 
   const columns: ReportColumn<Row>[] = [
     { key: 'brand', header: t('products.brand'), cls: 'strong', cell: r => r.brand_name, exp: r => r.brand_name },
-    { key: 'qty', header: t('reports.qty_sold'), num: true, cls: 'muted', cell: r => r.qty_sold, exp: r => r.qty_sold },
+    { key: 'qty', header: t('reports.qty_sold'), num: true, cls: 'muted', cell: r => fmtQty(r.qty_sold), exp: r => +r.qty_sold.toFixed(3) },
     { key: 'rev', header: t('reports.revenue'), num: true, cls: 'strong', cell: r => fmt(r.revenue), foot: fmt(totRev), exp: r => r.revenue.toFixed(2) },
     { key: 'gp', header: t('reports.gross_profit'), num: true, cls: 'is-up strong', cell: r => fmt(r.gross_profit), foot: fmt(totGP), exp: r => r.gross_profit.toFixed(2) },
     { key: 'pct', header: t('reports.gp_pct'), num: true, cls: 'muted', cell: r => `${r.gp_pct.toFixed(1)}%`, foot: totPct, exp: r => r.gp_pct.toFixed(1) },
