@@ -1,0 +1,26 @@
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { createSupabaseAdapter } from 'E:/stockbolt_clean/stockbolt-v1/src/data/supabaseAdapter';
+import { loadStagingEnv, assertNotProductionTarget } from 'E:/stockbolt_clean/stockbolt-v1/tests/integration/_env-guard';
+const env = loadStagingEnv(); assertNotProductionTarget(env.VITE_SUPABASE_URL);
+if (!/127\.0\.0\.1|localhost/.test(env.VITE_SUPABASE_URL)) throw new Error('not local');
+const ns = { auth: { autoRefreshToken: false, persistSession: false } };
+export const admin = createClient(env.VITE_SUPABASE_URL, env.SUPABASE_SECRET_KEY, ns) as any;
+export const anon = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_PUBLISHABLE_KEY, ns) as any;
+const DIR = 'C:/Users/rashi/AppData/Local/Temp/claude/b23176940e24aea8/f4e192e5-dcff-454f-8499-12cbc9973641/scratchpad/aud/';
+export const st: any = existsSync(DIR + 'state.json') ? JSON.parse(readFileSync(DIR + 'state.json', 'utf8')) : {};
+export const saveSt = () => writeFileSync(DIR + 'state.json', JSON.stringify(st, null, 1));
+export const PW = '<local test password>';
+export async function mkUser(email: string) { const { data, error } = await admin.auth.admin.createUser({ email, password: PW, email_confirm: true }); if (error) throw new Error(email + error.message); return data.user.id as string; }
+export async function login(email: string) { const c = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_PUBLISHABLE_KEY, { ...ns, global: { headers: { 'x-stockbolt-units': '1' } } }) as any; const { error } = await c.auth.signInWithPassword({ email, password: PW }); if (error) throw new Error(email + ' ' + error.message); return c; }
+export const adapterOf = (c: any) => createSupabaseAdapter(c) as any;
+export async function ins(c: any, t: string, row: any) { const { data, error } = await c.from(t).insert(row).select(); if (error) throw new Error(`${t}: ${error.message}`); return Array.isArray(row) ? data : data[0]; }
+export async function rpc(c: any, n: string, a: any = {}) { const { data, error } = await c.rpc(n, a); if (error) throw new Error(`${n}: ${error.message}`); return data; }
+export async function sel(c: any, t: string, f: any = {}, cols = '*') { let q = c.from(t).select(cols); for (const k in f) q = q.eq(k, f[k]); const { data, error } = await q; if (error) throw new Error(`${t}: ${error.message}`); return data as any[]; }
+const R: any[] = [];
+export async function T(id: string, name: string, fn: () => Promise<any>) { let r: any; try { const v = await fn(); r = { id, name, res: v === false ? 'FAIL' : (v && typeof v === 'object' && 'ok' in v) ? (v.ok ? 'PASS' : 'FAIL') : 'PASS', d: typeof v === 'object' && v ? (v.d ?? '') : (v === true || v === undefined ? '' : String(v)) }; } catch (e: any) { r = { id, name, res: 'ERROR', d: e.message.slice(0, 260) }; } R.push(r); console.log(`${r.res}\t${id}\t${name}\t${r.d}`); return r; }
+export async function refuses(p: Promise<any>) { try { const v = await p; return { ok: false, d: 'ALLOWED ' + JSON.stringify(v ?? null).slice(0, 80) }; } catch (e: any) { return { ok: true, d: 'refused: ' + e.message.slice(0, 150) }; } }
+export const r2 = (n: number) => Math.round(n * 100) / 100;
+export async function gl(code: string, cid = st.cid) { const { data } = await admin.from('general_ledger').select('debit,credit').eq('company_id', cid).eq('account_code', code); return r2((data ?? []).reduce((s: number, x: any) => s + +x.debit - +x.credit, 0)); }
+export async function qty(p: string, w?: string) { let q = admin.from('stock_ledger').select('warehouse_id,running_qty,seq').eq('company_id', st.cid).eq('product_id', p).order('seq', { ascending: false }); if (w) q = q.eq('warehouse_id', w); const { data } = await q; const seen: any = {}; let s = 0; for (const x of data ?? []) if (!seen[x.warehouse_id]) { seen[x.warehouse_id] = 1; s += +x.running_qty; } return Math.round(s * 1000) / 1000; }
+export const flush = (f: string) => writeFileSync(DIR + f, JSON.stringify(R, null, 1));

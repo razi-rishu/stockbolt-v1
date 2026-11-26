@@ -1,0 +1,17 @@
+import { admin, login, sel, T, st, flush, gl, r2, adapterOf } from './lib';
+(async () => {
+  const c = await login(st.owner), ad = adapterOf(c), R = ad.reports, C = st.cid, f = '2026-01-01', t = '2026-12-31';
+  const { data: g } = await admin.from('general_ledger').select('account_code,debit,credit,journal_entry_id,date').eq('company_id', C).limit(5000);
+  const by: any = {}; g.forEach((x: any) => { (by[x.journal_entry_id] ??= 0); by[x.journal_entry_id] += +x.debit - +x.credit; });
+  await T('E1', 'Every journal balances', async () => { const b = Object.values(by).filter((v: any) => Math.abs(v) > 0.004).length; return { ok: !b, d: `${Object.keys(by).length} entries, ${b} unbalanced, lines ${g.length}` }; });
+  const { data: je } = await admin.from('journal_entries').select('id').eq('company_id', C); await T('E1b', 'No journal header without lines', async () => ({ ok: je.every((x: any) => x.id in by), d: je.length + ' headers' }));
+  await T('E2', 'Stock ledger value = GL 1300', async () => { const { data } = await admin.from('stock_ledger').select('direction,total_cost').eq('company_id', C).limit(5000); const s = r2(data.reduce((a: number, x: any) => a + x.direction * +x.total_cost, 0)); return { ok: Math.abs(s - await gl('1300')) < 0.01, d: `sub ${s} GL ${await gl('1300')}` }; });
+  for (const [k, n, args] of [['getTrialBalance', 'TB', [C, t]], ['getBalanceSheet', 'BS', [C, t]], ['getProfitAndLoss', 'PL', [C, f, t]], ['getARAgingReport', 'AR', [C, t]], ['getAPAgingReport', 'AP', [C, t]], ['getStockValuationReport', 'SV', [C, t]], ['getStockValuation', 'SV', [C, t]], ['getCashFlow', 'CF', [C, f, t]], ['getVATReturn', 'VAT', [C, f, t]], ['getTaxReturn', 'TAX', [C, f, t]], ['getSalesByCustomer', 'SBC', [C, f, t]], ['getSalesByProduct', 'SBP', [C, f, t]], ['getPurchasesBySupplier', 'PBS', [C, f, t]], ['getSupplierStatement', 'SST', [C, st.sup[0], '2026-11-01', t]], ['getCustomerStatement', 'CST', [C, st.cus[0], '2026-11-01', t]], ['getDailyCashReport', 'DC', [C, '2026-11-30']], ['getOutstandingPOs', 'OPO', [C]], ['getAuditLog', 'AUD', [C, {}]], ['getReversalTrail', 'REV', [C, f, t]]] as any) {
+    if (!R[k]) { console.log('NA', k); continue; }
+    try { const v = await R[k](...args); console.log(n, k, JSON.stringify(v, (kk, vv) => Array.isArray(vv) ? `[${vv.length}]` + (vv.length < 6 ? JSON.stringify(vv).slice(0, 400) : '') : vv).slice(0, 900)); } catch (e: any) { console.log('ERR', k, e.message); }
+  }
+  console.log('GL', JSON.stringify(Object.fromEntries(await Promise.all(['1100', '1110', '1200', '2100', '1400', '2400', '2150', '1300', '2200', '1500', '4100', '5100', '2350', '2360', '3010'].map(async x => [x, await gl(x)])))));
+  const { data: co } = await admin.from('general_ledger').select('account_code,contact_id').eq('company_id', C).in('account_code', ['1200', '2100', '1400', '2400']).is('contact_id', null); console.log('control lines without party', co.length);
+  for (const k of Object.keys(ad).filter(k => /health|invar|system/i.test(k))) console.log('adapter', k, Object.keys(ad[k]));
+  flush('r5.json');
+})();

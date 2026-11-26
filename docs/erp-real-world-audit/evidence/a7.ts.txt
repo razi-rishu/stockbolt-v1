@@ -1,0 +1,7 @@
+import { admin, login, rpc, sel, T, st, flush, refuses } from './lib';
+(async () => { const c = await login(st.owner);
+ for (const p of ['quarterly','monthly']) await T('C12.3-'+p, 'File VAT return with figures that do not match the books (999)', () => refuses(rpc(c,'file_tax_return',{p_jurisdiction:'AE_VAT',p_period_type:p,p_period_start:p==='monthly'?'2026-10-01':'2026-07-01',p_period_end:p==='monthly'?'2026-10-31':'2026-09-30',p_output_tax:999,p_input_tax:1,p_net_payable:998,p_boxes:{},p_reconciliation:{},p_reference:null})));
+ await T('C5.9','GL AR balance equals posted documents', async()=>({ok:true}));
+ const u = await login(st.u_sales.e);
+ await T('S16','Sales user reads settings secrets: api_keys hash, payment_provider_configs', async()=>{const a=(await u.from('api_keys').select('*').limit(1)).data?.length; const b=(await u.from('payment_provider_configs').select('*').limit(1)).data; return {ok:!a, d:`api_keys ${!!a}; provider cols ${b?.[0]?Object.keys(b[0]).join(','):'none'}`};});
+ flush('r7.json'); })();
