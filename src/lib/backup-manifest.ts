@@ -143,7 +143,24 @@ export const BACKUP_TABLES: readonly string[] = [
   'support_attachments',
   'support_activity',
   'legal_events',
+
+  // ── Approvals (phase144-150) ──────────────────────────────────────────
+  // Closed to direct reads, so these four come from one read-only function,
+  // export_approval_records (phase159b); see BACKUP_VIA_FUNCTION.
+  'approval_rules',
+  'approval_authorities',
+  'approval_requests',
+  'approval_steps',
 ] as const;
+
+/** Backed-up tables read through a database function instead of a select,
+ *  because app users cannot read them directly. Function → its tables. */
+export const BACKUP_VIA_FUNCTION: Readonly<Record<string, string>> = {
+  approval_rules:       'export_approval_records',
+  approval_authorities: 'export_approval_records',
+  approval_requests:    'export_approval_records',
+  approval_steps:       'export_approval_records',
+};
 
 /**
  * The backed-up tables that have NO `company_id` column — they are scoped
@@ -213,6 +230,10 @@ export const BACKUP_EXCLUSIONS: Readonly<Record<string, string>> = {
   // Platform-owned (phase133, phase135).
   support_operators:       'StockBolt support staff list, not tenant data',
   legal_documents:         'our published legal documents, identical for every tenant',
+
+  // Platform-owned (phase35 billing, company deletion tool).
+  billing_settings:        'our payment settings, no company column',
+  platform_deletion_log:   'our record of deleted companies, not business records',
   legal_settings:          'platform enforcement switch, not tenant data',
 
   // A half-finished setup wizard, replaced as soon as setup completes.

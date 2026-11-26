@@ -2364,7 +2364,18 @@ export function createSupabaseAdapter(
     // ── Phase 4: Bank Accounts ────────────────────────────────────────────
     backup: {
       async exportAll(company_id, onProgress): Promise<import('./adapter').BackupResult> {
-        const { BACKUP_TABLES, BACKUP_UNSCOPED } = await import('@/lib/backup-manifest');
+        const { BACKUP_TABLES, BACKUP_UNSCOPED, BACKUP_VIA_FUNCTION } = await import('@/lib/backup-manifest');
+        // Tables closed to direct reads: one call per function, cached here.
+        const viaFn: Record<string, { data: Record<string, unknown[]> | null; error: string | null }> = {};
+        const readViaFunction = async (fn: string) => {
+          if (!viaFn[fn]) {
+            const { data, error } = await (
+              client.rpc as unknown as (f: string) => Promise<{ data: unknown; error: { message: string } | null }>
+            )(fn);
+            viaFn[fn] = { data: (data ?? null) as Record<string, unknown[]> | null, error: error?.message ?? null };
+          }
+          return viaFn[fn]!;
+        };
 
         // PostgREST caps a response at 1000 rows. A plain select therefore
         // SUCCEEDS and returns a short answer, which is the exact failure a
@@ -2395,6 +2406,15 @@ export function createSupabaseAdapter(
           const rows: Record<string, unknown>[] = [];
           let truncated = false;
           let failure: string | undefined;
+
+          const fn = BACKUP_VIA_FUNCTION[table];
+          if (fn) {
+            const r = await readViaFunction(fn);
+            if (r.error) failure = r.error;
+            else rows.push(...((r.data?.[table] ?? []) as Record<string, unknown>[]));
+            out.push({ table, rows, truncated, ...(failure ? { error: failure } : {}) });
+            continue;
+          }
 
           for (let page = 0; page < MAX_PAGES; page++) {
             let q = fromAnyTable(table).select('*');
