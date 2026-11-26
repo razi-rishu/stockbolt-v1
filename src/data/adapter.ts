@@ -1287,6 +1287,9 @@ export interface InvoicesAPI {
   confirm(invoice_id: string): Promise<InvoiceConfirmResult>;
   void(invoice_id: string, reason?: string): Promise<void>;
   edit(invoice_id: string): Promise<void>;
+  /** phase159 — edit a CONFIRMED invoice in one step: header, lines and the
+   *  re-post together, or nothing. */
+  saveEdit(invoice_id: string, row: InvoiceUpdate, items: InvoiceItemInsert[]): Promise<void>;
   /** Hard-delete a DRAFT invoice (and its items). Refuses if not draft —
    *  confirmed invoices must be voided, never deleted. */
   deleteDraft(invoice_id: string): Promise<void>;

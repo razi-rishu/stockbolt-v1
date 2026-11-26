@@ -279,6 +279,7 @@ export function createSelfHostedAdapter(): DataAdapter {
       getById:         () => notImplemented('invoices.getById'),
       getItems:        () => notImplemented('invoices.getItems'),
       create:          () => notImplemented('invoices.create'),
+      saveEdit:        () => notImplemented('invoices.saveEdit'),
       update:          () => notImplemented('invoices.update'),
       confirm:         () => notImplemented('invoices.confirm'),
       void:            () => notImplemented('invoices.void'),

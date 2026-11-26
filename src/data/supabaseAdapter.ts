@@ -2600,6 +2600,22 @@ export function createSupabaseAdapter(
         const { error } = await client.rpc('edit_invoice', { p_invoice_id: invoice_id });
         assertNoError(error, 'invoices.edit');
       },
+      async saveEdit(invoice_id, row: InvoiceUpdate, items: InvoiceItemInsert[]): Promise<void> {
+        // phase159 — one transaction on the server: header, lines, deferred
+        // cost queue and the edit_invoice re-post. The server keeps the number,
+        // status, currency and links; it ignores them here.
+        const lines = items.map(({ invoice_id: _drop, sort_order: _order, ...rest }) => rest);
+        const { error } = await (
+          client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ error: { code?: string; message: string } | null }>
+        )('save_invoice_edit', { p_invoice_id: invoice_id, p_header: row, p_lines: lines });
+        // Only while phase159 is not applied yet: the old two-step path.
+        if (error && (error.code === 'PGRST202' || /could not find the function/i.test(error.message))) {
+          await this.update(invoice_id, row, items);
+          await this.edit(invoice_id);
+          return;
+        }
+        assertNoError(error, 'invoices.saveEdit');
+      },
       async deleteDraft(invoice_id): Promise<void> {
         // Drafts only — a draft has never posted to the GL, so a hard delete
         // is safe. Guard on status so a confirmed invoice can never be wiped.

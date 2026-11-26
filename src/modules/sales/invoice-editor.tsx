@@ -653,7 +653,8 @@ export default function InvoiceEditorPage() {
         tax_amount:      +taxTotal.toFixed(2),
         // Omit when zero so saves keep working until the phase46 migration
         // adds the column.
-        ...(roundOff !== 0 ? { round_off_amount: +roundOff.toFixed(2) } : {}),
+        // Always sent on an edit: a round-off removed must reach the server.
+        round_off_amount: +roundOff.toFixed(2),
         total_amount:    +roundedTotal.toFixed(2),
         status:          'confirmed' as const,
         source_quote_id: existing!.source_quote_id,
@@ -666,9 +667,9 @@ export default function InvoiceEditorPage() {
         voided_at:       null,
         voided_by:       null,
       };
-      await getAdapter().invoices.update(id!, row, buildItems());
+      // phase159 — header, lines and re-post in one step: all or nothing.
+      await getAdapter().invoices.saveEdit(id!, row, buildItems());
       await recordPackAcceptance('invoice', id!, packLines);
-      await getAdapter().invoices.edit(id!);
     },
     onSuccess: async () => {
       setEditMode(false);
