@@ -144,6 +144,7 @@ const PurchasingExpenseEditorPage = lazy(() => import('@/modules/purchasing/expe
 
 // Payroll P1 (owner override 2026-06-13)
 const EmployeesPage        = lazy(() => import('@/modules/payroll/employees'));
+const Employee360Page      = lazy(() => import('@/modules/payroll/employee-360'));
 const PayrollRunsPage      = lazy(() => import('@/modules/payroll/payroll-runs'));
 const PayrollRunEditorPage = lazy(() => import('@/modules/payroll/payroll-run-editor'));
 const LeaveSalaryPage      = lazy(() => import('@/modules/payroll/leave-salary'));
@@ -453,6 +454,7 @@ function AppRoutes() {
               {/* Payroll — require payroll.read (Phase 22) */}
               <Route element={<RequirePermission perm="payroll.read" />}>
                 <Route path="/payroll/employees"                  element={<EmployeesPage />} />
+                <Route path="/payroll/employees/:id"              element={<Employee360Page />} />
                 <Route path="/payroll/runs/:id"                   element={<PayrollRunEditorPage />} />
                 <Route path="/payroll/runs"                       element={<PayrollRunsPage />} />
                 <Route path="/payroll/leave-salary"               element={<LeaveSalaryPage />} />

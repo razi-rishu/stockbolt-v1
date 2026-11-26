@@ -1188,6 +1188,21 @@ export type Database = {
           notes: string | null
           other_allowance: number
           passport_no: string | null
+          photo_path: string | null
+          branch_id: string | null
+          warehouse_id: string | null
+          employment_type: string | null
+          nationality: string | null
+          date_of_birth: string | null
+          emergency_contact_name: string | null
+          emergency_contact_phone: string | null
+          emirates_id_expiry: string | null
+          passport_expiry: string | null
+          visa_no: string | null
+          visa_expiry: string | null
+          labour_card_no: string | null
+          labour_card_expiry: string | null
+          pay_method: string | null
           phone: string | null
           transport_allowance: number
           updated_at: string
@@ -1218,6 +1233,21 @@ export type Database = {
           notes?: string | null
           other_allowance?: number
           passport_no?: string | null
+          photo_path?: string | null
+          branch_id?: string | null
+          warehouse_id?: string | null
+          employment_type?: string | null
+          nationality?: string | null
+          date_of_birth?: string | null
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
+          emirates_id_expiry?: string | null
+          passport_expiry?: string | null
+          visa_no?: string | null
+          visa_expiry?: string | null
+          labour_card_no?: string | null
+          labour_card_expiry?: string | null
+          pay_method?: string | null
           phone?: string | null
           transport_allowance?: number
           updated_at?: string
@@ -1248,9 +1278,63 @@ export type Database = {
           notes?: string | null
           other_allowance?: number
           passport_no?: string | null
+          photo_path?: string | null
+          branch_id?: string | null
+          warehouse_id?: string | null
+          employment_type?: string | null
+          nationality?: string | null
+          date_of_birth?: string | null
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
+          emirates_id_expiry?: string | null
+          passport_expiry?: string | null
+          visa_no?: string | null
+          visa_expiry?: string | null
+          labour_card_no?: string | null
+          labour_card_expiry?: string | null
+          pay_method?: string | null
           phone?: string | null
           transport_allowance?: number
           updated_at?: string
+        }
+        Relationships: []
+      }
+      employee_documents: {
+        Row: {
+          id: string
+          company_id: string
+          employee_id: string
+          doc_type: string
+          file_name: string
+          storage_path: string
+          mime_type: string
+          file_size: number
+          uploaded_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          company_id: string
+          employee_id: string
+          doc_type: string
+          file_name: string
+          storage_path: string
+          mime_type: string
+          file_size: number
+          uploaded_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          employee_id?: string
+          doc_type?: string
+          file_name?: string
+          storage_path?: string
+          mime_type?: string
+          file_size?: number
+          uploaded_by?: string | null
+          created_at?: string
         }
         Relationships: []
       }

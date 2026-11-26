@@ -3753,11 +3753,29 @@ export interface PayrollPayResult {
 export type LeaveSalaryRow    = Tables['leave_salary_payments']['Row'];
 export type LeaveSalaryInsert = Omit<Tables['leave_salary_payments']['Insert'], 'id' | 'created_at' | 'updated_at'>;
 
+// phase163 — scanned employee documents (private bucket, payroll rights)
+export type EmployeeDocType = 'emirates_id' | 'passport' | 'visa' | 'labour_card' | 'contract' | 'other';
+export type EmployeeDocumentRow = Tables['employee_documents']['Row'];
+/** Files accepted for employee photos and documents (the bucket enforces the same). */
+export const EMPLOYEE_FILE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'] as const;
+export const EMPLOYEE_FILE_MAX_BYTES = 5 * 1024 * 1024;
+
 export interface EmployeesAPI {
   list(company_id: string, opts?: { includeInactive?: boolean }): Promise<EmployeeRow[]>;
+  /** phase163 — one employee (null when not found or not visible). */
+  get(id: string): Promise<EmployeeRow | null>;
   create(row: EmployeeInsert): Promise<EmployeeRow>;
   update(id: string, row: Partial<EmployeeInsert>): Promise<void>;
   getNextCode(company_id: string): Promise<string>;
+  /** phase163 — replace the photo; returns the new storage path (already saved on the employee). */
+  uploadPhoto(company_id: string, employee_id: string, file: File): Promise<string>;
+  /** phase163 — remove the photo from the employee (and its file). */
+  removePhoto(employee_id: string, photo_path: string): Promise<void>;
+  listDocuments(employee_id: string): Promise<EmployeeDocumentRow[]>;
+  uploadDocument(company_id: string, employee_id: string, doc_type: EmployeeDocType, file: File): Promise<void>;
+  removeDocument(doc: EmployeeDocumentRow): Promise<void>;
+  /** Short-lived link (5 minutes) to a photo or document. */
+  fileUrl(storage_path: string): Promise<string>;
 }
 
 // ── phase129 — one staff identity (employees) shared by Sales / Purchasing / Payroll

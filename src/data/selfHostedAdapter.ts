@@ -649,6 +649,13 @@ export function createSelfHostedAdapter(): DataAdapter {
       create:      () => notImplemented('employees.create'),
       update:      () => notImplemented('employees.update'),
       getNextCode: () => notImplemented('employees.getNextCode'),
+      get: () => notImplemented('employees.get'),
+      uploadPhoto: () => notImplemented('employees.uploadPhoto'),
+      removePhoto: () => notImplemented('employees.removePhoto'),
+      listDocuments: () => notImplemented('employees.listDocuments'),
+      uploadDocument: () => notImplemented('employees.uploadDocument'),
+      removeDocument: () => notImplemented('employees.removeDocument'),
+      fileUrl: () => notImplemented('employees.fileUrl'),
     },
     legal: {
       status:  () => notImplemented('legal.status'),

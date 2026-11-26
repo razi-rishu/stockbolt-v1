@@ -96,6 +96,7 @@ import type {
   OwnerDashboard,
   InvariantResult,
 } from './adapter';
+import { EMPLOYEE_FILE_TYPES, EMPLOYEE_FILE_MAX_BYTES } from './adapter';
 import {
   jurisdictionForCountry, taxAccountsFor, netPayable, reconciliation as buildReconciliation,
   type TaxReturn, type TaxFiling, type TaxFileResult, type TaxReopenResult,
@@ -335,6 +336,18 @@ export function createSupabaseAdapter(
       map[r.vendor_bill_id] = (map[r.vendor_bill_id] ?? 0) + Number(r.amount);
     }
     return map;
+  };
+  /** phase163 — upload a photo or document to the private employee bucket. */
+  const uploadEmployeeFile = async (company_id: string, employee_id: string, file: File, kind: 'photo' | 'doc'): Promise<string> => {
+    const mime = file.type;
+    if (!(EMPLOYEE_FILE_TYPES as readonly string[]).includes(mime) || (kind === 'photo' && mime === 'application/pdf'))
+      throw new SupabaseDataError('employee_file_type');
+    if (file.size > EMPLOYEE_FILE_MAX_BYTES) throw new SupabaseDataError('employee_file_size');
+    const ext = mime === 'application/pdf' ? 'pdf' : mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
+    const path = `${company_id}/${employee_id}/${kind}-${crypto.randomUUID()}.${ext}`;
+    const up = await client.storage.from('employee-files').upload(path, file, { contentType: mime, upsert: false });
+    if (up.error) throw new SupabaseDataError(`employees.upload: ${up.error.message}`);
+    return path;
   };
   return {
     // ── Phase 49 — Public API keys (per-company) ────────────────────────────
@@ -8018,6 +8031,57 @@ export function createSupabaseAdapter(
         const { data, error } = await (client.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>)('next_employee_code', {});
         if (error) throw new SupabaseDataError(`employees.getNextCode: ${error.message}`);
         return String(data ?? '');
+      },
+      async get(id) {
+        const { data, error } = await client.from('employees').select('*').eq('id', id).maybeSingle();
+        assertNoError(error, 'employees.get');
+        return data ?? null;
+      },
+      // phase163 — files live in the private 'employee-files' bucket under
+      // <company>/<employee>/<random>.<ext>: no user-chosen names in paths.
+      async uploadPhoto(company_id, employee_id, file) {
+        const path = await uploadEmployeeFile(company_id, employee_id, file, 'photo');
+        const { error } = await client.from('employees')
+          .update({ photo_path: path, updated_at: new Date().toISOString() }).eq('id', employee_id);
+        assertNoError(error, 'employees.uploadPhoto');
+        return path;
+      },
+      async removePhoto(employee_id, photo_path) {
+        const { error } = await client.from('employees')
+          .update({ photo_path: null, updated_at: new Date().toISOString() }).eq('id', employee_id);
+        assertNoError(error, 'employees.removePhoto');
+        // The record no longer points at it; a leftover file is harmless, so don't fail on it.
+        const rm = await client.storage.from('employee-files').remove([photo_path]);
+        if (rm.error) console.warn('employees.removePhoto: file not removed', rm.error.message);
+      },
+      async listDocuments(employee_id) {
+        const { data, error } = await client.from('employee_documents').select('*')
+          .eq('employee_id', employee_id).order('created_at', { ascending: false });
+        assertNoError(error, 'employees.listDocuments');
+        return data ?? [];
+      },
+      async uploadDocument(company_id, employee_id, doc_type, file) {
+        const path = await uploadEmployeeFile(company_id, employee_id, file, 'doc');
+        const { error } = await client.from('employee_documents').insert({
+          company_id, employee_id, doc_type, file_name: file.name.slice(0, 200) || 'file',
+          storage_path: path, mime_type: file.type, file_size: file.size,
+        });
+        if (error) {
+          // Don't leave an unlisted file behind.
+          await client.storage.from('employee-files').remove([path]);
+          assertNoError(error, 'employees.uploadDocument');
+        }
+      },
+      async removeDocument(doc) {
+        const { error } = await client.from('employee_documents').delete().eq('id', doc.id);
+        assertNoError(error, 'employees.removeDocument');
+        const rm = await client.storage.from('employee-files').remove([doc.storage_path]);
+        if (rm.error) console.warn('employees.removeDocument: file not removed', rm.error.message);
+      },
+      async fileUrl(storage_path) {
+        const { data, error } = await client.storage.from('employee-files').createSignedUrl(storage_path, 300);
+        if (error || !data?.signedUrl) throw new SupabaseDataError(`employees.fileUrl: ${error?.message ?? 'no url'}`);
+        return data.signedUrl;
       },
     },
     payroll: {
