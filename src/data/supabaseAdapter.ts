@@ -8083,6 +8083,38 @@ export function createSupabaseAdapter(
         if (error || !data?.signedUrl) throw new SupabaseDataError(`employees.fileUrl: ${error?.message ?? 'no url'}`);
         return data.signedUrl;
       },
+      async payrollHistory(employee_id) {
+        const { data, error } = await client.from('payroll_run_items')
+          .select('id, run_id, basic_salary, housing_allowance, transport_allowance, other_allowance, overtime, bonus, deductions, loan_repayment, payroll_runs!inner(run_number, period_year, period_month, status, date)')
+          .eq('employee_id', employee_id).limit(240);
+        assertNoError(error, 'employees.payrollHistory');
+        type Raw = { id: string; run_id: string; basic_salary: number; housing_allowance: number; transport_allowance: number;
+          other_allowance: number; overtime: number; bonus: number; deductions: number; loan_repayment: number;
+          payroll_runs: { run_number: string; period_year: number; period_month: number; status: string; date: string } };
+        return ((data ?? []) as unknown as Raw[]).map((r) => ({
+          id: r.id, run_id: r.run_id, run_number: r.payroll_runs.run_number, period_year: r.payroll_runs.period_year,
+          period_month: r.payroll_runs.period_month, run_status: r.payroll_runs.status, date: r.payroll_runs.date,
+          basic_salary: Number(r.basic_salary), housing_allowance: Number(r.housing_allowance),
+          transport_allowance: Number(r.transport_allowance), other_allowance: Number(r.other_allowance),
+          overtime: Number(r.overtime), bonus: Number(r.bonus), deductions: Number(r.deductions), loan_repayment: Number(r.loan_repayment),
+        })).sort((a, b) => (b.period_year - a.period_year) || (b.period_month - a.period_month));
+      },
+      async history(employee_id) {
+        const { data, error } = await client.from('employee_events').select('*')
+          .eq('employee_id', employee_id).order('created_at', { ascending: false }).limit(500);
+        // Before phase164 the table does not exist: an empty history, not an error.
+        if (error && isMissingRelation(error)) return [];
+        assertNoError(error, 'employees.history');
+        // Same-moment rows (an import sets the manager right after joining):
+        // the start of the history always comes last.
+        const first = (t: string) => (t === 'joined' || t === 'baseline' ? 1 : 0);
+        return (data ?? []).slice().sort((a, b) => b.created_at.localeCompare(a.created_at) || first(a.event_type) - first(b.event_type));
+      },
+      async importRows(rows) {
+        const { data, error } = await rpcAny('import_employees', { p_rows: rows });
+        if (error) throw new SupabaseDataError((error as { message: string }).message);
+        return data as import('./adapter').EmployeeImportResult;
+      },
     },
     payroll: {
       async listRuns(company_id) {

@@ -656,6 +656,9 @@ export function createSelfHostedAdapter(): DataAdapter {
       uploadDocument: () => notImplemented('employees.uploadDocument'),
       removeDocument: () => notImplemented('employees.removeDocument'),
       fileUrl: () => notImplemented('employees.fileUrl'),
+      payrollHistory: () => notImplemented('employees.payrollHistory'),
+      history: () => notImplemented('employees.history'),
+      importRows: () => notImplemented('employees.importRows'),
     },
     legal: {
       status:  () => notImplemented('legal.status'),

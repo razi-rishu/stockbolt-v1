@@ -1,6 +1,9 @@
 /**
  * Employee 360 (phase163) — one page per person, replacing the employee popup.
  *
+ * Opening an employee shows the read-only PROFILE; changes need the Edit
+ * button (or ?edit=1 from the list's Edit link). A new employee opens in edit.
+ *
  * Left: a live ID card and "Connected to" (login, branch, manager, sales,
  * purchasing, payroll, approvals). Right: identity, placement, access and
  * work roles, pay, documents with expiry, status and notes.
@@ -11,10 +14,10 @@
  * settlement keeps its own posting (Dr 2360 / Cr bank).
  */
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Save, Trash2, UserRoundCheck } from 'lucide-react';
+import { Pencil, Power, Save, Trash2, UserRoundCheck } from 'lucide-react';
 import { getAdapter } from '@/data/index';
 import { useAuthStore } from '@/store/auth';
 import { useHasPermission } from '@/hooks/use-permissions';
@@ -32,6 +35,7 @@ import { IdCard, Connections } from './id-card';
 import { DocumentsCard } from './documents-card';
 import { AccessSection, IdentitySection, PaySection, PlacementSection, StatusSection } from './sections';
 import { FinalSettlementModal } from './final-settlement-modal';
+import { ProfileView } from './profile-view';
 import '@/styles/stockbolt-ocean-teal.css';
 import './employee-360.css';
 
@@ -42,6 +46,13 @@ export default function Employee360Page() {
   const { id: routeId } = useParams<{ id: string }>();
   const isNew = !routeId || routeId === 'new';
   const navigate = useNavigate();
+  const [search, setSearch] = useSearchParams();
+  const editing = isNew || search.get('edit') === '1';
+  const setEditing = (on: boolean) => {
+    const next = new URLSearchParams(search);
+    if (on) next.set('edit', '1'); else next.delete('edit');
+    setSearch(next, { replace: true });
+  };
   const qc = useQueryClient();
   const { company_id } = useAuthStore();
   const canWrite = useHasPermission('payroll.write');
@@ -83,7 +94,7 @@ export default function Employee360Page() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isNew, emp?.id, emp?.updated_at, refs.ready]);
 
-  const dirty = !!draft && JSON.stringify(draft) !== base;
+  const dirty = editing && !!draft && JSON.stringify(draft) !== base;
   const confirmLeave = useUnsavedChangesGuard(dirty);
   const readOnly = !canWrite;
   const set = (key: keyof Draft, value: string | boolean) => setDraft((d) => (d ? { ...d, [key]: value } : d));
@@ -91,10 +102,11 @@ export default function Employee360Page() {
   const save = useMutation({
     mutationFn: () => saveEmployee({ draft: draft!, before: emp, company_id: company_id!, canManage, refs }),
     onSuccess: (savedId) => {
-      for (const k of ['employees', 'employee', 'salespeople', 'staff', 'team']) qc.invalidateQueries({ queryKey: [k] });
+      for (const k of ['employees', 'employee', 'employee-history', 'salespeople', 'staff', 'team']) qc.invalidateQueries({ queryKey: [k] });
       setError(null);
       setBase(JSON.stringify(draft));
-      if (isNew) navigate(`/payroll/employees/${savedId}`, { replace: true });
+      // Back to the profile after saving.
+      navigate(`/payroll/employees/${savedId}`, { replace: true });
     },
     onError: (e: Error) => setError(e.message === 'err_name' ? t('payOcean.err_name') : e.message),
   });
@@ -106,6 +118,12 @@ export default function Employee360Page() {
       setBase(JSON.stringify(draft));
       navigate('/payroll/employees');
     },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  const activeToggle = useMutation({
+    mutationFn: (on: boolean) => getAdapter().employees.update(emp!.id, { is_active: on }),
+    onSuccess: () => { for (const k of ['employees', 'employee', 'employee-history', 'team', 'salespeople']) qc.invalidateQueries({ queryKey: [k] }); setError(null); },
     onError: (e: Error) => setError(e.message),
   });
 
@@ -127,7 +145,7 @@ export default function Employee360Page() {
   }
   if (!draft) return <div className="sb-ocean sb-card sb-empty">{t('common.loading')}</div>;
 
-  const busy = save.isPending || remove.isPending || photo.isPending;
+  const busy = save.isPending || remove.isPending || photo.isPending || activeToggle.isPending;
   const branchName = refs.branches.find((b) => b.id === draft.branch_id)?.name;
   const whName = refs.warehouses.find((w) => w.id === draft.warehouse_id)?.name;
   const idLabel = country === 'AE' ? t('payOcean.f_emirates_id') : t('emp360.doc_national_id');
@@ -138,23 +156,37 @@ export default function Employee360Page() {
         <div className="sb-doc-bar-id">
           <BackButton to="/payroll/employees" label={t('payOcean.emp_title')} confirm={confirmLeave} />
           <h1 className="sb-doc-bar-no">{isNew ? t('emp360.title_new') : draft.name || t('payOcean.edit_employee')}</h1>
+          {editing && !isNew && <span className="sb-pill sb-pill-good" data-testid="e360-editing">{t('emp360.editing')}</span>}
           {dirty && <span className="sb-pill sb-pill-muted">{t('emp360.unsaved')}</span>}
         </div>
-        {canWrite && (
-          <div className="sb-doc-bar-actions">
-            {emp && draft.is_active && (
-              <Button size="sm" variant="ghost" disabled={busy || dirty} title={dirty ? t('emp360.save_before_settle') : t('payOcean.settle_hint')}
-                onClick={() => setSettling(true)}>
+        {canWrite && !editing && emp && (
+          <div className="sb-doc-bar-actions" data-testid="e360-view-actions">
+            {draft.is_active && (
+              <Button size="sm" variant="ghost" disabled={busy} title={t('payOcean.settle_hint')} onClick={() => setSettling(true)}>
                 <UserRoundCheck size={15} aria-hidden="true" /> {t('payOcean.final_settlement')}
               </Button>
             )}
-            {emp && (
-              <Button size="sm" variant="ghost" style={{ color: 'var(--sb-danger)' }} disabled={busy} title={t('staff.delete_hint')}
-                onClick={() => { if (window.confirm(t('staff.confirm_delete', { name: draft.name }))) { setError(null); remove.mutate(); } }}>
-                <Trash2 size={15} aria-hidden="true" /> {t('common.delete')}
-              </Button>
-            )}
-            <Button size="sm" variant="ghost" disabled={busy || !dirty} onClick={() => setDraft(JSON.parse(base) as Draft)}>
+            <Button size="sm" variant="ghost" disabled={busy} data-testid="e360-toggle-active"
+              onClick={() => { if (window.confirm(draft.is_active ? t('emp360.confirm_deactivate', { name: draft.name }) : t('emp360.confirm_reactivate', { name: draft.name }))) activeToggle.mutate(!draft.is_active); }}>
+              <Power size={15} aria-hidden="true" /> {draft.is_active ? t('emp360.deactivate') : t('emp360.reactivate')}
+            </Button>
+            <Button size="sm" variant="ghost" style={{ color: 'var(--sb-danger)' }} disabled={busy} title={t('staff.delete_hint')}
+              onClick={() => { if (window.confirm(t('staff.confirm_delete', { name: draft.name }))) { setError(null); remove.mutate(); } }}>
+              <Trash2 size={15} aria-hidden="true" /> {t('common.delete')}
+            </Button>
+            <Button size="sm" variant="primary" disabled={busy} onClick={() => setEditing(true)} data-testid="e360-edit">
+              <Pencil size={15} aria-hidden="true" /> {t('common.edit')}
+            </Button>
+          </div>
+        )}
+        {canWrite && editing && (
+          <div className="sb-doc-bar-actions" data-testid="e360-edit-actions">
+            <Button size="sm" variant="ghost" disabled={busy}
+              onClick={() => {
+                if (dirty && !window.confirm(t('emp360.discard_confirm'))) return;
+                if (isNew) { setBase(JSON.stringify(draft)); navigate('/payroll/employees'); return; }
+                setDraft(JSON.parse(base) as Draft); setError(null); setEditing(false);
+              }}>
               {t('common.cancel')}
             </Button>
             <Button size="sm" variant="primary" disabled={busy || !draft.name.trim() || (!dirty && !isNew)}
@@ -171,21 +203,26 @@ export default function Employee360Page() {
         <aside className="sb-e360-side">
           <IdCard draft={draft} place={[branchName, whName].filter(Boolean).join(' · ')}
             service={service(draft.joining_date || null)} photoPath={emp?.photo_path ?? null}
-            canEditPhoto={canWrite} savedYet={!!emp} busy={busy}
+            canEditPhoto={canWrite && editing} savedYet={!!emp} busy={busy}
             onPhoto={(f) => photo.mutate(f)} onRemovePhoto={() => photo.mutate(null)} />
           <Connections items={connections} />
         </aside>
-        <div className="sb-e360-main">
-          <IdentitySection draft={draft} set={set} readOnly={readOnly} arabicOn={arabicOn} />
-          <PlacementSection draft={draft} set={set} readOnly={readOnly} branches={refs.branches} warehouses={refs.warehouses}
-            team={refs.team} selfId={emp?.id ?? null} canManage={canManage} />
-          <AccessSection draft={draft} set={set} readOnly={readOnly} users={refs.users} team={refs.team}
-            selfId={emp?.id ?? null} canManage={canManage} roleName={roleNameOf(t, draft.user_id, refs)} />
-          <PaySection draft={draft} set={set} readOnly={readOnly} gcc={gcc} banks={refs.bankNames} />
-          <DocumentsCard draft={draft} set={set} idLabel={idLabel} gcc={gcc} employeeId={emp?.id ?? null}
-            companyId={company_id!} canWrite={canWrite} readOnly={readOnly} />
-          <StatusSection draft={draft} set={set} readOnly={readOnly} />
-        </div>
+        {!editing && emp ? (
+          <ProfileView draft={draft} emp={emp} refs={refs} service={service(draft.joining_date || null)}
+            gcc={gcc} idLabel={idLabel} canManage={canManage} />
+        ) : (
+          <div className="sb-e360-main">
+            <IdentitySection draft={draft} set={set} readOnly={readOnly} arabicOn={arabicOn} />
+            <PlacementSection draft={draft} set={set} readOnly={readOnly} branches={refs.branches} warehouses={refs.warehouses}
+              team={refs.team} selfId={emp?.id ?? null} canManage={canManage} />
+            <AccessSection draft={draft} set={set} readOnly={readOnly} users={refs.users} team={refs.team}
+              selfId={emp?.id ?? null} canManage={canManage} roleName={roleNameOf(t, draft.user_id, refs)} />
+            <PaySection draft={draft} set={set} readOnly={readOnly} gcc={gcc} banks={refs.bankNames} />
+            <DocumentsCard draft={draft} set={set} idLabel={idLabel} gcc={gcc} employeeId={emp?.id ?? null}
+              companyId={company_id!} canWrite={canWrite} readOnly={readOnly} />
+            <StatusSection draft={draft} set={set} readOnly={readOnly} />
+          </div>
+        )}
       </div>
 
       {settling && emp && (

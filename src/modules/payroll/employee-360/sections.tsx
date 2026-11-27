@@ -9,7 +9,7 @@ import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
 import type { BranchRow, Profile, TeamMember, WarehouseRow } from '@/data/adapter';
 import { DEPARTMENTS, JOB_TITLES, personLabel } from '../../settings/team/team-lists';
-import { EMPLOYMENT_TYPES, PAY_METHODS, packageOf, type Draft } from './draft';
+import { EMPLOYMENT_TYPES, GENDERS, MARITAL, PAY_METHODS, packageOf, type Draft } from './draft';
 
 export type SetField = (key: keyof Draft, value: string | boolean) => void;
 interface Base { draft: Draft; set: SetField; readOnly: boolean }
@@ -42,8 +42,17 @@ export function IdentitySection({ draft, set, readOnly, arabicOn }: Base & { ara
         <Input label={t('payOcean.f_email')} dir="ltr" type="email" value={draft.email} onChange={f('email')} disabled={readOnly} />
         <Input label={t('emp360.f_nationality')} value={draft.nationality} onChange={f('nationality')} disabled={readOnly} />
         <Input label={t('emp360.f_dob')} type="date" value={draft.date_of_birth} onChange={f('date_of_birth')} disabled={readOnly} />
+        <Select label={t('emp360.f_gender')} value={draft.gender} disabled={readOnly}
+          onChange={(e) => set('gender', e.target.value)}
+          options={[{ value: '', label: t('emp360.not_set') }, ...GENDERS.map((k) => ({ value: k, label: t(`emp360.g_${k}`) }))]} />
+        <Select label={t('emp360.f_marital')} value={draft.marital_status} disabled={readOnly}
+          onChange={(e) => set('marital_status', e.target.value)}
+          options={[{ value: '', label: t('emp360.not_set') }, ...MARITAL.map((k) => ({ value: k, label: t(`emp360.ms_${k}`) }))]} />
         <Input label={t('emp360.f_emergency_name')} value={draft.emergency_contact_name} onChange={f('emergency_contact_name')} disabled={readOnly} />
         <Input label={t('emp360.f_emergency_phone')} dir="ltr" type="tel" value={draft.emergency_contact_phone} onChange={f('emergency_contact_phone')} disabled={readOnly} />
+      </div>
+      <div style={{ marginTop: 12 }}>
+        <Input label={t('emp360.f_address')} value={draft.address} onChange={f('address')} disabled={readOnly} />
       </div>
     </section>
   );
@@ -79,7 +88,14 @@ export function PlacementSection({ draft, set, readOnly, branches, warehouses, t
         <Select label={t('emp360.f_employment_type')} value={draft.employment_type} onChange={f('employment_type')} disabled={readOnly}
           options={[{ value: '', label: t('emp360.not_set') }, ...EMPLOYMENT_TYPES.map((k) => ({ value: k, label: t(`emp360.et_${k}`) }))]} />
         <Input label={t('payOcean.f_joining')} type="date" value={draft.joining_date} onChange={f('joining_date')} disabled={readOnly} />
+        <Input label={t('emp360.f_probation_end')} type="date" value={draft.probation_end} onChange={f('probation_end')} disabled={readOnly} />
+        <Input label={t('emp360.f_confirmation')} type="date" value={draft.confirmation_date} onChange={f('confirmation_date')} disabled={readOnly} />
+        <Input label={t('emp360.f_contract_start')} type="date" value={draft.contract_start} onChange={f('contract_start')} disabled={readOnly} />
+        <Input label={t('emp360.f_contract_end')} type="date" value={draft.contract_end} onChange={f('contract_end')} disabled={readOnly} />
       </div>
+      {draft.contract_start && draft.contract_end && draft.contract_end < draft.contract_start && (
+        <p className="sb-e360-err" role="alert">{t('emp360.contract_order')}</p>
+      )}
       <datalist id="e360-titles">{JOB_TITLES.map((x) => <option key={x.key} value={x.en} />)}</datalist>
       <datalist id="e360-depts">{DEPARTMENTS.map((x) => <option key={x.key} value={x.en} />)}</datalist>
       {!canManage && <p className="sb-e360-muted">{t('emp360.manager_admin_only')}</p>}

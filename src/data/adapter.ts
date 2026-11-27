@@ -3776,6 +3776,24 @@ export interface EmployeesAPI {
   removeDocument(doc: EmployeeDocumentRow): Promise<void>;
   /** Short-lived link (5 minutes) to a photo or document. */
   fileUrl(storage_path: string): Promise<string>;
+  /** Profile: this employee's payroll lines with their run (newest first). Read-only. */
+  payrollHistory(employee_id: string): Promise<EmployeePayLine[]>;
+  /** phase164 — employment history (newest first). Written only by the database. */
+  history(employee_id: string): Promise<EmployeeEventRow[]>;
+  /** phase164 — validated, all-or-nothing import. */
+  importRows(rows: Record<string, string>[]): Promise<EmployeeImportResult>;
+}
+export type EmployeeEventRow = Tables['employee_events']['Row'];
+export interface EmployeeImportResult {
+  ok: boolean; imported: number;
+  errors: { row: number; field: string; message: string }[];
+}
+/** One payroll line of an employee, with its run. */
+export interface EmployeePayLine {
+  id: string; run_id: string; run_number: string; period_year: number; period_month: number;
+  run_status: string; date: string;
+  basic_salary: number; housing_allowance: number; transport_allowance: number; other_allowance: number;
+  overtime: number; bonus: number; deductions: number; loan_repayment: number;
 }
 
 // ── phase129 — one staff identity (employees) shared by Sales / Purchasing / Payroll

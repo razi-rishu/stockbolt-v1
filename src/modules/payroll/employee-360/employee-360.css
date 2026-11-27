@@ -73,3 +73,35 @@
 .sb-e360-files li { display: flex; align-items: center; gap: 8px; font-size: 13px; min-width: 0; }
 .sb-e360-files li .sb-e360-link { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
 .sb-e360-addfile { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+
+/* Profile (read-only) view */
+.sb-e360-dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px 18px; margin: 0; }
+.sb-e360-field { min-width: 0; }
+.sb-e360-field dt { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; color: var(--sb-text-secondary); margin-bottom: 2px; }
+.sb-e360-field dd { margin: 0; font-size: 14px; color: var(--sb-text); word-break: break-word; }
+.sb-e360-field dd.is-empty { color: var(--sb-text-secondary); }
+.sb-e360-doclist { list-style: none; margin: 0; padding: 0; }
+.sb-e360-doclist li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--sb-border); font-size: 13px; }
+.sb-e360-doclist li:first-child { border-top: 0; }
+.sb-e360-table-wrap { overflow-x: auto; }
+.sb-e360-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sb-e360-table th { text-align: start; font-size: 11px; font-weight: 600; color: var(--sb-text-secondary); padding: 6px 8px; border-bottom: 1px solid var(--sb-border); white-space: nowrap; }
+.sb-e360-table td { padding: 7px 8px; border-bottom: 1px solid var(--sb-border); white-space: nowrap; }
+.sb-e360-table .is-num { text-align: end; }
+.sb-e360-notes-view { margin: 0; white-space: pre-wrap; font-size: 14px; }
+
+/* Timeline (phase164) */
+.sb-e360-timeline { list-style: none; margin: 0; padding: 0; position: relative; }
+.sb-e360-timeline li { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 10px; padding: 0 0 12px; position: relative; }
+.sb-e360-timeline li::before { content: ''; position: absolute; inset-inline-start: 5px; top: 12px; bottom: 0; width: 2px; background: var(--sb-border); }
+.sb-e360-timeline li:last-child::before { display: none; }
+.sb-e360-tl-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--sb-primary-soft); border: 2px solid var(--sb-primary); margin-top: 3px; }
+.sb-e360-timeline li[data-type="status"] .sb-e360-tl-dot { border-color: var(--sb-warning); }
+.sb-e360-timeline li[data-type="salary"] .sb-e360-tl-dot { border-color: var(--sb-success); }
+.sb-e360-tl-text { margin: 0; font-size: 14px; color: var(--sb-text); }
+
+/* Employee directory filters (phase164) */
+.sb-empdir-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px 14px; }
+.sb-empdir-search { display: flex; align-items: center; gap: 6px; flex: 1 1 220px; min-width: 0; border: 1px solid var(--sb-border); border-radius: 9999px; padding: 6px 12px; background: var(--sb-surface); color: var(--sb-text-secondary); }
+.sb-empdir-search input { border: 0; outline: 0; background: transparent; flex: 1; min-width: 0; font: inherit; font-size: 14px; color: var(--sb-text); }
+.sb-empdir-filters .sb-team-select { flex: 0 1 170px; width: auto; min-width: 0; max-width: 100%; }

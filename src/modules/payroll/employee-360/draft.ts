@@ -7,7 +7,10 @@
  */
 import type { EmployeeInsert, EmployeeRow, SalespersonRow } from '@/data/adapter';
 
-export const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'contract', 'intern'] as const;
+/** phase164 — permanent, probation and temporary added; older values kept. */
+export const EMPLOYMENT_TYPES = ['permanent', 'probation', 'full_time', 'part_time', 'contract', 'temporary', 'intern'] as const;
+export const GENDERS = ['male', 'female'] as const;
+export const MARITAL = ['single', 'married', 'divorced', 'widowed'] as const;
 export const PAY_METHODS = ['wps', 'bank', 'cash', 'cheque'] as const;
 
 export interface Draft {
@@ -20,6 +23,9 @@ export interface Draft {
   mol_id: string; bank_name: string; iban: string; bank_routing_code: string; pay_method: string;
   basic_salary: string; housing_allowance: string; transport_allowance: string; other_allowance: string;
   notes: string;
+  /** phase164 */
+  gender: string; marital_status: string; address: string;
+  probation_end: string; confirmation_date: string; contract_start: string; contract_end: string;
   is_active: boolean; include_in_payroll: boolean;
   /** phase129 work roles (saved through the staff functions, not the row). */
   is_sales: boolean; commission_pct: string; is_purchaser: boolean;
@@ -35,7 +41,9 @@ export const emptyDraft = (code = ''): Draft => ({
   visa_no: '', visa_expiry: '', labour_card_no: '', labour_card_expiry: '',
   mol_id: '', bank_name: '', iban: '', bank_routing_code: '', pay_method: '',
   basic_salary: '0', housing_allowance: '0', transport_allowance: '0', other_allowance: '0',
-  notes: '', is_active: true, include_in_payroll: true,
+  notes: '', gender: '', marital_status: '', address: '',
+  probation_end: '', confirmation_date: '', contract_start: '', contract_end: '',
+  is_active: true, include_in_payroll: true,
   is_sales: false, commission_pct: '0', is_purchaser: false, reports_to_id: '', user_id: '',
 });
 
@@ -56,7 +64,10 @@ export function toDraft(e: EmployeeRow, sp: SalespersonRow | undefined): Draft {
     pay_method: s(e.pay_method),
     basic_salary: String(e.basic_salary), housing_allowance: String(e.housing_allowance),
     transport_allowance: String(e.transport_allowance), other_allowance: String(e.other_allowance),
-    notes: s(e.notes), is_active: e.is_active, include_in_payroll: e.include_in_payroll !== false,
+    notes: s(e.notes), gender: s(e.gender), marital_status: s(e.marital_status), address: s(e.address),
+    probation_end: s(e.probation_end), confirmation_date: s(e.confirmation_date),
+    contract_start: s(e.contract_start), contract_end: s(e.contract_end),
+    is_active: e.is_active, include_in_payroll: e.include_in_payroll !== false,
     is_sales: !!sp?.is_active, commission_pct: String(sp?.commission_pct ?? 0), is_purchaser: !!e.is_purchaser,
     reports_to_id: s(e.reports_to_id), user_id: s(e.user_id),
   };
@@ -84,7 +95,10 @@ export function toRow(d: Draft, company_id: string): EmployeeInsert {
     pay_method: d.pay_method || null,
     basic_salary: money(d.basic_salary), housing_allowance: money(d.housing_allowance),
     transport_allowance: money(d.transport_allowance), other_allowance: money(d.other_allowance),
-    notes: txt(d.notes), is_active: d.is_active, include_in_payroll: d.include_in_payroll,
+    notes: txt(d.notes), gender: d.gender || null, marital_status: d.marital_status || null, address: txt(d.address),
+    probation_end: day(d.probation_end), confirmation_date: day(d.confirmation_date),
+    contract_start: day(d.contract_start), contract_end: day(d.contract_end),
+    is_active: d.is_active, include_in_payroll: d.include_in_payroll,
   };
 }
 

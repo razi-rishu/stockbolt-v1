@@ -1203,6 +1203,13 @@ export type Database = {
           labour_card_no: string | null
           labour_card_expiry: string | null
           pay_method: string | null
+          gender: string | null
+          marital_status: string | null
+          address: string | null
+          probation_end: string | null
+          confirmation_date: string | null
+          contract_start: string | null
+          contract_end: string | null
           phone: string | null
           transport_allowance: number
           updated_at: string
@@ -1248,6 +1255,13 @@ export type Database = {
           labour_card_no?: string | null
           labour_card_expiry?: string | null
           pay_method?: string | null
+          gender?: string | null
+          marital_status?: string | null
+          address?: string | null
+          probation_end?: string | null
+          confirmation_date?: string | null
+          contract_start?: string | null
+          contract_end?: string | null
           phone?: string | null
           transport_allowance?: number
           updated_at?: string
@@ -1293,9 +1307,52 @@ export type Database = {
           labour_card_no?: string | null
           labour_card_expiry?: string | null
           pay_method?: string | null
+          gender?: string | null
+          marital_status?: string | null
+          address?: string | null
+          probation_end?: string | null
+          confirmation_date?: string | null
+          contract_start?: string | null
+          contract_end?: string | null
           phone?: string | null
           transport_allowance?: number
           updated_at?: string
+        }
+        Relationships: []
+      }
+      employee_events: {
+        Row: {
+          id: string
+          company_id: string
+          employee_id: string
+          event_type: string
+          effective_date: string
+          old_value: Json | null
+          new_value: Json | null
+          by_user: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          company_id: string
+          employee_id: string
+          event_type: string
+          effective_date?: string
+          old_value?: Json | null
+          new_value?: Json | null
+          by_user?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          employee_id?: string
+          event_type?: string
+          effective_date?: string
+          old_value?: Json | null
+          new_value?: Json | null
+          by_user?: string | null
+          created_at?: string
         }
         Relationships: []
       }
