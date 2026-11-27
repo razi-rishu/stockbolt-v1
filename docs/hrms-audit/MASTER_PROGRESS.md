@@ -6,9 +6,9 @@
 | Phase | Name | Status | Staging tests | Production | Web | Android |
 |---|---|---|---|---|---|---|
 | phase163 | Employee 360 page, documents, private files | Done | E1–E19 pass | Applied 2026-11-26 | Pushed (f409628) | 1.0.29 (code 30) built |
-| H0 | Card opens profile; Edit, Deactivate explicit | Done 2026-11-27, uncommitted | Desktop, tablet, phone: profile has 0 editable fields; Edit → save → profile | No SQL | Not pushed | Next build |
-| H1 | HR foundations: fields, employment history, audit, directory, import/export, 100-employee seed | Done 2026-11-27, uncommitted (phase164) | H1–H16 pass; 100 imported via the app's import; screen: filters, search, paging, transfer + raise → timeline; phone | Not applied | Not pushed | Next build |
-| H2 | Leave engine | Waiting (D1, D2) | — | — | — | — |
+| H0 | Card opens profile; Edit, Deactivate explicit | Done 2026-11-27, committed a7c1903 | Desktop, tablet, phone: profile has 0 editable fields; Edit → save → profile | No SQL | Not pushed | Next build |
+| H1 | HR foundations: fields, employment history, audit, directory, import/export, 100-employee seed | Done 2026-11-27, committed a7c1903 (phase164) | H1–H16 pass; 100 imported via the app's import; screen: filters, search, paging, transfer + raise → timeline; phone | Not applied | Not pushed | Next build |
+| H2 | Leave engine | Part 1 (database, phase165) done 2026-11-27, uncommitted; part 2 (screens) next | L1–L23 pass | Not applied | — | — |
 | H3 | Payroll upgrade + payslips | Waiting (D2, D5) | — | — | — | — |
 | H4 | Self-service | Waiting (D3) | — | — | — | — |
 | H5 | Attendance light | Waiting | — | — | — | — |
@@ -20,7 +20,14 @@
 - **Test company on staging:** "HR Sim Trading LLC", 101 employees (owner + 100 imported) across Head Office (34), Branch A, B, C (22 each), nine departments, five employment types. Created through onboarding and `import_employees`, never by direct inserts. Local staging only.
 - Directory loads 101 employees in about 2.5 s on staging (all rows once, filters instant, 50 per page). Server-side paging is planned only if companies pass ~1,000 employees.
 
-## Decisions needed
+### H2 notes (part 1)
+- **Bug found by the tests and fixed before commit:** the approver check compared against a missing delegate (NULL), which made the refusal "unknown" so it did not fire: any signed-in colleague could approve a manager step. Fixed with an explicit COALESCE; test L6 now proves non-approvers and the employee themself are refused.
+- **Second fix:** approved leave dated in the future did not reduce the balance until its date. Booked leave now counts at once (L9, L15).
+- Only days already earned can be booked; HR can still record leave or adjust a balance with a reason.
+- UAE template values are installed inactive and marked "needs verification"; nothing is activated automatically (D1).
+- Hourly leave is not supported (half days are).
+
+## Decisions (accepted 2026-11-27 as recommended)
 
 | ID | Question | Recommendation |
 |---|---|---|

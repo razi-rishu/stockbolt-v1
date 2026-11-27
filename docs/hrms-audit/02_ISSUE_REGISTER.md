@@ -6,7 +6,7 @@
 | ID | P | Title | Root cause | Affected | Business / financial impact | Status |
 |---|---|---|---|---|---|---|
 | HR-01 | P1 | Employee card opened the edit form | Employee 360 rendered the form for every open | `employee-360/index.tsx`, `employees.tsx` | Accidental edits to employee data | **Fixed (H0)**, *verified* desktop, tablet, phone |
-| HR-02 | P1 | Leave salary earned at 30 days a year from day one, for every country | Hard-coded constant `ANNUAL_LEAVE_DAYS = 30`, accrual from joining date | `leave-salary.tsx` | First-year UAE staff and non-UAE staff can be overpaid leave salary; leave taken is never recorded, so balances only fall when cash is paid | Open → H2 |
+| HR-02 | P1 | Leave salary earned at 30 days a year from day one, for every country | Hard-coded constant `ANNUAL_LEAVE_DAYS = 30`, accrual from joining date | `leave-salary.tsx` | First-year UAE staff and non-UAE staff can be overpaid leave salary; leave taken is never recorded, so balances only fall when cash is paid | Engine **built (H2 part 1, phase165)**; leave salary page switches to the ledger in H2 part 2 |
 | HR-03 | P1 | Gratuity uses the UAE formula for all countries, with no minimum service | Hard-coded in `gratuity.ts` (21/30 days of basic, 2-year cap) | Employee list, final settlement default, payroll accrual (to verify source) | India gratuity differs (statutory 15 days per year after 5 years); UAE requires 1 year's service. Wrong liability (2360) and wrong settlement default | Open → H3/H6 |
 | HR-04 | P1 | No payslips | Never built | Payroll | Employers cannot give staff a payslip (a WPS and labour-law expectation in many countries) | Open → H3 |
 | HR-05 | P1 | Unpaid leave, overtime and loan recovery typed by hand per run | No leave, attendance or loan link | Payroll run editor | Errors and double deductions possible; no trace of why a deduction was made | Open → H2/H3/H5 |
@@ -15,7 +15,7 @@
 | HR-08 | P2 | Employee field edits and status changes are not audited | Audit only on Team and posting functions | `employees` | No trail for who changed bank details or salary (fraud risk) | **Fixed (H1, phase164)**, *verified* H3–H4 |
 | HR-09 | P2 | `employee_loans.balance` is a stored running figure | Built before the ledger-first rule was applied to payroll | `employee_loans` | Can drift from 1450 and from recoveries (AGENTS Rule 1) | Open → H3 (to verify) |
 | HR-10 | P2 | Payroll cannot be reported by branch | One journal per run, no branch on lines | `confirm_payroll_run` | Branch profit understated / unknown | Open → H3 (needs Doc 3 decision) |
-| HR-11 | P2 | No leave management at all | Never built | — | HR tracks leave on paper; payroll cannot read it | Open → H2 |
+| HR-11 | P2 | No leave management at all | Never built | — | HR tracks leave on paper; payroll cannot read it | Engine **built (H2 part 1)**, *verified* L1–L23; screens in H2 part 2 |
 | HR-12 | P2 | No attendance, schedules or holidays | Never built | — | Overtime and absence cannot be checked | Open → H5 |
 | HR-13 | P2 | No probation, confirmation, contract dates, gender, marital status, address, work schedule | Fields not modelled | `employees` | Probation and contract expiry cannot be tracked | **Fixed (H1, phase164)**, *verified* H5 |
 | HR-14 | P2 | No directory filters, bulk import/export, branch scoping | Small-company design | `employees.tsx` | A 100-person company manages one long list by hand | Filters, search, paging, export, validated import **fixed (H1)**, *verified* 101 employees; branch-scoped access moves to H4 |
